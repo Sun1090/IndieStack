@@ -1,0 +1,245 @@
+{
+  "overview": {
+    "metaTitle": "仪表盘",
+    "metaDesc": "你的仪表盘概览",
+    "title": "仪表盘",
+    "desc": "欢迎回来！以下是你的项目概览。",
+    "welcomeBack": "欢迎回来",
+    "todaySummary": "以下是你的项目今日概览",
+    "stats": {
+      "revenue": "总收入",
+      "activeUsers": "活跃用户",
+      "apiCalls": "API 调用",
+      "growthRate": "增长率",
+      "last30Days": "过去 30 天",
+      "monthOverMonth": "月环比"
+    },
+    "plan": {
+      "title": "当前方案",
+      "desc": "你当前使用的订阅方案",
+      "upgrade": "升级方案",
+      "teamMembers": "团队成员",
+      "storageUsed": "存储用量"
+    },
+    "activity": {
+      "title": "最近活动",
+      "desc": "你项目中的最新操作",
+      "items": [
+        {
+          "action": "部署成功",
+          "time": "2 分钟前"
+        },
+        {
+          "action": "迁移完成",
+          "time": "1 小时前"
+        },
+        {
+          "action": "新成员加入",
+          "time": "3 小时前"
+        },
+        {
+          "action": "域名更新",
+          "time": "5 小时前"
+        },
+        {
+          "action": "构建失败",
+          "time": "1 天前"
+        }
+      ]
+    }
+  },
+  "analytics": {
+    "metaTitle": "分析",
+    "metaDesc": "查看你的应用指标和使用情况",
+    "title": "分析",
+    "desc": "跟踪你的应用指标和使用情况",
+    "stats": {
+      "pageViews": "页面浏览量",
+      "uniqueVisitors": "独立访客",
+      "bounceRate": "跳出率",
+      "avgSession": "平均会话时长"
+    },
+    "vsLastPeriod": "较上期",
+    "usageOverview": {
+      "title": "使用概览",
+      "desc": "过去 30 天的日活跃用户和 API 调用",
+      "placeholder": "图表可视化将在此显示",
+      "hint": "集成 Recharts 或你偏好的图表库"
+    },
+    "recentEvents": {
+      "title": "最近事件",
+      "desc": "过去 24 小时的关键事件"
+    },
+    "exportCsv": "导出 CSV",
+    "last7Days": "最近 7 天",
+    "last14Days": "最近 14 天",
+    "last30Days": "最近 30 天"
+  },
+  "profile": {
+    "view": {
+      "metaTitle": "个人资料",
+      "metaDesc": "查看你的个人资料",
+      "title": "个人资料",
+      "desc": "查看你的个人信息",
+      "email": "邮箱",
+      "memberSince": "注册时间",
+      "notSet": "未设置",
+      "editProfile": "编辑资料"
+    },
+    "edit": {
+      "metaTitle": "编辑资料",
+      "metaDesc": "编辑你的个人资料",
+      "title": "编辑资料",
+      "desc": "更新你的个人信息",
+      "nameLabel": "姓名",
+      "namePlaceholder": "你的姓名",
+      "bioLabel": "简介",
+      "bioPlaceholder": "简单介绍一下自己",
+      "avatarLabel": "头像",
+      "avatarDesc": "点击上传新的头像",
+      "uploadAvatar": "上传头像",
+      "submit": "保存更改",
+      "success": "资料已更新！"
+    }
+  },
+  "settings": {
+    "metaTitle": "设置",
+    "metaDesc": "管理你的账户设置",
+    "title": "设置",
+    "desc": "管理你的账户设置和偏好",
+    "sections": {
+      "general": {
+        "title": "通用设置",
+        "desc": "管理你的基本账户信息。"
+      },
+      "password": {
+        "title": "修改密码",
+        "desc": "更新你的账户密码。",
+        "currentLabel": "当前密码",
+        "currentPlaceholder": "输入当前密码",
+        "newLabel": "新密码",
+        "newPlaceholder": "输入新密码",
+        "confirmLabel": "确认新密码",
+        "confirmPlaceholder": "再次输入新密码",
+        "submit": "更新密码",
+        "success": "密码已更新！"
+      },
+      "appearance": {
+        "title": "外观设置",
+        "desc": "自定义应用的外观。",
+        "theme": "主题",
+        "themeLight": "浅色",
+        "themeDark": "深色",
+        "themeSystem": "跟随系统"
+      },
+      "danger": {
+        "title": "危险区域",
+        "desc": "一旦执行不可撤销的操作。",
+        "deleteAccount": "删除账户",
+        "deleteDesc": "永久删除你的账户和所有数据。此操作不可撤销。",
+        "deleteConfirm": "确认删除",
+        "confirmPhrase": "请输入「删除」确认"
+      }
+    }
+  },
+  "team": {
+    "list": {
+      "metaTitle": "团队",
+      "metaDesc": "管理你的团队",
+      "title": "团队",
+      "desc": "管理你的团队成员和权限",
+      "invite": "邀请成员",
+      "createTeam": "创建团队",
+      "members": "成员",
+      "noMembers": "暂无成员",
+      "removeMember": "移除成员",
+      "removeConfirm": "确定要移除此成员吗？",
+      "role": "角色",
+      "actions": "操作",
+      "roles": {
+        "owner": "拥有者",
+        "admin": "管理员",
+        "member": "成员"
+      }
+    },
+    "invite": {
+      "metaTitle": "邀请成员",
+      "metaDesc": "邀请新成员加入你的团队",
+      "title": "邀请成员",
+      "desc": "通过邮箱邀请新成员加入你的团队。",
+      "emailLabel": "邮箱地址",
+      "emailPlaceholder": "member@email.com",
+      "roleLabel": "角色",
+      "submit": "发送邀请",
+      "success": "邀请已发送！"
+    },
+    "create": {
+      "metaTitle": "创建团队",
+      "metaDesc": "创建一个新团队",
+      "title": "创建团队",
+      "desc": "创建一个新的团队开始协作。",
+      "nameLabel": "团队名称",
+      "namePlaceholder": "输入团队名称",
+      "submit": "创建团队",
+      "success": "团队创建成功！"
+    }
+  },
+  "billing": {
+    "metaTitle": "账单",
+    "metaDesc": "管理你的订阅和账单",
+    "title": "账单",
+    "desc": "管理你的订阅和账单信息",
+    "sectionTitle": "当前方案",
+    "currentPlanDesc": "你当前使用的是 {0} 方案。",
+    "priceLabel": "价格",
+    "perMonth": "/月",
+    "availablePlans": "可用方案",
+    "currentPlanBadge": "当前方案",
+    "upgradeTo": "升级到 {0}",
+    "paymentHistory": {
+      "title": "支付历史",
+      "desc": "查看过去的发票和支付记录。",
+      "empty": "暂无支付记录。订阅付费方案后，支付历史将在此显示。"
+    }
+  },
+  "projects": {
+    "list": {
+      "metaTitle": "项目",
+      "metaDesc": "管理你的项目",
+      "title": "项目",
+      "desc": "管理和查看你的所有项目",
+      "create": "新建项目",
+      "noProjects": "暂无项目",
+      "createFirst": "创建你的第一个项目"
+    },
+    "detail": {
+      "metaTitle": "项目详情",
+      "metaDesc": "查看项目详情",
+      "overview": "项目概览",
+      "members": "成员",
+      "settings": "设置",
+      "backToProjects": "返回项目列表"
+    }
+  },
+  "notifications": {
+    "metaTitle": "通知",
+    "metaDesc": "管理你的通知偏好",
+    "title": "通知",
+    "desc": "管理你的通知偏好和提醒",
+    "preferences": {
+      "title": "通知偏好",
+      "desc": "选择你想通过邮箱接收哪些通知。"
+    }
+  },
+  "integrations": {
+    "metaTitle": "集成",
+    "metaDesc": "管理你的第三方集成",
+    "title": "集成",
+    "desc": "连接你的工具和服务",
+    "comingSoon": "更多集成即将推出...",
+    "connected": "已连接",
+    "notConnected": "未连接",
+    "connect": "连接",
+    "disconnect": "断开"
+  }
+}

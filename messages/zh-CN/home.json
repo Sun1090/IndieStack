@@ -1,0 +1,85 @@
+{
+  "metaTitle": "首页",
+  "metaDesc": "面向独立开发者的生产级 SaaS 启动模板",
+  "hero": {
+    "badge": "生产就绪的 SaaS 启动模板",
+    "title": "更快地构建你的 SaaS",
+    "titleAccent": "使用现代工具",
+    "subtitle": "集成了 Next.js 15、Tailwind CSS、shadcn/ui、Supabase 等现代技术栈，让你专注于业务逻辑。",
+    "cta": "免费开始使用",
+    "ctaSecondary": "探索功能"
+  },
+  "stats": {
+    "technologies": "技术集成",
+    "pages": "页面与组件",
+    "apiRoutes": "API 路由",
+    "configTime": "配置时间",
+    "zero": "零"
+  },
+  "featuresSection": {
+    "badge": "功能特性",
+    "title": "开箱即用的一切",
+    "description": "为独立开发者打造的完整技术栈。电池已包含。",
+    "seeAll": "查看全部功能"
+  },
+  "techStackSection": {
+    "badge": "技术栈",
+    "title": "现代工具，久经考验",
+    "description": "每一项技术都经过精心挑选，兼顾生产力、可扩展性和开发体验。",
+    "items": [
+      "Next.js 15",
+      "Tailwind CSS",
+      "shadcn/ui",
+      "TypeScript",
+      "Supabase",
+      "PostgreSQL",
+      "Sentry",
+      "Vercel",
+      "GitHub Actions",
+      "阿里云",
+      "Appark",
+      "Stripe",
+      "Zod",
+      "Lucide",
+      "Radix UI"
+    ]
+  },
+  "ctaSection": {
+    "title": "准备好开始构建了吗？",
+    "description": "数分钟内即可开始。无需信用卡。",
+    "ctaPrimary": "开始构建",
+    "ctaSecondary": "查看定价"
+  },
+  "features": [
+    {
+      "title": "认证与授权",
+      "description": "邮箱、OAuth（GitHub、Google）和社交登录。包含会话管理、MFA 和行级安全策略。"
+    },
+    {
+      "title": "PostgreSQL 数据库",
+      "description": "通过 Supabase 提供完整 Postgres 支持，含实时订阅、自动生成 API 和行级安全。"
+    },
+    {
+      "title": "团队管理",
+      "description": "多租户架构，支持角色、邀请和细粒度权限控制。"
+    },
+    {
+      "title": "实时更新",
+      "description": "Supabase Realtime 实现跨客户端实时数据同步。无需轮询。"
+    },
+    {
+      "title": "监控与错误追踪",
+      "description": "集成 Sentry 进行错误追踪、性能监控和崩溃报告。"
+    },
+    {
+      "title": "计费与订阅",
+      "description": "Stripe 就绪的订阅管理，支持分级定价和支付历史。"
+    }
+  ],
+  "statLabels": [
+    "技术集成",
+    "页面与组件",
+    "API 路由",
+    "配置时间"
+  ]
+}

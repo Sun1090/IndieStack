@@ -1,0 +1,267 @@
+/**
+ * Mock 数据层
+ * 使用 @faker-js/faker 生成真实的开发环境模拟数据
+ * 当 Supabase 未配置或 NEXT_PUBLIC_MOCK_ENABLED=true 时使用
+ */
+import { faker } from "@faker-js/faker/locale/zh_CN";
+
+/** 固定的 mock 用户 ID（便于调试） */
+export const MOCK_USER_ID = "mock-user-001";
+export const MOCK_TEAM_ID = "mock-team-001";
+export const MOCK_TEAM_MEMBER_ID = "mock-member-001";
+
+/**
+ * 生成模拟用户信息
+ */
+export function generateMockUser() {
+  return {
+    id: MOCK_USER_ID,
+    email: "dev@indiestack.local",
+    user_metadata: {
+      full_name: "开发者",
+      avatar_url: null,
+    },
+    aud: "authenticated",
+    role: "authenticated",
+    app_metadata: {
+      provider: "email",
+    },
+    created_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * 生成模拟用户会话
+ */
+export function generateMockSession() {
+  return {
+    access_token: "mock-access-token",
+    refresh_token: "mock-refresh-token",
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    token_type: "bearer",
+    user: generateMockUser(),
+  };
+}
+
+/**
+ * 生成模拟个人资料
+ */
+export function generateMockProfile(overrides?: Record<string, unknown>) {
+  return {
+    id: MOCK_USER_ID,
+    email: "dev@indiestack.local",
+    full_name: faker.person.fullName(),
+    avatar_url: faker.image.avatar(),
+    role: "owner",
+    bio: faker.lorem.sentence(),
+    timezone: "Asia/Shanghai",
+    language: "zh-CN",
+    notification_settings: {
+      email: true,
+      push: true,
+      marketing: false,
+    },
+    created_at: faker.date.past().toISOString(),
+    updated_at: faker.date.recent().toISOString(),
+    ...overrides,
+  };
+}
+
+/**
+ * 生成模拟团队
+ */
+export function generateMockTeam(overrides?: Record<string, unknown>) {
+  return {
+    id: MOCK_TEAM_ID,
+    name: faker.company.name(),
+    slug: faker.helpers.slugify(faker.company.name()).toLowerCase(),
+    owner_id: MOCK_USER_ID,
+    member_count: faker.number.int({ min: 1, max: 10 }),
+    plan: faker.helpers.arrayElement(["free", "pro", "enterprise"]),
+    created_at: faker.date.past().toISOString(),
+    updated_at: faker.date.recent().toISOString(),
+    ...overrides,
+  };
+}
+
+/**
+ * 生成模拟团队成员列表
+ */
+export function generateMockTeamMembers(count = 5) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `mock-member-${String(i + 1).padStart(3, "0")}`,
+    team_id: MOCK_TEAM_ID,
+    user_id: i === 0 ? MOCK_USER_ID : `mock-user-${String(i + 1).padStart(3, "0")}`,
+    role:
+      i === 0
+        ? "owner"
+        : i === 1
+          ? "admin"
+          : faker.helpers.arrayElement(["member", "viewer"]),
+    invited_by: MOCK_USER_ID,
+    created_at: faker.date.recent().toISOString(),
+    profiles: {
+      full_name: faker.person.fullName(),
+      email: faker.internet.email(),
+      avatar_url: faker.image.avatar(),
+    },
+  }));
+}
+
+/**
+ * 生成模拟团队成员（含关联的 profiles）
+ */
+export function generateMockTeamMembersWithProfiles(count = 5) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `mock-member-${String(i + 1).padStart(3, "0")}`,
+    team_id: MOCK_TEAM_ID,
+    user_id: i === 0 ? MOCK_USER_ID : `mock-user-${String(i + 1).padStart(3, "0")}`,
+    role:
+      i === 0
+        ? "owner"
+        : i === 1
+          ? "admin"
+          : faker.helpers.arrayElement(["member", "viewer"]),
+    invited_by: MOCK_USER_ID,
+    created_at: faker.date.recent().toISOString(),
+    profiles: {
+      id: i === 0 ? MOCK_USER_ID : `mock-user-${String(i + 1).padStart(3, "0")}`,
+      full_name: faker.person.fullName(),
+      email: faker.internet.email(),
+      avatar_url: faker.image.avatar(),
+      role:
+        i === 0
+          ? "owner"
+          : i === 1
+            ? "admin"
+            : "member",
+    },
+  }));
+}
+
+/**
+ * 生成模拟项目列表
+ */
+export function generateMockProjects(count = 6) {
+  const statuses = ["active", "draft", "maintenance"] as const;
+  const branches = ["main", "staging", "develop", "feature/new-ui"] as const;
+  return Array.from({ length: count }, (_, i) => ({
+    id: `proj_${i + 1}`,
+    name: faker.helpers.arrayElement([
+      "api-service",
+      "web-app",
+      "docs-site",
+      "admin-panel",
+      "mobile-api",
+      "worker-01",
+      "auth-service",
+      "cdn-edge",
+    ]),
+    description: faker.company.catchPhrase(),
+    status: statuses[faker.number.int({ min: 0, max: 2 })],
+    lastDeployed: faker.date.recent().toISOString(),
+    branch: branches[faker.number.int({ min: 0, max: 3 })],
+    domain: faker.internet.domainName(),
+  }));
+}
+
+/**
+ * 生成模拟通知列表
+ */
+export function generateMockNotifications(count = 8) {
+  const types = ["info", "success", "warning", "error"] as const;
+  return Array.from({ length: count }, (_, i) => ({
+    id: `notif_${i + 1}`,
+    title: faker.helpers.arrayElement([
+      "部署成功",
+      "新成员加入",
+      "API 调用超限",
+      "账单即将到期",
+      "系统维护通知",
+      "新功能上线",
+      "安全提醒",
+      "积分更新",
+    ]),
+    message: faker.lorem.sentence(),
+    type: types[faker.number.int({ min: 0, max: 3 })],
+    read: faker.datatype.boolean(0.3),
+    created_at: faker.date.recent({ days: 7 }).toISOString(),
+  }));
+}
+
+/**
+ * 生成模拟 API 使用量统计
+ */
+export function generateMockApiUsage(days = 30) {
+  return Array.from({ length: days }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (days - 1 - i));
+    return {
+      date: date.toISOString().split("T")[0],
+      requests: faker.number.int({ min: 100, max: 5000 }),
+      errors: faker.number.int({ min: 0, max: 50 }),
+      latency: faker.number.int({ min: 20, max: 500 }),
+    };
+  });
+}
+
+/**
+ * 生成模拟订阅信息
+ */
+export function generateMockSubscription() {
+  return {
+    id: "mock-sub-001",
+    team_id: MOCK_TEAM_ID,
+    provider: "stripe",
+    provider_id: "sub_mock_001",
+    status: "active",
+    plan: "pro",
+    period_start: faker.date.recent({ days: 30 }).toISOString(),
+    period_end: faker.date.soon({ days: 30 }).toISOString(),
+    cancel_at_period_end: false,
+    created_at: faker.date.past().toISOString(),
+    updated_at: faker.date.recent().toISOString(),
+  };
+}
+
+/**
+ * 生成模拟审计日志
+ */
+export function generateMockAuditLogs(count = 20) {
+  const actions = [
+    "user.login",
+    "user.logout",
+    "team.create",
+    "team.invite",
+    "profile.update",
+    "settings.change",
+    "project.deploy",
+    "project.delete",
+    "api_key.create",
+    "api_key.revoke",
+  ];
+  return Array.from({ length: count }, (_, i) => ({
+    id: `audit_${i + 1}`,
+    user_id: faker.helpers.arrayElement([
+      MOCK_USER_ID,
+      "mock-user-002",
+      "mock-user-003",
+    ]),
+    action: faker.helpers.arrayElement(actions),
+    metadata: { ip: faker.internet.ip(), user_agent: faker.internet.userAgent() },
+    created_at: faker.date.recent({ days: 14 }).toISOString(),
+  }));
+}
+
+/**
+ * 生成按角色分布的用户列表（用于管理后台图表）
+ */
+export function generateMockUsersByRole() {
+  return [
+    { role: "owner", count: 1 },
+    { role: "admin", count: 3 },
+    { role: "member", count: 15 },
+    { role: "viewer", count: 8 },
+  ];
+}

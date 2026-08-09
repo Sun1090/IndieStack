@@ -1,0 +1,15 @@
+{
+  "name": "indiestack-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IndieStack 独立文档站 — 基于 VitePress 的完整文档网站",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview",
+    "deploy:vercel": "vercel --prod"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.0"
+  }
+}

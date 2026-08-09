@@ -1,0 +1,8 @@
+{
+  "description": "A production-ready IndieStack for indie developers. Modern stack, minimal setup.",
+  "product": "Product",
+  "resources": "Resources",
+  "company": "Company",
+  "builtWith": "Built with {0}, {1}, {2}, and {3}.",
+  "copyright": "&copy; {0} {1}. All rights reserved."
+}

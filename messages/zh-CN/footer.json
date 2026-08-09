@@ -1,0 +1,8 @@
+{
+  "description": "面向独立开发者的生产级 SaaS 启动模板。现代技术栈，最小化配置。",
+  "product": "产品",
+  "resources": "资源",
+  "company": "公司",
+  "builtWith": "使用 {0}、{1}、{2} 和 {3} 构建。",
+  "copyright": "© {0} {1}。保留所有权利。"
+}

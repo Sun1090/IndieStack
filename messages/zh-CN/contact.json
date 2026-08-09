@@ -1,0 +1,28 @@
+{
+  "metaTitle": "联系我们",
+  "metaDesc": "与我们的团队取得联系",
+  "pageTitle": "联系我们",
+  "pageDesc": "有问题、功能建议或只是想打个招呼？我们很乐意收到你的消息。",
+  "form": {
+    "title": "发送消息",
+    "desc": "填写表单，我们将在 24 小时内回复。",
+    "nameLabel": "姓名",
+    "namePlaceholder": "你的姓名",
+    "emailLabel": "邮箱",
+    "emailPlaceholder": "your@email.com",
+    "subjectLabel": "主题",
+    "subjectPlaceholder": "消息主题",
+    "messageLabel": "消息",
+    "messagePlaceholder": "请输入你的消息...",
+    "submit": "发送消息",
+    "sending": "发送中...",
+    "success": "消息已发送！我们会尽快回复。"
+  },
+  "info": {
+    "email": "邮箱",
+    "github": "GitHub",
+    "twitter": "Twitter / X",
+    "responseTime": "回复时间",
+    "responseDesc": "工作日 24 小时内回复"
+  }
+}

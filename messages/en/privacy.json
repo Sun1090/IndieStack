@@ -1,0 +1,36 @@
+{
+  "metaTitle": "Privacy Policy",
+  "metaDesc": "Our privacy policy and data handling practices",
+  "pageTitle": "Privacy Policy",
+  "lastUpdated": "Last updated: July 19, 2026",
+  "sections": [
+    {
+      "title": "1. Information We Collect",
+      "content": "We collect information you provide directly to us, including your name, email address, and profile information when you create an account. We also collect usage data such as page views, API calls, and feature interactions to improve our service."
+    },
+    {
+      "title": "2. How We Use Your Information",
+      "content": "We use the information we collect to provide, maintain, and improve our services, to send you technical notices and support messages, and to communicate with you about product updates and marketing (with your consent)."
+    },
+    {
+      "title": "3. Data Storage and Security",
+      "content": "Your data is stored on secure servers provided by Supabase (PostgreSQL database), Alibaba Cloud OSS (file storage), and Vercel (application hosting). We implement industry-standard security measures including encryption at rest and in transit."
+    },
+    {
+      "title": "4. Third-Party Services",
+      "content": "We use the following third-party services to operate our platform: Supabase (authentication and database), Vercel (hosting), Sentry (error monitoring), Stripe (payment processing), Alibaba Cloud (file storage), and Appark (performance monitoring). Each service has its own privacy policy governing data handling."
+    },
+    {
+      "title": "5. Data Retention",
+      "content": "We retain your personal information for as long as your account is active. If you delete your account, we will delete or anonymize your data within 30 days, except where we are required to retain it for legal purposes."
+    },
+    {
+      "title": "6. Your Rights",
+      "content": "You have the right to access, correct, or delete your personal data at any time through your account settings. You can also export your data or request its deletion by contacting us. We will respond to your request within 30 days."
+    },
+    {
+      "title": "7. Contact",
+      "content": "If you have any questions about this Privacy Policy, please contact us at privacy@indiestack.dev."
+    }
+  ]
+}

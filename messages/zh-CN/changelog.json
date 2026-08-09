@@ -1,0 +1,17 @@
+{
+  "metaTitle": "更新日志",
+  "metaDesc": "最新更新、功能和改进",
+  "pageTitle": "最新动态",
+  "pageDesc": "IndieStack 的最新更新、功能改进和版本发布。",
+  "typeLabels": {
+    "feature": "新功能",
+    "improvement": "改进",
+    "fix": "Bug 修复",
+    "major": "重大发布"
+  },
+  "stayUpdated": {
+    "title": "保持关注",
+    "desc": "关注每一次发布。新功能每周发布。",
+    "cta": "开始使用"
+  }
+}

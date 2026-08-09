@@ -1,0 +1,43 @@
+# IndieStack — Local Development Environment
+#
+# Usage:
+#   docker compose up -d        # Start PostgreSQL
+#   docker compose down         # Stop all services
+#
+# For full Supabase local dev (Auth, Realtime, Storage):
+#   npx supabase start
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: indiestack-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: indiestack
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: indiestack-pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@indiestack.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

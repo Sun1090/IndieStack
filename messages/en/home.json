@@ -1,0 +1,85 @@
+{
+  "metaTitle": "Home",
+  "metaDesc": "A production-ready IndieStack for independent developers",
+  "hero": {
+    "badge": "Production-Ready IndieStack",
+    "title": "Build your SaaS faster",
+    "titleAccent": "with modern tools",
+    "subtitle": "Integrates Next.js 15, Tailwind CSS, shadcn/ui, Supabase and more. Focus on your business logic.",
+    "cta": "Get Started Free",
+    "ctaSecondary": "Explore Features"
+  },
+  "stats": {
+    "technologies": "Technologies",
+    "pages": "Pages & Components",
+    "apiRoutes": "API Routes",
+    "configTime": "Config Time",
+    "zero": "Zero"
+  },
+  "featuresSection": {
+    "badge": "Features",
+    "title": "Everything you need to ship",
+    "description": "A complete stack for independent developers. Batteries included.",
+    "seeAll": "See all features"
+  },
+  "techStackSection": {
+    "badge": "Tech Stack",
+    "title": "Modern tools, battle-tested",
+    "description": "Each piece is chosen for productivity, scalability, and developer experience.",
+    "items": [
+      "Next.js 15",
+      "Tailwind CSS",
+      "shadcn/ui",
+      "TypeScript",
+      "Supabase",
+      "PostgreSQL",
+      "Sentry",
+      "Vercel",
+      "GitHub Actions",
+      "Alibaba Cloud",
+      "Appark",
+      "Stripe",
+      "Zod",
+      "Lucide",
+      "Radix UI"
+    ]
+  },
+  "ctaSection": {
+    "title": "Ready to start building?",
+    "description": "Get started in minutes. No credit card required.",
+    "ctaPrimary": "Start Building",
+    "ctaSecondary": "View Pricing"
+  },
+  "features": [
+    {
+      "title": "Authentication & Auth",
+      "description": "Email, OAuth (GitHub, Google), and social login. Session management, MFA, and RLS policies included."
+    },
+    {
+      "title": "PostgreSQL Database",
+      "description": "Full Postgres via Supabase with real-time subscriptions, auto-generated APIs, and row-level security."
+    },
+    {
+      "title": "Team Management",
+      "description": "Multi-tenant architecture with roles, invites, and granular permissions."
+    },
+    {
+      "title": "Real-time Updates",
+      "description": "Supabase Realtime for live data sync across clients. No polling, no complexity."
+    },
+    {
+      "title": "Monitoring & Errors",
+      "description": "Sentry integration for error tracking, performance monitoring, and crash reports."
+    },
+    {
+      "title": "Billing & Subscriptions",
+      "description": "Stripe-ready subscription management with tiered pricing and payment history."
+    }
+  ],
+  "statLabels": [
+    "Technologies",
+    "Pages & Components",
+    "API Routes",
+    "Config Time"
+  ]
+}

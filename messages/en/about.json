@@ -1,0 +1,80 @@
+{
+  "metaTitle": "About",
+  "metaDesc": "Learn about the IndieStack story and team",
+  "pageTitle": "About IndieStack",
+  "pageDesc": "We're a group of indie developers passionate about building the best IndieStack template.",
+  "story": {
+    "title": "Our Story",
+    "paragraphs": [
+      "IndieStack was born from a simple idea: indie developers should be able to launch SaaS projects quickly without reinventing the wheel. We know how much time and effort it takes to build a modern SaaS app from scratch, including auth, billing, team management, and more.",
+      "So we created IndieStack—a carefully crafted, production-ready IndieStack. It integrates all common features into a unified codebase, so you can focus on building what truly matters: your business logic.",
+      "After hundreds of hours of development and iteration, IndieStack is now a complete, battle-tested platform that has helped thousands of developers worldwide launch their SaaS projects quickly."
+    ]
+  },
+  "values": {
+    "title": "Our Values",
+    "items": [
+      {
+        "title": "Developer Experience First",
+        "description": "We believe great tools should make development enjoyable. Every detail is polished, from code quality to documentation."
+      },
+      {
+        "title": "Production Ready",
+        "description": "We don't ship half-baked products. Every feature is thoroughly tested to ensure reliable operation in production."
+      },
+      {
+        "title": "Continuous Iteration",
+        "description": "The tech world evolves rapidly. We continuously update and optimize to keep IndieStack using best practices and latest technologies."
+      },
+      {
+        "title": "Open & Transparent",
+        "description": "We believe in the power of open source. Code is fully open, and community contributions drive our improvement."
+      }
+    ]
+  },
+  "techStack": {
+    "title": "Tech Stack",
+    "items": [
+      {
+        "name": "Next.js 15",
+        "desc": "React framework with Server Components and App Router"
+      },
+      {
+        "name": "Tailwind CSS",
+        "desc": "Utility-first CSS framework"
+      },
+      {
+        "name": "shadcn/ui",
+        "desc": "Beautiful, customizable UI components"
+      },
+      {
+        "name": "Supabase",
+        "desc": "Open-source Firebase alternative"
+      },
+      {
+        "name": "PostgreSQL",
+        "desc": "Powerful open-source relational database"
+      },
+      {
+        "name": "Sentry",
+        "desc": "Application performance and error monitoring"
+      },
+      {
+        "name": "Stripe",
+        "desc": "Online payment processing platform"
+      },
+      {
+        "name": "Vercel",
+        "desc": "Frontend deployment and hosting platform"
+      },
+      {
+        "name": "Alibaba Cloud",
+        "desc": "Cloud storage and CDN services"
+      },
+      {
+        "name": "GitHub Actions",
+        "desc": "CI/CD for automated testing and deployment"
+      }
+    ]
+  }
+}

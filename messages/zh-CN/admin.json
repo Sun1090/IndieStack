@@ -1,0 +1,82 @@
+{
+  "overview": {
+    "metaTitle": "管理后台",
+    "metaDesc": "平台级系统管理和监控",
+    "title": "管理后台",
+    "desc": "平台级系统管理和监控",
+    "stats": {
+      "totalUsers": "总用户数",
+      "totalTeams": "团队数",
+      "admins": "管理员",
+      "normalUsers": "普通用户",
+      "totalUsersDesc": "平台注册用户总数",
+      "totalTeamsDesc": "已创建的团队数量",
+      "adminsDesc": "系统管理员和超级管理员",
+      "normalUsersDesc": "普通用户和只读用户"
+    },
+    "roleDistribution": "角色分布",
+    "roleDistributionDesc": "平台用户角色占比",
+    "systemStatus": "系统状态",
+    "systemStatusDesc": "当前系统组件运行状态",
+    "services": {
+      "database": "Supabase 数据库",
+      "auth": "认证服务",
+      "storage": "对象存储 (OSS)",
+      "sentry": "Sentry 监控",
+      "stripe": "Stripe 支付",
+      "running": "运行中"
+    }
+  },
+  "users": {
+    "metaTitle": "用户管理",
+    "metaDesc": "管理平台所有用户的角色和权限",
+    "title": "用户管理",
+    "desc": "管理平台所有用户的角色和权限",
+    "searchPlaceholder": "搜索用户名、邮箱或角色...",
+    "userList": "用户列表",
+    "totalUsers": "共 {0} 位用户",
+    "filteredSuffix": "（已过滤）",
+    "noUsers": "暂无用户数据",
+    "noMatch": "未找到匹配的用户",
+    "nameNotSet": "未设置姓名",
+    "registeredAt": "注册于 {0}",
+    "changeRole": "更改角色",
+    "roleLabels": {
+      "super_admin": "超级管理员",
+      "admin": "管理员",
+      "member": "成员",
+      "viewer": "只读用户"
+    },
+    "updateSuccess": "角色更新成功",
+    "updateSuccessDesc": "用户角色已变更为 {0}",
+    "updateFailed": "更新失败"
+  },
+  "auditLogs": {
+    "metaTitle": "审计日志",
+    "metaDesc": "查看平台所有的操作审计记录",
+    "title": "审计日志",
+    "desc": "查看平台所有的操作审计记录",
+    "searchPlaceholder": "搜索操作、对象类型或 ID...",
+    "refresh": "刷新",
+    "allActions": "全部操作",
+    "filterUser": "用户相关",
+    "filterTeam": "团队相关",
+    "filterProject": "项目相关",
+    "filterBilling": "账单相关",
+    "filterSettings": "设置相关",
+    "pageTitle": "操作记录",
+    "totalRecords": "共 {0} 条记录（显示最近 100 条）",
+    "noLogs": "暂无审计日志记录",
+    "actionLabels": {
+      "user:login": "用户登录",
+      "user:logout": "用户登出",
+      "team:invite": "邀请成员",
+      "team:remove": "移除成员",
+      "team:create": "创建团队",
+      "project:create": "创建项目",
+      "project:delete": "删除项目",
+      "billing:update": "更新订阅",
+      "settings:update": "更新设置"
+    }
+  }
+}
