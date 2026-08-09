@@ -83,7 +83,6 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown>, e
   // 生产环境错误上报 Sentry
   if (level === "error" && !isDev && typeof process !== "undefined") {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Sentry = require("@sentry/nextjs");
       Sentry.captureException(error ?? new Error(message), {
         extra: { ...data, logLevel: level },
