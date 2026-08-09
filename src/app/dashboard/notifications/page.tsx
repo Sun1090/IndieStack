@@ -12,6 +12,11 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { NotificationSettingsForm } from "@/components/forms/notification-settings-form";
+import { Badge } from "@/components/ui/badge";
+import { Bell } from "lucide-react";
+import { formatRelativeTime } from "@/lib/date";
+import { getLocale } from "next-intl/server";
+import type { Database } from "@/lib/supabase/database.types";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
@@ -29,6 +34,22 @@ export default async function NotificationsPage() {
     .eq("id", user!.id)
     .single() as unknown as { data: Record<string, unknown> | null };
 
+  const { data: notifications } = await supabase
+    .from("notifications")
+    .select("*")
+    .eq("user_id", user!.id)
+    .order("created_at", { ascending: false })
+    .limit(10) as unknown as { data: Database["public"]["Tables"]["notifications"]["Row"][] | null };
+
+  const locale = await getLocale();
+
+  const badgeVariant = (type: string) => {
+    if (type === "success") return "success" as const;
+    if (type === "warning") return "warning" as const;
+    if (type === "error") return "destructive" as const;
+    return "secondary" as const;
+  };
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -45,6 +66,48 @@ export default async function NotificationsPage() {
           <NotificationSettingsForm
             settings={profile?.notification_settings as Record<string, boolean> ?? {}}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("notifications.list.title")}</CardTitle>
+          <CardDescription>{t("notifications.list.desc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!notifications || notifications.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <Bell className="h-12 w-12 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">{t("notifications.list.empty")}</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {notifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="flex items-start justify-between gap-4 border-b pb-4 last:border-0 last:pb-0"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{notification.title}</p>
+                      <Badge variant={badgeVariant(notification.type)} className="capitalize">
+                        {notification.type}
+                      </Badge>
+                      {!notification.is_read && (
+                        <span className="h-2 w-2 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    {notification.body && (
+                      <p className="text-sm text-muted-foreground">{notification.body}</p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {formatRelativeTime(notification.created_at, { locale })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { SUBSCRIPTION_TIERS } from "@/lib/constants";
+import { isStripeConfigured } from "@/lib/stripe";
+import { CheckoutButton } from "@/components/dashboard/checkout-button";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
@@ -32,9 +34,12 @@ export default async function BillingPage() {
     .select("team_id, teams!inner(plan, member_count)")
     .eq("user_id", user!.id)
     .limit(1)
-    .single() as unknown as { data: { team_id: string; teams: { plan: string; member_count: number } } | null };
+    .single() as unknown as { data: { team_id: string; teams: { plan: string; member_count: number } | { plan: string; member_count: number }[] } | null };
 
-  const currentPlan = membership?.teams?.plan ?? "free";
+  const teamRows = Array.isArray(membership?.teams) ? membership!.teams[0] : membership?.teams;
+  const teamInfo = teamRows as { plan: string; member_count: number } | undefined;
+  const currentPlan = teamInfo?.plan ?? "free";
+  const stripeConfigured = isStripeConfigured();
 
   return (
     <div className="space-y-8">
@@ -83,9 +88,21 @@ export default async function BillingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Button className="w-full" variant={isCurrent ? "outline" : "default"} disabled={isCurrent}>
-                    {isCurrent ? t("billing.currentPlanBadge") : t("billing.upgradeTo").replace("{0}", tier.name)}
-                  </Button>
+                  {isCurrent ? (
+                    <Button className="w-full" variant="outline" disabled>
+                      {t("billing.currentPlanBadge")}
+                    </Button>
+                  ) : !stripeConfigured || !tier.priceId ? (
+                    <Button className="w-full" variant="default" disabled title={t("billing.stripeNotConfigured")}>
+                      {t("billing.stripeNotConfigured")}
+                    </Button>
+                  ) : (
+                    <CheckoutButton
+                      className="w-full"
+                      priceId={tier.priceId}
+                      label={t("billing.upgradeTo").replace("{0}", tier.name)}
+                    />
+                  )}
                 </CardContent>
               </Card>
             );

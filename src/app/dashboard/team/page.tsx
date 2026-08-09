@@ -63,19 +63,23 @@ export default async function TeamPage() {
 
   const { data: members } = await supabase
     .from("team_members")
-    .select("id, role, created_at, user_id")
+    .select(`
+      id,
+      role,
+      created_at,
+      user_id,
+      profiles:user_id (
+        id,
+        email,
+        full_name,
+        avatar_url
+      )
+    `)
     .eq("team_id", membership.team_id);
 
-  const memberProfiles = await Promise.all(
-    (members ?? []).map(async (member: Record<string, unknown>) => {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", member.user_id as string)
-        .single() as unknown as { data: Record<string, unknown> | null };
-      return { ...member, profile: prof };
-    })
-  );
+  const memberProfiles = (members ?? []) as Array<
+    Record<string, unknown> & { profiles: { id: string; email: string | null; full_name: string | null; avatar_url: string | null } | null }
+  >;
 
   return (
     <div className="space-y-8">
@@ -126,25 +130,25 @@ export default async function TeamPage() {
             {memberProfiles.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("team.list.noMembers")}</p>
             ) : (
-              memberProfiles.map((member: Record<string, unknown>) => (
+              memberProfiles.map((member) => (
                 <div key={member.id as string} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
                   <div className="flex items-center gap-4">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback>
-                        {member.profile && (member.profile as Record<string, unknown>).full_name
-                          ? String((member.profile as Record<string, unknown>).full_name).charAt(0).toUpperCase()
-                          : member.profile && (member.profile as Record<string, unknown>).email
-                          ? String((member.profile as Record<string, unknown>).email).charAt(0).toUpperCase()
+                        {member.profiles?.full_name
+                          ? String(member.profiles.full_name).charAt(0).toUpperCase()
+                          : member.profiles?.email
+                          ? String(member.profiles.email).charAt(0).toUpperCase()
                           : "?"}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-medium">{member.profile ? (member.profile as Record<string, unknown>).full_name as string ?? "Unknown" : "Unknown"}</p>
-                      <p className="text-xs text-muted-foreground">{member.profile ? (member.profile as Record<string, unknown>).email as string : ""}</p>
+                      <p className="text-sm font-medium">{member.profiles?.full_name ?? "Unknown"}</p>
+                      <p className="text-xs text-muted-foreground">{member.profiles?.email ?? ""}</p>
                     </div>
                     <Badge variant="outline">{member.role as string}</Badge>
                   </div>
-                  {member.role !== "owner" && (member.profile as Record<string, unknown>)?.id !== user!.id && (
+                  {member.role !== "owner" && member.profiles?.id !== user!.id && (
                     <RemoveMemberButton memberId={member.id as string} />
                   )}
                 </div>

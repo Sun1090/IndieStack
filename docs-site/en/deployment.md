@@ -173,6 +173,7 @@ Add in GitHub repo Settings → Secrets and variables → Actions:
 VERCEL_TOKEN=your-vercel-token
 VERCEL_ORG_ID=your-org-id
 VERCEL_PROJECT_ID=your-project-id
+VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 ```
 
 ## Database Deployment

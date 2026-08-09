@@ -94,6 +94,7 @@ STRIPE_ENTERPRISE_PRICE_ID=price_enterprise_monthly
 VERCEL_TOKEN=your-vercel-token
 VERCEL_ORG_ID=your-org-id
 VERCEL_PROJECT_ID=your-project-id
+VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 
 # GitHub Actions
 GITHUB_TOKEN=your-github-token
@@ -107,10 +108,12 @@ GITHUB_TOKEN=your-github-token
 
 ```typescript
 export const SITE_CONFIG = {
-  name: process.env.NEXT_PUBLIC_APP_NAME ?? "IndieStack",
-  description: "全栈 SaaS 启动模板",
-  url: process.env.NEXT_PUBLIC_APP_URL,
-  docsUrl: process.env.NEXT_PUBLIC_DOCS_URL,
+  name: process.env.NEXT_PUBLIC_APP_NAME?.trim() || "IndieStack",
+  description:
+    process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
+    "A full-stack IndieStack for independent developers. Next.js, Tailwind, shadcn/ui, Supabase, PostgreSQL.",
+  url: process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000",
+  docsUrl: process.env.NEXT_PUBLIC_DOCS_URL?.trim() || "https://indiestack-docs.vercel.app",
   // ...
 };
 ```
@@ -249,6 +252,9 @@ STRIPE_ENTERPRISE_PRICE_ID=price_enterprise_monthly
 
 # ===== 部署 =====
 VERCEL_TOKEN=your-vercel-token
+VERCEL_ORG_ID=your-org-id
+VERCEL_PROJECT_ID=your-project-id
+VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 GITHUB_TOKEN=your-github-token
 
 # ===== APM =====

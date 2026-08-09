@@ -14,6 +14,7 @@ export const createTeamSchema = z.object({
 });
 
 export const inviteMemberSchema = z.object({
+  team_id: z.string().uuid().optional(),
   email: z.string().email("Please enter a valid email address"),
   role: z.enum(["admin", "member"]).default("member"),
 });

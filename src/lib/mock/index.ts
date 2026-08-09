@@ -13,6 +13,8 @@ import {
   generateMockProjects,
   generateMockNotifications,
   generateMockAuditLogs,
+  generateMockApiUsageRows,
+  generateMockUserSessions,
   MOCK_USER_ID,
   MOCK_TEAM_ID,
 } from "./data";
@@ -55,6 +57,8 @@ let _mockMembers: ReturnType<typeof generateMockTeamMembersWithProfiles> | null 
 let _mockProjects: ReturnType<typeof generateMockProjects> | null = null;
 let _mockNotifications: ReturnType<typeof generateMockNotifications> | null = null;
 let _mockAuditLogs: ReturnType<typeof generateMockAuditLogs> | null = null;
+let _mockApiUsage: ReturnType<typeof generateMockApiUsageRows> | null = null;
+let _mockUserSessions: ReturnType<typeof generateMockUserSessions> | null = null;
 
 /** 重置缓存的 mock 数据（可用于测试或刷新） */
 export function resetMockCache() {
@@ -65,6 +69,8 @@ export function resetMockCache() {
   _mockProjects = null;
   _mockNotifications = null;
   _mockAuditLogs = null;
+  _mockApiUsage = null;
+  _mockUserSessions = null;
 }
 
 function getMockUser() {
@@ -102,6 +108,16 @@ function getMockAuditLogs() {
   return _mockAuditLogs;
 }
 
+function getMockApiUsage() {
+  if (!_mockApiUsage) _mockApiUsage = generateMockApiUsageRows();
+  return _mockApiUsage;
+}
+
+function getMockUserSessions() {
+  if (!_mockUserSessions) _mockUserSessions = generateMockUserSessions();
+  return _mockUserSessions;
+}
+
 /**
  * Mock 查询构建器
  * 模拟 Supabase PostgREST 查询链
@@ -117,6 +133,8 @@ class MockQueryBuilder {
   private rangeEnd = 0;
   private useRange = false;
   private getCount: "exact" | "planned" | "estimated" | null = null;
+  private writeMode: "insert" | "update" | "delete" | null = null;
+  private writeValue: unknown = null;
 
   constructor(table: string, columns = "*") {
     this.table = table;
@@ -126,6 +144,12 @@ class MockQueryBuilder {
   /** 过滤条件 eq */
   eq(column: string, value: unknown) {
     this.filters[column] = value;
+    return this;
+  }
+
+  /** 过滤条件 gte */
+  gte(column: string, value: unknown) {
+    this.filters[`${column}:gte`] = value;
     return this;
   }
 
@@ -175,17 +199,22 @@ class MockQueryBuilder {
 
   /** 插入 insert */
   insert(values: unknown) {
-    return { data: values, error: null };
+    this.writeMode = "insert";
+    this.writeValue = values;
+    return this;
   }
 
   /** 更新 update */
   update(values: Record<string, unknown>) {
-    return { data: values, error: null };
+    this.writeMode = "update";
+    this.writeValue = values;
+    return this;
   }
 
   /** 删除 delete */
   delete() {
-    return { data: null, error: null };
+    this.writeMode = "delete";
+    return this;
   }
 
   /** thenable — 支持 await builder 直接获取 { data, error } */
@@ -195,6 +224,25 @@ class MockQueryBuilder {
       | null,
     onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
+    if (this.writeMode === "delete") {
+      return Promise.resolve(
+        onFulfilled ? onFulfilled({ data: null, error: null }) : ({ data: null, error: null } as unknown as TResult1),
+      );
+    }
+
+    if (this.writeMode === "insert" || this.writeMode === "update") {
+      const value = this.writeValue;
+      if (this.getCount === "exact") {
+        const count = Array.isArray(value) ? value.length : 1;
+        return Promise.resolve(
+          onFulfilled ? onFulfilled({ data: value, count, error: null }) : ({ data: value, count, error: null } as unknown as TResult1),
+        );
+      }
+      return Promise.resolve(
+        onFulfilled ? onFulfilled({ data: value, error: null }) : ({ data: value, error: null } as unknown as TResult1),
+      );
+    }
+
     const data = this.getData();
     if (this.getCount === "exact") {
       const count = Array.isArray(data) ? data.length : 1;
@@ -209,6 +257,9 @@ class MockQueryBuilder {
 
   /** 获取 mock 数据 */
   private getData() {
+    if (this.writeMode === "insert" || this.writeMode === "update") {
+      return Array.isArray(this.writeValue) ? this.writeValue : [this.writeValue];
+    }
     switch (this.table) {
       case "profiles": {
         const list = [getMockProfile(), ...Array.from({ length: 9 }, () => generateMockProfile())];
@@ -226,6 +277,12 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(getMockNotifications());
       case "audit_logs":
         return this.applyFiltersAndPagination(getMockAuditLogs());
+      case "projects":
+        return this.applyFiltersAndPagination(getMockProjects());
+      case "api_usage":
+        return this.applyFiltersAndPagination(getMockApiUsage());
+      case "user_sessions":
+        return this.applyFiltersAndPagination(getMockUserSessions());
       case "subscriptions":
         return { id: "mock-sub-001", team_id: MOCK_TEAM_ID, plan: "pro", status: "active" };
       default:
@@ -247,6 +304,16 @@ class MockQueryBuilder {
         item.id === this.filters["id"]
       );
     }
+    if (this.filters["team_id"]) {
+      result = result.filter((item: any) =>
+        item.team_id === this.filters["team_id"]
+      );
+    }
+    Object.entries(this.filters).forEach(([key, value]) => {
+      if (!key.endsWith(":gte")) return;
+      const column = key.slice(0, -4);
+      result = result.filter((item: any) => new Date(item[column]) >= new Date(value as string));
+    });
 
     // 排序
     if (this.orderColumn) {

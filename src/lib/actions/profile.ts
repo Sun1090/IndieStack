@@ -10,7 +10,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { profileUpdateSchema, type ProfileUpdateInput } from "@/lib/validations/profile";
 import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
-import type { PostgrestError } from "@supabase/supabase-js";
 
 /**
  * Get the current user's profile with cached data.

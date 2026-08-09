@@ -9,7 +9,6 @@ import { createClient } from "@/lib/supabase/server";
 import { notificationSettingsSchema, appearanceSettingsSchema } from "@/lib/validations/settings";
 import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
-import type { PostgrestError } from "@supabase/supabase-js";
 
 /**
  * Update notification settings for the current user.

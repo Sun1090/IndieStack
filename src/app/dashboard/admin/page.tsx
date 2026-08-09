@@ -5,13 +5,21 @@
 
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { safelyRequireRole } from "@/lib/auth/guards";
+import { ROUTES } from "@/lib/constants";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Activity, Shield, AlertTriangle } from "lucide-react";
 
 export default async function AdminPage() {
-  const supabase = await createClient();
+  const auth = await safelyRequireRole("admin");
+  if (!auth.success) {
+    redirect(ROUTES.dashboard);
+  }
+
+  const supabase = createAdminClient();
   const t = await getTranslations("admin");
 
   // 获取系统统计数据

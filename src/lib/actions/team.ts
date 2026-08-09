@@ -113,6 +113,8 @@ export async function createTeam(input: CreateTeamInput) {
     });
 
   if (memberError) {
+    // 回滚刚创建的团队，避免留下没有所有者的孤儿团队
+    await admin.from("teams").delete().eq("id", team.id);
     return { error: memberError.message };
   }
 
@@ -147,7 +149,7 @@ export async function inviteMember(input: InviteMemberInput) {
     .select("role")
     .eq("team_id", team.id)
     .eq("user_id", user.id)
-    .single() as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
 
   if (!membership || !["owner", "admin"].includes(membership.role)) {
     return { error: "Only team admins can invite members" };
@@ -187,10 +189,15 @@ export async function inviteMember(input: InviteMemberInput) {
     return { error: inviteError.message };
   }
 
-  // Update member count
+  // Recalculate member count instead of trusting a cached value
+  const { count } = await admin
+    .from("team_members")
+    .select("*", { count: "exact", head: true })
+    .eq("team_id", team.id);
+
   await admin
     .from("teams")
-    .update({ member_count: team.member_count + 1 })
+    .update({ member_count: count ?? 1 })
     .eq("id", team.id);
 
   revalidatePath(ROUTES.dashboardTeam);
@@ -213,7 +220,34 @@ export async function removeMember(memberId: string) {
     return { error: "No team found" };
   }
 
-  const { error } = await supabase
+  const { data: currentMembership } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", team.id)
+    .eq("user_id", user.id)
+    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
+
+  if (!currentMembership || !["owner", "admin"].includes(currentMembership.role)) {
+    return { error: "Only team admins can remove members" };
+  }
+
+  const admin = createAdminClient();
+  const { data: targetMember } = await admin
+    .from("team_members")
+    .select("role")
+    .eq("id", memberId)
+    .eq("team_id", team.id)
+    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
+
+  if (!targetMember) {
+    return { error: "Member not found" };
+  }
+
+  if (targetMember.role === "owner") {
+    return { error: "The team owner cannot be removed" };
+  }
+
+  const { error } = await admin
     .from("team_members")
     .delete()
     .eq("id", memberId)
@@ -223,11 +257,15 @@ export async function removeMember(memberId: string) {
     return { error: error.message };
   }
 
-  // Update member count
-  const admin = createAdminClient();
+  // Recalculate member count after deletion
+  const { count } = await admin
+    .from("team_members")
+    .select("*", { count: "exact", head: true })
+    .eq("team_id", team.id);
+
   await admin
     .from("teams")
-    .update({ member_count: Math.max(0, team.member_count - 1) })
+    .update({ member_count: count ?? 0 })
     .eq("id", team.id);
 
   revalidatePath(ROUTES.dashboardTeam);
@@ -243,6 +281,21 @@ export async function leaveTeam(teamId: string) {
 
   if (!user) {
     return { error: "Not authenticated" };
+  }
+
+  const { data: membership } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", teamId)
+    .eq("user_id", user.id)
+    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
+
+  if (!membership) {
+    return { error: "Team membership not found" };
+  }
+
+  if (membership.role === "owner") {
+    return { error: "The team owner cannot leave. Transfer ownership or delete the team instead." };
   }
 
   const { error } = await supabase

@@ -17,19 +17,21 @@ import {
 } from "recharts";
 
 interface AreaChartProps {
-  data: { date: string; users: number; apiCalls: number }[];
+  data: { date: string; requests: number; errors: number }[];
+  requestLabel?: string;
+  errorLabel?: string;
 }
 
-export function AreaChart({ data }: AreaChartProps) {
+export function AreaChart({ data, requestLabel = "Requests", errorLabel = "Errors" }: AreaChartProps) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <RechartsAreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
         <defs>
-          <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
             <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
           </linearGradient>
-          <linearGradient id="colorApiCalls" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="colorErrors" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
             <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0} />
           </linearGradient>
@@ -52,19 +54,19 @@ export function AreaChart({ data }: AreaChartProps) {
         <Legend />
         <Area
           type="monotone"
-          dataKey="users"
-          name="活跃用户"
+          dataKey="requests"
+          name={requestLabel}
           stroke="hsl(var(--chart-1))"
           fillOpacity={1}
-          fill="url(#colorUsers)"
+          fill="url(#colorRequests)"
         />
         <Area
           type="monotone"
-          dataKey="apiCalls"
-          name="API 调用"
+          dataKey="errors"
+          name={errorLabel}
           stroke="hsl(var(--chart-2))"
           fillOpacity={1}
-          fill="url(#colorApiCalls)"
+          fill="url(#colorErrors)"
         />
       </RechartsAreaChart>
     </ResponsiveContainer>

@@ -8,9 +8,8 @@ export const dynamic = "force-dynamic";
 
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Puzzle, Github, CreditCard, Bell, Database } from "lucide-react";
 
@@ -30,7 +29,6 @@ const integrations = [
 
 export default async function IntegrationsPage() {
   const t = await getTranslations("dashboard");
-  const tc = await getTranslations("common");
 
   return (
     <div className="space-y-8">
@@ -53,15 +51,12 @@ export default async function IntegrationsPage() {
                 <CardTitle className="mt-4 text-base">{integration.name}</CardTitle>
                 <CardDescription>{integration.description}</CardDescription>
               </CardHeader>
-              <CardContent>
-                <Button variant={integration.status === "connected" ? "outline" : "default"} className="w-full" size="sm">
-                  {integration.status === "connected" ? t("integrations.disconnect") : t("integrations.connect")}
-                </Button>
-              </CardContent>
             </Card>
           );
         })}
       </div>
+
+      <p className="text-sm text-muted-foreground">{t("integrations.comingSoon")}</p>
     </div>
   );
 }
