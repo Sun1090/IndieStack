@@ -9,6 +9,7 @@
     "title": "Something went wrong",
     "desc": "An unexpected error occurred. Please try again.",
     "retry": "Try Again",
+    "errorId": "Error ID: {0}",
     "backHome": "Back to Home"
   }
 }

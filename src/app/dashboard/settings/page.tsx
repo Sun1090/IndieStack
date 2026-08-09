@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NotificationSettingsForm } from "@/components/forms/notification-settings-form";
+import { ThemeSettingsForm } from "@/components/forms/theme-settings-form";
 import { PasswordForm } from "@/components/forms/password-form";
 import { PageHeader } from "@/components/shared/page-header";
 import type { Database } from "@/lib/supabase/database.types";
@@ -38,7 +39,7 @@ export default async function SettingsPage() {
 
       <Tabs defaultValue="notifications" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="notifications">通知</TabsTrigger>
+          <TabsTrigger value="notifications">{t("settings.sections.general.title")}</TabsTrigger>
           <TabsTrigger value="security">{t("settings.sections.password.title")}</TabsTrigger>
           <TabsTrigger value="appearance">{t("settings.sections.appearance.title")}</TabsTrigger>
         </TabsList>
@@ -46,8 +47,8 @@ export default async function SettingsPage() {
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
-              <CardTitle>通知偏好</CardTitle>
-              <CardDescription>选择你想接收哪些通知。</CardDescription>
+              <CardTitle>{t("notifications.preferences.title")}</CardTitle>
+              <CardDescription>{t("notifications.preferences.desc")}</CardDescription>
             </CardHeader>
             <CardContent>
               <NotificationSettingsForm
@@ -76,9 +77,7 @@ export default async function SettingsPage() {
               <CardDescription>{t("settings.sections.appearance.desc")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                {t("settings.sections.appearance.desc")}
-              </p>
+              <ThemeSettingsForm />
             </CardContent>
           </Card>
         </TabsContent>

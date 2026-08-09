@@ -6,7 +6,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useTranslations } from "next-intl";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,35 +20,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-/** 审计日志数据类型 */
-interface AuditLog {
-  id: number;
-  user_id: string | null;
-  action: string;
-  entity_type: string;
-  entity_id: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
+import { toast } from "@/hooks/use-toast";
+import { listAuditLogs, type AuditLogRecord } from "@/lib/actions/admin";
 
 export default function AdminAuditLogsPage() {
   const t = useTranslations("admin");
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [logs, setLogs] = useState<AuditLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
-  const supabase = createClient();
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("audit_logs")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setLogs(data as AuditLog[]);
+    const result = await listAuditLogs();
+    if (!result.success) {
+      toast({ title: t("auditLogs.noLogs"), description: result.error, variant: "destructive" });
+    } else {
+      setLogs(result.data);
+    }
     setLoading(false);
-  }, [supabase]);
+  }, [t]);
 
   useEffect(() => {
     loadLogs();

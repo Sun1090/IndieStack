@@ -7,12 +7,14 @@
     "welcomeBack": "欢迎回来",
     "todaySummary": "以下是你的项目今日概览",
     "stats": {
-      "revenue": "总收入",
-      "activeUsers": "活跃用户",
+      "projects": "项目",
+      "projectsDesc": "当前团队的活跃项目",
       "apiCalls": "API 调用",
-      "growthRate": "增长率",
-      "last30Days": "过去 30 天",
-      "monthOverMonth": "月环比"
+      "apiCallsDesc": "过去 30 天",
+      "sessions": "活跃会话",
+      "sessionsDesc": "过去 30 天",
+      "teamMembers": "团队成员",
+      "teamMembersDesc": "当前团队人数"
     },
     "plan": {
       "title": "当前方案",
@@ -24,28 +26,7 @@
     "activity": {
       "title": "最近活动",
       "desc": "你项目中的最新操作",
-      "items": [
-        {
-          "action": "部署成功",
-          "time": "2 分钟前"
-        },
-        {
-          "action": "迁移完成",
-          "time": "1 小时前"
-        },
-        {
-          "action": "新成员加入",
-          "time": "3 小时前"
-        },
-        {
-          "action": "域名更新",
-          "time": "5 小时前"
-        },
-        {
-          "action": "构建失败",
-          "time": "1 天前"
-        }
-      ]
+      "empty": "暂无最近活动"
     }
   },
   "analytics": {
@@ -54,21 +35,20 @@
     "title": "分析",
     "desc": "跟踪你的应用指标和使用情况",
     "stats": {
-      "pageViews": "页面浏览量",
-      "uniqueVisitors": "独立访客",
-      "bounceRate": "跳出率",
-      "avgSession": "平均会话时长"
+      "requests": "API 请求",
+      "uniqueVisitors": "活跃用户",
+      "errors": "错误",
+      "bounceRate": "错误率"
     },
     "vsLastPeriod": "较上期",
     "usageOverview": {
       "title": "使用概览",
-      "desc": "过去 30 天的日活跃用户和 API 调用",
-      "placeholder": "图表可视化将在此显示",
-      "hint": "集成 Recharts 或你偏好的图表库"
+      "desc": "过去一段时间内的 API 请求与错误趋势"
     },
     "recentEvents": {
       "title": "最近事件",
-      "desc": "过去 24 小时的关键事件"
+      "desc": "最近的 API 请求记录",
+      "empty": "暂无请求记录"
     },
     "exportCsv": "导出 CSV",
     "last7Days": "最近 7 天",
@@ -84,6 +64,9 @@
       "email": "邮箱",
       "memberSince": "注册时间",
       "notSet": "未设置",
+      "role": "角色",
+      "timezone": "时区",
+      "language": "语言",
       "editProfile": "编辑资料"
     },
     "edit": {
@@ -196,11 +179,53 @@
     "availablePlans": "可用方案",
     "currentPlanBadge": "当前方案",
     "upgradeTo": "升级到 {0}",
+    "stripeNotConfigured": "Stripe 未配置",
+    "checkoutLoading": "正在跳转...",
+    "checkoutError": "结账失败",
     "paymentHistory": {
       "title": "支付历史",
       "desc": "查看过去的发票和支付记录。",
       "empty": "暂无支付记录。订阅付费方案后，支付历史将在此显示。"
     }
+  },
+  "apiKeys": {
+    "metaTitle": "API 密钥",
+    "metaDesc": "管理你的 API 密钥",
+    "title": "API 密钥",
+    "desc": "管理你的 API 密钥，用于外部服务集成和 API 调用鉴权",
+    "create": "创建密钥",
+    "creating": "创建中...",
+    "createError": "创建失败",
+    "loadError": "加载失败",
+    "nameRequired": "请输入密钥名称",
+    "createdTitle": "密钥已创建",
+    "createdDesc": "请立即复制此密钥。出于安全考虑，关闭对话框后将无法再次查看完整密钥。",
+    "copy": "复制密钥",
+    "copied": "已复制",
+    "copiedToast": "已复制到剪贴板",
+    "close": "关闭",
+    "createDialogTitle": "创建新 API 密钥",
+    "createDialogDesc": "密钥用于 API 访问鉴权，请妥善保管。",
+    "nameLabel": "密钥名称",
+    "namePlaceholder": "例如：生产环境密钥",
+    "scopeLabel": "权限范围",
+    "scopeRead": "只读（仅查询权限）",
+    "scopeAll": "全部（读写权限）",
+    "cancel": "取消",
+    "listTitle": "密钥列表",
+    "listDesc": "管理你的 API 访问密钥。共 {0} 个密钥",
+    "empty": "暂无 API 密钥",
+    "emptyDesc": "创建你的第一个密钥来开始使用 API。",
+    "active": "启用",
+    "revoked": "已吊销",
+    "lastUsed": "上次使用: {0}",
+    "neverUsed": "从未使用",
+    "createdAt": "创建于 {0}",
+    "revoke": "吊销",
+    "revokeSuccess": "密钥已吊销",
+    "revokeError": "吊销失败",
+    "createSuccess": "密钥创建成功",
+    "createSuccessDesc": "请立即复制并保存密钥，关闭后将无法再次查看。"
   },
   "projects": {
     "list": {
@@ -211,6 +236,16 @@
       "create": "新建项目",
       "noProjects": "暂无项目",
       "createFirst": "创建你的第一个项目"
+    },
+    "create": {
+      "title": "新建项目",
+      "desc": "创建一个新的项目",
+      "nameLabel": "项目名称",
+      "namePlaceholder": "例如：api-service",
+      "descriptionLabel": "项目描述",
+      "descriptionPlaceholder": "简单描述这个项目",
+      "submit": "创建项目",
+      "success": "项目创建成功！"
     },
     "detail": {
       "metaTitle": "项目详情",
@@ -229,6 +264,11 @@
     "preferences": {
       "title": "通知偏好",
       "desc": "选择你想通过邮箱接收哪些通知。"
+    },
+    "list": {
+      "title": "通知列表",
+      "desc": "最近的通知消息",
+      "empty": "暂无通知"
     }
   },
   "integrations": {

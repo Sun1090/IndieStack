@@ -2,18 +2,20 @@
 
 /**
  * 分析页面 — 仪表盘数据分析
- * 展示应用指标、图表可视化和事件流，支持 CSV 导出
- * 已接入国际化支持
+ * 从 /api/analytics 获取真实统计数据、趋势图和最近请求记录
+ * 支持时间范围切换与 CSV 导出
  */
 
+import { useCallback, useEffect, useState } from "react";
+import { useTranslations, useLocale } from "next-intl";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { AreaChart } from "@/components/charts/area-chart";
-import { downloadCsv, generateTimeSeriesData, generateRecentEvents } from "@/lib/csv";
+import { downloadCsv } from "@/lib/csv";
+import { formatNumber } from "@/lib/utils";
 import { BarChart3, TrendingUp, Users, Activity, Download, ChevronDown, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const RANGE_OPTIONS = [
   { key: "last7Days", value: 7 },
@@ -21,20 +23,58 @@ const RANGE_OPTIONS = [
   { key: "last30Days", value: 30 },
 ] as const;
 
+type AnalyticsData = {
+  summary: {
+    totalRequests: number;
+    uniqueVisitors: number;
+    totalErrors: number;
+    bounceRate: number;
+  };
+  timeline: { date: string; requests: number; errors: number }[];
+  recent: { path: string; method: string; status_code: number | null; created_at: string }[];
+};
+
 export default function AnalyticsPage() {
   const t = useTranslations("dashboard");
+  const locale = useLocale();
   const [range, setRange] = useState<(typeof RANGE_OPTIONS)[number]["value"]>(30);
   const [showRangeMenu, setShowRangeMenu] = useState(false);
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const chartData = useMemo(() => generateTimeSeriesData(range), [range]);
-  const events = useMemo(() => generateRecentEvents(), []);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/analytics?range=${range}`);
+      if (!response.ok) throw new Error("Failed to load analytics");
+      const payload = (await response.json()) as AnalyticsData;
+      setData(payload);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [range]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const statsCards = [
-    { labelKey: "stats.pageViews", value: "84,231", change: "+12.3%", icon: BarChart3, positive: true },
-    { labelKey: "stats.uniqueVisitors", value: "12,847", change: "+8.1%", icon: Users, positive: true },
-    { labelKey: "stats.bounceRate", value: "32.1%", change: "-2.4%", icon: Activity, positive: true },
-    { labelKey: "stats.avgSession", value: "4m 23s", change: "+5.7%", icon: TrendingUp, positive: true },
+    { labelKey: "stats.requests", value: data ? formatNumber(data.summary.totalRequests) : "—", icon: BarChart3 },
+    { labelKey: "stats.uniqueVisitors", value: data ? formatNumber(data.summary.uniqueVisitors) : "—", icon: Users },
+    { labelKey: "stats.errors", value: data ? formatNumber(data.summary.totalErrors) : "—", icon: Activity },
+    { labelKey: "stats.bounceRate", value: data ? `${data.summary.bounceRate}%` : "—", icon: TrendingUp },
   ];
+
+  function formatEventTime(iso: string) {
+    return new Intl.DateTimeFormat(locale, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  }
 
   return (
     <div className="space-y-8">
@@ -43,7 +83,8 @@ export default function AnalyticsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => downloadCsv(chartData, `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`)}
+            disabled={!data}
+            onClick={() => data && downloadCsv(data.timeline, `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`)}
           >
             <Download className="mr-1 h-4 w-4" />
             {t("analytics.exportCsv")}
@@ -87,15 +128,13 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
-              <p className={`text-xs ${stat.positive ? "text-green-600" : "text-red-600"}`}>
-                {stat.change} {t("analytics.vsLastPeriod")}
-              </p>
+              <p className="text-xs text-muted-foreground">{t("analytics.vsLastPeriod")}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="md:col-span-2">
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>{t("analytics.usageOverview.title")}</CardTitle>
@@ -104,7 +143,17 @@ export default function AnalyticsPage() {
           <Sparkles className="h-5 w-5 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <AreaChart data={chartData} />
+          {loading ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : data ? (
+            <AreaChart
+              data={data.timeline}
+              requestLabel={t("stats.requests")}
+              errorLabel={t("stats.errors")}
+            />
+          ) : (
+            <p className="py-16 text-center text-sm text-muted-foreground">{t("analytics.recentEvents.empty")}</p>
+          )}
         </CardContent>
       </Card>
 
@@ -114,29 +163,36 @@ export default function AnalyticsPage() {
           <CardDescription>{t("analytics.recentEvents.desc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {events.map((evt: Record<string, unknown>, i: number) => (
-              <div key={i} className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
-                <div className="flex items-center gap-3">
-                  <SeverityDot severity={evt.severity as "info" | "warning" | "success" | "error"} />
-                  <span className="text-sm">{evt.event as string}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">{evt.time as string}</span>
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : !data || data.recent.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">{t("analytics.recentEvents.empty")}</p>
+          ) : (
+            <div className="space-y-3">
+              {data.recent.map((event, i) => {
+                const isError = event.status_code !== null && event.status_code >= 400;
+                return (
+                  <div key={`${event.created_at}-${i}`} className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-2 w-2 rounded-full ${isError ? "bg-red-500" : "bg-green-500"}`} />
+                      <span className="text-sm font-medium">{event.method}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{event.path}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className={isError ? "font-medium text-red-600" : ""}>{event.status_code ?? "—"}</span>
+                      <span>{formatEventTime(event.created_at)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
   );
-}
-
-function SeverityDot({ severity }: { severity: "info" | "warning" | "success" | "error" }) {
-  const colorMap = {
-    success: "bg-green-500",
-    warning: "bg-yellow-500",
-    error: "bg-red-500",
-    info: "bg-blue-500",
-  } as const;
-  return <div className={`h-2 w-2 rounded-full ${colorMap[severity]}`} />;
 }

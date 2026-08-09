@@ -131,7 +131,7 @@ export function DashboardSidebar() {
                 )}
               >
                 <Shield className="h-4 w-4 shrink-0" />
-                <span>管理后台</span>
+                <span>{t("admin")}</span>
               </Link>
             </>
           )}
@@ -144,7 +144,7 @@ export function DashboardSidebar() {
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               )}
-              title="管理后台"
+              title={t("admin")}
             >
               <Shield className="h-4 w-4 shrink-0" />
             </Link>

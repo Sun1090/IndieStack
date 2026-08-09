@@ -148,6 +148,7 @@ export function generateMockProjects(count = 6) {
   const branches = ["main", "staging", "develop", "feature/new-ui"] as const;
   return Array.from({ length: count }, (_, i) => ({
     id: `proj_${i + 1}`,
+    team_id: MOCK_TEAM_ID,
     name: faker.helpers.arrayElement([
       "api-service",
       "web-app",
@@ -158,11 +159,22 @@ export function generateMockProjects(count = 6) {
       "auth-service",
       "cdn-edge",
     ]),
+    slug: `project-${i + 1}`,
     description: faker.company.catchPhrase(),
     status: statuses[faker.number.int({ min: 0, max: 2 })],
+    visibility: "private",
+    config: {
+      branch: branches[faker.number.int({ min: 0, max: 3 })],
+      domain: faker.internet.domainName(),
+      framework: faker.helpers.arrayElement(["Next.js", "Remix", "Astro", "Express"]),
+      region: faker.helpers.arrayElement(["us-east-1", "ap-southeast-1", "eu-central-1"]),
+    },
+    created_by: MOCK_USER_ID,
     lastDeployed: faker.date.recent().toISOString(),
     branch: branches[faker.number.int({ min: 0, max: 3 })],
     domain: faker.internet.domainName(),
+    created_at: faker.date.recent({ days: 60 }).toISOString(),
+    updated_at: faker.date.recent({ days: 7 }).toISOString(),
   }));
 }
 
@@ -173,6 +185,7 @@ export function generateMockNotifications(count = 8) {
   const types = ["info", "success", "warning", "error"] as const;
   return Array.from({ length: count }, (_, i) => ({
     id: `notif_${i + 1}`,
+    user_id: MOCK_USER_ID,
     title: faker.helpers.arrayElement([
       "部署成功",
       "新成员加入",
@@ -183,9 +196,12 @@ export function generateMockNotifications(count = 8) {
       "安全提醒",
       "积分更新",
     ]),
-    message: faker.lorem.sentence(),
+    body: faker.lorem.sentence(),
     type: types[faker.number.int({ min: 0, max: 3 })],
-    read: faker.datatype.boolean(0.3),
+    link: null,
+    metadata: null,
+    is_read: faker.datatype.boolean(0.3),
+    email_sent: faker.datatype.boolean(0.5),
     created_at: faker.date.recent({ days: 7 }).toISOString(),
   }));
 }
@@ -204,6 +220,46 @@ export function generateMockApiUsage(days = 30) {
       latency: faker.number.int({ min: 20, max: 500 }),
     };
   });
+}
+
+/**
+ * 生成模拟 API 使用明细行（与 api_usage 表结构一致）
+ */
+export function generateMockApiUsageRows(count = 120) {
+  const methods = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const;
+  const paths = ["/api/user", "/api/teams", "/api/projects", "/api/analytics", "/api/health"];
+  return Array.from({ length: count }, (_, i) => {
+    const created = faker.date.recent({ days: 30 });
+    return {
+      id: i + 1,
+      user_id: faker.datatype.boolean(0.7) ? MOCK_USER_ID : null,
+      path: faker.helpers.arrayElement(paths),
+      method: faker.helpers.arrayElement(methods),
+      status_code: faker.helpers.weightedArrayElement([
+        { value: 200, weight: 82 },
+        { value: 201, weight: 8 },
+        { value: 400, weight: 4 },
+        { value: 401, weight: 3 },
+        { value: 429, weight: 2 },
+        { value: 500, weight: 1 },
+      ]),
+      ip_address: faker.internet.ip(),
+      created_at: created.toISOString(),
+    };
+  });
+}
+
+/**
+ * 生成模拟用户会话（与 user_sessions 表结构一致）
+ */
+export function generateMockUserSessions(count = 30) {
+  return Array.from({ length: count }, () => ({
+    id: faker.string.uuid(),
+    user_id: MOCK_USER_ID,
+    ip_address: faker.internet.ip(),
+    user_agent: faker.internet.userAgent(),
+    created_at: faker.date.recent({ days: 30 }).toISOString(),
+  }));
 }
 
 /**

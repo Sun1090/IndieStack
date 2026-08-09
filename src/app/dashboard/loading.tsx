@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export default function DashboardLoading() {
   return (
-    <div className="space-y-8 p-6 lg:p-8">
+    <div className="space-y-8">
       {/* 标题骨架图 */}
       <div className="space-y-2">
         <Skeleton className="h-8 w-64" />

@@ -7,7 +7,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,25 +29,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
-import { Key, Plus, Copy, Trash2, Eye, EyeOff, Check, RefreshCw } from "lucide-react";
+import { Key, Plus, Copy, Trash2, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
-
-/** 生成的密钥信息 */
-interface GeneratedKey {
-  id: string;
-  name: string;
-  key_prefix: string;
-  scopes: string[];
-  is_active: boolean;
-  last_used_at: string | null;
-  created_at: string;
-}
+import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyRecord } from "@/lib/actions/api-keys";
+import { useTranslations, useLocale } from "next-intl";
+import { formatDate } from "@/lib/date";
 
 export default function ApiKeysPage() {
-  const supabase = createClient();
-  const router = useRouter();
-  const [keys, setKeys] = useState<GeneratedKey[]>([]);
+  const t = useTranslations("dashboard");
+  const locale = useLocale();
+  const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -57,83 +47,52 @@ export default function ApiKeysPage() {
   const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-   const loadKeys = useCallback(async () => {
+  const loadKeys = useCallback(async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const result = await listApiKeys();
+    if (result.error) {
+      toast({ title: t("apiKeys.loadError"), description: result.error, variant: "destructive" });
+    }
+    setKeys(result.data);
+    setLoading(false);
+  }, [t]);
 
-    const { data } = await supabase
-      .from("api_keys")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
-     setKeys((data ?? []) as unknown as GeneratedKey[]);
-     setLoading(false);
-   }, [supabase]);
- 
-   useEffect(() => {
-     loadKeys();
-   }, [loadKeys]);
+  useEffect(() => {
+    loadKeys();
+  }, [loadKeys]);
 
   /** 创建新 API 密钥 */
   async function handleCreate() {
     if (!newKeyName.trim()) {
-      toast({ title: "请输入密钥名称", variant: "destructive" });
+      toast({ title: t("apiKeys.nameRequired"), variant: "destructive" });
       return;
     }
 
     setCreating(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({ title: "未登录", variant: "destructive" });
-      return;
-    }
+    const result = await createApiKey({ name: newKeyName.trim(), scope: newKeyScope as "read" | "all" });
 
-    // 生成密钥前缀和哈希
-    const rawKey = `isk_${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
-    const keyPrefix = rawKey.slice(0, 12) + "...";
-
-    // 密钥权限范围
-    const scopes = newKeyScope === "all"
-      ? ["user:read", "user:write", "project:read", "project:write", "billing:read"]
-      : ["project:read"];
-
-    const { error } = await supabase
-      .from("api_keys")
-      .insert({
-        user_id: user.id,
-        name: newKeyName.trim(),
-        key_prefix: keyPrefix,
-        key_hash: rawKey, // 生产环境应使用 pgcrypto 哈希
-        scopes,
-      } as any);
-
-    if (error) {
-      toast({ title: "创建失败", description: error.message, variant: "destructive" });
+    if (result.error) {
+      toast({ title: t("apiKeys.createError"), description: result.error, variant: "destructive" });
       setCreating(false);
       return;
     }
 
-    setCreatedKeyValue(rawKey);
-    toast({ title: "密钥创建成功", description: "请立即复制并保存密钥，关闭后将无法再次查看。" });
+    setCreatedKeyValue(result.key ?? null);
+    toast({ title: t("apiKeys.createSuccess"), description: t("apiKeys.createSuccessDesc") });
     setCreating(false);
     loadKeys();
   }
 
   /** 吊销密钥 */
   async function revokeKey(keyId: string) {
-    const { error } = await (supabase as any)
-      .from("api_keys")
-      .update({ is_active: false })
-      .eq("id", keyId);
+    const result = await revokeApiKey(keyId);
 
-    if (error) {
-      toast({ title: "吊销失败", description: error.message, variant: "destructive" });
+    if (result.error) {
+      toast({ title: t("apiKeys.revokeError"), description: result.error, variant: "destructive" });
       return;
     }
 
-    toast({ title: "密钥已吊销" });
+    toast({ title: t("apiKeys.revokeSuccess") });
     loadKeys();
   }
 
@@ -141,31 +100,29 @@ export default function ApiKeysPage() {
   function copyToClipboard(val: string) {
     navigator.clipboard.writeText(val);
     setCopied(true);
-    toast({ title: "已复制到剪贴板" });
+    toast({ title: t("apiKeys.copiedToast") });
     setTimeout(() => setCopied(false), 2000);
   }
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title="API 密钥"
-        description="管理你的 API 密钥，用于外部服务集成和 API 调用鉴权"
+        title={t("apiKeys.title")}
+        description={t("apiKeys.desc")}
       >
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              创建密钥
+              {t("apiKeys.create")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             {createdKeyValue ? (
               <>
                 <DialogHeader>
-                  <DialogTitle>密钥已创建</DialogTitle>
-                  <DialogDescription>
-                    请立即复制此密钥。出于安全考虑，关闭对话框后将无法再次查看完整密钥。
-                  </DialogDescription>
+                  <DialogTitle>{t("apiKeys.createdTitle")}</DialogTitle>
+                  <DialogDescription>{t("apiKeys.createdDesc")}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="rounded-lg border bg-muted p-3">
@@ -176,9 +133,9 @@ export default function ApiKeysPage() {
                     onClick={() => copyToClipboard(createdKeyValue)}
                   >
                     {copied ? (
-                      <><Check className="mr-2 h-4 w-4" /> 已复制</>
+                      <><Check className="mr-2 h-4 w-4" /> {t("apiKeys.copied")}</>
                     ) : (
-                      <><Copy className="mr-2 h-4 w-4" /> 复制密钥</>
+                      <><Copy className="mr-2 h-4 w-4" /> {t("apiKeys.copy")}</>
                     )}
                   </Button>
                 </div>
@@ -191,46 +148,44 @@ export default function ApiKeysPage() {
                       setNewKeyName("");
                     }}
                   >
-                    关闭
+                    {t("apiKeys.close")}
                   </Button>
                 </DialogFooter>
               </>
             ) : (
               <>
                 <DialogHeader>
-                  <DialogTitle>创建新 API 密钥</DialogTitle>
-                  <DialogDescription>
-                    密钥用于 API 访问鉴权，请妥善保管。
-                  </DialogDescription>
+                  <DialogTitle>{t("apiKeys.createDialogTitle")}</DialogTitle>
+                  <DialogDescription>{t("apiKeys.createDialogDesc")}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">密钥名称</label>
+                    <label className="text-sm font-medium">{t("apiKeys.nameLabel")}</label>
                     <Input
-                      placeholder="例如：生产环境密钥"
+                      placeholder={t("apiKeys.namePlaceholder")}
                       value={newKeyName}
                       onChange={(e) => setNewKeyName(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">权限范围</label>
+                    <label className="text-sm font-medium">{t("apiKeys.scopeLabel")}</label>
                     <Select value={newKeyScope} onValueChange={setNewKeyScope}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="read">只读（仅查询权限）</SelectItem>
-                        <SelectItem value="all">全部（读写权限）</SelectItem>
+                        <SelectItem value="read">{t("apiKeys.scopeRead")}</SelectItem>
+                        <SelectItem value="all">{t("apiKeys.scopeAll")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                    取消
+                    {t("apiKeys.cancel")}
                   </Button>
                   <Button onClick={handleCreate} disabled={creating}>
-                    {creating ? "创建中..." : "创建密钥"}
+                    {creating ? t("apiKeys.creating") : t("apiKeys.create")}
                   </Button>
                 </DialogFooter>
               </>
@@ -243,11 +198,9 @@ export default function ApiKeysPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
-            密钥列表
+            {t("apiKeys.listTitle")}
           </CardTitle>
-          <CardDescription>
-            管理你的 API 访问密钥。共 {keys.length} 个密钥
-          </CardDescription>
+          <CardDescription>{t("apiKeys.listDesc").replace("{0}", String(keys.length))}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -260,14 +213,12 @@ export default function ApiKeysPage() {
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <Key className="h-12 w-12 text-muted-foreground/50" />
               <div>
-                <p className="font-medium">暂无 API 密钥</p>
-                <p className="text-sm text-muted-foreground">
-                  创建你的第一个密钥来开始使用 API。
-                </p>
+                <p className="font-medium">{t("apiKeys.empty")}</p>
+                <p className="text-sm text-muted-foreground">{t("apiKeys.emptyDesc")}</p>
               </div>
               <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                创建密钥
+                {t("apiKeys.create")}
               </Button>
             </div>
           ) : (
@@ -278,7 +229,7 @@ export default function ApiKeysPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{key.name}</span>
                       <Badge variant={key.is_active ? "default" : "secondary"}>
-                        {key.is_active ? "启用" : "已吊销"}
+                        {key.is_active ? t("apiKeys.active") : t("apiKeys.revoked")}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -287,10 +238,10 @@ export default function ApiKeysPage() {
                       </code>
                       <span>
                         {key.last_used_at
-                          ? `上次使用: ${new Date(key.last_used_at).toLocaleDateString("zh-CN")}`
-                          : "从未使用"}
+                          ? t("apiKeys.lastUsed").replace("{0}", formatDate(key.last_used_at, { locale }))
+                          : t("apiKeys.neverUsed")}
                       </span>
-                      <span>创建于 {new Date(key.created_at).toLocaleDateString("zh-CN")}</span>
+                      <span>{t("apiKeys.createdAt").replace("{0}", formatDate(key.created_at, { locale }))}</span>
                     </div>
                     {key.scopes && key.scopes.length > 0 && (
                       <div className="flex gap-1 pt-1">
@@ -311,7 +262,7 @@ export default function ApiKeysPage() {
                         onClick={() => revokeKey(key.id)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        吊销
+                        {t("apiKeys.revoke")}
                       </Button>
                     )}
                   </div>

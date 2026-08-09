@@ -118,6 +118,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No team found" }, { status: 404 });
     }
 
+    const teamId = validated.data.team_id ?? membership.team_id;
+
+    // 校验当前用户对该团队拥有 owner/admin 权限
+    const { data: teamRole } = await supabase
+      .from("team_members")
+      .select("role")
+      .eq("team_id", teamId)
+      .eq("user_id", user.id)
+      .maybeSingle() as unknown as { data: { role: string } | null };
+
+    if (!teamRole || !["owner", "admin"].includes(teamRole.role)) {
+      return NextResponse.json({ error: "Only team admins can invite members" }, { status: 403 });
+    }
+
     // 通过 Admin API 查找目标用户
     const admin = createAdminClient();
     const { data: usersList } = await admin.auth.admin.listUsers();
@@ -131,9 +145,9 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from("team_members")
       .select("id")
-      .eq("team_id", membership.team_id)
+      .eq("team_id", teamId)
       .eq("user_id", invitedUser.id)
-      .single() as unknown as { data: { id: string } | null };
+      .maybeSingle() as unknown as { data: { id: string } | null };
 
     if (existing) {
       return NextResponse.json({ error: "User is already a team member" }, { status: 409 });
@@ -143,7 +157,7 @@ export async function POST(request: NextRequest) {
     const { data: newMember, error: insertError } = await admin
       .from("team_members")
       .insert({
-        team_id: membership.team_id,
+        team_id: teamId,
         user_id: invitedUser.id,
         role: validated.data.role,
         invited_by: user.id,
@@ -158,8 +172,8 @@ export async function POST(request: NextRequest) {
     // 更新成员计数
     await admin
       .from("teams")
-      .update({ member_count: (await supabase.from("team_members").select("*", { count: "exact", head: true }).eq("team_id", membership.team_id)).count ?? 0 })
-      .eq("id", membership.team_id);
+      .update({ member_count: (await supabase.from("team_members").select("*", { count: "exact", head: true }).eq("team_id", teamId)).count ?? 0 })
+      .eq("id", teamId);
 
     return NextResponse.json({ invitation: newMember }, { status: 201 });
   } catch (error) {
@@ -186,11 +200,51 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = await createClient();
-    const { error } = await supabase.from("team_members").delete().eq("id", memberId);
+    const { data: member } = await supabase
+      .from("team_members")
+      .select("team_id, role")
+      .eq("id", memberId)
+      .maybeSingle() as unknown as { data: { team_id: string; role: string } | null };
+
+    if (!member) {
+      return NextResponse.json({ error: "Member not found" }, { status: 404 });
+    }
+
+    const { data: membership } = await supabase
+      .from("team_members")
+      .select("role")
+      .eq("team_id", member.team_id)
+      .eq("user_id", auth.data.id)
+      .maybeSingle() as unknown as { data: { role: string } | null };
+
+    if (!membership || !["owner", "admin"].includes(membership.role)) {
+      return NextResponse.json({ error: "Only team admins can remove members" }, { status: 403 });
+    }
+
+    if (member.role === "owner") {
+      return NextResponse.json({ error: "The team owner cannot be removed" }, { status: 403 });
+    }
+
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("team_members")
+      .delete()
+      .eq("id", memberId)
+      .eq("team_id", member.team_id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    const { count } = await admin
+      .from("team_members")
+      .select("*", { count: "exact", head: true })
+      .eq("team_id", member.team_id);
+
+    await admin
+      .from("teams")
+      .update({ member_count: count ?? 0 })
+      .eq("id", member.team_id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

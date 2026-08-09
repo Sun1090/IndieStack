@@ -1,4 +1,12 @@
-/** * 统计指标卡片组件 * 用于仪表盘显示关键指标：图标、标签、数值和趋势变化 * - icon: Lucide 图标组件 * - label: 指标名称（如页面浏览量） * - value: 当前数值 * - change: 变化百分比（含正负号） * - trend: 'up' | 'down' 趋势方向 */
+/**
+ * 统计指标卡片组件
+ * 用于仪表盘显示关键指标：图标、标签、数值和趋势变化
+ * - icon: Lucide 图标组件
+ * - label: 指标名称（如页面浏览量）
+ * - value: 当前数值
+ * - change: 变化百分比（含正负号）
+ * - trend: 'up' | 'down' 趋势方向
+ */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";

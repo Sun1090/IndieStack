@@ -6,7 +6,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
 import { PageHeader } from "@/components/shared/page-header";
+import { formatDate } from "@/lib/date";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
@@ -26,6 +27,7 @@ export default async function ProfilePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
+  const locale = await getLocale();
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -34,7 +36,7 @@ export default async function ProfilePage() {
     .single() as unknown as { data: Record<string, unknown> | null };
 
   const memberSince = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })
+    ? formatDate(user.created_at, { locale })
     : t("profile.view.notSet");
 
   return (
@@ -72,15 +74,15 @@ export default async function ProfilePage() {
                 <p className="text-sm">{memberSince}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Role</p>
+                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.role")}</p>
                 <p className="text-sm capitalize">{(profile?.role as string) ?? "user"}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Timezone</p>
+                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.timezone")}</p>
                 <p className="text-sm">{(profile?.timezone as string) ?? "UTC"}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Language</p>
+                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.language")}</p>
                 <p className="text-sm">{(profile?.language as string) ?? "en"}</p>
               </div>
             </div>

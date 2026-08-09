@@ -42,23 +42,25 @@ export async function GET(request: NextRequest) {
     since.setDate(since.getDate() - range);
 
     // 统计总指标
-    const [pageViewsResult, visitorsResult] = await Promise.all([
+    const [pageViewsResult] = await Promise.all([
       supabase
         .from("api_usage")
         .select("*", { count: "exact", head: true })
-        .gte("created_at", since.toISOString()),
-      supabase
-        .from("api_usage")
-        .select("ip_address", { count: "exact", head: true })
         .gte("created_at", since.toISOString()),
     ]);
 
     // 获取时间序列数据
     const { data: dailyData } = await supabase
       .from("api_usage")
-      .select("created_at, status_code")
+      .select("created_at, status_code, user_id, path, method")
       .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true }) as unknown as { data: Array<{
+        created_at: string;
+        status_code: number | null;
+        user_id: string | null;
+        path: string;
+        method: string;
+      }> | null };
 
     // 组装时间序列
     const dailyMap = new Map<string, { requests: number; errors: number }>();
@@ -69,7 +71,7 @@ export async function GET(request: NextRequest) {
     }
 
     let totalErrors = 0;
-    for (const row of (dailyData ?? []) as Array<{ created_at: string; status_code: number | null }>) {
+    for (const row of dailyData ?? []) {
       const key = row.created_at.slice(0, 10);
       const entry = dailyMap.get(key);
       if (entry) {
@@ -87,7 +89,18 @@ export async function GET(request: NextRequest) {
     }));
 
     const totalRequests = pageViewsResult.count ?? 0;
-    const uniqueVisitors = visitorsResult.count ?? 0;
+    const uniqueUsers = new Set(
+      (dailyData ?? [])
+        .map((row) => row.user_id)
+        .filter((userId): userId is string => Boolean(userId))
+    );
+    const uniqueVisitors = uniqueUsers.size;
+    const recent = (dailyData ?? []).slice(-10).reverse().map((row) => ({
+      path: row.path,
+      method: row.method,
+      status_code: row.status_code,
+      created_at: row.created_at,
+    }));
 
     return NextResponse.json({
       summary: {
@@ -99,6 +112,7 @@ export async function GET(request: NextRequest) {
           : 0,
       },
       timeline,
+      recent,
       range,
     });
   } catch (error) {

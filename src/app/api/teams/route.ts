@@ -144,6 +144,8 @@ export async function POST(request: NextRequest) {
       .insert({ team_id: team!.id, user_id: auth.data.id, role: "owner" });
 
     if (memberError) {
+      // 回滚团队创建，避免成员插入失败时产生孤儿团队
+      await admin.from("teams").delete().eq("id", team!.id);
       return NextResponse.json({ error: memberError.message }, { status: 500 });
     }
 
@@ -175,6 +177,18 @@ export async function PATCH(request: NextRequest) {
     const validated = updateTeamSchema.safeParse(body);
     if (!validated.success) {
       return NextResponse.json({ error: validated.error.errors[0]?.message ?? "Invalid input" }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const { data: membership } = await supabase
+      .from("team_members")
+      .select("role")
+      .eq("team_id", teamId)
+      .eq("user_id", auth.data.id)
+      .maybeSingle() as unknown as { data: { role: string } | null };
+
+    if (!membership || !["owner", "admin"].includes(membership.role)) {
+      return NextResponse.json({ error: "Only team admins can update the team" }, { status: 403 });
     }
 
     const admin = createAdminClient();
@@ -227,11 +241,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Only the team owner can delete the team" }, { status: 403 });
     }
 
+    const admin = createAdminClient();
+
     // 删除团队成员
-    await supabase.from("team_members").delete().eq("team_id", teamId);
+    await admin.from("team_members").delete().eq("team_id", teamId);
 
     // 删除团队
-    const { error: deleteError } = await supabase.from("teams").delete().eq("id", teamId);
+    const { error: deleteError } = await admin.from("teams").delete().eq("id", teamId);
 
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 });

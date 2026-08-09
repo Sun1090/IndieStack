@@ -57,6 +57,7 @@ export const ROUTES = {
   dashboardTeamInvite: "/dashboard/team/invite",
   dashboardTeamCreate: "/dashboard/team/create",
   dashboardProjects: "/dashboard/projects",
+  dashboardProjectsNew: "/dashboard/projects/new",
   dashboardNotifications: "/dashboard/notifications",
   dashboardIntegrations: "/dashboard/integrations",
   dashboardBilling: "/dashboard/billing",

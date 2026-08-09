@@ -4,6 +4,7 @@
  */
 "use client";
 import { useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, RefreshCw } from "lucide-react";
@@ -14,6 +15,8 @@ export default function DashboardError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("errors");
+
   useEffect(() => {
     console.error("仪表盘渲染错误:", error);
   }, [error]);
@@ -24,12 +27,12 @@ export default function DashboardError({
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
             <AlertTriangle className="h-6 w-6 text-destructive" />
           </div>
-          <CardTitle>页面出错了</CardTitle>
+          <CardTitle>{t("errorBoundary.title")}</CardTitle>
           <CardDescription>
-            仪表盘页面遇到了一个意外错误，请稍后重试。
+            {t("errorBoundary.desc")}
             {error.digest && (
               <span className="mt-2 block text-xs text-muted-foreground">
-                错误编号：{error.digest}
+                {t("errorBoundary.errorId", { 0: error.digest })}
               </span>
             )}
           </CardDescription>
@@ -37,7 +40,7 @@ export default function DashboardError({
         <CardFooter className="justify-center">
           <Button onClick={reset} variant="default">
             <RefreshCw className="mr-2 h-4 w-4" />
-            重试
+            {t("errorBoundary.retry")}
           </Button>
         </CardFooter>
       </Card>

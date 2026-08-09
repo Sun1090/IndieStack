@@ -7,12 +7,14 @@
     "welcomeBack": "Welcome back",
     "todaySummary": "Here's your project summary for today",
     "stats": {
-      "revenue": "Revenue",
-      "activeUsers": "Active Users",
+      "projects": "Projects",
+      "projectsDesc": "Active projects in your team",
       "apiCalls": "API Calls",
-      "growthRate": "Growth Rate",
-      "last30Days": "Last 30 days",
-      "monthOverMonth": "Month over Month"
+      "apiCallsDesc": "Last 30 days",
+      "sessions": "Active Sessions",
+      "sessionsDesc": "Last 30 days",
+      "teamMembers": "Team Members",
+      "teamMembersDesc": "Members in your team"
     },
     "plan": {
       "title": "Current Plan",
@@ -24,28 +26,7 @@
     "activity": {
       "title": "Recent Activity",
       "desc": "Latest actions across your projects",
-      "items": [
-        {
-          "action": "Deployment successful",
-          "time": "2 minutes ago"
-        },
-        {
-          "action": "Migration completed",
-          "time": "1 hour ago"
-        },
-        {
-          "action": "New member joined",
-          "time": "3 hours ago"
-        },
-        {
-          "action": "Domain updated",
-          "time": "5 hours ago"
-        },
-        {
-          "action": "Build failed",
-          "time": "1 day ago"
-        }
-      ]
+      "empty": "No recent activity"
     }
   },
   "analytics": {
@@ -54,21 +35,20 @@
     "title": "Analytics",
     "desc": "Track your application metrics and usage",
     "stats": {
-      "pageViews": "Page Views",
-      "uniqueVisitors": "Unique Visitors",
-      "bounceRate": "Bounce Rate",
-      "avgSession": "Avg. Session"
+      "requests": "API Requests",
+      "uniqueVisitors": "Active Users",
+      "errors": "Errors",
+      "bounceRate": "Error Rate"
     },
     "vsLastPeriod": "vs last period",
     "usageOverview": {
       "title": "Usage Overview",
-      "desc": "Daily active users and API calls over the last 30 days.",
-      "placeholder": "Chart visualization will appear here",
-      "hint": "Integrate with Recharts or your preferred charting library"
+      "desc": "API request and error trends over the selected period"
     },
     "recentEvents": {
       "title": "Recent Events",
-      "desc": "Key events from the last 24 hours."
+      "desc": "Recent API request records",
+      "empty": "No request records yet"
     },
     "exportCsv": "Export CSV",
     "last7Days": "Last 7 days",
@@ -84,6 +64,9 @@
       "email": "Email",
       "memberSince": "Member since",
       "notSet": "Not set",
+      "role": "Role",
+      "timezone": "Timezone",
+      "language": "Language",
       "editProfile": "Edit Profile"
     },
     "edit": {
@@ -196,11 +179,53 @@
     "availablePlans": "Available Plans",
     "currentPlanBadge": "Current Plan",
     "upgradeTo": "Upgrade to {0}",
+    "stripeNotConfigured": "Stripe not configured",
+    "checkoutLoading": "Redirecting...",
+    "checkoutError": "Checkout failed",
     "paymentHistory": {
       "title": "Payment History",
       "desc": "View your past invoices and payments.",
       "empty": "No payments yet. Payment history will appear here once you subscribe to a paid plan."
     }
+  },
+  "apiKeys": {
+    "metaTitle": "API Keys",
+    "metaDesc": "Manage your API keys",
+    "title": "API Keys",
+    "desc": "Manage API keys used for external integrations and API authentication",
+    "create": "Create Key",
+    "creating": "Creating...",
+    "createError": "Failed to create key",
+    "loadError": "Failed to load keys",
+    "nameRequired": "Please enter a key name",
+    "createdTitle": "Key Created",
+    "createdDesc": "Copy this key now. For security, you won't be able to view the full key again after closing this dialog.",
+    "copy": "Copy Key",
+    "copied": "Copied",
+    "copiedToast": "Copied to clipboard",
+    "close": "Close",
+    "createDialogTitle": "Create New API Key",
+    "createDialogDesc": "Keys are used for API access authentication. Keep them safe.",
+    "nameLabel": "Key Name",
+    "namePlaceholder": "e.g. production key",
+    "scopeLabel": "Permission Scope",
+    "scopeRead": "Read-only",
+    "scopeAll": "Full access",
+    "cancel": "Cancel",
+    "listTitle": "Key List",
+    "listDesc": "Manage your API access keys. {0} key(s) total",
+    "empty": "No API keys yet",
+    "emptyDesc": "Create your first key to start using the API.",
+    "active": "Active",
+    "revoked": "Revoked",
+    "lastUsed": "Last used: {0}",
+    "neverUsed": "Never used",
+    "createdAt": "Created {0}",
+    "revoke": "Revoke",
+    "revokeSuccess": "Key revoked",
+    "revokeError": "Failed to revoke key",
+    "createSuccess": "Key created",
+    "createSuccessDesc": "Copy and save the key now. It won't be shown again after closing."
   },
   "projects": {
     "list": {
@@ -211,6 +236,16 @@
       "create": "New Project",
       "noProjects": "No projects yet",
       "createFirst": "Create your first project"
+    },
+    "create": {
+      "title": "New Project",
+      "desc": "Create a new project",
+      "nameLabel": "Project Name",
+      "namePlaceholder": "e.g. api-service",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "A short description of this project",
+      "submit": "Create Project",
+      "success": "Project created!"
     },
     "detail": {
       "metaTitle": "Project Details",
@@ -229,6 +264,11 @@
     "preferences": {
       "title": "Notification Preferences",
       "desc": "Choose which notifications you'd like to receive via email."
+    },
+    "list": {
+      "title": "Notifications",
+      "desc": "Your recent notifications",
+      "empty": "No notifications yet"
     }
   },
   "integrations": {

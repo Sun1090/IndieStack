@@ -6,7 +6,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useTranslations } from "next-intl";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,33 +23,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/hooks/use-toast";
-
-/** 用户数据类型 */
-interface UserProfile {
-  id: string;
-  email: string | null;
-  full_name: string | null;
-  role: string;
-  created_at: string;
-}
+import { listAdminUsers, updateUserRole as updateAdminUserRole, type AdminUser } from "@/lib/actions/admin";
 
 export default function AdminUsersPage() {
   const t = useTranslations("admin");
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const supabase = createClient();
 
   /** 加载用户列表 */
   const loadUsers = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, email, full_name, role, created_at")
-      .order("created_at", { ascending: false });
-    setUsers((data ?? []) as unknown as UserProfile[]);
+    const result = await listAdminUsers();
+    if (!result.success) {
+      toast({ title: t("users.updateFailed"), description: result.error, variant: "destructive" });
+    } else {
+      setUsers(result.data);
+    }
     setLoading(false);
-  }, [supabase]);
+  }, [t]);
 
   useEffect(() => {
     loadUsers();
@@ -58,13 +49,10 @@ export default function AdminUsersPage() {
 
   /** 更新用户角色 */
   async function updateUserRole(userId: string, newRole: string) {
-    const { error } = await (supabase as any)
-      .from("profiles")
-      .update({ role: newRole })
-      .eq("id", userId);
+    const result = await updateAdminUserRole(userId, newRole as "member" | "admin" | "viewer");
 
-    if (error) {
-      toast({ title: t("users.updateFailed"), description: error.message, variant: "destructive" });
+    if (!result.success) {
+      toast({ title: t("users.updateFailed"), description: result.error, variant: "destructive" });
       return;
     }
 
