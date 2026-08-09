@@ -1,14 +1,14 @@
 export const SITE_CONFIG = {
-  name: process.env.NEXT_PUBLIC_APP_NAME ?? "IndieStack",
+  name: process.env.NEXT_PUBLIC_APP_NAME?.trim() || "IndieStack",
   description:
-    process.env.NEXT_PUBLIC_APP_DESCRIPTION ??
+    process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
     "A full-stack IndieStack for independent developers. Next.js, Tailwind, shadcn/ui, Supabase, PostgreSQL.",
-  url: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  url: process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000",
   // OpenGraph image — 由 app/opengraph-image.tsx 自动生成动态图片，无需手动设置
   ogImage: "/og-image.png",
   author: "IndieStack",
   /** VitePress 独立文档站地址（可单独部署） */
-  docsUrl: process.env.NEXT_PUBLIC_DOCS_URL ?? "https://indiestack-docs.vercel.app",
+  docsUrl: process.env.NEXT_PUBLIC_DOCS_URL?.trim() || "https://indiestack-docs.vercel.app",
   links: {
     github: "https://github.com/your-username/indiestack",
     twitter: "https://twitter.com/your-handle",
