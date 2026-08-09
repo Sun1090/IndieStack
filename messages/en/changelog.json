@@ -1,0 +1,17 @@
+{
+  "metaTitle": "Changelog",
+  "metaDesc": "Latest updates, features, and improvements",
+  "pageTitle": "What's new",
+  "pageDesc": "Latest updates, features, and improvements to IndieStack.",
+  "typeLabels": {
+    "feature": "New Feature",
+    "improvement": "Improvement",
+    "fix": "Bug Fix",
+    "major": "Major Release"
+  },
+  "stayUpdated": {
+    "title": "Stay up to date",
+    "desc": "Follow along with every release. New features ship weekly.",
+    "cta": "Get Started"
+  }
+}

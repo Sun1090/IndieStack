@@ -1,0 +1,17 @@
+{
+  "home": "Home",
+  "features": "Features",
+  "pricing": "Pricing",
+  "about": "About",
+  "blog": "Blog",
+  "faq": "FAQ",
+  "changelog": "Changelog",
+  "documentation": "Documentation",
+  "contact": "Contact",
+  "dashboard": "Dashboard",
+  "privacy": "Privacy",
+  "terms": "Terms",
+  "signIn": "Sign In",
+  "signUp": "Sign Up",
+  "getStarted": "Get Started"
+}

@@ -1,0 +1,143 @@
+{
+  "metaTitle": "功能",
+  "metaDesc": "了解 IndieStack 的所有功能",
+  "pageTitle": "功能特性",
+  "pageDesc": "IndieStack 提供了一套完整的工具，帮助你快速构建和扩展 SaaS 应用。",
+  "cta": "准备好了吗？",
+  "ctaDesc": "数分钟内即可开始构建。无需信用卡。",
+  "ctaButton": "免费开始使用",
+  "categories": [
+    {
+      "title": "认证与安全",
+      "description": "完整的认证系统，支持多种登录方式和企业级安全特性。",
+      "features": [
+        {
+          "title": "邮箱密码登录",
+          "description": "支持邮箱注册和密码重置流程。"
+        },
+        {
+          "title": "OAuth 社交登录",
+          "description": "集成 GitHub、Google 等 OAuth 提供方。"
+        },
+        {
+          "title": "会话管理",
+          "description": "安全的会话管理和自动刷新机制。"
+        },
+        {
+          "title": "行级安全",
+          "description": "基于 Supabase RLS 的细粒度数据访问控制。"
+        }
+      ]
+    },
+    {
+      "title": "数据库与存储",
+      "description": "生产级 PostgreSQL 数据库和云文件存储。",
+      "features": [
+        {
+          "title": "PostgreSQL",
+          "description": "完整的 PostgreSQL 数据库，支持实时订阅。"
+        },
+        {
+          "title": "自动生成 API",
+          "description": "Supabase 自动生成 REST 和 Realtime API。"
+        },
+        {
+          "title": "文件存储",
+          "description": "阿里云 OSS 文件存储，支持 CDN 加速。"
+        },
+        {
+          "title": "数据库迁移",
+          "description": "使用 Supabase CLI 进行数据库迁移管理。"
+        }
+      ]
+    },
+    {
+      "title": "团队与协作",
+      "description": "多租户团队管理，支持邀请和权限控制。",
+      "features": [
+        {
+          "title": "团队创建",
+          "description": "轻松创建和管理团队。"
+        },
+        {
+          "title": "成员邀请",
+          "description": "通过邮箱邀请团队成员。"
+        },
+        {
+          "title": "角色权限",
+          "description": "基于角色的访问控制。"
+        },
+        {
+          "title": "多租户架构",
+          "description": "数据隔离的多租户设计。"
+        }
+      ]
+    },
+    {
+      "title": "监控与错误追踪",
+      "description": "全面的应用监控和错误追踪系统。",
+      "features": [
+        {
+          "title": "错误追踪",
+          "description": "Sentry 自动捕获前端和后端错误。"
+        },
+        {
+          "title": "性能监控",
+          "description": "实时性能指标和瓶颈分析。"
+        },
+        {
+          "title": "崩溃报告",
+          "description": "详细的崩溃日志和堆栈追踪。"
+        },
+        {
+          "title": "应用监控",
+          "description": "Appark 提供深度应用性能洞察。"
+        }
+      ]
+    },
+    {
+      "title": "计费与订阅",
+      "description": "完整的 Stripe 订阅管理解决方案。",
+      "features": [
+        {
+          "title": "订阅管理",
+          "description": "支持多级定价方案的订阅管理。"
+        },
+        {
+          "title": "支付处理",
+          "description": "安全的 Stripe 支付处理。"
+        },
+        {
+          "title": "发票历史",
+          "description": "查看和管理支付历史记录。"
+        },
+        {
+          "title": "定价页面",
+          "description": "预设的定价页面和计费 UI。"
+        }
+      ]
+    },
+    {
+      "title": "部署与运维",
+      "description": "一键部署和持续集成支持。",
+      "features": [
+        {
+          "title": "Vercel 部署",
+          "description": "一键部署到 Vercel 平台。"
+        },
+        {
+          "title": "CI/CD",
+          "description": "GitHub Actions 自动化测试和部署。"
+        },
+        {
+          "title": "Docker 支持",
+          "description": "容器化部署，支持 Docker Compose。"
+        },
+        {
+          "title": "环境管理",
+          "description": "完善的多环境配置管理。"
+        }
+      ]
+    }
+  ]
+}

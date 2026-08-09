@@ -1,0 +1,14 @@
+{
+  "notFound": {
+    "title": "页面未找到",
+    "desc": "抱歉，你访问的页面不存在。",
+    "backHome": "返回首页",
+    "contactSupport": "联系支持"
+  },
+  "errorBoundary": {
+    "title": "出了点问题",
+    "desc": "发生了一个意外错误。请重试。",
+    "retry": "重试",
+    "backHome": "返回首页"
+  }
+}

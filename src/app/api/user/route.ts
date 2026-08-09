@@ -1,0 +1,101 @@
+/**
+ * 用户信息 API 路由
+ * 提供当前登录用户的信息查询接口
+ */
+
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/supabase/database.types";
+import type { PostgrestError } from "@supabase/supabase-js";
+
+/**
+ * GET /api/user - Get the current user's profile
+ */
+import { rateLimit } from "@/lib/rate-limit";
+export async function GET(request: Request) {
+   const limits = await rateLimit.check(request);
+   if (!limits.allowed) {
+     return NextResponse.json({ error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) }, { status: 429 });
+   }
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: { message: string } | null };
+
+  return NextResponse.json({
+    user: {
+      id: user.id,
+      email: user.email,
+      emailVerified: user.email_confirmed_at != null,
+      createdAt: user.created_at,
+    },
+    profile,
+  });
+}
+
+/**
+ * PATCH /api/user - Update the current user's profile
+ */
+export async function PATCH(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const { full_name, avatar_url, bio, timezone, language } = body;
+
+  const updateData: Database["public"]["Tables"]["profiles"]["Update"] = {};
+  if (full_name !== undefined) updateData.full_name = full_name;
+  if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
+  if (bio !== undefined) updateData.bio = bio;
+  if (timezone !== undefined) updateData.timezone = timezone;
+  if (language !== undefined) updateData.language = language;
+  updateData.updated_at = new Date().toISOString();
+
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .update(updateData as unknown as never)
+    .eq("id", user.id)
+    .select()
+    .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: { message: string } | null };
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ profile });
+}
+
+/**
+ * DELETE /api/user - Delete the current user's account
+ */
+export async function DELETE() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // Delete user via admin API
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(user.id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

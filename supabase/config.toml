@@ -1,0 +1,48 @@
+# =============================================================================
+# Supabase CLI Configuration
+# =============================================================================
+# Reference: https://supabase.com/docs/reference/cli/config
+
+project_id = "indiestack"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/**"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+secure_password_requirements = true
+
+[auth.external]
+enabled = true
+
+[auth.external.github]
+enabled = true
+client_id = ""
+secret = ""
+
+[auth.external.google]
+enabled = true
+client_id = ""
+secret = ""
+
+[db]
+port = 54322
+shadow_port = 54323
+major_version = 15
+
+[api]
+port = 54321
+schemas = ["public", "auth", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[analytics]
+enabled = false
+
+[storage]
+enabled = true

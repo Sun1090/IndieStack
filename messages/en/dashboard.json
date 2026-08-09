@@ -1,0 +1,245 @@
+{
+  "overview": {
+    "metaTitle": "Dashboard",
+    "metaDesc": "Your dashboard overview",
+    "title": "Dashboard",
+    "desc": "Welcome back! Here's an overview of your projects.",
+    "welcomeBack": "Welcome back",
+    "todaySummary": "Here's your project summary for today",
+    "stats": {
+      "revenue": "Revenue",
+      "activeUsers": "Active Users",
+      "apiCalls": "API Calls",
+      "growthRate": "Growth Rate",
+      "last30Days": "Last 30 days",
+      "monthOverMonth": "Month over Month"
+    },
+    "plan": {
+      "title": "Current Plan",
+      "desc": "Your current subscription plan",
+      "upgrade": "Upgrade",
+      "teamMembers": "Team Members",
+      "storageUsed": "Storage Used"
+    },
+    "activity": {
+      "title": "Recent Activity",
+      "desc": "Latest actions across your projects",
+      "items": [
+        {
+          "action": "Deployment successful",
+          "time": "2 minutes ago"
+        },
+        {
+          "action": "Migration completed",
+          "time": "1 hour ago"
+        },
+        {
+          "action": "New member joined",
+          "time": "3 hours ago"
+        },
+        {
+          "action": "Domain updated",
+          "time": "5 hours ago"
+        },
+        {
+          "action": "Build failed",
+          "time": "1 day ago"
+        }
+      ]
+    }
+  },
+  "analytics": {
+    "metaTitle": "Analytics",
+    "metaDesc": "View your analytics and metrics",
+    "title": "Analytics",
+    "desc": "Track your application metrics and usage",
+    "stats": {
+      "pageViews": "Page Views",
+      "uniqueVisitors": "Unique Visitors",
+      "bounceRate": "Bounce Rate",
+      "avgSession": "Avg. Session"
+    },
+    "vsLastPeriod": "vs last period",
+    "usageOverview": {
+      "title": "Usage Overview",
+      "desc": "Daily active users and API calls over the last 30 days.",
+      "placeholder": "Chart visualization will appear here",
+      "hint": "Integrate with Recharts or your preferred charting library"
+    },
+    "recentEvents": {
+      "title": "Recent Events",
+      "desc": "Key events from the last 24 hours."
+    },
+    "exportCsv": "Export CSV",
+    "last7Days": "Last 7 days",
+    "last14Days": "Last 14 days",
+    "last30Days": "Last 30 days"
+  },
+  "profile": {
+    "view": {
+      "metaTitle": "Profile",
+      "metaDesc": "View your profile",
+      "title": "Profile",
+      "desc": "View your personal information",
+      "email": "Email",
+      "memberSince": "Member since",
+      "notSet": "Not set",
+      "editProfile": "Edit Profile"
+    },
+    "edit": {
+      "metaTitle": "Edit Profile",
+      "metaDesc": "Edit your profile",
+      "title": "Edit Profile",
+      "desc": "Update your personal information",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your name",
+      "bioLabel": "Bio",
+      "bioPlaceholder": "Tell us a little about yourself",
+      "avatarLabel": "Avatar",
+      "avatarDesc": "Click to upload a new avatar",
+      "uploadAvatar": "Upload Avatar",
+      "submit": "Save Changes",
+      "success": "Profile updated!"
+    }
+  },
+  "settings": {
+    "metaTitle": "Settings",
+    "metaDesc": "Manage your account settings",
+    "title": "Settings",
+    "desc": "Manage your account settings and preferences",
+    "sections": {
+      "general": {
+        "title": "General Settings",
+        "desc": "Manage your basic account information."
+      },
+      "password": {
+        "title": "Change Password",
+        "desc": "Update your account password.",
+        "currentLabel": "Current Password",
+        "currentPlaceholder": "Enter current password",
+        "newLabel": "New Password",
+        "newPlaceholder": "Enter new password",
+        "confirmLabel": "Confirm New Password",
+        "confirmPlaceholder": "Re-enter new password",
+        "submit": "Update Password",
+        "success": "Password updated!"
+      },
+      "appearance": {
+        "title": "Appearance",
+        "desc": "Customize the look and feel of the application.",
+        "theme": "Theme",
+        "themeLight": "Light",
+        "themeDark": "Dark",
+        "themeSystem": "System"
+      },
+      "danger": {
+        "title": "Danger Zone",
+        "desc": "Irreversible actions are performed here.",
+        "deleteAccount": "Delete Account",
+        "deleteDesc": "Permanently delete your account and all data. This action is irreversible.",
+        "deleteConfirm": "Confirm Delete",
+        "confirmPhrase": "Type \"delete\" to confirm"
+      }
+    }
+  },
+  "team": {
+    "list": {
+      "metaTitle": "Team",
+      "metaDesc": "Manage your team",
+      "title": "Team",
+      "desc": "Manage your team members and permissions",
+      "invite": "Invite Member",
+      "createTeam": "Create Team",
+      "members": "Members",
+      "noMembers": "No members yet",
+      "removeMember": "Remove Member",
+      "removeConfirm": "Are you sure you want to remove this member?",
+      "role": "Role",
+      "actions": "Actions",
+      "roles": {
+        "owner": "Owner",
+        "admin": "Admin",
+        "member": "Member"
+      }
+    },
+    "invite": {
+      "metaTitle": "Invite Member",
+      "metaDesc": "Invite a new member to your team",
+      "title": "Invite Member",
+      "desc": "Invite a new member to your team via email.",
+      "emailLabel": "Email Address",
+      "emailPlaceholder": "member@email.com",
+      "roleLabel": "Role",
+      "submit": "Send Invite",
+      "success": "Invite sent!"
+    },
+    "create": {
+      "metaTitle": "Create Team",
+      "metaDesc": "Create a new team",
+      "title": "Create Team",
+      "desc": "Create a new team to start collaborating.",
+      "nameLabel": "Team Name",
+      "namePlaceholder": "Enter team name",
+      "submit": "Create Team",
+      "success": "Team created!"
+    }
+  },
+  "billing": {
+    "metaTitle": "Billing",
+    "metaDesc": "Manage your subscription and billing",
+    "title": "Billing",
+    "desc": "Manage your subscription and billing information",
+    "sectionTitle": "Current Plan",
+    "currentPlanDesc": "You are currently on the {0} plan.",
+    "priceLabel": "Price",
+    "perMonth": "/month",
+    "availablePlans": "Available Plans",
+    "currentPlanBadge": "Current Plan",
+    "upgradeTo": "Upgrade to {0}",
+    "paymentHistory": {
+      "title": "Payment History",
+      "desc": "View your past invoices and payments.",
+      "empty": "No payments yet. Payment history will appear here once you subscribe to a paid plan."
+    }
+  },
+  "projects": {
+    "list": {
+      "metaTitle": "Projects",
+      "metaDesc": "Manage your projects",
+      "title": "Projects",
+      "desc": "Manage and view all your projects",
+      "create": "New Project",
+      "noProjects": "No projects yet",
+      "createFirst": "Create your first project"
+    },
+    "detail": {
+      "metaTitle": "Project Details",
+      "metaDesc": "View project details",
+      "overview": "Project Overview",
+      "members": "Members",
+      "settings": "Settings",
+      "backToProjects": "Back to Projects"
+    }
+  },
+  "notifications": {
+    "metaTitle": "Notifications",
+    "metaDesc": "Manage your notification preferences",
+    "title": "Notifications",
+    "desc": "Manage your notification preferences and alerts",
+    "preferences": {
+      "title": "Notification Preferences",
+      "desc": "Choose which notifications you'd like to receive via email."
+    }
+  },
+  "integrations": {
+    "metaTitle": "Integrations",
+    "metaDesc": "Manage your third-party integrations",
+    "title": "Integrations",
+    "desc": "Connect your tools and services",
+    "comingSoon": "More integrations coming soon...",
+    "connected": "Connected",
+    "notConnected": "Not Connected",
+    "connect": "Connect",
+    "disconnect": "Disconnect"
+  }
+}

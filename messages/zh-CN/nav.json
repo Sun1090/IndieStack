@@ -1,0 +1,17 @@
+{
+  "home": "首页",
+  "features": "功能",
+  "pricing": "定价",
+  "about": "关于",
+  "blog": "博客",
+  "faq": "常见问题",
+  "changelog": "更新日志",
+  "documentation": "文档",
+  "contact": "联系我们",
+  "dashboard": "仪表盘",
+  "privacy": "隐私政策",
+  "terms": "服务条款",
+  "signIn": "登录",
+  "signUp": "注册",
+  "getStarted": "开始使用"
+}

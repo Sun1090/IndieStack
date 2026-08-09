@@ -1,0 +1,143 @@
+{
+  "metaTitle": "Features",
+  "metaDesc": "Explore all features of IndieStack",
+  "pageTitle": "Features",
+  "pageDesc": "IndieStack provides a complete set of tools to help you build and scale your SaaS application quickly.",
+  "cta": "Ready to get started?",
+  "ctaDesc": "Start building in minutes. No credit card required.",
+  "ctaButton": "Get Started Free",
+  "categories": [
+    {
+      "title": "Authentication & Security",
+      "description": "Complete authentication system with multiple login methods and enterprise-grade security.",
+      "features": [
+        {
+          "title": "Email & Password",
+          "description": "Email registration with password reset flow."
+        },
+        {
+          "title": "OAuth Social Login",
+          "description": "Integrate with GitHub, Google, and more OAuth providers."
+        },
+        {
+          "title": "Session Management",
+          "description": "Secure session handling with auto-refresh."
+        },
+        {
+          "title": "Row Level Security",
+          "description": "Fine-grained data access with Supabase RLS."
+        }
+      ]
+    },
+    {
+      "title": "Database & Storage",
+      "description": "Production-grade PostgreSQL database and cloud file storage.",
+      "features": [
+        {
+          "title": "PostgreSQL",
+          "description": "Full PostgreSQL database with real-time subscriptions."
+        },
+        {
+          "title": "Auto-generated APIs",
+          "description": "Supabase auto-generates REST and Realtime APIs."
+        },
+        {
+          "title": "File Storage",
+          "description": "Alibaba Cloud OSS with CDN acceleration."
+        },
+        {
+          "title": "Database Migrations",
+          "description": "Manage migrations with Supabase CLI."
+        }
+      ]
+    },
+    {
+      "title": "Team & Collaboration",
+      "description": "Multi-tenant team management with invites and permissions.",
+      "features": [
+        {
+          "title": "Team Creation",
+          "description": "Easily create and manage teams."
+        },
+        {
+          "title": "Member Invites",
+          "description": "Invite team members via email."
+        },
+        {
+          "title": "Role Permissions",
+          "description": "Role-based access control."
+        },
+        {
+          "title": "Multi-tenant Architecture",
+          "description": "Data isolation with multi-tenant design."
+        }
+      ]
+    },
+    {
+      "title": "Monitoring & Error Tracking",
+      "description": "Comprehensive application monitoring and error tracking.",
+      "features": [
+        {
+          "title": "Error Tracking",
+          "description": "Sentry automatically captures frontend and backend errors."
+        },
+        {
+          "title": "Performance Monitoring",
+          "description": "Real-time performance metrics and bottleneck analysis."
+        },
+        {
+          "title": "Crash Reports",
+          "description": "Detailed crash logs with stack traces."
+        },
+        {
+          "title": "App Monitoring",
+          "description": "Appark provides deep application performance insights."
+        }
+      ]
+    },
+    {
+      "title": "Billing & Subscriptions",
+      "description": "Complete Stripe subscription management solution.",
+      "features": [
+        {
+          "title": "Subscription Management",
+          "description": "Multi-tier subscription management."
+        },
+        {
+          "title": "Payment Processing",
+          "description": "Secure Stripe payment processing."
+        },
+        {
+          "title": "Invoice History",
+          "description": "View and manage payment history."
+        },
+        {
+          "title": "Pricing Page",
+          "description": "Pre-built pricing page and billing UI."
+        }
+      ]
+    },
+    {
+      "title": "Deployment & DevOps",
+      "description": "One-click deployment with CI/CD support.",
+      "features": [
+        {
+          "title": "Vercel Deployment",
+          "description": "One-click deploy to Vercel."
+        },
+        {
+          "title": "CI/CD",
+          "description": "GitHub Actions for automated testing and deployment."
+        },
+        {
+          "title": "Docker Support",
+          "description": "Containerized deployment with Docker Compose."
+        },
+        {
+          "title": "Environment Management",
+          "description": "Comprehensive multi-environment configuration."
+        }
+      ]
+    }
+  ]
+}

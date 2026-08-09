@@ -1,0 +1,82 @@
+{
+  "overview": {
+    "metaTitle": "Admin",
+    "metaDesc": "Platform-level system management and monitoring",
+    "title": "Admin Panel",
+    "desc": "Platform-level system management and monitoring",
+    "stats": {
+      "totalUsers": "Total Users",
+      "totalTeams": "Teams",
+      "admins": "Admins",
+      "normalUsers": "Normal Users",
+      "totalUsersDesc": "Total registered users on the platform",
+      "totalTeamsDesc": "Total teams created",
+      "adminsDesc": "System admins and super admins",
+      "normalUsersDesc": "Regular users and viewers"
+    },
+    "roleDistribution": "Role Distribution",
+    "roleDistributionDesc": "Platform user role distribution",
+    "systemStatus": "System Status",
+    "systemStatusDesc": "Current system component status",
+    "services": {
+      "database": "Supabase Database",
+      "auth": "Auth Service",
+      "storage": "Object Storage (OSS)",
+      "sentry": "Sentry Monitoring",
+      "stripe": "Stripe Payments",
+      "running": "Running"
+    }
+  },
+  "users": {
+    "metaTitle": "User Management",
+    "metaDesc": "Manage roles and permissions for all platform users",
+    "title": "User Management",
+    "desc": "Manage roles and permissions for all platform users",
+    "searchPlaceholder": "Search by name, email or role...",
+    "userList": "User List",
+    "totalUsers": "{0} users total",
+    "filteredSuffix": " (filtered)",
+    "noUsers": "No users yet",
+    "noMatch": "No matching users found",
+    "nameNotSet": "Name not set",
+    "registeredAt": "Registered on {0}",
+    "changeRole": "Change Role",
+    "roleLabels": {
+      "super_admin": "Super Admin",
+      "admin": "Admin",
+      "member": "Member",
+      "viewer": "Viewer"
+    },
+    "updateSuccess": "Role updated",
+    "updateSuccessDesc": "User role changed to {0}",
+    "updateFailed": "Update failed"
+  },
+  "auditLogs": {
+    "metaTitle": "Audit Logs",
+    "metaDesc": "View all platform operation audit records",
+    "title": "Audit Logs",
+    "desc": "View all platform operation audit records",
+    "searchPlaceholder": "Search by action, entity type or ID...",
+    "refresh": "Refresh",
+    "allActions": "All Actions",
+    "filterUser": "User",
+    "filterTeam": "Team",
+    "filterProject": "Project",
+    "filterBilling": "Billing",
+    "filterSettings": "Settings",
+    "pageTitle": "Operation Records",
+    "totalRecords": "{0} records (showing latest 100)",
+    "noLogs": "No audit logs yet",
+    "actionLabels": {
+      "user:login": "User Login",
+      "user:logout": "User Logout",
+      "team:invite": "Invite Member",
+      "team:remove": "Remove Member",
+      "team:create": "Create Team",
+      "project:create": "Create Project",
+      "project:delete": "Delete Project",
+      "billing:update": "Update Billing",
+      "settings:update": "Update Settings"
+    }
+  }
+}

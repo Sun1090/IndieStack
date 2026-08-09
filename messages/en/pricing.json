@@ -1,0 +1,42 @@
+{
+  "metaTitle": "Pricing",
+  "metaDesc": "View IndieStack pricing plans",
+  "pageTitle": "Simple, transparent pricing",
+  "pageDesc": "Choose the plan that's right for you. All plans include a 14-day free trial, no credit card required.",
+  "monthly": "Monthly",
+  "yearly": "Yearly",
+  "savePercentage": "Save {0}%",
+  "popular": "Most Popular",
+  "currentPlan": "Current Plan",
+  "upgradeTo": "Upgrade to {0}",
+  "getStarted": "Get Started",
+  "contactSales": "Contact Sales",
+  "cta": "Ready to get started?",
+  "ctaDesc": "Start building in minutes. No credit card required.",
+  "ctaButton": "Get Started Free",
+  "faq": {
+    "title": "Frequently Asked Questions",
+    "questions": [
+      {
+        "q": "Can I upgrade or downgrade my plan at any time?",
+        "a": "Yes, you can upgrade or downgrade your subscription at any time. Upgrades take effect immediately, downgrades apply at the end of your current billing period."
+      },
+      {
+        "q": "Is there a free trial?",
+        "a": "All paid plans include a 14-day free trial. No credit card required. Cancel anytime."
+      },
+      {
+        "q": "What happens if I exceed my plan limits?",
+        "a": "We'll notify you before you hit your limits. You can upgrade your plan or purchase additional resources."
+      },
+      {
+        "q": "What payment methods do you accept?",
+        "a": "We process payments through Stripe and accept credit cards (Visa, Mastercard, American Express) and PayPal."
+      },
+      {
+        "q": "Can I cancel at any time?",
+        "a": "Yes, you can cancel your subscription at any time. After cancellation, you'll retain access until the end of your current billing period."
+      }
+    ]
+  }
+}

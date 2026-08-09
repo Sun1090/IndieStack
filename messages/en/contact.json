@@ -1,0 +1,28 @@
+{
+  "metaTitle": "Contact",
+  "metaDesc": "Get in touch with our team",
+  "pageTitle": "Get in Touch",
+  "pageDesc": "Have a question, feature request, or just want to say hi? We'd love to hear from you.",
+  "form": {
+    "title": "Send us a Message",
+    "desc": "Fill out the form and we'll get back to you within 24 hours.",
+    "nameLabel": "Name",
+    "namePlaceholder": "Your name",
+    "emailLabel": "Email",
+    "emailPlaceholder": "your@email.com",
+    "subjectLabel": "Subject",
+    "subjectPlaceholder": "Message subject",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Enter your message...",
+    "submit": "Send Message",
+    "sending": "Sending...",
+    "success": "Message sent! We'll get back to you soon."
+  },
+  "info": {
+    "email": "Email",
+    "github": "GitHub",
+    "twitter": "Twitter / X",
+    "responseTime": "Response Time",
+    "responseDesc": "We respond within 24 hours on business days"
+  }
+}
