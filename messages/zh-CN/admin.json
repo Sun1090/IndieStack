@@ -21,7 +21,6 @@
     "services": {
       "database": "Supabase 数据库",
       "auth": "认证服务",
-      "storage": "对象存储 (OSS)",
       "sentry": "Sentry 监控",
       "stripe": "Stripe 支付",
       "running": "运行中"
