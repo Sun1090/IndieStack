@@ -7,6 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { updatePassword } from "@/lib/actions/settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,8 @@ import { toast } from "@/hooks/use-toast";
 
 export function PasswordForm() {
   const router = useRouter();
+  const t = useTranslations("dashboard.settings.sections.password");
+  const tc = useTranslations("common");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -25,12 +28,12 @@ export function PasswordForm() {
     const result = await updatePassword(formData);
 
     if (result.error) {
-      toast({ title: "Error", description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: result.error, variant: "destructive" });
       setLoading(false);
       return;
     }
 
-    toast({ title: "Password updated", description: "Your password has been changed successfully." });
+    toast({ title: t("success"), description: t("successDesc") });
     (e.target as HTMLFormElement).reset();
     router.refresh();
     setLoading(false);
@@ -39,7 +42,7 @@ export function PasswordForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="currentPassword">Current Password</Label>
+        <Label htmlFor="currentPassword">{t("currentLabel")}</Label>
         <Input
           id="currentPassword"
           name="currentPassword"
@@ -50,7 +53,7 @@ export function PasswordForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="newPassword">New Password</Label>
+        <Label htmlFor="newPassword">{t("newLabel")}</Label>
         <Input
           id="newPassword"
           name="newPassword"
@@ -59,11 +62,11 @@ export function PasswordForm() {
           minLength={8}
           required
         />
-        <p className="text-xs text-muted-foreground">Must be at least 8 characters.</p>
+        <p className="text-xs text-muted-foreground">{t("hint")}</p>
       </div>
 
       <Button type="submit" disabled={loading}>
-        {loading ? "Updating..." : "Update Password"}
+        {loading ? t("saving") : t("submit")}
       </Button>
     </form>
   );

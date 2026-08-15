@@ -7,6 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { updateProfileSettings } from "@/lib/actions/profile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,8 @@ interface ProfileEditFormProps {
 
 export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEditFormProps) {
   const router = useRouter();
+  const t = useTranslations("dashboard.profile.edit");
+  const tc = useTranslations("common");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -33,12 +36,12 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
     const result = await updateProfileSettings(formData);
 
     if (result.error) {
-      toast({ title: "Error", description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: result.error, variant: "destructive" });
       setLoading(false);
       return;
     }
 
-    toast({ title: "Profile updated", description: "Your profile has been updated successfully." });
+    toast({ title: t("success") });
     router.refresh();
     setLoading(false);
   }
@@ -47,17 +50,17 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="fullName">Full Name</Label>
+          <Label htmlFor="fullName">{t("nameLabel")}</Label>
           <Input
             id="fullName"
             name="fullName"
             defaultValue={fullName}
-            placeholder="Your full name"
+            placeholder={t("namePlaceholder")}
             required
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="timezone">Timezone</Label>
+          <Label htmlFor="timezone">{t("timezoneLabel")}</Label>
           <select
             id="timezone"
             name="timezone"
@@ -77,18 +80,18 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="bio">Bio</Label>
+        <Label htmlFor="bio">{t("bioLabel")}</Label>
         <Textarea
           id="bio"
           name="bio"
           defaultValue={bio}
-          placeholder="Tell us about yourself"
+          placeholder={t("bioPlaceholder")}
           rows={3}
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="language">Language</Label>
+        <Label htmlFor="language">{t("languageLabel")}</Label>
         <select
           id="language"
           name="language"
@@ -103,7 +106,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
       </div>
 
       <Button type="submit" disabled={loading}>
-        {loading ? "Saving..." : "Save Changes"}
+        {loading ? t("saving") : t("submit")}
       </Button>
     </form>
   );

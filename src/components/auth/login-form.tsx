@@ -61,7 +61,7 @@ export function LoginForm() {
       },
     });
     if (error) {
-      toast({ title: "GitHub 登录失败", description: error.message, variant: "destructive" });
+      toast({ title: t("login.oauthError", { provider: "GitHub" }), description: error.message, variant: "destructive" });
       setLoading(false);
     }
   };
@@ -75,7 +75,7 @@ export function LoginForm() {
       },
     });
     if (error) {
-      toast({ title: "Google 登录失败", description: error.message, variant: "destructive" });
+      toast({ title: t("login.oauthError", { provider: "Google" }), description: error.message, variant: "destructive" });
       setLoading(false);
     }
   };

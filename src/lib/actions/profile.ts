@@ -7,7 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { profileUpdateSchema, type ProfileUpdateInput } from "@/lib/validations/profile";
+import { profileUpdateSchema, profileSettingsSchema, type ProfileUpdateInput } from "@/lib/validations/profile";
 import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -75,19 +75,25 @@ export async function updateProfileSettings(formData: FormData) {
     return { error: "Not authenticated" };
   }
 
-  const fullName = formData.get("fullName") as string;
-  const bio = formData.get("bio") as string;
-  const timezone = formData.get("timezone") as string;
-  const language = formData.get("language") as string;
+  // 白名单 + 类型/长度校验：拒绝任意字段值直接写入 profiles
+  const parsed = profileSettingsSchema.safeParse({
+    fullName: formData.get("fullName")?.toString(),
+    bio: formData.get("bio")?.toString(),
+    timezone: formData.get("timezone")?.toString(),
+    language: formData.get("language")?.toString(),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? "Invalid input" };
+  }
 
   const { error } = await supabase
     .from("profiles")
     // @ts-ignore - Supabase update type inference limitation
     .update({
-      full_name: fullName,
-      bio,
-      timezone,
-      language,
+      full_name: parsed.data.fullName,
+      bio: parsed.data.bio ?? null,
+      timezone: parsed.data.timezone ?? null,
+      language: parsed.data.language ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", user.id);

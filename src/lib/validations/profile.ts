@@ -10,11 +10,11 @@ export const profileUpdateSchema = z.object({
 });
 
 export const profileSettingsSchema = z.object({
-  fullName: z.string().min(1, "Full name is required").max(100),
+  fullName: z.string().trim().min(1, "Full name is required").max(100),
   email: z.string().email().optional(),
-  bio: z.string().max(500).optional(),
-  timezone: z.string().optional(),
-  language: z.string().optional(),
+  bio: z.string().trim().max(500).nullable().optional(),
+  timezone: z.string().trim().max(100).nullable().optional(),
+  language: z.string().trim().max(50).nullable().optional(),
 });
 
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
