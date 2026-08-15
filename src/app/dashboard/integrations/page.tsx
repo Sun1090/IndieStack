@@ -13,22 +13,35 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { Puzzle, Github, CreditCard, Bell, Database } from "lucide-react";
 
+type IntegrationItem = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+type IntegrationConfig = {
+  icon: typeof Github;
+  color: string;
+  status: "connected" | "available";
+};
+
+const integrationConfig: Record<string, IntegrationConfig> = {
+  github: { icon: Github, color: "text-[#333]", status: "connected" },
+  stripe: { icon: CreditCard, color: "text-[#635bff]", status: "connected" },
+  sentry: { icon: Bell, color: "text-[#362d59]", status: "connected" },
+  supabase: { icon: Database, color: "text-[#3ecf8e]", status: "connected" },
+  slack: { icon: Puzzle, color: "text-[#4A154B]", status: "available" },
+  discord: { icon: Puzzle, color: "text-[#5865F2]", status: "available" },
+};
+
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
   return { title: t("integrations.metaTitle"), description: t("integrations.metaDesc") };
 }
 
-const integrations = [
-  { name: "GitHub", description: "Connect your repositories for automated deployments.", icon: Github, status: "connected", color: "text-[#333]" },
-  { name: "Stripe", description: "Payment processing and subscription management.", icon: CreditCard, status: "connected", color: "text-[#635bff]" },
-  { name: "Sentry", description: "Error monitoring and performance tracking.", icon: Bell, status: "connected", color: "text-[#362d59]" },
-  { name: "Supabase", description: "Database, authentication, and realtime subscriptions.", icon: Database, status: "connected", color: "text-[#3ecf8e]" },
-  { name: "Slack", description: "Receive deployment notifications and alerts.", icon: Puzzle, status: "available", color: "text-[#4A154B]" },
-  { name: "Discord", description: "Send notifications to your Discord server.", icon: Puzzle, status: "available", color: "text-[#5865F2]" },
-];
-
 export default async function IntegrationsPage() {
   const t = await getTranslations("dashboard");
+  const integrations = t.raw("integrations.items") as IntegrationItem[];
 
   return (
     <div className="space-y-8">
@@ -36,16 +49,18 @@ export default async function IntegrationsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {integrations.map((integration) => {
-          const Icon = integration.icon;
+          const config = integrationConfig[integration.id];
+          if (!config) return null;
+          const Icon = config.icon;
           return (
-            <Card key={integration.name} className="transition-colors hover:border-primary/50">
+            <Card key={integration.id} className="transition-colors hover:border-primary/50">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <Icon className={`h-5 w-5 ${integration.color}`} />
+                    <Icon className={`h-5 w-5 ${config.color}`} />
                   </div>
-                  <Badge variant={integration.status === "connected" ? "default" : "outline"}>
-                    {integration.status === "connected" ? t("integrations.connected") : t("integrations.notConnected")}
+                  <Badge variant={config.status === "connected" ? "default" : "outline"}>
+                    {config.status === "connected" ? t("integrations.connected") : t("integrations.notConnected")}
                   </Badge>
                 </div>
                 <CardTitle className="mt-4 text-base">{integration.name}</CardTitle>
