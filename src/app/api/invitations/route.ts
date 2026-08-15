@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
-import { safelyRequirePermission } from "@/lib/auth/guards";
+import { safelyRequirePermission, guardHttpStatus } from "@/lib/auth/guards";
 import { inviteMemberSchema } from "@/lib/validations/team";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.read);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 403 });
+    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
   }
 
   const { searchParams } = new URL(request.url);
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.invite);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 403 });
+    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
   }
 
   try {
@@ -198,7 +198,7 @@ export async function DELETE(request: NextRequest) {
   }
   const auth = await safelyRequirePermission(PERMISSIONS.team.remove);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 403 });
+    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
   }
 
   try {

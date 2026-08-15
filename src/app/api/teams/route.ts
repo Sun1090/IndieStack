@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
-import { safelyRequireAuth, safelyRequirePermission } from "@/lib/auth/guards";
+import { safelyRequireAuth, safelyRequirePermission, guardHttpStatus } from "@/lib/auth/guards";
 import { createTeamSchema, updateTeamSchema } from "@/lib/validations/team";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import type { Database } from "@/lib/supabase/database.types";
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.read);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 403 });
+    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
   }
 
   const { searchParams } = new URL(request.url);
@@ -49,9 +49,13 @@ export async function GET(request: NextRequest) {
         .from("teams")
         .select("*")
         .eq("id", teamId)
-        .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: { message: string } | null };
+        .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: { message: string; code?: string } | null };
 
       if (teamError) {
+        // RLS 下非成员或不存在时 .single() 返回 0 行（PGRST116），对外统一 404，避免区分存在性
+        if (teamError.code === "PGRST116") {
+          return NextResponse.json({ error: "Team not found" }, { status: 404 });
+        }
         console.error("[Teams API] 获取团队详情失败:", teamError.message);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
       }
@@ -177,7 +181,7 @@ export async function PATCH(request: NextRequest) {
   }
   const auth = await safelyRequirePermission(PERMISSIONS.team.write);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 403 });
+    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
   }
 
   try {
@@ -239,7 +243,7 @@ export async function DELETE(request: NextRequest) {
   }
   const auth = await safelyRequirePermission(PERMISSIONS.team.delete);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 403 });
+    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
   }
 
   try {
