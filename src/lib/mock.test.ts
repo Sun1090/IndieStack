@@ -82,3 +82,33 @@ describe("Mock API Keys", () => {
     expect(asRows(after)[0].is_active).toBe(false);
   });
 });
+
+describe("Mock Teams", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  it("in 过滤可返回用户所属团队列表", async () => {
+    const client = createMockSupabaseClient();
+    const { data, error } = await client
+      .from("teams")
+      .select("*")
+      .in("id", ["mock-team-001"]);
+
+    expect(error).toBeNull();
+    expect(Array.isArray(data)).toBe(true);
+    const rows = asRows(data);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe("mock-team-001");
+  });
+
+  it("in 过滤不匹配时返回空列表", async () => {
+    const client = createMockSupabaseClient();
+    const { data } = await client
+      .from("teams")
+      .select("*")
+      .in("id", ["00000000-0000-0000-0000-000000000000"]);
+
+    expect(asRows(data)).toHaveLength(0);
+  });
+});
