@@ -48,7 +48,7 @@
         },
         {
           "q": "What are the third-party costs?",
-          "a": "Main costs include: Supabase (database & auth), Vercel (hosting), Sentry (monitoring), Stripe (payments), and Alibaba Cloud OSS (file storage)."
+          "a": "Main costs include: Supabase (database & auth), Vercel (hosting), Sentry (monitoring), Stripe (payments)."
         }
       ]
     },

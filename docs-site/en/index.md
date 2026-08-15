@@ -32,7 +32,7 @@ features:
   - title: "💳 Payment Ready"
     details: Stripe subscription billing, Webhook handling, Checkout, Customer Portal self-management.
   - title: "🛡️ Production Monitoring"
-    details: Sentry error tracking (client/edge/server), Appark APM, Alibaba Cloud OSS file storage.
+    details: Sentry error tracking (client/edge/server), structured logging, security headers.
   - title: "🚀 One-Click Deploy"
     details: Vercel + GitHub Actions CI/CD, Docker containerization, environment-based configuration.
   - title: "🌐 Internationalization"

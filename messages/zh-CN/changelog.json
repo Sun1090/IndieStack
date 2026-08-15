@@ -85,10 +85,6 @@
         {
           "type": "feature",
           "text": "Sentry 错误监控"
-        },
-        {
-          "type": "feature",
-          "text": "阿里云 OSS 文件存储"
         }
       ]
     }

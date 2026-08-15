@@ -48,7 +48,7 @@
         },
         {
           "q": "有哪些第三方服务费用？",
-          "a": "主要费用包括：Supabase（数据库和认证）、Vercel（托管）、Sentry（监控）、Stripe（支付处理）和阿里云 OSS（文件存储）。"
+          "a": "主要费用包括：Supabase（数据库和认证）、Vercel（托管）、Sentry（监控）、Stripe（支付处理）。"
         }
       ]
     },

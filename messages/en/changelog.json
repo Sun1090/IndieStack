@@ -85,10 +85,6 @@
         {
           "type": "feature",
           "text": "Sentry error monitoring"
-        },
-        {
-          "type": "feature",
-          "text": "Alibaba Cloud OSS file storage"
         }
       ]
     }

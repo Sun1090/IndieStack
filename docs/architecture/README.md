@@ -16,7 +16,7 @@
 | 08 | [Server Actions](./08-server-actions.md) | Actions 清单、数据流、输入验证、缓存刷新、测试覆盖 |
 | 09 | [前端组件](./09-frontend-components.md) | 组件分层、UI 组件、共享组件、布局组件、Provider、Hooks、主题系统 |
 | 10 | [国际化](./10-i18n.md) | next-intl 配置、命名空间、消息加载、语言切换 |
-| 11 | [第三方集成](./11-integrations.md) | Supabase、Stripe、Sentry、阿里云 OSS、Appark APM 集成详情 |
+| 11 | [第三方集成](./11-integrations.md) | Supabase、Stripe、Sentry、阿里云 OSS（规划中）、Appark APM（规划中）集成详情 |
 | 12 | [部署架构](./12-deployment.md) | Docker 部署、Vercel 部署、CI/CD、文档站、健康检查 |
 | 13 | [Mock 系统](./13-mock-system.md) | Mock 模式、数据生成、缓存机制、使用场景 |
 | 14 | [数据流程](./14-data-flow.md) | 注册、登录、OAuth、团队邀请、订阅支付、文件上传等核心流程图 |

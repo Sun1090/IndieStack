@@ -57,7 +57,7 @@ When `NEXT_PUBLIC_MOCK_ENABLED=true`, all Supabase queries use `@faker-js/faker`
 | Technology | Usage | Configuration |
 |-----------|-------|--------------|
 | Sentry | Error tracking + performance | Client/Edge/Server configs, auto source map upload |
-| Appark | APM | Page performance tracing, event reporting, error tracking, session management |
+| Appark | APM (planned) | Not wired; module removed |
 | Stripe | Payment processing | Subscription billing, Webhook handling, price plan management |
 
 ## Deployment
@@ -67,7 +67,7 @@ When `NEXT_PUBLIC_MOCK_ENABLED=true`, all Supabase queries use `@faker-js/faker`
 | Vercel | Frontend + API hosting | GitHub auto-deploy (`vercel --prod`) |
 | GitHub Actions | CI/CD | PR auto lint + type-check + test, main merge auto deploy |
 | Docker | Containerized deployment | Multi-stage build (Node → Nginx), Docker Compose for local dev |
-| Alibaba Cloud OSS | File storage + CDN | SDK-based upload with CDN acceleration |
+| Alibaba Cloud OSS | File storage + CDN (planned) | Not wired; see architecture docs |
 
 ## Version Management
 

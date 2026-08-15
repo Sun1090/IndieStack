@@ -29,7 +29,6 @@ indiestack/
 │   │   ├── stripe/               # Stripe 支付
 │   │   ├── supabase/             # 4 个 Supabase 客户端
 │   │   ├── validations/          # Zod 校验
-│   │   ├── appark.ts             # Appark APM
 │   │   ├── constants.ts          # 常量
 │   │   └── utils.ts              # 工具函数
 │   └── middleware.ts

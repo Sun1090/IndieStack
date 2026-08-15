@@ -18,7 +18,7 @@
 ├─────────────────────────────────────────────┤
 │              Infrastructure                 │
 │  Supabase  PostgreSQL  Vercel  Sentry       │
-│  Alibaba OSS  Stripe  Appark  GitHub CI     │
+│  Alibaba OSS  Stripe  Docker  GitHub CI    │
 └─────────────────────────────────────────────┘
 ```
 

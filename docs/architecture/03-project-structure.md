@@ -111,7 +111,6 @@ Project/
 │   │   │   ├── profile.ts
 │   │   │   ├── settings.ts
 │   │   │   └── team.ts
-│   │   ├── appark.ts             # APM 性能监控
 │   │   ├── constants.ts          # 全局常量
 │   │   ├── csv.ts                # CSV 工具
 │   │   ├── date.ts               # 日期工具

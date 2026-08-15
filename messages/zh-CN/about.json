@@ -68,10 +68,6 @@
         "desc": "前端部署和托管平台"
       },
       {
-        "name": "阿里云",
-        "desc": "云存储和 CDN 服务"
-      },
-      {
         "name": "GitHub Actions",
         "desc": "CI/CD 持续集成和部署"
       }

@@ -32,7 +32,7 @@ features:
   - title: "💳 支付就绪"
     details: Stripe 订阅计费，Webhook 处理，Checkout 结账，Customer Portal 自助管理。
   - title: "🛡️ 生产级监控"
-    details: Sentry 错误追踪（client/edge/server），Appark APM，阿里云 OSS 文件存储。
+    details: Sentry 错误追踪（client/edge/server），结构化日志，安全响应头。
   - title: "🚀 一键部署"
     details: Vercel + GitHub Actions CI/CD，Docker 容器化，环境变量分环境管理。
   - title: "🌐 国际化"

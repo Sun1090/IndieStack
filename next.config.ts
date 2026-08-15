@@ -15,11 +15,7 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "*.oss-cn-hangzhou.aliyuncs.com",
-        pathname: "/**",
-      },
+      // OSS 为规划中/未接线（见 docs/architecture/11-integrations.md），域名白名单暂不预留
       {
         protocol: "https",
         hostname: "*.vercel-storage.com",

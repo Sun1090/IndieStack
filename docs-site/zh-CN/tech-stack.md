@@ -58,11 +58,11 @@
  | 技术 | 用途 | 配置方式 |
  |------|------|----------|
  | Sentry | 错误追踪 + 性能监控 | Client/Edge/Server 三端配置，Source Maps 自动上传 |
- | Appark | 应用性能监控（APM） | 页面性能追踪、事件上报、错误追踪、自动会话管理 |
+ | Appark | 应用性能监控（APM，规划中） | 未接线，模块已移除 |
  | Stripe | 支付处理 | 订阅计费、Webhook 处理、价格方案管理 |
  
  Sentry 通过 `instrumentation.ts` 自动加载，分别在 `sentry/client.config.ts`、`sentry/server.config.ts`、`sentry/edge.config.ts` 中配置。
- Appark 通过 `lib/appark.ts` 模块实现，支持事件队列、采样率、会话管理。
+ Appark 当前为**规划中/未接线**，历史模块已移除，未接入任何页面。
  
  ## 部署方案
  
@@ -71,7 +71,7 @@
  | Vercel | 前端 + API 托管 | GitHub 自动部署（`vercel --prod`） |
  | GitHub Actions | CI/CD | PR 自动 lint + type-check + test，合并 main 自动部署 |
  | Docker | 容器化部署 | 多阶段构建（Node → Nginx），Docker Compose 本地开发 |
- | 阿里云 OSS | 文件存储 + CDN | 基于 aliyun-oss-sdk，附带 CDN 加速 |
+ | 阿里云 OSS | 文件存储 + CDN（规划中） | 未接线，详见架构文档 |
  
  ## 版本管理
  

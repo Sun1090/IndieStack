@@ -49,7 +49,7 @@ graph TB
         Stripe["Stripe<br/>(支付/订阅)"]
         Sentry["Sentry<br/>(错误监控)"]
         OSS["阿里云 OSS<br/>(文件存储)"]
-        Appark["Appark<br/>(APM 性能监控)"]
+        Appark["Appark<br/>(APM 性能监控，规划中)"]
     end
 
     Browser --> MW
@@ -71,7 +71,7 @@ graph TB
     StripeLib --> Stripe
     StorageLib --> OSS
     LoggerLib --> Sentry
-    Lib --> Appark
+    Lib -.-> Appark
 ```
 
 ## 架构分层
@@ -108,7 +108,7 @@ graph LR
 2. **中间件层** — Edge Middleware，处理会话刷新和路由级保护，在每个请求到达页面前执行
 3. **业务逻辑层** — Server Actions、API Route Handlers、Auth Guards，处理业务逻辑和权限校验
 4. **数据访问层** — Supabase 客户端（Server/Browser/Admin）、Stripe 客户端、OSS 客户端，封装外部服务访问
-5. **基础设施层** — PostgreSQL 数据库、Stripe 支付网关、Sentry 错误监控、阿里云 OSS、Appark APM
+5. **基础设施层** — PostgreSQL 数据库、Stripe 支付网关、Sentry 错误监控、阿里云 OSS（规划中）、Appark APM（规划中）
 
 ## 核心设计原则
 
@@ -133,7 +133,7 @@ graph LR
 | 国际化 | next-intl | ^4.13.2 |
 | 错误监控 | Sentry | @sentry/nextjs ^9.5.0 |
 | 文件存储 | 阿里云 OSS | 自定义封装 |
-| 性能监控 | Appark APM | 自定义封装 |
+| 性能监控 | Appark APM（规划中） | 自定义封装（未接线） |
 | 测试 | Vitest + @faker-js/faker | Vitest ^4.1.10 |
 | 包管理 | pnpm | — |
 | 部署 | Docker / Vercel | — |
