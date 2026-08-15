@@ -159,6 +159,12 @@ class MockQueryBuilder {
     return this;
   }
 
+  /** 过滤条件 in */
+  in(column: string, values: unknown[]) {
+    this.filters[`${column}:in`] = values;
+    return this;
+  }
+
   /** 过滤条件 gte */
   gte(column: string, value: unknown) {
     this.filters[`${column}:gte`] = value;
@@ -296,7 +302,8 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(list);
       }
       case "teams":
-        return getMockTeam();
+        // 以数组形式返回并应用过滤，使列表/详情查询与真实 PostgREST 行为一致
+        return this.applyFiltersAndPagination([getMockTeam()]);
       case "team_members": {
         const members = getMockMembers();
         return this.applyFiltersAndPagination(members);
@@ -342,6 +349,12 @@ class MockQueryBuilder {
       );
     }
     Object.entries(this.filters).forEach(([key, value]) => {
+      if (key.endsWith(":in")) {
+        const column = key.slice(0, -3);
+        const values = value as unknown[];
+        result = result.filter((item: any) => values.includes(item[column]));
+        return;
+      }
       if (!key.endsWith(":gte")) return;
       const column = key.slice(0, -4);
       result = result.filter((item: any) => new Date(item[column]) >= new Date(value as string));
