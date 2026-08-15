@@ -3,8 +3,9 @@
  * 使用 service_role key 创建，可绕过行级安全策略（RLS）
  * 仅用于需要管理员权限的服务端操作（如 Webhook 处理、后台管理任务）
  */
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
+import { shouldUseMock, createMockSupabaseClient } from "@/lib/mock";
 
 /**
  * 创建 Supabase 管理客户端
@@ -16,7 +17,12 @@ import type { Database } from "./database.types";
  *   import { createAdminClient } from "@/lib/supabase/admin"
  *   const supabaseAdmin = createAdminClient()
  */
-export function createAdminClient() {
+export function createAdminClient(): SupabaseClient<Database> {
+  // Mock 模式：返回 Mock 客户端，避免管理后台在开发环境依赖真实 service_role 连接
+  if (shouldUseMock()) {
+    return createMockSupabaseClient() as unknown as SupabaseClient<Database>;
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
