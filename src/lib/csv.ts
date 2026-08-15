@@ -20,8 +20,12 @@ export function toCsvString(data: Record<string, unknown>[]): string {
 
 /**
  * 转义 CSV 字段（处理包含逗号、引号、换行符的情况）
+ * 同时防御 CSV 公式注入：以 = + - @ 开头的字段加前缀单引号
  */
 function escapeCsvField(value: string): string {
+  if (/^[=+\-@]/.test(value.trimStart())) {
+    value = `'${value}`;
+  }
   if (value.includes(",") || value.includes('"') || value.includes("\n")) {
     return '"' + value.replace(/"/g, '""') + '"';
   }
