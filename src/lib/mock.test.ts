@@ -112,3 +112,22 @@ describe("Mock Teams", () => {
     expect(asRows(data)).toHaveLength(0);
   });
 });
+
+describe("Mock Admin Auth", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  it("admin.listUsers 返回含当前用户的用户列表", async () => {
+    const client = createMockSupabaseClient();
+    const { data, error } = await client.auth.admin.listUsers();
+
+    expect(error).toBeNull();
+    expect(Array.isArray(data.users)).toBe(true);
+    expect(data.users.length).toBeGreaterThan(0);
+    expect(data.users[0]).toMatchObject({
+      id: MOCK_USER_ID,
+      email: "dev@indiestack.local",
+    });
+  });
+});

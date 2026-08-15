@@ -425,6 +425,17 @@ export class MockSupabaseClient {
         data: { subscription: { unsubscribe: () => {} } },
       };
     },
+    // 管理接口：供 createAdminClient() 在 Mock 模式下使用
+    admin: {
+      listUsers: async () => {
+        const user = getMockUser();
+        const others = Array.from({ length: 9 }, () => generateMockUser());
+        return { data: { users: [user, ...others] }, error: null };
+      },
+      deleteUser: async () => {
+        return { data: { user: getMockUser() }, error: null };
+      },
+    },
   };
 
   from(table: string) {
