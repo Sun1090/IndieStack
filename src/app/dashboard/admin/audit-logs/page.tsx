@@ -71,7 +71,7 @@ export default function AdminAuditLogsPage() {
 
   /** 操作类型的中文标签 */
   function actionLabel(action: string): string {
-    try { return t(`actionLabels.${action}` as any); } catch { return action; }
+    try { return t(`auditLogs.actionLabels.${action}` as any); } catch { return action; }
   }
 
   /** 操作类型对应的 Badge 颜色 */
