@@ -192,3 +192,11 @@ export async function safelyRequireRole(
 
   return result;
 }
+
+/**
+ * 将守卫失败错误映射为 HTTP 状态码（API Route 使用）
+ * 未登录 → 401 Unauthorized；已登录但无权限 → 403 Forbidden
+ */
+export function guardHttpStatus(error: AuthGuardError): 401 | 403 {
+  return error.code === "UNAUTHORIZED" ? 401 : 403;
+}
