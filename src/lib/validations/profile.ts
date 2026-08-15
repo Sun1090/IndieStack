@@ -5,12 +5,12 @@
 import { z } from "zod";
 
 export const profileUpdateSchema = z.object({
-  fullName: z.string().min(1, "Full name is required").max(100).optional(),
+  fullName: z.string().min(1, "fullNameRequired").max(100).optional(),
   avatarUrl: z.string().url().nullable().optional(),
 });
 
 export const profileSettingsSchema = z.object({
-  fullName: z.string().trim().min(1, "Full name is required").max(100),
+  fullName: z.string().trim().min(1, "fullNameRequired").max(100),
   email: z.string().email().optional(),
   bio: z.string().trim().max(500).nullable().optional(),
   timezone: z.string().trim().max(100).nullable().optional(),

@@ -27,6 +27,7 @@ import { listAdminUsers, updateUserRole as updateAdminUserRole, type AdminUser }
 
 export default function AdminUsersPage() {
   const t = useTranslations("admin");
+  const ta = useTranslations("actions");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -36,12 +37,12 @@ export default function AdminUsersPage() {
     setLoading(true);
     const result = await listAdminUsers();
     if (!result.success) {
-      toast({ title: t("users.updateFailed"), description: result.error, variant: "destructive" });
+      toast({ title: t("users.updateFailed"), description: ta(result.error), variant: "destructive" });
     } else {
       setUsers(result.data);
     }
     setLoading(false);
-  }, [t]);
+  }, [t, ta]);
 
   useEffect(() => {
     loadUsers();
@@ -52,7 +53,7 @@ export default function AdminUsersPage() {
     const result = await updateAdminUserRole(userId, newRole as "member" | "admin" | "viewer");
 
     if (!result.success) {
-      toast({ title: t("users.updateFailed"), description: result.error, variant: "destructive" });
+      toast({ title: t("users.updateFailed"), description: ta(result.error), variant: "destructive" });
       return;
     }
 

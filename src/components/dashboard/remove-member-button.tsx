@@ -21,13 +21,14 @@ export function RemoveMemberButton({ memberId }: RemoveMemberButtonProps) {
   const [loading, setLoading] = useState(false);
   const t = useTranslations("dashboard");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
 
   async function handleRemove() {
     setLoading(true);
     const result = await removeMember(memberId);
 
     if (result.error) {
-      toast({ title: tc("failed"), description: result.error, variant: "destructive" });
+      toast({ title: tc("failed"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }

@@ -24,6 +24,7 @@ export default function CreateProjectPage() {
   const router = useRouter();
   const t = useTranslations("dashboard");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -47,7 +48,7 @@ export default function CreateProjectPage() {
 
     const result = await createProject({ name, slug, description });
     if (result.error) {
-      toast({ title: tc("error"), description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }

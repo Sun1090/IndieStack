@@ -37,6 +37,7 @@ import { formatDate } from "@/lib/date";
 
 export default function ApiKeysPage() {
   const t = useTranslations("dashboard");
+  const ta = useTranslations("actions");
   const locale = useLocale();
   const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,11 +52,11 @@ export default function ApiKeysPage() {
     setLoading(true);
     const result = await listApiKeys();
     if (result.error) {
-      toast({ title: t("apiKeys.loadError"), description: result.error, variant: "destructive" });
+      toast({ title: t("apiKeys.loadError"), description: ta(result.error), variant: "destructive" });
     }
     setKeys(result.data);
     setLoading(false);
-  }, [t]);
+  }, [t, ta]);
 
   useEffect(() => {
     loadKeys();
@@ -72,7 +73,7 @@ export default function ApiKeysPage() {
     const result = await createApiKey({ name: newKeyName.trim(), scope: newKeyScope as "read" | "all" });
 
     if (result.error) {
-      toast({ title: t("apiKeys.createError"), description: result.error, variant: "destructive" });
+      toast({ title: t("apiKeys.createError"), description: ta(result.error), variant: "destructive" });
       setCreating(false);
       return;
     }
@@ -88,7 +89,7 @@ export default function ApiKeysPage() {
     const result = await revokeApiKey(keyId);
 
     if (result.error) {
-      toast({ title: t("apiKeys.revokeError"), description: result.error, variant: "destructive" });
+      toast({ title: t("apiKeys.revokeError"), description: ta(result.error), variant: "destructive" });
       return;
     }
 

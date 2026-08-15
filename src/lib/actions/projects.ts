@@ -10,13 +10,13 @@ import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
 
 const createProjectSchema = z.object({
-  name: z.string().trim().min(1, "Project name is required").max(100),
+  name: z.string().trim().min(1, "projectNameRequired").max(100),
   slug: z
     .string()
     .trim()
-    .min(2, "Slug must be at least 2 characters")
+    .min(2, "slugMinLength")
     .max(50)
-    .regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens"),
+    .regex(/^[a-z0-9-]+$/, "slugInvalid"),
   description: z.string().trim().max(500).optional(),
 });
 
@@ -27,12 +27,12 @@ export async function createProject(input: CreateProjectInput) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const validated = createProjectSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "Invalid input" };
+    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
   }
 
   const { data: membership } = await supabase
@@ -43,11 +43,11 @@ export async function createProject(input: CreateProjectInput) {
     .maybeSingle() as unknown as { data: { team_id: string; role: string } | null; error: null };
 
   if (!membership) {
-    return { error: "No team found" };
+    return { error: "noTeam" };
   }
 
   if (!["owner", "admin"].includes(membership.role)) {
-    return { error: "Only team admins can create projects" };
+    return { error: "onlyAdminsCreateProject" };
   }
 
   const { data: project, error } = await supabase
@@ -66,9 +66,10 @@ export async function createProject(input: CreateProjectInput) {
 
   if (error) {
     if (error.code === "23505") {
-      return { error: "A project with this slug already exists in your team" };
+      return { error: "projectSlugExists" };
     }
-    return { error: error.message };
+    console.error("[createProject] 创建项目失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.dashboardProjects);

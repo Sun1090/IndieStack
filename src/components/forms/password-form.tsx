@@ -18,6 +18,7 @@ export function PasswordForm() {
   const router = useRouter();
   const t = useTranslations("dashboard.settings.sections.password");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -28,7 +29,7 @@ export function PasswordForm() {
     const result = await updatePassword(formData);
 
     if (result.error) {
-      toast({ title: tc("error"), description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }

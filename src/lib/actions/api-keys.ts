@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
 
 const createApiKeySchema = z.object({
-  name: z.string().trim().min(1, "Key name is required").max(60),
+  name: z.string().trim().min(1, "keyNameRequired").max(60),
   scope: z.enum(["read", "all"]).default("read"),
 });
 
@@ -48,7 +48,7 @@ export async function listApiKeys() {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { data: [], error: "Not authenticated" };
+    return { data: [], error: "notAuthenticated" };
   }
 
   const { data, error } = await supabase
@@ -58,7 +58,8 @@ export async function listApiKeys() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return { data: [], error: error.message };
+    console.error("[listApiKeys] 获取密钥列表失败:", error);
+    return { data: [], error: "databaseError" };
   }
 
   return { data: (data ?? []).map((row: Record<string, unknown>) => toRecord(row)), error: null };
@@ -69,12 +70,12 @@ export async function createApiKey(input: { name: string; scope: "read" | "all" 
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const validated = createApiKeySchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "Invalid input" };
+    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
   }
 
   const rawKey = `isk_${randomBytes(24).toString("base64url")}`;
@@ -96,7 +97,8 @@ export async function createApiKey(input: { name: string; scope: "read" | "all" 
     .single();
 
   if (error) {
-    return { error: error.message };
+    console.error("[createApiKey] 创建密钥失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.apiKeys);
@@ -121,7 +123,7 @@ export async function revokeApiKey(keyId: string) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const { error } = await supabase
@@ -131,7 +133,8 @@ export async function revokeApiKey(keyId: string) {
     .eq("user_id", user.id);
 
   if (error) {
-    return { error: error.message };
+    console.error("[revokeApiKey] 吊销密钥失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.apiKeys);

@@ -25,6 +25,7 @@ export default function CreateTeamPage() {
   const router = useRouter();
   const t = useTranslations("dashboard");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -47,14 +48,14 @@ export default function CreateTeamPage() {
 
     const parsed = createTeamSchema.safeParse({ name, slug });
     if (!parsed.success) {
-      toast({ title: tc("error"), description: parsed.error.errors[0].message, variant: "destructive" });
+      toast({ title: tc("error"), description: ta(parsed.error.errors[0].message), variant: "destructive" });
       setLoading(false);
       return;
     }
 
     const result = await createTeam(parsed.data);
     if (result.error) {
-      toast({ title: tc("error"), description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }
