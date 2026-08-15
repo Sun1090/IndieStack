@@ -149,7 +149,9 @@
         "owner": "拥有者",
         "admin": "管理员",
         "member": "成员"
-      }
+      },
+      "noTeamDesc": "你还不是任何团队的成员。",
+      "unknownMember": "未知成员"
     },
     "invite": {
       "metaTitle": "邀请成员",
@@ -174,7 +176,9 @@
       "nameLabel": "团队名称",
       "namePlaceholder": "输入团队名称",
       "submit": "创建团队",
-      "success": "团队创建成功！"
+      "success": "团队创建成功！",
+      "slugLabel": "标识",
+      "slugPlaceholder": "例如：my-team"
     }
   },
   "billing": {
@@ -255,7 +259,9 @@
       "descriptionLabel": "项目描述",
       "descriptionPlaceholder": "简单描述这个项目",
       "submit": "创建项目",
-      "success": "项目创建成功！"
+      "success": "项目创建成功！",
+      "slugLabel": "标识",
+      "slugPlaceholder": "例如：my-project"
     },
     "detail": {
       "metaTitle": "项目详情",
@@ -263,7 +269,21 @@
       "overview": "项目概览",
       "members": "成员",
       "settings": "设置",
-      "backToProjects": "返回项目列表"
+      "backToProjects": "返回项目列表",
+      "labels": {
+        "framework": "框架",
+        "domain": "域名",
+        "notConfigured": "未配置",
+        "created": "创建时间",
+        "status": "状态",
+        "branch": "分支",
+        "visibility": "可见性",
+        "region": "区域",
+        "projectId": "项目 ID",
+        "slug": "标识",
+        "createdBy": "创建者",
+        "lastUpdated": "最后更新"
+      }
     }
   },
   "notifications": {

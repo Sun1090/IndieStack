@@ -84,8 +84,8 @@ export default function CreateProjectPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="slug">Slug</Label>
-              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="my-project" required />
+              <Label htmlFor="slug">{t("projects.create.slugLabel")}</Label>
+              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={t("projects.create.slugPlaceholder")} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">{t("projects.create.descriptionLabel")}</Label>
