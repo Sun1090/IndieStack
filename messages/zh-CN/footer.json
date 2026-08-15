@@ -3,6 +3,6 @@
   "product": "产品",
   "resources": "资源",
   "company": "公司",
-  "builtWith": "使用 {tech1}、{tech2}、{tech3} 和 {tech4} 构建。",
+  "builtWith": "使用 <nextjs>Next.js</nextjs>、<tailwind>Tailwind CSS</tailwind>、<shadcn>shadcn/ui</shadcn> 和 <supabase>Supabase</supabase> 构建。",
   "copyright": "© {year} {name}。保留所有权利。"
 }
