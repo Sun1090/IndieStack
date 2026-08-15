@@ -57,7 +57,7 @@ export default function AdminUsersPage() {
     }
 
     const roleLabel = t(`roleLabels.${newRole}` as any);
-    toast({ title: t("users.updateSuccess"), description: t("users.updateSuccessDesc").replace("{0}", roleLabel) });
+    toast({ title: t("users.updateSuccess"), description: t("users.updateSuccessDesc", { roleLabel }) });
     loadUsers();
   }
 
@@ -106,7 +106,7 @@ export default function AdminUsersPage() {
         <CardHeader>
           <CardTitle>{t("users.userList")}</CardTitle>
           <CardDescription>
-            {t("users.totalUsers").replace("{0}", String(filteredUsers.length))}
+            {t("users.totalUsers", { count: filteredUsers.length })}
             {search ? t("users.filteredSuffix") : ""}
           </CardDescription>
         </CardHeader>
@@ -143,7 +143,7 @@ export default function AdminUsersPage() {
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">{user.email}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {t("users.registeredAt").replace("{0}", new Date(user.created_at).toLocaleDateString())}
+                        {t("users.registeredAt", { date: new Date(user.created_at).toLocaleDateString() })}
                       </p>
                     </div>
                   </div>

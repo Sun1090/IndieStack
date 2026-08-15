@@ -3,6 +3,6 @@
   "product": "产品",
   "resources": "资源",
   "company": "公司",
-  "builtWith": "使用 {0}、{1}、{2} 和 {3} 构建。",
-  "copyright": "© {0} {1}。保留所有权利。"
+  "builtWith": "使用 {tech1}、{tech2}、{tech3} 和 {tech4} 构建。",
+  "copyright": "© {year} {name}。保留所有权利。"
 }

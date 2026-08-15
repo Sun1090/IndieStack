@@ -49,7 +49,7 @@ export default async function BillingPage() {
         <CardHeader>
           <CardTitle>{t("billing.sectionTitle")}</CardTitle>
           <CardDescription>
-            {t("billing.currentPlanDesc").replace("{0}", (SUBSCRIPTION_TIERS[currentPlan as keyof typeof SUBSCRIPTION_TIERS]?.name ?? "Free"))}
+            {t("billing.currentPlanDesc", { planName: SUBSCRIPTION_TIERS[currentPlan as keyof typeof SUBSCRIPTION_TIERS]?.name ?? "Free" })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -100,7 +100,7 @@ export default async function BillingPage() {
                     <CheckoutButton
                       className="w-full"
                       priceId={tier.priceId}
-                      label={t("billing.upgradeTo").replace("{0}", tier.name)}
+                      label={t("billing.upgradeTo", { planName: tier.name })}
                     />
                   )}
                 </CardContent>

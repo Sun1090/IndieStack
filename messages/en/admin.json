@@ -34,12 +34,12 @@
     "desc": "Manage roles and permissions for all platform users",
     "searchPlaceholder": "Search by name, email or role...",
     "userList": "User List",
-    "totalUsers": "{0} users total",
+    "totalUsers": "{count} users total",
     "filteredSuffix": " (filtered)",
     "noUsers": "No users yet",
     "noMatch": "No matching users found",
     "nameNotSet": "Name not set",
-    "registeredAt": "Registered on {0}",
+    "registeredAt": "Registered on {date}",
     "changeRole": "Change Role",
     "roleLabels": {
       "super_admin": "Super Admin",
@@ -48,7 +48,7 @@
       "viewer": "Viewer"
     },
     "updateSuccess": "Role updated",
-    "updateSuccessDesc": "User role changed to {0}",
+    "updateSuccessDesc": "User role changed to {roleLabel}",
     "updateFailed": "Update failed"
   },
   "auditLogs": {
@@ -65,7 +65,7 @@
     "filterBilling": "Billing",
     "filterSettings": "Settings",
     "pageTitle": "Operation Records",
-    "totalRecords": "{0} records (showing latest 100)",
+    "totalRecords": "{count} records (showing latest 100)",
     "noLogs": "No audit logs yet",
     "actionLabels": {
       "user:login": "User Login",

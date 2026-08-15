@@ -32,7 +32,7 @@ export default function DashboardError({
             {t("errorBoundary.desc")}
             {error.digest && (
               <span className="mt-2 block text-xs text-muted-foreground">
-                {t("errorBoundary.errorId", { 0: error.digest })}
+                {t("errorBoundary.errorId", { digest: error.digest })}
               </span>
             )}
           </CardDescription>

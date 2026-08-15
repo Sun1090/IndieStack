@@ -127,7 +127,7 @@ export default function AdminAuditLogsPage() {
         <CardHeader>
           <CardTitle>{t("auditLogs.pageTitle")}</CardTitle>
           <CardDescription>
-            {t("auditLogs.totalRecords").replace("{0}", String(filteredLogs.length))}
+            {t("auditLogs.totalRecords", { count: filteredLogs.length })}
           </CardDescription>
         </CardHeader>
         <CardContent>
