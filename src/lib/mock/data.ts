@@ -311,13 +311,19 @@ export function generateMockAuditLogs(count = 20) {
 }
 
 /**
- * 生成按角色分布的用户列表（用于管理后台图表）
+ * 生成管理后台概览统计（Mock 模式专用）
+ * 角色分布遵循系统角色约束（super_admin/admin/member/viewer）
  */
-export function generateMockUsersByRole() {
-  return [
-    { role: "owner", count: 1 },
-    { role: "admin", count: 3 },
-    { role: "member", count: 15 },
-    { role: "viewer", count: 8 },
-  ];
+export function generateMockAdminStats() {
+  const roleCount = {
+    super_admin: 1,
+    admin: 2,
+    member: 16,
+    viewer: 8,
+  };
+  return {
+    totalUsers: Object.values(roleCount).reduce((sum, n) => sum + n, 0),
+    totalTeams: 3,
+    roleCount,
+  };
 }

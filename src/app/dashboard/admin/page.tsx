@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { safelyRequireRole } from "@/lib/auth/guards";
+import { shouldUseMock, generateMockAdminStats } from "@/lib/mock";
 import { ROUTES } from "@/lib/constants";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,29 +20,40 @@ export default async function AdminPage() {
     redirect(ROUTES.dashboard);
   }
 
-  const supabase = createAdminClient();
   const t = await getTranslations("admin");
 
   // 获取系统统计数据
-  const { count: totalUsers } = await supabase
-    .from("profiles")
-    .select("*", { count: "exact", head: true });
+  // Mock 模式下直接使用本地模拟数据（createAdminClient 需要真实的 service_role 环境变量）
+  let totalUsers: number;
+  let totalTeams: number;
+  let roleCount: { super_admin: number; admin: number; member: number; viewer: number };
 
-  const { count: totalTeams } = await supabase
-    .from("teams")
-    .select("*", { count: "exact", head: true });
+  if (shouldUseMock()) {
+    const mock = generateMockAdminStats();
+    totalUsers = mock.totalUsers;
+    totalTeams = mock.totalTeams;
+    roleCount = mock.roleCount;
+  } else {
+    const supabase = createAdminClient();
+    const { count: usersCount } = await supabase
+      .from("profiles")
+      .select("*", { count: "exact", head: true });
+    const { count: teamsCount } = await supabase
+      .from("teams")
+      .select("*", { count: "exact", head: true });
+    const { data: roles } = await supabase
+      .from("profiles")
+      .select("role");
 
-  const { data: roles } = await supabase
-    .from("profiles")
-    .select("role");
-
-  // 按角色分组统计
-  const roleCount = { super_admin: 0, admin: 0, member: 0, viewer: 0 };
-  roles?.forEach((p: { role: string }) => {
-    if (p.role in roleCount) {
-      (roleCount as Record<string, number>)[p.role]++;
-    }
-  });
+    totalUsers = usersCount ?? 0;
+    totalTeams = teamsCount ?? 0;
+    roleCount = { super_admin: 0, admin: 0, member: 0, viewer: 0 };
+    roles?.forEach((p: { role: string }) => {
+      if (p.role in roleCount) {
+        (roleCount as Record<string, number>)[p.role]++;
+      }
+    });
+  }
 
   const statsCards = [
     { title: t("overview.stats.totalUsers"), value: totalUsers ?? 0, desc: t("overview.stats.totalUsersDesc"), icon: Users },
