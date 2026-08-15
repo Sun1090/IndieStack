@@ -39,6 +39,11 @@ export default async function ProfilePage() {
     ? formatDate(user.created_at, { locale })
     : t("profile.view.notSet");
 
+  const role = (profile?.role as string) ?? "member";
+  const roleLabel = t.has(`profile.view.roles.${role}`)
+    ? t(`profile.view.roles.${role}`)
+    : role;
+
   return (
     <div className="space-y-8">
       <PageHeader title={t("profile.view.title")} description={t("profile.view.desc")}>
@@ -59,7 +64,7 @@ export default async function ProfilePage() {
               <div>
                 <CardTitle>{(profile?.full_name as string) ?? t("profile.view.notSet")}</CardTitle>
                 <CardDescription>{user?.email}</CardDescription>
-                <Badge variant="outline" className="mt-1">{(profile?.role as string) ?? "user"}</Badge>
+                <Badge variant="outline" className="mt-1">{roleLabel}</Badge>
               </div>
             </div>
           </CardHeader>
@@ -75,7 +80,7 @@ export default async function ProfilePage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t("profile.view.role")}</p>
-                <p className="text-sm capitalize">{(profile?.role as string) ?? "user"}</p>
+                <p className="text-sm">{roleLabel}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t("profile.view.timezone")}</p>

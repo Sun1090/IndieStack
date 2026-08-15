@@ -73,6 +73,12 @@
         "zh": "简体中文",
         "ja": "日本語",
         "ko": "한국어"
+      },
+      "roles": {
+        "super_admin": "Super Admin",
+        "admin": "Admin",
+        "member": "Member",
+        "viewer": "Viewer"
       }
     },
     "edit": {
@@ -154,7 +160,8 @@
       "roles": {
         "owner": "Owner",
         "admin": "Admin",
-        "member": "Member"
+        "member": "Member",
+        "viewer": "Viewer"
       },
       "noTeamDesc": "You are not a member of any team yet.",
       "unknownMember": "Unknown"

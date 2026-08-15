@@ -73,6 +73,12 @@
         "zh": "简体中文",
         "ja": "日本語",
         "ko": "한국어"
+      },
+      "roles": {
+        "super_admin": "超级管理员",
+        "admin": "管理员",
+        "member": "成员",
+        "viewer": "只读用户"
       }
     },
     "edit": {
@@ -154,7 +160,8 @@
       "roles": {
         "owner": "拥有者",
         "admin": "管理员",
-        "member": "成员"
+        "member": "成员",
+        "viewer": "查看者"
       },
       "noTeamDesc": "你还不是任何团队的成员。",
       "unknownMember": "未知成员"
