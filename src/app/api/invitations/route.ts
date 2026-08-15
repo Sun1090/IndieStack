@@ -189,6 +189,13 @@ export async function POST(request: NextRequest) {
  * 撤销邀请（移除团队成员）
  */
 export async function DELETE(request: NextRequest) {
+  const limits = await rateLimit.check(request);
+  if (!limits.allowed) {
+    return NextResponse.json(
+      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
+      { status: 429 }
+    );
+  }
   const auth = await safelyRequirePermission(PERMISSIONS.team.remove);
   if (!auth.success) {
     return NextResponse.json({ error: auth.error.message }, { status: 403 });
