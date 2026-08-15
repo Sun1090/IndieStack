@@ -122,9 +122,16 @@ create policy "Team members can view their team"
     )
   );
 
-create policy "Team owners can update their team"
+create policy "Team owners and admins can update their team"
   on public.teams for update
-  using (auth.uid() = owner_id);
+  using (
+    exists (
+      select 1 from public.team_members tm
+      where tm.team_id = teams.id
+        and tm.user_id = auth.uid()
+        and tm.role in ('owner', 'admin')
+    )
+  );
 
 -- =============================================================================
 -- Team Members
@@ -179,7 +186,16 @@ create policy "Team admins can remove members"
         and tm.role in ('owner', 'admin')
         and tm.user_id = auth.uid()
     )
+    and (
+      select role from public.team_members
+      where id = team_members.id
+    ) <> 'owner'
   );
+
+-- 成员可退出团队（仅本人、非 owner；owner 需转移所有权或删除团队）
+create policy "Team members can leave team"
+  on public.team_members for delete
+  using (auth.uid() = user_id and role <> 'owner');
 
 -- Auto-create personal team for new users
 create or replace function public.handle_new_team()
