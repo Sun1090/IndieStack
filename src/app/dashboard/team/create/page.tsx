@@ -90,8 +90,8 @@ export default function CreateTeamPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="slug">Slug</Label>
-              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="my-team" required />
+              <Label htmlFor="slug">{t("team.create.slugLabel")}</Label>
+              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={t("team.create.slugPlaceholder")} required />
             </div>
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? tc("loading") : t("team.create.submit")}

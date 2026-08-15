@@ -73,21 +73,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <CardContent><Badge variant={row.status === "active" ? "default" : "secondary"}>{row.status}</Badge></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Framework</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{t("projects.detail.labels.framework")}</CardTitle></CardHeader>
           <CardContent><p className="text-lg font-semibold">{framework}</p></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Domain</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{t("projects.detail.labels.domain")}</CardTitle></CardHeader>
           <CardContent>
             {domain ? (
               <a href={`https://${domain}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-primary hover:underline">
                 <Globe className="h-3.5 w-3.5" /> {domain}
               </a>
-            ) : (<p className="text-sm text-muted-foreground">Not configured</p>)}
+            ) : (<p className="text-sm text-muted-foreground">{t("projects.detail.labels.notConfigured")}</p>)}
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Created</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{t("projects.detail.labels.created")}</CardTitle></CardHeader>
           <CardContent><p className="flex items-center gap-1 text-sm"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{formatRelativeTime(row.created_at, { locale })}</p></CardContent>
         </Card>
       </div>
@@ -103,22 +103,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Status</p>
+              <p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.status")}</p>
               <p className="text-sm capitalize">{row.status}</p>
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Branch</p>
+              <p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.branch")}</p>
               <p className="flex items-center gap-1 text-sm">
                 <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
                 {branch ?? "—"}
               </p>
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Visibility</p>
+              <p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.visibility")}</p>
               <p className="text-sm">{row.visibility}</p>
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Region</p>
+              <p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.region")}</p>
               <p className="text-sm">{region}</p>
             </div>
           </div>
@@ -135,10 +135,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><p className="text-sm font-medium text-muted-foreground">Project ID</p><p className="text-sm font-mono">{row.id}</p></div>
-            <div><p className="text-sm font-medium text-muted-foreground">Slug</p><p className="text-sm font-mono">{row.slug}</p></div>
-            <div><p className="text-sm font-medium text-muted-foreground">Created By</p><p className="text-sm font-mono">{row.created_by ?? "—"}</p></div>
-            <div><p className="text-sm font-medium text-muted-foreground">Last Updated</p><p className="text-sm">{formatRelativeTime(row.updated_at, { locale })}</p></div>
+            <div><p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.projectId")}</p><p className="text-sm font-mono">{row.id}</p></div>
+            <div><p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.slug")}</p><p className="text-sm font-mono">{row.slug}</p></div>
+            <div><p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.createdBy")}</p><p className="text-sm font-mono">{row.created_by ?? "—"}</p></div>
+            <div><p className="text-sm font-medium text-muted-foreground">{t("projects.detail.labels.lastUpdated")}</p><p className="text-sm">{formatRelativeTime(row.updated_at, { locale })}</p></div>
           </div>
         </CardContent>
       </Card>

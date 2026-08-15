@@ -149,7 +149,9 @@
         "owner": "Owner",
         "admin": "Admin",
         "member": "Member"
-      }
+      },
+      "noTeamDesc": "You are not a member of any team yet.",
+      "unknownMember": "Unknown"
     },
     "invite": {
       "metaTitle": "Invite Member",
@@ -174,7 +176,9 @@
       "nameLabel": "Team Name",
       "namePlaceholder": "Enter team name",
       "submit": "Create Team",
-      "success": "Team created!"
+      "success": "Team created!",
+      "slugLabel": "Slug",
+      "slugPlaceholder": "my-team"
     }
   },
   "billing": {
@@ -255,7 +259,9 @@
       "descriptionLabel": "Description",
       "descriptionPlaceholder": "A short description of this project",
       "submit": "Create Project",
-      "success": "Project created!"
+      "success": "Project created!",
+      "slugLabel": "Slug",
+      "slugPlaceholder": "my-project"
     },
     "detail": {
       "metaTitle": "Project Details",
@@ -263,7 +269,21 @@
       "overview": "Project Overview",
       "members": "Members",
       "settings": "Settings",
-      "backToProjects": "Back to Projects"
+      "backToProjects": "Back to Projects",
+      "labels": {
+        "framework": "Framework",
+        "domain": "Domain",
+        "notConfigured": "Not configured",
+        "created": "Created",
+        "status": "Status",
+        "branch": "Branch",
+        "visibility": "Visibility",
+        "region": "Region",
+        "projectId": "Project ID",
+        "slug": "Slug",
+        "createdBy": "Created By",
+        "lastUpdated": "Last Updated"
+      }
     }
   },
   "notifications": {

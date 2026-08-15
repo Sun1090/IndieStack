@@ -29,6 +29,7 @@ export default async function TeamPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
+  const tc = await getTranslations("common");
 
   const { data: membership } = await supabase
     .from("team_members")
@@ -44,7 +45,7 @@ export default async function TeamPage() {
         <EmptyState
           icon={Users}
           title={t("team.list.noMembers")}
-          description="You are not a member of any team yet."
+          description={t("team.list.noTeamDesc")}
           action={
             <Button asChild>
               <Link href={ROUTES.dashboardTeamInvite}>{t("team.list.createTeam")}</Link>
@@ -114,7 +115,7 @@ export default async function TeamPage() {
           </CardHeader>
           <CardContent>
             <Badge variant="outline">
-              {team?.plan ? String(team.plan).charAt(0).toUpperCase() + String(team.plan).slice(1) : "Free"}
+              {tc(team?.plan === "pro" || team?.plan === "enterprise" ? (team.plan as "pro" | "enterprise") : "free")}
             </Badge>
           </CardContent>
         </Card>
@@ -143,7 +144,7 @@ export default async function TeamPage() {
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-medium">{member.profiles?.full_name ?? "Unknown"}</p>
+                      <p className="text-sm font-medium">{member.profiles?.full_name ?? t("team.list.unknownMember")}</p>
                       <p className="text-xs text-muted-foreground">{member.profiles?.email ?? ""}</p>
                     </div>
                     <Badge variant="outline">{member.role as string}</Badge>

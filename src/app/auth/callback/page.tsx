@@ -72,13 +72,14 @@ function CallbackHandler() {
 }
 
 export default function AuthCallbackPage() {
+  const t = useTranslations("auth");
   return (
     <div className="container flex h-screen w-screen flex-col items-center justify-center">
       <Suspense
         fallback={
           <div className="text-center">
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            <p className="mt-4 text-muted-foreground">Loading...</p>
+            <p className="mt-4 text-muted-foreground">{t("callback.loading")}</p>
           </div>
         }
       >

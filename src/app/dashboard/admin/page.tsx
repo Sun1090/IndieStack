@@ -93,10 +93,10 @@ export default async function AdminPage() {
           <CardContent>
             <div className="space-y-3">
               {[
-                { label: "Super Admin", count: roleCount.super_admin, color: "bg-red-500" },
-                { label: "Admin", count: roleCount.admin, color: "bg-orange-500" },
-                { label: "Member", count: roleCount.member, color: "bg-blue-500" },
-                { label: "Viewer", count: roleCount.viewer, color: "bg-gray-500" },
+                { label: t("users.roleLabels.super_admin"), count: roleCount.super_admin, color: "bg-red-500" },
+                { label: t("users.roleLabels.admin"), count: roleCount.admin, color: "bg-orange-500" },
+                { label: t("users.roleLabels.member"), count: roleCount.member, color: "bg-blue-500" },
+                { label: t("users.roleLabels.viewer"), count: roleCount.viewer, color: "bg-gray-500" },
               ].map((item) => {
                 const max = Math.max(roleCount.super_admin, roleCount.admin, roleCount.member, roleCount.viewer, 1);
                 const pct = (item.count / max) * 100;
