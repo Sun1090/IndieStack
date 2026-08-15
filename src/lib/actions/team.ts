@@ -75,12 +75,12 @@ export async function createTeam(input: CreateTeamInput) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const validated = createTeamSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "Invalid input" };
+    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
   }
 
   const admin = createAdminClient();
@@ -98,9 +98,10 @@ export async function createTeam(input: CreateTeamInput) {
 
   if (teamError) {
     if (teamError.code === "23505") {
-      return { error: "A team with this slug already exists" };
+      return { error: "teamSlugExists" };
     }
-    return { error: teamError.message };
+    console.error("[createTeam] 创建团队失败:", teamError);
+    return { error: "databaseError" };
   }
 
   // Add creator as owner
@@ -115,7 +116,8 @@ export async function createTeam(input: CreateTeamInput) {
   if (memberError) {
     // 回滚刚创建的团队，避免留下没有所有者的孤儿团队
     await admin.from("teams").delete().eq("id", team.id);
-    return { error: memberError.message };
+    console.error("[createTeam] 添加所有者失败，已回滚:", memberError);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.dashboardTeam);
@@ -130,17 +132,17 @@ export async function inviteMember(input: InviteMemberInput) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const validated = inviteMemberSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "Invalid input" };
+    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
   }
 
   const team = await getCurrentTeam();
   if (!team) {
-    return { error: "No team found" };
+    return { error: "noTeam" };
   }
 
   // Check if user is admin/owner
@@ -152,7 +154,7 @@ export async function inviteMember(input: InviteMemberInput) {
     .maybeSingle() as unknown as { data: { role: string } | null; error: null };
 
   if (!membership || !["owner", "admin"].includes(membership.role)) {
-    return { error: "Only team admins can invite members" };
+    return { error: "onlyAdminsInvite" };
   }
 
   // Find user by email
@@ -161,7 +163,7 @@ export async function inviteMember(input: InviteMemberInput) {
   const invitedUser = users.users.find((u) => u.email === validated.data.email);
 
   if (!invitedUser) {
-    return { error: "User not found. They need to register first." };
+    return { error: "userNotFound" };
   }
 
   // Check if already a member
@@ -173,7 +175,7 @@ export async function inviteMember(input: InviteMemberInput) {
     .single() as unknown as { data: { id: string } | null; error: null };
 
   if (existing) {
-    return { error: "User is already a team member" };
+    return { error: "alreadyMember" };
   }
 
   const { error: inviteError } = await admin
@@ -186,7 +188,8 @@ export async function inviteMember(input: InviteMemberInput) {
     });
 
   if (inviteError) {
-    return { error: inviteError.message };
+    console.error("[inviteMember] 添加成员失败:", inviteError);
+    return { error: "databaseError" };
   }
 
   // Recalculate member count instead of trusting a cached value
@@ -212,12 +215,12 @@ export async function removeMember(memberId: string) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const team = await getCurrentTeam();
   if (!team) {
-    return { error: "No team found" };
+    return { error: "noTeam" };
   }
 
   const { data: currentMembership } = await supabase
@@ -228,7 +231,7 @@ export async function removeMember(memberId: string) {
     .maybeSingle() as unknown as { data: { role: string } | null; error: null };
 
   if (!currentMembership || !["owner", "admin"].includes(currentMembership.role)) {
-    return { error: "Only team admins can remove members" };
+    return { error: "onlyAdminsRemove" };
   }
 
   const admin = createAdminClient();
@@ -240,11 +243,11 @@ export async function removeMember(memberId: string) {
     .maybeSingle() as unknown as { data: { role: string } | null; error: null };
 
   if (!targetMember) {
-    return { error: "Member not found" };
+    return { error: "memberNotFound" };
   }
 
   if (targetMember.role === "owner") {
-    return { error: "The team owner cannot be removed" };
+    return { error: "ownerCannotRemove" };
   }
 
   const { error } = await admin
@@ -254,7 +257,8 @@ export async function removeMember(memberId: string) {
     .eq("team_id", team.id);
 
   if (error) {
-    return { error: error.message };
+    console.error("[removeMember] 移除成员失败:", error);
+    return { error: "databaseError" };
   }
 
   // Recalculate member count after deletion
@@ -280,7 +284,7 @@ export async function leaveTeam(teamId: string) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const { data: membership } = await supabase
@@ -291,11 +295,11 @@ export async function leaveTeam(teamId: string) {
     .maybeSingle() as unknown as { data: { role: string } | null; error: null };
 
   if (!membership) {
-    return { error: "Team membership not found" };
+    return { error: "membershipNotFound" };
   }
 
   if (membership.role === "owner") {
-    return { error: "The team owner cannot leave. Transfer ownership or delete the team instead." };
+    return { error: "ownerCannotLeave" };
   }
 
   const { error } = await supabase
@@ -305,7 +309,8 @@ export async function leaveTeam(teamId: string) {
     .eq("user_id", user.id);
 
   if (error) {
-    return { error: error.message };
+    console.error("[leaveTeam] 退出团队失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.dashboard);

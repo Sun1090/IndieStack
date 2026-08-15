@@ -29,7 +29,7 @@ export const securitySettingsSchema = z.object({
     return true;
   },
   {
-    message: "Passwords do not match",
+    message: "passwordsDoNotMatch",
     path: ["confirmNewPassword"],
   }
 );

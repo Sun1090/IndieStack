@@ -25,6 +25,7 @@ import { listAuditLogs, type AuditLogRecord } from "@/lib/actions/admin";
 
 export default function AdminAuditLogsPage() {
   const t = useTranslations("admin");
+  const ta = useTranslations("actions");
   const [logs, setLogs] = useState<AuditLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -34,12 +35,12 @@ export default function AdminAuditLogsPage() {
     setLoading(true);
     const result = await listAuditLogs();
     if (!result.success) {
-      toast({ title: t("auditLogs.noLogs"), description: result.error, variant: "destructive" });
+      toast({ title: t("auditLogs.noLogs"), description: ta(result.error), variant: "destructive" });
     } else {
       setLogs(result.data);
     }
     setLoading(false);
-  }, [t]);
+  }, [t, ta]);
 
   useEffect(() => {
     loadLogs();

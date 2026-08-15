@@ -5,33 +5,33 @@
 import { z } from "zod";
 
 export const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().email("invalidEmail"),
+  password: z.string().min(6, "passwordMin6"),
 });
 
 export const registerSchema = z
   .object({
-    email: z.string().email("Please enter a valid email address"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    email: z.string().email("invalidEmail"),
+    password: z.string().min(8, "passwordMin8"),
     confirmPassword: z.string(),
-    fullName: z.string().min(1, "Full name is required").max(100),
+    fullName: z.string().min(1, "fullNameRequired").max(100),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
+    message: "passwordsDoNotMatch",
     path: ["confirmPassword"],
   });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
+  email: z.string().email("invalidEmail"),
 });
 
 export const resetPasswordSchema = z
   .object({
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: z.string().min(8, "passwordMin8"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
+    message: "passwordsDoNotMatch",
     path: ["confirmPassword"],
   });
 

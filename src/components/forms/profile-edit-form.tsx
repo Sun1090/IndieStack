@@ -26,6 +26,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
   const router = useRouter();
   const t = useTranslations("dashboard.profile.edit");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -36,7 +37,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
     const result = await updateProfileSettings(formData);
 
     if (result.error) {
-      toast({ title: tc("error"), description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }

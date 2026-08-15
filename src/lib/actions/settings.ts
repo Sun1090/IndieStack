@@ -18,7 +18,7 @@ export async function updateNotificationSettings(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const settings = {
@@ -30,7 +30,7 @@ export async function updateNotificationSettings(formData: FormData) {
 
   const validated = notificationSettingsSchema.safeParse(settings);
   if (!validated.success) {
-    return { error: "Invalid settings" };
+    return { error: "invalidSettings" };
   }
 
   const { error } = await supabase
@@ -43,7 +43,8 @@ export async function updateNotificationSettings(formData: FormData) {
     .eq("id", user.id);
 
   if (error) {
-    return { error: error.message };
+    console.error("[updateSettings] 保存设置失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.dashboardSettings);
@@ -58,18 +59,18 @@ export async function updatePassword(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const currentPassword = formData.get("currentPassword") as string;
   const newPassword = formData.get("newPassword") as string;
 
   if (!currentPassword || !newPassword) {
-    return { error: "Both current and new password are required" };
+    return { error: "passwordsRequired" };
   }
 
   if (newPassword.length < 8) {
-    return { error: "Password must be at least 8 characters" };
+    return { error: "passwordMin8" };
   }
 
   // Verify current password by trying to sign in
@@ -80,7 +81,7 @@ export async function updatePassword(formData: FormData) {
     });
 
     if (signInError) {
-      return { error: "Current password is incorrect" };
+      return { error: "currentPasswordIncorrect" };
     }
   }
 
@@ -90,7 +91,8 @@ export async function updatePassword(formData: FormData) {
   });
 
   if (error) {
-    return { error: error.message };
+    console.error("[updateSettings] 保存设置失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.dashboardSettings);

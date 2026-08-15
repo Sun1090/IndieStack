@@ -21,6 +21,7 @@ export function NotificationSettingsForm({ settings }: NotificationSettingsFormP
   const router = useRouter();
   const t = useTranslations("dashboard.notifications.preferences");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
   const [localSettings, setLocalSettings] = useState({
     emailNotifications: settings.emailNotifications ?? true,
@@ -42,7 +43,7 @@ export function NotificationSettingsForm({ settings }: NotificationSettingsFormP
     const result = await updateNotificationSettings(formData);
 
     if (result.error) {
-      toast({ title: tc("error"), description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }

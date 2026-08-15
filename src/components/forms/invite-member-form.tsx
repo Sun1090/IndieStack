@@ -17,6 +17,7 @@ export function InviteMemberForm() {
   const router = useRouter();
   const t = useTranslations("dashboard.team.invite");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"member" | "admin">("member");
@@ -28,7 +29,7 @@ export function InviteMemberForm() {
     const result = await inviteMember({ email, role });
 
     if (result.error) {
-      toast({ title: tc("error"), description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }

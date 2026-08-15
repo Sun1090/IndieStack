@@ -37,12 +37,12 @@ export async function updateProfile(input: ProfileUpdateInput) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   const validated = profileUpdateSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "Invalid input" };
+    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
   }
 
   const { error } = await supabase
@@ -56,7 +56,8 @@ export async function updateProfile(input: ProfileUpdateInput) {
     .eq("id", user.id);
 
   if (error) {
-    return { error: error.message };
+    console.error("[updateProfile] 更新资料失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.dashboardProfile);
@@ -72,7 +73,7 @@ export async function updateProfileSettings(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Not authenticated" };
+    return { error: "notAuthenticated" };
   }
 
   // 白名单 + 类型/长度校验：拒绝任意字段值直接写入 profiles
@@ -83,7 +84,7 @@ export async function updateProfileSettings(formData: FormData) {
     language: formData.get("language")?.toString(),
   });
   if (!parsed.success) {
-    return { error: parsed.error.errors[0]?.message ?? "Invalid input" };
+    return { error: parsed.error.errors[0]?.message ?? "invalidInput" };
   }
 
   const { error } = await supabase
@@ -99,7 +100,8 @@ export async function updateProfileSettings(formData: FormData) {
     .eq("id", user.id);
 
   if (error) {
-    return { error: error.message };
+    console.error("[updateProfileSettings] 更新资料设置失败:", error);
+    return { error: "databaseError" };
   }
 
   revalidatePath(ROUTES.dashboardProfile);

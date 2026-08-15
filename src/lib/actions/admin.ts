@@ -49,7 +49,7 @@ export async function getAdminOverview(): Promise<
 > {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return { success: false, error: auth.error.message };
+    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
   }
 
   try {
@@ -80,7 +80,8 @@ export async function getAdminOverview(): Promise<
       },
     };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Internal server error" };
+    console.error("[admin] 操作失败:", error);
+    return { success: false, error: "internalError" };
   }
 }
 
@@ -90,7 +91,7 @@ export async function listAdminUsers(): Promise<
 > {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return { success: false, error: auth.error.message };
+    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
   }
 
   try {
@@ -101,7 +102,8 @@ export async function listAdminUsers(): Promise<
       .order("created_at", { ascending: false });
 
     if (error) {
-      return { success: false, error: error.message };
+      console.error("[admin] 数据库操作失败:", error);
+      return { success: false, error: "databaseError" };
     }
 
     return {
@@ -109,7 +111,8 @@ export async function listAdminUsers(): Promise<
       data: (data ?? []).map((row) => toAdminUser(row as unknown as Record<string, unknown>)),
     };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Internal server error" };
+    console.error("[admin] 操作失败:", error);
+    return { success: false, error: "internalError" };
   }
 }
 
@@ -119,7 +122,7 @@ export async function updateUserRole(
 ): Promise<{ success: true } | { success: false; error: string }> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return { success: false, error: auth.error.message };
+    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
   }
 
   try {
@@ -131,11 +134,11 @@ export async function updateUserRole(
       .maybeSingle() as { data: { role: string } | null };
 
     if (!target) {
-      return { success: false, error: "User not found" };
+      return { success: false, error: "userNotFoundAdmin" };
     }
 
     if (target.role === "super_admin" && auth.data.role !== "super_admin") {
-      return { success: false, error: "Super admins can only be changed by a super admin" };
+      return { success: false, error: "superAdminOnly" };
     }
 
     const { error } = await admin
@@ -144,13 +147,15 @@ export async function updateUserRole(
       .eq("id", userId);
 
     if (error) {
-      return { success: false, error: error.message };
+      console.error("[admin] 数据库操作失败:", error);
+      return { success: false, error: "databaseError" };
     }
 
     revalidatePath(ROUTES.adminUsers);
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Internal server error" };
+    console.error("[admin] 操作失败:", error);
+    return { success: false, error: "internalError" };
   }
 }
 
@@ -160,7 +165,7 @@ export async function listAuditLogs(): Promise<
 > {
   const auth = await safelyRequireRole("super_admin");
   if (!auth.success) {
-    return { success: false, error: auth.error.message };
+    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
   }
 
   try {
@@ -172,7 +177,8 @@ export async function listAuditLogs(): Promise<
       .limit(100);
 
     if (error) {
-      return { success: false, error: error.message };
+      console.error("[admin] 数据库操作失败:", error);
+      return { success: false, error: "databaseError" };
     }
 
     return {
@@ -188,6 +194,7 @@ export async function listAuditLogs(): Promise<
       })),
     };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Internal server error" };
+    console.error("[admin] 操作失败:", error);
+    return { success: false, error: "internalError" };
   }
 }

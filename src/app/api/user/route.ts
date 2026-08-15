@@ -6,14 +6,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { rateLimit } from "@/lib/rate-limit";
 import type { Database } from "@/lib/supabase/database.types";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { z } from "zod";
-
-/**
- * GET /api/user - Get the current user's profile
- */
-import { rateLimit } from "@/lib/rate-limit";
 
 /** PATCH 请求体校验：白名单字段 + 类型/长度限制，拒绝未知字段 */
 const profilePatchSchema = z
@@ -26,11 +22,15 @@ const profilePatchSchema = z
   })
   .strict();
 
+/**
+ * GET /api/user - Get the current user's profile
+ */
 export async function GET(request: Request) {
-   const limits = await rateLimit.check(request);
-   if (!limits.allowed) {
-     return NextResponse.json({ error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) }, { status: 429 });
-   }
+  const limits = await rateLimit.check(request);
+  if (!limits.allowed) {
+    return NextResponse.json({ error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) }, { status: 429 });
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
