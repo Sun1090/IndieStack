@@ -40,13 +40,6 @@ export async function GET() {
       stripe: {
         configured: Boolean(process.env.STRIPE_SECRET_KEY),
       },
-      // 阿里云 OSS 检测
-      aliyunOss: {
-        configured: Boolean(
-          process.env.ALIYUN_ACCESS_KEY_ID &&
-          process.env.ALIYUN_BUCKET
-        ),
-      },
     },
   };
 
