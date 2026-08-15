@@ -1,7 +1,7 @@
 /**
  * 博客文章详情页面（服务端组件）
  * 根据 slug 参数渲染具体文章内容
- * 页面外壳（返回按钮、作者、元信息）使用 i18n 渲染，文章正文为共享内容
+ * 标题、元信息与文章正文均由 next-intl 消息文件驱动，支持中英文
  */
 
 import type { Metadata } from "next";
@@ -12,174 +12,10 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-// In a real app, this would come from a CMS or database
-const posts: Record<string, { title: string; content: string; date: string; category: string; author: string }> = {
-  "building-saas-2026": {
-    title: "Building a SaaS in 2026: The Complete Stack Guide",
-    date: "2026-07-15",
-    category: "Engineering",
-    author: "IndieStack Team",
-    content: `
-## The Modern SaaS Stack
-
-Building a SaaS product in 2026 is both easier and harder than ever. The tools are better, but the expectations are higher. Here's our complete stack and why we chose each piece.
-
-### Frontend: Next.js 15
-
-Next.js 15 with the App Router provides server components by default, streaming, and partial prerendering. Combined with Tailwind CSS and shadcn/ui, we get a beautiful, accessible UI without the overhead of a component library.
-
-### Backend: Supabase
-
-Supabase handles authentication, PostgreSQL database, real-time subscriptions, and file storage. It's open source, scales well, and integrates seamlessly with Next.js through the supabase-ssr package.
-
-### Monitoring: Sentry
-
-Sentry provides real-time error tracking, performance monitoring, and crash reports. It integrates with Next.js out of the box.
-
-### Deployment: Vercel + Alibaba Cloud
-
-Vercel handles the frontend deployment with automatic preview deployments for every PR. Alibaba Cloud OSS serves static assets through CDN.
-
-### Why This Stack Works
-
-1. **Cohesive**: Every piece integrates well with the others
-2. **Cost-effective**: Generous free tiers on Supabase and Vercel
-3. **Productivity**: Minimal boilerplate, maximum output
-4. **Production-ready**: Battle-tested at scale
-
-## Getting Started
-
-The best way to get started is to clone the template and follow the setup guide. You'll have a working app with auth, database, and monitoring in under 30 minutes.
-    `,
-  },
-  "supabase-indie-dev": {
-    title: "Why Supabase is the Perfect Backend for Indie Developers",
-    date: "2026-07-10",
-    category: "Backend",
-    author: "IndieStack Team",
-    content: `
-## Supabase: The Backend That Grows With You
-
-As an indie developer, you need a backend that's powerful enough for production but simple enough to get started quickly. Supabase is that backend.
-
-### What Makes Supabase Special
-
-- **PostgreSQL**: Real, full-featured PostgreSQL. Not a toy.
-- **Auth**: Built-in auth with email/password, OAuth, and social login
-- **Realtime**: WebSocket-based real-time subscriptions
-- **Storage**: File storage with CDN
-- **Row Level Security**: Fine-grained access control at the database level
-
-### The Indie Developer Advantage
-
-For indie developers, Supabase's generous free tier is a game-changer. You get:
-- 2 PostgreSQL databases
-- 50,000 monthly active users
-- 2 GB database size
-- 1 GB file storage
-- Real-time connections
-
-All for free. That's enough to launch and grow to thousands of users.
-
-### Integration with Next.js
-
-The @supabase/ssr package makes it trivial to integrate with Next.js 15's App Router. Server-side rendering, middleware, and client components all work seamlessly.
-    `,
-  },
-  "sentry-nextjs-setup": {
-    title: "Setting Up Sentry for Next.js: A Step-by-Step Guide",
-    date: "2026-07-05",
-    category: "Tutorial",
-    author: "IndieStack Team",
-    content: `
-## Sentry + Next.js: Complete Setup Guide
-
-Error monitoring is essential for any production application. Here's how to set up Sentry with Next.js 15.
-
-### Step 1: Install the Package
-
-\`\`\`bash
-pnpm add @sentry/nextjs
-\`\`\`
-
-### Step 2: Configure Sentry
-
-Create \`sentry.client.config.ts\`, \`sentry.server.config.ts\`, and \`sentry.edge.config.ts\`:
-
-\`\`\`typescript
-import * as Sentry from "@sentry/nextjs";
-
-Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  tracesSampleRate: 1.0,
-  debug: false,
-});
-\`\`\`
-
-### Step 3: Add Environment Variables
-
-\`\`\`
-NEXT_PUBLIC_SENTRY_DSN=https://your-dsn@sentry.io/your-project
-SENTRY_ORG=your-org
-SENTRY_PROJECT=your-project
-SENTRY_AUTH_TOKEN=your-token
-\`\`\`
-
-### Step 4: Deploy
-
-Sentry will automatically upload source maps during build. Errors in production will have full stack traces.
-    `,
-  },
-  "modern-auth-patterns": {
-    title: "Rethinking Authentication in Modern Web Apps",
-    date: "2026-06-28",
-    category: "Architecture",
-    author: "IndieStack Team",
-    content: `
-## Modern Auth Patterns for Next.js
-
-Authentication has evolved significantly. Here's how we structure auth in our SaaS template.
-
-### The Problem
-
-Traditional auth patterns don't work well with React Server Components. You can't use hooks in server components, and you need the user session available on the server for SSR.
-
-### The Solution: SSR Auth
-
-Supabase's SSR package solves this elegantly:
-
-1. **Middleware**: Checks session on every request and refreshes the cookie
-2. **Server Client**: \`createClient()\` in server components reads cookies
-3. **Client Client**: \`createClient()\` in browser components uses the same cookie
-
-### Data Flow
-
-\`\`\`
-Request → Middleware (refresh session) → Server Component → Client Component
-                              ↓
-                        Cookie stored
-                              ↓
-                    Client reads cookie via createBrowserClient
-\`\`\`
-
-### Protected Routes
-
-Middleware checks for protected routes and redirects unauthenticated users to the login page. Auth pages redirect authenticated users to the dashboard.
-
-### Why This Matters
-
-This pattern gives us:
-- No flash of unauthenticated content
-- SEO-friendly pages
-- Type-safe auth across server and client
-- Minimal boilerplate
-    `,
-  },
-};
-
-type LocalizedPost = {
+type BlogPost = {
   title: string;
   excerpt: string;
+  content: string;
   date: string;
   category: string;
   slug: string;
@@ -189,30 +25,22 @@ type LocalizedPost = {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const t = await getTranslations("blog");
-  const localized = (t.raw("posts") as LocalizedPost[]).find((p) => p.slug === slug);
-  const fallback = posts[slug];
+  const post = (t.raw("posts") as BlogPost[]).find((p) => p.slug === slug);
+  if (!post) return { title: t("metaTitle") };
   return {
-    title: localized?.title ?? fallback?.title ?? t("metaTitle"),
-    description: localized?.excerpt,
+    title: post.title,
+    description: post.excerpt,
   };
 }
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const t = await getTranslations("blog");
-  const post = posts[slug];
+  const post = (t.raw("posts") as BlogPost[]).find((p) => p.slug === slug);
 
   if (!post) {
     notFound();
   }
-
-  const localized = (t.raw("posts") as LocalizedPost[]).find((p) => p.slug === slug);
-  const meta = {
-    title: localized?.title ?? post.title,
-    date: localized?.date ?? post.date,
-    category: localized?.category ?? post.category,
-    author: localized?.author ?? post.author,
-  };
 
   return (
     <article className="container py-12 lg:py-20">
@@ -224,11 +52,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             </Link>
           </Button>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">{meta.category}</Badge>
-            <span className="text-sm text-muted-foreground">{meta.date}</span>
+            <Badge variant="secondary">{post.category}</Badge>
+            <span className="text-sm text-muted-foreground">{post.date}</span>
           </div>
-          <h1 className="mt-4 text-4xl font-bold tracking-tight">{meta.title}</h1>
-          <p className="mt-2 text-muted-foreground">{t("by")} {meta.author}</p>
+          <h1 className="mt-4 text-4xl font-bold tracking-tight">{post.title}</h1>
+          <p className="mt-2 text-muted-foreground">{t("by")} {post.author}</p>
         </div>
 
         <div className="max-w-none">
