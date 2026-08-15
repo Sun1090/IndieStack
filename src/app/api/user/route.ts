@@ -3,7 +3,7 @@
  * 提供当前登录用户的信息查询接口
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
@@ -63,7 +63,14 @@ export async function GET(request: Request) {
 /**
  * PATCH /api/user - Update the current user's profile
  */
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
+  const limits = await rateLimit.check(request);
+  if (!limits.allowed) {
+    return NextResponse.json(
+      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
+      { status: 429 }
+    );
+  }
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -107,7 +114,14 @@ export async function PATCH(request: Request) {
 /**
  * DELETE /api/user - Delete the current user's account
  */
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  const limits = await rateLimit.check(request);
+  if (!limits.allowed) {
+    return NextResponse.json(
+      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
+      { status: 429 }
+    );
+  }
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 

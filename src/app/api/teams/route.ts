@@ -168,6 +168,13 @@ export async function POST(request: NextRequest) {
  * 更新团队信息（名称、slug）
  */
 export async function PATCH(request: NextRequest) {
+  const limits = await rateLimit.check(request);
+  if (!limits.allowed) {
+    return NextResponse.json(
+      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
+      { status: 429 }
+    );
+  }
   const auth = await safelyRequirePermission(PERMISSIONS.team.write);
   if (!auth.success) {
     return NextResponse.json({ error: auth.error.message }, { status: 403 });
@@ -223,6 +230,13 @@ export async function PATCH(request: NextRequest) {
  * 删除团队（仅团队所有者）
  */
 export async function DELETE(request: NextRequest) {
+  const limits = await rateLimit.check(request);
+  if (!limits.allowed) {
+    return NextResponse.json(
+      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
+      { status: 429 }
+    );
+  }
   const auth = await safelyRequirePermission(PERMISSIONS.team.delete);
   if (!auth.success) {
     return NextResponse.json({ error: auth.error.message }, { status: 403 });
