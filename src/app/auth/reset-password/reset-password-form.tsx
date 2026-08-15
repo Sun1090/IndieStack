@@ -16,10 +16,12 @@ import { toast } from "@/hooks/use-toast";
 import { ROUTES } from "@/lib/constants";
 import { Lock, Eye, EyeOff } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { authErrorKey } from "@/lib/auth/errors";
 
 export function ResetPasswordForm() {
   const router = useRouter();
   const t = useTranslations("auth");
+  const ta = useTranslations("actions");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,7 +54,7 @@ export function ResetPasswordForm() {
     if (error) {
       toast({
         title: t("resetPassword.error"),
-        description: error.message,
+        description: ta(authErrorKey(error)),
         variant: "destructive",
       });
       setLoading(false);

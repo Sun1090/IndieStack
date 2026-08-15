@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Mail, CheckCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { authErrorKey } from "@/lib/auth/errors";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -21,6 +22,7 @@ export function ForgotPasswordForm() {
   const [sent, setSent] = useState(false);
   const t = useTranslations("auth");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const supabase = createClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,8 +35,8 @@ export function ForgotPasswordForm() {
 
     if (error) {
       toast({
-        title: `${t("forgotPassword.error")}`,
-        description: error.message,
+        title: t("forgotPassword.error"),
+        description: ta(authErrorKey(error)),
         variant: "destructive",
       });
       setLoading(false);
@@ -52,7 +54,7 @@ export function ForgotPasswordForm() {
         <div>
           <p className="font-medium">{t("forgotPassword.success")}</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("forgotPassword.success")} <strong>{email}</strong>
+            {t("forgotPassword.sentTo")} <strong>{email}</strong>
           </p>
         </div>
       </div>
