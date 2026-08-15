@@ -273,8 +273,7 @@
     "desc": "管理你的通知偏好和提醒",
     "preferences": {
       "title": "通知偏好",
-      "desc": "选择你想通过邮箱接收哪些通知。"
-,
+      "desc": "选择你想通过邮箱接收哪些通知。",
       "emailLabel": "邮件通知",
       "emailDesc": "接收账户活动的邮件通知。",
       "marketingLabel": "营销邮件",
@@ -286,7 +285,8 @@
       "submit": "保存偏好",
       "saving": "保存中...",
       "success": "设置已保存",
-      "successDesc": "你的通知偏好已更新。"    },
+      "successDesc": "你的通知偏好已更新。"
+    },
     "list": {
       "title": "通知列表",
       "desc": "最近的通知消息",
@@ -302,6 +302,38 @@
     "connected": "已连接",
     "notConnected": "未连接",
     "connect": "连接",
-    "disconnect": "断开"
+    "disconnect": "断开",
+    "items": [
+      {
+        "id": "github",
+        "name": "GitHub",
+        "description": "连接你的代码仓库以自动化部署。"
+      },
+      {
+        "id": "stripe",
+        "name": "Stripe",
+        "description": "支付处理与订阅管理。"
+      },
+      {
+        "id": "sentry",
+        "name": "Sentry",
+        "description": "错误监控与性能追踪。"
+      },
+      {
+        "id": "supabase",
+        "name": "Supabase",
+        "description": "数据库、认证与实时订阅。"
+      },
+      {
+        "id": "slack",
+        "name": "Slack",
+        "description": "接收部署通知与警报。"
+      },
+      {
+        "id": "discord",
+        "name": "Discord",
+        "description": "向你的 Discord 服务器发送通知。"
+      }
+    ]
   }
 }

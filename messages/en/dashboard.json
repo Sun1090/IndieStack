@@ -273,8 +273,7 @@
     "desc": "Manage your notification preferences and alerts",
     "preferences": {
       "title": "Notification Preferences",
-      "desc": "Choose which notifications you'd like to receive via email."
-,
+      "desc": "Choose which notifications you'd like to receive via email.",
       "emailLabel": "Email Notifications",
       "emailDesc": "Receive email notifications for account activity.",
       "marketingLabel": "Marketing Emails",
@@ -286,7 +285,8 @@
       "submit": "Save Preferences",
       "saving": "Saving...",
       "success": "Settings saved",
-      "successDesc": "Your notification preferences have been updated."    },
+      "successDesc": "Your notification preferences have been updated."
+    },
     "list": {
       "title": "Notifications",
       "desc": "Your recent notifications",
@@ -302,6 +302,38 @@
     "connected": "Connected",
     "notConnected": "Not Connected",
     "connect": "Connect",
-    "disconnect": "Disconnect"
+    "disconnect": "Disconnect",
+    "items": [
+      {
+        "id": "github",
+        "name": "GitHub",
+        "description": "Connect your repositories for automated deployments."
+      },
+      {
+        "id": "stripe",
+        "name": "Stripe",
+        "description": "Payment processing and subscription management."
+      },
+      {
+        "id": "sentry",
+        "name": "Sentry",
+        "description": "Error monitoring and performance tracking."
+      },
+      {
+        "id": "supabase",
+        "name": "Supabase",
+        "description": "Database, authentication, and realtime subscriptions."
+      },
+      {
+        "id": "slack",
+        "name": "Slack",
+        "description": "Receive deployment notifications and alerts."
+      },
+      {
+        "id": "discord",
+        "name": "Discord",
+        "description": "Send notifications to your Discord server."
+      }
+    ]
   }
 }
