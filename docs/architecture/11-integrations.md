@@ -175,37 +175,19 @@ pnpm sentry:sourcemaps
 # sentry-cli sourcemaps inject + upload
 ```
 
-## 阿里云 OSS 文件存储
+## 阿里云 OSS 文件存储（规划中）
 
-### 架构
+> 状态：**未接线**。OSS 上传模块当前仅为脚手架占位，未接入任何页面或 API 路由
+> （历史代码已移除，避免误导）。如需启用，请按以下步骤补齐：
 
-```mermaid
-graph LR
-    subgraph Upload["上传流程"]
-        Client["客户端选择文件"]
-        API["服务端 API 路由"]
-        OSSModule["lib/storage/oss.ts"]
-        OSSEndpoint["阿里云 OSS"]
-        CDN["CDN 域名"]
-    end
+### 待办
 
-    Client -->|文件| API
-    API --> OSSModule
-    OSSModule -->|PUT| OSSEndpoint
-    OSSEndpoint -->|返回 URL| CDN
-    CDN -->|可访问 URL| Client
-```
+1. 新建 `src/app/api/upload/route.ts`（服务端生成预签名 URL，使用 `ali-oss` SDK 签名）
+2. 新建 `src/app/api/files/[key]/route.ts`（文件代理/访问）
+3. 新建 `src/lib/storage/oss.ts`，封装 `uploadFile / deleteFile / getSignedUrl / listFiles`
+4. 接入头像上传等客户端流程
 
-### API 接口
-
-| 函数 | 功能 |
-|------|------|
-| `uploadFile(file, key, options)` | 上传文件到 OSS |
-| `deleteFile(key)` | 删除文件 |
-| `getSignedUrl(key)` | 获取签名 URL |
-| `listFiles(prefix)` | 列出文件 |
-
-### 环境变量
+### 环境变量（预留）
 
 | 变量 | 用途 |
 |------|------|
