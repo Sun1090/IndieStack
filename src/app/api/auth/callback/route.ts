@@ -21,7 +21,9 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      return NextResponse.redirect(`${origin}/auth/login?error=${error.message}`);
+      // 不向 URL 泄漏 Supabase 原始错误信息；客户端 /auth/callback 会展示本地化错误
+      console.error("[Auth Callback] 交换会话失败:", error.message);
+      return NextResponse.redirect(`${origin}/auth/login`);
     }
   }
 

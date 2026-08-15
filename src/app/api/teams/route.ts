@@ -51,8 +51,12 @@ export async function GET(request: NextRequest) {
         .eq("id", teamId)
         .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: { message: string } | null };
 
-      if (teamError || !team) {
-        return NextResponse.json({ error: teamError?.message ?? "Team not found" }, { status: 404 });
+      if (teamError) {
+        console.error("[Teams API] 获取团队详情失败:", teamError.message);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      }
+      if (!team) {
+        return NextResponse.json({ error: "Team not found" }, { status: 404 });
       }
 
       return NextResponse.json({ team });
@@ -81,7 +85,8 @@ export async function GET(request: NextRequest) {
       .in("id", teamIds);
 
     if (teamsError) {
-      return NextResponse.json({ error: teamsError.message }, { status: 500 });
+      console.error("[Teams API] 获取团队列表失败:", teamsError.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({ teams: teams ?? [] });
@@ -135,7 +140,8 @@ export async function POST(request: NextRequest) {
       if (teamError.code === "23505") {
         return NextResponse.json({ error: "A team with this slug already exists" }, { status: 409 });
       }
-      return NextResponse.json({ error: teamError.message }, { status: 500 });
+      console.error("[Teams API] 创建团队失败:", teamError.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     // 将创建者添加为所有者
@@ -146,7 +152,8 @@ export async function POST(request: NextRequest) {
     if (memberError) {
       // 回滚团队创建，避免成员插入失败时产生孤儿团队
       await admin.from("teams").delete().eq("id", team!.id);
-      return NextResponse.json({ error: memberError.message }, { status: 500 });
+      console.error("[Teams API] 添加所有者失败，已回滚:", memberError.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({ team }, { status: 201 });
@@ -200,7 +207,8 @@ export async function PATCH(request: NextRequest) {
       .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: { message: string } | null };
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[Teams API] 更新团队失败:", error.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({ team });
@@ -249,7 +257,8 @@ export async function DELETE(request: NextRequest) {
     const { error: deleteError } = await admin.from("teams").delete().eq("id", teamId);
 
     if (deleteError) {
-      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+      console.error("[Teams API] 删除团队失败:", deleteError.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });

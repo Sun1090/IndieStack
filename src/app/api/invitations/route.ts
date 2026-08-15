@@ -62,7 +62,8 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[Invitations API] 获取成员列表失败:", error.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({ invitations: members ?? [] });
@@ -166,7 +167,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+      console.error("[Invitations API] 添加成员失败:", insertError.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     // 更新成员计数
@@ -233,7 +235,8 @@ export async function DELETE(request: NextRequest) {
       .eq("team_id", member.team_id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[Invitations API] 移除成员失败:", error.message);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     const { count } = await admin

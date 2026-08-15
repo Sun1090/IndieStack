@@ -18,6 +18,7 @@ interface CheckoutButtonProps {
 
 export function CheckoutButton({ priceId, label, className }: CheckoutButtonProps) {
   const t = useTranslations("dashboard");
+  const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
 
   async function handleCheckout() {
@@ -32,14 +33,20 @@ export function CheckoutButton({ priceId, label, className }: CheckoutButtonProp
 
       const payload = (await response.json()) as { url?: string; error?: string };
       if (!response.ok || !payload.url) {
-        throw new Error(payload.error ?? "Failed to create checkout session");
+        toast({
+          title: t("billing.checkoutError"),
+          description: ta(payload.error ?? "checkoutError"),
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
       }
 
       window.location.href = payload.url;
-    } catch (error) {
+    } catch {
       toast({
         title: t("billing.checkoutError"),
-        description: error instanceof Error ? error.message : undefined,
+        description: ta("checkoutError"),
         variant: "destructive",
       });
       setLoading(false);
