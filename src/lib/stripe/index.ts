@@ -75,8 +75,8 @@ async function redirectToCheckout(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message ?? "创建结账会话失败");
+    const { error } = await response.json();
+    throw new Error(error ?? "checkoutError");
   }
 
   const { url } = await response.json();

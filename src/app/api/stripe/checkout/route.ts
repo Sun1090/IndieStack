@@ -22,24 +22,24 @@ export async function POST(request: NextRequest) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
     return NextResponse.json(
-      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
+      { error: "rateLimited", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 }
     );
   }
 
   const auth = await safelyRequireAuth();
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 401 });
+    return NextResponse.json({ error: "notAuthenticated" }, { status: 401 });
   }
 
   if (!isStripeConfigured()) {
-    return NextResponse.json({ error: "Stripe is not configured" }, { status: 503 });
+    return NextResponse.json({ error: "stripeNotConfigured" }, { status: 503 });
   }
 
   try {
     const body = (await request.json()) as { priceId?: string };
     if (!body.priceId || typeof body.priceId !== "string") {
-      return NextResponse.json({ error: "priceId is required" }, { status: 400 });
+      return NextResponse.json({ error: "priceIdRequired" }, { status: 400 });
     }
 
     // 白名单校验：仅允许配置中的定价 ID，防止任意 priceId 被滥用
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       process.env.STRIPE_ENTERPRISE_PRICE_ID,
     ].filter((id): id is string => Boolean(id));
     if (allowedPriceIds.length > 0 && !allowedPriceIds.includes(body.priceId)) {
-      return NextResponse.json({ error: "Invalid priceId" }, { status: 400 });
+      return NextResponse.json({ error: "invalidPriceId" }, { status: 400 });
     }
 
     // 解析当前用户的团队，随结账会话写入 metadata，供 webhook 订阅落库使用
@@ -68,12 +68,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!url) {
-      return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
+      return NextResponse.json({ error: "checkoutFailed" }, { status: 500 });
     }
 
     return NextResponse.json({ url });
   } catch (error) {
     console.error("[Stripe Checkout] 创建结账会话失败:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalError" }, { status: 500 });
   }
 }

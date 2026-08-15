@@ -14,8 +14,8 @@ import { z } from "zod";
 /** PATCH 请求体校验：白名单字段 + 类型/长度限制，拒绝未知字段 */
 const profilePatchSchema = z
   .object({
-    full_name: z.string().trim().min(1, "Full name is required").max(100).optional(),
-    avatar_url: z.string().url("Invalid avatar URL").nullable().optional(),
+    full_name: z.string().trim().min(1, "fullNameRequired").max(100).optional(),
+    avatar_url: z.string().url("invalidInput").nullable().optional(),
     bio: z.string().max(500).nullable().optional(),
     timezone: z.string().max(100).nullable().optional(),
     language: z.string().max(50).nullable().optional(),
@@ -38,11 +38,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: { message: string } | null };
+
+  if (profileError) {
+    console.error("[API /user] 获取用户资料失败:", profileError.message);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 
   return NextResponse.json({
     user: {
@@ -92,7 +97,8 @@ export async function PATCH(request: Request) {
     .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: { message: string } | null };
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[API /user] 更新用户资料失败:", error.message);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 
   return NextResponse.json({ profile });
@@ -114,7 +120,8 @@ export async function DELETE() {
   const { error } = await admin.auth.admin.deleteUser(user.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[API /user] 删除用户失败:", error.message);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });
