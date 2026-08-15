@@ -3,6 +3,6 @@
   "product": "Product",
   "resources": "Resources",
   "company": "Company",
-  "builtWith": "Built with {tech1}, {tech2}, {tech3}, and {tech4}.",
+  "builtWith": "Built with <nextjs>Next.js</nextjs>, <tailwind>Tailwind CSS</tailwind>, <shadcn>shadcn/ui</shadcn>, and <supabase>Supabase</supabase>.",
   "copyright": "&copy; {year} {name}. All rights reserved."
 }
