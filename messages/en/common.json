@@ -54,10 +54,29 @@
   "integrations": "Integrations",
   "analytics": "Analytics",
   "admin": "Admin",
-  "features": "Features",
   "pricing": "Pricing",
   "about": "About",
   "blog": "Blog",
+  "features": "Features",
+  "tierFeatures": {
+    "upTo3Projects": "Up to 3 projects",
+    "basicAnalytics": "Basic analytics",
+    "communitySupport": "Community support",
+    "storage1Gb": "1 GB storage",
+    "unlimitedProjects": "Unlimited projects",
+    "advancedAnalytics": "Advanced analytics",
+    "prioritySupport": "Priority support",
+    "storage50Gb": "50 GB storage",
+    "teamUpTo5": "Team up to 5 members",
+    "apiAccess": "API access",
+    "everythingInPro": "Everything in Pro",
+    "unlimitedTeamMembers": "Unlimited team members",
+    "dedicatedSupport": "Dedicated support",
+    "storage500Gb": "500 GB storage",
+    "customIntegrations": "Custom integrations",
+    "slaGuarantee": "SLA guarantee",
+    "ssoSaml": "SSO / SAML"
+  },
   "faq": "FAQ",
   "changelog": "Changelog",
   "documentation": "Documentation",
@@ -82,5 +101,6 @@
   "year": "year",
   "free": "Free",
   "pro": "Pro",
-  "enterprise": "Enterprise"
+  "enterprise": "Enterprise",
+  "toggleTheme": "Toggle theme"
 }

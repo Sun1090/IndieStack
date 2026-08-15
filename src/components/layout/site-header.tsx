@@ -37,6 +37,7 @@ export function SiteHeader() {
   const { user, loading } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const t = useTranslations("nav");
+  const tc = useTranslations("common");
 
   /** 营销页面导航链接配置 */
   const marketingLinks = [
@@ -129,17 +130,17 @@ export function SiteHeader() {
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href={ROUTES.dashboardProfile}>
-                      <User className="mr-2 h-4 w-4" /> Profile
+                      <User className="mr-2 h-4 w-4" /> {tc("profile")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href={ROUTES.dashboardSettings}>
-                      <Settings className="mr-2 h-4 w-4" /> Settings
+                      <Settings className="mr-2 h-4 w-4" /> {tc("settings")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
-                    <LogOut className="mr-2 h-4 w-4" /> Sign out
+                    <LogOut className="mr-2 h-4 w-4" /> {tc("signOut")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
