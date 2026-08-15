@@ -19,6 +19,7 @@ import { Github, Mail } from "lucide-react";
 import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
+import { authErrorKey } from "@/lib/auth/errors";
 
 export function LoginForm() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export function LoginForm() {
   const redirect = getSafeRedirect(searchParams.get("redirect"), ROUTES.dashboard);
   const t = useTranslations("auth");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +45,7 @@ export function LoginForm() {
     });
 
     if (error) {
-      toast({ title: t("login.error"), description: error.message, variant: "destructive" });
+      toast({ title: t("login.error"), description: ta(authErrorKey(error)), variant: "destructive" });
       setLoading(false);
       return;
     }
@@ -61,7 +63,7 @@ export function LoginForm() {
       },
     });
     if (error) {
-      toast({ title: t("login.oauthError", { provider: "GitHub" }), description: error.message, variant: "destructive" });
+      toast({ title: t("login.oauthError", { provider: "GitHub" }), description: ta(authErrorKey(error)), variant: "destructive" });
       setLoading(false);
     }
   };
@@ -75,7 +77,7 @@ export function LoginForm() {
       },
     });
     if (error) {
-      toast({ title: t("login.oauthError", { provider: "Google" }), description: error.message, variant: "destructive" });
+      toast({ title: t("login.oauthError", { provider: "Google" }), description: ta(authErrorKey(error)), variant: "destructive" });
       setLoading(false);
     }
   };

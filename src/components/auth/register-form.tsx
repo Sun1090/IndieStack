@@ -17,11 +17,13 @@ import { toast } from "@/hooks/use-toast";
 import { Mail } from "lucide-react";
 import { ROUTES } from "@/lib/constants";
 import { useTranslations } from "next-intl";
+import { authErrorKey } from "@/lib/auth/errors";
 
 export function RegisterForm() {
   const router = useRouter();
   const t = useTranslations("auth");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,7 +46,7 @@ export function RegisterForm() {
     if (error) {
       toast({
         title: t("register.error"),
-        description: error.message,
+        description: ta(authErrorKey(error)),
         variant: "destructive",
       });
       setLoading(false);

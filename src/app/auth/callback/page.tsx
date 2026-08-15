@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
+import { authErrorKey } from "@/lib/auth/errors";
 
 function CallbackHandler() {
   const router = useRouter();
@@ -22,6 +23,7 @@ function CallbackHandler() {
     ROUTES.dashboard
   );
   const t = useTranslations("auth");
+  const ta = useTranslations("actions");
   const [status, setStatus] = useState(t("callback.completing"));
 
   useEffect(() => {
@@ -48,9 +50,10 @@ function CallbackHandler() {
       }
 
       if (error) {
-        setStatus(`${t("callback.failed")} ${error.message}`);
+        // 使用本地化错误消息，避免向用户展示 Supabase 英文原始信息
+        setStatus(`${t("callback.failed")} ${ta(authErrorKey(error))}`);
         setTimeout(() => {
-          router.push(`${ROUTES.login}?error=${encodeURIComponent(error.message)}`);
+          router.push(ROUTES.login);
         }, 2000);
         return;
       }
@@ -61,7 +64,7 @@ function CallbackHandler() {
     };
 
     handleAuthCallback();
-  }, [router, redirect, searchParams, t]);
+  }, [router, redirect, searchParams, t, ta]);
 
   return (
     <div className="text-center">
