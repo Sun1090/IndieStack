@@ -1,4 +1,8 @@
-/** * 博客文章详情页面（服务端组件） * 根据 slug 参数渲染具体文章内容 * 支持 Markdown 渲染和代码高亮 */
+/**
+ * 博客文章详情页面（服务端组件）
+ * 根据 slug 参数渲染具体文章内容
+ * 页面外壳（返回按钮、作者、元信息）使用 i18n 渲染，文章正文为共享内容
+ */
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -6,6 +10,7 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 // In a real app, this would come from a CMS or database
 const posts: Record<string, { title: string; content: string; date: string; category: string; author: string }> = {
@@ -137,7 +142,7 @@ Authentication has evolved significantly. Here's how we structure auth in our Sa
 
 ### The Problem
 
-Traditional auth patterns don't work well with React Server Components. You can't use hooks in server components, and you need the user session available on both server and client.
+Traditional auth patterns don't work well with React Server Components. You can't use hooks in server components, and you need the user session available on the server for SSR.
 
 ### The Solution: SSR Auth
 
@@ -172,13 +177,42 @@ This pattern gives us:
   },
 };
 
+type LocalizedPost = {
+  title: string;
+  excerpt: string;
+  date: string;
+  category: string;
+  slug: string;
+  author: string;
+};
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const t = await getTranslations("blog");
+  const localized = (t.raw("posts") as LocalizedPost[]).find((p) => p.slug === slug);
+  const fallback = posts[slug];
+  return {
+    title: localized?.title ?? fallback?.title ?? t("metaTitle"),
+    description: localized?.excerpt,
+  };
+}
+
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const t = await getTranslations("blog");
   const post = posts[slug];
 
   if (!post) {
     notFound();
   }
+
+  const localized = (t.raw("posts") as LocalizedPost[]).find((p) => p.slug === slug);
+  const meta = {
+    title: localized?.title ?? post.title,
+    date: localized?.date ?? post.date,
+    category: localized?.category ?? post.category,
+    author: localized?.author ?? post.author,
+  };
 
   return (
     <article className="container py-12 lg:py-20">
@@ -186,15 +220,15 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         <div className="mb-8">
           <Button variant="ghost" asChild className="mb-4">
             <Link href="/blog">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Blog
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t("backToBlog")}
             </Link>
           </Button>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">{post.category}</Badge>
-            <span className="text-sm text-muted-foreground">{post.date}</span>
+            <Badge variant="secondary">{meta.category}</Badge>
+            <span className="text-sm text-muted-foreground">{meta.date}</span>
           </div>
-          <h1 className="mt-4 text-4xl font-bold tracking-tight">{post.title}</h1>
-          <p className="mt-2 text-muted-foreground">By {post.author}</p>
+          <h1 className="mt-4 text-4xl font-bold tracking-tight">{meta.title}</h1>
+          <p className="mt-2 text-muted-foreground">{t("by")} {meta.author}</p>
         </div>
 
         <div className="max-w-none">
