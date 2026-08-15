@@ -57,7 +57,7 @@ export default function AdminUsersPage() {
       return;
     }
 
-    const roleLabel = t(`roleLabels.${newRole}` as any);
+    const roleLabel = t(`users.roleLabels.${newRole}` as any);
     toast({ title: t("users.updateSuccess"), description: t("users.updateSuccessDesc", { roleLabel }) });
     loadUsers();
   }
@@ -150,7 +150,7 @@ export default function AdminUsersPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={roleBadgeVariant(user.role)}>
-                      {t(`roleLabels.${user.role}` as any)}
+                      {t(`users.roleLabels.${user.role}` as any)}
                     </Badge>
 
                     <DropdownMenu>
@@ -168,7 +168,7 @@ export default function AdminUsersPage() {
                             disabled={user.role === r}
                             onClick={() => updateUserRole(user.id, r)}
                           >
-                            {t(`roleLabels.${r}` as any)}
+                            {t(`users.roleLabels.${r}` as any)}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
