@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
   if (!auth.success) {
     return NextResponse.json({ error: auth.error.message }, { status: 401 });
   }
+  const userId = auth.data.id;
 
   const { searchParams } = new URL(request.url);
   const range = Math.min(Math.max(Number(searchParams.get("range")) || 30, 1), 90);
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from("api_usage")
         .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
         .gte("created_at", since.toISOString()),
     ]);
 
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
     const { data: dailyData } = await supabase
       .from("api_usage")
       .select("created_at, status_code, user_id, path, method")
+      .eq("user_id", userId)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: true }) as unknown as { data: Array<{
         created_at: string;
@@ -89,12 +92,9 @@ export async function GET(request: NextRequest) {
     }));
 
     const totalRequests = pageViewsResult.count ?? 0;
-    const uniqueUsers = new Set(
-      (dailyData ?? [])
-        .map((row) => row.user_id)
-        .filter((userId): userId is string => Boolean(userId))
-    );
-    const uniqueVisitors = uniqueUsers.size;
+    // 数据已按当前用户过滤，uniqueVisitors 反映该用户在统计周期内是否有活跃记录
+    const uniqueVisitors =
+      (dailyData ?? []).some((row) => Boolean(row.user_id)) ? 1 : 0;
     const recent = (dailyData ?? []).slice(-10).reverse().map((row) => ({
       path: row.path,
       method: row.method,
