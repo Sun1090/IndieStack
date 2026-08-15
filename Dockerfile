@@ -10,7 +10,7 @@
 # =============================================================================
 
 # ---- Stage 1: 依赖安装 ----
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 LABEL stage=deps
 
 RUN apk add --no-cache libc6-compat && \
@@ -23,7 +23,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile --prod
 
 # ---- Stage 2: 构建 ----
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 LABEL stage=builder
 
 RUN apk add --no-cache libc6-compat && \
@@ -58,7 +58,7 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
 RUN pnpm build
 
 # ---- Stage 3: 运行 ----
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 LABEL stage=runner
 
 RUN addgroup --system --gid 1001 nodejs
