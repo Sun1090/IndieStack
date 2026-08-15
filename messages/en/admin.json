@@ -21,7 +21,6 @@
     "services": {
       "database": "Supabase Database",
       "auth": "Auth Service",
-      "storage": "Object Storage (OSS)",
       "sentry": "Sentry Monitoring",
       "stripe": "Stripe Payments",
       "running": "Running"

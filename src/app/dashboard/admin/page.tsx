@@ -65,7 +65,6 @@ export default async function AdminPage() {
   const systemServices = [
     { name: t("overview.services.database"), healthy: true },
     { name: t("overview.services.auth"), healthy: true },
-    { name: t("overview.services.storage"), healthy: true },
     { name: t("overview.services.sentry"), healthy: true },
     { name: t("overview.services.stripe"), healthy: true },
   ];
