@@ -15,6 +15,7 @@ import {
   generateMockAuditLogs,
   generateMockApiUsageRows,
   generateMockUserSessions,
+  generateMockApiKeys,
   generateMockAdminStats,
   MOCK_USER_ID,
   MOCK_TEAM_ID,
@@ -63,6 +64,7 @@ let _mockNotifications: ReturnType<typeof generateMockNotifications> | null = nu
 let _mockAuditLogs: ReturnType<typeof generateMockAuditLogs> | null = null;
 let _mockApiUsage: ReturnType<typeof generateMockApiUsageRows> | null = null;
 let _mockUserSessions: ReturnType<typeof generateMockUserSessions> | null = null;
+let _mockApiKeys: ReturnType<typeof generateMockApiKeys> | null = null;
 
 /** 重置缓存的 mock 数据（可用于测试或刷新） */
 export function resetMockCache() {
@@ -75,6 +77,7 @@ export function resetMockCache() {
   _mockAuditLogs = null;
   _mockApiUsage = null;
   _mockUserSessions = null;
+  _mockApiKeys = null;
 }
 
 function getMockUser() {
@@ -120,6 +123,11 @@ function getMockApiUsage() {
 function getMockUserSessions() {
   if (!_mockUserSessions) _mockUserSessions = generateMockUserSessions();
   return _mockUserSessions;
+}
+
+function getMockApiKeys() {
+  if (!_mockApiKeys) _mockApiKeys = generateMockApiKeys();
+  return _mockApiKeys;
 }
 
 /**
@@ -205,6 +213,15 @@ class MockQueryBuilder {
   insert(values: unknown) {
     this.writeMode = "insert";
     this.writeValue = values;
+    // api_keys：将新密钥追加到缓存列表，使创建后列表立即可见
+    if (this.table === "api_keys" && values && typeof values === "object") {
+      const row = { ...(values as Record<string, unknown>) } as Record<string, unknown>;
+      if (!row.id) row.id = crypto.randomUUID();
+      if (!row.created_at) row.created_at = new Date().toISOString();
+      if (!row.updated_at) row.updated_at = new Date().toISOString();
+      if (!row.is_active) row.is_active = true;
+      getMockApiKeys().unshift(row as never);
+    }
     return this;
   }
 
@@ -212,6 +229,15 @@ class MockQueryBuilder {
   update(values: Record<string, unknown>) {
     this.writeMode = "update";
     this.writeValue = values;
+    // api_keys：支持吊销（is_active=false）等更新在列表中生效
+    if (this.table === "api_keys") {
+      for (const row of getMockApiKeys()) {
+        for (const [key, value] of Object.entries(values)) {
+          (row as Record<string, unknown>)[key] = value;
+        }
+        (row as Record<string, unknown>).updated_at = new Date().toISOString();
+      }
+    }
     return this;
   }
 
@@ -287,6 +313,8 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(getMockApiUsage());
       case "user_sessions":
         return this.applyFiltersAndPagination(getMockUserSessions());
+      case "api_keys":
+        return this.applyFiltersAndPagination(getMockApiKeys());
       case "subscriptions":
         return { id: "mock-sub-001", team_id: MOCK_TEAM_ID, plan: "pro", status: "active" };
       default:
