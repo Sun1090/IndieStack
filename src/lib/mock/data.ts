@@ -56,7 +56,7 @@ export function generateMockProfile(overrides?: Record<string, unknown>) {
     role: "admin",
     bio: faker.lorem.sentence(),
     timezone: "Asia/Shanghai",
-    language: "zh-CN",
+    language: "zh",
     notification_settings: {
       email: true,
       push: true,
