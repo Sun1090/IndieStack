@@ -262,6 +262,32 @@ export function generateMockUserSessions(count = 30) {
   }));
 }
 
+
+/**
+ * 生成模拟 API 密钥（与 api_keys 表结构一致）
+ */
+export function generateMockApiKeys(count = 3) {
+  const names = ["开发环境密钥", "生产环境密钥", "CI 部署密钥"];
+  const scopes = [
+    ["project:read", "user:read"],
+    ["project:read", "project:write", "user:read", "billing:read"],
+    ["project:read"],
+  ];
+  return Array.from({ length: count }, (_, i) => ({
+    id: faker.string.uuid(),
+    user_id: MOCK_USER_ID,
+    name: names[i % names.length],
+    key_prefix: `isk_${faker.string.alphanumeric(10)}...`,
+    key_hash: `sha256:${faker.string.hexadecimal({ length: 32 })}:${faker.string.hexadecimal({ length: 64 })}`,
+    scopes: scopes[i % scopes.length],
+    is_active: i !== 1,
+    last_used_at: i === 0 ? faker.date.recent({ days: 7 }).toISOString() : null,
+    expires_at: i === 2 ? faker.date.soon({ days: 90 }).toISOString() : null,
+    created_at: faker.date.recent({ days: 90 }).toISOString(),
+    updated_at: faker.date.recent({ days: 30 }).toISOString(),
+  }));
+}
+
 /**
  * 生成模拟订阅信息
  */
