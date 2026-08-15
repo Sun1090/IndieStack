@@ -157,12 +157,16 @@ export async function inviteMember(input: InviteMemberInput) {
     return { error: "onlyAdminsInvite" };
   }
 
-  // Find user by email
+  // 按邮箱在 profiles 表精确查询目标用户（替代 admin.auth.admin.listUsers() 全量拉取，
+  // 避免用户量大时拉取全部 auth.users；profiles.email 由注册触发器写入，与 auth.users 一致）
   const admin = createAdminClient();
-  const { data: users } = await admin.auth.admin.listUsers();
-  const invitedUser = users.users.find((u) => u.email === validated.data.email);
+  const { data: invitedProfile } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("email", validated.data.email.toLowerCase())
+    .maybeSingle();
 
-  if (!invitedUser) {
+  if (!invitedProfile) {
     return { error: "userNotFound" };
   }
 
@@ -171,7 +175,7 @@ export async function inviteMember(input: InviteMemberInput) {
     .from("team_members")
     .select("id")
     .eq("team_id", team.id)
-    .eq("user_id", invitedUser.id)
+    .eq("user_id", invitedProfile.id)
     .single() as unknown as { data: { id: string } | null; error: null };
 
   if (existing) {
@@ -182,7 +186,7 @@ export async function inviteMember(input: InviteMemberInput) {
     .from("team_members")
     .insert({
       team_id: team.id,
-      user_id: invitedUser.id,
+      user_id: invitedProfile.id,
       role: validated.data.role,
       invited_by: user.id,
     });

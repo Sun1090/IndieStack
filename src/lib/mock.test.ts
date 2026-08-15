@@ -242,4 +242,25 @@ describe("Mock 写操作与真实 PostgREST 行为对齐", () => {
     expect(row.full_name).toBe("API 更新");
     expect(row.id).toBe(MOCK_USER_ID);
   });
+
+  it("profiles 支持按 email 通用 eq 过滤（邀请成员按邮箱查用户）", async () => {
+    const client = createMockSupabaseClient();
+
+    // 已知邮箱（mock 当前用户）→ 命中
+    const { data: found } = await client
+      .from("profiles")
+      .select("id")
+      .eq("email", "dev@indiestack.local")
+      .maybeSingle();
+    expect(found).not.toBeNull();
+    expect((found as Record<string, unknown>).id).toBe(MOCK_USER_ID);
+
+    // 未知邮箱 → 无结果（maybeSingle 返回 null，对应"用户未注册"）
+    const { data: missing } = await client
+      .from("profiles")
+      .select("id")
+      .eq("email", "nobody@example.com")
+      .maybeSingle();
+    expect(missing).toBeNull();
+  });
 });

@@ -133,12 +133,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Only team admins can invite members" }, { status: 403 });
     }
 
-    // 通过 Admin API 查找目标用户
+    // 按邮箱在 profiles 表精确查询目标用户（替代 admin.auth.admin.listUsers() 全量拉取，
+    // 避免用户量大时拉取全部 auth.users；profiles.email 由注册触发器写入，与 auth.users 一致）
     const admin = createAdminClient();
-    const { data: usersList } = await admin.auth.admin.listUsers();
-    const invitedUser = usersList.users.find((u) => u.email === validated.data.email);
+    const { data: invitedProfile } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("email", validated.data.email.toLowerCase())
+      .maybeSingle();
 
-    if (!invitedUser) {
+    if (!invitedProfile) {
       return NextResponse.json({ error: "User not found. They need to register first." }, { status: 404 });
     }
 
@@ -147,7 +151,7 @@ export async function POST(request: NextRequest) {
       .from("team_members")
       .select("id")
       .eq("team_id", teamId)
-      .eq("user_id", invitedUser.id)
+      .eq("user_id", invitedProfile.id)
       .maybeSingle() as unknown as { data: { id: string } | null };
 
     if (existing) {
@@ -159,7 +163,7 @@ export async function POST(request: NextRequest) {
       .from("team_members")
       .insert({
         team_id: teamId,
-        user_id: invitedUser.id,
+        user_id: invitedProfile.id,
         role: validated.data.role,
         invited_by: user.id,
       })
