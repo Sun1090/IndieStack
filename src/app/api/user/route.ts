@@ -8,11 +8,24 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 import type { PostgrestError } from "@supabase/supabase-js";
+import { z } from "zod";
 
 /**
  * GET /api/user - Get the current user's profile
  */
 import { rateLimit } from "@/lib/rate-limit";
+
+/** PATCH 请求体校验：白名单字段 + 类型/长度限制，拒绝未知字段 */
+const profilePatchSchema = z
+  .object({
+    full_name: z.string().trim().min(1, "Full name is required").max(100).optional(),
+    avatar_url: z.string().url("Invalid avatar URL").nullable().optional(),
+    bio: z.string().max(500).nullable().optional(),
+    timezone: z.string().max(100).nullable().optional(),
+    language: z.string().max(50).nullable().optional(),
+  })
+  .strict();
+
 export async function GET(request: Request) {
    const limits = await rateLimit.check(request);
    if (!limits.allowed) {
@@ -54,7 +67,14 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json();
-  const { full_name, avatar_url, bio, timezone, language } = body;
+
+  // 白名单校验：仅允许预定义字段，避免任意字段/类型写入 profiles
+  const parsed = profilePatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors[0]?.message ?? "Invalid input" }, { status: 400 });
+  }
+
+  const { full_name, avatar_url, bio, timezone, language } = parsed.data;
 
   const updateData: Database["public"]["Tables"]["profiles"]["Update"] = {};
   if (full_name !== undefined) updateData.full_name = full_name;

@@ -22,7 +22,7 @@ export function Providers({
   messages: Record<string, unknown>;
 }) {
   return (
-    <NextIntlClientProvider locale={locale} messages={messages}>
+    <NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Shanghai">
       <SupabaseProvider>
         <ThemeProvider defaultTheme="system" storageKey="ui-theme">
           <TooltipProvider delayDuration={0}>

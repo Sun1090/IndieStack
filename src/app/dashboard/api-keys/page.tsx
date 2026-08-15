@@ -200,7 +200,7 @@ export default function ApiKeysPage() {
             <Key className="h-5 w-5" />
             {t("apiKeys.listTitle")}
           </CardTitle>
-          <CardDescription>{t("apiKeys.listDesc").replace("{0}", String(keys.length))}</CardDescription>
+          <CardDescription>{t("apiKeys.listDesc", { count: keys.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -238,10 +238,10 @@ export default function ApiKeysPage() {
                       </code>
                       <span>
                         {key.last_used_at
-                          ? t("apiKeys.lastUsed").replace("{0}", formatDate(key.last_used_at, { locale }))
+                          ? t("apiKeys.lastUsed", { date: formatDate(key.last_used_at, { locale }) })
                           : t("apiKeys.neverUsed")}
                       </span>
-                      <span>{t("apiKeys.createdAt").replace("{0}", formatDate(key.created_at, { locale }))}</span>
+                      <span>{t("apiKeys.createdAt", { date: formatDate(key.created_at, { locale }) })}</span>
                     </div>
                     {key.scopes && key.scopes.length > 0 && (
                       <div className="flex gap-1 pt-1">

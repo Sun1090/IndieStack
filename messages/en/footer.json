@@ -3,6 +3,6 @@
   "product": "Product",
   "resources": "Resources",
   "company": "Company",
-  "builtWith": "Built with {0}, {1}, {2}, and {3}.",
-  "copyright": "&copy; {0} {1}. All rights reserved."
+  "builtWith": "Built with {tech1}, {tech2}, {tech3}, and {tech4}.",
+  "copyright": "&copy; {year} {name}. All rights reserved."
 }

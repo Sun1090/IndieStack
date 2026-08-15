@@ -17,12 +17,13 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Github, Mail } from "lucide-react";
 import { ROUTES } from "@/lib/constants";
+import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") ?? ROUTES.dashboard;
+  const redirect = getSafeRedirect(searchParams.get("redirect"), ROUTES.dashboard);
   const t = useTranslations("auth");
   const tc = useTranslations("common");
 

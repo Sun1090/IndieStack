@@ -243,10 +243,9 @@ export async function DELETE(request: NextRequest) {
 
     const admin = createAdminClient();
 
-    // 删除团队成员
-    await admin.from("team_members").delete().eq("team_id", teamId);
-
-    // 删除团队
+    // 删除团队（team_members / projects / subscriptions 等均通过外键 ON DELETE CASCADE 级联清理）
+    // 注意：不要先手动删除 team_members —— 若 teams 删除失败会导致团队成为"僵尸团队"，
+    // 且 owner 成员已被删除后无法再通过所有权校验重试。
     const { error: deleteError } = await admin.from("teams").delete().eq("id", teamId);
 
     if (deleteError) {

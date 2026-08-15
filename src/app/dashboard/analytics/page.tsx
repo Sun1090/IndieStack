@@ -18,9 +18,9 @@ import { BarChart3, TrendingUp, Users, Activity, Download, ChevronDown, Sparkles
 import { Skeleton } from "@/components/ui/skeleton";
 
 const RANGE_OPTIONS = [
-  { key: "last7Days", value: 7 },
-  { key: "last14Days", value: 14 },
-  { key: "last30Days", value: 30 },
+  { key: "analytics.last7Days", value: 7 },
+  { key: "analytics.last14Days", value: 14 },
+  { key: "analytics.last30Days", value: 30 },
 ] as const;
 
 type AnalyticsData = {
@@ -28,7 +28,7 @@ type AnalyticsData = {
     totalRequests: number;
     uniqueVisitors: number;
     totalErrors: number;
-    bounceRate: number;
+    errorRate: number;
   };
   timeline: { date: string; requests: number; errors: number }[];
   recent: { path: string; method: string; status_code: number | null; created_at: string }[];
@@ -61,10 +61,10 @@ export default function AnalyticsPage() {
   }, [loadData]);
 
   const statsCards = [
-    { labelKey: "stats.requests", value: data ? formatNumber(data.summary.totalRequests) : "—", icon: BarChart3 },
-    { labelKey: "stats.uniqueVisitors", value: data ? formatNumber(data.summary.uniqueVisitors) : "—", icon: Users },
-    { labelKey: "stats.errors", value: data ? formatNumber(data.summary.totalErrors) : "—", icon: Activity },
-    { labelKey: "stats.bounceRate", value: data ? `${data.summary.bounceRate}%` : "—", icon: TrendingUp },
+    { labelKey: "analytics.stats.requests", value: data ? formatNumber(data.summary.totalRequests) : "—", icon: BarChart3 },
+    { labelKey: "analytics.stats.uniqueVisitors", value: data ? formatNumber(data.summary.uniqueVisitors) : "—", icon: Users },
+    { labelKey: "analytics.stats.errors", value: data ? formatNumber(data.summary.totalErrors) : "—", icon: Activity },
+    { labelKey: "analytics.stats.errorRate", value: data ? `${data.summary.errorRate}%` : "—", icon: TrendingUp },
   ];
 
   function formatEventTime(iso: string) {
@@ -148,8 +148,8 @@ export default function AnalyticsPage() {
           ) : data ? (
             <AreaChart
               data={data.timeline}
-              requestLabel={t("stats.requests")}
-              errorLabel={t("stats.errors")}
+              requestLabel={t("analytics.stats.requests")}
+              errorLabel={t("analytics.stats.errors")}
             />
           ) : (
             <p className="py-16 text-center text-sm text-muted-foreground">{t("analytics.recentEvents.empty")}</p>

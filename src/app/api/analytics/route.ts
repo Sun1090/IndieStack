@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
         totalRequests,
         uniqueVisitors,
         totalErrors,
-        bounceRate: totalRequests > 0
+        errorRate: totalRequests > 0
           ? Number(((totalErrors / totalRequests) * 100).toFixed(1))
           : 0,
       },

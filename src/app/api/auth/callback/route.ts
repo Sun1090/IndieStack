@@ -6,6 +6,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
+import { getSafeRedirect } from "@/lib/safe-redirect";
 
 /**
  * Auth callback route for Supabase OAuth and email link flows.
@@ -14,7 +15,7 @@ import { ROUTES } from "@/lib/constants";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? ROUTES.dashboard;
+  const next = getSafeRedirect(searchParams.get("next"), ROUTES.dashboard);
 
   if (code) {
     const supabase = await createClient();

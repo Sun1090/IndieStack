@@ -11,13 +11,16 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants";
+import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
 
 function CallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect =
-    searchParams.get("redirect") ?? searchParams.get("next") ?? ROUTES.dashboard;
+  const redirect = getSafeRedirect(
+    searchParams.get("redirect") ?? searchParams.get("next"),
+    ROUTES.dashboard
+  );
   const t = useTranslations("auth");
   const [status, setStatus] = useState(t("callback.completing"));
 
