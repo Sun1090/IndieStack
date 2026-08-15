@@ -26,7 +26,7 @@
 
 所有环境变量在 `.env.example` 中有文档说明，分为：
 - **必需**: Supabase URL + anon key + service role key
-- **可选**: Sentry DSN, Stripe keys, Alibaba Cloud OSS, Appark
+- **可选**: Sentry DSN, Stripe keys, Alibaba Cloud OSS（规划中）, Appark（规划中）
 
 ### Vercel 部署
 
@@ -80,7 +80,7 @@ docker compose down          # 停止
 | 服务 | 用途 | 集成方式 |
 |------|------|----------|
 | Sentry | 错误监控 | `@sentry/nextjs`（client/edge/server 配置）|
-| Appark | APM 性能监控 | `src/lib/appark.ts` |
+| Appark | APM 性能监控（规划中） | 未接线，模块已移除 |
 
 ## 本地开发环境
 

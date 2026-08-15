@@ -68,10 +68,6 @@
         "desc": "Frontend deployment and hosting platform"
       },
       {
-        "name": "Alibaba Cloud",
-        "desc": "Cloud storage and CDN services"
-      },
-      {
         "name": "GitHub Actions",
         "desc": "CI/CD for automated testing and deployment"
       }

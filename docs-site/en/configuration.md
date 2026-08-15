@@ -36,7 +36,7 @@ NEXT_PUBLIC_MOCK_ENABLED=true
 | `SENTRY_ORG` | Sentry org name | Sentry Dashboard |
 | `SENTRY_PROJECT` | Sentry project name | Sentry Dashboard |
 | `SENTRY_AUTH_TOKEN` | Sentry auth token | Sentry Dashboard → Auth Tokens |
-| `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key | Appark Dashboard |
+| `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key (planned) | Appark Dashboard |
 
 ```bash
 # Sentry error tracking
@@ -45,7 +45,7 @@ SENTRY_ORG=your-org
 SENTRY_PROJECT=your-project
 SENTRY_AUTH_TOKEN=your-auth-token
 
-# Appark application monitoring
+# Appark application monitoring (planned / not wired)
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 ```
 
@@ -256,6 +256,6 @@ VERCEL_PROJECT_ID=your-project-id
 VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 GITHUB_TOKEN=your-github-token
 
-# ===== APM =====
+# ===== APM (planned) =====
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 ```

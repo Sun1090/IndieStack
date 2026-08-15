@@ -42,8 +42,8 @@
           "description": "Supabase auto-generates REST and Realtime APIs."
         },
         {
-          "title": "File Storage",
-          "description": "Alibaba Cloud OSS with CDN acceleration."
+          "title": "Row-Level Security",
+          "description": "Supabase Row-Level Security (RLS) for fine-grained data access control."
         },
         {
           "title": "Database Migrations",
@@ -90,8 +90,8 @@
           "description": "Detailed crash logs with stack traces."
         },
         {
-          "title": "App Monitoring",
-          "description": "Appark provides deep application performance insights."
+          "title": "Structured Logging",
+          "description": "Leveled logging (debug/info/warn/error) with automatic Sentry reporting in production."
         }
       ]
     },

@@ -13,14 +13,14 @@ graph TD
         Stripe["Stripe<br/>支付 + 订阅"]
         Sentry["Sentry<br/>错误监控"]
         OSS["阿里云 OSS<br/>文件存储"]
-        Appark["Appark<br/>APM 性能监控"]
+        Appark["Appark<br/>APM 性能监控（规划中）"]
     end
 
     Core --> Supabase
     Core --> Stripe
     Core --> Sentry
     Core --> OSS
-    Core --> Appark
+    Core -.-> Appark
 ```
 
 ## Supabase 集成
@@ -199,6 +199,8 @@ pnpm sentry:sourcemaps
 
 ### Next.js 图片优化
 
+> 启用 OSS 时，需在 `next.config.ts` 的 `images.remotePatterns` 中重新加入以下域名：
+
 ```typescript
 // next.config.ts
 images: {
@@ -212,44 +214,19 @@ images: {
 }
 ```
 
-## Appark APM 性能监控
+## Appark APM 性能监控（规划中）
 
-### 架构
+> 状态：**未接线**。Appark APM 模块仅为脚手架占位，未在应用任何位置初始化
+> （`src/lib/appark.ts` 已移除，避免误导）。如需启用，请按以下步骤补齐：
 
-```mermaid
-graph TD
-    subgraph ApparkSystem["Appark APM"]
-        Init["initAppark()<br/>初始化"]
-        TrackEvent["trackEvent()<br/>用户行为事件"]
-        TrackError["trackError()<br/>错误追踪"]
-        Perf["recordPagePerformance()<br/>页面性能指标"]
-        Queue["事件队列<br/>最大 100 条"]
-        Flush["flushEvents()<br/>10 秒批量上报"]
-        API["Appark API<br/>/v1/events"]
-    end
+### 待办
 
-    Init --> Queue
-    TrackEvent --> Queue
-    TrackError --> Queue
-    Perf --> Queue
-    Queue -->|满 100 条| Flush
-    Queue -->|10 秒定时器| Flush
-    Flush --> API
-```
+1. 新建 `src/lib/appark.ts`，封装 `initAppark / trackEvent / trackError / flushEvents`
+2. 在根布局或 `instrumentation.ts` 中调用 `initAppark()` 初始化
+3. 在关键业务流程（注册、结账、错误）接入事件上报
+4. 配置 `NEXT_PUBLIC_APPARK_API_KEY`
 
-### 性能指标
-
-| 指标 | 说明 |
-|------|------|
-| dns | DNS 查询时间 |
-| tcp | TCP 连接时间 |
-| ttfb | 首字节时间 |
-| download | 下载时间 |
-| domInteractive | DOM 可交互时间 |
-| domComplete | DOM 完成时间 |
-| firstPaint | 首次绘制时间 |
-
-### 环境变量
+### 环境变量（预留）
 
 | 变量 | 用途 |
 |------|------|
@@ -275,6 +252,6 @@ graph TD
 | `ALIYUN_BUCKET` | OSS | 否 | 存储桶 |
 | `ALIYUN_REGION` | OSS | 否 | 区域 |
 | `ALIYUN_CDN_DOMAIN` | OSS | 否 | CDN 域名 |
-| `NEXT_PUBLIC_APPARK_API_KEY` | Appark | 否 | APM Key |
+| `NEXT_PUBLIC_APPARK_API_KEY` | Appark（规划中） | 否 | APM Key |
 
 > *Supabase 变量在 Mock 模式下非必需

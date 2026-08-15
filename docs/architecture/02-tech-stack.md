@@ -167,13 +167,10 @@ graph LR
 - 通过 `instrumentation.ts` 自动初始化
 - 支持 Sourcemaps 上传
 
-### Appark APM
+### Appark APM（规划中）
 
-- 页面性能追踪（DNS、TCP、TTFB、DOM 等）
-- 用户行为事件上报
-- 错误追踪
-- 批量事件队列（10 秒刷新 / 100 条上限）
-- 采样率控制
+> 状态：**未接线**。模块已移除，未接入任何页面或初始化入口，如需启用见
+> [第三方集成](./11-integrations.md#appark-apm-性能监控规划中)。
 
 ### 结构化日志
 

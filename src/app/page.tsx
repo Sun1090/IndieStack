@@ -126,12 +126,7 @@ export default async function HomePage() {
               </p>
             </div>
             <div className="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-              {[
-                "Next.js 15", "Tailwind CSS", "shadcn/ui", "TypeScript",
-                "Supabase", "PostgreSQL", "Sentry", "Vercel",
-                "GitHub Actions", "Alibaba Cloud", "Appark", "Stripe",
-                "Zod", "Lucide", "Radix UI",
-              ].map((tech) => (
+              {(t.raw("techStackSection.items") as string[]).map((tech) => (
                 <div key={tech} className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
                   <Check className="h-3 w-3 text-green-500 shrink-0" />
                   <span>{tech}</span>

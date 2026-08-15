@@ -42,8 +42,8 @@
           "description": "Supabase 自动生成 REST 和 Realtime API。"
         },
         {
-          "title": "文件存储",
-          "description": "阿里云 OSS 文件存储，支持 CDN 加速。"
+          "title": "行级安全",
+          "description": "Supabase 行级安全（RLS）提供细粒度的数据访问控制。"
         },
         {
           "title": "数据库迁移",
@@ -90,8 +90,8 @@
           "description": "详细的崩溃日志和堆栈追踪。"
         },
         {
-          "title": "应用监控",
-          "description": "Appark 提供深度应用性能洞察。"
+          "title": "结构化日志",
+          "description": "分级日志（debug/info/warn/error），生产环境自动上报 Sentry。"
         }
       ]
     },

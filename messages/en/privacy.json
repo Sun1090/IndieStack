@@ -14,11 +14,11 @@
     },
     {
       "title": "3. Data Storage and Security",
-      "content": "Your data is stored on secure servers provided by Supabase (PostgreSQL database), Alibaba Cloud OSS (file storage), and Vercel (application hosting). We implement industry-standard security measures including encryption at rest and in transit."
+      "content": "Your data is stored on secure servers provided by Supabase (PostgreSQL database) and Vercel (application hosting). We implement industry-standard security measures including encryption at rest and in transit."
     },
     {
       "title": "4. Third-Party Services",
-      "content": "We use the following third-party services to operate our platform: Supabase (authentication and database), Vercel (hosting), Sentry (error monitoring), Stripe (payment processing), Alibaba Cloud (file storage), and Appark (performance monitoring). Each service has its own privacy policy governing data handling."
+      "content": "We use the following third-party services to operate our platform: Supabase (authentication and database), Vercel (hosting), Sentry (error monitoring), Stripe (payment processing). Each service has its own privacy policy governing data handling."
     },
     {
       "title": "5. Data Retention",
