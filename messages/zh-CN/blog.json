@@ -7,5 +7,40 @@
   "by": "作者",
   "publishedOn": "发布于",
   "backToBlog": "返回博客",
-  "noPosts": "暂无文章"
+  "noPosts": "暂无文章",
+  "minRead": "{count} 分钟阅读",
+  "posts": [
+    {
+      "title": "2026 年构建 SaaS：完整技术栈指南",
+      "excerpt": "全面介绍我们用于快速交付的技术与工具。",
+      "date": "2026-07-15",
+      "category": "工程",
+      "slug": "building-saas-2026",
+      "author": "IndieStack 团队"
+    },
+    {
+      "title": "为什么 Supabase 是独立开发者的完美后端",
+      "excerpt": "从认证到实时订阅，看看 Supabase 为何胜出。",
+      "date": "2026-07-10",
+      "category": "后端",
+      "slug": "supabase-indie-dev",
+      "author": "IndieStack 团队"
+    },
+    {
+      "title": "为 Next.js 配置 Sentry：分步指南",
+      "excerpt": "在 10 分钟内完成错误监控的接入。",
+      "date": "2026-07-05",
+      "category": "教程",
+      "slug": "sentry-nextjs-setup",
+      "author": "IndieStack 团队"
+    },
+    {
+      "title": "重新思考现代 Web 应用的认证方式",
+      "excerpt": "Supabase SSR 认证如何与 Next.js App Router 协同工作。",
+      "date": "2026-06-28",
+      "category": "架构",
+      "slug": "modern-auth-patterns",
+      "author": "IndieStack 团队"
+    }
+  ]
 }

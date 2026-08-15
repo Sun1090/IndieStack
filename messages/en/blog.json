@@ -7,5 +7,40 @@
   "by": "By",
   "publishedOn": "Published on",
   "backToBlog": "Back to Blog",
-  "noPosts": "No posts yet"
+  "noPosts": "No posts yet",
+  "minRead": "{count} min read",
+  "posts": [
+    {
+      "title": "Building a SaaS in 2026: The Complete Stack Guide",
+      "excerpt": "A comprehensive look at the tools and technologies we use to ship fast.",
+      "date": "2026-07-15",
+      "category": "Engineering",
+      "slug": "building-saas-2026",
+      "author": "IndieStack Team"
+    },
+    {
+      "title": "Why Supabase is the Perfect Backend for Indie Developers",
+      "excerpt": "From auth to real-time subscriptions, here's why Supabase wins.",
+      "date": "2026-07-10",
+      "category": "Backend",
+      "slug": "supabase-indie-dev",
+      "author": "IndieStack Team"
+    },
+    {
+      "title": "Setting Up Sentry for Next.js: A Step-by-Step Guide",
+      "excerpt": "Get error monitoring up and running in under 10 minutes.",
+      "date": "2026-07-05",
+      "category": "Tutorial",
+      "slug": "sentry-nextjs-setup",
+      "author": "IndieStack Team"
+    },
+    {
+      "title": "Rethinking Authentication in Modern Web Apps",
+      "excerpt": "How Supabase SSR auth works with Next.js App Router.",
+      "date": "2026-06-28",
+      "category": "Architecture",
+      "slug": "modern-auth-patterns",
+      "author": "IndieStack Team"
+    }
+  ]
 }

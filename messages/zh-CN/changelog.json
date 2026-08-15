@@ -13,5 +13,84 @@
     "title": "保持关注",
     "desc": "关注每一次发布。新功能每周发布。",
     "cta": "开始使用"
-  }
+  },
+  "releases": [
+    {
+      "version": "v1.2.0",
+      "date": "2026 年 7 月 15 日",
+      "category": "feature",
+      "changes": [
+        {
+          "type": "feature",
+          "text": "全新的实时分析仪表盘"
+        },
+        {
+          "type": "feature",
+          "text": "基于角色的权限团队邀请系统"
+        },
+        {
+          "type": "improvement",
+          "text": "改进会话管理与认证性能"
+        },
+        {
+          "type": "fix",
+          "text": "修复移动端分页 Bug"
+        }
+      ]
+    },
+    {
+      "version": "v1.1.0",
+      "date": "2026 年 6 月 20 日",
+      "category": "feature",
+      "changes": [
+        {
+          "type": "feature",
+          "text": "通知偏好设置系统"
+        },
+        {
+          "type": "feature",
+          "text": "支持头像上传的个人资料编辑"
+        },
+        {
+          "type": "improvement",
+          "text": "增强移动端响应式布局"
+        },
+        {
+          "type": "fix",
+          "text": "改进 OAuth 回调处理"
+        }
+      ]
+    },
+    {
+      "version": "v1.0.0",
+      "date": "2026 年 6 月 1 日",
+      "category": "major",
+      "changes": [
+        {
+          "type": "major",
+          "text": "IndieStack 首次公开发布"
+        },
+        {
+          "type": "feature",
+          "text": "Supabase 认证集成（邮箱 + OAuth）"
+        },
+        {
+          "type": "feature",
+          "text": "支持多租户的团队管理"
+        },
+        {
+          "type": "feature",
+          "text": "Stripe 订阅计费就绪"
+        },
+        {
+          "type": "feature",
+          "text": "Sentry 错误监控"
+        },
+        {
+          "type": "feature",
+          "text": "阿里云 OSS 文件存储"
+        }
+      ]
+    }
+  ]
 }
