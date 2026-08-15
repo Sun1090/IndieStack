@@ -103,6 +103,7 @@ erDiagram
 
 **RLS 策略：**
 - 用户只能查看自己的 profile（`auth.uid() = id`）
+- 团队成员可查看同团队成员的 profile（协作场景：团队页 / 邀请列表需显示成员邮箱、姓名、头像）
 - 用户只能更新自己的 profile（`auth.uid() = id`）
 
 **触发器：**

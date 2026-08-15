@@ -197,6 +197,21 @@ create policy "Team members can leave team"
   on public.team_members for delete
   using (auth.uid() = user_id and role <> 'owner');
 
+-- 团队成员可查看同团队成员的资料（协作场景：团队页/邀请列表需要显示成员邮箱、姓名、头像）
+-- 更新仍仅限本人；非团队用户、未登录用户不可见
+create policy "Team members can view teammate profiles"
+  on public.profiles for select
+  using (
+    exists (
+      select 1 from public.team_members tm
+      where tm.user_id = profiles.id
+        and tm.team_id in (
+          select team_id from public.team_members
+          where user_id = auth.uid()
+        )
+    )
+  );
+
 -- Auto-create personal team for new users
 create or replace function public.handle_new_team()
 returns trigger
