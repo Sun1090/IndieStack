@@ -15,6 +15,7 @@ import {
   generateMockAuditLogs,
   generateMockApiUsageRows,
   generateMockUserSessions,
+  generateMockAdminStats,
   MOCK_USER_ID,
   MOCK_TEAM_ID,
 } from "./data";
@@ -33,6 +34,8 @@ export const isMockEnabled =
 export function shouldUseMock(): boolean {
   return isMockEnabled;
 }
+
+export { generateMockAdminStats };
 
 // =============================================================================
 // Mock Supabase 客户端
