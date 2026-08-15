@@ -97,9 +97,9 @@ create policy "Users can view own notifications"
   on public.notifications for select
   using (auth.uid() = user_id);
 
-create policy "System can create notifications"
+create policy "Users can create own notifications"
   on public.notifications for insert
-  with check (auth.role() = 'authenticated');
+  with check (auth.uid() = user_id);
 
 create policy "Users can mark own notifications"
   on public.notifications for update
@@ -160,7 +160,8 @@ $$;
 -- =============================================================================
 -- 6. 用户统计视图
 -- =============================================================================
-create or replace view public.user_stats as
+create or replace view public.user_stats
+with (security_invoker = true) as
 select
   p.id as user_id,
   p.email,

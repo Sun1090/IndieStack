@@ -91,6 +91,12 @@ create table public.api_usage (
 create index idx_api_usage_user_id on public.api_usage(user_id);
 create index idx_api_usage_created_at on public.api_usage(created_at);
 
+alter table public.api_usage enable row level security;
+
+create policy "Users can view own api usage"
+  on public.api_usage for select
+  using (auth.uid() = user_id);
+
 -- =============================================================================
 -- Teams
 -- =============================================================================
@@ -109,8 +115,10 @@ alter table public.teams enable row level security;
 create policy "Team members can view their team"
   on public.teams for select
   using (
-    auth.uid() in (
-      select user_id from public.team_members where team_id = id
+    exists (
+      select 1 from public.team_members tm
+      where tm.team_id = teams.id
+        and tm.user_id = auth.uid()
     )
   );
 
@@ -135,26 +143,41 @@ alter table public.team_members enable row level security;
 create policy "Team members can view members"
   on public.team_members for select
   using (
-    auth.uid() in (
-      select user_id from public.team_members where team_id = team_id
+    exists (
+      select 1 from public.team_members tm
+      where tm.team_id = team_members.team_id
+        and tm.user_id = auth.uid()
     )
   );
 
 create policy "Team admins can invite members"
   on public.team_members for insert
   with check (
-    auth.uid() in (
-      select user_id from public.team_members
-      where team_id = team_id and role in ('owner', 'admin')
+    exists (
+      select 1 from public.team_members tm
+      where tm.team_id = team_members.team_id
+        and tm.role in ('owner', 'admin')
+        and tm.user_id = auth.uid()
+    )
+    and (
+      team_members.role <> 'owner'
+      or exists (
+        select 1 from public.team_members tm_owner
+        where tm_owner.team_id = team_members.team_id
+          and tm_owner.user_id = auth.uid()
+          and tm_owner.role = 'owner'
+      )
     )
   );
 
 create policy "Team admins can remove members"
   on public.team_members for delete
   using (
-    auth.uid() in (
-      select user_id from public.team_members
-      where team_id = team_id and role in ('owner', 'admin')
+    exists (
+      select 1 from public.team_members tm
+      where tm.team_id = team_members.team_id
+        and tm.role in ('owner', 'admin')
+        and tm.user_id = auth.uid()
     )
   );
 
@@ -218,6 +241,10 @@ create trigger set_updated_at_teams
 create trigger set_updated_at_subscriptions
   before update on public.subscriptions
   for each row execute function public.handle_updated_at();
+
+-- Webhook upsert 依赖 provider_id 唯一索引
+create unique index if not exists idx_subscriptions_provider_id
+  on public.subscriptions(provider_id);
 
 -- =============================================================================
 -- Profile extensions (additional columns)
