@@ -22,6 +22,28 @@ alter table public.profiles
 -- 将已有记录的 'user' 角色迁移为 'member'
 update public.profiles set role = 'member' where role = 'user';
 
+-- 新用户默认角色同步为 'member'，避免默认值 'user' 违反新约束导致注册失败
+alter table public.profiles alter column role set default 'member';
+
+-- 重建 handle_new_user：显式写入 role，不依赖列默认值
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, email, full_name, avatar_url, role)
+  values (
+    new.id,
+    new.email,
+    new.raw_user_meta_data ->> 'full_name',
+    new.raw_user_meta_data ->> 'avatar_url',
+    'member'
+  );
+  return new;
+end;
+$$;
+
 -- =============================================================================
 -- 2. 审计日志表
 -- =============================================================================
