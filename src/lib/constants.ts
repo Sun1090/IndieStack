@@ -120,12 +120,6 @@ export const SUBSCRIPTION_TIERS = {
   },
 } as const;
 
-export const ALIYUN_CONFIG = {
-  bucket: process.env.ALIYUN_BUCKET ?? "",
-  region: process.env.ALIYUN_REGION ?? "oss-cn-hangzhou",
-  cdnDomain: process.env.ALIYUN_CDN_DOMAIN ?? "",
-};
-
 export const RATE_LIMIT = {
   maxRequests: 100,
   windowMs: 60 * 1000, // 1 minute
