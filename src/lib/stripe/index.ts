@@ -17,6 +17,7 @@ export interface CheckoutSessionParams {
   customerId?: string;
   customerEmail?: string;
   userId?: string;
+  teamId?: string;
   successUrl?: string;
   cancelUrl?: string;
   allowPromotionCodes?: boolean;
@@ -89,7 +90,7 @@ async function createCheckoutSession(
   priceId: string,
   params?: CheckoutSessionParams
 ): Promise<{ url: string | null; sessionId: string }> {
-  const stripe = await importStripeServer();
+  const stripe = await getStripeServer();
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
@@ -106,7 +107,7 @@ async function createCheckoutSession(
     allow_promotion_codes: params?.allowPromotionCodes ?? true,
     subscription_data: {
       ...(params?.trialDays ? { trial_period_days: params.trialDays } : {}),
-      metadata: { userId: params?.userId ?? "", ...params?.metadata },
+      metadata: { userId: params?.userId ?? "", teamId: params?.teamId ?? "", ...params?.metadata },
     },
   });
   if (!session.url && !session.id) {
@@ -117,7 +118,7 @@ async function createCheckoutSession(
 
 /** 创建 Customer Portal 会话（管理订阅/发票/支付方式） */
 async function createPortalSession(customerId: string, returnUrl?: string): Promise<string> {
-  const stripe = await importStripeServer();
+  const stripe = await getStripeServer();
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url:
@@ -129,7 +130,7 @@ async function createPortalSession(customerId: string, returnUrl?: string): Prom
 
 /** 获取订阅信息 */
 async function getSubscription(subscriptionId: string): Promise<SubscriptionInfo> {
-  const stripe = await importStripeServer();
+  const stripe = await getStripeServer();
   const subscription = (await stripe.subscriptions.retrieve(subscriptionId)) as any;
   if (!subscription || !subscription.items?.data?.[0]?.price) {
     return {
@@ -162,12 +163,12 @@ async function getSubscription(subscriptionId: string): Promise<SubscriptionInfo
 
 /** 取消订阅（周期结束时停止续费） */
 async function cancelSubscription(subscriptionId: string): Promise<void> {
-  const stripe = await importStripeServer();
+  const stripe = await getStripeServer();
   await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
 }
 
-/** 延迟加载 Stripe 服务端 SDK */
-async function importStripeServer() {
+/** 延迟加载 Stripe 服务端 SDK（服务端专用） */
+export async function getStripeServer() {
   const Stripe = (await import("stripe")).default;
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new Error("Stripe 未配置，请设置 STRIPE_SECRET_KEY");

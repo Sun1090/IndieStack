@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
+import { createClient } from "@/lib/supabase/server";
 import { safelyRequireAuth } from "@/lib/auth/guards";
 import { createCheckoutSession, isStripeConfigured } from "@/lib/stripe";
 
@@ -41,8 +42,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "priceId is required" }, { status: 400 });
     }
 
+    // 白名单校验：仅允许配置中的定价 ID，防止任意 priceId 被滥用
+    const allowedPriceIds = [
+      process.env.STRIPE_PRO_PRICE_ID,
+      process.env.STRIPE_ENTERPRISE_PRICE_ID,
+    ].filter((id): id is string => Boolean(id));
+    if (allowedPriceIds.length > 0 && !allowedPriceIds.includes(body.priceId)) {
+      return NextResponse.json({ error: "Invalid priceId" }, { status: 400 });
+    }
+
+    // 解析当前用户的团队，随结账会话写入 metadata，供 webhook 订阅落库使用
+    const supabase = await createClient();
+    const { data: membership } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("user_id", auth.data.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
     const { url } = await createCheckoutSession(body.priceId, {
       userId: auth.data.id,
+      teamId: membership?.team_id,
       customerEmail: auth.data.email,
     });
 
