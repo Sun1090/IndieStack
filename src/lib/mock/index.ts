@@ -58,6 +58,8 @@ export function createMockSupabaseClient() {
 let _mockUser: ReturnType<typeof generateMockUser> | null = null;
 let _mockProfile: ReturnType<typeof generateMockProfile> | null = null;
 let _mockTeam: ReturnType<typeof generateMockTeam> | null = null;
+let _mockProfiles: ReturnType<typeof generateMockProfile>[] | null = null;
+let _mockTeams: ReturnType<typeof generateMockTeam>[] | null = null;
 let _mockMembers: ReturnType<typeof generateMockTeamMembersWithProfiles> | null = null;
 let _mockProjects: ReturnType<typeof generateMockProjects> | null = null;
 let _mockNotifications: ReturnType<typeof generateMockNotifications> | null = null;
@@ -71,6 +73,8 @@ export function resetMockCache() {
   _mockUser = null;
   _mockProfile = null;
   _mockTeam = null;
+  _mockProfiles = null;
+  _mockTeams = null;
   _mockMembers = null;
   _mockProjects = null;
   _mockNotifications = null;
@@ -93,6 +97,18 @@ function getMockProfile() {
 function getMockTeam() {
   if (!_mockTeam) _mockTeam = generateMockTeam();
   return _mockTeam;
+}
+
+function getMockProfiles() {
+  if (!_mockProfiles) {
+    _mockProfiles = [getMockProfile(), ...Array.from({ length: 9 }, () => generateMockProfile())];
+  }
+  return _mockProfiles;
+}
+
+function getMockTeams() {
+  if (!_mockTeams) _mockTeams = [getMockTeam()];
+  return _mockTeams;
 }
 
 function getMockMembers() {
@@ -145,6 +161,8 @@ class MockQueryBuilder {
   private rangeEnd = 0;
   private useRange = false;
   private getCount: "exact" | "planned" | "estimated" | null = null;
+  private head = false;
+  private selected = false;
   private writeMode: "insert" | "update" | "delete" | null = null;
   private writeValue: unknown = null;
 
@@ -210,8 +228,10 @@ class MockQueryBuilder {
   }
 
   /** 查询 select — 返回 this（链式构建器），与真实 Supabase 行为一致 */
-  select(columns?: string | Record<string, unknown>, opts?: { count?: "exact" | "planned" | "estimated" }) {
+  select(columns?: string | Record<string, unknown>, opts?: { count?: "exact" | "planned" | "estimated"; head?: boolean }) {
     this.getCount = opts?.count ?? null;
+    this.head = opts?.head ?? false;
+    this.selected = true;
     return this;
   }
 
@@ -231,19 +251,10 @@ class MockQueryBuilder {
     return this;
   }
 
-  /** 更新 update */
+  /** 更新 update（延迟到 then/single 执行，配合 eq/in 过滤器只更新匹配行） */
   update(values: Record<string, unknown>) {
     this.writeMode = "update";
     this.writeValue = values;
-    // api_keys：支持吊销（is_active=false）等更新在列表中生效
-    if (this.table === "api_keys") {
-      for (const row of getMockApiKeys()) {
-        for (const [key, value] of Object.entries(values)) {
-          (row as Record<string, unknown>)[key] = value;
-        }
-        (row as Record<string, unknown>).updated_at = new Date().toISOString();
-      }
-    }
     return this;
   }
 
@@ -261,12 +272,13 @@ class MockQueryBuilder {
     onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     if (this.writeMode === "delete") {
+      this.applyDelete();
       return Promise.resolve(
         onFulfilled ? onFulfilled({ data: null, error: null }) : ({ data: null, error: null } as unknown as TResult1),
       );
     }
 
-    if (this.writeMode === "insert" || this.writeMode === "update") {
+    if (this.writeMode === "insert") {
       const value = this.writeValue;
       if (this.getCount === "exact") {
         const count = Array.isArray(value) ? value.length : 1;
@@ -279,11 +291,30 @@ class MockQueryBuilder {
       );
     }
 
+    if (this.writeMode === "update") {
+      const rows = this.applyUpdate();
+      if (this.getCount === "exact") {
+        return Promise.resolve(
+          onFulfilled ? onFulfilled({ data: rows, count: rows.length, error: null }) : ({ data: rows, count: rows.length, error: null } as unknown as TResult1),
+        );
+      }
+      if (this.selected) {
+        return Promise.resolve(
+          onFulfilled ? onFulfilled({ data: rows, error: null }) : ({ data: rows, error: null } as unknown as TResult1),
+        );
+      }
+      return Promise.resolve(
+        onFulfilled ? onFulfilled({ data: null, error: null }) : ({ data: null, error: null } as unknown as TResult1),
+      );
+    }
+
     const data = this.getData();
     if (this.getCount === "exact") {
       const count = Array.isArray(data) ? data.length : 1;
+      // head: true 与真实 PostgREST 一致：只返回 count，不返回数据行
+      const payload = this.head ? { data: [] as unknown[], count, error: null } : { data, count, error: null };
       return Promise.resolve(
-        onFulfilled ? onFulfilled({ data, count, error: null }) : ({ data, count, error: null } as unknown as TResult1),
+        onFulfilled ? onFulfilled(payload) : (payload as unknown as TResult1),
       );
     }
     return Promise.resolve(
@@ -293,17 +324,22 @@ class MockQueryBuilder {
 
   /** 获取 mock 数据 */
   private getData() {
-    if (this.writeMode === "insert" || this.writeMode === "update") {
+    if (this.writeMode === "insert") {
       return Array.isArray(this.writeValue) ? this.writeValue : [this.writeValue];
     }
+    if (this.writeMode === "update") {
+      return this.applyUpdate();
+    }
+    if (this.writeMode === "delete") {
+      this.applyDelete();
+      return [];
+    }
     switch (this.table) {
-      case "profiles": {
-        const list = [getMockProfile(), ...Array.from({ length: 9 }, () => generateMockProfile())];
-        return this.applyFiltersAndPagination(list);
-      }
+      case "profiles":
+        return this.applyFiltersAndPagination(getMockProfiles());
       case "teams":
         // 以数组形式返回并应用过滤，使列表/详情查询与真实 PostgREST 行为一致
-        return this.applyFiltersAndPagination([getMockTeam()]);
+        return this.applyFiltersAndPagination(getMockTeams());
       case "team_members": {
         const members = getMockMembers();
         return this.applyFiltersAndPagination(members);
@@ -327,6 +363,64 @@ class MockQueryBuilder {
       default:
         return [];
     }
+  }
+
+  /** 行是否匹配当前 eq/in 过滤器（写操作专用） */
+  private matchesFilters(row: Record<string, unknown>): boolean {
+    if (this.filters["id"] !== undefined && row["id"] !== this.filters["id"]) return false;
+    if (this.filters["user_id"] !== undefined && row["user_id"] !== this.filters["user_id"]) return false;
+    if (this.filters["team_id"] !== undefined && row["team_id"] !== this.filters["team_id"]) return false;
+    for (const [key, value] of Object.entries(this.filters)) {
+      if (!key.endsWith(":in")) continue;
+      const column = key.slice(0, -3);
+      if (!(value as unknown[]).includes(row[column])) return false;
+    }
+    return true;
+  }
+
+  /** 可写的缓存列表（与读取共用同一份引用，保证写操作持久可见） */
+  private getWriteList(): unknown[] | null {
+    switch (this.table) {
+      case "api_keys":
+        return getMockApiKeys();
+      case "profiles":
+        return getMockProfiles();
+      case "teams":
+        return getMockTeams();
+      case "team_members":
+        return getMockMembers();
+      case "notifications":
+        return getMockNotifications();
+      case "audit_logs":
+        return getMockAuditLogs();
+      case "projects":
+        return getMockProjects();
+      case "api_usage":
+        return getMockApiUsage();
+      case "user_sessions":
+        return getMockUserSessions();
+      default:
+        return null;
+    }
+  }
+
+  /** 应用 update：只修改匹配过滤器的行，返回被更新的行 */
+  private applyUpdate(): unknown[] {
+    const list = this.getWriteList();
+    if (!list) return [];
+    const rows = list.filter((row) => this.matchesFilters(row as Record<string, unknown>));
+    for (const row of rows) {
+      Object.assign(row as Record<string, unknown>, this.writeValue);
+    }
+    return rows;
+  }
+
+  /** 应用 delete：从缓存列表中移除匹配过滤器的行（保留数组引用） */
+  private applyDelete(): void {
+    const list = this.getWriteList();
+    if (!list) return;
+    const kept = list.filter((row) => !this.matchesFilters(row as Record<string, unknown>));
+    list.splice(0, list.length, ...kept);
   }
 
   private applyFiltersAndPagination(data: unknown[]): unknown[] {

@@ -87,7 +87,7 @@ export function RegisterForm() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
             disabled={loading}
-            minLength={6}
+            minLength={8}
             required
           />
           <p className="text-xs text-muted-foreground">{t("register.desc")}</p>
