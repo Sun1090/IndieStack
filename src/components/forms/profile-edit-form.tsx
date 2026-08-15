@@ -25,6 +25,7 @@ interface ProfileEditFormProps {
 export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEditFormProps) {
   const router = useRouter();
   const t = useTranslations("dashboard.profile.edit");
+  const tv = useTranslations("dashboard.profile.view");
   const tc = useTranslations("common");
   const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
@@ -99,10 +100,9 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
           defaultValue={language}
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <option value="en">English</option>
-          <option value="zh">Chinese (中文)</option>
-          <option value="ja">Japanese (日本語)</option>
-          <option value="ko">Korean (한국어)</option>
+          {(["en", "zh", "ja", "ko"] as const).map((value) => (
+            <option key={value} value={value}>{tv(`languages.${value}`)}</option>
+          ))}
         </select>
       </div>
 
