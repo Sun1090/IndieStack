@@ -147,7 +147,12 @@ export default async function TeamPage() {
                       <p className="text-sm font-medium">{member.profiles?.full_name ?? t("team.list.unknownMember")}</p>
                       <p className="text-xs text-muted-foreground">{member.profiles?.email ?? ""}</p>
                     </div>
-                    <Badge variant="outline">{member.role as string}</Badge>
+                    <Badge variant="outline">
+                      {(() => {
+                        const role = member.role as string;
+                        return t.has(`team.list.roles.${role}`) ? t(`team.list.roles.${role}`) : role;
+                      })()}
+                    </Badge>
                   </div>
                   {member.role !== "owner" && member.profiles?.id !== user!.id && (
                     <RemoveMemberButton memberId={member.id as string} />
