@@ -6,6 +6,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { updateNotificationSettings } from "@/lib/actions/settings";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,8 @@ interface NotificationSettingsFormProps {
 
 export function NotificationSettingsForm({ settings }: NotificationSettingsFormProps) {
   const router = useRouter();
+  const t = useTranslations("dashboard.notifications.preferences");
+  const tc = useTranslations("common");
   const [loading, setLoading] = useState(false);
   const [localSettings, setLocalSettings] = useState({
     emailNotifications: settings.emailNotifications ?? true,
@@ -39,86 +42,45 @@ export function NotificationSettingsForm({ settings }: NotificationSettingsFormP
     const result = await updateNotificationSettings(formData);
 
     if (result.error) {
-      toast({ title: "Error", description: result.error, variant: "destructive" });
+      toast({ title: tc("error"), description: result.error, variant: "destructive" });
       setLoading(false);
       return;
     }
 
-    toast({ title: "Settings saved", description: "Your notification preferences have been updated." });
+    toast({ title: t("success"), description: t("successDesc") });
     router.refresh();
     setLoading(false);
   }
 
+  const toggles = [
+    { id: "emailNotifications", label: t("emailLabel"), desc: t("emailDesc") },
+    { id: "marketingEmails", label: t("marketingLabel"), desc: t("marketingDesc") },
+    { id: "productUpdates", label: t("productLabel"), desc: t("productDesc") },
+    { id: "securityAlerts", label: t("securityLabel"), desc: t("securityDesc") },
+  ] as const;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label htmlFor="emailNotifications">Email Notifications</Label>
-            <p className="text-sm text-muted-foreground">
-              Receive email notifications for account activity.
-            </p>
-          </div>
+        {toggles.map((toggle) => (
+          <div key={toggle.id} className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor={toggle.id}>{toggle.label}</Label>
+              <p className="text-sm text-muted-foreground">{toggle.desc}</p>
+            </div>
             <Switch
-              id="emailNotifications"
-              checked={localSettings.emailNotifications}
+              id={toggle.id}
+              checked={localSettings[toggle.id]}
               onCheckedChange={(checked: boolean) =>
-                setLocalSettings((prev) => ({ ...prev, emailNotifications: checked }))
+                setLocalSettings((prev) => ({ ...prev, [toggle.id]: checked }))
               }
             />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label htmlFor="marketingEmails">Marketing Emails</Label>
-            <p className="text-sm text-muted-foreground">
-              Receive emails about new features and promotions.
-            </p>
           </div>
-            <Switch
-              id="marketingEmails"
-              checked={localSettings.marketingEmails}
-              onCheckedChange={(checked: boolean) =>
-                setLocalSettings((prev) => ({ ...prev, marketingEmails: checked }))
-              }
-            />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label htmlFor="productUpdates">Product Updates</Label>
-            <p className="text-sm text-muted-foreground">
-              Receive emails about product updates and changelogs.
-            </p>
-          </div>
-            <Switch
-              id="productUpdates"
-              checked={localSettings.productUpdates}
-              onCheckedChange={(checked: boolean) =>
-                setLocalSettings((prev) => ({ ...prev, productUpdates: checked }))
-              }
-            />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label htmlFor="securityAlerts">Security Alerts</Label>
-            <p className="text-sm text-muted-foreground">
-              Receive emails about security alerts and login attempts.
-            </p>
-          </div>
-            <Switch
-              id="securityAlerts"
-              checked={localSettings.securityAlerts}
-              onCheckedChange={(checked: boolean) =>
-                setLocalSettings((prev) => ({ ...prev, securityAlerts: checked }))
-              }
-            />
-        </div>
+        ))}
       </div>
 
       <Button type="submit" disabled={loading}>
-        {loading ? "Saving..." : "Save Preferences"}
+        {loading ? t("saving") : t("submit")}
       </Button>
     </form>
   );
