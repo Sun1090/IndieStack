@@ -65,5 +65,9 @@
         }
       ]
     }
-  ]
+  ],
+  "ctaTitle": "Still have questions?",
+  "ctaDesc": "Can't find what you're looking for? Reach out to our team.",
+  "ctaButton": "Contact Us",
+  "dashboardButton": "Go to Dashboard"
 }

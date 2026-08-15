@@ -13,5 +13,84 @@
     "title": "Stay up to date",
     "desc": "Follow along with every release. New features ship weekly.",
     "cta": "Get Started"
-  }
+  },
+  "releases": [
+    {
+      "version": "v1.2.0",
+      "date": "July 15, 2026",
+      "category": "feature",
+      "changes": [
+        {
+          "type": "feature",
+          "text": "New analytics dashboard with real-time metrics"
+        },
+        {
+          "type": "feature",
+          "text": "Team invite system with role-based permissions"
+        },
+        {
+          "type": "improvement",
+          "text": "Improved session management and auth performance"
+        },
+        {
+          "type": "fix",
+          "text": "Fixed pagination bug on mobile devices"
+        }
+      ]
+    },
+    {
+      "version": "v1.1.0",
+      "date": "June 20, 2026",
+      "category": "feature",
+      "changes": [
+        {
+          "type": "feature",
+          "text": "Notification preferences system"
+        },
+        {
+          "type": "feature",
+          "text": "Profile editing with avatar upload"
+        },
+        {
+          "type": "improvement",
+          "text": "Enhanced mobile responsive layout"
+        },
+        {
+          "type": "fix",
+          "text": "OAuth callback handling improvements"
+        }
+      ]
+    },
+    {
+      "version": "v1.0.0",
+      "date": "June 1, 2026",
+      "category": "major",
+      "changes": [
+        {
+          "type": "major",
+          "text": "Initial public release of IndieStack"
+        },
+        {
+          "type": "feature",
+          "text": "Supabase Auth integration (Email + OAuth)"
+        },
+        {
+          "type": "feature",
+          "text": "Team management with multi-tenancy"
+        },
+        {
+          "type": "feature",
+          "text": "Stripe subscription billing ready"
+        },
+        {
+          "type": "feature",
+          "text": "Sentry error monitoring"
+        },
+        {
+          "type": "feature",
+          "text": "Alibaba Cloud OSS file storage"
+        }
+      ]
+    }
+  ]
 }

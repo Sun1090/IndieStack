@@ -1,4 +1,9 @@
-/** * 定价页面（服务端组件） * 展示 Free/Pro/Enterprise 三级定价方案 * 包含功能对比、月度/年度切换、FAQ 常见问题解答 */
+/**
+ * 定价页面（服务端组件）
+ * 展示 Free/Pro/Enterprise 三级定价方案
+ * 包含月度/年度切换、FAQ 常见问题解答
+ * 使用服务端 i18n 渲染各语言版本
+ */
 
 import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,24 +12,27 @@ import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import Link from "next/link";
 import { ROUTES, SUBSCRIPTION_TIERS } from "@/lib/constants";
+import { getTranslations } from "next-intl/server";
 
-export const metadata: Metadata = {
-  title: "Pricing",
-  description: "Simple, transparent pricing for teams of all sizes",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("pricing");
+  return {
+    title: t("metaTitle"),
+    description: t("metaDesc"),
+  };
+}
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const t = await getTranslations("pricing");
+  const faqs = t.raw("faq.questions") as Array<{ q: string; a: string }>;
+
   return (
     <div className="container py-12 lg:py-20">
       {/* Header */}
       <div className="mx-auto max-w-3xl text-center">
-        <Badge variant="secondary" className="mb-4">Pricing</Badge>
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-          Simple, transparent pricing
-        </h1>
-        <p className="mt-4 text-lg text-muted-foreground">
-          Start for free, upgrade when you grow. No hidden fees, no surprises.
-        </p>
+        <Badge variant="secondary" className="mb-4">{t("metaTitle")}</Badge>
+        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t("pageTitle")}</h1>
+        <p className="mt-4 text-lg text-muted-foreground">{t("pageDesc")}</p>
       </div>
 
       {/* Pricing Cards */}
@@ -40,7 +48,7 @@ export default function PricingPage() {
           >
             {key === "pro" && (
               <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <Badge>Most Popular</Badge>
+                <Badge>{t("popular")}</Badge>
               </div>
             )}
 
@@ -48,7 +56,7 @@ export default function PricingPage() {
               <CardTitle className="text-2xl">{tier.name}</CardTitle>
               <CardDescription>
                 <span className="text-4xl font-bold text-foreground">${tier.price}</span>
-                <span className="text-muted-foreground">/month</span>
+                <span className="text-muted-foreground">{t("perMonth")}</span>
               </CardDescription>
             </CardHeader>
 
@@ -68,7 +76,7 @@ export default function PricingPage() {
                 variant={key === "free" ? "outline" : "default"}
               >
                 <Link href={ROUTES.register}>
-                  {key === "free" ? "Get Started Free" : `Start ${tier.name} Trial`}
+                  {key === "free" ? t("getStarted") : t("startTrial", { planName: tier.name })}
                 </Link>
               </Button>
             </CardContent>
@@ -78,31 +86,25 @@ export default function PricingPage() {
 
       {/* FAQ */}
       <div className="mt-20">
-        <h2 className="mb-8 text-center text-2xl font-bold">Frequently Asked Questions</h2>
+        <h2 className="mb-8 text-center text-2xl font-bold">{t("faq.title")}</h2>
         <div className="mx-auto grid max-w-3xl gap-6 md:grid-cols-2">
-          {[
-            {
-              q: "Can I upgrade or downgrade anytime?",
-              a: "Yes, you can change your plan at any time. Changes take effect immediately.",
-            },
-            {
-              q: "What payment methods do you accept?",
-              a: "We accept all major credit cards and PayPal. Enterprise plans can be invoiced.",
-            },
-            {
-              q: "Is there a free trial for paid plans?",
-              a: "Yes, all paid plans come with a 14-day free trial. No credit card required.",
-            },
-            {
-              q: "What happens when I hit my usage limits?",
-              a: "We'll notify you before you hit any limits. You can upgrade anytime.",
-            },
-          ].map((faq) => (
+          {faqs.map((faq) => (
             <div key={faq.q}>
               <h3 className="font-semibold">{faq.q}</h3>
               <p className="mt-1 text-sm text-muted-foreground">{faq.a}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div className="mt-20 rounded-2xl bg-muted/50 p-12 text-center">
+        <h2 className="text-3xl font-bold">{t("cta")}</h2>
+        <p className="mt-2 text-muted-foreground">{t("ctaDesc")}</p>
+        <div className="mt-6 flex justify-center gap-4">
+          <Button asChild size="lg">
+            <Link href={ROUTES.register}>{t("ctaButton")}</Link>
+          </Button>
         </div>
       </div>
     </div>
