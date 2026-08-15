@@ -53,7 +53,7 @@ export function generateMockProfile(overrides?: Record<string, unknown>) {
     email: "dev@indiestack.local",
     full_name: faker.person.fullName(),
     avatar_url: faker.image.avatar(),
-    role: "owner",
+    role: "admin",
     bio: faker.lorem.sentence(),
     timezone: "Asia/Shanghai",
     language: "zh-CN",
@@ -132,7 +132,7 @@ export function generateMockTeamMembersWithProfiles(count = 5) {
       avatar_url: faker.image.avatar(),
       role:
         i === 0
-          ? "owner"
+          ? "admin"
           : i === 1
             ? "admin"
             : "member",
