@@ -24,6 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function PricingPage() {
   const t = await getTranslations("pricing");
+  const tc = await getTranslations("common");
   const faqs = t.raw("faq.questions") as Array<{ q: string; a: string }>;
 
   return (
@@ -65,7 +66,7 @@ export default async function PricingPage() {
                 {tier.features.map((feature) => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                    <span className="text-sm">{feature}</span>
+                    <span className="text-sm">{tc(`tierFeatures.${feature}`)}</span>
                   </li>
                 ))}
               </ul>

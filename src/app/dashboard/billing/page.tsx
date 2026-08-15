@@ -28,6 +28,7 @@ export default async function BillingPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
+  const tc = await getTranslations("common");
 
   const { data: membership } = await supabase
     .from("team_members")
@@ -84,7 +85,7 @@ export default async function BillingPage() {
                     {tier.features.map((feature: string) => (
                       <li key={feature} className="flex items-center gap-2 text-sm">
                         <Check className="h-4 w-4 text-green-500 shrink-0" />
-                        {feature}
+                        {tc(`tierFeatures.${feature}`)}
                       </li>
                     ))}
                   </ul>

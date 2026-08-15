@@ -83,7 +83,14 @@ export default async function ProfilePage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t("profile.view.language")}</p>
-                <p className="text-sm">{(profile?.language as string) ?? "en"}</p>
+                <p className="text-sm">
+                  {(() => {
+                    const lang = (profile?.language as string) ?? "en";
+                    return t.has(`profile.view.languages.${lang}`)
+                      ? t(`profile.view.languages.${lang}`)
+                      : lang;
+                  })()}
+                </p>
               </div>
             </div>
           </CardContent>

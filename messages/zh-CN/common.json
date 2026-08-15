@@ -54,10 +54,29 @@
   "integrations": "集成",
   "analytics": "分析",
   "admin": "管理后台",
-  "features": "功能",
   "pricing": "定价",
   "about": "关于",
   "blog": "博客",
+  "features": "功能",
+  "tierFeatures": {
+    "upTo3Projects": "最多 3 个项目",
+    "basicAnalytics": "基础分析",
+    "communitySupport": "社区支持",
+    "storage1Gb": "1 GB 存储",
+    "unlimitedProjects": "无限项目",
+    "advancedAnalytics": "高级分析",
+    "prioritySupport": "优先支持",
+    "storage50Gb": "50 GB 存储",
+    "teamUpTo5": "最多 5 名团队成员",
+    "apiAccess": "API 访问",
+    "everythingInPro": "Pro 全部功能",
+    "unlimitedTeamMembers": "无限团队成员",
+    "dedicatedSupport": "专属支持",
+    "storage500Gb": "500 GB 存储",
+    "customIntegrations": "自定义集成",
+    "slaGuarantee": "SLA 保障",
+    "ssoSaml": "SSO / SAML"
+  },
   "faq": "常见问题",
   "changelog": "更新日志",
   "documentation": "文档",
@@ -82,5 +101,6 @@
   "year": "年",
   "free": "免费",
   "pro": "专业版",
-  "enterprise": "企业版"
+  "enterprise": "企业版",
+  "toggleTheme": "切换主题"
 }
