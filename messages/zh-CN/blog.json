@@ -16,7 +16,8 @@
       "date": "2026-07-15",
       "category": "工程",
       "slug": "building-saas-2026",
-      "author": "IndieStack 团队"
+      "author": "IndieStack 团队",
+      "content": "## 现代 SaaS 技术栈\n\n在 2026 年构建一个 SaaS 产品比以往任何时候都既简单又困难。工具更好了，但期望也更高了。以下是我们完整的技术栈，以及选择每一部分的原因。\n\n### 前端：Next.js 15\n\nNext.js 15 搭配 App Router，默认支持服务端组件、流式渲染和部分预渲染。结合 Tailwind CSS 和 shadcn/ui，我们无需组件库的额外负担就能获得美观、可访问的界面。\n\n### 后端：Supabase\n\nSupabase 负责认证、PostgreSQL 数据库、实时订阅和文件存储。它开源、可扩展性强，并通过 supabase-ssr 包与 Next.js 无缝集成。\n\n### 监控：Sentry\n\nSentry 提供实时错误追踪、性能监控和崩溃报告。它可以开箱即用地与 Next.js 集成。\n\n### 部署：Vercel + 阿里云\n\nVercel 负责前端部署，每次 PR 都会自动生成预览部署。阿里云 OSS 通过 CDN 提供静态资源服务。\n\n### 为什么这套技术栈有效\n\n1. **协同性好**：每个部分都能与其他部分良好集成\n2. **成本效益高**：Supabase 和 Vercel 都有慷慨的免费额度\n3. **生产力高**：样板代码最少，产出最大\n4. **生产就绪**：经过大规模实战检验\n\n## 开始使用\n\n最佳入门方式是克隆模板并按照设置指南操作。不到 30 分钟，你就能拥有一个包含认证、数据库和监控的可运行应用。"
     },
     {
       "title": "为什么 Supabase 是独立开发者的完美后端",
@@ -24,7 +25,8 @@
       "date": "2026-07-10",
       "category": "后端",
       "slug": "supabase-indie-dev",
-      "author": "IndieStack 团队"
+      "author": "IndieStack 团队",
+      "content": "## Supabase：与你一起成长的后端\n\n作为独立开发者，你需要一个既能支撑生产环境、又能快速上手的后端。Supabase 就是这样的后端。\n\n### Supabase 的特别之处\n\n- **PostgreSQL**：真正完整功能的 PostgreSQL，不是玩具。\n- **认证**：内置邮箱/密码、OAuth 和社交登录\n- **实时**：基于 WebSocket 的实时订阅\n- **存储**：带 CDN 的文件存储\n- **行级安全**：数据库层面的细粒度访问控制\n\n### 独立开发者的优势\n\n对独立开发者来说，Supabase 慷慨的免费额度是改变游戏规则的存在。你可以获得：\n- 2 个 PostgreSQL 数据库\n- 5 万月活跃用户\n- 2 GB 数据库容量\n- 1 GB 文件存储\n- 实时连接\n\n全部免费。这足以支撑你上线并增长到成千上万的用户。\n\n### 与 Next.js 集成\n\n@supabase/ssr 包让与 Next.js 15 App Router 的集成变得非常简单。服务端渲染、中间件和客户端组件都能无缝协作。"
     },
     {
       "title": "为 Next.js 配置 Sentry：分步指南",
@@ -32,7 +34,8 @@
       "date": "2026-07-05",
       "category": "教程",
       "slug": "sentry-nextjs-setup",
-      "author": "IndieStack 团队"
+      "author": "IndieStack 团队",
+      "content": "## Sentry + Next.js：完整配置指南\n\n错误监控对任何生产应用都至关重要。下面介绍如何为 Next.js 15 配置 Sentry。\n\n### 第 1 步：安装依赖包\n\n```bash\npnpm add @sentry/nextjs\n```\n\n### 第 2 步：配置 Sentry\n\n创建 `sentry.client.config.ts`、`sentry.server.config.ts` 和 `sentry.edge.config.ts`：\n\n```typescript\nimport * as Sentry from \"@sentry/nextjs\";\n\nSentry.init({\n  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,\n  tracesSampleRate: 1.0,\n  debug: false,\n});\n```\n\n### 第 3 步：添加环境变量\n\n```\nNEXT_PUBLIC_SENTRY_DSN=https://your-dsn@sentry.io/your-project\nSENTRY_ORG=your-org\nSENTRY_PROJECT=your-project\nSENTRY_AUTH_TOKEN=your-token\n```\n\n### 第 4 步：部署\n\nSentry 会在构建时自动上传 source map。生产环境中的错误将带有完整的堆栈跟踪信息。"
     },
     {
       "title": "重新思考现代 Web 应用的认证方式",
@@ -40,7 +43,8 @@
       "date": "2026-06-28",
       "category": "架构",
       "slug": "modern-auth-patterns",
-      "author": "IndieStack 团队"
+      "author": "IndieStack 团队",
+      "content": "## Next.js 现代认证模式\n\n认证方式已经发生了显著演进。下面介绍我们如何在 SaaS 模板中组织认证。\n\n### 问题\n\n传统认证模式在 React 服务端组件中并不好用。你无法在服务端组件中使用 hooks，而 SSR 又需要在服务端获取用户会话。\n\n### 解决方案：SSR 认证\n\nSupabase 的 SSR 包优雅地解决了这个问题：\n\n1. **中间件**：在每个请求时检查会话并刷新 Cookie\n2. **服务端客户端**：服务端组件中的 `createClient()` 读取 Cookie\n3. **客户端客户端**：浏览器组件中的 `createClient()` 使用同一个 Cookie\n\n### 数据流\n\n```\n请求 → 中间件（刷新会话） → 服务端组件 → 客户端组件\n                              ↓\n                        存储 Cookie\n                              ↓\n                    客户端通过 createBrowserClient 读取 Cookie\n```\n\n### 受保护路由\n\n中间件检查受保护路由，并将未认证用户重定向到登录页。认证页面会将已认证用户重定向到仪表盘。\n\n### 为什么这很重要\n\n这套模式为我们带来：\n- 不会闪现未认证的内容\n- 对 SEO 友好\n- 服务端与客户端类型安全的认证\n- 最少的样板代码"
     }
   ]
 }

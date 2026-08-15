@@ -16,7 +16,8 @@
       "date": "2026-07-15",
       "category": "Engineering",
       "slug": "building-saas-2026",
-      "author": "IndieStack Team"
+      "author": "IndieStack Team",
+      "content": "## The Modern SaaS Stack\n\nBuilding a SaaS product in 2026 is both easier and harder than ever. The tools are better, but the expectations are higher. Here's our complete stack and why we chose each piece.\n\n### Frontend: Next.js 15\n\nNext.js 15 with the App Router provides server components by default, streaming, and partial prerendering. Combined with Tailwind CSS and shadcn/ui, we get a beautiful, accessible UI without the overhead of a component library.\n\n### Backend: Supabase\n\nSupabase handles authentication, PostgreSQL database, real-time subscriptions, and file storage. It's open source, scales well, and integrates seamlessly with Next.js through the supabase-ssr package.\n\n### Monitoring: Sentry\n\nSentry provides real-time error tracking, performance monitoring, and crash reports. It integrates with Next.js out of the box.\n\n### Deployment: Vercel + Alibaba Cloud\n\nVercel handles the frontend deployment with automatic preview deployments for every PR. Alibaba Cloud OSS serves static assets through CDN.\n\n### Why This Stack Works\n\n1. **Cohesive**: Every piece integrates well with the others\n2. **Cost-effective**: Generous free tiers on Supabase and Vercel\n3. **Productivity**: Minimal boilerplate, maximum output\n4. **Production-ready**: Battle-tested at scale\n\n## Getting Started\n\nThe best way to get started is to clone the template and follow the setup guide. You'll have a working app with auth, database, and monitoring in under 30 minutes."
     },
     {
       "title": "Why Supabase is the Perfect Backend for Indie Developers",
@@ -24,7 +25,8 @@
       "date": "2026-07-10",
       "category": "Backend",
       "slug": "supabase-indie-dev",
-      "author": "IndieStack Team"
+      "author": "IndieStack Team",
+      "content": "## Supabase: The Backend That Grows With You\n\nAs an indie developer, you need a backend that's powerful enough for production but simple enough to get started quickly. Supabase is that backend.\n\n### What Makes Supabase Special\n\n- **PostgreSQL**: Real, full-featured PostgreSQL. Not a toy.\n- **Auth**: Built-in auth with email/password, OAuth, and social login\n- **Realtime**: WebSocket-based real-time subscriptions\n- **Storage**: File storage with CDN\n- **Row Level Security**: Fine-grained access control at the database level\n\n### The Indie Developer Advantage\n\nFor indie developers, Supabase's generous free tier is a game-changer. You get:\n- 2 PostgreSQL databases\n- 50,000 monthly active users\n- 2 GB database size\n- 1 GB file storage\n- Real-time connections\n\nAll for free. That's enough to launch and grow to thousands of users.\n\n### Integration with Next.js\n\nThe @supabase/ssr package makes it trivial to integrate with Next.js 15's App Router. Server-side rendering, middleware, and client components all work seamlessly."
     },
     {
       "title": "Setting Up Sentry for Next.js: A Step-by-Step Guide",
@@ -32,7 +34,8 @@
       "date": "2026-07-05",
       "category": "Tutorial",
       "slug": "sentry-nextjs-setup",
-      "author": "IndieStack Team"
+      "author": "IndieStack Team",
+      "content": "## Sentry + Next.js: Complete Setup Guide\n\nError monitoring is essential for any production application. Here's how to set up Sentry with Next.js 15.\n\n### Step 1: Install the Package\n\n```bash\npnpm add @sentry/nextjs\n```\n\n### Step 2: Configure Sentry\n\nCreate `sentry.client.config.ts`, `sentry.server.config.ts`, and `sentry.edge.config.ts`:\n\n```typescript\nimport * as Sentry from \"@sentry/nextjs\";\n\nSentry.init({\n  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,\n  tracesSampleRate: 1.0,\n  debug: false,\n});\n```\n\n### Step 3: Add Environment Variables\n\n```\nNEXT_PUBLIC_SENTRY_DSN=https://your-dsn@sentry.io/your-project\nSENTRY_ORG=your-org\nSENTRY_PROJECT=your-project\nSENTRY_AUTH_TOKEN=your-token\n```\n\n### Step 4: Deploy\n\nSentry will automatically upload source maps during build. Errors in production will have full stack traces."
     },
     {
       "title": "Rethinking Authentication in Modern Web Apps",
@@ -40,7 +43,8 @@
       "date": "2026-06-28",
       "category": "Architecture",
       "slug": "modern-auth-patterns",
-      "author": "IndieStack Team"
+      "author": "IndieStack Team",
+      "content": "## Modern Auth Patterns for Next.js\n\nAuthentication has evolved significantly. Here's how we structure auth in our SaaS template.\n\n### The Problem\n\nTraditional auth patterns don't work well with React Server Components. You can't use hooks in server components, and you need the user session available on the server for SSR.\n\n### The Solution: SSR Auth\n\nSupabase's SSR package solves this elegantly:\n\n1. **Middleware**: Checks session on every request and refreshes the cookie\n2. **Server Client**: `createClient()` in server components reads cookies\n3. **Client Client**: `createClient()` in browser components uses the same cookie\n\n### Data Flow\n\n```\nRequest → Middleware (refresh session) → Server Component → Client Component\n                              ↓\n                        Cookie stored\n                              ↓\n                    Client reads cookie via createBrowserClient\n```\n\n### Protected Routes\n\nMiddleware checks for protected routes and redirects unauthenticated users to the login page. Auth pages redirect authenticated users to the dashboard.\n\n### Why This Matters\n\nThis pattern gives us:\n- No flash of unauthenticated content\n- SEO-friendly pages\n- Type-safe auth across server and client\n- Minimal boilerplate"
     }
   ]
 }
