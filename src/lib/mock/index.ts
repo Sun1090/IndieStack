@@ -367,13 +367,20 @@ class MockQueryBuilder {
 
   /** 行是否匹配当前 eq/in 过滤器（写操作专用） */
   private matchesFilters(row: Record<string, unknown>): boolean {
+    // 主键/外键等高频字段保持原分支（兼容值为空串/0 的场景）
     if (this.filters["id"] !== undefined && row["id"] !== this.filters["id"]) return false;
     if (this.filters["user_id"] !== undefined && row["user_id"] !== this.filters["user_id"]) return false;
     if (this.filters["team_id"] !== undefined && row["team_id"] !== this.filters["team_id"]) return false;
     for (const [key, value] of Object.entries(this.filters)) {
-      if (!key.endsWith(":in")) continue;
-      const column = key.slice(0, -3);
-      if (!(value as unknown[]).includes(row[column])) return false;
+      if (key.endsWith(":in")) {
+        const column = key.slice(0, -3);
+        if (!(value as unknown[]).includes(row[column])) return false;
+        continue;
+      }
+      if (key.endsWith(":gte")) continue;
+      // 通用 eq 过滤（如 email），与真实 PostgREST 行为一致
+      if (key === "id" || key === "user_id" || key === "team_id") continue;
+      if (row[key] !== value) return false;
     }
     return true;
   }
@@ -441,6 +448,12 @@ class MockQueryBuilder {
       result = result.filter((item: any) =>
         item.team_id === this.filters["team_id"]
       );
+    }
+    // 通用 eq 过滤（如 email），与真实 PostgREST 行为一致；id/user_id/team_id 已在上面分支处理
+    for (const [key, value] of Object.entries(this.filters)) {
+      if (key.endsWith(":in") || key.endsWith(":gte")) continue;
+      if (key === "id" || key === "user_id" || key === "team_id") continue;
+      result = result.filter((item: any) => item[key] === value);
     }
     Object.entries(this.filters).forEach(([key, value]) => {
       if (key.endsWith(":in")) {
