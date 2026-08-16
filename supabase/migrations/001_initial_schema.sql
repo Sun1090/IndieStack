@@ -46,7 +46,14 @@ create policy "Users can view own profile"
 
 create policy "Users can update own profile"
   on public.profiles for update
-  using (auth.uid() = id);
+  using (auth.uid() = id)
+  with check (
+    auth.uid() = id
+    and role = (select role from public.profiles where id = auth.uid())
+    and email is not distinct from (
+      select email from public.profiles where id = auth.uid()
+    )
+  );
 
 -- Updated_at trigger
 create or replace function public.handle_updated_at()
@@ -131,6 +138,17 @@ create policy "Team owners and admins can update their team"
         and tm.user_id = auth.uid()
         and tm.role in ('owner', 'admin')
     )
+  )
+  with check (
+    exists (
+      select 1 from public.team_members tm
+      where tm.team_id = teams.id
+        and tm.user_id = auth.uid()
+        and tm.role in ('owner', 'admin')
+    )
+    and owner_id = (select owner_id from public.teams where id = teams.id)
+    and plan = (select plan from public.teams where id = teams.id)
+    and member_count = (select member_count from public.teams where id = teams.id)
   );
 
 -- =============================================================================
