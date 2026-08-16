@@ -34,21 +34,29 @@ const profilePatchSchema = z
 export async function GET(request: Request) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json({ error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) }, { status: 429 });
+    return NextResponse.json(
+      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
+      { status: 429 },
+    );
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile, error: profileError } = (await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
-    .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: { message: string } | null };
+    .single()) as unknown as {
+    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
+    error: { message: string } | null;
+  };
 
   if (profileError) {
     console.error("[API /user] 获取用户资料失败:", profileError.message);
@@ -74,11 +82,13 @@ export async function PATCH(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -89,7 +99,10 @@ export async function PATCH(request: NextRequest) {
   // 白名单校验：仅允许预定义字段，避免任意字段/类型写入 profiles
   const parsed = profilePatchSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.errors[0]?.message ?? "Invalid input" }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.errors[0]?.message ?? "Invalid input" },
+      { status: 400 },
+    );
   }
 
   const { full_name, avatar_url, bio, timezone, language } = parsed.data;
@@ -102,12 +115,15 @@ export async function PATCH(request: NextRequest) {
   if (language !== undefined) updateData.language = language;
   updateData.updated_at = new Date().toISOString();
 
-  const { data: profile, error } = await supabase
+  const { data: profile, error } = (await supabase
     .from("profiles")
     .update(updateData as unknown as never)
     .eq("id", user.id)
     .select()
-    .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: { message: string } | null };
+    .single()) as unknown as {
+    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
+    error: { message: string } | null;
+  };
 
   if (error) {
     console.error("[API /user] 更新用户资料失败:", error.message);
@@ -125,11 +141,13 @@ export async function DELETE(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });

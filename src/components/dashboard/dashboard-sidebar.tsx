@@ -71,8 +71,8 @@ export function DashboardSidebar() {
   return (
     <aside
       className={cn(
-        "relative hidden border-r bg-background md:block transition-all duration-200",
-        collapsed ? "w-16" : "w-64"
+        "relative hidden border-r bg-background transition-all duration-200 md:block",
+        collapsed ? "w-16" : "w-64",
       )}
     >
       <div className="flex h-full flex-col gap-2 p-3">
@@ -107,7 +107,7 @@ export function DashboardSidebar() {
                   isActive
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                  collapsed && "justify-center px-2"
+                  collapsed && "justify-center px-2",
                 )}
                 title={collapsed ? link.label : undefined}
               >
@@ -127,7 +127,7 @@ export function DashboardSidebar() {
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   pathname.startsWith("/dashboard/admin")
                     ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                 )}
               >
                 <Shield className="h-4 w-4 shrink-0" />
@@ -142,7 +142,7 @@ export function DashboardSidebar() {
                 "flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium transition-colors",
                 pathname.startsWith("/dashboard/admin")
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
               title={t("admin")}
             >

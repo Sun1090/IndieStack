@@ -73,10 +73,18 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown>, e
   if (isDev || isVerbose) {
     const formatted = formatLog(entry);
     switch (level) {
-      case "debug": console.debug(formatted); break;
-      case "info": console.info(formatted); break;
-      case "warn": console.warn(formatted); break;
-      case "error": console.error(formatted); break;
+      case "debug":
+        console.debug(formatted);
+        break;
+      case "info":
+        console.info(formatted);
+        break;
+      case "warn":
+        console.warn(formatted);
+        break;
+      case "error":
+        console.error(formatted);
+        break;
     }
   }
 
@@ -100,7 +108,8 @@ export const logger: Logger = {
   debug: (message: string, data?: Record<string, unknown>) => log("debug", message, data),
   info: (message: string, data?: Record<string, unknown>) => log("info", message, data),
   warn: (message: string, data?: Record<string, unknown>) => log("warn", message, data),
-  error: (message: string, data?: Record<string, unknown>, error?: Error) => log("error", message, data, error),
+  error: (message: string, data?: Record<string, unknown>, error?: Error) =>
+    log("error", message, data, error),
 
   /**
    * 性能计时器

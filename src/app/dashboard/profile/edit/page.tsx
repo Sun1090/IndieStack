@@ -22,16 +22,25 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ProfileEditPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
 
   if (!user) redirect(ROUTES.login);
 
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from("profiles")
     .select("full_name, bio, timezone, language")
     .eq("id", user.id)
-    .single() as unknown as { data: { full_name: string | null; bio: string | null; timezone: string | null; language: string | null } | null };
+    .single()) as unknown as {
+    data: {
+      full_name: string | null;
+      bio: string | null;
+      timezone: string | null;
+      language: string | null;
+    } | null;
+  };
 
   return (
     <div className="space-y-8">

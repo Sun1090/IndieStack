@@ -228,7 +228,10 @@ class MockQueryBuilder {
   }
 
   /** 查询 select — 返回 this（链式构建器），与真实 Supabase 行为一致 */
-  select(columns?: string | Record<string, unknown>, opts?: { count?: "exact" | "planned" | "estimated"; head?: boolean }) {
+  select(
+    columns?: string | Record<string, unknown>,
+    opts?: { count?: "exact" | "planned" | "estimated"; head?: boolean },
+  ) {
     // 记录列选择：嵌套关联（profiles:user_id (...)/teams!inner(...)）依赖此信息
     if (columns !== undefined) {
       this.columns = typeof columns === "string" ? columns : "*";
@@ -265,14 +268,20 @@ class MockQueryBuilder {
   /** thenable — 支持 await builder 直接获取 { data, error } */
   then<TResult1 = { data: unknown; count?: number; error: unknown }, TResult2 = never>(
     onFulfilled:
-      | ((value: { data: unknown; count?: number; error: unknown }) => TResult1 | PromiseLike<TResult1>)
+      | ((value: {
+          data: unknown;
+          count?: number;
+          error: unknown;
+        }) => TResult1 | PromiseLike<TResult1>)
       | null,
     onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     if (this.writeMode === "delete") {
       this.applyDelete();
       return Promise.resolve(
-        onFulfilled ? onFulfilled({ data: null, error: null }) : ({ data: null, error: null } as unknown as TResult1),
+        onFulfilled
+          ? onFulfilled({ data: null, error: null })
+          : ({ data: null, error: null } as unknown as TResult1),
       );
     }
 
@@ -281,11 +290,15 @@ class MockQueryBuilder {
       if (this.getCount === "exact") {
         const count = Array.isArray(value) ? value.length : 1;
         return Promise.resolve(
-          onFulfilled ? onFulfilled({ data: value, count, error: null }) : ({ data: value, count, error: null } as unknown as TResult1),
+          onFulfilled
+            ? onFulfilled({ data: value, count, error: null })
+            : ({ data: value, count, error: null } as unknown as TResult1),
         );
       }
       return Promise.resolve(
-        onFulfilled ? onFulfilled({ data: value, error: null }) : ({ data: value, error: null } as unknown as TResult1),
+        onFulfilled
+          ? onFulfilled({ data: value, error: null })
+          : ({ data: value, error: null } as unknown as TResult1),
       );
     }
 
@@ -293,16 +306,22 @@ class MockQueryBuilder {
       const rows = this.applyUpdate();
       if (this.getCount === "exact") {
         return Promise.resolve(
-          onFulfilled ? onFulfilled({ data: rows, count: rows.length, error: null }) : ({ data: rows, count: rows.length, error: null } as unknown as TResult1),
+          onFulfilled
+            ? onFulfilled({ data: rows, count: rows.length, error: null })
+            : ({ data: rows, count: rows.length, error: null } as unknown as TResult1),
         );
       }
       if (this.selected) {
         return Promise.resolve(
-          onFulfilled ? onFulfilled({ data: rows, error: null }) : ({ data: rows, error: null } as unknown as TResult1),
+          onFulfilled
+            ? onFulfilled({ data: rows, error: null })
+            : ({ data: rows, error: null } as unknown as TResult1),
         );
       }
       return Promise.resolve(
-        onFulfilled ? onFulfilled({ data: null, error: null }) : ({ data: null, error: null } as unknown as TResult1),
+        onFulfilled
+          ? onFulfilled({ data: null, error: null })
+          : ({ data: null, error: null } as unknown as TResult1),
       );
     }
 
@@ -310,13 +329,15 @@ class MockQueryBuilder {
     if (this.getCount === "exact") {
       const count = Array.isArray(data) ? data.length : 1;
       // head: true 与真实 PostgREST 一致：只返回 count，不返回数据行
-      const payload = this.head ? { data: [] as unknown[], count, error: null } : { data, count, error: null };
-      return Promise.resolve(
-        onFulfilled ? onFulfilled(payload) : (payload as unknown as TResult1),
-      );
+      const payload = this.head
+        ? { data: [] as unknown[], count, error: null }
+        : { data, count, error: null };
+      return Promise.resolve(onFulfilled ? onFulfilled(payload) : (payload as unknown as TResult1));
     }
     return Promise.resolve(
-      onFulfilled ? onFulfilled({ data, error: null }) : ({ data, error: null } as unknown as TResult1),
+      onFulfilled
+        ? onFulfilled({ data, error: null })
+        : ({ data, error: null } as unknown as TResult1),
     );
   }
 
@@ -340,7 +361,9 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(getMockTeams());
       case "team_members": {
         const members = getMockMembers();
-        return this.applyFiltersAndPagination(this.applyRelationships(members as Record<string, unknown>[]));
+        return this.applyFiltersAndPagination(
+          this.applyRelationships(members as Record<string, unknown>[]),
+        );
       }
       case "team_members_with_profiles":
         return getMockMembers();
@@ -387,7 +410,8 @@ class MockQueryBuilder {
    * 为每行附加关联数据；inner join 找不到关联时过滤该行。
    */
   private applyRelationships(rows: Record<string, unknown>[]): Record<string, unknown>[] {
-    const relPattern = /([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?(?:!([A-Za-z]+))?\s*\(([^)]*)\)/g;
+    const relPattern =
+      /([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?(?:!([A-Za-z]+))?\s*\(([^)]*)\)/g;
     let match: RegExpExecArray | null;
     const rels: { alias: string; fk: string | null; inner: boolean }[] = [];
     while ((match = relPattern.exec(this.columns)) !== null) {
@@ -429,8 +453,10 @@ class MockQueryBuilder {
   private matchesFilters(row: Record<string, unknown>): boolean {
     // 主键/外键等高频字段保持原分支（兼容值为空串/0 的场景）
     if (this.filters["id"] !== undefined && row["id"] !== this.filters["id"]) return false;
-    if (this.filters["user_id"] !== undefined && row["user_id"] !== this.filters["user_id"]) return false;
-    if (this.filters["team_id"] !== undefined && row["team_id"] !== this.filters["team_id"]) return false;
+    if (this.filters["user_id"] !== undefined && row["user_id"] !== this.filters["user_id"])
+      return false;
+    if (this.filters["team_id"] !== undefined && row["team_id"] !== this.filters["team_id"])
+      return false;
     for (const [key, value] of Object.entries(this.filters)) {
       if (key.endsWith(":in")) {
         const column = key.slice(0, -3);
@@ -495,19 +521,13 @@ class MockQueryBuilder {
 
     // 如果传入了 user_id 过滤，返回匹配的数据
     if (this.filters["user_id"]) {
-      result = result.filter((item: any) =>
-        item.user_id === this.filters["user_id"]
-      );
+      result = result.filter((item: any) => item.user_id === this.filters["user_id"]);
     }
     if (this.filters["id"]) {
-      result = result.filter((item: any) =>
-        item.id === this.filters["id"]
-      );
+      result = result.filter((item: any) => item.id === this.filters["id"]);
     }
     if (this.filters["team_id"]) {
-      result = result.filter((item: any) =>
-        item.team_id === this.filters["team_id"]
-      );
+      result = result.filter((item: any) => item.team_id === this.filters["team_id"]);
     }
     // 通用 eq 过滤（如 email），与真实 PostgREST 行为一致；id/user_id/team_id 已在上面分支处理
     for (const [key, value] of Object.entries(this.filters)) {
@@ -533,9 +553,7 @@ class MockQueryBuilder {
         const valA = a[this.orderColumn!];
         const valB = b[this.orderColumn!];
         if (typeof valA === "string") {
-          return this.orderAscending
-            ? valA.localeCompare(valB)
-            : valB.localeCompare(valA);
+          return this.orderAscending ? valA.localeCompare(valB) : valB.localeCompare(valA);
         }
         return this.orderAscending ? valA - valB : valB - valA;
       });

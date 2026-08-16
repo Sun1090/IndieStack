@@ -25,21 +25,25 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function NotificationsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
 
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single() as unknown as { data: Record<string, unknown> | null };
+    .single()) as unknown as { data: Record<string, unknown> | null };
 
-  const { data: notifications } = await supabase
+  const { data: notifications } = (await supabase
     .from("notifications")
     .select("*")
     .eq("user_id", user!.id)
     .order("created_at", { ascending: false })
-    .limit(10) as unknown as { data: Database["public"]["Tables"]["notifications"]["Row"][] | null };
+    .limit(10)) as unknown as {
+    data: Database["public"]["Tables"]["notifications"]["Row"][] | null;
+  };
 
   const locale = await getLocale();
 
@@ -52,10 +56,7 @@ export default async function NotificationsPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title={t("notifications.title")}
-        description={t("notifications.desc")}
-      />
+      <PageHeader title={t("notifications.title")} description={t("notifications.desc")} />
 
       <Card>
         <CardHeader>
@@ -64,7 +65,7 @@ export default async function NotificationsPage() {
         </CardHeader>
         <CardContent>
           <NotificationSettingsForm
-            settings={profile?.notification_settings as Record<string, boolean> ?? {}}
+            settings={(profile?.notification_settings as Record<string, boolean>) ?? {}}
           />
         </CardContent>
       </Card>

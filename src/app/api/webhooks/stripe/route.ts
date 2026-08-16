@@ -44,7 +44,7 @@ function mapPlan(priceId: string | undefined | null): string {
 /** 解析订阅所属团队：优先取 metadata.teamId，否则回退到用户的默认团队 */
 async function resolveTeamId(
   teamId: string | undefined | null,
-  userId: string | undefined | null
+  userId: string | undefined | null,
 ): Promise<string | null> {
   if (teamId) return teamId;
   if (!userId) return null;
@@ -66,7 +66,7 @@ async function upsertSubscription(subscription: Stripe.Subscription): Promise<vo
   const teamId = await resolveTeamId(subscription.metadata?.teamId, subscription.metadata?.userId);
   if (!teamId) {
     console.warn(
-      `[Stripe Webhook] 无法解析 team_id，跳过订阅 ${subscription.id}（userId=${subscription.metadata?.userId ?? "unknown"}）`
+      `[Stripe Webhook] 无法解析 team_id，跳过订阅 ${subscription.id}（userId=${subscription.metadata?.userId ?? "unknown"}）`,
     );
     return;
   }
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
         // 订阅状态由 customer.subscription.* 事件维护，此处记录日志即可
         const invoice = event.data.object as Stripe.Invoice;
         console.log(
-          `[Stripe Webhook] 付款成功: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`
+          `[Stripe Webhook] 付款成功: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
         );
         break;
       }
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
         console.warn(
-          `[Stripe Webhook] 付款失败: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`
+          `[Stripe Webhook] 付款失败: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
         );
         break;
       }

@@ -20,7 +20,7 @@ function CallbackHandler() {
   const searchParams = useSearchParams();
   const redirect = getSafeRedirect(
     searchParams.get("redirect") ?? searchParams.get("next"),
-    ROUTES.dashboard
+    ROUTES.dashboard,
   );
   const t = useTranslations("auth");
   const ta = useTranslations("actions");
@@ -41,8 +41,10 @@ function CallbackHandler() {
           const result = await supabase.auth.exchangeCodeForSession(hash);
           error = result.error;
         } else {
-          const { data: { session }, error: sessionError } =
-            await supabase.auth.getSession();
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.getSession();
           if (!session && sessionError) {
             error = sessionError;
           }

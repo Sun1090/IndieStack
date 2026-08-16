@@ -2,7 +2,11 @@
  * 设置表单验证规则测试
  */
 import { describe, it, expect } from "vitest";
-import { notificationSettingsSchema, appearanceSettingsSchema, securitySettingsSchema } from "./settings";
+import {
+  notificationSettingsSchema,
+  appearanceSettingsSchema,
+  securitySettingsSchema,
+} from "./settings";
 
 describe("notificationSettingsSchema", () => {
   it("应使用默认值创建有效设置", () => {

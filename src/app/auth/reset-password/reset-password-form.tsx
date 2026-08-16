@@ -39,13 +39,13 @@ export function ResetPasswordForm() {
   useEffect(() => {
     let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event: AuthChangeEvent, session: Session | null) => {
-        if (mounted && event === "PASSWORD_RECOVERY" && session) {
-          setStatus("ready");
-        }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
+      if (mounted && event === "PASSWORD_RECOVERY" && session) {
+        setStatus("ready");
       }
-    );
+    });
 
     const params = new URLSearchParams(window.location.search);
     const hasRecoveryParams = params.has("code") || params.has("token_hash");
@@ -105,7 +105,11 @@ export function ResetPasswordForm() {
   };
 
   if (status === "checking") {
-    return <p className="py-8 text-center text-sm text-muted-foreground">{t("resetPassword.checking")}</p>;
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground">
+        {t("resetPassword.checking")}
+      </p>
+    );
   }
 
   if (status === "invalid") {

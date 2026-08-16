@@ -31,7 +31,9 @@ export default async function PricingPage() {
     <div className="container py-12 lg:py-20">
       {/* Header */}
       <div className="mx-auto max-w-3xl text-center">
-        <Badge variant="secondary" className="mb-4">{t("metaTitle")}</Badge>
+        <Badge variant="secondary" className="mb-4">
+          {t("metaTitle")}
+        </Badge>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t("pageTitle")}</h1>
         <p className="mt-4 text-lg text-muted-foreground">{t("pageDesc")}</p>
       </div>
@@ -39,14 +41,7 @@ export default async function PricingPage() {
       {/* Pricing Cards */}
       <div className="mt-12 grid gap-8 md:grid-cols-3">
         {Object.entries(SUBSCRIPTION_TIERS).map(([key, tier]) => (
-          <Card
-            key={key}
-            className={
-              key === "pro"
-                ? "relative border-primary shadow-lg"
-                : ""
-            }
-          >
+          <Card key={key} className={key === "pro" ? "relative border-primary shadow-lg" : ""}>
             {key === "pro" && (
               <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                 <Badge>{t("popular")}</Badge>
@@ -71,11 +66,7 @@ export default async function PricingPage() {
                 ))}
               </ul>
 
-              <Button
-                asChild
-                className="w-full"
-                variant={key === "free" ? "outline" : "default"}
-              >
+              <Button asChild className="w-full" variant={key === "free" ? "outline" : "default"}>
                 <Link href={ROUTES.register}>
                   {key === "free" ? t("getStarted") : t("startTrial", { planName: tier.name })}
                 </Link>

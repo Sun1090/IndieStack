@@ -129,9 +129,7 @@ export const PERMISSIONS = {
  * 校验字符串是否为有效权限
  */
 export function isValidPermission(p: string): p is Permission {
-  return Object.values(PERMISSIONS).some((group) =>
-    Object.values(group).includes(p as Permission)
-  );
+  return Object.values(PERMISSIONS).some((group) => Object.values(group).includes(p as Permission));
 }
 
 /**

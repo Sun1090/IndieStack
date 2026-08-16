@@ -8,30 +8,27 @@
  * <Kbd size="sm">Esc</Kbd>
  */
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-type KbdVariant = "default" | "outline" | "ghost"
-type KbdSize = "sm" | "default" | "lg"
+type KbdVariant = "default" | "outline" | "ghost";
+type KbdSize = "sm" | "default" | "lg";
 
 interface KbdProps extends React.HTMLAttributes<HTMLElement> {
-  variant?: KbdVariant
-  size?: KbdSize
+  variant?: KbdVariant;
+  size?: KbdSize;
 }
 
 const variantStyles: Record<KbdVariant, string> = {
-  default:
-    "bg-muted text-muted-foreground border shadow-sm",
-  outline:
-    "bg-background text-foreground border-2",
-  ghost:
-    "bg-transparent text-muted-foreground",
-}
+  default: "bg-muted text-muted-foreground border shadow-sm",
+  outline: "bg-background text-foreground border-2",
+  ghost: "bg-transparent text-muted-foreground",
+};
 
 const sizeStyles: Record<KbdSize, string> = {
   sm: "h-5 min-w-5 px-1 text-[10px]",
   default: "h-6 min-w-6 px-1.5 text-xs",
   lg: "h-8 min-w-8 px-2 text-sm",
-}
+};
 
 export function Kbd({
   className,
@@ -44,14 +41,14 @@ export function Kbd({
     <kbd
       className={cn(
         "inline-flex items-center justify-center rounded font-mono font-medium",
-        "leading-none select-none",
+        "select-none leading-none",
         variantStyles[variant],
         sizeStyles[size],
-        className
+        className,
       )}
       {...props}
     >
       {children}
     </kbd>
-  )
+  );
 }

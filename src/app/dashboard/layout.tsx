@@ -13,13 +13,11 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     redirect(ROUTES.login);
@@ -30,9 +28,7 @@ export default async function DashboardLayout({
       <SiteHeader />
       <div className="flex flex-1">
         <DashboardSidebar />
-        <main className="flex-1 overflow-auto p-6 lg:p-8">
-          {children}
-        </main>
+        <main className="flex-1 overflow-auto p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );

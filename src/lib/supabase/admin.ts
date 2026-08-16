@@ -27,15 +27,11 @@ export function createAdminClient(): SupabaseClient<Database> {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
-    throw new Error(
-      "缺少环境变量: NEXT_PUBLIC_SUPABASE_URL，请检查 .env.local 配置"
-    );
+    throw new Error("缺少环境变量: NEXT_PUBLIC_SUPABASE_URL，请检查 .env.local 配置");
   }
 
   if (!serviceRoleKey) {
-    throw new Error(
-      "缺少环境变量: SUPABASE_SERVICE_ROLE_KEY，请检查 .env.local 配置"
-    );
+    throw new Error("缺少环境变量: SUPABASE_SERVICE_ROLE_KEY，请检查 .env.local 配置");
   }
 
   return createClient<Database>(supabaseUrl, serviceRoleKey, {

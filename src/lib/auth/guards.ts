@@ -29,22 +29,16 @@ import type { Permission } from "./permissions";
 export class AuthGuardError extends Error {
   constructor(
     message: string,
-    public code: "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND"
+    public code: "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND",
   ) {
     super(message);
     this.name = "AuthGuardError";
   }
 }
 
-export const UNAUTHORIZED = new AuthGuardError(
-  "请先登录后再访问此页面",
-  "UNAUTHORIZED"
-);
+export const UNAUTHORIZED = new AuthGuardError("请先登录后再访问此页面", "UNAUTHORIZED");
 
-export const FORBIDDEN = new AuthGuardError(
-  "您没有足够的权限访问此页面",
-  "FORBIDDEN"
-);
+export const FORBIDDEN = new AuthGuardError("您没有足够的权限访问此页面", "FORBIDDEN");
 
 // ============================================================
 // 守卫函数
@@ -62,18 +56,20 @@ export type AuthUser = {
  */
 export async function requireAuth(): Promise<AuthUser> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     redirect(ROUTES.login);
   }
 
   // 从 profiles 表中获取角色
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single() as { data: { role: string } | null };
+    .single()) as { data: { role: string } | null };
 
   const role = parseRole(profile?.role as string | undefined) ?? "member";
 
@@ -121,9 +117,7 @@ export async function requirePermission(permission: Permission): Promise<AuthUse
 // 安全版本（不抛异常，不 redirect，用于 API Route / Server Action）
 // ============================================================
 
-export type GuardResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: AuthGuardError };
+export type GuardResult<T> = { success: true; data: T } | { success: false; error: AuthGuardError };
 
 /**
  * 安全获取认证用户（API Route 使用）
@@ -131,17 +125,19 @@ export type GuardResult<T> =
 export async function safelyRequireAuth(): Promise<GuardResult<AuthUser>> {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
       return { success: false, error: UNAUTHORIZED };
     }
 
-    const { data: profile } = await supabase
+    const { data: profile } = (await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
-      .single() as { data: { role: string } | null };
+      .single()) as { data: { role: string } | null };
 
     const role = parseRole(profile?.role as string | undefined) ?? "member";
 
@@ -158,7 +154,7 @@ export async function safelyRequireAuth(): Promise<GuardResult<AuthUser>> {
  * 安全要求权限（API Route 使用）
  */
 export async function safelyRequirePermission(
-  permission: Permission
+  permission: Permission,
 ): Promise<GuardResult<AuthUser>> {
   const result = await safelyRequireAuth();
   if (!result.success) return result;
@@ -173,9 +169,7 @@ export async function safelyRequirePermission(
 /**
  * 安全要求角色（API Route 使用）
  */
-export async function safelyRequireRole(
-  minRole: Role
-): Promise<GuardResult<AuthUser>> {
+export async function safelyRequireRole(minRole: Role): Promise<GuardResult<AuthUser>> {
   const result = await safelyRequireAuth();
   if (!result.success) return result;
 

@@ -60,7 +60,9 @@ export default async function IntegrationsPage() {
                     <Icon className={`h-5 w-5 ${config.color}`} />
                   </div>
                   <Badge variant={config.status === "connected" ? "default" : "outline"}>
-                    {config.status === "connected" ? t("integrations.connected") : t("integrations.notConnected")}
+                    {config.status === "connected"
+                      ? t("integrations.connected")
+                      : t("integrations.notConnected")}
                   </Badge>
                 </div>
                 <CardTitle className="mt-4 text-base">{integration.name}</CardTitle>

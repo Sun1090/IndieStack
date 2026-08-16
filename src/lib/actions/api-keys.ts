@@ -45,7 +45,9 @@ function toRecord(row: Record<string, unknown>): ApiKeyRecord {
 
 export async function listApiKeys() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { data: [], error: "notAuthenticated" };
@@ -67,7 +69,9 @@ export async function listApiKeys() {
 
 export async function createApiKey(input: { name: string; scope: "read" | "all" }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };
@@ -120,7 +124,9 @@ export async function createApiKey(input: { name: string; scope: "read" | "all" 
 
 export async function revokeApiKey(keyId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };

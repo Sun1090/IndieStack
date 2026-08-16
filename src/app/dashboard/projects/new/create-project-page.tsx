@@ -38,7 +38,7 @@ export function CreateProjectPage() {
         .replace(/[^a-z0-9\s-]/g, "")
         .replace(/\s+/g, "-")
         .replace(/-+/g, "-")
-        .slice(0, 50)
+        .slice(0, 50),
     );
   }
 
@@ -62,7 +62,9 @@ export function CreateProjectPage() {
     <div className="space-y-8">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={ROUTES.dashboardProjects}><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href={ROUTES.dashboardProjects}>
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
         </Button>
         <PageHeader title={t("projects.create.title")} description={t("projects.create.desc")} />
       </div>
@@ -86,7 +88,13 @@ export function CreateProjectPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="slug">{t("projects.create.slugLabel")}</Label>
-              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={t("projects.create.slugPlaceholder")} required />
+              <Input
+                id="slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder={t("projects.create.slugPlaceholder")}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">{t("projects.create.descriptionLabel")}</Label>

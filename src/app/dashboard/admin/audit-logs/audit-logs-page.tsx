@@ -35,7 +35,11 @@ export function AdminAuditLogsPage() {
     setLoading(true);
     const result = await listAuditLogs();
     if (!result.success) {
-      toast({ title: t("auditLogs.noLogs"), description: ta(result.error), variant: "destructive" });
+      toast({
+        title: t("auditLogs.noLogs"),
+        description: ta(result.error),
+        variant: "destructive",
+      });
     } else {
       setLogs(result.data);
     }
@@ -64,14 +68,22 @@ export function AdminAuditLogsPage() {
   function formatTime(iso: string) {
     const d = new Date(iso);
     return d.toLocaleString(undefined, {
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
     });
   }
 
   /** 操作类型的中文标签 */
   function actionLabel(action: string): string {
-    try { return t(`auditLogs.actionLabels.${action}` as any); } catch { return action; }
+    try {
+      return t(`auditLogs.actionLabels.${action}` as any);
+    } catch {
+      return action;
+    }
   }
 
   /** 操作类型对应的 Badge 颜色 */

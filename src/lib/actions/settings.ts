@@ -15,7 +15,9 @@ import type { Database } from "@/lib/supabase/database.types";
  */
 export async function updateNotificationSettings(formData: FormData) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };
@@ -56,7 +58,9 @@ export async function updateNotificationSettings(formData: FormData) {
  */
 export async function updatePassword(formData: FormData) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };

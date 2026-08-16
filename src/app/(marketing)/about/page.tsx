@@ -30,7 +30,9 @@ export default async function AboutPage() {
     <div className="container py-12 lg:py-20">
       {/* Hero */}
       <div className="mx-auto max-w-3xl">
-        <Badge variant="secondary" className="mb-4">{t("metaTitle")}</Badge>
+        <Badge variant="secondary" className="mb-4">
+          {t("metaTitle")}
+        </Badge>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t("pageTitle")}</h1>
         <p className="mt-4 text-lg leading-relaxed text-muted-foreground">{t("pageDesc")}</p>
       </div>
@@ -38,7 +40,7 @@ export default async function AboutPage() {
       {/* Story */}
       <div className="mx-auto mt-16 max-w-3xl">
         <h2 className="mb-6 text-2xl font-bold">{t("story.title")}</h2>
-        <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <div className="space-y-4 leading-relaxed text-muted-foreground">
           {storyParagraphs.map((paragraph, index) => (
             <p key={index}>{paragraph}</p>
           ))}

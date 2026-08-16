@@ -10,8 +10,16 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Zap, Shield, BarChart3, Users, Bot, Globe, Database,
-  ArrowRight, Check, ChevronRight
+  Zap,
+  Shield,
+  BarChart3,
+  Users,
+  Bot,
+  Globe,
+  Database,
+  ArrowRight,
+  Check,
+  ChevronRight,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
@@ -24,7 +32,6 @@ export default async function HomePage() {
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
       <main className="flex-1">
-
         {/* Hero 区域：品牌标语、描述和 CTA 按钮 */}
         <section className="relative overflow-hidden border-b">
           <div className="container py-20 lg:py-32">
@@ -94,7 +101,10 @@ export default async function HomePage() {
               { icon: Bot, title: t("features.4.title"), desc: t("features.4.description") },
               { icon: Globe, title: t("features.5.title"), desc: t("features.5.description") },
             ].map((feature) => (
-              <div key={feature.title} className="relative overflow-hidden rounded-lg border bg-background p-6 transition-colors hover:border-primary/50">
+              <div
+                key={feature.title}
+                className="relative overflow-hidden rounded-lg border bg-background p-6 transition-colors hover:border-primary/50"
+              >
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                   <feature.icon className="h-6 w-6 text-primary" />
                 </div>
@@ -127,8 +137,11 @@ export default async function HomePage() {
             </div>
             <div className="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
               {(t.raw("techStackSection.items") as string[]).map((tech) => (
-                <div key={tech} className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
-                  <Check className="h-3 w-3 text-green-500 shrink-0" />
+                <div
+                  key={tech}
+                  className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm"
+                >
+                  <Check className="h-3 w-3 shrink-0 text-green-500" />
                   <span>{tech}</span>
                 </div>
               ))}
@@ -140,9 +153,7 @@ export default async function HomePage() {
         <section className="container py-16 md:py-20">
           <div className="mx-auto max-w-3xl rounded-2xl bg-gradient-to-b from-muted/50 to-muted p-8 text-center md:p-12">
             <h2 className="text-3xl font-bold tracking-tight">{t("ctaSection.title")}</h2>
-            <p className="mt-2 text-muted-foreground">
-              {t("ctaSection.description")}
-            </p>
+            <p className="mt-2 text-muted-foreground">{t("ctaSection.description")}</p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Button asChild size="lg">
                 <Link href={ROUTES.register}>{t("ctaSection.ctaPrimary")}</Link>

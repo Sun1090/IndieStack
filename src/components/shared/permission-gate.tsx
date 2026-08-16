@@ -22,7 +22,13 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
-import { hasPermission, hasAnyPermission, getRoleLevel, type Role, parseRole } from "@/lib/auth/roles";
+import {
+  hasPermission,
+  hasAnyPermission,
+  getRoleLevel,
+  type Role,
+  parseRole,
+} from "@/lib/auth/roles";
 import type { Permission } from "@/lib/auth/permissions";
 
 type PermissionGateProps = {
@@ -65,7 +71,9 @@ export function PermissionGate({
     async function fetchRole() {
       try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
         if (!user) {
           if (!cancelled) {
@@ -75,11 +83,11 @@ export function PermissionGate({
           return;
         }
 
-        const { data: profile } = await supabase
+        const { data: profile } = (await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
-          .single() as { data: { role: string } | null };
+          .single()) as { data: { role: string } | null };
 
         if (!cancelled) {
           setUserRole(parseRole(profile?.role as string | undefined) ?? "member");
@@ -94,7 +102,9 @@ export function PermissionGate({
     }
 
     fetchRole();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (isLoading) return loading;
@@ -147,33 +157,43 @@ export function usePermissions() {
     async function fetchRole() {
       try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) {
-          if (!cancelled) { setUserRole("viewer"); setIsLoading(false); }
+          if (!cancelled) {
+            setUserRole("viewer");
+            setIsLoading(false);
+          }
           return;
         }
-        const { data: profile } = await supabase
+        const { data: profile } = (await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
-          .single() as { data: { role: string } | null };
+          .single()) as { data: { role: string } | null };
         if (!cancelled) {
           setUserRole(parseRole(profile?.role as string | undefined) ?? "member");
           setIsLoading(false);
         }
       } catch {
-        if (!cancelled) { setUserRole("viewer"); setIsLoading(false); }
+        if (!cancelled) {
+          setUserRole("viewer");
+          setIsLoading(false);
+        }
       }
     }
 
     fetchRole();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return {
     role: userRole,
     isLoading,
-    can: (permission: Permission) => userRole ? hasPermission(userRole, permission) : false,
-    isAtLeast: (role: Role) => userRole ? getRoleLevel(userRole) >= getRoleLevel(role) : false,
+    can: (permission: Permission) => (userRole ? hasPermission(userRole, permission) : false),
+    isAtLeast: (role: Role) => (userRole ? getRoleLevel(userRole) >= getRoleLevel(role) : false),
   };
 }

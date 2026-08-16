@@ -20,39 +20,106 @@ export async function SiteFooter() {
             <Link href={ROUTES.home} className="text-lg font-bold">
               {SITE_CONFIG.name}
             </Link>
-            <p className="max-w-xs text-sm text-muted-foreground">
-              {t("description")}
-            </p>
+            <p className="max-w-xs text-sm text-muted-foreground">{t("description")}</p>
           </div>
 
           {/* 导航链接分组 */}
           <div className="space-y-3">
             <h4 className="text-sm font-semibold">{t("product")}</h4>
             <ul className="space-y-2">
-              <li><Link href={ROUTES.features} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("features")}</Link></li>
-              <li><Link href={ROUTES.pricing} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("pricing")}</Link></li>
-              <li><Link href={ROUTES.contact} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("contact")}</Link></li>
+              <li>
+                <Link
+                  href={ROUTES.features}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("features")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.pricing}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("pricing")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.contact}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("contact")}
+                </Link>
+              </li>
             </ul>
           </div>
 
           <div className="space-y-3">
             <h4 className="text-sm font-semibold">{t("resources")}</h4>
             <ul className="space-y-2">
-              <li><a href={ROUTES.docs} className="text-sm text-muted-foreground transition-colors hover:text-foreground" target="_blank" rel="noopener noreferrer">{tc("documentation")}</a></li>
+              <li>
+                <a
+                  href={ROUTES.docs}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {tc("documentation")}
+                </a>
+              </li>
               {/* API / Status 尚未上线：使用纯文本占位，避免指向 # 的死链接 */}
-              <li><span className="text-sm text-muted-foreground">{tc("api")}</span></li>
-              <li><span className="text-sm text-muted-foreground">{tc("status")}</span></li>
+              <li>
+                <span className="text-sm text-muted-foreground">{tc("api")}</span>
+              </li>
+              <li>
+                <span className="text-sm text-muted-foreground">{tc("status")}</span>
+              </li>
             </ul>
           </div>
 
           <div className="space-y-3">
             <h4 className="text-sm font-semibold">{t("company")}</h4>
             <ul className="space-y-2">
-              <li><Link href={ROUTES.about} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("about")}</Link></li>
-              <li><Link href={ROUTES.blog} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("blog")}</Link></li>
-              <li><Link href={ROUTES.privacy} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("privacy")}</Link></li>
-              <li><Link href={ROUTES.terms} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("terms")}</Link></li>
-              <li><Link href={SITE_CONFIG.links.github} className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("github")}</Link></li>
+              <li>
+                <Link
+                  href={ROUTES.about}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("about")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.blog}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("blog")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.privacy}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("privacy")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.terms}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("terms")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={SITE_CONFIG.links.github}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tc("github")}
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
@@ -63,16 +130,44 @@ export async function SiteFooter() {
             <p className="text-center text-sm text-muted-foreground">
               {t.rich("builtWith", {
                 nextjs: (chunks) => (
-                  <Link href="https://nextjs.org" target="_blank" rel="noreferrer" className="font-medium underline underline-offset-4">{chunks}</Link>
+                  <Link
+                    href="https://nextjs.org"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline underline-offset-4"
+                  >
+                    {chunks}
+                  </Link>
                 ),
                 tailwind: (chunks) => (
-                  <Link href="https://tailwindcss.com" target="_blank" rel="noreferrer" className="font-medium underline underline-offset-4">{chunks}</Link>
+                  <Link
+                    href="https://tailwindcss.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline underline-offset-4"
+                  >
+                    {chunks}
+                  </Link>
                 ),
                 shadcn: (chunks) => (
-                  <Link href="https://ui.shadcn.com" target="_blank" rel="noreferrer" className="font-medium underline underline-offset-4">{chunks}</Link>
+                  <Link
+                    href="https://ui.shadcn.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline underline-offset-4"
+                  >
+                    {chunks}
+                  </Link>
                 ),
                 supabase: (chunks) => (
-                  <Link href="https://supabase.com" target="_blank" rel="noreferrer" className="font-medium underline underline-offset-4">{chunks}</Link>
+                  <Link
+                    href="https://supabase.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline underline-offset-4"
+                  >
+                    {chunks}
+                  </Link>
                 ),
               })}
             </p>

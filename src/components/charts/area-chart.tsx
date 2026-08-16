@@ -22,7 +22,11 @@ interface AreaChartProps {
   errorLabel?: string;
 }
 
-export function AreaChart({ data, requestLabel = "Requests", errorLabel = "Errors" }: AreaChartProps) {
+export function AreaChart({
+  data,
+  requestLabel = "Requests",
+  errorLabel = "Errors",
+}: AreaChartProps) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <RechartsAreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -52,18 +52,20 @@ export async function GET(request: NextRequest) {
     ]);
 
     // 获取时间序列数据
-    const { data: dailyData } = await supabase
+    const { data: dailyData } = (await supabase
       .from("api_usage")
       .select("created_at, status_code, user_id, path, method")
       .eq("user_id", userId)
       .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: true }) as unknown as { data: Array<{
+      .order("created_at", { ascending: true })) as unknown as {
+      data: Array<{
         created_at: string;
         status_code: number | null;
         user_id: string | null;
         path: string;
         method: string;
-      }> | null };
+      }> | null;
+    };
 
     // 组装时间序列
     const dailyMap = new Map<string, { requests: number; errors: number }>();
@@ -93,23 +95,23 @@ export async function GET(request: NextRequest) {
 
     const totalRequests = pageViewsResult.count ?? 0;
     // 数据已按当前用户过滤，uniqueVisitors 反映该用户在统计周期内是否有活跃记录
-    const uniqueVisitors =
-      (dailyData ?? []).some((row) => Boolean(row.user_id)) ? 1 : 0;
-    const recent = (dailyData ?? []).slice(-10).reverse().map((row) => ({
-      path: row.path,
-      method: row.method,
-      status_code: row.status_code,
-      created_at: row.created_at,
-    }));
+    const uniqueVisitors = (dailyData ?? []).some((row) => Boolean(row.user_id)) ? 1 : 0;
+    const recent = (dailyData ?? [])
+      .slice(-10)
+      .reverse()
+      .map((row) => ({
+        path: row.path,
+        method: row.method,
+        status_code: row.status_code,
+        created_at: row.created_at,
+      }));
 
     return NextResponse.json({
       summary: {
         totalRequests,
         uniqueVisitors,
         totalErrors,
-        errorRate: totalRequests > 0
-          ? Number(((totalErrors / totalRequests) * 100).toFixed(1))
-          : 0,
+        errorRate: totalRequests > 0 ? Number(((totalErrors / totalRequests) * 100).toFixed(1)) : 0,
       },
       timeline,
       recent,
@@ -117,9 +119,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("[Analytics API] 获取分析数据失败:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

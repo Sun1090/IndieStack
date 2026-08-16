@@ -38,7 +38,7 @@ export function CreateTeamPage() {
         .replace(/[^a-z0-9\s-]/g, "")
         .replace(/\s+/g, "-")
         .replace(/-+/g, "-")
-        .slice(0, 50)
+        .slice(0, 50),
     );
   }
 
@@ -48,7 +48,11 @@ export function CreateTeamPage() {
 
     const parsed = createTeamSchema.safeParse({ name, slug });
     if (!parsed.success) {
-      toast({ title: tc("error"), description: ta(parsed.error.errors[0].message), variant: "destructive" });
+      toast({
+        title: tc("error"),
+        description: ta(parsed.error.errors[0].message),
+        variant: "destructive",
+      });
       setLoading(false);
       return;
     }
@@ -68,7 +72,9 @@ export function CreateTeamPage() {
     <div className="space-y-8">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={ROUTES.dashboardTeam}><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href={ROUTES.dashboardTeam}>
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
         </Button>
         <PageHeader title={t("team.create.title")} description={t("team.create.desc")} />
       </div>
@@ -92,7 +98,13 @@ export function CreateTeamPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="slug">{t("team.create.slugLabel")}</Label>
-              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={t("team.create.slugPlaceholder")} required />
+              <Input
+                id="slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder={t("team.create.slugPlaceholder")}
+                required
+              />
             </div>
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? tc("loading") : t("team.create.submit")}

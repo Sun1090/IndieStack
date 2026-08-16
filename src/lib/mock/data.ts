@@ -93,12 +93,7 @@ export function generateMockTeamMembers(count = 5) {
     id: `mock-member-${String(i + 1).padStart(3, "0")}`,
     team_id: MOCK_TEAM_ID,
     user_id: i === 0 ? MOCK_USER_ID : `mock-user-${String(i + 1).padStart(3, "0")}`,
-    role:
-      i === 0
-        ? "owner"
-        : i === 1
-          ? "admin"
-          : faker.helpers.arrayElement(["member", "viewer"]),
+    role: i === 0 ? "owner" : i === 1 ? "admin" : faker.helpers.arrayElement(["member", "viewer"]),
     invited_by: MOCK_USER_ID,
     created_at: faker.date.recent().toISOString(),
     profiles: {
@@ -117,12 +112,7 @@ export function generateMockTeamMembersWithProfiles(count = 5) {
     id: `mock-member-${String(i + 1).padStart(3, "0")}`,
     team_id: MOCK_TEAM_ID,
     user_id: i === 0 ? MOCK_USER_ID : `mock-user-${String(i + 1).padStart(3, "0")}`,
-    role:
-      i === 0
-        ? "owner"
-        : i === 1
-          ? "admin"
-          : faker.helpers.arrayElement(["member", "viewer"]),
+    role: i === 0 ? "owner" : i === 1 ? "admin" : faker.helpers.arrayElement(["member", "viewer"]),
     invited_by: MOCK_USER_ID,
     created_at: faker.date.recent().toISOString(),
     profiles: {
@@ -130,12 +120,7 @@ export function generateMockTeamMembersWithProfiles(count = 5) {
       full_name: faker.person.fullName(),
       email: faker.internet.email(),
       avatar_url: faker.image.avatar(),
-      role:
-        i === 0
-          ? "admin"
-          : i === 1
-            ? "admin"
-            : "member",
+      role: i === 0 ? "admin" : i === 1 ? "admin" : "member",
     },
   }));
 }
@@ -262,7 +247,6 @@ export function generateMockUserSessions(count = 30) {
   }));
 }
 
-
 /**
  * 生成模拟 API 密钥（与 api_keys 表结构一致）
  */
@@ -325,11 +309,7 @@ export function generateMockAuditLogs(count = 20) {
   ];
   return Array.from({ length: count }, (_, i) => ({
     id: `audit_${i + 1}`,
-    user_id: faker.helpers.arrayElement([
-      MOCK_USER_ID,
-      "mock-user-002",
-      "mock-user-003",
-    ]),
+    user_id: faker.helpers.arrayElement([MOCK_USER_ID, "mock-user-002", "mock-user-003"]),
     action: faker.helpers.arrayElement(actions),
     metadata: { ip: faker.internet.ip(), user_agent: faker.internet.userAgent() },
     created_at: faker.date.recent({ days: 14 }).toISOString(),

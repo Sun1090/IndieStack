@@ -28,13 +28,16 @@ export async function GET(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.read);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
+    return NextResponse.json(
+      { error: auth.error.message },
+      { status: guardHttpStatus(auth.error) },
+    );
   }
 
   const { searchParams } = new URL(request.url);
@@ -45,11 +48,14 @@ export async function GET(request: NextRequest) {
 
     if (teamId) {
       // 获取单个团队详情
-      const { data: team, error: teamError } = await supabase
+      const { data: team, error: teamError } = (await supabase
         .from("teams")
         .select("*")
         .eq("id", teamId)
-        .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: { message: string; code?: string } | null };
+        .single()) as unknown as {
+        data: Database["public"]["Tables"]["teams"]["Row"] | null;
+        error: { message: string; code?: string } | null;
+      };
 
       if (teamError) {
         // RLS 下非成员或不存在时 .single() 返回 0 行（PGRST116），对外统一 404，避免区分存在性
@@ -67,7 +73,9 @@ export async function GET(request: NextRequest) {
     }
 
     // 获取用户所有团队
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
@@ -109,7 +117,7 @@ export async function POST(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -124,12 +132,12 @@ export async function POST(request: NextRequest) {
     if (!validated.success) {
       return NextResponse.json(
         { error: validated.error.errors[0]?.message ?? "Invalid input" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const admin = createAdminClient();
-    const { data: team, error: teamError } = await admin
+    const { data: team, error: teamError } = (await admin
       .from("teams")
       .insert({
         name: validated.data.name,
@@ -138,11 +146,17 @@ export async function POST(request: NextRequest) {
         member_count: 1,
       })
       .select()
-      .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: { code: string; message: string } | null };
+      .single()) as unknown as {
+      data: Database["public"]["Tables"]["teams"]["Row"] | null;
+      error: { code: string; message: string } | null;
+    };
 
     if (teamError) {
       if (teamError.code === "23505") {
-        return NextResponse.json({ error: "A team with this slug already exists" }, { status: 409 });
+        return NextResponse.json(
+          { error: "A team with this slug already exists" },
+          { status: 409 },
+        );
       }
       console.error("[Teams API] 创建团队失败:", teamError.message);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -176,12 +190,15 @@ export async function PATCH(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
   const auth = await safelyRequirePermission(PERMISSIONS.team.write);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
+    return NextResponse.json(
+      { error: auth.error.message },
+      { status: guardHttpStatus(auth.error) },
+    );
   }
 
   try {
@@ -194,28 +211,34 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const validated = updateTeamSchema.safeParse(body);
     if (!validated.success) {
-      return NextResponse.json({ error: validated.error.errors[0]?.message ?? "Invalid input" }, { status: 400 });
+      return NextResponse.json(
+        { error: validated.error.errors[0]?.message ?? "Invalid input" },
+        { status: 400 },
+      );
     }
 
     const supabase = await createClient();
-    const { data: membership } = await supabase
+    const { data: membership } = (await supabase
       .from("team_members")
       .select("role")
       .eq("team_id", teamId)
       .eq("user_id", auth.data.id)
-      .maybeSingle() as unknown as { data: { role: string } | null };
+      .maybeSingle()) as unknown as { data: { role: string } | null };
 
     if (!membership || !["owner", "admin"].includes(membership.role)) {
       return NextResponse.json({ error: "Only team admins can update the team" }, { status: 403 });
     }
 
     const admin = createAdminClient();
-    const { data: team, error } = await admin
+    const { data: team, error } = (await admin
       .from("teams")
       .update(validated.data)
       .eq("id", teamId)
       .select()
-      .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: { message: string } | null };
+      .single()) as unknown as {
+      data: Database["public"]["Tables"]["teams"]["Row"] | null;
+      error: { message: string } | null;
+    };
 
     if (error) {
       console.error("[Teams API] 更新团队失败:", error.message);
@@ -238,12 +261,15 @@ export async function DELETE(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
   const auth = await safelyRequirePermission(PERMISSIONS.team.delete);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
+    return NextResponse.json(
+      { error: auth.error.message },
+      { status: guardHttpStatus(auth.error) },
+    );
   }
 
   try {
@@ -256,15 +282,18 @@ export async function DELETE(request: NextRequest) {
     const supabase = await createClient();
 
     // 验证当前用户是团队所有者
-    const { data: membership } = await supabase
+    const { data: membership } = (await supabase
       .from("team_members")
       .select("role")
       .eq("team_id", teamId)
       .eq("user_id", auth.data.id)
-      .single() as unknown as { data: { role: string } | null };
+      .single()) as unknown as { data: { role: string } | null };
 
     if (!membership || membership.role !== "owner") {
-      return NextResponse.json({ error: "Only the team owner can delete the team" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Only the team owner can delete the team" },
+        { status: 403 },
+      );
     }
 
     const admin = createAdminClient();

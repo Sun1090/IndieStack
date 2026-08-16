@@ -45,7 +45,11 @@ export function LoginForm() {
     });
 
     if (error) {
-      toast({ title: t("login.error"), description: ta(authErrorKey(error)), variant: "destructive" });
+      toast({
+        title: t("login.error"),
+        description: ta(authErrorKey(error)),
+        variant: "destructive",
+      });
       setLoading(false);
       return;
     }
@@ -63,7 +67,11 @@ export function LoginForm() {
       },
     });
     if (error) {
-      toast({ title: t("login.oauthError", { provider: "GitHub" }), description: ta(authErrorKey(error)), variant: "destructive" });
+      toast({
+        title: t("login.oauthError", { provider: "GitHub" }),
+        description: ta(authErrorKey(error)),
+        variant: "destructive",
+      });
       setLoading(false);
     }
   };
@@ -77,7 +85,11 @@ export function LoginForm() {
       },
     });
     if (error) {
-      toast({ title: t("login.oauthError", { provider: "Google" }), description: ta(authErrorKey(error)), variant: "destructive" });
+      toast({
+        title: t("login.oauthError", { provider: "Google" }),
+        description: ta(authErrorKey(error)),
+        variant: "destructive",
+      });
       setLoading(false);
     }
   };
@@ -133,9 +145,7 @@ export function LoginForm() {
           <span className="w-full border-t" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">
-            {t("login.divider")}
-          </span>
+          <span className="bg-background px-2 text-muted-foreground">{t("login.divider")}</span>
         </div>
       </div>
 

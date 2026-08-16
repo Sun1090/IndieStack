@@ -39,15 +39,23 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           cookiesToSet.forEach(({ name, value }: { name: string; value: string }) =>
-            request.cookies.set(name, value)
+            request.cookies.set(name, value),
           );
           supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }: { name: string; value: string; options?: Record<string, unknown> }) =>
-            supabaseResponse.cookies.set(name, value, options)
+          cookiesToSet.forEach(
+            ({
+              name,
+              value,
+              options,
+            }: {
+              name: string;
+              value: string;
+              options?: Record<string, unknown>;
+            }) => supabaseResponse.cookies.set(name, value, options),
           );
         },
       },
-    }
+    },
   );
 
   // 刷新用户会话 —— 对 Server Components 至关重要

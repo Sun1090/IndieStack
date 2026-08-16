@@ -24,14 +24,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function SettingsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
 
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: null };
+    .single()) as unknown as {
+    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
+    error: null;
+  };
 
   return (
     <div className="space-y-8">
@@ -52,7 +57,7 @@ export default async function SettingsPage() {
             </CardHeader>
             <CardContent>
               <NotificationSettingsForm
-                settings={profile?.notification_settings as Record<string, boolean> ?? {}}
+                settings={(profile?.notification_settings as Record<string, boolean>) ?? {}}
               />
             </CardContent>
           </Card>

@@ -25,24 +25,24 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ProfilePage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
   const locale = await getLocale();
 
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single() as unknown as { data: Record<string, unknown> | null };
+    .single()) as unknown as { data: Record<string, unknown> | null };
 
   const memberSince = user?.created_at
     ? formatDate(user.created_at, { locale })
     : t("profile.view.notSet");
 
   const role = (profile?.role as string) ?? "member";
-  const roleLabel = t.has(`profile.view.roles.${role}`)
-    ? t(`profile.view.roles.${role}`)
-    : role;
+  const roleLabel = t.has(`profile.view.roles.${role}`) ? t(`profile.view.roles.${role}`) : role;
 
   return (
     <div className="space-y-8">
@@ -58,36 +58,50 @@ export default async function ProfilePage() {
             <div className="flex items-center gap-4">
               <Avatar className="h-16 w-16">
                 <AvatarFallback className="text-lg">
-                  {(profile?.full_name as string)?.charAt(0)?.toUpperCase() ?? user?.email?.charAt(0).toUpperCase() ?? "U"}
+                  {(profile?.full_name as string)?.charAt(0)?.toUpperCase() ??
+                    user?.email?.charAt(0).toUpperCase() ??
+                    "U"}
                 </AvatarFallback>
               </Avatar>
               <div>
                 <CardTitle>{(profile?.full_name as string) ?? t("profile.view.notSet")}</CardTitle>
                 <CardDescription>{user?.email}</CardDescription>
-                <Badge variant="outline" className="mt-1">{roleLabel}</Badge>
+                <Badge variant="outline" className="mt-1">
+                  {roleLabel}
+                </Badge>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.email")}</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {t("profile.view.email")}
+                </p>
                 <p className="text-sm">{user?.email}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.memberSince")}</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {t("profile.view.memberSince")}
+                </p>
                 <p className="text-sm">{memberSince}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.role")}</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {t("profile.view.role")}
+                </p>
                 <p className="text-sm">{roleLabel}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.timezone")}</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {t("profile.view.timezone")}
+                </p>
                 <p className="text-sm">{(profile?.timezone as string) ?? "UTC"}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t("profile.view.language")}</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {t("profile.view.language")}
+                </p>
                 <p className="text-sm">
                   {(() => {
                     const lang = (profile?.language as string) ?? "en";

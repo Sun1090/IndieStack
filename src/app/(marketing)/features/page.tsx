@@ -35,7 +35,9 @@ export default async function FeaturesPage() {
     <div className="container py-12 lg:py-20">
       {/* Header */}
       <div className="mx-auto max-w-3xl text-center">
-        <Badge variant="secondary" className="mb-4">{t("metaTitle")}</Badge>
+        <Badge variant="secondary" className="mb-4">
+          {t("metaTitle")}
+        </Badge>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t("pageTitle")}</h1>
         <p className="mt-4 text-lg text-muted-foreground">{t("pageDesc")}</p>
         <div className="mt-8 flex justify-center gap-4">

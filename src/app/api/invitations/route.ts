@@ -26,13 +26,16 @@ export async function GET(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.read);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
+    return NextResponse.json(
+      { error: auth.error.message },
+      { status: guardHttpStatus(auth.error) },
+    );
   }
 
   const { searchParams } = new URL(request.url);
@@ -57,7 +60,8 @@ export async function GET(request: NextRequest) {
 
     const { data: members, error } = await supabase
       .from("team_members")
-      .select(`
+      .select(
+        `
         id,
         team_id,
         user_id,
@@ -69,7 +73,8 @@ export async function GET(request: NextRequest) {
           full_name,
           avatar_url
         )
-      `)
+      `,
+      )
       .eq("team_id", teamId)
       .order("created_at", { ascending: false });
 
@@ -94,13 +99,16 @@ export async function POST(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.invite);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
+    return NextResponse.json(
+      { error: auth.error.message },
+      { status: guardHttpStatus(auth.error) },
+    );
   }
 
   try {
@@ -109,23 +117,25 @@ export async function POST(request: NextRequest) {
     if (!validated.success) {
       return NextResponse.json(
         { error: validated.error.errors[0]?.message ?? "Invalid input" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     // 获取当前用户的团队
-    const { data: membership } = await supabase
+    const { data: membership } = (await supabase
       .from("team_members")
       .select("team_id")
       .eq("user_id", user.id)
       .limit(1)
-      .single() as unknown as { data: { team_id: string } | null };
+      .single()) as unknown as { data: { team_id: string } | null };
 
     if (!membership) {
       return NextResponse.json({ error: "No team found" }, { status: 404 });
@@ -134,12 +144,12 @@ export async function POST(request: NextRequest) {
     const teamId = validated.data.team_id ?? membership.team_id;
 
     // 校验当前用户对该团队拥有 owner/admin 权限
-    const { data: teamRole } = await supabase
+    const { data: teamRole } = (await supabase
       .from("team_members")
       .select("role")
       .eq("team_id", teamId)
       .eq("user_id", user.id)
-      .maybeSingle() as unknown as { data: { role: string } | null };
+      .maybeSingle()) as unknown as { data: { role: string } | null };
 
     if (!teamRole || !["owner", "admin"].includes(teamRole.role)) {
       return NextResponse.json({ error: "Only team admins can invite members" }, { status: 403 });
@@ -155,16 +165,19 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (!invitedProfile) {
-      return NextResponse.json({ error: "User not found. They need to register first." }, { status: 404 });
+      return NextResponse.json(
+        { error: "User not found. They need to register first." },
+        { status: 404 },
+      );
     }
 
     // 检查是否已是成员
-    const { data: existing } = await supabase
+    const { data: existing } = (await supabase
       .from("team_members")
       .select("id")
       .eq("team_id", teamId)
       .eq("user_id", invitedProfile.id)
-      .maybeSingle() as unknown as { data: { id: string } | null };
+      .maybeSingle()) as unknown as { data: { id: string } | null };
 
     if (existing) {
       return NextResponse.json({ error: "User is already a team member" }, { status: 409 });
@@ -190,7 +203,15 @@ export async function POST(request: NextRequest) {
     // 更新成员计数
     await admin
       .from("teams")
-      .update({ member_count: (await supabase.from("team_members").select("*", { count: "exact", head: true }).eq("team_id", teamId)).count ?? 0 })
+      .update({
+        member_count:
+          (
+            await supabase
+              .from("team_members")
+              .select("*", { count: "exact", head: true })
+              .eq("team_id", teamId)
+          ).count ?? 0,
+      })
       .eq("id", teamId);
 
     return NextResponse.json({ invitation: newMember }, { status: 201 });
@@ -209,12 +230,15 @@ export async function DELETE(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
   const auth = await safelyRequirePermission(PERMISSIONS.team.remove);
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: guardHttpStatus(auth.error) });
+    return NextResponse.json(
+      { error: auth.error.message },
+      { status: guardHttpStatus(auth.error) },
+    );
   }
 
   try {
@@ -225,22 +249,22 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = await createClient();
-    const { data: member } = await supabase
+    const { data: member } = (await supabase
       .from("team_members")
       .select("team_id, role")
       .eq("id", memberId)
-      .maybeSingle() as unknown as { data: { team_id: string; role: string } | null };
+      .maybeSingle()) as unknown as { data: { team_id: string; role: string } | null };
 
     if (!member) {
       return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
-    const { data: membership } = await supabase
+    const { data: membership } = (await supabase
       .from("team_members")
       .select("role")
       .eq("team_id", member.team_id)
       .eq("user_id", auth.data.id)
-      .maybeSingle() as unknown as { data: { role: string } | null };
+      .maybeSingle()) as unknown as { data: { role: string } | null };
 
     if (!membership || !["owner", "admin"].includes(membership.role)) {
       return NextResponse.json({ error: "Only team admins can remove members" }, { status: 403 });

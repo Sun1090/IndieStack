@@ -26,28 +26,37 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function DashboardOverview() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // 加载仪表盘命名空间的翻译
   const td = await getTranslations("dashboard");
   const tc = await getTranslations("common");
 
   // 获取用户资料
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single() as unknown as { data: Database["public"]["Tables"]["profiles"]["Row"] | null; error: null };
+    .single()) as unknown as {
+    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
+    error: null;
+  };
 
   // 获取团队信息
-  const { data: membership } = await supabase
+  const { data: membership } = (await supabase
     .from("team_members")
     .select("team_id, teams(name, plan, member_count)")
     .eq("user_id", user!.id)
     .limit(1)
-    .single() as unknown as { data: { team_id: string; teams: { name: string; plan: string; member_count: number } } | null; error: null };
+    .single()) as unknown as {
+    data: { team_id: string; teams: { name: string; plan: string; member_count: number } } | null;
+    error: null;
+  };
 
-  const teamInfo = membership?.teams as unknown as { name: string; plan: string; member_count: number } | undefined;
+  const teamInfo = membership?.teams as unknown as
+    { name: string; plan: string; member_count: number } | undefined;
   const currentPlan = teamInfo?.plan ?? "free";
 
   const since30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -62,9 +71,24 @@ export default async function DashboardOverview() {
     teamId
       ? supabase.from("projects").select("*", { count: "exact", head: true }).eq("team_id", teamId)
       : { count: 0 },
-    supabase.from("api_usage").select("*", { count: "exact", head: true }).eq("user_id", user!.id).gte("created_at", since30Days),
-    supabase.from("user_sessions").select("*", { count: "exact", head: true }).eq("user_id", user!.id).gte("created_at", since30Days),
-    supabase.from("notifications").select("*").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5) as unknown as { data: Database["public"]["Tables"]["notifications"]["Row"][] | null },
+    supabase
+      .from("api_usage")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user!.id)
+      .gte("created_at", since30Days),
+    supabase
+      .from("user_sessions")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user!.id)
+      .gte("created_at", since30Days),
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", user!.id)
+      .order("created_at", { ascending: false })
+      .limit(5) as unknown as {
+      data: Database["public"]["Tables"]["notifications"]["Row"][] | null;
+    },
   ]);
 
   const locale = await getLocale();
@@ -115,7 +139,8 @@ export default async function DashboardOverview() {
       {/* 欢迎语区域 */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">
-          {td("overview.welcomeBack")}{profile?.full_name ? `, ${profile.full_name}` : ""}
+          {td("overview.welcomeBack")}
+          {profile?.full_name ? `, ${profile.full_name}` : ""}
         </h1>
         <p className="text-muted-foreground">{td("overview.todaySummary")}</p>
       </div>
@@ -144,7 +169,15 @@ export default async function DashboardOverview() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">{tc("plan")}</p>
-                <Badge variant={currentPlan === "enterprise" ? "default" : currentPlan === "pro" ? "secondary" : "outline"}>
+                <Badge
+                  variant={
+                    currentPlan === "enterprise"
+                      ? "default"
+                      : currentPlan === "pro"
+                        ? "secondary"
+                        : "outline"
+                  }
+                >
                   {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
                 </Badge>
               </div>
@@ -176,18 +209,25 @@ export default async function DashboardOverview() {
             <div className="space-y-4">
               {recentActivity.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{td("overview.activity.empty")}</p>
-              ) : recentActivity.map((activity) => (
-                <div key={activity.id} className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-2 w-2 rounded-full ${activityDotColor(activity.type)}`} />
-                    <div>
-                      <p className="text-sm font-medium">{activity.title}</p>
-                      {activity.body && <p className="text-xs text-muted-foreground">{activity.body}</p>}
+              ) : (
+                recentActivity.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`h-2 w-2 rounded-full ${activityDotColor(activity.type)}`} />
+                      <div>
+                        <p className="text-sm font-medium">{activity.title}</p>
+                        {activity.body && (
+                          <p className="text-xs text-muted-foreground">{activity.body}</p>
+                        )}
+                      </div>
                     </div>
+                    <span className="text-xs text-muted-foreground">{activity.time}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{activity.time}</span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
