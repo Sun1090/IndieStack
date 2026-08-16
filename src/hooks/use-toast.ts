@@ -1,6 +1,6 @@
 /**
  * Toast 通知 Hook
- * 基于 sonner 的轻量级通知提示，支持成功、错误、加载等状态
+ * shadcn/ui 经典 Toast 的自实现（含全局 reducer + listener），支持成功、错误、加载等状态
  */
 
 "use client";
