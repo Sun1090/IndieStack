@@ -40,45 +40,6 @@ export async function getCurrentTeam() {
 }
 
 /**
- * Get all members of a team.
- * 仅允许团队成员查询本团队成员，防止跨团队 IDOR 越权读取。
- */
-export async function getTeamMembers(teamId: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) return [];
-
-  // 校验当前用户确实是该团队成员（RLS 之外的纵深防御）
-  const { data: membership } = await supabase
-    .from("team_members")
-    .select("id")
-    .eq("team_id", teamId)
-    .eq("user_id", user.id)
-    .maybeSingle() as unknown as { data: { id: string } | null; error: null };
-
-  if (!membership) return [];
-
-  const { data: members } = await supabase
-    .from("team_members")
-    .select(`
-      id,
-      role,
-      created_at,
-      user_id,
-      profiles:user_id (
-        id,
-        email,
-        full_name,
-        avatar_url
-      )
-    `)
-    .eq("team_id", teamId);
-
-  return members ?? [];
-}
-
-/**
  * Create a new team.
  */
 export async function createTeam(input: CreateTeamInput) {
@@ -288,46 +249,5 @@ export async function removeMember(memberId: string) {
     .eq("id", team.id);
 
   revalidatePath(ROUTES.dashboardTeam);
-  return { success: true };
-}
-
-/**
- * Leave the current team.
- */
-export async function leaveTeam(teamId: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "notAuthenticated" };
-  }
-
-  const { data: membership } = await supabase
-    .from("team_members")
-    .select("role")
-    .eq("team_id", teamId)
-    .eq("user_id", user.id)
-    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
-
-  if (!membership) {
-    return { error: "membershipNotFound" };
-  }
-
-  if (membership.role === "owner") {
-    return { error: "ownerCannotLeave" };
-  }
-
-  const { error } = await supabase
-    .from("team_members")
-    .delete()
-    .eq("team_id", teamId)
-    .eq("user_id", user.id);
-
-  if (error) {
-    console.error("[leaveTeam] 退出团队失败:", error);
-    return { error: "databaseError" };
-  }
-
-  revalidatePath(ROUTES.dashboard);
   return { success: true };
 }

@@ -17,12 +17,6 @@ export type AdminUser = {
   created_at: string;
 };
 
-export type AdminOverview = {
-  totalUsers: number;
-  totalTeams: number;
-  roleCounts: Record<string, number>;
-};
-
 export type AuditLogRecord = {
   id: number;
   user_id: string | null;
@@ -41,48 +35,6 @@ function toAdminUser(row: Record<string, unknown>): AdminUser {
     role: String(row.role ?? "member"),
     created_at: String(row.created_at ?? ""),
   };
-}
-
-export async function getAdminOverview(): Promise<
-  | { success: true; data: AdminOverview }
-  | { success: false; error: string }
-> {
-  const auth = await safelyRequireRole("admin");
-  if (!auth.success) {
-    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
-  }
-
-  try {
-    const admin = createAdminClient();
-    const [{ count: totalUsers }, { count: totalTeams }, { data: profiles }] = await Promise.all([
-      admin.from("profiles").select("*", { count: "exact", head: true }),
-      admin.from("teams").select("*", { count: "exact", head: true }),
-      admin.from("profiles").select("role"),
-    ]);
-
-    const roleCounts: Record<string, number> = {
-      super_admin: 0,
-      admin: 0,
-      member: 0,
-      viewer: 0,
-    };
-    for (const profile of (profiles ?? []) as Array<{ role: string }>) {
-      const role = profile.role in roleCounts ? profile.role : "member";
-      roleCounts[role]++;
-    }
-
-    return {
-      success: true,
-      data: {
-        totalUsers: totalUsers ?? 0,
-        totalTeams: totalTeams ?? 0,
-        roleCounts,
-      },
-    };
-  } catch (error) {
-    console.error("[admin] 操作失败:", error);
-    return { success: false, error: "internalError" };
-  }
 }
 
 export async function listAdminUsers(): Promise<
