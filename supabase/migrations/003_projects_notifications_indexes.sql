@@ -31,6 +31,23 @@ create index idx_projects_team_id on public.projects(team_id);
 create index idx_projects_status on public.projects(status);
 create index idx_projects_created_at on public.projects(created_at desc);
 
+-- projects 旧值读取辅助函数（security definer + search_path='' 防注入）
+-- 用途：projects UPDATE 策略 WITH CHECK 中比较"更新前旧值"，防止通过 RLS
+--   把项目 team_id 改到其他团队（跨租户转移）或篡改 created_by。
+-- 必须封装为函数：策略内直接以子查询引用 projects 自身会触发
+--   "infinite recursion detected in policy"（RLS 递归检测）。
+create or replace function public.get_project_team_id(p_id uuid)
+returns uuid
+language sql
+security definer set search_path = ''
+as $$ select team_id from public.projects where id = p_id $$;
+
+create or replace function public.get_project_created_by(p_id uuid)
+returns uuid
+language sql
+security definer set search_path = ''
+as $$ select created_by from public.projects where id = p_id $$;
+
 create policy "Team members can view projects"
   on public.projects for select
   using (
@@ -57,6 +74,14 @@ create policy "Team members can update projects"
       select user_id from public.team_members
       where team_id = projects.team_id and role in ('owner', 'admin')
     )
+  )
+  with check (
+    auth.uid() in (
+      select user_id from public.team_members
+      where team_id = projects.team_id and role in ('owner', 'admin')
+    )
+    and team_id = public.get_project_team_id(projects.id)
+    and created_by is not distinct from public.get_project_created_by(projects.id)
   );
 
 create policy "Team admins can delete projects"
@@ -103,7 +128,8 @@ create policy "Users can create own notifications"
 
 create policy "Users can mark own notifications"
   on public.notifications for update
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- =============================================================================
 -- 3. 完善索引

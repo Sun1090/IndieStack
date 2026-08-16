@@ -32,33 +32,17 @@ drop policy if exists "Team members can view members" on public.team_members;
 
 create policy "Team members can view members"
   on public.team_members for select
-  using (
-    exists (
-      select 1 from public.team_members tm
-      where tm.team_id = team_members.team_id
-        and tm.user_id = auth.uid()
-    )
-  );
+  using (public.is_team_member(team_members.team_id));
 
 drop policy if exists "Team admins can invite members" on public.team_members;
 
 create policy "Team admins can invite members"
   on public.team_members for insert
   with check (
-    exists (
-      select 1 from public.team_members tm
-      where tm.team_id = team_members.team_id
-        and tm.role in ('owner', 'admin')
-        and tm.user_id = auth.uid()
-    )
+    public.is_team_admin(team_members.team_id)
     and (
       team_members.role <> 'owner'
-      or exists (
-        select 1 from public.team_members tm_owner
-        where tm_owner.team_id = team_members.team_id
-          and tm_owner.user_id = auth.uid()
-          and tm_owner.role = 'owner'
-      )
+      or public.is_team_owner(team_members.team_id)
     )
   );
 
@@ -66,14 +50,7 @@ drop policy if exists "Team admins can remove members" on public.team_members;
 
 create policy "Team admins can remove members"
   on public.team_members for delete
-  using (
-    exists (
-      select 1 from public.team_members tm
-      where tm.team_id = team_members.team_id
-        and tm.role in ('owner', 'admin')
-        and tm.user_id = auth.uid()
-    )
-  );
+  using (public.is_team_admin(team_members.team_id));
 
 -- -----------------------------------------------------------------------------
 -- 3. api_usage 启用 RLS 并添加自读策略（已启用则为 no-op）
