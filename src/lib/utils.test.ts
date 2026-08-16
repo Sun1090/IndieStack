@@ -1,8 +1,8 @@
 /**
  * 工具函数单元测试
  */
-import { describe, it, expect } from "vitest";
-import { cn, formatNumber, generateId } from "./utils";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { cn, formatNumber, generateId, absoluteUrl } from "./utils";
 
 describe("cn()", () => {
   it("should merge class names", () => {
@@ -52,5 +52,41 @@ describe("generateId()", () => {
   it("should generate unique IDs", () => {
     const ids = new Set(Array.from({ length: 100 }, () => generateId()));
     expect(ids.size).toBe(100);
+  });
+});
+
+describe("absoluteUrl()", () => {
+  const prev = process.env.NEXT_PUBLIC_APP_URL;
+
+  afterEach(() => {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prev;
+  });
+
+  it("配置了 APP_URL 时拼接前缀", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com";
+    expect(absoluteUrl("/dashboard")).toBe("https://app.example.com/dashboard");
+  });
+
+  it("路径缺省前导斜杠时自动补全", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com";
+    expect(absoluteUrl("dashboard")).toBe("https://app.example.com/dashboard");
+  });
+
+  it("未配置时回退到 localhost:3000", () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    expect(absoluteUrl("/team")).toBe("http://localhost:3000/team");
+  });
+});
+
+describe("generateId() 回退", () => {
+  it("crypto 不可用时回退到时间戳 ID", () => {
+    vi.stubGlobal("crypto", undefined);
+    try {
+      const id = generateId();
+      expect(id).toMatch(/^\d+-[a-z0-9]{8}$/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
