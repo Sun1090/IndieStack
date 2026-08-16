@@ -11,8 +11,14 @@ import { safelyRequireRole } from "@/lib/auth/guards";
 import { shouldUseMock, generateMockAdminStats } from "@/lib/mock";
 import { ROUTES } from "@/lib/constants";
 import { getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Activity, Shield, AlertTriangle } from "lucide-react";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("admin");
+  return { title: t("overview.metaTitle"), description: t("overview.metaDesc") };
+}
 
 export default async function AdminPage() {
   const auth = await safelyRequireRole("admin");
