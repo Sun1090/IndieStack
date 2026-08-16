@@ -276,7 +276,9 @@
       "submit": "Create Project",
       "success": "Project created!",
       "slugLabel": "Slug",
-      "slugPlaceholder": "my-project"
+      "slugPlaceholder": "my-project",
+      "metaTitle": "New Project",
+      "metaDesc": "Create a new project"
     },
     "detail": {
       "metaTitle": "Project Details",

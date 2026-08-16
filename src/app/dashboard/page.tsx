@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
 import { getTranslations, getLocale } from "next-intl/server";
+import type { Metadata } from "next";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,11 @@ import type { Database } from "@/lib/supabase/database.types";
 import Link from "next/link";
 import { formatNumber } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("dashboard");
+  return { title: t("overview.metaTitle"), description: t("overview.metaDesc") };
+}
 
 export default async function DashboardOverview() {
   const supabase = await createClient();

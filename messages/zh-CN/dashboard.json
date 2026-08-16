@@ -276,7 +276,9 @@
       "submit": "创建项目",
       "success": "项目创建成功！",
       "slugLabel": "标识",
-      "slugPlaceholder": "例如：my-project"
+      "slugPlaceholder": "例如：my-project",
+      "metaTitle": "新建项目",
+      "metaDesc": "创建一个新的项目"
     },
     "detail": {
       "metaTitle": "项目详情",
