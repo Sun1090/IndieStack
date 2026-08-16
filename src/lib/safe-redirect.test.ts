@@ -49,3 +49,10 @@ describe("getSafeRedirect", () => {
     expect(getSafeRedirect(undefined, fallback)).toBe(fallback);
   });
 });
+
+describe("isSafeRelativePath 边界", () => {
+  it("无效百分号编码应拒绝（decodeURIComponent 抛错）", () => {
+    expect(isSafeRelativePath("/%")).toBe(false);
+    expect(isSafeRelativePath("/%zz")).toBe(false);
+  });
+});

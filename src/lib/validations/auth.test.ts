@@ -2,7 +2,7 @@
  * 认证验证规则单元测试
  */
 import { describe, it, expect } from "vitest";
-import { loginSchema, registerSchema, forgotPasswordSchema } from "./auth";
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from "./auth";
 
 describe("loginSchema", () => {
   it("should validate valid login data", () => {
@@ -88,6 +88,60 @@ describe("forgotPasswordSchema", () => {
   it("should reject invalid email", () => {
     const result = forgotPasswordSchema.safeParse({
       email: "invalid",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("registerSchema fullName 边界", () => {
+  it("应拒绝超过 100 字符的全名", () => {
+    const result = registerSchema.safeParse({
+      email: "user@example.com",
+      password: "password123",
+      confirmPassword: "password123",
+      fullName: "a".repeat(101),
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toContain("fullName");
+    }
+  });
+
+  it("应接受恰好 100 字符的全名", () => {
+    const result = registerSchema.safeParse({
+      email: "user@example.com",
+      password: "password123",
+      confirmPassword: "password123",
+      fullName: "a".repeat(100),
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("resetPasswordSchema", () => {
+  it("应通过合法密码对", () => {
+    const result = resetPasswordSchema.safeParse({
+      password: "newpassword123",
+      confirmPassword: "newpassword123",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("应拒绝两次输入不一致", () => {
+    const result = resetPasswordSchema.safeParse({
+      password: "newpassword123",
+      confirmPassword: "different456",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toContain("confirmPassword");
+    }
+  });
+
+  it("应拒绝过短密码（min 8）", () => {
+    const result = resetPasswordSchema.safeParse({
+      password: "short",
+      confirmPassword: "short",
     });
     expect(result.success).toBe(false);
   });
