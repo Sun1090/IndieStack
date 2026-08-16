@@ -8,10 +8,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import dynamic from "next/dynamic";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
-import { AreaChart } from "@/components/charts/area-chart";
 import { downloadCsv } from "@/lib/csv";
 import { formatNumber } from "@/lib/utils";
 import {
@@ -24,6 +25,17 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+/**
+ * 面积图组件：动态加载（recharts 体积较大）
+ * - 拆分为独立异步 chunk，仅 analytics 页面加载时才请求
+ * - ssr: false 跳过服务端渲染，避免图表 SSR 开销与容器尺寸警告
+ * - 加载中显示骨架屏
+ */
+const AreaChart = dynamic(() => import("@/components/charts/area-chart").then((m) => m.AreaChart), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[300px] w-full" />,
+});
 
 const RANGE_OPTIONS = [
   { key: "analytics.last7Days", value: 7 },
