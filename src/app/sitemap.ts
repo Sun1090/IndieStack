@@ -1,10 +1,26 @@
 /**
  * 站点地图配置
  * 自动生成 sitemap.xml，帮助搜索引擎索引页面
+ * 包含静态营销页与博客文章（数据来自 next-intl 消息文件）
  */
 
 import type { MetadataRoute } from "next";
 import { SITE_CONFIG, ROUTES } from "@/lib/constants";
+import blogZh from "../../messages/zh-CN/blog.json";
+import blogEn from "../../messages/en/blog.json";
+
+type BlogMessage = {
+  posts?: Array<{ slug: string }>;
+};
+
+/** 聚合中英文博客文章的 slug（去重），确保所有文章进入 sitemap */
+function getBlogSlugs(): string[] {
+  const posts = [
+    ...((blogZh as BlogMessage).posts ?? []),
+    ...((blogEn as BlogMessage).posts ?? []),
+  ];
+  return [...new Set(posts.map((p) => p.slug).filter(Boolean))];
+}
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = SITE_CONFIG.url;
@@ -22,10 +38,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: ROUTES.contact, changeFrequency: "yearly" as const, priority: 0.5 },
   ];
 
-  return staticRoutes.map((route) => ({
-    url: `${baseUrl}${route.url}`,
+  const blogRoutes = getBlogSlugs().map((slug) => ({
+    url: `${baseUrl}${ROUTES.blog}/${slug}`,
     lastModified: new Date(),
-    changeFrequency: route.changeFrequency,
-    priority: route.priority,
+    changeFrequency: "weekly" as const,
+    priority: 0.7,
   }));
+
+  return [
+    ...staticRoutes.map((route) => ({
+      url: `${baseUrl}${route.url}`,
+      lastModified: new Date(),
+      changeFrequency: route.changeFrequency,
+      priority: route.priority,
+    })),
+    ...blogRoutes,
+  ];
 }
