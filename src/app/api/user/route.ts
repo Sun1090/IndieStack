@@ -12,10 +12,16 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { z } from "zod";
 
 /** PATCH 请求体校验：白名单字段 + 类型/长度限制，拒绝未知字段 */
+/** 仅允许 http/https 协议的外部图片地址，拒绝 data:/javascript: 等危险协议 */
+const httpUrl = z
+  .string()
+  .url("invalidInput")
+  .refine((value) => /^https?:\/\//i.test(value), "invalidInput");
+
 const profilePatchSchema = z
   .object({
     full_name: z.string().trim().min(1, "fullNameRequired").max(100).optional(),
-    avatar_url: z.string().url("invalidInput").nullable().optional(),
+    avatar_url: httpUrl.nullable().optional(),
     bio: z.string().max(500).nullable().optional(),
     timezone: z.string().max(100).nullable().optional(),
     language: z.string().max(50).nullable().optional(),

@@ -13,6 +13,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: ROUTES.home, changeFrequency: "monthly" as const, priority: 1.0 },
     { url: ROUTES.features, changeFrequency: "monthly" as const, priority: 0.9 },
     { url: ROUTES.pricing, changeFrequency: "monthly" as const, priority: 0.9 },
+    { url: ROUTES.faq, changeFrequency: "monthly" as const, priority: 0.6 },
+    { url: ROUTES.changelog, changeFrequency: "weekly" as const, priority: 0.6 },
     { url: ROUTES.about, changeFrequency: "yearly" as const, priority: 0.7 },
     { url: ROUTES.blog, changeFrequency: "weekly" as const, priority: 0.8 },
     { url: ROUTES.privacy, changeFrequency: "yearly" as const, priority: 0.3 },

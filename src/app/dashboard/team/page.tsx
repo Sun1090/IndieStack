@@ -33,10 +33,10 @@ export default async function TeamPage() {
 
   const { data: membership } = await supabase
     .from("team_members")
-    .select("team_id")
+    .select("team_id, role")
     .eq("user_id", user!.id)
     .limit(1)
-    .single() as unknown as { data: { team_id: string } | null };
+    .single() as unknown as { data: { team_id: string; role: string } | null };
 
   if (!membership) {
     return (
@@ -79,17 +79,23 @@ export default async function TeamPage() {
     .eq("team_id", membership.team_id);
 
   const memberProfiles = (members ?? []) as Array<
-    Record<string, unknown> & { profiles: { id: string; email: string | null; full_name: string | null; avatar_url: string | null } | null }
+    Record<string, unknown> & { role: string; profiles: { id: string; email: string | null; full_name: string | null; avatar_url: string | null } | null }
   >;
+
+  // 仅 owner/admin 可管理团队成员（邀请/移除），member/viewer 只读
+  const canManage = membership.role === "owner" || membership.role === "admin";
+  const ownerCount = memberProfiles.filter((m) => m.role === "owner").length;
 
   return (
     <div className="space-y-8">
       <PageHeader title={t("team.list.title")} description={t("team.list.desc")}>
-        <Button asChild>
-          <Link href={ROUTES.dashboardTeamInvite}>
-            <Plus className="mr-2 h-4 w-4" /> {t("team.list.invite")}
-          </Link>
-        </Button>
+        {canManage && (
+          <Button asChild>
+            <Link href={ROUTES.dashboardTeamInvite}>
+              <Plus className="mr-2 h-4 w-4" /> {t("team.list.invite")}
+            </Link>
+          </Button>
+        )}
       </PageHeader>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -98,7 +104,7 @@ export default async function TeamPage() {
             <CardTitle className="text-sm font-medium">{t("team.list.roles.owner")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{team?.name as string}</p>
+            <p className="text-2xl font-bold">{ownerCount}</p>
           </CardContent>
         </Card>
         <Card>
@@ -154,7 +160,7 @@ export default async function TeamPage() {
                       })()}
                     </Badge>
                   </div>
-                  {member.role !== "owner" && member.profiles?.id !== user!.id && (
+                  {canManage && member.role !== "owner" && member.profiles?.id !== user!.id && (
                     <RemoveMemberButton memberId={member.id as string} />
                   )}
                 </div>

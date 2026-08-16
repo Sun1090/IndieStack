@@ -252,7 +252,9 @@
     "revokeSuccess": "密钥已吊销",
     "revokeError": "吊销失败",
     "createSuccess": "密钥创建成功",
-    "createSuccessDesc": "请立即复制并保存密钥，关闭后将无法再次查看。"
+    "createSuccessDesc": "请立即复制并保存密钥，关闭后将无法再次查看。",
+    "copyFailed": "复制失败，请手动复制",
+    "revoking": "吊销中..."
   },
   "projects": {
     "list": {

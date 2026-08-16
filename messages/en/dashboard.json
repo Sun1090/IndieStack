@@ -252,7 +252,9 @@
     "revokeSuccess": "Key revoked",
     "revokeError": "Failed to revoke key",
     "createSuccess": "Key created",
-    "createSuccessDesc": "Copy and save the key now. It won't be shown again after closing."
+    "createSuccessDesc": "Copy and save the key now. It won't be shown again after closing.",
+    "copyFailed": "Copy failed. Please copy manually",
+    "revoking": "Revoking..."
   },
   "projects": {
     "list": {

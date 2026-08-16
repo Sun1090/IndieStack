@@ -229,6 +229,10 @@ class MockQueryBuilder {
 
   /** 查询 select — 返回 this（链式构建器），与真实 Supabase 行为一致 */
   select(columns?: string | Record<string, unknown>, opts?: { count?: "exact" | "planned" | "estimated"; head?: boolean }) {
+    // 记录列选择：嵌套关联（profiles:user_id (...)/teams!inner(...)）依赖此信息
+    if (columns !== undefined) {
+      this.columns = typeof columns === "string" ? columns : "*";
+    }
     this.getCount = opts?.count ?? null;
     this.head = opts?.head ?? false;
     this.selected = true;
@@ -239,15 +243,9 @@ class MockQueryBuilder {
   insert(values: unknown) {
     this.writeMode = "insert";
     this.writeValue = values;
-    // api_keys：将新密钥追加到缓存列表，使创建后列表立即可见
-    if (this.table === "api_keys" && values && typeof values === "object") {
-      const row = { ...(values as Record<string, unknown>) } as Record<string, unknown>;
-      if (!row.id) row.id = crypto.randomUUID();
-      if (!row.created_at) row.created_at = new Date().toISOString();
-      if (!row.updated_at) row.updated_at = new Date().toISOString();
-      if (!row.is_active) row.is_active = true;
-      getMockApiKeys().unshift(row as never);
-    }
+    // 将插入数据持久化到对应缓存列表（teams/projects/api_keys/team_members 等），
+    // 使创建后列表/详情立即可见，与真实 PostgREST 行为一致
+    this.persistInsert();
     return this;
   }
 
@@ -342,7 +340,7 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(getMockTeams());
       case "team_members": {
         const members = getMockMembers();
-        return this.applyFiltersAndPagination(members);
+        return this.applyFiltersAndPagination(this.applyRelationships(members as Record<string, unknown>[]));
       }
       case "team_members_with_profiles":
         return getMockMembers();
@@ -363,6 +361,68 @@ class MockQueryBuilder {
       default:
         return [];
     }
+  }
+
+  /** 将插入数据规范化并写入缓存列表（保留数组引用，读取可见） */
+  private persistInsert(): void {
+    const list = this.getWriteList();
+    const values = Array.isArray(this.writeValue) ? this.writeValue : [this.writeValue];
+    if (!Array.isArray(values)) return;
+    const now = new Date().toISOString();
+    const normalized = values.map((value) => {
+      const row = { ...(value as Record<string, unknown>) } as Record<string, unknown>;
+      if (!row.id) row.id = crypto.randomUUID();
+      if (!row.created_at) row.created_at = now;
+      if (row.updated_at === undefined) row.updated_at = now;
+      if (this.table === "api_keys" && row.is_active === undefined) row.is_active = true;
+      return row;
+    });
+    // 让 then()/single() 返回规范化后的行（含生成的 id/created_at）
+    this.writeValue = Array.isArray(this.writeValue) ? normalized : normalized[0];
+    if (list) list.unshift(...normalized);
+  }
+
+  /**
+   * 解析 select 中的嵌套关联（如 profiles:user_id (...) / teams!inner(...)），
+   * 为每行附加关联数据；inner join 找不到关联时过滤该行。
+   */
+  private applyRelationships(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+    const relPattern = /([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?(?:!([A-Za-z]+))?\s*\(([^)]*)\)/g;
+    let match: RegExpExecArray | null;
+    const rels: { alias: string; fk: string | null; inner: boolean }[] = [];
+    while ((match = relPattern.exec(this.columns)) !== null) {
+      rels.push({ alias: match[1], fk: match[2] ?? null, inner: match[3] === "inner" });
+    }
+    if (rels.length === 0) return rows;
+
+    const profiles = getMockProfiles() as Array<Record<string, unknown>>;
+    const teams = getMockTeams() as Array<Record<string, unknown>>;
+    const result: Record<string, unknown>[] = [];
+
+    for (const row of rows) {
+      const enriched: Record<string, unknown> = { ...row };
+      let drop = false;
+      for (const rel of rels) {
+        // 行已内嵌关联（如 team_members 生成时自带 profiles）则保留，不重复覆盖
+        if (enriched[rel.alias] !== undefined) continue;
+        const fk = rel.fk ?? (rel.alias === "teams" || rel.alias === "team" ? "team_id" : null);
+        if (!fk) continue;
+        const fkValue = row[fk];
+        let related: Record<string, unknown> | null = null;
+        if (rel.alias === "profiles" && fk === "user_id") {
+          related = profiles.find((p) => p.id === fkValue) ?? null;
+        } else if (rel.alias === "teams" || rel.alias === "team") {
+          related = teams.find((tm) => tm.id === fkValue) ?? null;
+        }
+        if (rel.inner && !related) {
+          drop = true;
+          break;
+        }
+        enriched[rel.alias] = related;
+      }
+      if (!drop) result.push(enriched);
+    }
+    return result;
   }
 
   /** 行是否匹配当前 eq/in 过滤器（写操作专用） */

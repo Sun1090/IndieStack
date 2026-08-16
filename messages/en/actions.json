@@ -50,5 +50,6 @@
   "teamNameRequired": "Team name is required",
   "teamSlugExists": "A team with this slug already exists",
   "userNotFound": "User not found. They need to register first.",
-  "userNotFoundAdmin": "User not found"
+  "userNotFoundAdmin": "User not found",
+  "passwordChangeUnavailable": "This account has no email, so we can't verify your current password. Use the password reset flow instead."
 }

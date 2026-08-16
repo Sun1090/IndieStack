@@ -6,7 +6,7 @@
  * 支持时间范围切换与 CSV 导出
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,17 +42,20 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 请求序号：切换 range 时丢弃过期响应，避免旧请求覆盖新数据（竞态）
+  const requestSeq = useRef(0);
   const loadData = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
       const response = await fetch(`/api/analytics?range=${range}`);
       if (!response.ok) throw new Error("Failed to load analytics");
       const payload = (await response.json()) as AnalyticsData;
-      setData(payload);
+      if (seq === requestSeq.current) setData(payload);
     } catch {
-      setData(null);
+      if (seq === requestSeq.current) setData(null);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   }, [range]);
 
@@ -68,12 +71,15 @@ export default function AnalyticsPage() {
   ];
 
   function formatEventTime(iso: string) {
+    const date = new Date(iso);
+    // 非法/空日期直接回退，避免 Intl.DateTimeFormat 抛 RangeError
+    if (Number.isNaN(date.getTime())) return "—";
     return new Intl.DateTimeFormat(locale, {
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-    }).format(new Date(iso));
+    }).format(date);
   }
 
   return (

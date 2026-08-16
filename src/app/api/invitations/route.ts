@@ -43,6 +43,18 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = await createClient();
+    // 纵深防御：显式校验当前用户属于该团队（RLS 是兜底，这里在应用层再拦一道，
+    // 防止未来策略回归导致成员 PII（email 等）越权可读）
+    const { data: membership } = await supabase
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", teamId)
+      .eq("user_id", auth.data.id)
+      .maybeSingle();
+    if (!membership) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { data: members, error } = await supabase
       .from("team_members")
       .select(`

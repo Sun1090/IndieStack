@@ -16,6 +16,7 @@
     "messagePlaceholder": "请输入你的消息...",
     "submit": "发送消息",
     "sending": "发送中...",
+    "unavailable": "联系表单暂未开通，请直接发送邮件至 hello@indiestack.dev",
     "success": "消息已发送！我们会尽快回复。"
   },
   "info": {
