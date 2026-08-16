@@ -61,11 +61,16 @@ export function createRateLimit(options?: {
      * @returns RateLimitResult
      */
     async check(request: Request): Promise<RateLimitResult> {
-      // 从请求头获取客户端 IP
+      // 从请求头获取客户端 IP：优先信任代理/边缘节点写入的 x-real-ip（客户端无法伪造）；
+      // x-forwarded-for 仅在该值形如合法 IP（IPv4/IPv6）时采信，避免客户端伪造任意字符串
+      // 或注入畸形值污染限流桶 key。
+      const realIp = request.headers.get("x-real-ip")?.trim();
+      const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
       const ip =
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-        request.headers.get("x-real-ip") ??
-        "anonymous";
+        realIp ??
+        (forwarded && (/^[\d.]+$/.test(forwarded) || forwarded.includes(":"))
+          ? forwarded
+          : "anonymous");
 
       const now = Date.now();
       let entry = hits.get(ip);

@@ -1,13 +1,16 @@
 /**
  * 重置密码表单客户端组件
  * 提供新密码和确认密码输入，更新用户密码
+ * 仅在检测到有效的 recovery session 时显示表单，避免无会话时误改密码
  * 使用客户端 i18n 显示文本
  */
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,16 +21,49 @@ import { Lock, Eye, EyeOff } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { authErrorKey } from "@/lib/auth/errors";
 
+type SessionStatus = "checking" | "ready" | "invalid";
+
 export function ResetPasswordForm() {
   const router = useRouter();
   const t = useTranslations("auth");
   const ta = useTranslations("actions");
+  const [status, setStatus] = useState<SessionStatus>("checking");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const supabase = createClient();
+
+  // 仅当存在 recovery session（通过密码重置链接进入）时才允许修改密码
+  useEffect(() => {
+    let mounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, session: Session | null) => {
+        if (mounted && event === "PASSWORD_RECOVERY" && session) {
+          setStatus("ready");
+        }
+      }
+    );
+
+    const params = new URLSearchParams(window.location.search);
+    const hasRecoveryParams = params.has("code") || params.has("token_hash");
+
+    supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
+      if (!mounted) return;
+      if (data.session && hasRecoveryParams) {
+        setStatus("ready");
+      } else {
+        setStatus("invalid");
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +103,21 @@ export function ResetPasswordForm() {
     });
     router.push(ROUTES.login);
   };
+
+  if (status === "checking") {
+    return <p className="py-8 text-center text-sm text-muted-foreground">{t("resetPassword.checking")}</p>;
+  }
+
+  if (status === "invalid") {
+    return (
+      <div className="space-y-4 py-4 text-center">
+        <p className="text-sm text-muted-foreground">{t("resetPassword.invalidSession")}</p>
+        <Button asChild variant="outline" className="w-full">
+          <Link href={ROUTES.forgotPassword}>{t("resetPassword.backToForgot")}</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit}>

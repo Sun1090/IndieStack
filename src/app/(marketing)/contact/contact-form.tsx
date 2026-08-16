@@ -27,11 +27,12 @@ export function ContactForm() {
     e.preventDefault();
     setLoading(true);
 
-    // Simulate sending — in production, integrate with a form service or API route
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // 联系表单后端尚未接入：明确告知用户未开通，避免误导"已发送成功"
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
     toast({
-      title: t("form.success"),
+      title: t("form.unavailable"),
+      variant: "destructive",
     });
 
     setName("");

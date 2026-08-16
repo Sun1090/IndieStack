@@ -23,7 +23,7 @@ export default async function NotFound() {
             <Link href={ROUTES.home}>{t("notFound.backHome")}</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href={ROUTES.dashboard}>{t("notFound.contactSupport")}</Link>
+            <Link href={ROUTES.contact}>{t("notFound.contactSupport")}</Link>
           </Button>
         </div>
       </div>

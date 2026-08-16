@@ -4,9 +4,9 @@ export const SITE_CONFIG = {
     process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
     "A full-stack IndieStack for independent developers. Next.js, Tailwind, shadcn/ui, Supabase, PostgreSQL.",
   url: process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000",
-  // OpenGraph image — 由 app/opengraph-image.tsx 自动生成动态图片，无需手动设置
-  ogImage: "/og-image.png",
   author: "IndieStack",
+  /** 联系邮箱（可在部署时通过 NEXT_PUBLIC_CONTACT_EMAIL 覆盖） */
+  contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || "hello@indiestack.dev",
   /** VitePress 独立文档站地址（可单独部署） */
   docsUrl: process.env.NEXT_PUBLIC_DOCS_URL?.trim() || "https://indiestack-docs.vercel.app",
   links: {
@@ -73,7 +73,6 @@ export const ROUTES = {
 export const API_ROUTES = {
   authCallback: "/api/auth/callback",
   user: "/api/user",
-  upload: "/api/upload",
   webhooks: {
     stripe: "/api/webhooks/stripe",
   },

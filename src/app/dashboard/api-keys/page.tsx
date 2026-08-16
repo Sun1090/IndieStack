@@ -47,6 +47,7 @@ export default function ApiKeysPage() {
   const [creating, setCreating] = useState(false);
   const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
@@ -86,7 +87,9 @@ export default function ApiKeysPage() {
 
   /** 吊销密钥 */
   async function revokeKey(keyId: string) {
+    setRevokingId(keyId);
     const result = await revokeApiKey(keyId);
+    setRevokingId(null);
 
     if (result.error) {
       toast({ title: t("apiKeys.revokeError"), description: ta(result.error), variant: "destructive" });
@@ -98,11 +101,16 @@ export default function ApiKeysPage() {
   }
 
   /** 复制到剪贴板 */
-  function copyToClipboard(val: string) {
-    navigator.clipboard.writeText(val);
-    setCopied(true);
-    toast({ title: t("apiKeys.copiedToast") });
-    setTimeout(() => setCopied(false), 2000);
+  async function copyToClipboard(val: string) {
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopied(true);
+      toast({ title: t("apiKeys.copiedToast") });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // 非安全上下文或权限被拒时给出明确反馈，避免静默失败
+      toast({ title: t("apiKeys.copyFailed"), variant: "destructive" });
+    }
   }
 
   return (
@@ -260,10 +268,11 @@ export default function ApiKeysPage() {
                         variant="ghost"
                         size="sm"
                         className="text-destructive hover:text-destructive"
+                        disabled={revokingId === key.id}
                         onClick={() => revokeKey(key.id)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        {t("apiKeys.revoke")}
+                        {revokingId === key.id ? t("apiKeys.revoking") : t("apiKeys.revoke")}
                       </Button>
                     )}
                   </div>

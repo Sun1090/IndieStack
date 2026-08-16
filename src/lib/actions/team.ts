@@ -41,12 +41,23 @@ export async function getCurrentTeam() {
 
 /**
  * Get all members of a team.
+ * 仅允许团队成员查询本团队成员，防止跨团队 IDOR 越权读取。
  */
 export async function getTeamMembers(teamId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) return [];
+
+  // 校验当前用户确实是该团队成员（RLS 之外的纵深防御）
+  const { data: membership } = await supabase
+    .from("team_members")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("user_id", user.id)
+    .maybeSingle() as unknown as { data: { id: string } | null; error: null };
+
+  if (!membership) return [];
 
   const { data: members } = await supabase
     .from("team_members")

@@ -73,16 +73,18 @@ export async function updatePassword(formData: FormData) {
     return { error: "passwordMin8" };
   }
 
-  // Verify current password by trying to sign in
-  if (user.email) {
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password: currentPassword,
-    });
+  // Verify current password by trying to sign in.
+  // 无邮箱（如纯 OAuth 账户）时无法验证当前密码，直接拒绝修改，避免绕过密码校验。
+  if (!user.email) {
+    return { error: "passwordChangeUnavailable" };
+  }
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  });
 
-    if (signInError) {
-      return { error: "currentPasswordIncorrect" };
-    }
+  if (signInError) {
+    return { error: "currentPasswordIncorrect" };
   }
 
   // Update password

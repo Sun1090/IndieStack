@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ContactForm } from "./contact-form";
 import { getTranslations } from "next-intl/server";
+import { SITE_CONFIG } from "@/lib/constants";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("contact");
@@ -43,19 +44,31 @@ export default async function ContactPage() {
             <Card>
               <CardHeader>
                 <CardTitle>{t("info.email")}</CardTitle>
-                <CardDescription>hello@indiestack.dev</CardDescription>
+                <CardDescription>
+                  <a href={`mailto:${SITE_CONFIG.contactEmail}`} className="hover:underline">
+                    {SITE_CONFIG.contactEmail}
+                  </a>
+                </CardDescription>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader>
                 <CardTitle>{t("info.github")}</CardTitle>
-                <CardDescription>github.com/indiestack</CardDescription>
+                <CardDescription>
+                  <a href={SITE_CONFIG.links.github} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    {SITE_CONFIG.links.github.replace(/^https?:\/\//, "")}
+                  </a>
+                </CardDescription>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader>
                 <CardTitle>{t("info.twitter")}</CardTitle>
-                <CardDescription>@indiestack</CardDescription>
+                <CardDescription>
+                  <a href={SITE_CONFIG.links.twitter} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    {SITE_CONFIG.links.twitter.replace(/^https?:\/\//, "")}
+                  </a>
+                </CardDescription>
               </CardHeader>
             </Card>
             <Card>

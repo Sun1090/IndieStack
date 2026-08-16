@@ -39,8 +39,9 @@ export async function SiteFooter() {
             <h4 className="text-sm font-semibold">{t("resources")}</h4>
             <ul className="space-y-2">
               <li><a href={ROUTES.docs} className="text-sm text-muted-foreground transition-colors hover:text-foreground" target="_blank" rel="noopener noreferrer">{tc("documentation")}</a></li>
-              <li><Link href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("api")}</Link></li>
-              <li><Link href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">{tc("status")}</Link></li>
+              {/* API / Status 尚未上线：使用纯文本占位，避免指向 # 的死链接 */}
+              <li><span className="text-sm text-muted-foreground">{tc("api")}</span></li>
+              <li><span className="text-sm text-muted-foreground">{tc("status")}</span></li>
             </ul>
           </div>
 
