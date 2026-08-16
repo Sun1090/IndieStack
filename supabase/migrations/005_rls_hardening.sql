@@ -17,16 +17,8 @@ drop policy if exists "Team admins can remove members" on public.team_members;
 create policy "Team admins can remove members"
   on public.team_members for delete
   using (
-    exists (
-      select 1 from public.team_members tm
-      where tm.team_id = team_members.team_id
-        and tm.role in ('owner', 'admin')
-        and tm.user_id = auth.uid()
-    )
-    and (
-      select role from public.team_members
-      where id = team_members.id
-    ) <> 'owner'
+    public.is_team_admin(team_members.team_id)
+    and team_members.role <> 'owner'
   );
 
 -- -----------------------------------------------------------------------------
