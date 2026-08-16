@@ -38,12 +38,14 @@ function toAdminUser(row: Record<string, unknown>): AdminUser {
 }
 
 export async function listAdminUsers(): Promise<
-  | { success: true; data: AdminUser[] }
-  | { success: false; error: string }
+  { success: true; data: AdminUser[] } | { success: false; error: string }
 > {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
+    return {
+      success: false,
+      error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden",
+    };
   }
 
   try {
@@ -70,20 +72,23 @@ export async function listAdminUsers(): Promise<
 
 export async function updateUserRole(
   userId: string,
-  role: "member" | "admin" | "viewer"
+  role: "member" | "admin" | "viewer",
 ): Promise<{ success: true } | { success: false; error: string }> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
+    return {
+      success: false,
+      error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden",
+    };
   }
 
   try {
     const admin = createAdminClient();
-    const { data: target } = await admin
+    const { data: target } = (await admin
       .from("profiles")
       .select("role")
       .eq("id", userId)
-      .maybeSingle() as { data: { role: string } | null };
+      .maybeSingle()) as { data: { role: string } | null };
 
     if (!target) {
       return { success: false, error: "userNotFoundAdmin" };
@@ -112,12 +117,14 @@ export async function updateUserRole(
 }
 
 export async function listAuditLogs(): Promise<
-  | { success: true; data: AuditLogRecord[] }
-  | { success: false; error: string }
+  { success: true; data: AuditLogRecord[] } | { success: false; error: string }
 > {
   const auth = await safelyRequireRole("super_admin");
   if (!auth.success) {
-    return { success: false, error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden" };
+    return {
+      success: false,
+      error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden",
+    };
   }
 
   try {

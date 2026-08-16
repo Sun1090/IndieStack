@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (!limits.allowed) {
     return NextResponse.json(
       { error: "rateLimited", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 }
+      { status: 429 },
     );
   }
 

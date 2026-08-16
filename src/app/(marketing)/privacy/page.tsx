@@ -23,7 +23,9 @@ export default async function PrivacyPage() {
   return (
     <div className="container py-12 lg:py-20">
       <div className="mx-auto max-w-3xl">
-        <Badge variant="secondary" className="mb-4">{t("metaTitle")}</Badge>
+        <Badge variant="secondary" className="mb-4">
+          {t("metaTitle")}
+        </Badge>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t("pageTitle")}</h1>
         <p className="mt-4 text-muted-foreground">{t("lastUpdated")}</p>
 

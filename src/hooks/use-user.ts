@@ -22,19 +22,21 @@ export function useUser() {
     const supabase = createClient();
 
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       setUser(user);
       setLoading(false);
     };
 
     getUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event: AuthChangeEvent, session: Session | null) => {
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
     return () => subscription.unsubscribe();
   }, []);

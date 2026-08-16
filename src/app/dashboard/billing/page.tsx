@@ -26,16 +26,23 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function BillingPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
   const tc = await getTranslations("common");
 
-  const { data: membership } = await supabase
+  const { data: membership } = (await supabase
     .from("team_members")
     .select("team_id, teams!inner(plan, member_count)")
     .eq("user_id", user!.id)
     .limit(1)
-    .single() as unknown as { data: { team_id: string; teams: { plan: string; member_count: number } | { plan: string; member_count: number }[] } | null };
+    .single()) as unknown as {
+    data: {
+      team_id: string;
+      teams: { plan: string; member_count: number } | { plan: string; member_count: number }[];
+    } | null;
+  };
 
   const teamRows = Array.isArray(membership?.teams) ? membership!.teams[0] : membership?.teams;
   const teamInfo = teamRows as { plan: string; member_count: number } | undefined;
@@ -50,7 +57,10 @@ export default async function BillingPage() {
         <CardHeader>
           <CardTitle>{t("billing.sectionTitle")}</CardTitle>
           <CardDescription>
-            {t("billing.currentPlanDesc", { planName: SUBSCRIPTION_TIERS[currentPlan as keyof typeof SUBSCRIPTION_TIERS]?.name ?? "Free" })}
+            {t("billing.currentPlanDesc", {
+              planName:
+                SUBSCRIPTION_TIERS[currentPlan as keyof typeof SUBSCRIPTION_TIERS]?.name ?? "Free",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -59,7 +69,9 @@ export default async function BillingPage() {
               <p className="text-sm text-muted-foreground">{t("billing.priceLabel")}</p>
               <p className="text-2xl font-bold">
                 ${SUBSCRIPTION_TIERS[currentPlan as keyof typeof SUBSCRIPTION_TIERS]?.price ?? 0}
-                <span className="text-sm font-normal text-muted-foreground">{t("billing.perMonth")}</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  {t("billing.perMonth")}
+                </span>
               </p>
             </div>
           </div>
@@ -84,7 +96,7 @@ export default async function BillingPage() {
                   <ul className="space-y-2">
                     {tier.features.map((feature: string) => (
                       <li key={feature} className="flex items-center gap-2 text-sm">
-                        <Check className="h-4 w-4 text-green-500 shrink-0" />
+                        <Check className="h-4 w-4 shrink-0 text-green-500" />
                         {tc(`tierFeatures.${feature}`)}
                       </li>
                     ))}
@@ -94,7 +106,12 @@ export default async function BillingPage() {
                       {t("billing.currentPlanBadge")}
                     </Button>
                   ) : !stripeConfigured || !tier.priceId ? (
-                    <Button className="w-full" variant="default" disabled title={t("billing.stripeNotConfigured")}>
+                    <Button
+                      className="w-full"
+                      variant="default"
+                      disabled
+                      title={t("billing.stripeNotConfigured")}
+                    >
                       {t("billing.stripeNotConfigured")}
                     </Button>
                   ) : (

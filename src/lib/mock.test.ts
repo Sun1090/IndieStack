@@ -62,10 +62,7 @@ describe("Mock API Keys", () => {
 
   it("吊销密钥更新 is_active 并保留在列表中", async () => {
     const client = createMockSupabaseClient();
-    const { data: first } = await client
-      .from("api_keys")
-      .select("*")
-      .limit(1);
+    const { data: first } = await client.from("api_keys").select("*").limit(1);
 
     const keyId = asRows(first)[0].id as string;
     await client
@@ -74,20 +71,14 @@ describe("Mock API Keys", () => {
       .eq("id", keyId)
       .eq("user_id", MOCK_USER_ID);
 
-    const { data: after } = await client
-      .from("api_keys")
-      .select("*")
-      .eq("id", keyId);
+    const { data: after } = await client.from("api_keys").select("*").eq("id", keyId);
 
     expect(asRows(after)[0].is_active).toBe(false);
   });
 
   it("吊销只影响目标密钥，不影响其他密钥", async () => {
     const client = createMockSupabaseClient();
-    const { data: before } = await client
-      .from("api_keys")
-      .select("*")
-      .eq("user_id", MOCK_USER_ID);
+    const { data: before } = await client.from("api_keys").select("*").eq("user_id", MOCK_USER_ID);
 
     const rows = asRows(before);
     expect(rows.length).toBeGreaterThanOrEqual(2);
@@ -101,10 +92,7 @@ describe("Mock API Keys", () => {
       .eq("id", targetId)
       .eq("user_id", MOCK_USER_ID);
 
-    const { data: after } = await client
-      .from("api_keys")
-      .select("*")
-      .eq("user_id", MOCK_USER_ID);
+    const { data: after } = await client.from("api_keys").select("*").eq("user_id", MOCK_USER_ID);
 
     const afterRows = asRows(after);
     expect(afterRows.find((r) => r.id === targetId)?.is_active).toBe(false);
@@ -121,10 +109,7 @@ describe("Mock Teams", () => {
 
   it("in 过滤可返回用户所属团队列表", async () => {
     const client = createMockSupabaseClient();
-    const { data, error } = await client
-      .from("teams")
-      .select("*")
-      .in("id", ["mock-team-001"]);
+    const { data, error } = await client.from("teams").select("*").in("id", ["mock-team-001"]);
 
     expect(error).toBeNull();
     expect(Array.isArray(data)).toBe(true);

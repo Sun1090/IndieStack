@@ -28,8 +28,7 @@ export async function GET() {
       // Supabase 连接检测（通过检查必需的配置变量）
       supabase: {
         configured: Boolean(
-          process.env.NEXT_PUBLIC_SUPABASE_URL &&
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+          process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
         ),
       },
       // Sentry 检测
@@ -44,9 +43,7 @@ export async function GET() {
   };
 
   // 检查是否所有核心依赖都已配置
-  const allConfigured = Object.values(status.checks).every(
-    (check) => check.configured
-  );
+  const allConfigured = Object.values(status.checks).every((check) => check.configured);
 
   return NextResponse.json(
     { ...status, allConfigured },
@@ -55,7 +52,7 @@ export async function GET() {
       headers: {
         "Cache-Control": "no-store, must-revalidate",
       },
-    }
+    },
   );
 }
 

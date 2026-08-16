@@ -53,7 +53,11 @@ export function ApiKeysPage() {
     setLoading(true);
     const result = await listApiKeys();
     if (result.error) {
-      toast({ title: t("apiKeys.loadError"), description: ta(result.error), variant: "destructive" });
+      toast({
+        title: t("apiKeys.loadError"),
+        description: ta(result.error),
+        variant: "destructive",
+      });
     }
     setKeys(result.data);
     setLoading(false);
@@ -71,10 +75,17 @@ export function ApiKeysPage() {
     }
 
     setCreating(true);
-    const result = await createApiKey({ name: newKeyName.trim(), scope: newKeyScope as "read" | "all" });
+    const result = await createApiKey({
+      name: newKeyName.trim(),
+      scope: newKeyScope as "read" | "all",
+    });
 
     if (result.error) {
-      toast({ title: t("apiKeys.createError"), description: ta(result.error), variant: "destructive" });
+      toast({
+        title: t("apiKeys.createError"),
+        description: ta(result.error),
+        variant: "destructive",
+      });
       setCreating(false);
       return;
     }
@@ -92,7 +103,11 @@ export function ApiKeysPage() {
     setRevokingId(null);
 
     if (result.error) {
-      toast({ title: t("apiKeys.revokeError"), description: ta(result.error), variant: "destructive" });
+      toast({
+        title: t("apiKeys.revokeError"),
+        description: ta(result.error),
+        variant: "destructive",
+      });
       return;
     }
 
@@ -115,10 +130,7 @@ export function ApiKeysPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title={t("apiKeys.title")}
-        description={t("apiKeys.desc")}
-      >
+      <PageHeader title={t("apiKeys.title")} description={t("apiKeys.desc")}>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
             <Button>
@@ -137,14 +149,15 @@ export function ApiKeysPage() {
                   <div className="rounded-lg border bg-muted p-3">
                     <code className="break-all text-sm">{createdKeyValue}</code>
                   </div>
-                  <Button
-                    className="w-full"
-                    onClick={() => copyToClipboard(createdKeyValue)}
-                  >
+                  <Button className="w-full" onClick={() => copyToClipboard(createdKeyValue)}>
                     {copied ? (
-                      <><Check className="mr-2 h-4 w-4" /> {t("apiKeys.copied")}</>
+                      <>
+                        <Check className="mr-2 h-4 w-4" /> {t("apiKeys.copied")}
+                      </>
                     ) : (
-                      <><Copy className="mr-2 h-4 w-4" /> {t("apiKeys.copy")}</>
+                      <>
+                        <Copy className="mr-2 h-4 w-4" /> {t("apiKeys.copy")}
+                      </>
                     )}
                   </Button>
                 </div>
@@ -233,7 +246,10 @@ export function ApiKeysPage() {
           ) : (
             <div className="divide-y">
               {keys.map((key) => (
-                <div key={key.id} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
+                <div
+                  key={key.id}
+                  className="flex items-center justify-between py-4 first:pt-0 last:pb-0"
+                >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{key.name}</span>
@@ -247,10 +263,14 @@ export function ApiKeysPage() {
                       </code>
                       <span>
                         {key.last_used_at
-                          ? t("apiKeys.lastUsed", { date: formatDate(key.last_used_at, { locale }) })
+                          ? t("apiKeys.lastUsed", {
+                              date: formatDate(key.last_used_at, { locale }),
+                            })
                           : t("apiKeys.neverUsed")}
                       </span>
-                      <span>{t("apiKeys.createdAt", { date: formatDate(key.created_at, { locale }) })}</span>
+                      <span>
+                        {t("apiKeys.createdAt", { date: formatDate(key.created_at, { locale }) })}
+                      </span>
                     </div>
                     {key.scopes && key.scopes.length > 0 && (
                       <div className="flex gap-1 pt-1">

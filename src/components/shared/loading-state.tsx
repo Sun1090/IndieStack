@@ -38,10 +38,13 @@ export function LoadingState({
       className={cn(
         "flex flex-col items-center justify-center gap-3 py-12",
         fullPage && "fixed inset-0",
-        className
+        className,
       )}
     >
-      <Loader2 className="animate-spin text-muted-foreground" style={{ width: iconSize, height: iconSize }} />
+      <Loader2
+        className="animate-spin text-muted-foreground"
+        style={{ width: iconSize, height: iconSize }}
+      />
       <p className="text-sm text-muted-foreground">{text}</p>
     </div>
   );

@@ -16,23 +16,25 @@ export const appearanceSettingsSchema = z.object({
   sidebarCollapsed: z.boolean().default(false),
 });
 
-export const securitySettingsSchema = z.object({
-  currentPassword: z.string().min(6).optional(),
-  newPassword: z.string().min(8).optional(),
-  confirmNewPassword: z.string().optional(),
-  twoFactorEnabled: z.boolean().default(false),
-}).refine(
-  (data) => {
-    if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: "passwordsDoNotMatch",
-    path: ["confirmNewPassword"],
-  }
-);
+export const securitySettingsSchema = z
+  .object({
+    currentPassword: z.string().min(6).optional(),
+    newPassword: z.string().min(8).optional(),
+    confirmNewPassword: z.string().optional(),
+    twoFactorEnabled: z.boolean().default(false),
+  })
+  .refine(
+    (data) => {
+      if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "passwordsDoNotMatch",
+      path: ["confirmNewPassword"],
+    },
+  );
 
 export type NotificationSettingsInput = z.infer<typeof notificationSettingsSchema>;
 export type AppearanceSettingsInput = z.infer<typeof appearanceSettingsSchema>;

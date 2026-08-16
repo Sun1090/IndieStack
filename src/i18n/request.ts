@@ -15,9 +15,24 @@ import { routing, LOCALE_COOKIE_NAME, getSafeLocale, type Locale } from "./routi
 
 /** 命名空间列表（与 messages/{locale}/ 下的文件名一一对应） */
 const namespaces = [
-  "common", "nav", "footer", "home", "features", "pricing",
-  "about", "faq", "changelog", "contact", "blog",
-  "privacy", "terms", "auth", "dashboard", "admin", "errors", "actions",
+  "common",
+  "nav",
+  "footer",
+  "home",
+  "features",
+  "pricing",
+  "about",
+  "faq",
+  "changelog",
+  "contact",
+  "blog",
+  "privacy",
+  "terms",
+  "auth",
+  "dashboard",
+  "admin",
+  "errors",
+  "actions",
 ] as const;
 
 /**

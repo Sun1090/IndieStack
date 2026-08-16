@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Collapsible — 折叠面板组件（基于 Radix UI）
@@ -11,10 +11,10 @@
  * </Collapsible>
  */
 
-import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
+import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 
-const Collapsible = CollapsiblePrimitive.Root
-const CollapsibleTrigger = CollapsiblePrimitive.Trigger
-const CollapsibleContent = CollapsiblePrimitive.Content
+const Collapsible = CollapsiblePrimitive.Root;
+const CollapsibleTrigger = CollapsiblePrimitive.Trigger;
+const CollapsibleContent = CollapsiblePrimitive.Content;
 
-export { Collapsible, CollapsibleTrigger, CollapsibleContent }
+export { Collapsible, CollapsibleTrigger, CollapsibleContent };

@@ -8,13 +8,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { ResetPasswordForm } from "./reset-password-form";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getTranslations } from "next-intl/server";
 
 export async function generateMetadata(): Promise<Metadata> {

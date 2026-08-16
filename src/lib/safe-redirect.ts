@@ -38,10 +38,7 @@ export function isSafeRelativePath(value: string): boolean {
  * @param value   URL 参数中读取的原始值（可能为 null/undefined）
  * @param fallback 不合法时的回退地址（通常是仪表盘或首页）
  */
-export function getSafeRedirect(
-  value: string | null | undefined,
-  fallback: string
-): string {
+export function getSafeRedirect(value: string | null | undefined, fallback: string): string {
   if (typeof value === "string" && isSafeRelativePath(value)) {
     return value;
   }

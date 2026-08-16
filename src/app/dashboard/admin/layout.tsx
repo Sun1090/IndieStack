@@ -14,24 +14,22 @@ import { ROUTES } from "@/lib/constants";
 import { parseRole } from "@/lib/auth/roles";
 import { ROLE_HIERARCHY } from "@/lib/auth/roles";
 
-export default async function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     redirect(ROUTES.login);
   }
 
   // 从 profiles 表获取用户角色
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single() as { data: { role: string } | null };
+    .single()) as { data: { role: string } | null };
 
   const role = parseRole(profile?.role) ?? "member";
 

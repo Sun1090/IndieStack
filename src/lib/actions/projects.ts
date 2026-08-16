@@ -24,7 +24,9 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 export async function createProject(input: CreateProjectInput) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };
@@ -35,12 +37,12 @@ export async function createProject(input: CreateProjectInput) {
     return { error: validated.error.errors[0]?.message ?? "invalidInput" };
   }
 
-  const { data: membership } = await supabase
+  const { data: membership } = (await supabase
     .from("team_members")
     .select("team_id, role")
     .eq("user_id", user.id)
     .limit(1)
-    .maybeSingle() as unknown as { data: { team_id: string; role: string } | null; error: null };
+    .maybeSingle()) as unknown as { data: { team_id: string; role: string } | null; error: null };
 
   if (!membership) {
     return { error: "noTeam" };

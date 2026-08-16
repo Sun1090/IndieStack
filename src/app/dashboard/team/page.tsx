@@ -27,16 +27,18 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function TeamPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
   const tc = await getTranslations("common");
 
-  const { data: membership } = await supabase
+  const { data: membership } = (await supabase
     .from("team_members")
     .select("team_id, role")
     .eq("user_id", user!.id)
     .limit(1)
-    .single() as unknown as { data: { team_id: string; role: string } | null };
+    .single()) as unknown as { data: { team_id: string; role: string } | null };
 
   if (!membership) {
     return (
@@ -56,15 +58,16 @@ export default async function TeamPage() {
     );
   }
 
-  const { data: team } = await supabase
+  const { data: team } = (await supabase
     .from("teams")
     .select("*")
     .eq("id", membership.team_id)
-    .single() as unknown as { data: Record<string, unknown> | null };
+    .single()) as unknown as { data: Record<string, unknown> | null };
 
   const { data: members } = await supabase
     .from("team_members")
-    .select(`
+    .select(
+      `
       id,
       role,
       created_at,
@@ -75,11 +78,20 @@ export default async function TeamPage() {
         full_name,
         avatar_url
       )
-    `)
+    `,
+    )
     .eq("team_id", membership.team_id);
 
   const memberProfiles = (members ?? []) as Array<
-    Record<string, unknown> & { role: string; profiles: { id: string; email: string | null; full_name: string | null; avatar_url: string | null } | null }
+    Record<string, unknown> & {
+      role: string;
+      profiles: {
+        id: string;
+        email: string | null;
+        full_name: string | null;
+        avatar_url: string | null;
+      } | null;
+    }
   >;
 
   // 仅 owner/admin 可管理团队成员（邀请/移除），member/viewer 只读
@@ -121,7 +133,11 @@ export default async function TeamPage() {
           </CardHeader>
           <CardContent>
             <Badge variant="outline">
-              {tc(team?.plan === "pro" || team?.plan === "enterprise" ? (team.plan as "pro" | "enterprise") : "free")}
+              {tc(
+                team?.plan === "pro" || team?.plan === "enterprise"
+                  ? (team.plan as "pro" | "enterprise")
+                  : "free",
+              )}
             </Badge>
           </CardContent>
         </Card>
@@ -138,25 +154,34 @@ export default async function TeamPage() {
               <p className="text-sm text-muted-foreground">{t("team.list.noMembers")}</p>
             ) : (
               memberProfiles.map((member) => (
-                <div key={member.id as string} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
+                <div
+                  key={member.id as string}
+                  className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
+                >
                   <div className="flex items-center gap-4">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback>
                         {member.profiles?.full_name
                           ? String(member.profiles.full_name).charAt(0).toUpperCase()
                           : member.profiles?.email
-                          ? String(member.profiles.email).charAt(0).toUpperCase()
-                          : "?"}
+                            ? String(member.profiles.email).charAt(0).toUpperCase()
+                            : "?"}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-medium">{member.profiles?.full_name ?? t("team.list.unknownMember")}</p>
-                      <p className="text-xs text-muted-foreground">{member.profiles?.email ?? ""}</p>
+                      <p className="text-sm font-medium">
+                        {member.profiles?.full_name ?? t("team.list.unknownMember")}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {member.profiles?.email ?? ""}
+                      </p>
                     </div>
                     <Badge variant="outline">
                       {(() => {
                         const role = member.role as string;
-                        return t.has(`team.list.roles.${role}`) ? t(`team.list.roles.${role}`) : role;
+                        return t.has(`team.list.roles.${role}`)
+                          ? t(`team.list.roles.${role}`)
+                          : role;
                       })()}
                     </Badge>
                   </div>

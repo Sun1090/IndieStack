@@ -21,7 +21,12 @@ export const inviteMemberSchema = z.object({
 
 export const updateTeamSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/).optional(),
+  slug: z
+    .string()
+    .min(2)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/)
+    .optional(),
 });
 
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;

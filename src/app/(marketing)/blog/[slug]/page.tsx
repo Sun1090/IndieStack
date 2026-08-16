@@ -22,7 +22,11 @@ type BlogPost = {
   author: string;
 };
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
   const { slug } = await params;
   const t = await getTranslations("blog");
   const post = (t.raw("posts") as BlogPost[]).find((p) => p.slug === slug);
@@ -56,12 +60,12 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             <span className="text-sm text-muted-foreground">{post.date}</span>
           </div>
           <h1 className="mt-4 text-4xl font-bold tracking-tight">{post.title}</h1>
-          <p className="mt-2 text-muted-foreground">{t("by")} {post.author}</p>
+          <p className="mt-2 text-muted-foreground">
+            {t("by")} {post.author}
+          </p>
         </div>
 
-        <div className="max-w-none">
-          {renderContent(post.content)}
-        </div>
+        <div className="max-w-none">{renderContent(post.content)}</div>
       </div>
     </article>
   );
@@ -78,9 +82,17 @@ function renderContent(content: string) {
   function flushList() {
     if (listItems.length > 0) {
       if (listType === "ol") {
-        elements.push(<ol key={`ol-${codeKey++}`} className="my-4 list-decimal space-y-1 pl-6">{listItems}</ol>);
+        elements.push(
+          <ol key={`ol-${codeKey++}`} className="my-4 list-decimal space-y-1 pl-6">
+            {listItems}
+          </ol>,
+        );
       } else {
-        elements.push(<ul key={`ul-${codeKey++}`} className="my-4 list-disc space-y-1 pl-6">{listItems}</ul>);
+        elements.push(
+          <ul key={`ul-${codeKey++}`} className="my-4 list-disc space-y-1 pl-6">
+            {listItems}
+          </ul>,
+        );
       }
       listItems = [];
       listType = null;
@@ -93,9 +105,12 @@ function renderContent(content: string) {
     if (trimmed.startsWith("```")) {
       if (inCodeBlock) {
         elements.push(
-          <pre key={`code-${codeKey++}`} className="my-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm">
+          <pre
+            key={`code-${codeKey++}`}
+            className="my-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm"
+          >
             <code>{codeLines.join("\n")}</code>
-          </pre>
+          </pre>,
         );
         codeLines = [];
         inCodeBlock = false;
@@ -114,10 +129,22 @@ function renderContent(content: string) {
     flushList();
 
     if (trimmed.startsWith("## ")) {
-      elements.push(<h2 key={i} className="mb-4 mt-8 text-2xl font-bold">{trimmed.slice(3)}</h2>);
+      elements.push(
+        <h2 key={i} className="mb-4 mt-8 text-2xl font-bold">
+          {trimmed.slice(3)}
+        </h2>,
+      );
     } else if (trimmed.startsWith("### ")) {
-      elements.push(<h3 key={i} className="mb-3 mt-6 text-xl font-semibold">{trimmed.slice(4)}</h3>);
-    } else if (trimmed.startsWith("1. ") || trimmed.startsWith("2. ") || trimmed.startsWith("3. ")) {
+      elements.push(
+        <h3 key={i} className="mb-3 mt-6 text-xl font-semibold">
+          {trimmed.slice(4)}
+        </h3>,
+      );
+    } else if (
+      trimmed.startsWith("1. ") ||
+      trimmed.startsWith("2. ") ||
+      trimmed.startsWith("3. ")
+    ) {
       const text = trimmed.replace(/^\d+\.\s*/, "");
       listType = "ol";
       listItems.push(<li key={i}>{renderInline(text)}</li>);
@@ -127,7 +154,11 @@ function renderContent(content: string) {
     } else if (trimmed === "") {
       elements.push(<div key={i} className="h-4" />);
     } else {
-      elements.push(<p key={i} className="leading-relaxed">{renderInline(trimmed)}</p>);
+      elements.push(
+        <p key={i} className="leading-relaxed">
+          {renderInline(trimmed)}
+        </p>,
+      );
     }
   });
 
@@ -136,7 +167,7 @@ function renderContent(content: string) {
     elements.push(
       <pre key={`code-${codeKey}`} className="my-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm">
         <code>{codeLines.join("\n")}</code>
-      </pre>
+      </pre>,
     );
   }
   flushList();
@@ -156,7 +187,11 @@ function renderInline(text: string) {
     if (codeParts.length === 1) return part;
     return codeParts.map((cp, j) => {
       if (cp.startsWith("`") && cp.endsWith("`")) {
-        return <code key={`${i}-${j}`} className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">{cp.slice(1, -1)}</code>;
+        return (
+          <code key={`${i}-${j}`} className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
+            {cp.slice(1, -1)}
+          </code>
+        );
       }
       return cp;
     });

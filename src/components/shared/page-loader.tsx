@@ -13,47 +13,43 @@
  * <PageLoader variant="skeleton" count={3} />
  */
 
-"use client"
+"use client";
 
-import { cn } from "@/lib/utils"
-import { Loader2 } from "lucide-react"
+import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
-type PageLoaderVariant = "fullscreen" | "inline" | "skeleton" | "spinner"
+type PageLoaderVariant = "fullscreen" | "inline" | "skeleton" | "spinner";
 
 interface PageLoaderProps {
   /** 加载变体 */
-  variant?: PageLoaderVariant
+  variant?: PageLoaderVariant;
   /** 加载提示文字 */
-  text?: string
+  text?: string;
   /** 骨架屏行数（仅 skeleton 变体） */
-  count?: number
+  count?: number;
   /** 自定义类名 */
-  className?: string
+  className?: string;
   /** 子元素（仅 inline 变体） */
-  children?: React.ReactNode
+  children?: React.ReactNode;
 }
 
 /**
  * 骨架屏占位行
  */
 function SkeletonRow({ index }: { index: number }) {
-  const widths = ["w-full", "w-3/4", "w-5/6", "w-2/3", "w-4/5"]
-  const width = widths[index % widths.length]
+  const widths = ["w-full", "w-3/4", "w-5/6", "w-2/3", "w-4/5"];
+  const width = widths[index % widths.length];
 
   return (
     <div className="flex items-center gap-4 py-3">
-      {index % 3 === 0 && (
-        <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
-      )}
+      {index % 3 === 0 && <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />}
       <div className="flex-1 space-y-2">
-        <div className={cn("h-4 rounded bg-muted animate-pulse", width)} />
-        <div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
+        <div className={cn("h-4 animate-pulse rounded bg-muted", width)} />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
       </div>
-      {index % 2 === 0 && (
-        <div className="h-8 w-20 rounded bg-muted animate-pulse" />
-      )}
+      {index % 2 === 0 && <div className="h-8 w-20 animate-pulse rounded bg-muted" />}
     </div>
-  )
+  );
 }
 
 export function PageLoader({
@@ -67,17 +63,12 @@ export function PageLoader({
   if (variant === "fullscreen") {
     return (
       <div
-        className={cn(
-          "flex min-h-[60vh] flex-col items-center justify-center gap-4",
-          className
-        )}
+        className={cn("flex min-h-[60vh] flex-col items-center justify-center gap-4", className)}
       >
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        {text && (
-          <p className="text-sm text-muted-foreground">{text}</p>
-        )}
+        {text && <p className="text-sm text-muted-foreground">{text}</p>}
       </div>
-    )
+    );
   }
 
   // 内联加载
@@ -85,12 +76,10 @@ export function PageLoader({
     return (
       <div className={cn("flex items-center gap-3 py-4", className)}>
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">
-          {text ?? "加载中..."}
-        </span>
+        <span className="text-sm text-muted-foreground">{text ?? "加载中..."}</span>
         {children}
       </div>
-    )
+    );
   }
 
   // 骨架屏
@@ -101,7 +90,7 @@ export function PageLoader({
           <SkeletonRow key={i} index={i} />
         ))}
       </div>
-    )
+    );
   }
 
   // 纯旋转图标
@@ -109,5 +98,5 @@ export function PageLoader({
     <div className={cn("flex items-center justify-center py-8", className)}>
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
     </div>
-  )
+  );
 }

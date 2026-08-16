@@ -2,7 +2,14 @@
  * 日期时间工具函数
  * 基于 date-fns 提供格式化和操作日期的工具方法
  */
-import { format, formatDistanceToNow, isToday, isYesterday, isThisWeek, differenceInCalendarDays } from "date-fns";
+import {
+  format,
+  formatDistanceToNow,
+  isToday,
+  isYesterday,
+  isThisWeek,
+  differenceInCalendarDays,
+} from "date-fns";
 import { zhCN, enUS, type Locale } from "date-fns/locale";
 import { defaultLocale } from "@/i18n/routing";
 
@@ -25,7 +32,7 @@ function getLocale(locale?: string): Locale {
  */
 export function formatDate(
   date: Date | string | number,
-  options: { pattern?: string; locale?: string } = {}
+  options: { pattern?: string; locale?: string } = {},
 ): string {
   const d = typeof date === "string" || typeof date === "number" ? new Date(date) : date;
   if (isNaN(d.getTime())) return "Invalid date";
@@ -41,7 +48,7 @@ export function formatDate(
  */
 export function formatRelativeTime(
   date: Date | string | number,
-  options: { locale?: string; approximate?: boolean } = {}
+  options: { locale?: string; approximate?: boolean } = {},
 ): string {
   const d = typeof date === "string" || typeof date === "number" ? new Date(date) : date;
   if (isNaN(d.getTime())) return "Invalid date";
@@ -74,7 +81,7 @@ export function formatRelativeTime(
 export function formatDateRange(
   start: Date | string | number,
   end: Date | string | number,
-  locale?: string
+  locale?: string,
 ): string {
   const s = typeof start === "string" || typeof start === "number" ? new Date(start) : start;
   const e = typeof end === "string" || typeof end === "number" ? new Date(end) : end;
@@ -113,10 +120,7 @@ export { isThisWeek };
  * getFriendlyDate(lastWeek)                   // "2026-07-12"
  * getFriendlyDate(lastYear)                   // "2025-07-19"
  */
-export function getFriendlyDate(
-  date: Date | string | number,
-  locale?: string
-): string {
+export function getFriendlyDate(date: Date | string | number, locale?: string): string {
   const d = typeof date === "string" || typeof date === "number" ? new Date(date) : date;
   if (isNaN(d.getTime())) return "Invalid date";
 

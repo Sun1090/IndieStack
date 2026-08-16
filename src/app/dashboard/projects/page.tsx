@@ -28,16 +28,18 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ProjectsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
   const locale = await getLocale();
 
-  const { data: membership } = await supabase
+  const { data: membership } = (await supabase
     .from("team_members")
     .select("team_id")
     .eq("user_id", user!.id)
     .limit(1)
-    .maybeSingle() as unknown as { data: { team_id: string } | null; error: null };
+    .maybeSingle()) as unknown as { data: { team_id: string } | null; error: null };
 
   const { data: projectRows } = membership
     ? await supabase
@@ -47,7 +49,8 @@ export default async function ProjectsPage() {
         .order("created_at", { ascending: false })
     : { data: [] };
 
-  const projects = (projectRows ?? []) as unknown as Database["public"]["Tables"]["projects"]["Row"][];
+  const projects = (projectRows ??
+    []) as unknown as Database["public"]["Tables"]["projects"]["Row"][];
 
   function getProjectConfig(project: Database["public"]["Tables"]["projects"]["Row"]) {
     const config = project.config as Record<string, unknown> | null;
@@ -74,7 +77,9 @@ export default async function ProjectsPage() {
           description={t("projects.list.createFirst")}
           action={
             <Button asChild>
-              <Link href={ROUTES.dashboardProjectsNew}><Plus className="mr-2 h-4 w-4" /> {t("projects.list.create")}</Link>
+              <Link href={ROUTES.dashboardProjectsNew}>
+                <Plus className="mr-2 h-4 w-4" /> {t("projects.list.create")}
+              </Link>
             </Button>
           }
         />
@@ -82,7 +87,7 @@ export default async function ProjectsPage() {
         <div className="grid gap-4 md:grid-cols-2">
           {projects.map((project) => (
             <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
-              <Card className="transition-colors hover:border-primary/50 h-full cursor-pointer">
+              <Card className="h-full cursor-pointer transition-colors hover:border-primary/50">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div>
@@ -90,7 +95,9 @@ export default async function ProjectsPage() {
                         <FolderKanban className="h-4 w-4 text-muted-foreground" />
                         {project.name}
                       </CardTitle>
-                      <CardDescription className="mt-1">{project.description || "—"}</CardDescription>
+                      <CardDescription className="mt-1">
+                        {project.description || "—"}
+                      </CardDescription>
                     </div>
                     <Badge variant={project.status === "active" ? "default" : "secondary"}>
                       {project.status}
@@ -109,7 +116,8 @@ export default async function ProjectsPage() {
                             </span>
                           )}
                           <span className="flex items-center gap-1">
-                            <Clock className="h-3.5 w-3.5" /> {formatRelativeTime(project.created_at, { locale })}
+                            <Clock className="h-3.5 w-3.5" />{" "}
+                            {formatRelativeTime(project.created_at, { locale })}
                           </span>
                           {config.domain && (
                             <span className="flex items-center gap-1">

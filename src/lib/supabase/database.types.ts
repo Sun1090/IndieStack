@@ -40,11 +40,11 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
-          }
+          },
         ];
       };
       // ===== 迁移 001: 初始架构 =====
-     profiles: {
+      profiles: {
         Row: {
           id: string;
           email: string | null;
@@ -91,7 +91,7 @@ export interface Database {
             isOneToOne: true;
             referencedRelation: "users";
             referencedColumns: ["id"];
-          }
+          },
         ];
       };
       teams: {
@@ -132,7 +132,7 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
-          }
+          },
         ];
       };
       team_members: {
@@ -224,7 +224,7 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "teams";
             referencedColumns: ["id"];
-          }
+          },
         ];
       };
       audit_logs: {
@@ -262,7 +262,7 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
-          }
+          },
         ];
       };
       api_keys: {
@@ -312,7 +312,7 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
-          }
+          },
         ];
       };
       team_invitations: {
@@ -539,4 +539,3 @@ export type TeamInvitation = Database["public"]["Tables"]["team_invitations"]["R
 export type ProfileWithRelations = Profile & {
   teams?: Team[];
 };
-

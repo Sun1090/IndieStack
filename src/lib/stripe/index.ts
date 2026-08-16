@@ -26,8 +26,7 @@ export interface CheckoutSessionParams {
 }
 
 export type SubscriptionStatus =
-  | "active" | "incomplete" | "incomplete_expired" | "past_due"
-  | "canceled" | "unpaid" | "trialing";
+  "active" | "incomplete" | "incomplete_expired" | "past_due" | "canceled" | "unpaid" | "trialing";
 
 export interface SubscriptionInfo {
   id: string;
@@ -66,7 +65,7 @@ async function getStripe(): Promise<Stripe | null> {
  */
 async function redirectToCheckout(
   priceId: string,
-  params?: Omit<CheckoutSessionParams, "customerId">
+  params?: Omit<CheckoutSessionParams, "customerId">,
 ): Promise<string> {
   const response = await fetch("/api/stripe/checkout", {
     method: "POST",
@@ -88,7 +87,7 @@ async function redirectToCheckout(
 /** 创建 Stripe Checkout Session（服务端使用） */
 async function createCheckoutSession(
   priceId: string,
-  params?: CheckoutSessionParams
+  params?: CheckoutSessionParams,
 ): Promise<{ url: string | null; sessionId: string }> {
   const stripe = await getStripeServer();
   const session = await stripe.checkout.sessions.create({
@@ -154,7 +153,10 @@ async function getSubscription(subscriptionId: string): Promise<SubscriptionInfo
     currentPeriodEnd: subscription.current_period_end,
     isTrialing: subscription.status === "trialing",
     isCanceled: subscription.cancel_at_period_end || subscription.status === "canceled",
-    planName: plan.nickname ?? (typeof plan.product === "string" ? plan.product : plan.product?.toString()) ?? "Unknown",
+    planName:
+      plan.nickname ??
+      (typeof plan.product === "string" ? plan.product : plan.product?.toString()) ??
+      "Unknown",
     planAmount: plan.unit_amount ?? 0,
     planCurrency: plan.currency ?? "usd",
     planInterval: plan.recurring?.interval === "year" ? "year" : "month",

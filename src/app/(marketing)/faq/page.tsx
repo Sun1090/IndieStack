@@ -31,7 +31,9 @@ export default async function FAQPage() {
     <div className="container py-12 lg:py-20">
       {/* Header */}
       <div className="mx-auto max-w-3xl text-center">
-        <Badge variant="secondary" className="mb-4">{t("metaTitle")}</Badge>
+        <Badge variant="secondary" className="mb-4">
+          {t("metaTitle")}
+        </Badge>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t("pageTitle")}</h1>
         <p className="mt-4 text-lg text-muted-foreground">{t("pageDesc")}</p>
       </div>
@@ -51,9 +53,7 @@ export default async function FAQPage() {
                     {item.q}
                     <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
                   </summary>
-                  <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-                    {item.a}
-                  </div>
+                  <div className="border-t px-4 py-3 text-sm text-muted-foreground">{item.a}</div>
                 </details>
               ))}
             </div>

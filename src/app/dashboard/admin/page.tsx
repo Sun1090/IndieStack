@@ -47,9 +47,7 @@ export default async function AdminPage() {
     const { count: teamsCount } = await supabase
       .from("teams")
       .select("*", { count: "exact", head: true });
-    const { data: roles } = await supabase
-      .from("profiles")
-      .select("role");
+    const { data: roles } = await supabase.from("profiles").select("role");
 
     totalUsers = usersCount ?? 0;
     totalTeams = teamsCount ?? 0;
@@ -62,10 +60,30 @@ export default async function AdminPage() {
   }
 
   const statsCards = [
-    { title: t("overview.stats.totalUsers"), value: totalUsers ?? 0, desc: t("overview.stats.totalUsersDesc"), icon: Users },
-    { title: t("overview.stats.totalTeams"), value: totalTeams ?? 0, desc: t("overview.stats.totalTeamsDesc"), icon: Activity },
-    { title: t("overview.stats.admins"), value: roleCount.admin + roleCount.super_admin, desc: `super_admin ${roleCount.super_admin} / admin ${roleCount.admin}`, icon: Shield },
-    { title: t("overview.stats.normalUsers"), value: roleCount.member + roleCount.viewer, desc: `member ${roleCount.member} / viewer ${roleCount.viewer}`, icon: AlertTriangle },
+    {
+      title: t("overview.stats.totalUsers"),
+      value: totalUsers ?? 0,
+      desc: t("overview.stats.totalUsersDesc"),
+      icon: Users,
+    },
+    {
+      title: t("overview.stats.totalTeams"),
+      value: totalTeams ?? 0,
+      desc: t("overview.stats.totalTeamsDesc"),
+      icon: Activity,
+    },
+    {
+      title: t("overview.stats.admins"),
+      value: roleCount.admin + roleCount.super_admin,
+      desc: `super_admin ${roleCount.super_admin} / admin ${roleCount.admin}`,
+      icon: Shield,
+    },
+    {
+      title: t("overview.stats.normalUsers"),
+      value: roleCount.member + roleCount.viewer,
+      desc: `member ${roleCount.member} / viewer ${roleCount.viewer}`,
+      icon: AlertTriangle,
+    },
   ];
 
   const systemServices = [
@@ -110,12 +128,34 @@ export default async function AdminPage() {
           <CardContent>
             <div className="space-y-3">
               {[
-                { label: t("users.roleLabels.super_admin"), count: roleCount.super_admin, color: "bg-red-500" },
-                { label: t("users.roleLabels.admin"), count: roleCount.admin, color: "bg-orange-500" },
-                { label: t("users.roleLabels.member"), count: roleCount.member, color: "bg-blue-500" },
-                { label: t("users.roleLabels.viewer"), count: roleCount.viewer, color: "bg-gray-500" },
+                {
+                  label: t("users.roleLabels.super_admin"),
+                  count: roleCount.super_admin,
+                  color: "bg-red-500",
+                },
+                {
+                  label: t("users.roleLabels.admin"),
+                  count: roleCount.admin,
+                  color: "bg-orange-500",
+                },
+                {
+                  label: t("users.roleLabels.member"),
+                  count: roleCount.member,
+                  color: "bg-blue-500",
+                },
+                {
+                  label: t("users.roleLabels.viewer"),
+                  count: roleCount.viewer,
+                  color: "bg-gray-500",
+                },
               ].map((item) => {
-                const max = Math.max(roleCount.super_admin, roleCount.admin, roleCount.member, roleCount.viewer, 1);
+                const max = Math.max(
+                  roleCount.super_admin,
+                  roleCount.admin,
+                  roleCount.member,
+                  roleCount.viewer,
+                  1,
+                );
                 const pct = (item.count / max) * 100;
                 return (
                   <div key={item.label} className="space-y-1">
@@ -124,7 +164,10 @@ export default async function AdminPage() {
                       <span className="text-muted-foreground">{item.count}</span>
                     </div>
                     <div className="h-2 w-full rounded-full bg-muted">
-                      <div className={`h-2 rounded-full ${item.color}`} style={{ width: `${pct}%` }} />
+                      <div
+                        className={`h-2 rounded-full ${item.color}`}
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
                 );
@@ -141,7 +184,10 @@ export default async function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {systemServices.map((svc) => (
-              <div key={svc.name} className="flex items-center justify-between rounded-lg border p-3">
+              <div
+                key={svc.name}
+                className="flex items-center justify-between rounded-lg border p-3"
+              >
                 <span className="text-sm font-medium">{svc.name}</span>
                 <span className="flex items-center gap-1.5 text-sm text-green-600">
                   <span className="h-2 w-2 rounded-full bg-green-500" />

@@ -7,7 +7,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createTeamSchema, inviteMemberSchema, type CreateTeamInput, type InviteMemberInput } from "@/lib/validations/team";
+import {
+  createTeamSchema,
+  inviteMemberSchema,
+  type CreateTeamInput,
+  type InviteMemberInput,
+} from "@/lib/validations/team";
 import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -16,25 +21,30 @@ import type { Database } from "@/lib/supabase/database.types";
  */
 export async function getCurrentTeam() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) return null;
 
   // Get the team the user belongs to (first one)
-  const { data: membership } = await supabase
+  const { data: membership } = (await supabase
     .from("team_members")
     .select("team_id")
     .eq("user_id", user.id)
     .limit(1)
-    .single() as unknown as { data: { team_id: string } | null; error: null };
+    .single()) as unknown as { data: { team_id: string } | null; error: null };
 
   if (!membership) return null;
 
-  const { data: team } = await supabase
+  const { data: team } = (await supabase
     .from("teams")
     .select("*")
     .eq("id", membership.team_id)
-    .single() as unknown as { data: Database["public"]["Tables"]["teams"]["Row"] | null; error: null };
+    .single()) as unknown as {
+    data: Database["public"]["Tables"]["teams"]["Row"] | null;
+    error: null;
+  };
 
   return team;
 }
@@ -44,7 +54,9 @@ export async function getCurrentTeam() {
  */
 export async function createTeam(input: CreateTeamInput) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };
@@ -77,13 +89,11 @@ export async function createTeam(input: CreateTeamInput) {
   }
 
   // Add creator as owner
-  const { error: memberError } = await admin
-    .from("team_members")
-    .insert({
-      team_id: team.id,
-      user_id: user.id,
-      role: "owner",
-    });
+  const { error: memberError } = await admin.from("team_members").insert({
+    team_id: team.id,
+    user_id: user.id,
+    role: "owner",
+  });
 
   if (memberError) {
     // 回滚刚创建的团队，避免留下没有所有者的孤儿团队
@@ -101,7 +111,9 @@ export async function createTeam(input: CreateTeamInput) {
  */
 export async function inviteMember(input: InviteMemberInput) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };
@@ -118,12 +130,12 @@ export async function inviteMember(input: InviteMemberInput) {
   }
 
   // Check if user is admin/owner
-  const { data: membership } = await supabase
+  const { data: membership } = (await supabase
     .from("team_members")
     .select("role")
     .eq("team_id", team.id)
     .eq("user_id", user.id)
-    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
 
   if (!membership || !["owner", "admin"].includes(membership.role)) {
     return { error: "onlyAdminsInvite" };
@@ -143,25 +155,23 @@ export async function inviteMember(input: InviteMemberInput) {
   }
 
   // Check if already a member
-  const { data: existing } = await supabase
+  const { data: existing } = (await supabase
     .from("team_members")
     .select("id")
     .eq("team_id", team.id)
     .eq("user_id", invitedProfile.id)
-    .single() as unknown as { data: { id: string } | null; error: null };
+    .single()) as unknown as { data: { id: string } | null; error: null };
 
   if (existing) {
     return { error: "alreadyMember" };
   }
 
-  const { error: inviteError } = await admin
-    .from("team_members")
-    .insert({
-      team_id: team.id,
-      user_id: invitedProfile.id,
-      role: validated.data.role,
-      invited_by: user.id,
-    });
+  const { error: inviteError } = await admin.from("team_members").insert({
+    team_id: team.id,
+    user_id: invitedProfile.id,
+    role: validated.data.role,
+    invited_by: user.id,
+  });
 
   if (inviteError) {
     console.error("[inviteMember] 添加成员失败:", inviteError);
@@ -188,7 +198,9 @@ export async function inviteMember(input: InviteMemberInput) {
  */
 export async function removeMember(memberId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return { error: "notAuthenticated" };
@@ -199,24 +211,24 @@ export async function removeMember(memberId: string) {
     return { error: "noTeam" };
   }
 
-  const { data: currentMembership } = await supabase
+  const { data: currentMembership } = (await supabase
     .from("team_members")
     .select("role")
     .eq("team_id", team.id)
     .eq("user_id", user.id)
-    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
 
   if (!currentMembership || !["owner", "admin"].includes(currentMembership.role)) {
     return { error: "onlyAdminsRemove" };
   }
 
   const admin = createAdminClient();
-  const { data: targetMember } = await admin
+  const { data: targetMember } = (await admin
     .from("team_members")
     .select("role")
     .eq("id", memberId)
     .eq("team_id", team.id)
-    .maybeSingle() as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
 
   if (!targetMember) {
     return { error: "memberNotFound" };

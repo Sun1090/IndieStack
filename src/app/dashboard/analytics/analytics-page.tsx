@@ -14,7 +14,15 @@ import { PageHeader } from "@/components/shared/page-header";
 import { AreaChart } from "@/components/charts/area-chart";
 import { downloadCsv } from "@/lib/csv";
 import { formatNumber } from "@/lib/utils";
-import { BarChart3, TrendingUp, Users, Activity, Download, ChevronDown, Sparkles } from "lucide-react";
+import {
+  BarChart3,
+  TrendingUp,
+  Users,
+  Activity,
+  Download,
+  ChevronDown,
+  Sparkles,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const RANGE_OPTIONS = [
@@ -64,10 +72,26 @@ export function AnalyticsPage() {
   }, [loadData]);
 
   const statsCards = [
-    { labelKey: "analytics.stats.requests", value: data ? formatNumber(data.summary.totalRequests) : "—", icon: BarChart3 },
-    { labelKey: "analytics.stats.uniqueVisitors", value: data ? formatNumber(data.summary.uniqueVisitors) : "—", icon: Users },
-    { labelKey: "analytics.stats.errors", value: data ? formatNumber(data.summary.totalErrors) : "—", icon: Activity },
-    { labelKey: "analytics.stats.errorRate", value: data ? `${data.summary.errorRate}%` : "—", icon: TrendingUp },
+    {
+      labelKey: "analytics.stats.requests",
+      value: data ? formatNumber(data.summary.totalRequests) : "—",
+      icon: BarChart3,
+    },
+    {
+      labelKey: "analytics.stats.uniqueVisitors",
+      value: data ? formatNumber(data.summary.uniqueVisitors) : "—",
+      icon: Users,
+    },
+    {
+      labelKey: "analytics.stats.errors",
+      value: data ? formatNumber(data.summary.totalErrors) : "—",
+      icon: Activity,
+    },
+    {
+      labelKey: "analytics.stats.errorRate",
+      value: data ? `${data.summary.errorRate}%` : "—",
+      icon: TrendingUp,
+    },
   ];
 
   function formatEventTime(iso: string) {
@@ -90,7 +114,13 @@ export function AnalyticsPage() {
             variant="outline"
             size="sm"
             disabled={!data}
-            onClick={() => data && downloadCsv(data.timeline, `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`)}
+            onClick={() =>
+              data &&
+              downloadCsv(
+                data.timeline,
+                `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`,
+              )
+            }
           >
             <Download className="mr-1 h-4 w-4" />
             {t("analytics.exportCsv")}
@@ -103,7 +133,9 @@ export function AnalyticsPage() {
               onClick={() => setShowRangeMenu(!showRangeMenu)}
               onBlur={() => setTimeout(() => setShowRangeMenu(false), 200)}
             >
-              {RANGE_OPTIONS.find((r) => r.value === range) ? t(RANGE_OPTIONS.find((r) => r.value === range)!.key) : t("analytics.last30Days")}
+              {RANGE_OPTIONS.find((r) => r.value === range)
+                ? t(RANGE_OPTIONS.find((r) => r.value === range)!.key)
+                : t("analytics.last30Days")}
               <ChevronDown className="ml-1 h-4 w-4" />
             </Button>
             {showRangeMenu && (
@@ -114,7 +146,10 @@ export function AnalyticsPage() {
                     className={`w-full rounded-sm px-3 py-1.5 text-left text-sm hover:bg-accent ${
                       opt.value === range ? "bg-accent font-medium" : ""
                     }`}
-                    onMouseDown={() => { setRange(opt.value); setShowRangeMenu(false); }}
+                    onMouseDown={() => {
+                      setRange(opt.value);
+                      setShowRangeMenu(false);
+                    }}
                   >
                     {t(opt.key)}
                   </button>
@@ -158,7 +193,9 @@ export function AnalyticsPage() {
               errorLabel={t("analytics.stats.errors")}
             />
           ) : (
-            <p className="py-16 text-center text-sm text-muted-foreground">{t("analytics.recentEvents.empty")}</p>
+            <p className="py-16 text-center text-sm text-muted-foreground">
+              {t("analytics.recentEvents.empty")}
+            </p>
           )}
         </CardContent>
       </Card>
@@ -176,20 +213,29 @@ export function AnalyticsPage() {
               ))}
             </div>
           ) : !data || data.recent.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">{t("analytics.recentEvents.empty")}</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {t("analytics.recentEvents.empty")}
+            </p>
           ) : (
             <div className="space-y-3">
               {data.recent.map((event, i) => {
                 const isError = event.status_code !== null && event.status_code >= 400;
                 return (
-                  <div key={`${event.created_at}-${i}`} className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
+                  <div
+                    key={`${event.created_at}-${i}`}
+                    className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className={`h-2 w-2 rounded-full ${isError ? "bg-red-500" : "bg-green-500"}`} />
+                      <div
+                        className={`h-2 w-2 rounded-full ${isError ? "bg-red-500" : "bg-green-500"}`}
+                      />
                       <span className="text-sm font-medium">{event.method}</span>
                       <span className="font-mono text-xs text-muted-foreground">{event.path}</span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className={isError ? "font-medium text-red-600" : ""}>{event.status_code ?? "—"}</span>
+                      <span className={isError ? "font-medium text-red-600" : ""}>
+                        {event.status_code ?? "—"}
+                      </span>
                       <span>{formatEventTime(event.created_at)}</span>
                     </div>
                   </div>

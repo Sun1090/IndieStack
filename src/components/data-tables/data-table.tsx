@@ -212,7 +212,7 @@ export function DataTable<TData, TValue>({
     <div className={cn("space-y-4", className)}>
       {/* 工具栏 */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2 flex-1">
+        <div className="flex flex-1 items-center gap-2">
           {searchKey && (
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -223,7 +223,7 @@ export function DataTable<TData, TValue>({
                   setGlobalFilter(e.target.value);
                   table.setPageIndex(0);
                 }}
-                className="pl-8 h-9"
+                className="h-9 pl-8"
               />
             </div>
           )}
@@ -235,8 +235,7 @@ export function DataTable<TData, TValue>({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9">
-                  <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
-                  列
+                  <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />列
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
@@ -249,7 +248,7 @@ export function DataTable<TData, TValue>({
                       checked={col.getIsVisible()}
                       onCheckedChange={(value) => col.toggleVisibility(!!value)}
                     >
-                      {col.columnDef.header as string ?? col.id}
+                      {(col.columnDef.header as string) ?? col.id}
                     </DropdownMenuCheckboxItem>
                   ))}
               </DropdownMenuContent>

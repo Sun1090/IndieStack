@@ -77,7 +77,7 @@ export function ConfirmDialog({
   // 受控或非受控
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
-  const setOpen = isControlled ? controlledOnOpenChange ?? (() => {}) : setInternalOpen;
+  const setOpen = isControlled ? (controlledOnOpenChange ?? (() => {})) : setInternalOpen;
 
   async function handleConfirm() {
     setIsLoading(true);
@@ -108,11 +108,7 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={handleCancel} disabled={isLoading}>
             {cancelText}
           </Button>
-          <Button
-            variant={variant}
-            onClick={handleConfirm}
-            disabled={isLoading}
-          >
+          <Button variant={variant} onClick={handleConfirm} disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {confirmText}
           </Button>

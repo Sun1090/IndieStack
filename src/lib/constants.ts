@@ -83,12 +83,7 @@ export const SUBSCRIPTION_TIERS = {
     name: "Free",
     price: 0,
     priceId: "",
-    features: [
-      "upTo3Projects",
-      "basicAnalytics",
-      "communitySupport",
-      "storage1Gb",
-    ],
+    features: ["upTo3Projects", "basicAnalytics", "communitySupport", "storage1Gb"],
   },
   pro: {
     name: "Pro",

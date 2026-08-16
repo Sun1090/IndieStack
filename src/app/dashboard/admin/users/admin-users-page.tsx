@@ -23,7 +23,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/hooks/use-toast";
-import { listAdminUsers, updateUserRole as updateAdminUserRole, type AdminUser } from "@/lib/actions/admin";
+import {
+  listAdminUsers,
+  updateUserRole as updateAdminUserRole,
+  type AdminUser,
+} from "@/lib/actions/admin";
 
 export function AdminUsersPage() {
   const t = useTranslations("admin");
@@ -37,7 +41,11 @@ export function AdminUsersPage() {
     setLoading(true);
     const result = await listAdminUsers();
     if (!result.success) {
-      toast({ title: t("users.updateFailed"), description: ta(result.error), variant: "destructive" });
+      toast({
+        title: t("users.updateFailed"),
+        description: ta(result.error),
+        variant: "destructive",
+      });
     } else {
       setUsers(result.data);
     }
@@ -53,12 +61,19 @@ export function AdminUsersPage() {
     const result = await updateAdminUserRole(userId, newRole as "member" | "admin" | "viewer");
 
     if (!result.success) {
-      toast({ title: t("users.updateFailed"), description: ta(result.error), variant: "destructive" });
+      toast({
+        title: t("users.updateFailed"),
+        description: ta(result.error),
+        variant: "destructive",
+      });
       return;
     }
 
     const roleLabel = t(`users.roleLabels.${newRole}` as any);
-    toast({ title: t("users.updateSuccess"), description: t("users.updateSuccessDesc", { roleLabel }) });
+    toast({
+      title: t("users.updateSuccess"),
+      description: t("users.updateSuccessDesc", { roleLabel }),
+    });
     loadUsers();
   }
 
@@ -76,11 +91,16 @@ export function AdminUsersPage() {
   /** 角色对应的 Badge 颜色 */
   const roleBadgeVariant = (role: string) => {
     switch (role) {
-      case "super_admin": return "default" as const;
-      case "admin": return "secondary" as const;
-      case "member": return "outline" as const;
-      case "viewer": return "destructive" as const;
-      default: return "outline" as const;
+      case "super_admin":
+        return "default" as const;
+      case "admin":
+        return "secondary" as const;
+      case "member":
+        return "outline" as const;
+      case "viewer":
+        return "destructive" as const;
+      default:
+        return "outline" as const;
     }
   };
 
@@ -131,11 +151,16 @@ export function AdminUsersPage() {
           ) : (
             <div className="divide-y">
               {filteredUsers.map((user) => (
-                <div key={user.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                >
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback>
-                        {user.full_name?.charAt(0)?.toUpperCase() ?? user.email?.charAt(0)?.toUpperCase() ?? "?"}
+                        {user.full_name?.charAt(0)?.toUpperCase() ??
+                          user.email?.charAt(0)?.toUpperCase() ??
+                          "?"}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -144,7 +169,9 @@ export function AdminUsersPage() {
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">{user.email}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {t("users.registeredAt", { date: new Date(user.created_at).toLocaleDateString() })}
+                        {t("users.registeredAt", {
+                          date: new Date(user.created_at).toLocaleDateString(),
+                        })}
                       </p>
                     </div>
                   </div>

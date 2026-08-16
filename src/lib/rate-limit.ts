@@ -29,10 +29,7 @@ interface RateLimitEntry {
  * 每个实例独立维护内存中的请求计数 Map
  * 生产环境建议替换为 Redis 实现（如 @upstash/ratelimit 或 Vercel KV）
  */
-export function createRateLimit(options?: {
-  maxRequests?: number;
-  windowMs?: number;
-}) {
+export function createRateLimit(options?: { maxRequests?: number; windowMs?: number }) {
   const maxRequests = options?.maxRequests ?? RATE_LIMIT.maxRequests;
   const windowMs = options?.windowMs ?? RATE_LIMIT.windowMs;
 
