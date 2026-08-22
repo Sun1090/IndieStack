@@ -14,7 +14,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <body
         style={{ margin: 0 }}
         className="flex min-h-screen items-center justify-center bg-background font-sans antialiased"
