@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeServer } from "@/lib/stripe";
+import { mapStatus, mapPlan } from "@/lib/stripe/webhook-mappers";
 import type { Stripe } from "stripe";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -17,33 +18,6 @@ import type { Database } from "@/lib/supabase/database.types";
 // 且限流基于共享内存桶会误伤其他来源；webhook 的安全性由签名验证保证。
 
 type SubscriptionInsert = Database["public"]["Tables"]["subscriptions"]["Insert"];
-
-/** Stripe 订阅状态 → 本地 subscriptions.status（与 001 迁移的 CHECK 约束一致） */
-export function mapStatus(status: Stripe.Subscription.Status): string {
-  switch (status) {
-    case "active":
-      return "active";
-    case "trialing":
-      return "trialing";
-    case "past_due":
-    case "unpaid":
-      return "past_due";
-    case "canceled":
-      return "canceled";
-    default:
-      // incomplete / incomplete_expired
-      return "inactive";
-  }
-}
-
-/** Stripe Price ID → 本地 plan 名称 */
-export function mapPlan(priceId: string | undefined | null): string {
-  // 先判空，避免 priceId 与未配置的环境变量同为 undefined 时误匹配为 pro
-  if (!priceId) return "free";
-  if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
-  if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) return "enterprise";
-  return "free";
-}
 
 /** 解析订阅所属团队：优先取 metadata.teamId，否则回退到用户的默认团队 */
 async function resolveTeamId(
