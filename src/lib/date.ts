@@ -56,15 +56,16 @@ export function formatRelativeTime(
   const baseDate = new Date();
   const diffMs = baseDate.getTime() - d.getTime();
   const isPast = diffMs >= 0;
+  const locale = getLocale(options.locale);
 
   // 小于 10 秒
   if (Math.abs(diffMs) < 10_000) {
-    return isPast ? "刚刚" : "马上";
+    return isPast ? (locale === zhCN ? "刚刚" : "just now") : locale === zhCN ? "马上" : "soon";
   }
 
   const result = formatDistanceToNow(d, {
     addSuffix: true,
-    locale: getLocale(options.locale),
+    locale,
   });
 
   // formatDistanceToNow 返回 "约 3 小时前" 格式，已包含约数

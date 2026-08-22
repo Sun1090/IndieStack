@@ -15,16 +15,16 @@ export default defineConfig({
   // 多语言配置
   locales: {
     root: {
-      label: "简体中文",
-      lang: "zh-CN",
+      label: "English",
+      lang: "en",
       title: "IndieStack",
-      description: "面向独立开发者的生产级 SaaS 启动模板",
+      description: "A production-ready IndieStack for independent developers",
       themeConfig: {
-        nav: nav_zh(),
-        sidebar: sidebar_zh(),
+        nav: nav_en(),
+        sidebar: sidebar_en(),
         editLink: {
-          pattern: "https://github.com/your-username/indiestack/edit/main/docs-site/:path",
-          text: "在 GitHub 上编辑此页",
+          pattern: "https://github.com/Sun1090/IndieStack/edit/main/docs-site/:path",
+          text: "Edit this page on GitHub",
         },
       },
     },
@@ -37,7 +37,7 @@ export default defineConfig({
         nav: nav_en(),
         sidebar: sidebar_en(),
         editLink: {
-          pattern: "https://github.com/your-username/indiestack/edit/main/docs-site/:path",
+          pattern: "https://github.com/Sun1090/IndieStack/edit/main/docs-site/:path",
           text: "Edit this page on GitHub",
         },
       },
@@ -63,7 +63,7 @@ export default defineConfig({
       provider: "local",
       options: {
         locales: {
-          root: {
+          "/zh-CN/": {
             translations: {
               button: { buttonText: "搜索文档", buttonAriaLabel: "搜索文档" },
               modal: { noResultsText: "未找到结果" },
@@ -117,27 +117,27 @@ function nav_zh() {
 // ===== 英文导航 =====
 function nav_en() {
   return [
-    { text: "Home", link: "/en/" },
-    { text: "Quick Start", link: "/en/quickstart" },
+    { text: "Home", link: "/" },
+    { text: "Quick Start", link: "/quickstart" },
     {
       text: "Guide",
       items: [
-        { text: "Architecture", link: "/en/architecture" },
-        { text: "Mock Mode", link: "/en/mock" },
-        { text: "Auth Flow", link: "/en/auth-flow" },
-        { text: "Project Structure", link: "/en/project-structure" },
-        { text: "Tech Stack", link: "/en/tech-stack" },
-        { text: "Supabase", link: "/en/supabase" },
-        { text: "Components", link: "/en/components" },
-        { text: "Pages Overview", link: "/en/pages" },
+        { text: "Architecture", link: "/architecture" },
+        { text: "Mock Mode", link: "/mock" },
+        { text: "Auth Flow", link: "/auth-flow" },
+        { text: "Project Structure", link: "/project-structure" },
+        { text: "Tech Stack", link: "/tech-stack" },
+        { text: "Supabase", link: "/supabase" },
+        { text: "Components", link: "/components" },
+        { text: "Pages Overview", link: "/pages" },
       ],
     },
     {
       text: "Operations",
       items: [
-        { text: "Configuration", link: "/en/configuration" },
-        { text: "Scripts", link: "/en/scripts" },
-        { text: "Deployment", link: "/en/deployment" },
+        { text: "Configuration", link: "/configuration" },
+        { text: "Scripts", link: "/scripts" },
+        { text: "Deployment", link: "/deployment" },
       ],
     },
   ];
@@ -182,33 +182,33 @@ function sidebar_zh() {
 // ===== 英文侧边栏 =====
 function sidebar_en() {
   return {
-    "/en/": [
+    "/": [
       {
         text: "Getting Started",
         items: [
-          { text: "Introduction", link: "/en/" },
-          { text: "Quick Start", link: "/en/quickstart" },
-          { text: "Architecture", link: "/en/architecture" },
-          { text: "Project Structure", link: "/en/project-structure" },
+          { text: "Introduction", link: "/" },
+          { text: "Quick Start", link: "/quickstart" },
+          { text: "Architecture", link: "/architecture" },
+          { text: "Project Structure", link: "/project-structure" },
         ],
       },
       {
         text: "Core Features",
         items: [
-          { text: "Auth Flow", link: "/en/auth-flow" },
-          { text: "Supabase Integration", link: "/en/supabase" },
-          { text: "Tech Stack", link: "/en/tech-stack" },
-          { text: "Components", link: "/en/components" },
-          { text: "Mock Mode", link: "/en/mock" },
-          { text: "Pages Overview", link: "/en/pages" },
+          { text: "Auth Flow", link: "/auth-flow" },
+          { text: "Supabase Integration", link: "/supabase" },
+          { text: "Tech Stack", link: "/tech-stack" },
+          { text: "Components", link: "/components" },
+          { text: "Mock Mode", link: "/mock" },
+          { text: "Pages Overview", link: "/pages" },
         ],
       },
       {
         text: "Operations",
         items: [
-          { text: "Configuration", link: "/en/configuration" },
-          { text: "Scripts", link: "/en/scripts" },
-          { text: "Deployment", link: "/en/deployment" },
+          { text: "Configuration", link: "/configuration" },
+          { text: "Scripts", link: "/scripts" },
+          { text: "Deployment", link: "/deployment" },
         ],
       },
     ],

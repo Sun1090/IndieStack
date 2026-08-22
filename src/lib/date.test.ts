@@ -41,14 +41,23 @@ describe("formatDate()", () => {
 });
 
 describe("formatRelativeTime()", () => {
-  it("10 秒内显示 刚刚 / 马上", () => {
-    expect(formatRelativeTime(Date.now() - 5_000)).toBe("刚刚");
-    expect(formatRelativeTime(Date.now() + 5_000)).toBe("马上");
+  it("10 秒内：默认英文显示 just now / soon", () => {
+    expect(formatRelativeTime(Date.now() - 5_000)).toBe("just now");
+    expect(formatRelativeTime(Date.now() + 5_000)).toBe("soon");
   });
 
-  it("更早的过去时间包含 前", () => {
+  it("10 秒内：zh-CN 显示 刚刚 / 马上", () => {
+    expect(formatRelativeTime(Date.now() - 5_000, { locale: "zh-CN" })).toBe("刚刚");
+    expect(formatRelativeTime(Date.now() + 5_000, { locale: "zh-CN" })).toBe("马上");
+  });
+
+  it("更早的过去时间：默认英文包含 ago", () => {
     const result = formatRelativeTime(Date.now() - 3 * 60 * 60 * 1000);
-    expect(result).not.toBe("刚刚");
+    expect(result).toContain("ago");
+  });
+
+  it("更早的过去时间：zh-CN 包含 前", () => {
+    const result = formatRelativeTime(Date.now() - 3 * 60 * 60 * 1000, { locale: "zh-CN" });
     expect(result).toContain("前");
   });
 

@@ -13,7 +13,7 @@ import { defineRouting } from "next-intl/routing";
 export const locales = ["zh-CN", "en"] as const;
 
 /** 默认语言 */
-export const defaultLocale = "zh-CN" as const;
+export const defaultLocale = "en" as const;
 
 /** 语言类型 */
 export type Locale = (typeof locales)[number];
