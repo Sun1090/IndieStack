@@ -77,7 +77,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/docs/:path*",
-        destination: `${process.env.NEXT_PUBLIC_DOCS_URL ?? "https://indiestack-docs.vercel.app"}/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_DOCS_URL ?? "https://indie-stack-docs-site.vercel.app"}/:path*`,
         permanent: false,
       },
     ];

@@ -8,7 +8,7 @@ export const SITE_CONFIG = {
   /** 联系邮箱（可在部署时通过 NEXT_PUBLIC_CONTACT_EMAIL 覆盖） */
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || "hello@indiestack.dev",
   /** VitePress 独立文档站地址（可单独部署） */
-  docsUrl: process.env.NEXT_PUBLIC_DOCS_URL?.trim() || "https://indiestack-docs.vercel.app",
+  docsUrl: process.env.NEXT_PUBLIC_DOCS_URL?.trim() || "https://indie-stack-docs-site.vercel.app",
   links: {
     github: "https://github.com/your-username/indiestack",
     twitter: "https://twitter.com/your-handle",
