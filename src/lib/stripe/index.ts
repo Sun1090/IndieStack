@@ -174,7 +174,8 @@ export async function getStripeServer() {
   const Stripe = (await import("stripe")).default;
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new Error("Stripe 未配置，请设置 STRIPE_SECRET_KEY");
-  return new Stripe(secretKey, { apiVersion: "2026-06-24.dahlia" });
+  // 不显式指定 apiVersion：默认使用 SDK 固定的版本，升级 SDK 时类型与行为保持一致
+  return new Stripe(secretKey);
 }
 
 /** 检查 Stripe 配置状态 */
