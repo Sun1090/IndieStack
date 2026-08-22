@@ -2,12 +2,9 @@
  * Stripe Webhook 纯函数测试
  * 覆盖：订阅状态映射、Price ID → plan 映射
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { Stripe } from "stripe";
-import { mapStatus, mapPlan } from "./route";
-
-// 避免加载真实 Stripe SDK 网络逻辑（模块顶层仅做惰性初始化，安全）
-vi.mock("@/lib/stripe", () => ({ getStripeServer: vi.fn() }));
+import { mapStatus, mapPlan } from "@/lib/stripe/webhook-mappers";
 
 describe("mapStatus()", () => {
   it.each([
