@@ -1,26 +1,57 @@
 /**
  * Vitest 测试配置文件
- * 路径别名与 tsconfig.json 保持一致
+ * 双项目结构：node 环境（lib 单测 *.test.ts）+ jsdom 环境（组件测试 *.test.tsx）
+ * 注意：projects 模式下 resolve.alias 需在每个项目内单独声明
  */
 import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
 import path from "path";
+
+const alias = { "@": path.resolve(__dirname, "./src") };
 
 export default defineConfig({
   plugins: [],
   test: {
-    globals: true,
-    environment: "node",
-    include: ["src/**/*.test.{ts,tsx}"],
-    exclude: ["node_modules", "docs-site"],
     coverage: {
       provider: "v8",
+      // 阈值门禁只约束核心业务逻辑；mock 数据 / Stripe / Supabase 客户端封装
+      // 属于需要真实服务的集成胶水层，单测无法有效覆盖，不纳入统计
       include: ["src/lib/**/*.ts"],
-      exclude: ["src/lib/supabase/database.types.ts"],
+      exclude: [
+        "src/lib/supabase/database.types.ts",
+        "src/lib/mock/**",
+        "src/lib/stripe/**",
+        "src/lib/supabase/**",
+      ],
+      thresholds: {
+        statements: 90,
+        branches: 78,
+        functions: 90,
+        lines: 90,
+      },
     },
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    projects: [
+      {
+        resolve: { alias },
+        test: {
+          name: "node",
+          globals: true,
+          environment: "node",
+          include: ["src/**/*.test.ts"],
+          exclude: ["node_modules", "docs-site"],
+        },
+      },
+      {
+        plugins: [react()],
+        resolve: { alias },
+        test: {
+          name: "jsdom",
+          globals: true,
+          environment: "jsdom",
+          include: ["src/**/*.test.tsx"],
+          setupFiles: ["src/test/setup.ts"],
+        },
+      },
+    ],
   },
 });
