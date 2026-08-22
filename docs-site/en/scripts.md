@@ -41,7 +41,7 @@
  | Command | Description |
  |--------|------------|
  | `pnpm db:migrate` | Push migrations to Supabase |
- | `pnpm db:push` | Push schema changes |
+ | `pnpm db:migrate` | Push schema changes |
  | `pnpm db:seed` | Run seed data script |
  | `pnpm db:types` | Generate TypeScript types from Supabase |
  | `pnpm db:status` | Check Supabase local service status |

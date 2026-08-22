@@ -158,23 +158,16 @@ Runs on every push and PR:
 - Unit tests (`pnpm test`)
 - Build verification (`pnpm build`)
 
-### `deploy.yml` — Auto Deploy
+### Deployment Method
 
-Triggered on push to `main` branch:
-- Automatic build and deploy to Vercel
-- Slack/email notifications (optional)
-- Rollback support
+This project uses Vercel's direct GitHub integration (no GitHub Actions deployment):
 
-### Configure Secrets
+1. Import the repository in [Vercel](https://vercel.com)
+2. The framework preset will be auto-detected as Next.js
+3. Add environment variables under Settings → Environment Variables
+4. Every `git push` to `main` will trigger automatic build and deploy on Vercel
 
-Add in GitHub repo Settings → Secrets and variables → Actions:
-
-```bash
-VERCEL_TOKEN=your-vercel-token
-VERCEL_ORG_ID=your-org-id
-VERCEL_PROJECT_ID=your-project-id
-VERCEL_DOCS_PROJECT_ID=your-docs-project-id
-```
+The CI workflow only runs quality checks (lint / type-check / test / build) — it does not handle deployment.
 
 ## Database Deployment
 
@@ -186,7 +179,7 @@ VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 ```bash
 npx supabase login
 npx supabase link --project-ref your-project-ref
-pnpm db:push
+pnpm db:migrate
 ```
 
 3. Enable Row Level Security:

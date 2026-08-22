@@ -85,7 +85,7 @@ pnpm start
 ```bash
 npx supabase login
 npx supabase link --project-ref your-project-ref
-pnpm db:push
+pnpm db:migrate
 pnpm db:types
 npx supabase db seed
 ```

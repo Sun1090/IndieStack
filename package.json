@@ -2,6 +2,7 @@
   "name": "indiestack",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.22.0",
   "description": "Production-ready full-stack starter built with Next.js, Tailwind CSS, shadcn/ui, Supabase, Sentry, and more",
   "scripts": {
     "dev": "next dev",
@@ -15,7 +16,6 @@
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
     "sentry:sourcemaps": "sentry-cli sourcemaps inject --org $SENTRY_ORG --project $SENTRY_PROJECT .next && sentry-cli sourcemaps upload --org $SENTRY_ORG --project $SENTRY_PROJECT .next",
     "check": "pnpm type-check && pnpm lint",
-    "db:push": "supabase db push",
     "db:status": "supabase status",
     "preview": "next start -p 4173",
     "test": "vitest run",
@@ -64,7 +64,6 @@
     "stripe": "^22.3.2",
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
-    "usehooks-ts": "^3.1.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {

@@ -82,7 +82,7 @@ graph LR
 npx supabase start
 
 # 数据库迁移
-pnpm db:push
+pnpm db:migrate
 
 # 生成类型
 pnpm db:types

@@ -1,12 +1,12 @@
 name: CI
 ## CI 工作流
-## 每次 push 到 main/develop 或 PR 到 main 时运行
+## 每次 push 到 main/develop 或 PR 到 main/develop 时运行
 
 on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   lint-and-type-check:
@@ -106,9 +106,3 @@ jobs:
       - name: Build docs
         working-directory: ./docs-site
         run: pnpm --filter indiestack-docs build
-
-      - name: Upload docs artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          name: docs-site
-          path: docs-site/.vitepress/dist

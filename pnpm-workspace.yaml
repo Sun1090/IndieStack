@@ -2,6 +2,7 @@ packages:
   - "."
   - "docs-site"
 
+# 允许执行安装构建脚本的依赖（pnpm v11 字段，默认 strictDepBuilds=true 会阻止未审批脚本）
 allowBuilds:
   '@parcel/watcher': true
   '@sentry/cli': true
