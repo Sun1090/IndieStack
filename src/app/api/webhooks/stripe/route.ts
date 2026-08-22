@@ -8,16 +8,18 @@
  */
 
 import { NextResponse } from "next/server";
-import { rateLimit } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeServer } from "@/lib/stripe";
 import type { Stripe } from "stripe";
 import type { Database } from "@/lib/supabase/database.types";
 
+// 注意：此路由不做 rate limit —— Stripe 事件重试可能触发 429 导致支付状态同步丢失，
+// 且限流基于共享内存桶会误伤其他来源；webhook 的安全性由签名验证保证。
+
 type SubscriptionInsert = Database["public"]["Tables"]["subscriptions"]["Insert"];
 
 /** Stripe 订阅状态 → 本地 subscriptions.status（与 001 迁移的 CHECK 约束一致） */
-function mapStatus(status: Stripe.Subscription.Status): string {
+export function mapStatus(status: Stripe.Subscription.Status): string {
   switch (status) {
     case "active":
       return "active";
@@ -35,7 +37,9 @@ function mapStatus(status: Stripe.Subscription.Status): string {
 }
 
 /** Stripe Price ID → 本地 plan 名称 */
-function mapPlan(priceId: string | undefined | null): string {
+export function mapPlan(priceId: string | undefined | null): string {
+  // 先判空，避免 priceId 与未配置的环境变量同为 undefined 时误匹配为 pro
+  if (!priceId) return "free";
   if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
   if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) return "enterprise";
   return "free";
@@ -109,14 +113,6 @@ async function markSubscriptionCanceled(providerId: string): Promise<void> {
  * POST /api/webhooks/stripe - Handle Stripe webhook events
  */
 export async function POST(request: Request) {
-  const limits = await rateLimit.check(request);
-  if (!limits.allowed) {
-    return NextResponse.json(
-      { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
-      { status: 429 },
-    );
-  }
-
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
   if (!signature) {

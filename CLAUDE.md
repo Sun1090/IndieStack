@@ -47,6 +47,10 @@ src/app/
 - 路由常量在 `src/lib/constants.ts`——始终使用 `ROUTES.*` 进行导航
 - 默认使用 Server Components，仅在需要时使用 Client Components
 - shadcn/ui 组件在 `src/components/ui/` —— 通用无应用逻辑
+- **数据通道约定**：写操作（增删改）一律走 Server Actions（`src/lib/actions/`）；
+  API Routes 仅用于外部服务回调（Stripe webhook、OAuth callback）、健康检查和
+  确需 HTTP 端点的场景。禁止为同一业务同时维护 Action 与 API Route 两套实现。
+  API Routes 不加内存 rate limit 的例外：webhook 路由靠签名验证保护。
 
 ## RBAC 权限系统
 
