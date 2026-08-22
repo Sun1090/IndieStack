@@ -41,7 +41,7 @@
  | 命令 | 说明 |
  |------|------|
  | `pnpm db:migrate` | 推送数据库迁移到 Supabase |
- | `pnpm db:push` | 推送 schema 变更 |
+ | `pnpm db:migrate` | 推送 schema 变更 |
  | `pnpm db:seed` | 执行种子数据脚本 |
  | `pnpm db:types` | 从 Supabase 生成 TypeScript 类型定义 |
  | `pnpm db:status` | 查看 Supabase 本地服务状态 |

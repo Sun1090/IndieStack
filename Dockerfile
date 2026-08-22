@@ -15,7 +15,7 @@ LABEL stage=deps
 
 RUN apk add --no-cache libc6-compat && \
     corepack enable && \
-    corepack prepare pnpm@latest --activate
+    corepack prepare pnpm@11.22.0 --activate
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ LABEL stage=builder
 
 RUN apk add --no-cache libc6-compat && \
     corepack enable && \
-    corepack prepare pnpm@latest --activate
+    corepack prepare pnpm@11.22.0 --activate
 
 WORKDIR /app
 
@@ -66,17 +66,13 @@ RUN adduser --system --uid 1001 nextjs
 
 WORKDIR /app
 
-# 仅复制运行需要的依赖（忽略 devDependencies）
-COPY --from=deps /app/node_modules ./node_modules
-
-# 从构建阶段复制产物
+# 仅复制运行需要的产物（output: "standalone" 已内含精简版 node_modules，
+# 无需再从 deps 阶段复制全量 node_modules）
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# 配置文件复制
-COPY --from=builder /app/next.config.ts ./
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
+# standalone 产物自带 server.js 与运行时依赖，无需 next.config.ts / package.json
 
 # 设置运行用户
 USER nextjs

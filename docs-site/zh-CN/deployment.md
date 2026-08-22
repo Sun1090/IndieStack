@@ -158,23 +158,16 @@ server {
 - 单元测试（`pnpm test`）
 - 构建验证（`pnpm build`）
 
-### `deploy.yml` — 自动部署
+### 部署方式
 
-推送到 `main` 分支时自动部署到 Vercel：
-- 自动构建并部署
-- Slack/邮件通知（可选）
-- 回滚支持
+本项目使用 Vercel 直连 GitHub 仓库的方式自动部署（不经过 GitHub Actions）：
 
-### 配置 Secrets
+1. 在 [Vercel](https://vercel.com) 导入 Git 仓库
+2. Framework Preset 会自动识别为 Next.js
+3. 在 Settings → Environment Variables 中添加 Supabase 等环境变量
+4. 之后每次 `git push` 到 `main` 分支，Vercel 自动构建并部署
 
-在 GitHub 仓库 Settings → Secrets and variables → Actions 中添加：
-
-```bash
-VERCEL_TOKEN=your-vercel-token
-VERCEL_ORG_ID=your-org-id
-VERCEL_PROJECT_ID=your-project-id
-VERCEL_DOCS_PROJECT_ID=your-docs-project-id
-```
+CI 工作流仅做质量检查（lint / type-check / test / build），不参与部署流程。
 
 ## 数据库部署
 
@@ -186,7 +179,7 @@ VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 ```bash
 npx supabase login
 npx supabase link --project-ref your-project-ref
-pnpm db:push
+pnpm db:migrate
 ```
 
 3. 开启 Row Level Security：
