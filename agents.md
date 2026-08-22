@@ -16,6 +16,7 @@
 | 07 | 数据库管理 | 数据库设计、迁移管理和数据安全 | [agents/07-dba.md](./agents/07-dba.md) |
 | 08 | DevOps | 部署、CI/CD 和基础设施管理 | [agents/08-devops.md](./agents/08-devops.md) |
 | 09 | UI/UX 设计 | 界面设计、组件规范和交互模式 | [agents/09-ui-ux.md](./agents/09-ui-ux.md) |
+| 10 | 提交与发布 | 提交规范、分支管理、发布流程和部署验证 | [agents/10-release-manager.md](./agents/10-release-manager.md) |
 
 ## 使用场景
 
@@ -30,6 +31,7 @@
 | 设计数据库或迁移 | [07 数据库管理](./agents/07-dba.md) |
 | 配置部署或 CI/CD | [08 DevOps](./agents/08-devops.md) |
 | 设计 UI 或组件 | [09 UI/UX 设计](./agents/09-ui-ux.md) |
+| 提交、发布或验证部署 | [10 提交与发布](./agents/10-release-manager.md) |
 
 ## Agent 协作流程
 
@@ -50,4 +52,4 @@
 
 ---
 
-*最后更新: 2026-07-19*
+*最后更新: 2026-08-22*
