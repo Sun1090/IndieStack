@@ -6,7 +6,8 @@
  * GET /api/analytics?range=7|14|30
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { safelyRequireAuth } from "@/lib/auth/guards";
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   // 速率限制
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 },
     );
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   // 权限校验
   const auth = await safelyRequireAuth();
   if (!auth.success) {
-    return NextResponse.json({ error: auth.error.message }, { status: 401 });
+    return jsonNoStore({ error: auth.error.message }, { status: 401 });
   }
   const userId = auth.data.id;
 
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
         created_at: row.created_at,
       }));
 
-    return NextResponse.json({
+    return jsonNoStore({
       summary: {
         totalRequests,
         uniqueVisitors,
@@ -122,6 +123,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("[Analytics API] 获取分析数据失败:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 }

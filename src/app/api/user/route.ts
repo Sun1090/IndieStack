@@ -3,7 +3,8 @@
  * 提供当前登录用户的信息查询接口
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
@@ -34,7 +35,7 @@ const profilePatchSchema = z
 export async function GET(request: Request) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 },
     );
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return jsonNoStore({ error: "Not authenticated" }, { status: 401 });
   }
 
   const { data: profile, error: profileError } = (await supabase
@@ -60,10 +61,10 @@ export async function GET(request: Request) {
 
   if (profileError) {
     console.error("[API /user] 获取用户资料失败:", profileError.message);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 
-  return NextResponse.json({
+  return jsonNoStore({
     user: {
       id: user.id,
       email: user.email,
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: NextRequest) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 },
     );
@@ -91,7 +92,7 @@ export async function PATCH(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return jsonNoStore({ error: "Not authenticated" }, { status: 401 });
   }
 
   const body = await request.json();
@@ -99,7 +100,7 @@ export async function PATCH(request: NextRequest) {
   // 白名单校验：仅允许预定义字段，避免任意字段/类型写入 profiles
   const parsed = profilePatchSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: parsed.error.errors[0]?.message ?? "Invalid input" },
       { status: 400 },
     );
@@ -127,10 +128,10 @@ export async function PATCH(request: NextRequest) {
 
   if (error) {
     console.error("[API /user] 更新用户资料失败:", error.message);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 
-  return NextResponse.json({ profile });
+  return jsonNoStore({ profile });
 }
 
 /**
@@ -139,7 +140,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 },
     );
@@ -150,7 +151,7 @@ export async function DELETE(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return jsonNoStore({ error: "Not authenticated" }, { status: 401 });
   }
 
   // Delete user via admin API
@@ -159,8 +160,8 @@ export async function DELETE(request: NextRequest) {
 
   if (error) {
     console.error("[API /user] 删除用户失败:", error.message);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  return jsonNoStore({ success: true });
 }

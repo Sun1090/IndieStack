@@ -6,9 +6,10 @@
  * 支持时间范围切换与 CSV 导出
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,29 +60,16 @@ export function AnalyticsPage() {
   const locale = useLocale();
   const [range, setRange] = useState<(typeof RANGE_OPTIONS)[number]["value"]>(30);
   const [showRangeMenu, setShowRangeMenu] = useState(false);
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  // 请求序号：切换 range 时丢弃过期响应，避免旧请求覆盖新数据（竞态）
-  const requestSeq = useRef(0);
-  const loadData = useCallback(async () => {
-    const seq = ++requestSeq.current;
-    setLoading(true);
-    try {
+  // TanStack Query：内置竞态处理、缓存（staleTime 30s）、重试与加载态
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["analytics", range],
+    queryFn: async (): Promise<AnalyticsData> => {
       const response = await fetch(`/api/analytics?range=${range}`);
       if (!response.ok) throw new Error("Failed to load analytics");
-      const payload = (await response.json()) as AnalyticsData;
-      if (seq === requestSeq.current) setData(payload);
-    } catch {
-      if (seq === requestSeq.current) setData(null);
-    } finally {
-      if (seq === requestSeq.current) setLoading(false);
-    }
-  }, [range]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+      return response.json();
+    },
+  });
 
   const statsCards = [
     {
