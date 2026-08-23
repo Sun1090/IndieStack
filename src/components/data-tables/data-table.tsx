@@ -18,18 +18,15 @@
 "use client";
 
 import * as React from "react";
+import { flexRender } from "@tanstack/react-table";
 import {
-  type ColumnDef,
-  type ColumnFiltersState,
-  type SortingState,
-  type VisibilityState,
-  flexRender,
+  type LegacyColumnDef,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
+  useLegacyTable,
+} from "@tanstack/react-table/legacy";
 import {
   ArrowUpDown,
   ChevronLeft,
@@ -72,9 +69,9 @@ import { cn } from "@/lib/utils";
 // 类型定义
 // =========================================================================
 
-export interface DataTableProps<TData, TValue> {
+export interface DataTableProps<TData extends Record<string, unknown>> {
   /** 列定义（使用 @tanstack/react-table 的 ColumnDef） */
-  columns: ColumnDef<TData, TValue>[];
+  columns: LegacyColumnDef<TData>[];
   /** 表格数据 */
   data: TData[];
   /** 可选：启用搜索，指定要搜索的字段 key */
@@ -156,7 +153,7 @@ export function SortableHeader({ label, sortDirection, onToggle, className }: So
 // 主 DataTable 组件
 // =========================================================================
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends Record<string, unknown>>({
   columns,
   data,
   searchKey,
@@ -170,15 +167,15 @@ export function DataTable<TData, TValue>({
   hideColumnToggle = false,
   className,
   toolbarActions,
-}: DataTableProps<TData, TValue>) {
+}: DataTableProps<TData>) {
   // 状态
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [sorting, setSorting] = React.useState<{ id: string; desc: boolean }[]>([]);
+  const [columnFilters, setColumnFilters] = React.useState<{ id: string; value: unknown }[]>([]);
+  const [columnVisibility, setColumnVisibility] = React.useState<Record<string, boolean>>({});
   const [globalFilter, setGlobalFilter] = React.useState("");
 
   // 表格实例
-  const table = useReactTable({
+  const table = useLegacyTable({
     data,
     columns,
     state: {
@@ -196,7 +193,7 @@ export function DataTable<TData, TValue>({
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: {
-      pagination: { pageSize },
+      pagination: { pageIndex: 0, pageSize },
     },
   });
 
@@ -331,7 +328,7 @@ export function DataTable<TData, TValue>({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {pageSizeOptions.map((size) => (
+                {pageSizeOptions.map((size: number) => (
                   <SelectItem key={size} value={String(size)}>
                     {size}
                   </SelectItem>
