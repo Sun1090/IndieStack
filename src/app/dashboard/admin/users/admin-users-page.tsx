@@ -5,8 +5,9 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,49 +33,48 @@ import {
 export function AdminUsersPage() {
   const t = useTranslations("admin");
   const ta = useTranslations("actions");
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const queryClient = useQueryClient();
 
-  /** 加载用户列表 */
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    const result = await listAdminUsers();
-    if (!result.success) {
+  // 用户列表查询
+  const { data: users = [], isLoading: loading } = useQuery({
+    queryKey: ["admin-users"],
+    queryFn: async (): Promise<AdminUser[]> => {
+      const result = await listAdminUsers();
+      if (!result.success) {
+        toast({
+          title: t("users.updateFailed"),
+          description: ta(result.error),
+          variant: "destructive",
+        });
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+  });
+
+  /** 更新用户角色（成功后使列表缓存失效） */
+  const roleMutation = useMutation({
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: string }) => {
+      const result = await updateAdminUserRole(userId, newRole as "member" | "admin" | "viewer");
+      if (!result.success) throw new Error(result.error);
+      return newRole;
+    },
+    onSuccess: (newRole) => {
+      const roleLabel = t(`users.roleLabels.${newRole}` as any);
       toast({
-        title: t("users.updateFailed"),
-        description: ta(result.error),
-        variant: "destructive",
+        title: t("users.updateSuccess"),
+        description: t("users.updateSuccessDesc", { roleLabel }),
       });
-    } else {
-      setUsers(result.data);
-    }
-    setLoading(false);
-  }, [t, ta]);
+      void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (err) => {
+      toast({ title: t("users.updateFailed"), description: ta(err.message), variant: "destructive" });
+    },
+  });
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
-
-  /** 更新用户角色 */
-  async function updateUserRole(userId: string, newRole: string) {
-    const result = await updateAdminUserRole(userId, newRole as "member" | "admin" | "viewer");
-
-    if (!result.success) {
-      toast({
-        title: t("users.updateFailed"),
-        description: ta(result.error),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const roleLabel = t(`users.roleLabels.${newRole}` as any);
-    toast({
-      title: t("users.updateSuccess"),
-      description: t("users.updateSuccessDesc", { roleLabel }),
-    });
-    loadUsers();
+  function updateUserRole(userId: string, newRole: string) {
+    roleMutation.mutate({ userId, newRole });
   }
 
   /** 搜索过滤 */
