@@ -8,10 +8,12 @@ export const dynamic = "force-dynamic";
 
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
+import type React from "react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
-import { Puzzle, Github, CreditCard, Bell, Database } from "lucide-react";
+import { GithubIcon } from "@/components/shared/github-icon";
+import { Puzzle, CreditCard, Bell, Database } from "lucide-react";
 
 type IntegrationItem = {
   id: string;
@@ -20,13 +22,13 @@ type IntegrationItem = {
 };
 
 type IntegrationConfig = {
-  icon: typeof Github;
+  icon: React.ComponentType<{ className?: string }>;
   color: string;
   status: "connected" | "available";
 };
 
 const integrationConfig: Record<string, IntegrationConfig> = {
-  github: { icon: Github, color: "text-[#333]", status: "connected" },
+  github: { icon: GithubIcon, color: "text-[#333]", status: "connected" },
   stripe: { icon: CreditCard, color: "text-[#635bff]", status: "connected" },
   sentry: { icon: Bell, color: "text-[#362d59]", status: "connected" },
   supabase: { icon: Database, color: "text-[#3ecf8e]", status: "connected" },

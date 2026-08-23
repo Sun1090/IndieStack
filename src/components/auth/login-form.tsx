@@ -12,10 +12,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { GithubIcon } from "@/components/shared/github-icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { Github, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
@@ -151,7 +152,7 @@ export function LoginForm() {
 
       <div className="grid gap-3">
         <Button variant="outline" onClick={handleGitHubLogin} disabled={loading}>
-          <Github className="mr-2 h-4 w-4" /> {t("login.oauthGithub")}
+          <GithubIcon className="mr-2 h-4 w-4" /> {t("login.oauthGithub")}
         </Button>
         <Button variant="outline" onClick={handleGoogleLogin} disabled={loading}>
           <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">

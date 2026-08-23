@@ -49,7 +49,7 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <SiteHeader />
-      <main className="flex-1">
+      <main id="main-content" className="flex-1">
         {/* Hero 区域：品牌标语、描述和 CTA 按钮 */}
         <section className="relative overflow-hidden border-b">
           <div className="container py-20 lg:py-32">
