@@ -18,6 +18,7 @@ import { Bell } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
 import { getLocale } from "next-intl/server";
 import type { Database } from "@/lib/supabase/database.types";
+import { listRecentNotifications } from "@/lib/repositories/notifications";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
@@ -37,14 +38,7 @@ export default async function NotificationsPage() {
     .eq("id", user!.id)
     .single()) as unknown as { data: Record<string, unknown> | null };
 
-  const { data: notifications } = (await supabase
-    .from("notifications")
-    .select("*")
-    .eq("user_id", user!.id)
-    .order("created_at", { ascending: false })
-    .limit(10)) as unknown as {
-    data: Database["public"]["Tables"]["notifications"]["Row"][] | null;
-  };
+  const notifications = await listRecentNotifications(user!.id, 10);
 
   const locale = await getLocale();
 
