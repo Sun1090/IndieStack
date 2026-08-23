@@ -2,8 +2,6 @@
  * ApiKeys 数据访问层
  */
 import { createClient } from "@/lib/supabase/server";
-import type { ActionResult } from "@/lib/types/action-result";
-import { fail, ok } from "@/lib/types/action-result";
 
 export type ApiKeyRow = Record<string, unknown>;
 
@@ -20,17 +18,15 @@ export async function listApiKeysByUser(userId: string): Promise<ApiKeyRow[]> {
 }
 
 /** 插入新密钥，返回完整行 */
-export async function insertApiKey(
-  row: Record<string, unknown>,
-): Promise<ActionResult<ApiKeyRow>> {
+export async function insertApiKey(row: Record<string, unknown>): Promise<ApiKeyRow> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("api_keys")
     .insert(row)
     .select()
     .single();
-  if (error) return fail(error.message);
-  return ok((data ?? {}) as ApiKeyRow);
+  if (error) throw new Error(error.message);
+  return (data ?? {}) as ApiKeyRow;
 }
 
 /** 吊销（软删除）；RLS 保证只能操作自己的密钥 */

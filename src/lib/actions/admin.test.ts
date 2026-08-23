@@ -143,9 +143,9 @@ describe("listAdminUsers()", () => {
     });
   });
 
-  it("异常时返回 internalError", async () => {
+  it("数据库异常返回 databaseError", async () => {
     setup({ throwError: true });
-    await expect(listAdminUsers()).resolves.toEqual({ ok: false, error: "internalError" });
+    await expect(listAdminUsers()).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 });
 
@@ -224,11 +224,11 @@ describe("updateUserRole()", () => {
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.adminUsers);
   });
 
-  it("异常时返回 internalError", async () => {
+  it("数据库异常返回 databaseError", async () => {
     setup({ throwError: true });
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
       ok: false,
-            error: "internalError",
+            error: "databaseError",
     });
   });
 });
@@ -324,8 +324,8 @@ describe("listAuditLogs()", () => {
     });
   });
 
-  it("异常时返回 internalError", async () => {
+  it("数据库异常返回 databaseError", async () => {
     setup({ throwError: true });
-    await expect(listAuditLogs()).resolves.toEqual({ ok: false, error: "internalError" });
+    await expect(listAuditLogs()).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 });
