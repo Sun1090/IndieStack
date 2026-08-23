@@ -131,3 +131,14 @@ describe("DELETE /api/user", () => {
     expect(res.status).toBe(500);
   });
 });
+
+describe("GET /api/user 信息泄漏防护", () => {
+  it("错误响应不包含堆栈或内部细节", async () => {
+    mockState.profileError = { message: "PG::ConnectionBad: could not connect to 10.0.0.1" };
+    const res = await GET(req("/api/user"));
+    const body = await res.json();
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(body)).not.toMatch(/stack|PG::|10\.0\.0\.1|connection/i);
+    expect(body.error).toBe("Internal server error");
+  });
+});

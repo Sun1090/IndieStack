@@ -22,6 +22,7 @@
     "check:rls": "node scripts/check-rls.js",
     "check:docs": "node scripts/check-docs-scripts.js",
     "dep:health": "node scripts/dep-health.js",
+    "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
     "db:status": "supabase status",
     "preview": "next start -p 4173",
     "test": "vitest run",
