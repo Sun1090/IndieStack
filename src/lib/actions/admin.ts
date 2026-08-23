@@ -10,6 +10,7 @@ import { safelyRequireRole } from "@/lib/auth/guards";
 import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
+import { listAllAuditLogs } from "@/lib/repositories/audit-logs";
 
 export type AdminUser = {
   id: string;
@@ -61,8 +62,8 @@ export async function listAdminUsers(): Promise<
 
     return ok((data ?? []).map((row) => toAdminUser(row as unknown as Record<string, unknown>)));
   } catch (error) {
-    console.error("[admin] 操作失败:", error);
-    return fail("internalError");
+    console.error("[admin] 数据库操作失败:", error);
+    return fail("databaseError");
   }
 }
 
@@ -104,8 +105,8 @@ export async function updateUserRole(
     revalidatePath(ROUTES.adminUsers);
     return ok();
   } catch (error) {
-    console.error("[admin] 操作失败:", error);
-    return fail("internalError");
+    console.error("[admin] 数据库操作失败:", error);
+    return fail("databaseError");
   }
 }
 
@@ -118,29 +119,20 @@ export async function listAuditLogs(): Promise<
   }
 
   try {
-    const admin = createAdminClient();
-    const { data, error } = await admin
-      .from("audit_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const rows = await listAllAuditLogs();
 
-    if (error) {
-      console.error("[admin] 数据库操作失败:", error);
-      return fail("databaseError");
-    }
-
-    return ok((data ?? []).map((row) => ({
-        id: Number(row.id),
-        user_id: row.user_id,
-        action: row.action,
-        entity_type: row.entity_type,
-        entity_id: row.entity_id,
-        metadata: (row.metadata as Record<string, unknown>) ?? {},
-        created_at: row.created_at,
-      })));
+    const data: AuditLogRecord[] = rows.map((row) => ({
+      id: Number(row.id),
+      user_id: (row.user_id as string) ?? null,
+      action: String(row.action ?? ""),
+      entity_type: String(row.entity_type ?? ""),
+      entity_id: (row.entity_id as string) ?? null,
+      metadata: (row.metadata as Record<string, unknown>) ?? {},
+      created_at: String(row.created_at ?? ""),
+    }));
+    return ok(data);
   } catch (error) {
-    console.error("[admin] 操作失败:", error);
-    return fail("internalError");
+    console.error("[admin] 数据库操作失败:", error);
+    return fail("databaseError");
   }
 }

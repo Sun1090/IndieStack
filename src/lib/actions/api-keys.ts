@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
+import { listApiKeysByUser, insertApiKey, deactivateApiKey } from "@/lib/repositories/api-keys";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 
@@ -53,18 +54,12 @@ export async function listApiKeys(): Promise<ActionResult<ApiKeyRecord[]>> {
 
   if (!user) return fail("notAuthenticated");
 
-  const { data, error } = await supabase
-    .from("api_keys")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
+  try {
+    return ok((await listApiKeysByUser(user.id)).map((row) => toRecord(row)));
+  } catch (error) {
     console.error("[listApiKeys] 获取密钥列表失败:", error);
     return fail("databaseError");
   }
-
-  return ok((data ?? []).map((row: Record<string, unknown>) => toRecord(row)));
 }
 
 export async function createApiKey(
@@ -88,36 +83,22 @@ export async function createApiKey(
       ? ["user:read", "user:write", "project:read", "project:write", "billing:read"]
       : ["project:read"];
 
-  const { data, error } = await supabase
-    .from("api_keys")
-    .insert({
+  let record: ApiKeyRecord;
+  try {
+    const row = await insertApiKey({
       user_id: user.id,
       name: validated.data.name,
       key_prefix: `${rawKey.slice(0, 10)}...`,
       key_hash: hashApiKey(rawKey),
       scopes,
-    })
-    .select()
-    .single();
-
-  if (error) {
+    });
+    record = toRecord(row);
+  } catch (error) {
     console.error("[createApiKey] 创建密钥失败:", error);
     return fail("databaseError");
   }
 
   revalidatePath(ROUTES.apiKeys);
-
-  const record = data
-    ? toRecord(data as unknown as Record<string, unknown>)
-    : {
-        id: "",
-        name: validated.data.name,
-        key_prefix: `${rawKey.slice(0, 10)}...`,
-        scopes,
-        is_active: true,
-        last_used_at: null,
-        created_at: new Date().toISOString(),
-      };
 
   return ok({ key: rawKey, record });
 }
@@ -130,13 +111,9 @@ export async function revokeApiKey(keyId: string): Promise<ActionResult> {
 
   if (!user) return fail("notAuthenticated");
 
-  const { error } = await supabase
-    .from("api_keys")
-    .update({ is_active: false })
-    .eq("id", keyId)
-    .eq("user_id", user.id);
-
-  if (error) {
+  try {
+    await deactivateApiKey(user.id, keyId);
+  } catch (error) {
     console.error("[revokeApiKey] 吊销密钥失败:", error);
     return fail("databaseError");
   }
