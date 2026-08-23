@@ -38,6 +38,9 @@ jobs:
       - name: Check i18n locale symmetry
         run: pnpm check:locales
 
+      - name: Check RLS migrations
+        run: pnpm check:rls
+
       - name: Run tests
         run: pnpm test
 
