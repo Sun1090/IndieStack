@@ -21,12 +21,13 @@ secure_password_requirements = true
 enabled = true
 
 [auth.external.github]
-enabled = true
+enabled = false
+# 如需本地调试 GitHub 登录，填入真实 client_id/secret 后改回 true
 client_id = ""
 secret = ""
 
 [auth.external.google]
-enabled = true
+enabled = false
 client_id = ""
 secret = ""
 
