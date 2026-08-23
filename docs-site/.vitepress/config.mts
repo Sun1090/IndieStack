@@ -28,17 +28,17 @@ export default defineConfig({
         },
       },
     },
-    en: {
-      label: "English",
-      lang: "en",
+    "zh-CN": {
+      label: "简体中文",
+      lang: "zh-CN",
       title: "IndieStack",
-      description: "A production-ready IndieStack for independent developers",
+      description: "面向独立开发者的生产级 SaaS 启动模板",
       themeConfig: {
-        nav: nav_en(),
-        sidebar: sidebar_en(),
+        nav: nav_zh(),
+        sidebar: sidebar_zh(),
         editLink: {
           pattern: "https://github.com/Sun1090/IndieStack/edit/main/docs-site/:path",
-          text: "Edit this page on GitHub",
+          text: "在 GitHub 上编辑此页",
         },
       },
     },
