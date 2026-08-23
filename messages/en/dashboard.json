@@ -327,6 +327,7 @@
     "list": {
       "title": "Notifications",
       "desc": "Your recent notifications",
+      "markAllRead": "Mark all read",
       "empty": "No notifications yet"
     }
   },

@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { NotificationSettingsForm } from "@/components/forms/notification-settings-form";
+import { MarkAllReadButton } from "@/components/dashboard/mark-all-read-button";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
@@ -71,9 +72,14 @@ export default async function NotificationsPage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{t("notifications.list.title")}</CardTitle>
-          <CardDescription>{t("notifications.list.desc")}</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>{t("notifications.list.title")}</CardTitle>
+            <CardDescription>{t("notifications.list.desc")}</CardDescription>
+          </div>
+          <MarkAllReadButton
+            unreadCount={(notifications ?? []).filter((n) => !n.is_read).length}
+          />
         </CardHeader>
         <CardContent>
           {!notifications || notifications.length === 0 ? (
