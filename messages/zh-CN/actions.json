@@ -51,5 +51,6 @@
   "teamSlugExists": "该团队 slug 已被使用",
   "userNotFound": "未找到该用户，请先注册",
   "userNotFoundAdmin": "未找到该用户",
-  "passwordChangeUnavailable": "当前账户未绑定邮箱，无法验证当前密码，请使用找回密码功能"
+  "passwordChangeUnavailable": "当前账户未绑定邮箱，无法验证当前密码，请使用找回密码功能",
+  "loadedAt": "加载于"
 }
