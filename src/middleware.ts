@@ -12,7 +12,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { ROUTES } from "@/lib/constants";
-import { shouldUseMock } from "@/lib/mock";
+import { shouldUseMock } from "@/lib/mock/config";
 
 /** 需要登录保护的路由列表 */
 const protectedRoutes = ["/dashboard", "/dashboard/(.*)"];

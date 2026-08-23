@@ -6,8 +6,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import type { Database } from "./database.types";
-import { shouldUseMock } from "@/lib/mock";
-import { generateMockSession } from "@/lib/mock/data";
+import { shouldUseMock } from "@/lib/mock/config";
 
 /**
  * 在 Next.js Middleware 中创建 Supabase 客户端并更新会话
@@ -20,7 +19,9 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   // Mock 模式：跳过 Supabase 会话检查，返回模拟用户
+  // 动态 import：避免把 faker 等 mock 数据依赖打进 Edge bundle
   if (shouldUseMock()) {
+    const { generateMockSession } = await import("@/lib/mock/data");
     const session = generateMockSession();
     return {
       supabase: null as any,
