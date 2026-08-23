@@ -138,9 +138,6 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@eslint/eslintrc':
-        specifier: ^3.3.6
-        version: 3.3.6(supports-color@8.1.1)
       '@faker-js/faker':
         specifier: ^10.6.0
         version: 10.6.0

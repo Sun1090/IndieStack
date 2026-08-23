@@ -10,3 +10,11 @@ import { afterEach } from "vitest";
 afterEach(() => {
   cleanup();
 });
+
+// Radix UI 组件依赖 ResizeObserver
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;

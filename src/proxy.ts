@@ -1,5 +1,5 @@
 /**
- * 中间件：Supabase 会话管理 + 权限路由保护
+ * Proxy（Next 16 前称 Middleware）：Supabase 会话管理 + 权限路由保护
  * - 使用 Cookie 管理 Supabase 会话
  * - 保护需要登录的路由，重定向未登录用户到登录页
  * - 已登录用户访问登录/注册页时重定向到仪表盘
