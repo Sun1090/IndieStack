@@ -34,7 +34,7 @@ export async function createProject(input: CreateProjectInput) {
 
   const validated = createProjectSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
+    return { error: validated.error.issues[0]?.message ?? "invalidInput" };
   }
 
   const { data: membership } = (await supabase

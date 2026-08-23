@@ -50,7 +50,7 @@ export function CreateTeamPage() {
     if (!parsed.success) {
       toast({
         title: tc("error"),
-        description: ta(parsed.error.errors[0].message),
+        description: ta(parsed.error.issues[0].message),
         variant: "destructive",
       });
       setLoading(false);
