@@ -2,6 +2,29 @@
 
 All notable changes to IndieStack will be documented in this file.
 
+## [0.3.0] — 2026-08-23
+
+### Changed（大版本升级专项）
+
+- **Next.js 15 → 16**：Turbopack 构建默认化、middleware→proxy 约定迁移、eslint-config-next 16 原生 flat config、favicon.ico RGBA 问题修复、react-hooks/purity 合规
+- **Tailwind CSS 3 → 4**：`@tailwindcss/postcss` 替代双插件、`@config` 桥接既有 JS 配置、移除 autoprefixer
+- **TanStack Table 8 → 9**：经官方 `useLegacyTable` 桥迁移（v8 API / v9 内核），原生 features API 列为后续任务
+- **lucide-react 0.x → 1.x**：品牌图标移除 → 内联 GithubIcon SVG 组件
+- **zod 3 → 4**：error.errors → error.issues 迁移
+- eslint 复杂度门禁（≤15 报错，存量文件显式豁免登记）
+- Bundle 基线门禁适配 Turbopack 输出（客户端静态资源总量 2467kB）
+
+### Added
+
+- Profiles Repository 数据访问层试点（/api/user 与 inviteMember 已收口）
+- ActionResult 判别联合类型 + notifications Action 迁移试点
+- 审计日志 CSV 导出（feature flag 门控）
+- 通知"全部标为已读"（Server Action + 双语翻译键）
+- Webhook 事件日志表迁移（010_webhook_events.sql，待应用）
+- skip-to-content 无障碍链接
+- 索引复审清单、环境/Staging 规范、API 路由文档、ADR ×4、邮件模板设计、Sentry 告警指南
+- 依赖健康报告脚本（pnpm dep:health）、Agent 索引一致性校验
+
 ## [0.2.0] — 2026-08-23
 
 ### Added
