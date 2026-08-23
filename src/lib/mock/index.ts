@@ -21,20 +21,8 @@ import {
   MOCK_TEAM_ID,
 } from "./data";
 
-// =============================================================================
-// Mock 模式检测
-// =============================================================================
-
-/** 是否启用 Mock 模式 */
-export const isMockEnabled =
-  process.env.NEXT_PUBLIC_MOCK_ENABLED === "true" ||
-  // 仅在非生产环境：Supabase 未配置时自动启用 Mock（避免生产环境误配时静默绕过认证）
-  (process.env.NODE_ENV !== "production" && !process.env.NEXT_PUBLIC_SUPABASE_URL);
-
-/** 当 Supabase 未配置时，自动启用 Mock 模式 */
-export function shouldUseMock(): boolean {
-  return isMockEnabled;
-}
+// Mock 模式检测逻辑抽离至零依赖的 config 模块（供 Edge Middleware 引用），此处转发保持兼容
+export { isMockEnabled, shouldUseMock } from "./config";
 
 export { generateMockAdminStats };
 

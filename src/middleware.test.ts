@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { middleware } from "./middleware";
 
 const shouldUseMock = vi.hoisted(() => vi.fn(() => false));
-vi.mock("@/lib/mock", () => ({ shouldUseMock }));
+vi.mock("@/lib/mock/config", () => ({ shouldUseMock }));
 
 type Session = { supabase: unknown; supabaseResponse: NextResponse; user: unknown };
 const updateUser: { user: unknown } = { user: null };
