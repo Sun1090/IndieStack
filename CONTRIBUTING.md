@@ -5,9 +5,13 @@
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/your-feature`
 3. Make your changes
-4. Run the test suite: `pnpm type-check && pnpm lint && pnpm build`
-5. Commit with conventional commit messages
-6. Push and open a Pull Request
+4. Run the test suite: `pnpm check && pnpm test && pnpm build`
+5. Commit with conventional commit messages（commitlint 强制校验，规范详见 [agents/10-release-manager.md](./agents/10-release-manager.md)）
+6. Push and open a Pull Request（PR 目标分支：`develop` 或 `main`）
+
+## Agent 协作
+
+本项目维护 10 个专业化协作 Agent（编码、审查、测试、发布等），任务分工与协作流程见 [AGENTS.md](./AGENTS.md)。提交前建议按对应 Agent 的清单自检。
 
 ## Code Standards
 

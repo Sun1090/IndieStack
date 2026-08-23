@@ -7,6 +7,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import type { Database } from "./database.types";
 import { shouldUseMock } from "@/lib/mock/config";
+import { NONCE_HEADER } from "@/lib/csp";
 
 /**
  * 在 Next.js Middleware 中创建 Supabase 客户端并更新会话
@@ -17,6 +18,12 @@ import { shouldUseMock } from "@/lib/mock/config";
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+
+  // 将上游传入的 nonce 请求头透传给 Server Components（headers() 可读取）
+  const nonce = request.headers.get(NONCE_HEADER) ?? undefined;
+  if (nonce && !supabaseResponse.headers.get(NONCE_HEADER)) {
+    supabaseResponse.headers.set(NONCE_HEADER, nonce);
+  }
 
   // Mock 模式：跳过 Supabase 会话检查，返回模拟用户
   // 动态 import：避免把 faker 等 mock 数据依赖打进 Edge bundle

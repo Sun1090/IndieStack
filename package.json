@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "analyze": "ANALYZE=true next build",
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
@@ -17,6 +18,7 @@
     "sentry:sourcemaps": "sentry-cli sourcemaps inject --org $SENTRY_ORG --project $SENTRY_PROJECT .next && sentry-cli sourcemaps upload --org $SENTRY_ORG --project $SENTRY_PROJECT .next",
     "check": "pnpm type-check && pnpm lint && node scripts/check-locales.js",
     "check:locales": "node scripts/check-locales.js",
+    "check:agents": "node scripts/check-agents-index.js",
     "db:status": "supabase status",
     "preview": "next start -p 4173",
     "test": "vitest run",
@@ -72,6 +74,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",
     "@faker-js/faker": "^10.6.0",
+    "@next/bundle-analyzer": "^16.3.2",
     "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
@@ -95,5 +98,11 @@
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=11.0.0"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "~22.*"
+    }
   }
 }
