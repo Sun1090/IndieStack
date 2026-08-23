@@ -81,7 +81,7 @@ export default defineConfig({
 
   // Sitemap
   sitemap: {
-    hostname: "https://indiestack.dev",
+    hostname: "https://indie-stack-docs-site.vercel.app",
   },
 });
 
