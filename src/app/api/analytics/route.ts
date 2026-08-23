@@ -39,8 +39,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = await createClient();
+    // 按 UTC 自然日对齐窗口（与下方 toISOString().slice 的日键一致，避免时区错位）：
+    // 覆盖含今天在内的最近 range 个完整日
     const since = new Date();
-    since.setDate(since.getDate() - range);
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (range - 1));
 
     // 统计总指标
     const [pageViewsResult] = await Promise.all([
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
     const dailyMap = new Map<string, { requests: number; errors: number }>();
     for (let i = 0; i < range; i++) {
       const d = new Date(since);
-      d.setDate(d.getDate() + i);
+      d.setUTCDate(d.getUTCDate() + i);
       dailyMap.set(d.toISOString().slice(0, 10), { requests: 0, errors: 0 });
     }
 
