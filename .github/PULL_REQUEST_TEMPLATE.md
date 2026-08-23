@@ -29,3 +29,9 @@ Closes #（issue）
 - [ ] 我的更改没有引入新的 warning / No new warnings
 
 ## 截图（如果适用）/ Screenshots (if applicable)
+
+## 验证清单 / Verification
+
+- [ ] `pnpm verify`（check + test + bundle 门禁）通过
+- [ ] 涉及 UI 改动已在浏览器走查（含暗色模式）
+- [ ] 涉及数据库改动已提供迁移文件且在 staging 验证
