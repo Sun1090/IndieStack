@@ -5,8 +5,9 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,29 +27,25 @@ import { listAuditLogs, type AuditLogRecord } from "@/lib/actions/admin";
 export function AdminAuditLogsPage() {
   const t = useTranslations("admin");
   const ta = useTranslations("actions");
-  const [logs, setLogs] = useState<AuditLogRecord[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
 
-  const loadLogs = useCallback(async () => {
-    setLoading(true);
-    const result = await listAuditLogs();
-    if (!result.success) {
-      toast({
-        title: t("auditLogs.noLogs"),
-        description: ta(result.error),
-        variant: "destructive",
-      });
-    } else {
-      setLogs(result.data);
-    }
-    setLoading(false);
-  }, [t, ta]);
-
-  useEffect(() => {
-    loadLogs();
-  }, [loadLogs]);
+  // TanStack Query：refetch 手动刷新按钮复用 refetch
+  const { data: logs = [], isLoading: loading, refetch } = useQuery({
+    queryKey: ["audit-logs"],
+    queryFn: async (): Promise<AuditLogRecord[]> => {
+      const result = await listAuditLogs();
+      if (!result.success) {
+        toast({
+          title: t("auditLogs.noLogs"),
+          description: ta(result.error),
+          variant: "destructive",
+        });
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+  });
 
   // 筛选后的日志
   const filteredLogs = logs.filter((log) => {
@@ -102,7 +99,7 @@ export function AdminAuditLogsPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t("auditLogs.title")}</h1>
           <p className="text-muted-foreground">{t("auditLogs.desc")}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadLogs}>
+        <Button variant="outline" size="sm" onClick={() => void refetch()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           {t("auditLogs.refresh")}
         </Button>

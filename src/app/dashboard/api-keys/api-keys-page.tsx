@@ -6,7 +6,8 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,80 +40,80 @@ export function ApiKeysPage() {
   const t = useTranslations("dashboard");
   const ta = useTranslations("actions");
   const locale = useLocale();
-  const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyScope, setNewKeyScope] = useState("read");
-  const [creating, setCreating] = useState(false);
   const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
-  const loadKeys = useCallback(async () => {
-    setLoading(true);
-    const result = await listApiKeys();
-    if (result.error) {
-      toast({
-        title: t("apiKeys.loadError"),
-        description: ta(result.error),
-        variant: "destructive",
-      });
-    }
-    setKeys(result.data);
-    setLoading(false);
-  }, [t, ta]);
+  // 列表查询：缓存 + 内置加载态
+  const { data: keys = [], isLoading: loading } = useQuery({
+    queryKey: ["api-keys"],
+    queryFn: async (): Promise<ApiKeyRecord[]> => {
+      const result = await listApiKeys();
+      if (result.error) {
+        toast({
+          title: t("apiKeys.loadError"),
+          description: ta(result.error),
+          variant: "destructive",
+        });
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+  });
 
-  useEffect(() => {
-    loadKeys();
-  }, [loadKeys]);
+  /** 创建成功后使列表缓存失效，自动重新拉取 */
+  const createMutation = useMutation({
+    mutationFn: async (input: { name: string; scope: "read" | "all" }) => {
+      const result = await createApiKey(input);
+      if (result.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: (result) => {
+      setCreatedKeyValue(result.key ?? null);
+      toast({ title: t("apiKeys.createSuccess"), description: t("apiKeys.createSuccessDesc") });
+      void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    },
+    onError: (err) => {
+      toast({ title: t("apiKeys.createError"), description: ta(err.message), variant: "destructive" });
+    },
+    onSettled: () => {
+      if (!createdKeyValue) setShowCreateDialog(false);
+    },
+  });
+
+  /** 吊销密钥 */
+  const revokeMutation = useMutation({
+    mutationFn: async (keyId: string) => {
+      const result = await revokeApiKey(keyId);
+      if (result.error) throw new Error(result.error);
+    },
+    onSuccess: () => {
+      toast({ title: t("apiKeys.revokeSuccess") });
+      void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    },
+    onError: (err) => {
+      toast({ title: t("apiKeys.revokeError"), description: ta(err.message), variant: "destructive" });
+    },
+    onSettled: () => setRevokingId(null),
+  });
 
   /** 创建新 API 密钥 */
-  async function handleCreate() {
+  function handleCreate() {
     if (!newKeyName.trim()) {
       toast({ title: t("apiKeys.nameRequired"), variant: "destructive" });
       return;
     }
-
-    setCreating(true);
-    const result = await createApiKey({
-      name: newKeyName.trim(),
-      scope: newKeyScope as "read" | "all",
-    });
-
-    if (result.error) {
-      toast({
-        title: t("apiKeys.createError"),
-        description: ta(result.error),
-        variant: "destructive",
-      });
-      setCreating(false);
-      return;
-    }
-
-    setCreatedKeyValue(result.key ?? null);
-    toast({ title: t("apiKeys.createSuccess"), description: t("apiKeys.createSuccessDesc") });
-    setCreating(false);
-    loadKeys();
+    createMutation.mutate({ name: newKeyName.trim(), scope: newKeyScope as "read" | "all" });
   }
 
   /** 吊销密钥 */
-  async function revokeKey(keyId: string) {
+  function revokeKey(keyId: string) {
     setRevokingId(keyId);
-    const result = await revokeApiKey(keyId);
-    setRevokingId(null);
-
-    if (result.error) {
-      toast({
-        title: t("apiKeys.revokeError"),
-        description: ta(result.error),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    toast({ title: t("apiKeys.revokeSuccess") });
-    loadKeys();
+    revokeMutation.mutate(keyId);
   }
 
   /** 复制到剪贴板 */
@@ -206,8 +207,8 @@ export function ApiKeysPage() {
                   <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                     {t("apiKeys.cancel")}
                   </Button>
-                  <Button onClick={handleCreate} disabled={creating}>
-                    {creating ? t("apiKeys.creating") : t("apiKeys.create")}
+                  <Button onClick={handleCreate} disabled={createMutation.isPending}>
+                    {createMutation.isPending ? t("apiKeys.creating") : t("apiKeys.create")}
                   </Button>
                 </DialogFooter>
               </>
