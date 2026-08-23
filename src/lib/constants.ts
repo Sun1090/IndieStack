@@ -3,7 +3,13 @@ export const SITE_CONFIG = {
   description:
     process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
     "A full-stack IndieStack for independent developers. Next.js, Tailwind, shadcn/ui, Supabase, PostgreSQL.",
-  url: process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000",
+  // 生产环境兜底为实际部署域名（Vercel 未配置 NEXT_PUBLIC_APP_URL 时 sitemap/OG 仍指向正确地址）；
+  // 开发环境保持 localhost
+  url:
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    (process.env.NODE_ENV === "production"
+      ? "https://indie-stack-theta.vercel.app"
+      : "http://localhost:3000"),
   author: "IndieStack",
   /** 联系邮箱（可在部署时通过 NEXT_PUBLIC_CONTACT_EMAIL 覆盖） */
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || "hello@indiestack.dev",
