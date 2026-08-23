@@ -150,7 +150,7 @@ function sidebar_zh() {
       {
         text: "入门",
         items: [
-          { text: "简介", link: "/zh-CN/" },
+          { text: "简介", link: "/zh-CN/introduction" },
           { text: "快速开始", link: "/zh-CN/quickstart" },
           { text: "项目架构", link: "/zh-CN/architecture" },
           { text: "项目结构", link: "/zh-CN/project-structure" },
@@ -186,7 +186,7 @@ function sidebar_en() {
       {
         text: "Getting Started",
         items: [
-          { text: "Introduction", link: "/" },
+          { text: "Introduction", link: "/introduction" },
           { text: "Quick Start", link: "/quickstart" },
           { text: "Architecture", link: "/architecture" },
           { text: "Project Structure", link: "/project-structure" },
