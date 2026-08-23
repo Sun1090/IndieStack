@@ -53,7 +53,7 @@ export function ApiKeysPage() {
     queryKey: ["api-keys"],
     queryFn: async (): Promise<ApiKeyRecord[]> => {
       const result = await listApiKeys();
-      if (result.error) {
+      if (!result.ok) {
         toast({
           title: t("apiKeys.loadError"),
           description: ta(result.error),
@@ -61,7 +61,7 @@ export function ApiKeysPage() {
         });
         throw new Error(result.error);
       }
-      return result.data;
+      return result.data ?? [];
     },
   });
 
@@ -69,8 +69,8 @@ export function ApiKeysPage() {
   const createMutation = useMutation({
     mutationFn: async (input: { name: string; scope: "read" | "all" }) => {
       const result = await createApiKey(input);
-      if (result.error) throw new Error(result.error);
-      return result;
+      if (!result.ok) throw new Error(result.error);
+      return result.data!;
     },
     onSuccess: (result) => {
       setCreatedKeyValue(result.key ?? null);
@@ -89,7 +89,7 @@ export function ApiKeysPage() {
   const revokeMutation = useMutation({
     mutationFn: async (keyId: string) => {
       const result = await revokeApiKey(keyId);
-      if (result.error) throw new Error(result.error);
+      if (!result.ok) throw new Error(result.error);
     },
     onSuccess: () => {
       toast({ title: t("apiKeys.revokeSuccess") });

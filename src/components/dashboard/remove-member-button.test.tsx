@@ -42,7 +42,7 @@ describe("RemoveMemberButton", () => {
   });
 
   it("确认后调用 removeMember 并刷新路由", async () => {
-    removeMemberMock.mockResolvedValue({ success: true });
+    removeMemberMock.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
     render(<RemoveMemberButton memberId="member-1" />);
 
@@ -58,7 +58,7 @@ describe("RemoveMemberButton", () => {
   });
 
   it("移除失败时展示 destructive toast 且不刷新", async () => {
-    removeMemberMock.mockResolvedValue({ error: "databaseError" });
+    removeMemberMock.mockResolvedValue({ ok: false, error: "databaseError" });
     const user = userEvent.setup();
     render(<RemoveMemberButton memberId="member-1" />);
 

@@ -107,17 +107,17 @@ describe("listAdminUsers()", () => {
 
   it("未登录返回 notAuthenticated", async () => {
     setup({ auth: unauthorized() });
-    await expect(listAdminUsers()).resolves.toEqual({ success: false, error: "notAuthenticated" });
+    await expect(listAdminUsers()).resolves.toEqual({ ok: false, error: "notAuthenticated" });
   });
 
   it("非 admin 返回 forbidden", async () => {
     setup({ auth: forbidden() });
-    await expect(listAdminUsers()).resolves.toEqual({ success: false, error: "forbidden" });
+    await expect(listAdminUsers()).resolves.toEqual({ ok: false, error: "forbidden" });
   });
 
   it("数据库错误返回 databaseError", async () => {
     setup({ error: { message: "db" } });
-    await expect(listAdminUsers()).resolves.toEqual({ success: false, error: "databaseError" });
+    await expect(listAdminUsers()).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 
   it("成功返回映射后的用户列表", async () => {
@@ -128,7 +128,7 @@ describe("listAdminUsers()", () => {
     ];
     setup({ rows });
     await expect(listAdminUsers()).resolves.toEqual({
-      success: true,
+      ok: true,
       data: [
         { id: "u1", email: "a@b.com", full_name: "Alice", role: "admin", created_at: "2026-01-01" },
         { id: "u2", email: null, full_name: null, role: "viewer", created_at: "" },
@@ -145,7 +145,7 @@ describe("listAdminUsers()", () => {
 
   it("异常时返回 internalError", async () => {
     setup({ throwError: true });
-    await expect(listAdminUsers()).resolves.toEqual({ success: false, error: "internalError" });
+    await expect(listAdminUsers()).resolves.toEqual({ ok: false, error: "internalError" });
   });
 });
 
@@ -181,54 +181,54 @@ describe("updateUserRole()", () => {
   it("未登录返回 notAuthenticated", async () => {
     setup({ auth: unauthorized() });
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
-      success: false,
-      error: "notAuthenticated",
+      ok: false,
+            error: "notAuthenticated",
     });
   });
 
   it("非 admin 返回 forbidden", async () => {
     setup({ auth: forbidden() });
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
-      success: false,
-      error: "forbidden",
+      ok: false,
+            error: "forbidden",
     });
   });
 
   it("目标用户不存在返回 userNotFoundAdmin", async () => {
     setup({ target: null });
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
-      success: false,
-      error: "userNotFoundAdmin",
+      ok: false,
+            error: "userNotFoundAdmin",
     });
   });
 
   it("不能修改 super_admin 返回 superAdminOnly", async () => {
     setup({ target: { role: "super_admin" } });
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
-      success: false,
-      error: "superAdminOnly",
+      ok: false,
+            error: "superAdminOnly",
     });
   });
 
   it("数据库错误返回 databaseError", async () => {
     setup({ updateError: { message: "db" } });
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
-      success: false,
-      error: "databaseError",
+      ok: false,
+            error: "databaseError",
     });
   });
 
   it("成功更新并触发 revalidatePath", async () => {
     setup();
-    await expect(updateUserRole("u2", "admin")).resolves.toEqual({ success: true });
+    await expect(updateUserRole("u2", "admin")).resolves.toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.adminUsers);
   });
 
   it("异常时返回 internalError", async () => {
     setup({ throwError: true });
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
-      success: false,
-      error: "internalError",
+      ok: false,
+            error: "internalError",
     });
   });
 });
@@ -264,17 +264,17 @@ describe("listAuditLogs()", () => {
 
   it("未登录返回 notAuthenticated", async () => {
     setup({ auth: unauthorized() });
-    await expect(listAuditLogs()).resolves.toEqual({ success: false, error: "notAuthenticated" });
+    await expect(listAuditLogs()).resolves.toEqual({ ok: false, error: "notAuthenticated" });
   });
 
   it("非 super_admin 返回 forbidden", async () => {
     setup({ auth: forbidden() });
-    await expect(listAuditLogs()).resolves.toEqual({ success: false, error: "forbidden" });
+    await expect(listAuditLogs()).resolves.toEqual({ ok: false, error: "forbidden" });
   });
 
   it("数据库错误返回 databaseError", async () => {
     setup({ error: { message: "db" } });
-    await expect(listAuditLogs()).resolves.toEqual({ success: false, error: "databaseError" });
+    await expect(listAuditLogs()).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 
   it("成功返回审计日志列表", async () => {
@@ -300,7 +300,7 @@ describe("listAuditLogs()", () => {
     ];
     setup({ rows });
     await expect(listAuditLogs()).resolves.toEqual({
-      success: true,
+      ok: true,
       data: [
         {
           id: 1,
@@ -326,6 +326,6 @@ describe("listAuditLogs()", () => {
 
   it("异常时返回 internalError", async () => {
     setup({ throwError: true });
-    await expect(listAuditLogs()).resolves.toEqual({ success: false, error: "internalError" });
+    await expect(listAuditLogs()).resolves.toEqual({ ok: false, error: "internalError" });
   });
 });

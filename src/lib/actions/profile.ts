@@ -8,6 +8,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { profileSettingsSchema } from "@/lib/validations/profile";
 import { ROUTES } from "@/lib/constants";
+import type { ActionResult } from "@/lib/types/action-result";
+import { fail, ok } from "@/lib/types/action-result";
 
 /**
  * Update profile settings (full bio, timezone, language).
@@ -19,7 +21,7 @@ export async function updateProfileSettings(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "notAuthenticated" };
+    return fail("notAuthenticated");
   }
 
   // 白名单 + 类型/长度校验：拒绝任意字段值直接写入 profiles
@@ -30,7 +32,7 @@ export async function updateProfileSettings(formData: FormData) {
     language: formData.get("language")?.toString(),
   });
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "invalidInput" };
+    return fail(parsed.error.issues[0]?.message ?? "invalidInput");
   }
 
   const { error } = await supabase
@@ -47,9 +49,9 @@ export async function updateProfileSettings(formData: FormData) {
 
   if (error) {
     console.error("[updateProfileSettings] 更新资料设置失败:", error);
-    return { error: "databaseError" };
+    return fail("databaseError");
   }
 
   revalidatePath(ROUTES.dashboardProfile);
-  return { success: true };
+  return ok();
 }

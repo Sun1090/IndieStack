@@ -8,6 +8,8 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { safelyRequireRole } from "@/lib/auth/guards";
 import { ROUTES } from "@/lib/constants";
+import type { ActionResult } from "@/lib/types/action-result";
+import { fail, ok } from "@/lib/types/action-result";
 
 export type AdminUser = {
   id: string;
@@ -38,14 +40,11 @@ function toAdminUser(row: Record<string, unknown>): AdminUser {
 }
 
 export async function listAdminUsers(): Promise<
-  { success: true; data: AdminUser[] } | { success: false; error: string }
+  ActionResult<AdminUser[]>
 > {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return {
-      success: false,
-      error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden",
-    };
+    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
   }
 
   try {
@@ -57,29 +56,23 @@ export async function listAdminUsers(): Promise<
 
     if (error) {
       console.error("[admin] 数据库操作失败:", error);
-      return { success: false, error: "databaseError" };
+      return fail("databaseError");
     }
 
-    return {
-      success: true,
-      data: (data ?? []).map((row) => toAdminUser(row as unknown as Record<string, unknown>)),
-    };
+    return ok((data ?? []).map((row) => toAdminUser(row as unknown as Record<string, unknown>)));
   } catch (error) {
     console.error("[admin] 操作失败:", error);
-    return { success: false, error: "internalError" };
+    return fail("internalError");
   }
 }
 
 export async function updateUserRole(
   userId: string,
   role: "member" | "admin" | "viewer",
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<ActionResult> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return {
-      success: false,
-      error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden",
-    };
+    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
   }
 
   try {
@@ -91,11 +84,11 @@ export async function updateUserRole(
       .maybeSingle()) as { data: { role: string } | null };
 
     if (!target) {
-      return { success: false, error: "userNotFoundAdmin" };
+      return fail("userNotFoundAdmin");
     }
 
     if (target.role === "super_admin" && auth.data.role !== "super_admin") {
-      return { success: false, error: "superAdminOnly" };
+      return fail("superAdminOnly");
     }
 
     const { error } = await admin
@@ -105,26 +98,23 @@ export async function updateUserRole(
 
     if (error) {
       console.error("[admin] 数据库操作失败:", error);
-      return { success: false, error: "databaseError" };
+      return fail("databaseError");
     }
 
     revalidatePath(ROUTES.adminUsers);
-    return { success: true };
+    return ok();
   } catch (error) {
     console.error("[admin] 操作失败:", error);
-    return { success: false, error: "internalError" };
+    return fail("internalError");
   }
 }
 
 export async function listAuditLogs(): Promise<
-  { success: true; data: AuditLogRecord[] } | { success: false; error: string }
+  ActionResult<AuditLogRecord[]>
 > {
   const auth = await safelyRequireRole("super_admin");
   if (!auth.success) {
-    return {
-      success: false,
-      error: auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden",
-    };
+    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
   }
 
   try {
@@ -137,12 +127,10 @@ export async function listAuditLogs(): Promise<
 
     if (error) {
       console.error("[admin] 数据库操作失败:", error);
-      return { success: false, error: "databaseError" };
+      return fail("databaseError");
     }
 
-    return {
-      success: true,
-      data: (data ?? []).map((row) => ({
+    return ok((data ?? []).map((row) => ({
         id: Number(row.id),
         user_id: row.user_id,
         action: row.action,
@@ -150,10 +138,9 @@ export async function listAuditLogs(): Promise<
         entity_id: row.entity_id,
         metadata: (row.metadata as Record<string, unknown>) ?? {},
         created_at: row.created_at,
-      })),
-    };
+      })));
   } catch (error) {
     console.error("[admin] 操作失败:", error);
-    return { success: false, error: "internalError" };
+    return fail("internalError");
   }
 }

@@ -150,6 +150,7 @@ describe("createTeam()", () => {
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(userClient({ user: null }));
     await expect(createTeam({ name: "T", slug: "t" })).resolves.toEqual({
+      ok: false,
       error: "notAuthenticated",
     });
   });
@@ -157,6 +158,7 @@ describe("createTeam()", () => {
   it("空名称返回 teamNameRequired", async () => {
     createClientMock.mockResolvedValue(userClient());
     await expect(createTeam({ name: "", slug: "t" })).resolves.toEqual({
+      ok: false,
       error: "teamNameRequired",
     });
   });
@@ -164,6 +166,7 @@ describe("createTeam()", () => {
   it("非法 slug 返回 slugInvalid", async () => {
     createClientMock.mockResolvedValue(userClient());
     await expect(createTeam({ name: "T", slug: "Bad Slug" })).resolves.toEqual({
+      ok: false,
       error: "slugInvalid",
     });
   });
@@ -177,6 +180,7 @@ describe("createTeam()", () => {
     admin.from.mockReturnValue(teams);
     createAdminClientMock.mockReturnValue(admin);
     await expect(createTeam({ name: "Team", slug: "team" })).resolves.toEqual({
+      ok: false,
       error: "teamSlugExists",
     });
   });
@@ -189,6 +193,7 @@ describe("createTeam()", () => {
     admin.from.mockImplementation((table: string) => (table === "teams" ? teams : members));
     createAdminClientMock.mockReturnValue(admin);
     await expect(createTeam({ name: "Team", slug: "team" })).resolves.toEqual({
+      ok: false,
       error: "databaseError",
     });
   });
@@ -201,8 +206,8 @@ describe("createTeam()", () => {
     admin.from.mockImplementation((table: string) => (table === "teams" ? teams : members));
     createAdminClientMock.mockReturnValue(admin);
     const result = await createTeam({ name: "Team A", slug: "team-a" });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.team).toMatchObject({ id: "t1" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data!.team).toMatchObject({ id: "t1" });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardTeam);
   });
 });
@@ -241,39 +246,40 @@ describe("inviteMember()", () => {
 
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(userClient({ user: null }));
-    await expect(inviteMember(input)).resolves.toEqual({ error: "notAuthenticated" });
+    await expect(inviteMember(input)).resolves.toEqual({ ok: false, error: "notAuthenticated" });
   });
 
   it("非法邮箱返回 invalidEmail", async () => {
     createClientMock.mockResolvedValue(userClient());
     await expect(inviteMember({ email: "bad", role: "member" })).resolves.toEqual({
+      ok: false,
       error: "invalidEmail",
     });
   });
 
   it("无团队返回 noTeam", async () => {
     createClientMock.mockResolvedValue(userClientFull({ teamId: null }));
-    await expect(inviteMember(input)).resolves.toEqual({ error: "noTeam" });
+    await expect(inviteMember(input)).resolves.toEqual({ ok: false, error: "noTeam" });
   });
 
   it("非 owner/admin 返回 onlyAdminsInvite", async () => {
     setup({ role: "member" });
-    await expect(inviteMember(input)).resolves.toEqual({ error: "onlyAdminsInvite" });
+    await expect(inviteMember(input)).resolves.toEqual({ ok: false, error: "onlyAdminsInvite" });
   });
 
   it("目标用户不存在返回 userNotFound", async () => {
     setup({ invitedProfile: null });
-    await expect(inviteMember(input)).resolves.toEqual({ error: "userNotFound" });
+    await expect(inviteMember(input)).resolves.toEqual({ ok: false, error: "userNotFound" });
   });
 
   it("已在团队返回 alreadyMember", async () => {
     setup({ existing: { id: "u2" } });
-    await expect(inviteMember(input)).resolves.toEqual({ error: "alreadyMember" });
+    await expect(inviteMember(input)).resolves.toEqual({ ok: false, error: "alreadyMember" });
   });
 
   it("邀请成功并触发 revalidatePath", async () => {
     setup({ count: 3 });
-    await expect(inviteMember(input)).resolves.toEqual({ success: true });
+    await expect(inviteMember(input)).resolves.toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardTeam);
   });
 });
@@ -300,32 +306,32 @@ describe("removeMember()", () => {
 
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(userClient({ user: null }));
-    await expect(removeMember("m1")).resolves.toEqual({ error: "notAuthenticated" });
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "notAuthenticated" });
   });
 
   it("非 owner/admin 返回 onlyAdminsRemove", async () => {
     setup({ role: "member" });
-    await expect(removeMember("m1")).resolves.toEqual({ error: "onlyAdminsRemove" });
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "onlyAdminsRemove" });
   });
 
   it("目标成员不存在返回 memberNotFound", async () => {
     setup({ target: null });
-    await expect(removeMember("m1")).resolves.toEqual({ error: "memberNotFound" });
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "memberNotFound" });
   });
 
   it("不能移除 owner 返回 ownerCannotRemove", async () => {
     setup({ target: { role: "owner" } });
-    await expect(removeMember("m1")).resolves.toEqual({ error: "ownerCannotRemove" });
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "ownerCannotRemove" });
   });
 
   it("移除成功并触发 revalidatePath", async () => {
     setup({ count: 1 });
-    await expect(removeMember("m1")).resolves.toEqual({ success: true });
+    await expect(removeMember("m1")).resolves.toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardTeam);
   });
 
   it("删除失败返回 databaseError", async () => {
     setup({ deleteError: true });
-    await expect(removeMember("m1")).resolves.toEqual({ error: "databaseError" });
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 });

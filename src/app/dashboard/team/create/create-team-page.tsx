@@ -58,7 +58,7 @@ export function CreateTeamPage() {
     }
 
     const result = await createTeam(parsed.data);
-    if (result.error) {
+    if (!result.ok) {
       toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;

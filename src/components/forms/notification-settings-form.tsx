@@ -42,7 +42,7 @@ export function NotificationSettingsForm({ settings }: NotificationSettingsFormP
 
     const result = await updateNotificationSettings(formData);
 
-    if (result.error) {
+    if (!result.ok) {
       toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;

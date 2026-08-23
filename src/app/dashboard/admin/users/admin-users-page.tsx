@@ -41,7 +41,7 @@ export function AdminUsersPage() {
     queryKey: ["admin-users"],
     queryFn: async (): Promise<AdminUser[]> => {
       const result = await listAdminUsers();
-      if (!result.success) {
+      if (!result.ok) {
         toast({
           title: t("users.updateFailed"),
           description: ta(result.error),
@@ -49,7 +49,7 @@ export function AdminUsersPage() {
         });
         throw new Error(result.error);
       }
-      return result.data;
+      return result.data ?? [];
     },
   });
 
@@ -57,7 +57,7 @@ export function AdminUsersPage() {
   const roleMutation = useMutation({
     mutationFn: async ({ userId, newRole }: { userId: string; newRole: string }) => {
       const result = await updateAdminUserRole(userId, newRole as "member" | "admin" | "viewer");
-      if (!result.success) throw new Error(result.error);
+      if (!result.ok) throw new Error(result.error);
       return newRole;
     },
     onSuccess: (newRole) => {

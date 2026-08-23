@@ -47,7 +47,7 @@ export function CreateProjectPage() {
     setLoading(true);
 
     const result = await createProject({ name, slug, description });
-    if (result.error) {
+    if (!result.ok) {
       toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;

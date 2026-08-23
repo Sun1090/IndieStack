@@ -81,12 +81,13 @@ beforeEach(() => {
 describe("createProject()", () => {
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(mockClient({ user: null }));
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ error: "notAuthenticated" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "notAuthenticated" });
   });
 
   it("空名称返回 projectNameRequired", async () => {
     createClientMock.mockResolvedValue(mockClient());
     await expect(createProject({ ...VALID_INPUT, name: " " })).resolves.toEqual({
+      ok: false,
       error: "projectNameRequired",
     });
   });
@@ -94,28 +95,29 @@ describe("createProject()", () => {
   it("非法 slug 返回 slugInvalid", async () => {
     createClientMock.mockResolvedValue(mockClient());
     await expect(createProject({ ...VALID_INPUT, slug: "Bad Slug!" })).resolves.toEqual({
+      ok: false,
       error: "slugInvalid",
     });
   });
 
   it("无团队成员记录返回 noTeam", async () => {
     createClientMock.mockResolvedValue(mockClient({ membership: null }));
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ error: "noTeam" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "noTeam" });
   });
 
   it("非 owner/admin 返回 onlyAdminsCreateProject", async () => {
     createClientMock.mockResolvedValue(
       mockClient({ membership: { team_id: "t1", role: "member" } }),
     );
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ error: "onlyAdminsCreateProject" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "onlyAdminsCreateProject" });
   });
 
   it("owner 创建成功并触发 revalidatePath", async () => {
     createClientMock.mockResolvedValue(mockClient());
     const result = await createProject(VALID_INPUT);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.project).toMatchObject({ name: "My Project", slug: "my-project" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data!.project).toMatchObject({ name: "My Project", slug: "my-project" });
     }
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardProjects);
   });
@@ -124,11 +126,11 @@ describe("createProject()", () => {
     createClientMock.mockResolvedValue(
       mockClient({ insertError: { code: "23505", message: "dup" } }),
     );
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ error: "projectSlugExists" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "projectSlugExists" });
   });
 
   it("其他数据库错误返回 databaseError", async () => {
     createClientMock.mockResolvedValue(mockClient({ insertError: { message: "db" } }));
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ error: "databaseError" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 });

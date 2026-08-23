@@ -37,7 +37,7 @@ export function AdminAuditLogsPage() {
     queryKey: ["audit-logs"],
     queryFn: async (): Promise<AuditLogRecord[]> => {
       const result = await listAuditLogs();
-      if (!result.success) {
+      if (!result.ok) {
         toast({
           title: t("auditLogs.noLogs"),
           description: ta(result.error),
@@ -45,7 +45,7 @@ export function AdminAuditLogsPage() {
         });
         throw new Error(result.error);
       }
-      return result.data;
+      return result.data ?? [];
     },
   });
 
