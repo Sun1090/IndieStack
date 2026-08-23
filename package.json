@@ -19,6 +19,7 @@
     "check": "pnpm type-check && pnpm lint && node scripts/check-locales.js",
     "check:locales": "node scripts/check-locales.js",
     "check:agents": "node scripts/check-agents-index.js",
+    "check:rls": "node scripts/check-rls.js",
     "db:status": "supabase status",
     "preview": "next start -p 4173",
     "test": "vitest run",
