@@ -124,8 +124,22 @@ src/
 | `pnpm lint` | Run ESLint |
 | `pnpm type-check` | TypeScript type check |
 | `pnpm format` | Format code with Prettier |
+| `pnpm check` | type-check + lint + i18n 对称性校验 |
+| `pnpm check:locales` | 校验 en/zh-CN 翻译 key 对称性 |
 | `pnpm db:migrate` | Push database migrations |
 | `pnpm db:types` | Generate TypeScript types from DB |
+| `pnpm test` | Vitest 单元 + 组件测试（253+ 用例） |
+| `pnpm test:e2e` | Playwright E2E 冒烟测试 |
+
+## Testing
+
+- **单元/组件**: Vitest 双项目（node + jsdom），覆盖率门禁核心逻辑 ≥90%
+- **E2E**: Playwright 冒烟测试（`pnpm test:e2e`，本地 Mock 模式无需 Supabase）
+- **CI**: GitHub Actions 五道关卡 —— Lint & Type Check / Build / E2E / Build Docs / CodeQL + gitleaks 安全扫描
+
+## Agent 体系
+
+项目内置 10 个专业化协作 Agent（见 [AGENTS.md](./AGENTS.md)）：代码编写、代码审查、项目审查、架构师、测试工程师、文档编写、数据库管理、DevOps、UI/UX 设计、提交与发布。
 
 ## Tech Stack
 

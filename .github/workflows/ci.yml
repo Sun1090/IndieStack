@@ -35,6 +35,9 @@ jobs:
       - name: Type check
         run: pnpm type-check
 
+      - name: Check i18n locale symmetry
+        run: pnpm check:locales
+
       - name: Run tests
         run: pnpm test
 
