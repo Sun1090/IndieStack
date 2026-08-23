@@ -22,7 +22,8 @@ export async function GET() {
     timestamp: new Date().toISOString(),
     uptime,
     uptimeFormatted: formatUptime(uptime),
-    version: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0",
+    // 与 package.json version 同步（发布流程负责更新；运行时可用 NEXT_PUBLIC_APP_VERSION 覆盖）
+    version: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.3.0",
     environment: process.env.NODE_ENV,
     checks: {
       // Supabase 连接检测（通过检查必需的配置变量）

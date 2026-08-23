@@ -185,3 +185,48 @@ describe("guardHttpStatus()", () => {
     expect(guardHttpStatus(new AuthGuardError("x", "NOT_FOUND"))).toBe(403);
   });
 });
+
+describe("requireRole() 分级矩阵补测", () => {
+  const matrix: [string, string, boolean][] = [
+    // [profileRole, minRole, 是否放行]
+    ["super_admin", "admin", true],
+    ["super_admin", "viewer", true],
+    ["admin", "super_admin", false],
+    ["admin", "member", true],
+    ["member", "admin", false],
+    ["member", "member", true],
+    ["viewer", "member", false],
+    ["viewer", "viewer", true],
+  ];
+
+  it.each(matrix)("%s 请求 %s → %s", async (profileRole, minRole, allowed) => {
+    createClientMock.mockResolvedValue(mockSupabase({ profileRole }));
+    if (allowed) {
+      await expect(requireRole(minRole as never)).resolves.toBeTruthy();
+    } else {
+      await expect(requireRole(minRole as never)).rejects.toBe(FORBIDDEN);
+    }
+  });
+
+  it("未知角色回退 member 后按等级判定", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ profileRole: "hacker" }));
+    await expect(requireRole("admin")).rejects.toBe(FORBIDDEN);
+    await expect(requireRole("viewer")).resolves.toBeTruthy();
+  });
+});
+
+describe("safelyRequireRole() 补测", () => {
+  it("未登录透传 UNAUTHORIZED 结果", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ user: null }));
+    const result = await safelyRequireRole("admin");
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("角色不足返回 FORBIDDEN 结果（不抛异常）", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ profileRole: "viewer" }));
+    const result = await safelyRequireRole("admin");
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("FORBIDDEN");
+  });
+});

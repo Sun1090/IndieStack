@@ -98,3 +98,41 @@ test.describe("主题切换", () => {
     expect(after).not.toBe(before);
   });
 });
+
+test.describe("注册与找回密码", () => {
+  test("Mock 注册流程跳转登录页", async ({ page }) => {
+    await page.goto("/auth/register");
+    await page.locator("input[type=email]").first().fill("new@indiestack.local");
+    await page.locator("input[type=password]").first().fill("password123");
+    // 可能有确认密码字段
+    const confirm = page.locator("input[type=password]").nth(1);
+    if (await confirm.count()) {
+      await confirm.fill("password123");
+    }
+    await page.getByRole("button", { name: /create account|注册/i }).click();
+    await page.waitForURL("**/auth/login**", { timeout: 15_000 });
+  });
+
+  test("忘记密码页正常渲染", async ({ page }) => {
+    const response = await page.goto("/auth/forgot-password");
+    expect(response?.status()).toBe(200);
+    await expect(page.locator("input[type=email]").first()).toBeVisible();
+  });
+
+  test("重置密码页正常渲染", async ({ page }) => {
+    const response = await page.goto("/auth/reset-password");
+    expect(response?.status()).toBe(200);
+  });
+});
+
+test.describe("Admin 扩展（Mock 模式）", () => {
+  test("webhook 日志页可访问", async ({ page }) => {
+    const response = await page.goto("/dashboard/admin/webhooks");
+    expect(response?.status()).toBe(200);
+  });
+
+  test("audit-logs 页可访问", async ({ page }) => {
+    const response = await page.goto("/dashboard/admin/audit-logs");
+    expect(response?.status()).toBe(200);
+  });
+});
