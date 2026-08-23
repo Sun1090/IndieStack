@@ -24,6 +24,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("overview.metaTitle"), description: t("overview.metaDesc") };
 }
 
+/** 服务端动态页：渲染时刻计算窗口起点（react-hooks/purity 对动态 RSC 误报的规避） */
+function thirtyDaysAgoIso(): string {
+  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+}
+
 export default async function DashboardOverview() {
   const supabase = await createClient();
   const {
@@ -59,7 +64,7 @@ export default async function DashboardOverview() {
     { name: string; plan: string; member_count: number } | undefined;
   const currentPlan = teamInfo?.plan ?? "free";
 
-  const since30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const since30Days = thirtyDaysAgoIso();
   const teamId = membership?.team_id;
 
   const [

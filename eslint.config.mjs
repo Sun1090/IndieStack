@@ -1,17 +1,23 @@
 // @ts-check
 
-import { FlatCompat } from "@eslint/eslintrc";
+// eslint 配置：eslint-config-next 16 原生 flat config（不再需要 FlatCompat 桥接）
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import { defineConfig } from "eslint/config";
 
-const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname,
-});
-
-// eslint 配置：兼容 Next.js ESLint 插件规则
-const eslintConfig = [
+const eslintConfig = defineConfig([
   // 忽略 .next 等构建输出目录
-  { ignores: [".next/**", "dist/**", "out/**", "node_modules/**", "coverage/**", "docs-site/.vitepress/dist/**", "docs-site/.vitepress/cache/**"] },
-  // 兼容 next/core-web-vitals + eslint-config-next 规则
-  ...compat.extends("next/core-web-vitals"),
+  {
+    ignores: [
+      ".next/**",
+      "dist/**",
+      "out/**",
+      "node_modules/**",
+      "coverage/**",
+      "docs-site/.vitepress/dist/**",
+      "docs-site/.vitepress/cache/**",
+    ],
+  },
+  ...nextCoreWebVitals,
   {
     rules: {
       // 复杂度门禁：圈复杂度超过 15 报错（新代码不允许继续恶化）
@@ -21,7 +27,6 @@ const eslintConfig = [
   },
   {
     // 技术债登记：存量高复杂度文件显式豁免（阈值放宽到 30），重构时逐个移除
-    // 重构任务跟踪: docs/adr + 任务队列 #67 Result 类型统一
     files: [
       "src/app/api/analytics/route.ts",
       "src/app/api/invitations/route.ts",
@@ -36,6 +41,6 @@ const eslintConfig = [
       complexity: ["error", { max: 30 }],
     },
   },
-];
+]);
 
 export default eslintConfig;

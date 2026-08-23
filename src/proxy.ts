@@ -21,7 +21,7 @@ const protectedRoutes = ["/dashboard", "/dashboard/(.*)"];
 /** 认证相关路由（已登录用户不应访问） */
 const authRoutes = ["/auth/login", "/auth/register"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // 每请求生成 CSP nonce：注入请求头供 Server Components 读取，
   // Next.js 会自动把响应 CSP 中的 nonce 应用到其注入的 <script>
   const nonce = generateNonce();

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
-import { middleware } from "./middleware";
+import { proxy } from "./proxy";
 
 const shouldUseMock = vi.hoisted(() => vi.fn(() => false));
 vi.mock("@/lib/mock/config", () => ({ shouldUseMock }));
@@ -29,16 +29,16 @@ beforeEach(() => {
   updateUser.user = null;
 });
 
-describe("middleware()", () => {
+describe("proxy()", () => {
   it("Mock 模式下跳过所有权限检查", async () => {
     shouldUseMock.mockReturnValue(true);
-    const res = await middleware(makeRequest("/dashboard"));
+    const res = await proxy(makeRequest("/dashboard"));
     expect(res.status).toBe(200);
     expect(res.headers.get("location")).toBeNull();
   });
 
   it("未登录访问 /dashboard 重定向到登录页并携带 redirect 参数", async () => {
-    const res = await middleware(makeRequest("/dashboard"));
+    const res = await proxy(makeRequest("/dashboard"));
     expect(res.status).toBe(307);
     const location = new URL(res.headers.get("location")!);
     expect(location.pathname).toBe("/auth/login");
@@ -46,7 +46,7 @@ describe("middleware()", () => {
   });
 
   it("未登录访问 dashboard 子路由同样被保护", async () => {
-    const res = await middleware(makeRequest("/dashboard/team/invite"));
+    const res = await proxy(makeRequest("/dashboard/team/invite"));
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("location")!).searchParams.get("redirect")).toBe(
       "/dashboard/team/invite",
@@ -55,26 +55,26 @@ describe("middleware()", () => {
 
   it("已登录用户访问登录页重定向到 dashboard", async () => {
     updateUser.user = { id: "u1" };
-    const res = await middleware(makeRequest("/auth/login"));
+    const res = await proxy(makeRequest("/auth/login"));
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("location")!).pathname).toBe("/dashboard");
   });
 
   it("已登录用户访问注册页同样重定向", async () => {
     updateUser.user = { id: "u1" };
-    const res = await middleware(makeRequest("/auth/register"));
+    const res = await proxy(makeRequest("/auth/register"));
     expect(res.status).toBe(307);
   });
 
   it("已登录访问 dashboard 正常放行", async () => {
     updateUser.user = { id: "u1" };
-    const res = await middleware(makeRequest("/dashboard"));
+    const res = await proxy(makeRequest("/dashboard"));
     expect(res.status).toBe(200);
   });
 
   it("公开营销路由不受保护（无论是否登录）", async () => {
     for (const path of ["/", "/pricing", "/blog"]) {
-      const res = await middleware(makeRequest(path));
+      const res = await proxy(makeRequest(path));
       expect(res.status).toBe(200);
       expect(res.headers.get("location")).toBeNull();
     }
