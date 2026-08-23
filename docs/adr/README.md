@@ -31,3 +31,6 @@
 | [ADR-002](adr-002-cookie-i18n.md) | i18n 采用 Cookie 方案而非 URL 前缀 | 已接受 |
 | [ADR-003](adr-003-tanstack-query.md) | 客户端数据层引入 TanStack Query | 已接受 |
 | [ADR-004](adr-004-no-catalog.md) | 暂不引入 pnpm catalog | 已接受 |
+| [ADR-005](adr-005-tailwind-v4.md) | Tailwind v4 采用 @config 桥接迁移 | 已接受 |
+| [ADR-006](adr-006-action-result.md) | Server Actions 统一 ActionResult | 已接受 |
+| [ADR-007](adr-007-next16-proxy.md) | Next 16 升级与 proxy 更名 | 已接受 |

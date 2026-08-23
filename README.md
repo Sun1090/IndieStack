@@ -1,5 +1,7 @@
 # IndieStack
 
+[![CI](https://github.com/Sun1090/IndieStack/actions/workflows/ci.yml/badge.svg)](https://github.com/Sun1090/IndieStack/actions/workflows/ci.yml)
+
 > A production-ready IndieStack for independent developers.
 
 Built with **Next.js 16**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **PostgreSQL**, **Sentry**, **Vercel**, **GitHub Actions**, **Alibaba Cloud OSS**, and **Appark**.
