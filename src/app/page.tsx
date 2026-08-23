@@ -4,7 +4,7 @@
  * 所有文本通过 getTranslations 实现国际化
  */
 import Link from "next/link";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, SITE_CONFIG } from "@/lib/constants";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { Button } from "@/components/ui/button";
@@ -28,8 +28,26 @@ export default async function HomePage() {
   const t = await getTranslations("home");
   const tc = await getTranslations("common");
 
+  // JSON-LD 结构化数据：帮助搜索引擎理解站点身份（SEO #81）
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_CONFIG.name,
+    url: SITE_CONFIG.url,
+    description: SITE_CONFIG.description,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${SITE_CONFIG.url}/blog?q={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
+  };
+
   return (
     <div className="flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <SiteHeader />
       <main className="flex-1">
         {/* Hero 区域：品牌标语、描述和 CTA 按钮 */}
