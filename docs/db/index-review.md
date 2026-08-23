@@ -24,3 +24,16 @@ psql ... -c "EXPLAIN ANALYZE SELECT ..."
 
 逐项粘贴执行计划，关注 `Seq Scan` 出现在大表上的情况。
 发现缺失索引用新迁移文件补充（编号顺延），禁止修改已应用的迁移。
+
+## 复审结果（2026-08-23 已执行）
+
+| 查询 | EXPLAIN 结论 |
+|------|--------------|
+| notifications (user_id + created_at 排序) | ✅ idx_notifications_user_id（Bitmap Index） |
+| api_usage 窗口计数 | ✅ idx_api_usage_user_id |
+| profiles lower(email) | ⚠️ 原 Seq Scan → **已修复**：迁移 011 增加 `idx_profiles_lower_email`，复验为 Index Scan |
+| api_keys by user | ✅ idx_api_keys_user_name |
+| team_members by team | ✅ idx_team_members_team_id |
+
+结论：除 email 函数索引缺口（已补 011）外，其余高频查询均命中索引。
+复审方法：`echo "EXPLAIN (FORMAT JSON) <SQL>" | supabase db query --linked`
