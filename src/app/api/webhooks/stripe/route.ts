@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeServer } from "@/lib/stripe";
 import { mapStatus, mapPlan } from "@/lib/stripe/webhook-mappers";
+import { upsertWebhookEvent } from "@/lib/repositories/webhook-events";
 import type { Stripe } from "stripe";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -170,18 +171,13 @@ async function recordWebhookEvent(
   errorMessage?: string,
 ): Promise<void> {
   try {
-    const admin = createAdminClient();
-    await admin.from("webhook_events").upsert(
-      {
-        provider: "stripe",
-        event_id: eventId,
-        event_type: eventType,
-        status,
-        error_message: errorMessage ?? null,
-        payload: {},
-      },
-      { onConflict: "event_id" },
-    );
+    await upsertWebhookEvent({
+      provider: "stripe",
+      event_id: eventId,
+      event_type: eventType,
+      status,
+      error_message: errorMessage ?? null,
+    });
   } catch (logError) {
     console.error("[Stripe Webhook] 事件日志写入失败:", logError);
   }
