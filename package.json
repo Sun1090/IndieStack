@@ -1,6 +1,6 @@
 {
   "name": "indiestack",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "packageManager": "pnpm@11.22.0",
   "description": "Production-ready full-stack starter built with Next.js, Tailwind CSS, shadcn/ui, Supabase, Sentry, and more",
