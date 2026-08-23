@@ -18,7 +18,7 @@ hero:
       link: /zh-CN/tech-stack
     - theme: alt
       text: GitHub
-      link: https://github.com/your-username/indiestack
+      link: https://github.com/Sun1090/IndieStack
 
 features:
   - title: "🏗️ 现代架构"
