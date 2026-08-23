@@ -4,6 +4,10 @@
  */
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import bundleAnalyzer from "@next/bundle-analyzer";
+
+// Bundle 分析：ANALYZE=true pnpm build 时生成报告（.next/analyze/client.html 等）
+const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === "true" });
 
 // 指定 next-intl 请求配置文件路径（采用 Cookie 方案，无 URL 前缀）
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
@@ -32,22 +36,8 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
-    // CSP 说明：
-    // - script-src 需 'unsafe-inline'/'unsafe-eval'：Next.js 水合内联脚本与开发模式 HMR
-    // - connect-src 覆盖 Supabase（REST/Auth/Realtime）与 Sentry 客户端上报
-    const csp = [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' blob: data: https://*.supabase.co",
-      "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "object-src 'none'",
-    ].join("; ");
-
+    // 注意：CSP 已迁移至 src/lib/csp.ts + middleware 按请求生成 nonce（见 #16），
+    // 此处仅保留与 nonce 无关的静态安全头，避免双重 CSP 取交集导致脚本被拦截
     return [
       {
         source: "/(.*)",
@@ -56,7 +46,6 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-          { key: "Content-Security-Policy", value: csp },
         ],
       },
       {
@@ -84,5 +73,5 @@ const nextConfig: NextConfig = {
   },
 };
 
-// 使用 next-intl 插件包裹 Next.js 配置
-export default withNextIntl(nextConfig);
+// 使用 next-intl 插件与 bundle analyzer 包裹 Next.js 配置
+export default withBundleAnalyzer(withNextIntl(nextConfig));
