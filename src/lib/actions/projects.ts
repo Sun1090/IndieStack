@@ -8,6 +8,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
+import type { ActionResult } from "@/lib/types/action-result";
+import { fail, ok } from "@/lib/types/action-result";
+import type { Database } from "@/lib/supabase/database.types";
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(1, "projectNameRequired").max(100),
@@ -22,19 +25,21 @@ const createProjectSchema = z.object({
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
-export async function createProject(input: CreateProjectInput) {
+export async function createProject(
+  input: CreateProjectInput,
+): Promise<ActionResult<{ project: Database["public"]["Tables"]["projects"]["Row"] }>> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "notAuthenticated" };
+    return fail("notAuthenticated");
   }
 
   const validated = createProjectSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.issues[0]?.message ?? "invalidInput" };
+    return fail(validated.error.issues[0]?.message ?? "invalidInput");
   }
 
   const { data: membership } = (await supabase
@@ -45,11 +50,11 @@ export async function createProject(input: CreateProjectInput) {
     .maybeSingle()) as unknown as { data: { team_id: string; role: string } | null; error: null };
 
   if (!membership) {
-    return { error: "noTeam" };
+    return fail("noTeam");
   }
 
   if (!["owner", "admin"].includes(membership.role)) {
-    return { error: "onlyAdminsCreateProject" };
+    return fail("onlyAdminsCreateProject");
   }
 
   const { data: project, error } = await supabase
@@ -68,12 +73,12 @@ export async function createProject(input: CreateProjectInput) {
 
   if (error) {
     if (error.code === "23505") {
-      return { error: "projectSlugExists" };
+      return fail("projectSlugExists");
     }
     console.error("[createProject] 创建项目失败:", error);
-    return { error: "databaseError" };
+    return fail("databaseError");
   }
 
   revalidatePath(ROUTES.dashboardProjects);
-  return { success: true, project };
+  return ok({ project });
 }

@@ -68,6 +68,7 @@ describe("updateNotificationSettings()", () => {
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(mockClient({ user: null }));
     await expect(updateNotificationSettings(form({}))).resolves.toEqual({
+      ok: false,
       error: "notAuthenticated",
     });
   });
@@ -77,28 +78,30 @@ describe("updateNotificationSettings()", () => {
     const result = await updateNotificationSettings(
       form({ emailNotifications: "on", securityAlerts: "on" }),
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardSettings);
   });
 
   it("数据库错误返回 databaseError", async () => {
     createClientMock.mockResolvedValue(mockClient({ profileUpdateError: true }));
-    await expect(updateNotificationSettings(form({}))).resolves.toEqual({ error: "databaseError" });
+    await expect(updateNotificationSettings(form({}))).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 });
 
 describe("updatePassword()", () => {
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(mockClient({ user: null }));
-    await expect(updatePassword(form({}))).resolves.toEqual({ error: "notAuthenticated" });
+    await expect(updatePassword(form({}))).resolves.toEqual({ ok: false, error: "notAuthenticated" });
   });
 
   it("缺少当前或新密码返回 passwordsRequired", async () => {
     createClientMock.mockResolvedValue(mockClient());
     await expect(updatePassword(form({ currentPassword: "old123" }))).resolves.toEqual({
+      ok: false,
       error: "passwordsRequired",
     });
     await expect(updatePassword(form({ newPassword: "newpass123" }))).resolves.toEqual({
+      ok: false,
       error: "passwordsRequired",
     });
   });
@@ -107,21 +110,21 @@ describe("updatePassword()", () => {
     createClientMock.mockResolvedValue(mockClient());
     await expect(
       updatePassword(form({ currentPassword: "old123", newPassword: "short" })),
-    ).resolves.toEqual({ error: "passwordMin8" });
+    ).resolves.toEqual({ ok: false, error: "passwordMin8" });
   });
 
   it("无邮箱账户返回 passwordChangeUnavailable", async () => {
     createClientMock.mockResolvedValue(mockClient({ user: { id: "u1", email: null } }));
     await expect(
       updatePassword(form({ currentPassword: "old123", newPassword: "newpass123" })),
-    ).resolves.toEqual({ error: "passwordChangeUnavailable" });
+    ).resolves.toEqual({ ok: false, error: "passwordChangeUnavailable" });
   });
 
   it("当前密码错误返回 currentPasswordIncorrect", async () => {
     createClientMock.mockResolvedValue(mockClient({ signInError: true }));
     await expect(
       updatePassword(form({ currentPassword: "wrong", newPassword: "newpass123" })),
-    ).resolves.toEqual({ error: "currentPasswordIncorrect" });
+    ).resolves.toEqual({ ok: false, error: "currentPasswordIncorrect" });
   });
 
   it("更新成功并触发 revalidatePath", async () => {
@@ -129,7 +132,7 @@ describe("updatePassword()", () => {
     const result = await updatePassword(
       form({ currentPassword: "old123", newPassword: "newpass123" }),
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardSettings);
   });
 
@@ -137,6 +140,6 @@ describe("updatePassword()", () => {
     createClientMock.mockResolvedValue(mockClient({ updateUserError: true }));
     await expect(
       updatePassword(form({ currentPassword: "old123", newPassword: "newpass123" })),
-    ).resolves.toEqual({ error: "databaseError" });
+    ).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 });

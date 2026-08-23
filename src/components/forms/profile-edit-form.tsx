@@ -37,7 +37,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
     const formData = new FormData(e.currentTarget);
     const result = await updateProfileSettings(formData);
 
-    if (result.error) {
+    if (!result.ok) {
       toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;

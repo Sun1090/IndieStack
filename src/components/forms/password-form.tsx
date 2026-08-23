@@ -28,7 +28,7 @@ export function PasswordForm() {
     const formData = new FormData(e.currentTarget);
     const result = await updatePassword(formData);
 
-    if (result.error) {
+    if (!result.ok) {
       toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;

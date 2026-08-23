@@ -49,12 +49,13 @@ beforeEach(() => {
 describe("updateProfileSettings()", () => {
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(mockClient({ user: null }));
-    await expect(updateProfileSettings(form({}))).resolves.toEqual({ error: "notAuthenticated" });
+    await expect(updateProfileSettings(form({}))).resolves.toEqual({ ok: false, error: "notAuthenticated" });
   });
 
   it("空全名返回 fullNameRequired", async () => {
     createClientMock.mockResolvedValue(mockClient());
     await expect(updateProfileSettings(form({ fullName: "  " }))).resolves.toEqual({
+      ok: false,
       error: "fullNameRequired",
     });
   });
@@ -64,13 +65,14 @@ describe("updateProfileSettings()", () => {
     const result = await updateProfileSettings(
       form({ fullName: "张三", bio: "hi", timezone: "Asia/Shanghai", language: "zh-CN" }),
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardProfile);
   });
 
   it("数据库错误返回 databaseError", async () => {
     createClientMock.mockResolvedValue(mockClient({ updateError: true }));
     await expect(updateProfileSettings(form({ fullName: "张三" }))).resolves.toEqual({
+      ok: false,
       error: "databaseError",
     });
   });

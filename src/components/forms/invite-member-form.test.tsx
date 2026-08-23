@@ -42,7 +42,7 @@ describe("InviteMemberForm", () => {
   });
 
   it("提交成功后调用 inviteMember 并跳转团队页", async () => {
-    inviteMemberMock.mockResolvedValue({ success: true });
+    inviteMemberMock.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
     render(<InviteMemberForm />);
 
@@ -58,7 +58,7 @@ describe("InviteMemberForm", () => {
   });
 
   it("邀请失败时展示 destructive toast 且不跳转", async () => {
-    inviteMemberMock.mockResolvedValue({ error: "alreadyMember" });
+    inviteMemberMock.mockResolvedValue({ ok: false, error: "alreadyMember" });
     const user = userEvent.setup();
     render(<InviteMemberForm />);
 

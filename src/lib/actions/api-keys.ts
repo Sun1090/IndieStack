@@ -9,6 +9,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
+import type { ActionResult } from "@/lib/types/action-result";
+import { fail, ok } from "@/lib/types/action-result";
 
 const createApiKeySchema = z.object({
   name: z.string().trim().min(1, "keyNameRequired").max(60),
@@ -43,15 +45,13 @@ function toRecord(row: Record<string, unknown>): ApiKeyRecord {
   };
 }
 
-export async function listApiKeys() {
+export async function listApiKeys(): Promise<ActionResult<ApiKeyRecord[]>> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return { data: [], error: "notAuthenticated" };
-  }
+  if (!user) return fail("notAuthenticated");
 
   const { data, error } = await supabase
     .from("api_keys")
@@ -61,25 +61,25 @@ export async function listApiKeys() {
 
   if (error) {
     console.error("[listApiKeys] 获取密钥列表失败:", error);
-    return { data: [], error: "databaseError" };
+    return fail("databaseError");
   }
 
-  return { data: (data ?? []).map((row: Record<string, unknown>) => toRecord(row)), error: null };
+  return ok((data ?? []).map((row: Record<string, unknown>) => toRecord(row)));
 }
 
-export async function createApiKey(input: { name: string; scope: "read" | "all" }) {
+export async function createApiKey(
+  input: { name: string; scope: "read" | "all" },
+): Promise<ActionResult<{ key: string; record: ApiKeyRecord }>> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return { error: "notAuthenticated" };
-  }
+  if (!user) return fail("notAuthenticated");
 
   const validated = createApiKeySchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.issues[0]?.message ?? "invalidInput" };
+    return fail(validated.error.issues[0]?.message ?? "invalidInput");
   }
 
   const rawKey = `isk_${randomBytes(24).toString("base64url")}`;
@@ -102,7 +102,7 @@ export async function createApiKey(input: { name: string; scope: "read" | "all" 
 
   if (error) {
     console.error("[createApiKey] 创建密钥失败:", error);
-    return { error: "databaseError" };
+    return fail("databaseError");
   }
 
   revalidatePath(ROUTES.apiKeys);
@@ -119,18 +119,16 @@ export async function createApiKey(input: { name: string; scope: "read" | "all" 
         created_at: new Date().toISOString(),
       };
 
-  return { success: true, key: rawKey, record };
+  return ok({ key: rawKey, record });
 }
 
-export async function revokeApiKey(keyId: string) {
+export async function revokeApiKey(keyId: string): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return { error: "notAuthenticated" };
-  }
+  if (!user) return fail("notAuthenticated");
 
   const { error } = await supabase
     .from("api_keys")
@@ -140,9 +138,9 @@ export async function revokeApiKey(keyId: string) {
 
   if (error) {
     console.error("[revokeApiKey] 吊销密钥失败:", error);
-    return { error: "databaseError" };
+    return fail("databaseError");
   }
 
   revalidatePath(ROUTES.apiKeys);
-  return { success: true };
+  return ok();
 }

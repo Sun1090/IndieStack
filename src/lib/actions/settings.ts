@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 import { notificationSettingsSchema, appearanceSettingsSchema } from "@/lib/validations/settings";
 import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
+import type { ActionResult } from "@/lib/types/action-result";
+import { fail, ok } from "@/lib/types/action-result";
 
 /**
  * Update notification settings for the current user.
@@ -20,7 +22,7 @@ export async function updateNotificationSettings(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "notAuthenticated" };
+    return fail("notAuthenticated");
   }
 
   const settings = {
@@ -32,7 +34,7 @@ export async function updateNotificationSettings(formData: FormData) {
 
   const validated = notificationSettingsSchema.safeParse(settings);
   if (!validated.success) {
-    return { error: "invalidSettings" };
+    return fail("invalidSettings");
   }
 
   const { error } = await supabase
@@ -46,11 +48,11 @@ export async function updateNotificationSettings(formData: FormData) {
 
   if (error) {
     console.error("[updateSettings] 保存设置失败:", error);
-    return { error: "databaseError" };
+    return fail("databaseError");
   }
 
   revalidatePath(ROUTES.dashboardSettings);
-  return { success: true };
+  return ok();
 }
 
 /**
@@ -63,24 +65,24 @@ export async function updatePassword(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "notAuthenticated" };
+    return fail("notAuthenticated");
   }
 
   const currentPassword = formData.get("currentPassword") as string;
   const newPassword = formData.get("newPassword") as string;
 
   if (!currentPassword || !newPassword) {
-    return { error: "passwordsRequired" };
+    return fail("passwordsRequired");
   }
 
   if (newPassword.length < 8) {
-    return { error: "passwordMin8" };
+    return fail("passwordMin8");
   }
 
   // Verify current password by trying to sign in.
   // 无邮箱（如纯 OAuth 账户）时无法验证当前密码，直接拒绝修改，避免绕过密码校验。
   if (!user.email) {
-    return { error: "passwordChangeUnavailable" };
+    return fail("passwordChangeUnavailable");
   }
   const { error: signInError } = await supabase.auth.signInWithPassword({
     email: user.email,
@@ -88,7 +90,7 @@ export async function updatePassword(formData: FormData) {
   });
 
   if (signInError) {
-    return { error: "currentPasswordIncorrect" };
+    return fail("currentPasswordIncorrect");
   }
 
   // Update password
@@ -98,9 +100,9 @@ export async function updatePassword(formData: FormData) {
 
   if (error) {
     console.error("[updateSettings] 保存设置失败:", error);
-    return { error: "databaseError" };
+    return fail("databaseError");
   }
 
   revalidatePath(ROUTES.dashboardSettings);
-  return { success: true };
+  return ok();
 }

@@ -27,7 +27,7 @@ export function RemoveMemberButton({ memberId }: RemoveMemberButtonProps) {
     setLoading(true);
     const result = await removeMember(memberId);
 
-    if (result.error) {
+    if (!result.ok) {
       toast({ title: tc("failed"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
