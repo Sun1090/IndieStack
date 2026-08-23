@@ -30,3 +30,4 @@
 | [ADR-001](adr-001-data-channel.md) | 写操作统一走 Server Actions | 已接受 |
 | [ADR-002](adr-002-cookie-i18n.md) | i18n 采用 Cookie 方案而非 URL 前缀 | 已接受 |
 | [ADR-003](adr-003-tanstack-query.md) | 客户端数据层引入 TanStack Query | 已接受 |
+| [ADR-004](adr-004-no-catalog.md) | 暂不引入 pnpm catalog | 已接受 |
