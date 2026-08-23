@@ -4,13 +4,14 @@
  */
 
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
+import { getProfileById, updateProfile } from "@/lib/repositories/profiles";
 import type { Database } from "@/lib/supabase/database.types";
 import type { PostgrestError } from "@supabase/supabase-js";
-import { z } from "zod";
 
 /** PATCH 请求体校验：白名单字段 + 类型/长度限制，拒绝未知字段 */
 /** 仅允许 http/https 协议的外部图片地址，拒绝 data:/javascript: 等危险协议 */
@@ -50,17 +51,10 @@ export async function GET(request: Request) {
     return jsonNoStore({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = (await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single()) as unknown as {
-    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
-    error: { message: string } | null;
-  };
+  const { data: profile, error: profileError } = await getProfileById(user.id);
 
   if (profileError) {
-    console.error("[API /user] 获取用户资料失败:", profileError.message);
+    console.error("[API /user] 获取用户资料失败:", profileError);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 
@@ -114,20 +108,11 @@ export async function PATCH(request: NextRequest) {
   if (bio !== undefined) updateData.bio = bio;
   if (timezone !== undefined) updateData.timezone = timezone;
   if (language !== undefined) updateData.language = language;
-  updateData.updated_at = new Date().toISOString();
 
-  const { data: profile, error } = (await supabase
-    .from("profiles")
-    .update(updateData as unknown as never)
-    .eq("id", user.id)
-    .select()
-    .single()) as unknown as {
-    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
-    error: { message: string } | null;
-  };
+  const { data: profile, error } = await updateProfile(user.id, updateData);
 
   if (error) {
-    console.error("[API /user] 更新用户资料失败:", error.message);
+    console.error("[API /user] 更新用户资料失败:", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 

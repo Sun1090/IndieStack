@@ -6,6 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { findUserIdByEmail } from "@/lib/repositories/profiles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createTeamSchema,
@@ -141,16 +142,11 @@ export async function inviteMember(input: InviteMemberInput) {
     return { error: "onlyAdminsInvite" };
   }
 
-  // 按邮箱在 profiles 表精确查询目标用户（替代 admin.auth.admin.listUsers() 全量拉取，
-  // 避免用户量大时拉取全部 auth.users；profiles.email 由注册触发器写入，与 auth.users 一致）
-  const admin = createAdminClient();
-  const { data: invitedProfile } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("email", validated.data.email.toLowerCase())
-    .maybeSingle();
+  // 按邮箱在 profiles 表精确查询目标用户（经 Repository，service_role 绕过 RLS；
+  // profiles.email 由注册触发器写入，与 auth.users 一致）
+  const invitedProfileId = await findUserIdByEmail(validated.data.email);
 
-  if (!invitedProfile) {
+  if (!invitedProfileId) {
     return { error: "userNotFound" };
   }
 
@@ -159,16 +155,18 @@ export async function inviteMember(input: InviteMemberInput) {
     .from("team_members")
     .select("id")
     .eq("team_id", team.id)
-    .eq("user_id", invitedProfile.id)
+    .eq("user_id", invitedProfileId)
     .single()) as unknown as { data: { id: string } | null; error: null };
 
   if (existing) {
     return { error: "alreadyMember" };
   }
 
+  const admin = createAdminClient();
+
   const { error: inviteError } = await admin.from("team_members").insert({
     team_id: team.id,
-    user_id: invitedProfile.id,
+    user_id: invitedProfileId,
     role: validated.data.role,
     invited_by: user.id,
   });
