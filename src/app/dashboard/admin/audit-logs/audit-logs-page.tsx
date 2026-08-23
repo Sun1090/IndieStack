@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, RefreshCw, Filter } from "lucide-react";
+import { Search, RefreshCw, Filter, Download } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { listAuditLogs, type AuditLogRecord } from "@/lib/actions/admin";
+import { features } from "@/lib/feature-flags";
+import { downloadCsv } from "@/lib/csv";
 
 export function AdminAuditLogsPage() {
   const t = useTranslations("admin");
@@ -99,10 +101,32 @@ export function AdminAuditLogsPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t("auditLogs.title")}</h1>
           <p className="text-muted-foreground">{t("auditLogs.desc")}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void refetch()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          {t("auditLogs.refresh")}
-        </Button>
+        <div className="flex gap-2">
+          {features.auditLogExport && filteredLogs.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                downloadCsv(
+                  filteredLogs.map((log) => ({
+                    action: log.action,
+                    entity_type: log.entity_type,
+                    entity_id: log.entity_id ?? "",
+                    created_at: log.created_at,
+                  })),
+                  `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`,
+                )
+              }
+            >
+              <Download className="mr-2 h-4 w-4" />
+              CSV
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {t("auditLogs.refresh")}
+          </Button>
+        </div>
       </div>
 
       {/* 筛选栏 */}
