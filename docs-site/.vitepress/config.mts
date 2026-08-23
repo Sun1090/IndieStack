@@ -50,7 +50,7 @@ export default defineConfig({
     siteTitle: "IndieStack",
 
     socialLinks: [
-      { icon: "github", link: "https://github.com/your-username/indiestack" },
+      { icon: "github", link: "https://github.com/Sun1090/IndieStack" },
     ],
 
     footer: {

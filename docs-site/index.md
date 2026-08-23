@@ -1,19 +1,40 @@
 ---
-title: IndieStack Documentation
+# https://vitepress.dev/reference/default-theme-home-page
+layout: home
+
+hero:
+  name: "IndieStack"
+  text: "IndieStack for Indie Developers"
+  tagline: Next.js 15 · Tailwind CSS · shadcn/ui · Supabase · PostgreSQL · Sentry · Alibaba Cloud · Vercel
+  image:
+    src: /favicon.svg
+    alt: IndieStack
+  actions:
+    - theme: brand
+      text: Quick Start
+      link: /quickstart
+    - theme: alt
+      text: Tech Stack
+      link: /tech-stack
+    - theme: alt
+      text: GitHub
+      link: https://github.com/Sun1090/IndieStack
+
+features:
+  - title: "🏗️ Modern Architecture"
+    details: Next.js 15 App Router + Server Components + Server Actions + Route Groups for type-safe full-stack apps.
+  - title: "🎨 Component-Driven"
+    details: 23 customizable shadcn/ui components, Tailwind CSS dark/light themes, responsive design.
+  - title: "🔐 Auth Out-of-the-Box"
+    details: Supabase Auth (Email + GitHub + Google), SSR session management, middleware route protection.
+  - title: "📊 Complete Data Layer"
+    details: PostgreSQL + Row Level Security + Realtime, 4 Supabase clients (server/client/admin/middleware).
+  - title: "💳 Payment Ready"
+    details: Stripe subscription billing, Webhook handling, Checkout, Customer Portal self-management.
+  - title: "🛡️ Production Monitoring"
+    details: Sentry error tracking (client/edge/server), structured logging, security headers.
+  - title: "🚀 One-Click Deploy"
+    details: Vercel + GitHub Actions CI/CD, Docker containerization, environment-based configuration.
+  - title: "🌐 Internationalization"
+    details: Built-in Chinese/English, 50+ translation namespaces, cookie-driven, unified server/client.
 ---
-
-<script setup>
-import { useData } from 'vitepress'
-const { lang } = useData()
-</script>
-
-<div style="text-align:center;padding:4rem 0;">
-  <h1 style="font-size:3rem;margin-bottom:1rem;">IndieStack</h1>
-  <p style="font-size:1.2rem;color:var(--vp-c-text-2);margin-bottom:2rem;">
-    A production-ready IndieStack for independent developers
-  </p>
-  <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
-    <a href="/quickstart" class="VPButton brand" style="padding:0.75rem 2rem;border-radius:8px;background:var(--vp-c-brand);color:white;text-decoration:none;font-weight:600;">Get Started</a>
-    <a href="/zh-CN/" class="VPButton alt" style="padding:0.75rem 2rem;border-radius:8px;border:1px solid var(--vp-c-border);text-decoration:none;font-weight:600;">中文文档</a>
-  </div>
-</div>
