@@ -57,3 +57,44 @@ test.describe("安全与容错", () => {
     await expect(page.locator("body")).not.toContainText("FUNCTION_INVOCATION_FAILED");
   });
 });
+
+test.describe("登录全流程（Mock）", () => {
+  test("邮箱密码登录后跳转 dashboard", async ({ page }) => {
+    await page.goto("/auth/login");
+    await page.locator("input[type=email]").first().fill("dev@indiestack.local");
+    await page.locator("input[type=password]").first().fill("password123");
+    await page.getByRole("button", { name: /sign in|登录/i }).click();
+    await page.waitForURL("**/dashboard", { timeout: 15_000 });
+    expect(page.url()).toContain("/dashboard");
+  });
+});
+
+test.describe("语言切换", () => {
+  test("切换到 English 后 Cookie 持久化", async ({ page }) => {
+    await page.goto("/");
+    // 打开语言菜单并选择 English
+    await page.getByRole("button", { name: "切换语言 / Switch language" }).click();
+    await page.getByRole("menuitem", { name: /English/ }).click();
+    // 组件通过设置 Cookie 后 reload 生效
+    await page.waitForLoadState("load");
+    const localeCookie = (await page.context().cookies()).find((c) => c.name === "app-locale");
+    expect(localeCookie?.value).toBe("en");
+  });
+});
+
+test.describe("主题切换", () => {
+  test("点击切换按钮后 html 根元素 dark 类变化", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const html = page.locator("html");
+    const before = await html.getAttribute("class");
+    await page.getByRole("button", { name: /toggleTheme|切换主题|Toggle theme/i }).first().click();
+    // next-themes 写 localStorage 并同步 class
+    await page.waitForFunction(
+      (prev) => document.documentElement.className !== prev,
+      before ?? "",
+      { timeout: 5_000 },
+    );
+    const after = await html.getAttribute("class");
+    expect(after).not.toBe(before);
+  });
+});
