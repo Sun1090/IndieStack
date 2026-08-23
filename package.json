@@ -20,6 +20,7 @@
     "check:locales": "node scripts/check-locales.js",
     "check:agents": "node scripts/check-agents-index.js",
     "check:rls": "node scripts/check-rls.js",
+    "check:docs": "node scripts/check-docs-scripts.js",
     "db:status": "supabase status",
     "preview": "next start -p 4173",
     "test": "vitest run",
