@@ -7,7 +7,7 @@
 
 面向独立开发者的生产级 SaaS 启动模板。
 
-**技术栈**: Next.js 15 + TypeScript + Tailwind CSS + shadcn/ui + Supabase (PostgreSQL + Auth) + Sentry + Vercel + GitHub Actions + Alibaba Cloud OSS + Appark + Zod + Stripe-ready。
+**技术栈**: Next.js 16 (Turbopack) + TypeScript + Tailwind CSS v4 + shadcn/ui + Supabase (PostgreSQL + Auth) + Sentry + Vercel + GitHub Actions + Alibaba Cloud OSS + Appark + Zod + Stripe-ready。
 
 ## 架构
 
@@ -42,7 +42,8 @@ src/app/
 ### 关键规则
 
 - 所有仪表盘页面使用 `export const dynamic = "force-dynamic"`
-- Server Actions 在 `src/lib/actions/` 中，配合 Zod 校验
+- Server Actions 在 `src/lib/actions/` 中，配合 Zod 校验；返回值统一 ActionResult（`lib/types/action-result.ts`）
+- 客户端列表数据用 TanStack Query（useQuery/useMutation），禁止手写 fetch loading 样板
 - Supabase 客户端：`server.ts`（Server Components）、`client.ts`（浏览器）、`admin.ts`（Service Role）
 - 路由常量在 `src/lib/constants.ts`——始终使用 `ROUTES.*` 进行导航
 - 默认使用 Server Components，仅在需要时使用 Client Components
@@ -162,7 +163,7 @@ Action: read/write/create/delete/manage/invite/remove/export
 - **必需**: Supabase URL + anon key + service role key
 - **可选**: Sentry DSN, Stripe keys, Alibaba Cloud OSS, Appark
 
-关键配置文件: `next.config.ts`, `tailwind.config.ts`, `tsconfig.json`, `src/lib/constants.ts`, `src/middleware.ts`
+关键配置文件: `next.config.ts`, `tailwind.config.ts`, `tsconfig.json`, `src/lib/constants.ts`, `src/proxy.ts`（Next 16 middleware 已更名 proxy）
 
 ### 新功能开发模式
 

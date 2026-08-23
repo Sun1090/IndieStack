@@ -2,7 +2,7 @@
 
 > A production-ready IndieStack for independent developers.
 
-Built with **Next.js 15**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **PostgreSQL**, **Sentry**, **Vercel**, **GitHub Actions**, **Alibaba Cloud OSS**, and **Appark**.
+Built with **Next.js 16**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **PostgreSQL**, **Sentry**, **Vercel**, **GitHub Actions**, **Alibaba Cloud OSS**, and **Appark**.
 
 ## Features
 
@@ -55,6 +55,8 @@ pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+> 线上演示：https://indie-stack-theta.vercel.app · 文档：https://indie-stack-docs-site.vercel.app
 
 ## Documentation
 项目包含两套文档体系：
