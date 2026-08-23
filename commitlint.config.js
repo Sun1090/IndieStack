@@ -27,6 +27,24 @@ module.exports = {
       ],
     ],
     "scope-case": [2, "always", "lower-case"],
+    // 常用 scope 枚举（软约束提示；不强制枚举以保留灵活性）
+    "scope-enum": [
+      1,
+      "always",
+      [
+        "app",       // 页面/路由
+        "lib",       // lib 工具与 actions
+        "actions",   // server actions
+        "auth",      // 认证
+        "ui",        // 组件
+        "api",       // API 路由
+        "db",        // 数据库迁移
+        "i18n",      // 国际化
+        "deps",      // 依赖
+        "docs",      // 文档站
+        "e2e",       // E2E 测试
+      ],
+    ],
     "subject-case": [0], // 不限制大小写
     "subject-empty": [2, "never"],
     "type-empty": [2, "never"],
