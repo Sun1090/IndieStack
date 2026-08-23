@@ -17,7 +17,7 @@ export async function upsertWebhookEvent(row: {
 }): Promise<void> {
   const admin = createAdminClient();
   const { error } = await admin.from("webhook_events").upsert(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Json 类型与 Record 的已知兼容问题
+     
     { ...row, payload: (row.payload ?? {}) as any },
     { onConflict: "event_id" },
   );
