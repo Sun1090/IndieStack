@@ -30,7 +30,7 @@ export async function updateProfileSettings(formData: FormData) {
     language: formData.get("language")?.toString(),
   });
   if (!parsed.success) {
-    return { error: parsed.error.errors[0]?.message ?? "invalidInput" };
+    return { error: parsed.error.issues[0]?.message ?? "invalidInput" };
   }
 
   const { error } = await supabase

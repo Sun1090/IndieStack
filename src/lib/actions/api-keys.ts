@@ -79,7 +79,7 @@ export async function createApiKey(input: { name: string; scope: "read" | "all" 
 
   const validated = createApiKeySchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
+    return { error: validated.error.issues[0]?.message ?? "invalidInput" };
   }
 
   const rawKey = `isk_${randomBytes(24).toString("base64url")}`;

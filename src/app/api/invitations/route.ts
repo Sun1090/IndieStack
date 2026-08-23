@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     const validated = inviteMemberSchema.safeParse(body);
     if (!validated.success) {
       return NextResponse.json(
-        { error: validated.error.errors[0]?.message ?? "Invalid input" },
+        { error: validated.error.issues[0]?.message ?? "Invalid input" },
         { status: 400 },
       );
     }

@@ -64,7 +64,7 @@ export async function createTeam(input: CreateTeamInput) {
 
   const validated = createTeamSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
+    return { error: validated.error.issues[0]?.message ?? "invalidInput" };
   }
 
   const admin = createAdminClient();
@@ -121,7 +121,7 @@ export async function inviteMember(input: InviteMemberInput) {
 
   const validated = inviteMemberSchema.safeParse(input);
   if (!validated.success) {
-    return { error: validated.error.errors[0]?.message ?? "invalidInput" };
+    return { error: validated.error.issues[0]?.message ?? "invalidInput" };
   }
 
   const team = await getCurrentTeam();
