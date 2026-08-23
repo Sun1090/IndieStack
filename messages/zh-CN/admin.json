@@ -77,5 +77,9 @@
       "billing:update": "更新订阅",
       "settings:update": "更新设置"
     }
+  },
+  "webhookLogs": {
+    "title": "Webhook 日志",
+    "desc": "Stripe Webhook 投递历史"
   }
 }

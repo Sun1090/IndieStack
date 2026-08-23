@@ -110,6 +110,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    let status: "processed" | "skipped" = "processed";
     switch (event.type) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
@@ -128,6 +129,7 @@ export async function POST(request: Request) {
         console.log(
           `[Stripe Webhook] 付款成功: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
         );
+        status = "skipped";
         break;
       }
 
@@ -136,17 +138,51 @@ export async function POST(request: Request) {
         console.warn(
           `[Stripe Webhook] 付款失败: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
         );
+        status = "skipped";
         break;
       }
 
       default:
         // Unknown event type - log and acknowledge
         console.log(`[Stripe Webhook] 未处理事件: ${event.type}`);
+        status = "skipped";
     }
 
+    await recordWebhookEvent(event.id, event.type, status);
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error("[Stripe Webhook] 处理失败:", error);
+    await recordWebhookEvent(
+      event.id,
+      event.type,
+      "failed",
+      error instanceof Error ? error.message : String(error),
+    );
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+  }
+}
+
+/** 将事件处理结果写入 webhook_events 日志表（失败不影响主流程） */
+async function recordWebhookEvent(
+  eventId: string,
+  eventType: string,
+  status: "processed" | "skipped" | "failed",
+  errorMessage?: string,
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    await admin.from("webhook_events").upsert(
+      {
+        provider: "stripe",
+        event_id: eventId,
+        event_type: eventType,
+        status,
+        error_message: errorMessage ?? null,
+        payload: {},
+      },
+      { onConflict: "event_id" },
+    );
+  } catch (logError) {
+    console.error("[Stripe Webhook] 事件日志写入失败:", logError);
   }
 }
