@@ -38,7 +38,7 @@ export default defineConfig({
           globals: true,
           environment: "node",
           include: ["src/**/*.test.ts"],
-          exclude: ["node_modules", "docs-site"],
+          exclude: ["node_modules", "docs-site", "src/**/*.dom.test.ts"],
         },
       },
       {
@@ -48,7 +48,7 @@ export default defineConfig({
           name: "jsdom",
           globals: true,
           environment: "jsdom",
-          include: ["src/**/*.test.tsx"],
+          include: ["src/**/*.test.tsx", "src/**/*.dom.test.ts"],
           setupFiles: ["src/test/setup.ts"],
         },
       },

@@ -40,3 +40,20 @@ test.describe("Dashboard（Mock 模式）", () => {
     expect(body.status).toBe("ok");
   });
 });
+
+test.describe("安全与容错", () => {
+  test("安全响应头齐全（CSP / nosniff / X-Frame-Options）", async ({ request }) => {
+    const response = await request.get("/");
+    const headers = response.headers();
+    expect(headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  });
+
+  test("不存在的路由返回 404 页面", async ({ page }) => {
+    const response = await page.goto("/this-page-does-not-exist");
+    expect(response?.status()).toBe(404);
+    await expect(page.locator("body")).not.toContainText("FUNCTION_INVOCATION_FAILED");
+  });
+});
