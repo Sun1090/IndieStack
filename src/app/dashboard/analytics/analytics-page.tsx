@@ -26,6 +26,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/shared/query-error-state";
 
 /**
  * 面积图组件：动态加载（recharts 体积较大）
@@ -62,7 +63,7 @@ export function AnalyticsPage() {
   const [showRangeMenu, setShowRangeMenu] = useState(false);
 
   // TanStack Query：内置竞态处理、缓存（staleTime 30s）、重试与加载态
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isError, refetch } = useQuery({
     queryKey: ["analytics", range],
     queryFn: async (): Promise<AnalyticsData> => {
       const response = await fetch(`/api/analytics?range=${range}`);
@@ -186,6 +187,8 @@ export function AnalyticsPage() {
         <CardContent>
           {loading ? (
             <Skeleton className="h-[300px] w-full" />
+          ) : isError ? (
+            <QueryErrorState onRetry={() => void refetch()} className="h-[300px]" />
           ) : data ? (
             <AreaChart
               data={data.timeline}
