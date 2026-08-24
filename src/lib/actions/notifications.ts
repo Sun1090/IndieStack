@@ -34,3 +34,27 @@ export async function markAllNotificationsRead(): Promise<
     return fail("databaseError");
   }
 }
+
+/**
+ * 标记单条通知已读。
+ */
+export async function markNotificationRead(
+  notificationId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return fail("notAuthenticated");
+
+  try {
+    await notificationsRepo.markNotificationRead(user.id, notificationId);
+    revalidatePath("/dashboard/notifications");
+    return ok();
+  } catch (error) {
+    const traceId = await getTraceId();
+    console.error(`[markNotificationRead] 失败 trace=${traceId ?? "-"}:`, error);
+    return fail("databaseError");
+  }
+}

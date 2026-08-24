@@ -259,7 +259,8 @@
     "createSuccess": "密钥创建成功",
     "createSuccessDesc": "请立即复制并保存密钥，关闭后将无法再次查看。",
     "copyFailed": "复制失败，请手动复制",
-    "revoking": "吊销中..."
+    "revoking": "吊销中...",
+    "regenerate": "重新生成"
   },
   "projects": {
     "list": {
@@ -305,7 +306,9 @@
         "slug": "标识",
         "createdBy": "创建者",
         "lastUpdated": "最后更新"
-      }
+      },
+      "nameLabel": "项目名称",
+      "descLabel": "描述"
     },
     "deleteDelete": "删除",
     "deleteConfirmTitle": "确认删除项目？",

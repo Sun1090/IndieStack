@@ -259,7 +259,8 @@
     "createSuccess": "Key created",
     "createSuccessDesc": "Copy and save the key now. It won't be shown again after closing.",
     "copyFailed": "Copy failed. Please copy manually",
-    "revoking": "Revoking..."
+    "revoking": "Revoking...",
+    "regenerate": "Regenerate"
   },
   "projects": {
     "list": {
@@ -305,7 +306,9 @@
         "slug": "Slug",
         "createdBy": "Created By",
         "lastUpdated": "Last Updated"
-      }
+      },
+      "nameLabel": "Project name",
+      "descLabel": "Description"
     },
     "deleteDelete": "Delete",
     "deleteConfirmTitle": "Delete project?",

@@ -125,3 +125,55 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
   revalidatePath(ROUTES.dashboardProjects);
   return ok();
 }
+
+/**
+ * 更新项目名称与描述（仅 owner/admin）。
+ */
+export async function updateProject(
+  projectId: string,
+  input: { name?: string; description?: string },
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return fail("notAuthenticated");
+
+  const { data: project } = (await supabase
+    .from("projects")
+    .select("team_id")
+    .eq("id", projectId)
+    .maybeSingle()) as unknown as { data: { team_id: string } | null };
+
+  if (!project) return fail("projectNotFound");
+
+  const { data: membership } = (await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", project.team_id)
+    .eq("user_id", user.id)
+    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    return fail("onlyAdminsCreateProject");
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) {
+    const name = input.name.trim();
+    if (!name) return fail("projectNameRequired");
+    patch.name = name;
+  }
+  if (input.description !== undefined) patch.description = input.description;
+
+  const { error } = await supabase.from("projects").update(patch).eq("id", projectId);
+
+  if (error) {
+    console.error("[updateProject] 更新项目失败:", error);
+    return fail("databaseError");
+  }
+
+  revalidatePath(ROUTES.dashboardProjects);
+  return ok();
+}

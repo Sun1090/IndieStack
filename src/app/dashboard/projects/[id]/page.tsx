@@ -18,6 +18,7 @@ import { ROUTES } from "@/lib/constants";
 import { PageHeader } from "@/components/shared/page-header";
 import { ArrowLeft, FolderKanban, GitBranch, Clock, Globe, Settings2 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
+import { ProjectSettingsForm } from "@/components/dashboard/project-settings-form";
 import type { Database } from "@/lib/supabase/database.types";
 
 export async function generateMetadata({
@@ -185,7 +186,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </CardTitle>
           <CardDescription>{t("projects.detail.metaDesc")}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
+          <ProjectSettingsForm
+            projectId={row.id}
+            name={row.name}
+            description={row.description ?? ""}
+          />
+          <div className="border-t pt-4" />
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm font-medium text-muted-foreground">

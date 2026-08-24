@@ -121,3 +121,46 @@ export async function revokeApiKey(keyId: string): Promise<ActionResult> {
   revalidatePath(ROUTES.apiKeys);
   return ok();
 }
+
+/**
+ * 重新生成密钥：旧密钥立即失效（is_active=false），签发新密钥。
+ */
+export async function regenerateApiKey(
+  keyId: string,
+): Promise<ActionResult<{ key: string; record: ApiKeyRecord }>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return fail("notAuthenticated");
+
+  const rawKey = `isk_${randomBytes(24).toString("base64url")}`;
+
+  // 读取原密钥元数据
+  const { data: existing } = (await supabase
+    .from("api_keys")
+    .select("name, scopes")
+    .eq("id", keyId)
+    .eq("user_id", user.id)
+    .maybeSingle()) as unknown as {
+    data: { name: string; scopes: string[] } | null;
+  };
+
+  if (!existing) return fail("databaseError");
+
+  // 签发新密钥
+  const inserted = await insertApiKey({
+    user_id: user.id,
+    name: existing.name,
+    key_prefix: `${rawKey.slice(0, 10)}...`,
+    key_hash: hashApiKey(rawKey),
+    scopes: existing.scopes ?? ["project:read"],
+  });
+
+  // 吊销旧密钥
+  await deactivateApiKey(user.id, keyId);
+
+  revalidatePath(ROUTES.apiKeys);
+  return ok({ key: rawKey, record: toRecord(inserted) });
+}
