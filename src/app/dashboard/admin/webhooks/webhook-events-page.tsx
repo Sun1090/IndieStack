@@ -5,7 +5,7 @@
  * 展示 Stripe webhook 处理历史：事件类型、状态、错误信息
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +29,10 @@ export function WebhookEventsPage() {
   const ta = useTranslations("actions");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  const [autoRefresh, setAutoRefresh] = useState(false);
+
   const { data: events = [], isLoading: loading, isError, refetch } = useQuery({
+    refetchInterval: autoRefresh ? 10_000 : false,
     queryKey: ["webhook-events"],
     queryFn: async (): Promise<WebhookEventRecord[]> => {
       const result = await listWebhookEvents(100);
@@ -48,6 +51,15 @@ export function WebhookEventsPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t("webhookLogs.title")}</h1>
           <p className="text-muted-foreground">{t("webhookLogs.desc")}</p>
         </div>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+            className="h-4 w-4"
+          />
+          auto
+        </label>
         <Button variant="outline" size="sm" onClick={() => void refetch()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           {t("auditLogs.refresh")}
