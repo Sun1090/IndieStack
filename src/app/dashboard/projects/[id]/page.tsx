@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
 import { PageHeader } from "@/components/shared/page-header";
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { ArrowLeft, FolderKanban, GitBranch, Clock, Globe, Settings2 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
 import { ProjectSettingsForm } from "@/components/dashboard/project-settings-form";
@@ -72,6 +73,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-8">
+      <Breadcrumbs
+        items={[
+          { label: t("projects.list.title"), href: ROUTES.dashboardProjects },
+          { label: row.name },
+        ]}
+      />
       <PageHeader title={row.name} description={row.description || t("projects.detail.metaDesc")}>
         <Button variant="outline" asChild>
           <Link href={ROUTES.dashboardProjects}>
