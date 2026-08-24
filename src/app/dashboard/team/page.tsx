@@ -26,6 +26,48 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("team.list.metaTitle"), description: t("team.list.metaDesc") };
 }
 
+
+/** 单成员行展示（父组件预计算所有值） */
+function TeamMemberRow({
+  avatarName,
+  displayName,
+  email,
+  roleLabel,
+  canModify,
+  memberId,
+  memberRole,
+}: {
+  avatarName: string;
+  displayName: string;
+  email: string;
+  roleLabel: string;
+  canModify: boolean;
+  memberId: string;
+  memberRole: string;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
+      <div className="flex items-center gap-4">
+        <InitialAvatar name={avatarName} className="h-10 w-10 text-sm" />
+        <div>
+          <p className="text-sm font-medium">{displayName}</p>
+          <p className="text-xs text-muted-foreground">{email}</p>
+        </div>
+        <Badge variant="outline">{roleLabel}</Badge>
+      </div>
+      {canModify && (
+        <div className="flex items-center gap-2">
+          <MemberRoleSelect
+            memberId={memberId}
+            currentRole={memberRole as "admin" | "member"}
+          />
+          <RemoveMemberButton memberId={memberId} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default async function TeamPage() {
   const supabase = await createClient();
   const {
@@ -154,52 +196,29 @@ export default async function TeamPage() {
             {memberProfiles.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("team.list.noMembers")}</p>
             ) : (
-              memberProfiles.map((member) => (
-                <div
-                  key={member.id as string}
-                  className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
-                >
-                  <div className="flex items-center gap-4">
-                    <InitialAvatar
-                      name={
-                        String(
-                          member.profiles?.full_name ??
-                            member.profiles?.email ??
-                            "?",
-                        )
-                      }
-                      className="h-10 w-10 text-sm"
-                    />
-                    <div>
-                      <p className="text-sm font-medium">
-                        {member.profiles?.full_name ?? t("team.list.unknownMember")}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {member.profiles?.email ?? ""}
-                      </p>
-                    </div>
-                    <Badge variant="outline">
-                      {(() => {
-                        const role = member.role as string;
-                        return t.has(`team.list.roles.${role}`)
-                          ? t(`team.list.roles.${role}`)
-                          : role;
-                      })()}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {canManage && member.role !== "owner" && member.profiles?.id !== user!.id && (
-                      <MemberRoleSelect
-                        memberId={member.id as string}
-                        currentRole={member.role as "admin" | "member"}
-                      />
-                    )}
-                    {canManage && member.role !== "owner" && member.profiles?.id !== user!.id && (
-                      <RemoveMemberButton memberId={member.id as string} />
-                    )}
-                  </div>
-                </div>
-              ))
+              memberProfiles.map((raw) => {
+                const p = (raw.profiles ?? {}) as Record<string, string | null>;
+                const role = String(raw.role);
+                const roleLabel = t.has(`team.list.roles.${role}`)
+                  ? t(`team.list.roles.${role}`)
+                  : role;
+                const canModify =
+                  canManage && role !== "owner" && p.id !== user!.id;
+                const displayName =
+                  (p.full_name as string | undefined) ?? t("team.list.unknownMember");
+                return (
+                  <TeamMemberRow
+                    key={String(raw.id)}
+                    avatarName={String(p.full_name ?? p.email ?? "?")}
+                    displayName={displayName}
+                    email={p.email ?? ""}
+                    roleLabel={roleLabel}
+                    canModify={canModify}
+                    memberId={String(raw.id)}
+                    memberRole={role}
+                  />
+                );
+              })
             )}
           </div>
         </CardContent>
