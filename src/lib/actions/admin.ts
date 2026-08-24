@@ -11,6 +11,7 @@ import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import { listAllAuditLogs } from "@/lib/repositories/audit-logs";
+import { listAdminUsersPage as fetchAdminUsersPage } from "@/lib/repositories/admin-users";
 
 export type AdminUser = {
   id: string;
@@ -61,6 +62,26 @@ export async function listAdminUsers(): Promise<
     }
 
     return ok((data ?? []).map((row) => toAdminUser(row as unknown as Record<string, unknown>)));
+  } catch (error) {
+    console.error("[admin] 数据库操作失败:", error);
+    return fail("databaseError");
+  }
+}
+
+
+/** 用户分页列表（服务端分页，避免大表全量拉取） */
+export async function listAdminUsersPage(
+  page = 1,
+  pageSize = 20,
+): Promise<ActionResult<{ users: AdminUser[]; total: number }>> {
+  const auth = await safelyRequireRole("admin");
+  if (!auth.success) {
+    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+  }
+
+  try {
+    const { users, total } = await fetchAdminUsersPage(page, pageSize);
+    return ok({ users, total });
   } catch (error) {
     console.error("[admin] 数据库操作失败:", error);
     return fail("databaseError");
