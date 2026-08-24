@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Users, Plus } from "lucide-react";
 import { RemoveMemberButton } from "@/components/dashboard/remove-member-button";
+import { MemberRoleSelect } from "@/components/dashboard/member-role-select";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
@@ -186,9 +187,17 @@ export default async function TeamPage() {
                       })()}
                     </Badge>
                   </div>
-                  {canManage && member.role !== "owner" && member.profiles?.id !== user!.id && (
-                    <RemoveMemberButton memberId={member.id as string} />
-                  )}
+                  <div className="flex items-center gap-2">
+                    {canManage && member.role !== "owner" && member.profiles?.id !== user!.id && (
+                      <MemberRoleSelect
+                        memberId={member.id as string}
+                        currentRole={member.role as "admin" | "member"}
+                      />
+                    )}
+                    {canManage && member.role !== "owner" && member.profiles?.id !== user!.id && (
+                      <RemoveMemberButton memberId={member.id as string} />
+                    )}
+                  </div>
                 </div>
               ))
             )}

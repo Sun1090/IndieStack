@@ -265,3 +265,57 @@ export async function removeMember(memberId: string): Promise<ActionResult> {
   revalidatePath(ROUTES.dashboardTeam);
   return ok();
 }
+
+/**
+ * 更新成员角色（仅 owner/admin；不能修改 owner 角色）。
+ */
+export async function updateMemberRole(
+  memberId: string,
+  newRole: "admin" | "member",
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return fail("notAuthenticated");
+
+  const team = await getCurrentTeam();
+  if (!team) return fail("noTeam");
+
+  const { data: currentMembership } = (await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", team.id)
+    .eq("user_id", user.id)
+    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+
+  if (!currentMembership || !["owner", "admin"].includes(currentMembership.role)) {
+    return fail("onlyAdminsInvite");
+  }
+
+  // 目标成员必须是本团队的普通成员/admin（不允许动 owner）
+  const { data: target } = (await supabase
+    .from("team_members")
+    .select("role")
+    .eq("id", memberId)
+    .eq("team_id", team.id)
+    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+
+  if (!target) return fail("memberNotFound");
+  if (target.role === "owner") return fail("ownerCannotRemove");
+
+  const { error } = await supabase
+    .from("team_members")
+    .update({ role: newRole })
+    .eq("id", memberId)
+    .eq("team_id", team.id);
+
+  if (error) {
+    console.error("[updateMemberRole] 失败:", error);
+    return fail("databaseError");
+  }
+
+  revalidatePath(ROUTES.dashboardTeam);
+  return ok();
+}
