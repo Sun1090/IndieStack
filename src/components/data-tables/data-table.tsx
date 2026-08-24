@@ -56,6 +56,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 // =========================================================================
@@ -161,6 +162,7 @@ export function DataTable<TData extends Record<string, unknown>>({
   className,
   toolbarActions,
 }: DataTableProps<TData>) {
+  const t = useTranslations("common.dataTable");
   // 状态
   const [sorting, setSorting] = React.useState<{ id: string; desc: boolean }[]>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<Record<string, boolean>>({});
@@ -199,7 +201,7 @@ export function DataTable<TData extends Record<string, unknown>>({
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={searchPlaceholder ?? "搜索..."}
+                placeholder={searchPlaceholder ?? t("searchPlaceholder")}
                 value={globalFilter}
                 onChange={(e) => {
                   setGlobalFilter(e.target.value);
@@ -249,7 +251,19 @@ export function DataTable<TData extends Record<string, unknown>>({
                   <TableHead key={header.id}>
                     {header.isPlaceholder
                       ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
+                      : header.column.getCanSort() &&
+                          typeof header.column.columnDef.header === "string"
+                        ? (() => {
+                            const sorted = header.column.getIsSorted();
+                            return (
+                              <SortableHeader
+                                label={header.column.columnDef.header as string}
+                                sortDirection={sorted === false ? false : sorted}
+                                onToggle={() => header.column.toggleSorting(sorted === "asc")}
+                              />
+                            );
+                          })()
+                        : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
               </TableRow>
@@ -261,7 +275,7 @@ export function DataTable<TData extends Record<string, unknown>>({
                 <TableCell colSpan={columns.length} className="h-32 text-center">
                   <div className="flex items-center justify-center gap-2 text-muted-foreground">
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>加载中...</span>
+                    <span>{t("loading")}</span>
                   </div>
                 </TableCell>
               </TableRow>
@@ -285,7 +299,7 @@ export function DataTable<TData extends Record<string, unknown>>({
                 <TableCell colSpan={columns.length} className="h-32 text-center">
                   <div className="flex flex-col items-center justify-center gap-1 text-muted-foreground">
                     <EyeOff className="h-8 w-8 opacity-40" />
-                    <p className="text-sm">{emptyText ?? "暂无数据"}</p>
+                    <p className="text-sm">{emptyText ?? t("empty")}</p>
                   </div>
                 </TableCell>
               </TableRow>
@@ -299,10 +313,10 @@ export function DataTable<TData extends Record<string, unknown>>({
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>
-              共 {filteredRows} 条，当前 {startRow}-{endRow}
+              {t("paginationInfo", { total: filteredRows, start: startRow, end: endRow })}
             </span>
             <span className="text-muted-foreground/50">|</span>
-            <span>每页</span>
+            
             <Select
               value={String(currentPageSize)}
               onValueChange={(value) => {
@@ -320,7 +334,7 @@ export function DataTable<TData extends Record<string, unknown>>({
                 ))}
               </SelectContent>
             </Select>
-            <span>条</span>
+            
           </div>
 
           <div className="flex items-center gap-1">
@@ -328,13 +342,13 @@ export function DataTable<TData extends Record<string, unknown>>({
               onClick={() => table.setPageIndex(0)}
               disabled={!table.getCanPreviousPage()}
               icon={<ChevronsLeft className="h-4 w-4" />}
-              label="首页"
+              label={t("firstPage")}
             />
             <PaginationButton
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
               icon={<ChevronLeft className="h-4 w-4" />}
-              label="上一页"
+              label={t("prevPage")}
             />
             <div className="flex items-center gap-1 px-2">
               {Array.from({ length: Math.min(pageCount, 7) }, (_, i) => {
@@ -365,13 +379,13 @@ export function DataTable<TData extends Record<string, unknown>>({
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
               icon={<ChevronRight className="h-4 w-4" />}
-              label="下一页"
+              label={t("nextPage")}
             />
             <PaginationButton
               onClick={() => table.setPageIndex(pageCount - 1)}
               disabled={!table.getCanNextPage()}
               icon={<ChevronsRight className="h-4 w-4" />}
-              label="末页"
+              label={t("lastPage")}
             />
           </div>
         </div>

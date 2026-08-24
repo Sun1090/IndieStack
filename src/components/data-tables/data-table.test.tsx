@@ -9,6 +9,16 @@ import { DataTable } from "./data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { DataTableFeatures } from "./features";
 
+vi.mock("next-intl", () => ({
+  useTranslations: (ns: string) => {
+    if (ns === "common.dataTable") {
+      return (key: string, vars?: Record<string, unknown>) =>
+        vars ? `${key}:${vars.total}` : key;
+    }
+    return (key: string) => key;
+  },
+}));
+
 type Row = { id: number; name: string; role: string };
 
 const columns: ColumnDef<DataTableFeatures, Row>[] = [
@@ -33,7 +43,7 @@ describe("DataTable", () => {
   it("搜索过滤命中行", async () => {
     const user = userEvent.setup();
     render(<DataTable columns={columns} data={data} searchKey="name" />);
-    await user.type(screen.getByPlaceholderText("搜索..."), "user-1");
+    await user.type(screen.getByPlaceholderText("searchPlaceholder"), "user-1");
     expect(screen.getByText("user-1")).toBeInTheDocument();
     expect(screen.queryByText("user-0")).not.toBeInTheDocument();
   });
@@ -45,7 +55,7 @@ describe("DataTable", () => {
 
   it("loading 状态显示加载中", () => {
     render(<DataTable columns={columns} data={[]} loading />);
-    expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(screen.getByText("loading")).toBeInTheDocument();
   });
 
   it("行点击触发回调", async () => {
@@ -64,9 +74,9 @@ describe("DataTable", () => {
     // 第一页不含第 11 条
     expect(screen.queryByText("user-11")).not.toBeInTheDocument();
     // 分页信息可见
-    expect(screen.getByText(/共 12 条/)).toBeInTheDocument();
+    expect(screen.getByText(/paginationInfo:12/)).toBeInTheDocument();
     // 点下一页后出现
-    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await user.click(screen.getByRole("button", { name: "nextPage" }));
     expect(screen.getByText("user-11")).toBeInTheDocument();
     expect(screen.queryByText("user-0")).not.toBeInTheDocument();
   });
