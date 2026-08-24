@@ -1,6 +1,6 @@
 /**
  * 通用数据表格组件
- * 基于 @tanstack/react-table，支持排序、筛选、分页、行选择、自适应
+ * 基于 @tanstack/react-table v9 原生 API（显式 features 声明），支持全局搜索、排序、分页、行点击
  *
  * 使用方式：
  *   import { DataTable } from "@/components/data-tables"
@@ -18,15 +18,8 @@
 "use client";
 
 import * as React from "react";
-import { flexRender } from "@tanstack/react-table";
-import {
-  type LegacyColumnDef,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useLegacyTable,
-} from "@tanstack/react-table/legacy";
+import { flexRender, useTable, type ColumnDef } from "@tanstack/react-table";
+import { dataTableFeatures } from "./features";
 import {
   ArrowUpDown,
   ChevronLeft,
@@ -71,7 +64,7 @@ import { cn } from "@/lib/utils";
 
 export interface DataTableProps<TData extends Record<string, unknown>> {
   /** 列定义（使用 @tanstack/react-table 的 ColumnDef） */
-  columns: LegacyColumnDef<TData>[];
+  columns: ColumnDef<typeof dataTableFeatures, TData>[];
   /** 表格数据 */
   data: TData[];
   /** 可选：启用搜索，指定要搜索的字段 key */
@@ -170,28 +163,20 @@ export function DataTable<TData extends Record<string, unknown>>({
 }: DataTableProps<TData>) {
   // 状态
   const [sorting, setSorting] = React.useState<{ id: string; desc: boolean }[]>([]);
-  const [columnFilters, setColumnFilters] = React.useState<{ id: string; value: unknown }[]>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<Record<string, boolean>>({});
   const [globalFilter, setGlobalFilter] = React.useState("");
 
-  // 表格实例
-  const table = useLegacyTable({
+  // 表格实例（v9：features/行模型经 dataTableFeatures 注册；受控 state 与 v8 写法一致）
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
     state: {
       sorting,
-      columnFilters,
-      columnVisibility,
       globalFilter,
     },
     onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     initialState: {
       pagination: { pageIndex: 0, pageSize },
     },
@@ -200,7 +185,7 @@ export function DataTable<TData extends Record<string, unknown>>({
   // 计算统计信息
   const totalRows = data.length;
   const filteredRows = table.getFilteredRowModel().rows.length;
-  const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
+  const { pageIndex, pageSize: currentPageSize } = table.state.pagination;
   const pageCount = table.getPageCount();
   const startRow = pageIndex * currentPageSize + 1;
   const endRow = Math.min((pageIndex + 1) * currentPageSize, filteredRows);
@@ -284,7 +269,7 @@ export function DataTable<TData extends Record<string, unknown>>({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
+
                   className={cn(onRowClick && "cursor-pointer hover:bg-muted/50")}
                   onClick={() => onRowClick?.(row.original)}
                 >

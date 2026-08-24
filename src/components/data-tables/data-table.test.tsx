@@ -6,11 +6,12 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DataTable } from "./data-table";
-import type { LegacyColumnDef } from "@tanstack/react-table/legacy";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { DataTableFeatures } from "./features";
 
 type Row = { id: number; name: string; role: string };
 
-const columns: LegacyColumnDef<Row>[] = [
+const columns: ColumnDef<DataTableFeatures, Row>[] = [
   { accessorKey: "name", header: "Name" },
   { accessorKey: "role", header: "Role" },
 ];
