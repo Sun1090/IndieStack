@@ -103,5 +103,15 @@
   "pro": "Pro",
   "enterprise": "Enterprise",
   "toggleTheme": "Toggle theme",
-  "offline": "You are offline — changes may not be saved"
+  "offline": "You are offline — changes may not be saved",
+  "dataTable": {
+    "searchPlaceholder": "Search...",
+    "empty": "No data",
+    "loading": "Loading...",
+    "paginationInfo": "Total {total} rows, showing {start}-{end}",
+    "firstPage": "First page",
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
+    "lastPage": "Last page"
+  }
 }

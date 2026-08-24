@@ -103,5 +103,15 @@
   "pro": "专业版",
   "enterprise": "企业版",
   "toggleTheme": "切换主题",
-  "offline": "网络已断开——更改可能无法保存"
+  "offline": "网络已断开——更改可能无法保存",
+  "dataTable": {
+    "searchPlaceholder": "搜索...",
+    "empty": "暂无数据",
+    "loading": "加载中...",
+    "paginationInfo": "共 {total} 条，当前 {start}-{end}",
+    "firstPage": "首页",
+    "prevPage": "上一页",
+    "nextPage": "下一页",
+    "lastPage": "末页"
+  }
 }
