@@ -18,6 +18,7 @@
     "sentry:sourcemaps": "sentry-cli sourcemaps inject --org $SENTRY_ORG --project $SENTRY_PROJECT .next && sentry-cli sourcemaps upload --org $SENTRY_ORG --project $SENTRY_PROJECT .next",
     "check": "pnpm type-check && pnpm lint && node scripts/check-locales.js",
     "verify": "pnpm check && pnpm test && pnpm check:bundle",
+    "verify:build": "pnpm verify && pnpm build",
     "check:locales": "node scripts/check-locales.js",
     "check:agents": "node scripts/check-agents-index.js",
     "check:rls": "node scripts/check-rls.js",

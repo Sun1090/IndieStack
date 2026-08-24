@@ -27,7 +27,8 @@ type 可选值：
 
 ### 提交前检查清单
 
-- [ ] `pnpm check`（type-check + lint）通过
+- [ ] `pnpm check`（type-check + lint + i18n 对称性）通过
+- [ ] `pnpm build` 通过 ← **必须**；i18n 缺键等仅在此暴露
 - [ ] `pnpm test` 全绿
 - [ ] 涉及页面/配置的改动跑过 `pnpm build`
 - [ ] 不包含密钥、`.env.local` 等敏感文件

@@ -33,6 +33,23 @@
 | 设计 UI 或组件 | [09 UI/UX 设计](./agents/09-ui-ux.md) |
 | 提交、发布或验证部署 | [10 提交与发布](./agents/10-release-manager.md) |
 
+## ⛔ 推送前强制规则（所有 Agent 与人类共同遵守）
+
+> 2026-08-23 教训：跳过本地 build 直接 push，导致 Vercel 生产构建失败
+> （next-intl MISSING_MESSAGE 仅在静态生成时暴露，type-check/lint 无法捕获）。
+
+**每次 `git push` 前必须依次通过：**
+
+```bash
+pnpm lint        # ESLint（复杂度/a11y 规则）
+pnpm type-check  # TypeScript
+pnpm test        # 全量测试
+pnpm build       # 生产构建 ← 关键！i18n 缺键/SSG 错误只在这里暴露
+```
+
+或一键：`pnpm verify:build`。pre-push 钩子会自动执行 test + build。
+违反此规则的 push 视为事故。
+
 ## Agent 协作流程
 
 ```
