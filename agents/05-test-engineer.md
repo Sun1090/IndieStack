@@ -15,15 +15,20 @@
 
 ### 当前测试覆盖（Vitest）
 
-| 文件 | 类型 | 测试数 |
-|------|------|--------|
-| `src/lib/i18n/config.test.ts` | Unit | 7 |
-| `src/lib/rate-limit.test.ts` | Unit | - |
-| `src/lib/utils.test.ts` | Unit | - |
-| `src/lib/validations/auth.test.ts` | Unit | - |
-| `src/lib/validations/profile.test.ts` | Unit | - |
-| `src/lib/validations/settings.test.ts` | Unit | - |
-| `src/lib/validations/team.test.ts` | Unit | - |
+> 数据截至 2026-08-23。完整清单以 `pnpm test` 输出为准。
+
+| 层级 | 规模 |
+|------|------|
+| 单元 + 组件测试（Vitest 双项目） | 35 个文件 / **349 用例** |
+| E2E 冒烟（Playwright） | `e2e/smoke.spec.ts` / **22 用例** |
+| 覆盖率门禁 | 核心逻辑 statements/functions/lines ≥90%，branches ≥78% |
+
+关键测试资产：
+- Server Actions：`src/lib/actions/*.test.ts`（ActionResult 形状断言）
+- 路由处理器：`src/app/api/**/route.test.ts`
+- 组件：`src/components/**/*.test.tsx`（jsdom 项目）
+- 守卫/中间件：`guards.test.ts`、`proxy.test.ts`
+- E2E：`e2e/smoke.spec.ts`（营销页/认证流/dashboard/安全头/a11y）
 
 ### 测试编写规范
 
