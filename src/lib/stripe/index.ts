@@ -127,40 +127,40 @@ async function createPortalSession(customerId: string, returnUrl?: string): Prom
   return session.url;
 }
 
+/** 从 Stripe 订阅对象提取公共字段（降低主函数圈复杂度） */
+function toSubscriptionInfo(subscription: any): SubscriptionInfo {
+  const item = subscription?.items?.data?.[0];
+  const plan = item?.price;
+  const status = (subscription?.status ?? "incomplete") as SubscriptionStatus;
+
+  const info: SubscriptionInfo = {
+    id: subscription?.id ?? "",
+    status,
+    currentPeriodStart: subscription?.current_period_start ?? 0,
+    currentPeriodEnd: subscription?.current_period_end ?? 0,
+    isTrialing: status === "trialing",
+    isCanceled: Boolean(subscription?.cancel_at_period_end) || status === "canceled",
+    planName: "Unknown",
+    planAmount: 0,
+    planCurrency: "usd",
+    planInterval: "month",
+  };
+
+  if (!plan) return info;
+
+  info.planName =
+    plan.nickname ?? (typeof plan.product === "string" ? plan.product : plan.product?.toString()) ?? "Unknown";
+  info.planAmount = plan.unit_amount ?? 0;
+  info.planCurrency = plan.currency ?? "usd";
+  info.planInterval = plan.recurring?.interval === "year" ? "year" : "month";
+  return info;
+}
+
 /** 获取订阅信息 */
 async function getSubscription(subscriptionId: string): Promise<SubscriptionInfo> {
   const stripe = await getStripeServer();
-  const subscription = (await stripe.subscriptions.retrieve(subscriptionId)) as any;
-  if (!subscription || !subscription.items?.data?.[0]?.price) {
-    return {
-      id: subscription?.id ?? "",
-      status: (subscription?.status ?? "incomplete") as SubscriptionStatus,
-      currentPeriodStart: subscription?.current_period_start ?? 0,
-      currentPeriodEnd: subscription?.current_period_end ?? 0,
-      isTrialing: subscription?.status === "trialing",
-      isCanceled: subscription?.cancel_at_period_end || subscription?.status === "canceled",
-      planName: "Unknown",
-      planAmount: 0,
-      planCurrency: "usd",
-      planInterval: "month",
-    };
-  }
-  const plan = subscription.items.data[0].price;
-  return {
-    id: subscription.id,
-    status: subscription.status as SubscriptionStatus,
-    currentPeriodStart: subscription.current_period_start,
-    currentPeriodEnd: subscription.current_period_end,
-    isTrialing: subscription.status === "trialing",
-    isCanceled: subscription.cancel_at_period_end || subscription.status === "canceled",
-    planName:
-      plan.nickname ??
-      (typeof plan.product === "string" ? plan.product : plan.product?.toString()) ??
-      "Unknown",
-    planAmount: plan.unit_amount ?? 0,
-    planCurrency: plan.currency ?? "usd",
-    planInterval: plan.recurring?.interval === "year" ? "year" : "month",
-  };
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  return toSubscriptionInfo(subscription);
 }
 
 /** 取消订阅（周期结束时停止续费） */
