@@ -13,10 +13,13 @@ export function NavigationProgress() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // pathname 变化即视为一次导航完成
-    setLoading(true);
-    const hide = setTimeout(() => setLoading(false), 250);
-    return () => clearTimeout(hide);
+    // pathname 变化：微任务延迟置位避免同步 setState 级联
+    const show = setTimeout(() => setLoading(true), 0);
+    const hide = setTimeout(() => setLoading(false), 300);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
   }, [pathname]);
 
   if (!loading) return null;
