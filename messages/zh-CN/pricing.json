@@ -53,6 +53,17 @@
     "storage1Gb": "1 GB 存储",
     "unlimitedProjects": "无限项目",
     "prioritySupport": "优先支持",
-    "storage10Gb": "10 GB 存储"
+    "storage10Gb": "10 GB 存储",
+    "advancedAnalytics": "高级数据分析",
+    "storage50Gb": "50 GB 存储",
+    "teamUpTo5": "最多 5 名成员",
+    "apiAccess": "API 访问",
+    "everythingInPro": "包含 Pro 全部功能",
+    "unlimitedTeamMembers": "无限成员",
+    "dedicatedSupport": "专属支持",
+    "storage500Gb": "500 GB 存储",
+    "customIntegrations": "自定义集成",
+    "slaGuarantee": "SLA 保障",
+    "ssoSaml": "SSO / SAML 单点登录"
   }
 }

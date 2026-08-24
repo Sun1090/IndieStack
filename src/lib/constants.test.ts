@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { ROUTES } from "./constants";
+import { ROUTES, SUBSCRIPTION_TIERS } from "./constants";
+import fs from "node:fs";
+import path from "node:path";
 
 
 describe("ROUTES 完整性", () => {
@@ -17,6 +19,24 @@ describe("ROUTES 完整性", () => {
     expect(dashRoutes.length).toBeGreaterThan(5);
     for (const [key, path] of dashRoutes) {
       if (key !== "dashboard") expect(path.startsWith("/dashboard"), key).toBe(true);
+    }
+  });
+});
+
+describe("SUBSCRIPTION_TIERS 翻译完整性", () => {
+  const loadPricing = (locale: string) =>
+    JSON.parse(
+      fs.readFileSync(path.join(__dirname, "../../messages", locale, "pricing.json"), "utf8"),
+    );
+
+  it("每个 tier 的 feature 键在 en/zh 定价文案中均存在", () => {
+    const en = loadPricing("en");
+    const zh = loadPricing("zh-CN");
+    for (const tier of Object.values(SUBSCRIPTION_TIERS)) {
+      for (const featureKey of (tier as { features: readonly string[] }).features) {
+        expect(en.features?.[featureKey], `en: ${featureKey}`).toBeTruthy();
+        expect(zh.features?.[featureKey], `zh-CN: ${featureKey}`).toBeTruthy();
+      }
     }
   });
 });
