@@ -82,3 +82,46 @@ export async function createProject(
   revalidatePath(ROUTES.dashboardProjects);
   return ok({ project });
 }
+
+/**
+ * 删除项目（仅 owner/admin）。
+ * 数据库无 ON DELETE 级联到 api_usage 的外键时相关记录保留，属预期。
+ */
+export async function deleteProject(projectId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return fail("notAuthenticated");
+
+  // 权限校验：当前用户须为项目所属团队的 owner/admin
+  const { data: project } = (await supabase
+    .from("projects")
+    .select("team_id")
+    .eq("id", projectId)
+    .maybeSingle()) as unknown as { data: { team_id: string } | null };
+
+  if (!project) return fail("projectNotFound");
+
+  const { data: membership } = (await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", project.team_id)
+    .eq("user_id", user.id)
+    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    return fail("onlyAdminsCreateProject");
+  }
+
+  const { error } = await supabase.from("projects").delete().eq("id", projectId);
+
+  if (error) {
+    console.error("[deleteProject] 删除项目失败:", error);
+    return fail("databaseError");
+  }
+
+  revalidatePath(ROUTES.dashboardProjects);
+  return ok();
+}

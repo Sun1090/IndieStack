@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/shared/query-error-state";
 import { Search, RefreshCw, Filter, Download } from "lucide-react";
 import {
   Select,
@@ -33,7 +34,7 @@ export function AdminAuditLogsPage() {
   const [actionFilter, setActionFilter] = useState("all");
 
   // TanStack Query：refetch 手动刷新按钮复用 refetch
-  const { data: logs = [], isLoading: loading, refetch } = useQuery({
+  const { data: logs = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: ["audit-logs"],
     queryFn: async (): Promise<AuditLogRecord[]> => {
       const result = await listAuditLogs();
@@ -171,6 +172,8 @@ export function AdminAuditLogsPage() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
+          ) : isError ? (
+            <QueryErrorState onRetry={() => void refetch()} />
           ) : filteredLogs.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">{t("auditLogs.noLogs")}</div>
           ) : (

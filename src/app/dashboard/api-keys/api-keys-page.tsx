@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/shared/query-error-state";
 import {
   Dialog,
   DialogContent,
@@ -50,7 +51,7 @@ export function ApiKeysPage() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
   // 列表查询：缓存 + 内置加载态
-  const { data: keys = [], isLoading: loading } = useQuery({
+  const { data: keys = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: ["api-keys"],
     queryFn: async (): Promise<ApiKeyRecord[]> => {
       const result = await listApiKeys();
@@ -233,6 +234,8 @@ export function ApiKeysPage() {
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
+          ) : isError ? (
+            <QueryErrorState onRetry={() => void refetch()} />
           ) : keys.length === 0 ? (
             <EmptyState
               icon={Key}
