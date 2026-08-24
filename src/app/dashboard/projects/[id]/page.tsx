@@ -198,6 +198,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             projectId={row.id}
             name={row.name}
             description={row.description ?? ""}
+            config={{
+              branch: branch ?? undefined,
+              domain: domain ?? undefined,
+              framework,
+              region: region === "—" ? "" : region,
+            }}
           />
           <div className="border-t pt-4" />
           <div className="grid gap-4 sm:grid-cols-2">

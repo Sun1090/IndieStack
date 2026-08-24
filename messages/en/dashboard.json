@@ -312,7 +312,11 @@
         "lastUpdated": "Last Updated"
       },
       "nameLabel": "Project name",
-      "descLabel": "Description"
+      "descLabel": "Description",
+      "branchLabel": "Git branch",
+      "domainLabel": "Domain",
+      "frameworkLabel": "Framework",
+      "regionLabel": "Region"
     },
     "deleteDelete": "Delete",
     "deleteConfirmTitle": "Delete project?",

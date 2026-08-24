@@ -312,7 +312,11 @@
         "lastUpdated": "最后更新"
       },
       "nameLabel": "项目名称",
-      "descLabel": "描述"
+      "descLabel": "描述",
+      "branchLabel": "Git 分支",
+      "domainLabel": "域名",
+      "frameworkLabel": "框架",
+      "regionLabel": "区域"
     },
     "deleteDelete": "删除",
     "deleteConfirmTitle": "确认删除项目？",
