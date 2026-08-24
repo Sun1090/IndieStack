@@ -48,6 +48,7 @@ src/app/
 - 路由常量在 `src/lib/constants.ts`——始终使用 `ROUTES.*` 进行导航
 - 默认使用 Server Components，仅在需要时使用 Client Components
 - shadcn/ui 组件在 `src/components/ui/` —— 通用无应用逻辑
+- **数据访问层**：表查询经 `src/lib/repositories/<table>.ts` 收口（profiles/api-keys/notifications/audit-logs/webhook-events），新查询必须进 repository，禁止在组件/action 里直接 `.from()`（渐进迁移中）
 - **数据通道约定**：写操作（增删改）一律走 Server Actions（`src/lib/actions/`）；
   API Routes 仅用于外部服务回调（Stripe webhook、OAuth callback）、健康检查和
   确需 HTTP 端点的场景。禁止为同一业务同时维护 Action 与 API Route 两套实现。

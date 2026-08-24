@@ -132,3 +132,21 @@ describe("date-fns 再导出", () => {
     expect(isThisWeek(new Date())).toBe(true);
   });
 });
+
+describe("formatDateRange() 边界", () => {
+  it("闰年 2 月 29 日", () => {
+    expect(formatDateRange(new Date(2028, 1, 28), new Date(2028, 1, 29))).toBe(
+      "2028-02-28 ~ 2028-02-29",
+    );
+  });
+
+  it("跨月", () => {
+    expect(formatDateRange(new Date(2026, 0, 30), new Date(2026, 1, 2))).toBe(
+      "2026-01-30 ~ 2026-02-02",
+    );
+  });
+
+  it("同年同月同日为单日", () => {
+    expect(formatDateRange(new Date(2026, 5, 15), new Date(2026, 5, 15))).toBe("2026-06-15");
+  });
+});

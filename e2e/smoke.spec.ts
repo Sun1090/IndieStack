@@ -136,3 +136,35 @@ test.describe("Admin 扩展（Mock 模式）", () => {
     expect(response?.status()).toBe(200);
   });
 });
+
+test.describe("a11y", () => {
+  test("skip-to-content 链接存在且指向主内容锚点", async ({ page }) => {
+    await page.goto("/");
+    const skip = page.locator('a[href="#main-content"]');
+    await expect(skip).toBeAttached();
+    // 键盘聚焦后可见
+    await skip.focus();
+    await expect(skip).toBeVisible();
+  });
+
+  test("html lang 属性为 en（默认语言）", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  });
+});
+
+test.describe("安全头细节", () => {
+  test("CSP 含 nonce 机制与 strict-dynamic（脚本不再依赖全局 unsafe-inline）", async ({ request }) => {
+    const response = await request.get("/");
+    const csp = response.headers()["content-security-policy"] ?? "";
+    expect(csp).toContain("strict-dynamic");
+    expect(csp).toMatch(/nonce-/);
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("object-src 'none'");
+  });
+
+  test("响应携带 x-request-id 用于链路追踪", async ({ request }) => {
+    const response = await request.get("/api/health");
+    expect(response.headers()["x-request-id"]).toBeTruthy();
+  });
+});

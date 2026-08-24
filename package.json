@@ -25,6 +25,7 @@
     "dep:health": "node scripts/dep-health.js",
     "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
     "verify:all": "bash scripts/check-all.sh",
+    "check:perf": "node scripts/check-perf.js",
     "db:status": "supabase status",
     "preview": "next start -p 4173",
     "test": "vitest run",
