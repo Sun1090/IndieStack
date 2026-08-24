@@ -12,7 +12,10 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { NotificationSettingsForm } from "@/components/forms/notification-settings-form";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { MarkAllReadButton } from "@/components/dashboard/mark-all-read-button";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
@@ -25,7 +28,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("notifications.metaTitle"), description: t("notifications.metaDesc") };
 }
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -41,6 +48,11 @@ export default async function NotificationsPage() {
   const notifications = await listRecentNotifications(user!.id, 10);
 
   const locale = await getLocale();
+  const { filter } = await searchParams;
+  const showUnreadOnly = filter === "unread";
+  const visibleNotifications = (notifications ?? []).filter(
+    (n) => !showUnreadOnly || !n.is_read,
+  );
 
   const badgeVariant = (type: string) => {
     if (type === "success") return "success" as const;
@@ -71,19 +83,36 @@ export default async function NotificationsPage() {
             <CardTitle>{t("notifications.list.title")}</CardTitle>
             <CardDescription>{t("notifications.list.desc")}</CardDescription>
           </div>
-          <MarkAllReadButton
-            unreadCount={(notifications ?? []).filter((n) => !n.is_read).length}
-          />
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/notifications"
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm",
+                !showUnreadOnly ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent",
+              )}
+            >
+              {t("notifications.list.tabAll")}
+            </Link>
+            <Link
+              href="/dashboard/notifications?filter=unread"
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm",
+                showUnreadOnly ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent",
+              )}
+            >
+              {t("notifications.list.tabUnread")}
+            </Link>
+            <MarkAllReadButton
+              unreadCount={(notifications ?? []).filter((n) => !n.is_read).length}
+            />
+          </div>
         </CardHeader>
         <CardContent>
-          {!notifications || notifications.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <Bell className="h-12 w-12 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">{t("notifications.list.empty")}</p>
-            </div>
+          {visibleNotifications.length === 0 ? (
+            <EmptyState icon={Bell} title={t("notifications.list.empty")} />
           ) : (
             <div className="space-y-4">
-              {notifications.map((notification) => (
+              {visibleNotifications.map((notification) => (
                 <div
                   key={notification.id}
                   className="flex items-start justify-between gap-4 border-b pb-4 last:border-0 last:pb-0"
