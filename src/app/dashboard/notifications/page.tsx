@@ -15,6 +15,7 @@ import { NotificationSettingsForm } from "@/components/forms/notification-settin
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { MarkAllReadButton } from "@/components/dashboard/mark-all-read-button";
+import { MarkReadAction } from "@/components/dashboard/mark-read-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
@@ -124,7 +125,7 @@ export default async function NotificationsPage({
                         {notification.type}
                       </Badge>
                       {!notification.is_read && (
-                        <span className="h-2 w-2 rounded-full bg-primary" />
+                        <MarkReadAction notificationId={String(notification.id)} />
                       )}
                     </div>
                     {notification.body && (

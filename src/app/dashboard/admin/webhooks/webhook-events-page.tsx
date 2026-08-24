@@ -98,9 +98,16 @@ export function WebhookEventsPage() {
                         {event.event_type}
                       </span>
                     </div>
-                    <code className="block truncate text-xs text-muted-foreground">
-                      {event.event_id}
-                    </code>
+<details className="min-w-0">
+                      <summary className="cursor-pointer truncate font-mono text-xs text-muted-foreground">
+                        {event.event_id}
+                      </summary>
+                      {event.payload && Object.keys(event.payload).length > 0 && (
+                        <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 text-[10px]">
+                          {JSON.stringify(event.payload, null, 2)}
+                        </pre>
+                      )}
+                    </details>
                     {event.error_message && (
                       <p className="text-xs text-destructive">{event.error_message}</p>
                     )}

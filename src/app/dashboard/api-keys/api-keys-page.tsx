@@ -32,9 +32,15 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Key, Plus, Copy, Trash2, Check } from "lucide-react";
+import { Key, Plus, Copy, Trash2, Check, RefreshCcw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyRecord } from "@/lib/actions/api-keys";
+import {
+  createApiKey,
+  listApiKeys,
+  revokeApiKey,
+  regenerateApiKey,
+  type ApiKeyRecord,
+} from "@/lib/actions/api-keys";
 import { useTranslations, useLocale } from "next-intl";
 import { formatDate } from "@/lib/date";
 
@@ -84,6 +90,23 @@ export function ApiKeysPage() {
     },
     onSettled: () => {
       if (!createdKeyValue) setShowCreateDialog(false);
+    },
+  });
+
+  /** 重新生成：旧失效 + 新签发，弹窗展示新 key */
+  const regenerateMutation = useMutation({
+    mutationFn: async (keyId: string) => {
+      const result = await regenerateApiKey(keyId);
+      if (!result.ok) throw new Error(result.error);
+      return result.data!;
+    },
+    onSuccess: (data) => {
+      setCreatedKeyValue(data.key);
+      setShowCreateDialog(true);
+      void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    },
+    onError: (err) => {
+      toast({ title: t("apiKeys.revokeError"), description: ta(err.message), variant: "destructive" });
     },
   });
 
@@ -289,16 +312,27 @@ export function ApiKeysPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {key.is_active && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        disabled={revokingId === key.id}
-                        onClick={() => revokeKey(key.id)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        {revokingId === key.id ? t("apiKeys.revoking") : t("apiKeys.revoke")}
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={regenerateMutation.isPending}
+                          onClick={() => regenerateMutation.mutate(key.id)}
+                        >
+                          <RefreshCcw className="mr-2 h-4 w-4" />
+                          {t("apiKeys.regenerate")}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={revokingId === key.id}
+                          onClick={() => revokeKey(key.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {revokingId === key.id ? t("apiKeys.revoking") : t("apiKeys.revoke")}
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>

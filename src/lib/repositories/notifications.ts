@@ -33,3 +33,17 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
     .select("id");
   return data?.length ?? 0;
 }
+
+/** 标记单条通知已读（RLS 限定本人） */
+export async function markNotificationRead(
+  userId: string,
+  notificationId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("notifications")
+    .update({ is_read: true })
+    .eq("id", notificationId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
