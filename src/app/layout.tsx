@@ -52,8 +52,21 @@ export default async function RootLayout({
   const locale = await getLocale();
   const messages = await getMessages();
 
+  // 预连接 Supabase（Auth/REST 请求延迟优化）
+  const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL
+    ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
+    : null;
+
   return (
     <html lang={locale} suppressHydrationWarning>
+      <head>
+        {supabaseOrigin && (
+          <>
+            <link rel="preconnect" href={supabaseOrigin} />
+            <link rel="dns-prefetch" href={supabaseOrigin} />
+          </>
+        )}
+      </head>
       <body className="font-sans antialiased">
         {/* a11y：键盘用户跳过导航直达主内容 */}
         <a
