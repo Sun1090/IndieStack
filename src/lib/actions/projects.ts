@@ -131,7 +131,11 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
  */
 export async function updateProject(
   projectId: string,
-  input: { name?: string; description?: string },
+  input: {
+    name?: string;
+    description?: string;
+    config?: Record<string, unknown>;
+  },
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -166,6 +170,15 @@ export async function updateProject(
     patch.name = name;
   }
   if (input.description !== undefined) patch.description = input.description;
+  if (input.config !== undefined) {
+    // 合并写入 config（保留未提交的其他键）
+    const { data: current } = (await supabase
+      .from("projects")
+      .select("config")
+      .eq("id", projectId)
+      .maybeSingle()) as unknown as { data: { config: Record<string, unknown> } | null };
+    patch.config = { ...(current?.config ?? {}), ...input.config };
+  }
 
   const { error } = await supabase.from("projects").update(patch).eq("id", projectId);
 
