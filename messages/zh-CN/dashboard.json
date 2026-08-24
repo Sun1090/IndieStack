@@ -158,6 +158,7 @@
       "createTeam": "创建团队",
       "members": "成员",
       "noMembers": "暂无成员",
+      "changeRole": "切换角色",
       "removeMember": "移除成员",
       "removeConfirm": "确定要移除此成员吗？",
       "role": "角色",

@@ -158,6 +158,7 @@
       "createTeam": "Create Team",
       "members": "Members",
       "noMembers": "No members yet",
+      "changeRole": "Change role",
       "removeMember": "Remove Member",
       "removeConfirm": "Are you sure you want to remove this member?",
       "role": "Role",
