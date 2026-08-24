@@ -54,3 +54,14 @@ describe("toCsvString()", () => {
     expect(toCsvString([{ v: "abc=123" }])).toBe("v\nabc=123");
   });
 });
+
+describe("公式注入变体防御", () => {
+  it.each([
+    ["\t=1+1"],
+    ["\r=cmd"],
+    [" \t+5"],
+  ])("空白前缀变体 %j 仍被拦截", (payload) => {
+    const csv = toCsvString([{ v: payload }]);
+    expect(csv).toContain("'");
+  });
+});

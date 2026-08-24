@@ -49,11 +49,17 @@
 - 数据库查询使用类型断言处理 RLS 类型问题
 
 ### 6. 错误处理
+- Server Actions: 返回值统一 ActionResult 判别联合（`lib/types/action-result.ts`，用 ok()/fail() 构造）
 - Server Components: try/catch 包裹 Supabase 查询，提供回退 UI
-- Client Components: 错误边界，Server Action 错误通过 toast 提示
-- API Routes: try/catch 配合正确的 HTTP 状态码
+- Client Components: 错误边界，Server Action 失败分支 `if (!result.ok)` + toast 提示
+- API Routes: try/catch 配合正确的 HTTP 状态码；鉴权响应使用 `jsonNoStore()`
 - Sentry: 在 catch 块中调用 `Sentry.captureException()`
 - 表单: Zod 校验错误内联显示，Server Action 错误通过 toast
+
+### 7. 数据访问约定（2026-08 新增）
+- 表查询经 `src/lib/repositories/<table>.ts` 收口，禁止在组件/action 直接 `.from()`（新代码强制）
+- 客户端列表数据用 TanStack Query（useQuery/useMutation + invalidateQueries）
+- 写操作走 Server Actions；API Routes 仅限外部回调（见 ADR-001/008）
 
 ## 常用命令
 
