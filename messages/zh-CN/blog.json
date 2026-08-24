@@ -46,5 +46,9 @@
       "author": "IndieStack 团队",
       "content": "## Next.js 现代认证模式\n\n认证方式已经发生了显著演进。下面介绍我们如何在 SaaS 模板中组织认证。\n\n### 问题\n\n传统认证模式在 React 服务端组件中并不好用。你无法在服务端组件中使用 hooks，而 SSR 又需要在服务端获取用户会话。\n\n### 解决方案：SSR 认证\n\nSupabase 的 SSR 包优雅地解决了这个问题：\n\n1. **中间件**：在每个请求时检查会话并刷新 Cookie\n2. **服务端客户端**：服务端组件中的 `createClient()` 读取 Cookie\n3. **客户端客户端**：浏览器组件中的 `createClient()` 使用同一个 Cookie\n\n### 数据流\n\n```\n请求 → 中间件（刷新会话） → 服务端组件 → 客户端组件\n                              ↓\n                        存储 Cookie\n                              ↓\n                    客户端通过 createBrowserClient 读取 Cookie\n```\n\n### 受保护路由\n\n中间件检查受保护路由，并将未认证用户重定向到登录页。认证页面会将已认证用户重定向到仪表盘。\n\n### 为什么这很重要\n\n这套模式为我们带来：\n- 不会闪现未认证的内容\n- 对 SEO 友好\n- 服务端与客户端类型安全的认证\n- 最少的样板代码"
     }
-  ]
+  ],
+  "readingTime": "约 {minutes} 分钟阅读",
+  "share": "分享",
+  "prevPost": "上一篇",
+  "nextPost": "下一篇"
 }

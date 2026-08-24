@@ -3,8 +3,8 @@
   "metaDesc": "查看 IndieStack 的定价方案",
   "pageTitle": "简洁透明的定价",
   "pageDesc": "选择适合你的方案。所有方案均包含 14 天免费试用，无需信用卡。",
-  "monthly": "月付",
-  "yearly": "年付",
+  "monthly": "按月",
+  "yearly": "按年",
   "savePercentage": "节省 {percentage}%",
   "popular": "最受欢迎",
   "currentPlan": "当前方案",
@@ -40,5 +40,19 @@
     ]
   },
   "startTrial": "试用 {planName}",
-  "perMonth": "/月"
+  "perMonth": "/月",
+  "save20": "省 20%",
+  "perYear": "/年",
+  "youSave": "每年省 ${amount}",
+  "startFree": "免费开始",
+  "choosePro": "选择方案",
+  "features": {
+    "upTo3Projects": "最多 3 个项目",
+    "basicAnalytics": "基础数据分析",
+    "communitySupport": "社区支持",
+    "storage1Gb": "1 GB 存储",
+    "unlimitedProjects": "无限项目",
+    "prioritySupport": "优先支持",
+    "storage10Gb": "10 GB 存储"
+  }
 }

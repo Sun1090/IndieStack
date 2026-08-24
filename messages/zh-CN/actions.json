@@ -42,7 +42,7 @@
   "priceIdRequired": "缺少商品信息",
   "projectNameRequired": "项目名称不能为空",
   "projectSlugExists": "该团队中已存在同 slug 的项目",
-  "rateLimited": "请求过于频繁，请稍后再试",
+  "rateLimited": "请求过于频繁",
   "slugInvalid": "仅允许小写字母、数字和连字符",
   "slugMinLength": "Slug 至少需要 2 个字符",
   "stripeNotConfigured": "支付服务尚未配置",
@@ -52,5 +52,9 @@
   "userNotFound": "未找到该用户，请先注册",
   "userNotFoundAdmin": "未找到该用户",
   "passwordChangeUnavailable": "当前账户未绑定邮箱，无法验证当前密码，请使用找回密码功能",
-  "loadedAt": "加载于"
+  "loadedAt": "加载于",
+  "nameRequired": "请填写姓名",
+  "emailInvalid": "邮箱格式不正确",
+  "subjectRequired": "请填写主题",
+  "messageRequired": "请填写内容"
 }

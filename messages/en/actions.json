@@ -42,7 +42,7 @@
   "priceIdRequired": "Missing product information",
   "projectNameRequired": "Project name is required",
   "projectSlugExists": "A project with this slug already exists in your team",
-  "rateLimited": "Too many requests. Please try again later.",
+  "rateLimited": "Too many requests",
   "slugInvalid": "Only lowercase letters, numbers, and hyphens",
   "slugMinLength": "Slug must be at least 2 characters",
   "stripeNotConfigured": "Payment service is not configured",
@@ -52,5 +52,9 @@
   "userNotFound": "User not found. They need to register first.",
   "userNotFoundAdmin": "User not found",
   "passwordChangeUnavailable": "This account has no email, so we can't verify your current password. Use the password reset flow instead.",
-  "loadedAt": "Loaded at"
+  "loadedAt": "Loaded at",
+  "nameRequired": "Name is required",
+  "emailInvalid": "Invalid email",
+  "subjectRequired": "Subject is required",
+  "messageRequired": "Message is required"
 }
