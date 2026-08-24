@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { ShortcutsDialog } from "@/components/layout/shortcuts-dialog";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { ROUTES, SITE_CONFIG } from "@/lib/constants";
 import { useTranslations } from "next-intl";
@@ -92,6 +93,7 @@ export function SiteHeader() {
 
         {/* 右侧操作区 */}
         <div className="flex items-center gap-3">
+          <ShortcutsDialog />
           <LocaleSwitcher />
           <ThemeToggle />
 

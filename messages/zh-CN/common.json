@@ -119,5 +119,12 @@
     "fair": "一般",
     "good": "良好",
     "strong": "强"
+  },
+  "shortcuts": {
+    "title": "键盘快捷键",
+    "desc": "加速你的操作",
+    "commandPalette": "打开命令面板",
+    "shortcutsHelp": "显示快捷键",
+    "closeDialog": "关闭对话框"
   }
 }
