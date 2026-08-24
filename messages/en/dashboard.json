@@ -84,7 +84,9 @@
         "admin": "Admin",
         "member": "Member",
         "viewer": "Viewer"
-      }
+      },
+      "name": "Name",
+      "bio": "Bio"
     },
     "edit": {
       "metaTitle": "Edit Profile",
@@ -103,7 +105,8 @@
       "uploadAvatar": "Upload Avatar",
       "submit": "Save Changes",
       "success": "Profile updated!"
-    }
+    },
+    "completeness": "Profile completeness"
   },
   "settings": {
     "metaTitle": "Settings",

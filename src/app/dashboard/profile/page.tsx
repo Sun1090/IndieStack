@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
 import { PageHeader } from "@/components/shared/page-header";
+import { ProfileCompletenessCard } from "@/components/dashboard/profile-completeness-card";
 import { formatDate } from "@/lib/date";
 
 export async function generateMetadata(): Promise<Metadata> {

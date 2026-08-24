@@ -113,5 +113,11 @@
     "prevPage": "Previous page",
     "nextPage": "Next page",
     "lastPage": "Last page"
+  },
+  "strength": {
+    "weak": "Weak",
+    "fair": "Fair",
+    "good": "Good",
+    "strong": "Strong"
   }
 }
