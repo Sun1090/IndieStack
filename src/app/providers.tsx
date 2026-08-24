@@ -11,6 +11,8 @@ import { useState } from "react";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
+import { OfflineBanner } from "@/components/layout/offline-banner";
+import { NavigationProgress } from "@/components/layout/navigation-progress";
 import type { Locale } from "@/i18n/routing";
 
 export function Providers({
@@ -41,6 +43,8 @@ export function Providers({
       <QueryClientProvider client={queryClient}>
         <ThemeProvider defaultTheme="system" storageKey="ui-theme">
           <TooltipProvider delayDuration={0}>
+          <OfflineBanner />
+          <NavigationProgress />
             {children}
             <Toaster />
           </TooltipProvider>

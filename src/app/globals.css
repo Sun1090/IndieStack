@@ -114,3 +114,9 @@
     width: 30%;
   }
 }
+
+/* 路由切换进度条动画 */
+@keyframes navprogress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}

@@ -102,5 +102,6 @@
   "free": "Free",
   "pro": "Pro",
   "enterprise": "Enterprise",
-  "toggleTheme": "Toggle theme"
+  "toggleTheme": "Toggle theme",
+  "offline": "You are offline — changes may not be saved"
 }
