@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Key, Plus, Copy, Trash2, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyRecord } from "@/lib/actions/api-keys";
@@ -233,17 +234,17 @@ export function ApiKeysPage() {
               ))}
             </div>
           ) : keys.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <Key className="h-12 w-12 text-muted-foreground/50" />
-              <div>
-                <p className="font-medium">{t("apiKeys.empty")}</p>
-                <p className="text-sm text-muted-foreground">{t("apiKeys.emptyDesc")}</p>
-              </div>
-              <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                {t("apiKeys.create")}
-              </Button>
-            </div>
+            <EmptyState
+              icon={Key}
+              title={t("apiKeys.empty")}
+              description={t("apiKeys.emptyDesc")}
+              action={
+                <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {t("apiKeys.create")}
+                </Button>
+              }
+            />
           ) : (
             <div className="divide-y">
               {keys.map((key) => (

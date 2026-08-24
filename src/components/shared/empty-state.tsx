@@ -1,11 +1,15 @@
-/** * 空状态占位组件 * 当列表或页面没有任何数据时显示，包含图标、标题、描述和操作按钮 * 用于项目列表、团队成员等空数据场景 */
+"use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+/**
+ * 空状态占位组件
+ * 统一的"无数据"视觉：图标 + 标题 + 描述 + 可选操作按钮
+ */
+
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface EmptyStateProps {
-  icon?: LucideIcon;
+  icon: LucideIcon;
   title: string;
   description?: string;
   action?: React.ReactNode;
@@ -14,17 +18,18 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
-    <Card className={cn("", className)}>
-      <CardHeader className="text-center">
-        {Icon && (
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <Icon className="h-6 w-6 text-muted-foreground" />
-          </div>
-        )}
-        <CardTitle>{title}</CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
-      </CardHeader>
-      {action && <CardContent className="flex justify-center pb-6">{action}</CardContent>}
-    </Card>
+    <div
+      className={cn("flex flex-col items-center gap-3 py-10 text-center", className)}
+      role="status"
+    >
+      <div className="rounded-full bg-muted p-4">
+        <Icon className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="font-medium">{title}</p>
+        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      </div>
+      {action}
+    </div>
   );
 }
