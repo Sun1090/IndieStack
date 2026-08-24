@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import * as notificationsRepo from "@/lib/repositories/notifications";
+import { getTraceId } from "@/lib/trace";
 
 /**
  * 将当前用户的所有未读通知标记为已读。
@@ -28,7 +29,8 @@ export async function markAllNotificationsRead(): Promise<
     revalidatePath("/dashboard/notifications");
     return ok({ updated });
   } catch (error) {
-    console.error("[markAllNotificationsRead] 标记已读失败:", error);
+    const traceId = await getTraceId();
+    console.error(`[markAllNotificationsRead] 标记已读失败 trace=${traceId ?? "-"}:`, error);
     return fail("databaseError");
   }
 }
