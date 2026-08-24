@@ -53,6 +53,17 @@
     "storage1Gb": "1 GB storage",
     "unlimitedProjects": "Unlimited projects",
     "prioritySupport": "Priority support",
-    "storage10Gb": "10 GB storage"
+    "storage10Gb": "10 GB storage",
+    "advancedAnalytics": "Advanced analytics",
+    "storage50Gb": "50 GB storage",
+    "teamUpTo5": "Up to 5 team members",
+    "apiAccess": "API access",
+    "everythingInPro": "Everything in Pro",
+    "unlimitedTeamMembers": "Unlimited team members",
+    "dedicatedSupport": "Dedicated support",
+    "storage500Gb": "500 GB storage",
+    "customIntegrations": "Custom integrations",
+    "slaGuarantee": "SLA guarantee",
+    "ssoSaml": "SSO / SAML"
   }
 }
