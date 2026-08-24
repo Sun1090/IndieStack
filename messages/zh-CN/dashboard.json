@@ -306,7 +306,12 @@
         "createdBy": "创建者",
         "lastUpdated": "最后更新"
       }
-    }
+    },
+    "deleteDelete": "删除",
+    "deleteConfirmTitle": "确认删除项目？",
+    "deleteConfirmDesc": "此操作不可撤销。",
+    "deleteDeleted": "项目已删除",
+    "deleteProjectNotFound": "projectNotFound"
   },
   "notifications": {
     "metaTitle": "通知",

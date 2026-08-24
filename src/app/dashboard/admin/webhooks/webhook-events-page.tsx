@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/shared/query-error-state";
 import { RefreshCw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { listWebhookEvents, type WebhookEventRecord } from "@/lib/actions/webhooks";
@@ -28,7 +29,7 @@ export function WebhookEventsPage() {
   const ta = useTranslations("actions");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  const { data: events = [], isLoading: loading, refetch } = useQuery({
+  const { data: events = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: ["webhook-events"],
     queryFn: async (): Promise<WebhookEventRecord[]> => {
       const result = await listWebhookEvents(100);
@@ -75,6 +76,8 @@ export function WebhookEventsPage() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
+          ) : isError ? (
+            <QueryErrorState onRetry={() => void refetch()} />
           ) : filtered.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               {t("auditLogs.noLogs")}

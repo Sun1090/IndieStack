@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/shared/query-error-state";
 import { toast } from "@/hooks/use-toast";
 import {
   listAdminUsers,
@@ -37,7 +38,7 @@ export function AdminUsersPage() {
   const queryClient = useQueryClient();
 
   // 用户列表查询
-  const { data: users = [], isLoading: loading } = useQuery({
+  const { data: users = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: ["admin-users"],
     queryFn: async (): Promise<AdminUser[]> => {
       const result = await listAdminUsers();
@@ -144,6 +145,8 @@ export function AdminUsersPage() {
                 </div>
               ))}
             </div>
+          ) : isError ? (
+            <QueryErrorState onRetry={() => void refetch()} />
           ) : filteredUsers.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               {search ? t("users.noMatch") : t("users.noUsers")}

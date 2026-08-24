@@ -306,7 +306,12 @@
         "createdBy": "Created By",
         "lastUpdated": "Last Updated"
       }
-    }
+    },
+    "deleteDelete": "Delete",
+    "deleteConfirmTitle": "Delete project?",
+    "deleteConfirmDesc": "This action cannot be undone.",
+    "deleteDeleted": "Project deleted",
+    "deleteProjectNotFound": "projectNotFound"
   },
   "notifications": {
     "metaTitle": "Notifications",

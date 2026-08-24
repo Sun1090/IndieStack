@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
 import { PageHeader } from "@/components/shared/page-header";
+import { ProjectDeleteButton } from "@/components/dashboard/project-delete-button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FolderKanban, Plus, ExternalLink, GitBranch, Clock } from "lucide-react";
 import { getLocale } from "next-intl/server";
@@ -86,12 +87,13 @@ export default async function ProjectsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {projects.map((project) => (
-            <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
-              <Card className="h-full cursor-pointer transition-colors hover:border-primary/50">
+            <div key={project.id} className="group relative">
+              <Link href={`/dashboard/projects/${project.id}`} className="absolute inset-0 z-10" aria-label={project.name} />
+              <Card className="h-full transition-colors group-hover:border-primary/50">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div>
-                      <CardTitle className="flex items-center gap-2">
+                      <CardTitle className="flex items-center gap-2 pr-8">
                         <FolderKanban className="h-4 w-4 text-muted-foreground" />
                         {project.name}
                       </CardTitle>
@@ -99,9 +101,15 @@ export default async function ProjectsPage() {
                         {project.description || "—"}
                       </CardDescription>
                     </div>
-                    <Badge variant={project.status === "active" ? "default" : "secondary"}>
-                      {project.status}
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <Badge variant={project.status === "active" ? "default" : "secondary"}>
+                        {project.status}
+                      </Badge>
+                      <ProjectDeleteButton
+                        projectId={String(project.id)}
+                        projectName={String(project.name)}
+                      />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -130,7 +138,7 @@ export default async function ProjectsPage() {
                   </div>
                 </CardContent>
               </Card>
-            </Link>
+            </div>
           ))}
         </div>
       )}

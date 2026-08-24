@@ -60,6 +60,12 @@ export default async function RootLayout({
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title={`${process.env.NEXT_PUBLIC_APP_NAME ?? "IndieStack"} RSS`}
+          href="/feed.xml"
+        />
         {supabaseOrigin && (
           <>
             <link rel="preconnect" href={supabaseOrigin} />
