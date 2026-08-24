@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { submitContactMessage } from "@/lib/actions/contact";
 import { Send } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -27,13 +28,16 @@ export function ContactForm() {
     e.preventDefault();
     setLoading(true);
 
-    // 联系表单后端尚未接入：明确告知用户未开通，避免误导"已发送成功"
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    const formData = new FormData(e.target as HTMLFormElement);
+    const result = await submitContactMessage(formData);
 
-    toast({
-      title: t("form.unavailable"),
-      variant: "destructive",
-    });
+    if (!result.ok) {
+      toast({ title: t("form.unavailable"), description: result.error, variant: "destructive" });
+      setLoading(false);
+      return;
+    }
+
+    toast({ title: t("form.success") });
 
     setName("");
     setEmail("");

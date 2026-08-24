@@ -10,6 +10,7 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import { SITE_CONFIG } from "@/lib/constants";
 import { getTranslations } from "next-intl/server";
 
 type BlogPost = {
@@ -40,7 +41,14 @@ export async function generateMetadata({
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const t = await getTranslations("blog");
-  const post = (t.raw("posts") as BlogPost[]).find((p) => p.slug === slug);
+  const posts = (t.raw("posts") as BlogPost[]);
+  const index = posts.findIndex((p) => p.slug === slug);
+  const post = posts[index];
+  const prev = index > 0 ? posts[index - 1] : null;
+  const next = index < posts.length - 1 ? posts[index + 1] : null;
+
+  // 阅读时间：按中文 ~400字/分钟、英文 ~200词/分钟 近似
+  const readingMinutes = Math.max(1, Math.ceil(post.content.length / 600));
 
   if (!post) {
     notFound();
@@ -58,6 +66,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           <div className="flex items-center gap-2">
             <Badge variant="secondary">{post.category}</Badge>
             <span className="text-sm text-muted-foreground">{post.date}</span>
+            <span className="text-sm text-muted-foreground">·</span>
+            <span className="text-sm text-muted-foreground">
+              {t("readingTime", { minutes: readingMinutes })}
+            </span>
           </div>
           <h1 className="mt-4 text-4xl font-bold tracking-tight">{post.title}</h1>
           <p className="mt-2 text-muted-foreground">
@@ -66,6 +78,45 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         </div>
 
         <div className="max-w-none">{renderContent(post.content)}</div>
+
+        {/* 分享 */}
+        <div className="mt-10 flex items-center gap-3 border-t pt-6">
+          <span className="text-sm text-muted-foreground">{t("share")}:</span>
+          <a
+            className="text-sm text-primary hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}`}
+          >
+            X
+          </a>
+          <a
+            className="text-sm text-primary hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+            href={`https://www.linkedin.com/sharing/share-offsite/?url=${SITE_CONFIG.url}/blog/${post.slug}`}
+          >
+            LinkedIn
+          </a>
+        </div>
+
+        {/* 上一篇 / 下一篇 */}
+        <nav className="mt-8 grid gap-4 border-t pt-6 sm:grid-cols-2">
+          {prev ? (
+            <Link href={`/blog/${prev.slug}`} className="group rounded-lg border p-4 transition-colors hover:border-primary/50">
+              <p className="text-xs text-muted-foreground">← {t("prevPost")}</p>
+              <p className="mt-1 font-medium group-hover:text-primary">{prev.title}</p>
+            </Link>
+          ) : (
+            <div />
+          )}
+          {next && (
+            <Link href={`/blog/${next.slug}`} className="group rounded-lg border p-4 text-right transition-colors hover:border-primary/50">
+              <p className="text-xs text-muted-foreground">{t("nextPost")} →</p>
+              <p className="mt-1 font-medium group-hover:text-primary">{next.title}</p>
+            </Link>
+          )}
+        </nav>
       </div>
     </article>
   );

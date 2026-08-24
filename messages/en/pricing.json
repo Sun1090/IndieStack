@@ -40,5 +40,19 @@
     ]
   },
   "startTrial": "Start {planName} Trial",
-  "perMonth": "/month"
+  "perMonth": "/month",
+  "save20": "Save 20%",
+  "perYear": "/yr",
+  "youSave": "Save ${amount}/yr",
+  "startFree": "Start Free",
+  "choosePro": "Choose Plan",
+  "features": {
+    "upTo3Projects": "Up to 3 projects",
+    "basicAnalytics": "Basic analytics",
+    "communitySupport": "Community support",
+    "storage1Gb": "1 GB storage",
+    "unlimitedProjects": "Unlimited projects",
+    "prioritySupport": "Priority support",
+    "storage10Gb": "10 GB storage"
+  }
 }

@@ -17,7 +17,7 @@
     "submit": "Send Message",
     "sending": "Sending...",
     "unavailable": "The contact form is not available yet — please email us directly at hello@indiestack.dev",
-    "success": "Message sent! We'll get back to you soon."
+    "success": "Message sent"
   },
   "info": {
     "email": "Email",

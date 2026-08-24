@@ -46,5 +46,9 @@
       "author": "IndieStack Team",
       "content": "## Modern Auth Patterns for Next.js\n\nAuthentication has evolved significantly. Here's how we structure auth in our SaaS template.\n\n### The Problem\n\nTraditional auth patterns don't work well with React Server Components. You can't use hooks in server components, and you need the user session available on the server for SSR.\n\n### The Solution: SSR Auth\n\nSupabase's SSR package solves this elegantly:\n\n1. **Middleware**: Checks session on every request and refreshes the cookie\n2. **Server Client**: `createClient()` in server components reads cookies\n3. **Client Client**: `createClient()` in browser components uses the same cookie\n\n### Data Flow\n\n```\nRequest → Middleware (refresh session) → Server Component → Client Component\n                              ↓\n                        Cookie stored\n                              ↓\n                    Client reads cookie via createBrowserClient\n```\n\n### Protected Routes\n\nMiddleware checks for protected routes and redirects unauthenticated users to the login page. Auth pages redirect authenticated users to the dashboard.\n\n### Why This Matters\n\nThis pattern gives us:\n- No flash of unauthenticated content\n- SEO-friendly pages\n- Type-safe auth across server and client\n- Minimal boilerplate"
     }
-  ]
+  ],
+  "readingTime": "{minutes} min read",
+  "share": "Share",
+  "prevPost": "Previous post",
+  "nextPost": "Next post"
 }
