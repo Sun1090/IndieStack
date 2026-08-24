@@ -99,3 +99,8 @@
  | `docker compose up` | 启动 PostgreSQL + pgAdmin |
  | `docker build` | 构建生产镜像（多阶段构建） |
  | `docker run` | 运行生产容器 |
+| `pnpm check:locales` | 校验中英翻译键对称性 |
+| `pnpm check:agents` | 校验 AGENTS.md 索引一致性 |
+| `pnpm check:rls` | RLS 迁移静态检查（USING/WITH CHECK） |
+| `pnpm check:bundle` | 客户端体积门禁（构建+基线对比） |
+| `pnpm dep:health` | 依赖健康报告（major/minor 分级） |

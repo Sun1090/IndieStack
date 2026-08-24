@@ -56,3 +56,28 @@ describe("isSafeRelativePath 边界", () => {
     expect(isSafeRelativePath("/%zz")).toBe(false);
   });
 });
+
+describe("isSafeRelativePath 开放重定向 fuzz", () => {
+  const malicious = [
+    "//evil.com",
+    "/\\evil.com",
+    "/%5C%5Cevil.com",
+    "/%2F%2Fevil.com",
+    "/\\\\evil.com",
+    "https://evil.com",
+    "javascript:alert(1)",
+    "/\r\nSet-Cookie: x",
+    "/%0d%0aX-Header: 1",
+    "/\u0000",
+  ];
+
+  it.each(malicious)("拒绝恶意路径 %s", (path) => {
+    expect(isSafeRelativePath(path)).toBe(false);
+  });
+
+  const legit = ["/", "/dashboard", "/dashboard/team?tab=x", "/blog/hello-world", "/%E4%B8%AD%E6%96%87",
+    "/x?next=//evil.com"];
+  it.each(legit)("放行正常路径 %s", (path) => {
+    expect(isSafeRelativePath(path)).toBe(true);
+  });
+});

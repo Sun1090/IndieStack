@@ -108,3 +108,28 @@ describe("createRateLimit()", () => {
     expect(result.allowed).toBe(true);
   });
 });
+
+describe("窗口重置与并发", () => {
+  it("窗口过期后计数重置", async () => {
+    vi.useFakeTimers();
+    const rl = createRateLimit({ maxRequests: 2, windowMs: 1000 });
+    const req = new Request("http://x/", { headers: { "x-real-ip": "1.1.1.9" } });
+
+    expect((await rl.check(req)).allowed).toBe(true);
+    expect((await rl.check(req)).allowed).toBe(true);
+    expect((await rl.check(req)).allowed).toBe(false);
+
+    vi.advanceTimersByTime(1100);
+    expect((await rl.check(req)).allowed).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("不同 IP 互不影响", async () => {
+    const rl = createRateLimit({ maxRequests: 1, windowMs: 60_000 });
+    const a = new Request("http://x/", { headers: { "x-real-ip": "2.2.2.2" } });
+    const b = new Request("http://x/", { headers: { "x-real-ip": "3.3.3.3" } });
+    expect((await rl.check(a)).allowed).toBe(true);
+    expect((await rl.check(a)).allowed).toBe(false);
+    expect((await rl.check(b)).allowed).toBe(true);
+  });
+});

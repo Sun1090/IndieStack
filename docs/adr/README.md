@@ -34,3 +34,5 @@
 | [ADR-005](adr-005-tailwind-v4.md) | Tailwind v4 采用 @config 桥接迁移 | 已接受 |
 | [ADR-006](adr-006-action-result.md) | Server Actions 统一 ActionResult | 已接受 |
 | [ADR-007](adr-007-next16-proxy.md) | Next 16 升级与 proxy 更名 | 已接受 |
+| [ADR-008](adr-008-repository.md) | Repository 数据访问层 | 已接受 |
+| [ADR-009](adr-009-react-table-v9-bridge.md) | React Table v9 经 legacy 桥迁移 | 已接受（临时） |
