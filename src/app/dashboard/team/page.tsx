@@ -11,7 +11,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { InitialAvatar } from "@/components/shared/initial-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
@@ -159,15 +159,16 @@ export default async function TeamPage() {
                   className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
                 >
                   <div className="flex items-center gap-4">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>
-                        {member.profiles?.full_name
-                          ? String(member.profiles.full_name).charAt(0).toUpperCase()
-                          : member.profiles?.email
-                            ? String(member.profiles.email).charAt(0).toUpperCase()
-                            : "?"}
-                      </AvatarFallback>
-                    </Avatar>
+                    <InitialAvatar
+                      name={
+                        String(
+                          member.profiles?.full_name ??
+                            member.profiles?.email ??
+                            "?",
+                        )
+                      }
+                      className="h-10 w-10 text-sm"
+                    />
                     <div>
                       <p className="text-sm font-medium">
                         {member.profiles?.full_name ?? t("team.list.unknownMember")}
