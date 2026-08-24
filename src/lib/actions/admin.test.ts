@@ -39,6 +39,7 @@ function tableChain(resolver: (seq: Array<[string, unknown[]]>) => { value: unkn
     order: (...a: unknown[]) => call("order", ...a),
     limit: (...a: unknown[]) => call("limit", ...a),
     update: (...a: unknown[]) => call("update", ...a),
+    range: (...a: unknown[]) => call("range", ...a),
   };
   obj.maybeSingle = () => Promise.resolve(resolver(seq).value);
   obj.then = (r: (v: unknown) => unknown) => r(resolver(seq).value);

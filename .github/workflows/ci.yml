@@ -83,6 +83,12 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: a11y static audit
+        run: pnpm --silent check:a11y || true
+
+      - name: Bundle performance assertions
+        run: node scripts/check-perf.js
+
   build-docs:
     name: Build Docs Site
     runs-on: ubuntu-latest
