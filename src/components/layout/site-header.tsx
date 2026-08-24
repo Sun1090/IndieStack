@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useUser } from "@/hooks/use-user";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { InitialAvatar } from "@/components/shared/initial-avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -109,9 +109,7 @@ export function SiteHeader() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>{user.email?.charAt(0).toUpperCase() ?? "U"}</AvatarFallback>
-                    </Avatar>
+                    <InitialAvatar name={user.email ?? "U"} className="h-8 w-8" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56" align="end" forceMount>

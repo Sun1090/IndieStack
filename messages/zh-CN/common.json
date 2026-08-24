@@ -102,5 +102,6 @@
   "free": "免费",
   "pro": "专业版",
   "enterprise": "企业版",
-  "toggleTheme": "切换主题"
+  "toggleTheme": "切换主题",
+  "offline": "网络已断开——更改可能无法保存"
 }
