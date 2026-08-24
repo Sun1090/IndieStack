@@ -22,6 +22,7 @@
     "check:agents": "node scripts/check-agents-index.js",
     "check:rls": "node scripts/check-rls.js",
     "check:docs": "node scripts/check-docs-scripts.js",
+    "check:a11y": "node scripts/check-a11y.js",
     "dep:health": "node scripts/dep-health.js",
     "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
     "verify:all": "bash scripts/check-all.sh",

@@ -1,0 +1,6 @@
+# 默认所有者：所有 PR 需要仓库所有者审查
+* @Sun1090
+
+# 关键路径双人审查提示（当前单维护者，未来扩展）
+/supabase/migrations/ @Sun1090
+/.github/workflows/ @Sun1090

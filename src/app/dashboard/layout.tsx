@@ -12,6 +12,7 @@ import { ROUTES } from "@/lib/constants";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
+import { CommandPalette } from "@/components/layout/command-palette";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -28,6 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SiteHeader />
       <div className="flex flex-1">
         <DashboardSidebar />
+        <CommandPalette />
         <main id="main-content" className="flex-1 overflow-auto p-6 lg:p-8">{children}</main>
       </div>
     </div>
