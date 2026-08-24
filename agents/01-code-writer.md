@@ -56,7 +56,12 @@
 - Sentry: 在 catch 块中调用 `Sentry.captureException()`
 - 表单: Zod 校验错误内联显示，Server Action 错误通过 toast
 
-### 7. 数据访问约定（2026-08 新增）
+### 7. 推送前检查（强制）
+- 每次推送前必须完整执行：`pnpm verify:build`
+- **build 不能省略**：i18n 缺键、静态生成错误只有 build 才暴露
+- 直接推 main 时尤其要遵守——生产构建失败即线上事故
+
+### 8. 数据访问约定（2026-08 新增）
 - 表查询经 `src/lib/repositories/<table>.ts` 收口，禁止在组件/action 直接 `.from()`（新代码强制）
 - 客户端列表数据用 TanStack Query（useQuery/useMutation + invalidateQueries）
 - 写操作走 Server Actions；API Routes 仅限外部回调（见 ADR-001/008）
