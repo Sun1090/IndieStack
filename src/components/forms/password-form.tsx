@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
+import { PasswordStrength } from "@/components/shared/password-strength";
 
 export function PasswordForm() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export function PasswordForm() {
   const tc = useTranslations("common");
   const ta = useTranslations("actions");
   const [loading, setLoading] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -59,10 +61,13 @@ export function PasswordForm() {
           id="newPassword"
           name="newPassword"
           type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
           autoComplete="new-password"
           minLength={8}
           required
         />
+        <PasswordStrength password={newPassword} />
         <p className="text-xs text-muted-foreground">{t("hint")}</p>
       </div>
 

@@ -113,5 +113,11 @@
     "prevPage": "上一页",
     "nextPage": "下一页",
     "lastPage": "末页"
+  },
+  "strength": {
+    "weak": "弱",
+    "fair": "一般",
+    "good": "良好",
+    "strong": "强"
   }
 }

@@ -84,7 +84,9 @@
         "admin": "管理员",
         "member": "成员",
         "viewer": "只读用户"
-      }
+      },
+      "name": "姓名",
+      "bio": "简介"
     },
     "edit": {
       "metaTitle": "编辑资料",
@@ -103,7 +105,8 @@
       "uploadAvatar": "上传头像",
       "submit": "保存更改",
       "success": "资料已更新！"
-    }
+    },
+    "completeness": "资料完整度"
   },
   "settings": {
     "metaTitle": "设置",
