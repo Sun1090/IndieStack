@@ -609,8 +609,32 @@ export class MockSupabaseClient {
         error: null,
       }),
       challengeAndVerify: async (_params: unknown) => ({ error: null }),
+      challenge: async (_params: unknown) => ({
+        data: { id: "mock-challenge-id", expires_at: 9999999999 },
+        error: null,
+      }),
+      verify: async (_params: unknown) => ({ error: null }),
       listFactors: async () => ({
-        data: { all: [], totp: [] },
+        data: {
+          all: [
+            {
+              id: "mock-factor-id",
+              type: "totp" as const,
+              status: "verified" as const,
+              friendly_name: "",
+              created_at: new Date().toISOString(),
+            },
+          ],
+          totp: [
+            {
+              id: "mock-factor-id",
+              type: "totp" as const,
+              status: "verified" as const,
+              friendly_name: "",
+              created_at: new Date().toISOString(),
+            },
+          ],
+        },
         error: null,
       }),
       unenroll: async (_params: unknown) => ({ data: { id: "mock-factor-id" }, error: null }),

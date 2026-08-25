@@ -40,7 +40,7 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -51,6 +51,19 @@ export function LoginForm() {
         description: ta(authErrorKey(error)),
         variant: "destructive",
       });
+      setLoading(false);
+      return;
+    }
+
+    // 已启用两步验证：跳转 MFA 挑战页完成 aal2 升级
+    const verifiedFactors = (data.user?.factors ?? []).filter(
+      (f: { status: string }) => f.status === "verified",
+    );
+    if (verifiedFactors.length > 0) {
+      const factorId = verifiedFactors[0].id;
+      router.push(
+        `/auth/mfa?factor=${factorId}&redirect=${encodeURIComponent(redirect)}`,
+      );
       setLoading(false);
       return;
     }
