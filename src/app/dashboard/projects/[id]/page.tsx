@@ -35,6 +35,22 @@ export async function generateMetadata({
   };
 }
 
+/** 从 config JSON 提取展示字段 */
+function parseProjectConfig(config: unknown): {
+  branch: string | null;
+  domain: string | null;
+  framework: string;
+  region: string;
+} {
+  const cfg = (config ?? {}) as Record<string, unknown>;
+  return {
+    branch: typeof cfg.branch === "string" ? cfg.branch : null,
+    domain: typeof cfg.domain === "string" ? cfg.domain : null,
+    framework: typeof cfg.framework === "string" ? cfg.framework : "—",
+    region: typeof cfg.region === "string" ? cfg.region : "—",
+  };
+}
+
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const t = await getTranslations("dashboard");
@@ -65,11 +81,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   if (!row) notFound();
 
-  const config = (row.config ?? {}) as Record<string, unknown>;
-  const branch = typeof config.branch === "string" ? config.branch : null;
-  const domain = typeof config.domain === "string" ? config.domain : null;
-  const framework = typeof config.framework === "string" ? config.framework : "—";
-  const region = typeof config.region === "string" ? config.region : "—";
+  const { branch, domain, framework, region } = parseProjectConfig(row.config);
 
   return (
     <div className="space-y-8">
