@@ -50,5 +50,10 @@
   "readingTime": "约 {minutes} 分钟阅读",
   "share": "分享",
   "prevPost": "上一篇",
-  "nextPost": "下一篇"
+  "nextPost": "下一篇",
+  "allPosts": "全部文章",
+  "empty": "该分类暂无文章",
+  "labels": {
+    "all": "全部"
+  }
 }

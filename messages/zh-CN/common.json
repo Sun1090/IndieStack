@@ -136,6 +136,7 @@
     "placeholder": "输入命令或搜索…",
     "empty": "无结果",
     "navigateTo": "导航",
-    "theme": "外观"
+    "theme": "外观",
+    "recent": "最近访问"
   }
 }

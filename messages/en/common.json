@@ -136,6 +136,7 @@
     "placeholder": "Type a command or search...",
     "empty": "No results",
     "navigateTo": "Navigate",
-    "theme": "Appearance"
+    "theme": "Appearance",
+    "recent": "Recent"
   }
 }
