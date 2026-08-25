@@ -56,5 +56,7 @@
   "nameRequired": "Name is required",
   "emailInvalid": "Invalid email",
   "subjectRequired": "Subject is required",
-  "messageRequired": "Message is required"
+  "messageRequired": "Message is required",
+  "mfaEnrollFailed": "Failed to start 2FA setup",
+  "mfaInvalidCode": "Invalid verification code"
 }

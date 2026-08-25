@@ -128,6 +128,21 @@
         "submit": "Update Password",
         "success": "Password updated!"
       },
+      "twoFactor": {
+        "title": "Two-Factor Authentication",
+        "enabledBadge": "Enabled",
+        "desc": "Add an extra layer of security with a TOTP authenticator app.",
+        "enabledDesc": "2FA is active. Enter a current code to disable it.",
+        "notEnabledDesc": "Protect your account with an authenticator app (Google Authenticator, 1Password, etc.).",
+        "start": "Enable 2FA",
+        "qrAlt": "TOTP QR code",
+        "scanHint": "Scan the QR code with your authenticator app.",
+        "manualHint": "Or enter this secret manually:",
+        "codeLabel": "Verification code",
+        "codePlaceholder": "000000",
+        "verifyBtn": "Verify",
+        "disable": "Disable 2FA"
+      },
       "appearance": {
         "title": "Appearance",
         "desc": "Customize the look and feel of the application.",

@@ -128,6 +128,21 @@
         "submit": "更新密码",
         "success": "密码已更新！"
       },
+      "twoFactor": {
+        "title": "两步验证",
+        "enabledBadge": "已启用",
+        "desc": "通过验证器 App 为账户增加一层安全保护。",
+        "enabledDesc": "两步验证已启用。输入当前验证码可解除。",
+        "notEnabledDesc": "使用验证器 App（Google Authenticator、1Password 等）保护你的账户。",
+        "start": "开启两步验证",
+        "qrAlt": "TOTP 二维码",
+        "scanHint": "用验证器 App 扫描二维码。",
+        "manualHint": "或手动输入密钥：",
+        "codeLabel": "验证码",
+        "codePlaceholder": "000000",
+        "verifyBtn": "验证并启用",
+        "disable": "解除两步验证"
+      },
       "appearance": {
         "title": "外观设置",
         "desc": "自定义应用的外观。",
