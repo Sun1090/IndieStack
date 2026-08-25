@@ -126,5 +126,10 @@
     "commandPalette": "打开命令面板",
     "shortcutsHelp": "显示快捷键",
     "closeDialog": "关闭对话框"
+  },
+  "theme": {
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
   }
 }
