@@ -322,7 +322,12 @@
     "deleteConfirmTitle": "Delete project?",
     "deleteConfirmDesc": "This action cannot be undone.",
     "deleteDeleted": "Project deleted",
-    "deleteProjectNotFound": "projectNotFound"
+    "deleteProjectNotFound": "projectNotFound",
+    "filter": {
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
+    }
   },
   "notifications": {
     "metaTitle": "Notifications",
