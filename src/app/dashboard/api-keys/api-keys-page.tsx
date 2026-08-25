@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Key, Plus, Copy, Trash2, Check, RefreshCcw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -156,6 +157,7 @@ export function ApiKeysPage() {
 
   return (
     <div className="space-y-8">
+      <Breadcrumbs items={[{ label: t("dashboard") }, { label: t("apiKeys.title") }]} />
       <PageHeader title={t("apiKeys.title")} description={t("apiKeys.desc")}>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>

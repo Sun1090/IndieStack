@@ -158,6 +158,11 @@
         "deleteDesc": "永久删除你的账户和所有数据。此操作不可撤销。",
         "deleteConfirm": "确认删除",
         "confirmPhrase": "请输入「删除」确认"
+      },
+      "security": {
+        "title": "Security",
+        "logoutAll": "退出所有设备",
+        "logoutAllDesc": "在所有浏览器和设备上登出，需要重新登录。"
       }
     }
   },

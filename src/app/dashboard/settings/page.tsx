@@ -15,7 +15,9 @@ import { NotificationSettingsForm } from "@/components/forms/notification-settin
 import { ThemeSettingsForm } from "@/components/forms/theme-settings-form";
 import { PasswordForm } from "@/components/forms/password-form";
 import { TwoFactorSection } from "@/components/dashboard/two-factor-section";
+import { LogoutAllButton } from "@/components/dashboard/logout-all-button";
 import { PageHeader } from "@/components/shared/page-header";
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import type { Database } from "@/lib/supabase/database.types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -41,6 +43,9 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-8">
+      <Breadcrumbs
+        items={[{ label: t("dashboard"), href: "/dashboard" }, { label: t("settings.title") }]}
+      />
       <PageHeader title={t("settings.title")} description={t("settings.desc")} />
 
       <Tabs defaultValue="notifications" className="space-y-6">
@@ -65,7 +70,8 @@ export default async function SettingsPage() {
             <CardHeader>
               <CardTitle>{t("settings.sections.security.title")}</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <LogoutAllButton />
               <NotificationSettingsForm
                 settings={(profile?.notification_settings as Record<string, boolean>) ?? {}}
               />
