@@ -11,6 +11,7 @@ import { ApiKeysPage } from "./api-keys-page";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
+  const tc = await getTranslations("common");
   return { title: t("apiKeys.metaTitle"), description: t("apiKeys.metaDesc") };
 }
 

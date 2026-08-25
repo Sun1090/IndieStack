@@ -40,11 +40,17 @@ export async function generateMetadata({
       description: post.excerpt,
       type: "article",
       publishedTime: post.date,
+      images: [
+        `/api/og?title=${encodeURIComponent(post.title)}&category=${encodeURIComponent(post.category ?? "")}`,
+      ],
     },
     twitter: {
       card: "summary_large_image",
       title: post.title,
       description: post.excerpt,
+      images: [
+        `/api/og?title=${encodeURIComponent(post.title)}&category=${encodeURIComponent(post.category ?? "")}`,
+      ],
     },
   };
 }

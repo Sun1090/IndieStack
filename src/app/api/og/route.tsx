@@ -1,49 +1,16 @@
 /**
- * 博客文章动态 OG 图
- * 按slug 渲染标题与分类的 1200×630 分享卡片
+ * 动态 OG 图生成
+ * GET /api/og?title=<text>&category=<text>
+ * 博客文章的 generateMetadata 引用本端点作为分享图
  */
 import { ImageResponse } from "next/og";
-import fs from "node:fs";
-import path from "node:path";
 
-export const alt = "IndieStack Blog";
-export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-interface Post {
-  slug: string;
-  title: string;
-  category?: string;
-}
-
-/** 从双语消息中按 slug 查找文章（默认语言优先） */
-function findPost(slug: string): Post | null {
-  for (const locale of ["en", "zh-CN"]) {
-    try {
-      const raw = fs.readFileSync(
-        path.join(process.cwd(), "messages", locale, "blog.json"),
-        "utf8",
-      );
-      const posts = (JSON.parse(raw).posts ?? []) as Post[];
-      const found = posts.find((p) => p.slug === slug);
-      if (found) return found;
-    } catch {
-      // 继续尝试下一个 locale
-    }
-  }
-  return null;
-}
-
-export default async function Image({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const post = findPost(slug);
-
-  const title = post?.title ?? "IndieStack Blog";
-  const category = post?.category ?? "";
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const title = (searchParams.get("title") ?? "IndieStack").slice(0, 80);
+  const category = searchParams.get("category")?.slice(0, 40);
 
   return new ImageResponse(
     (
@@ -112,6 +79,6 @@ export default async function Image({
         </div>
       </div>
     ),
-    size,
+    { width: 1200, height: 630 },
   );
 }

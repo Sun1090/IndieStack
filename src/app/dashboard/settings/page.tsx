@@ -27,6 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function SettingsPage() {
   const supabase = await createClient();
+  const tc = await getTranslations("common");
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -44,7 +45,7 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-8">
       <Breadcrumbs
-        items={[{ label: t("dashboard"), href: "/dashboard" }, { label: t("settings.title") }]}
+        items={[{ label: tc("dashboard"), href: "/dashboard" }, { label: t("settings.title") }]}
       />
       <PageHeader title={t("settings.title")} description={t("settings.desc")} />
 
