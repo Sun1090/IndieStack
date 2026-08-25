@@ -50,5 +50,10 @@
   "readingTime": "{minutes} min read",
   "share": "Share",
   "prevPost": "Previous post",
-  "nextPost": "Next post"
+  "nextPost": "Next post",
+  "allPosts": "All posts",
+  "empty": "No posts in this category",
+  "labels": {
+    "all": "All"
+  }
 }

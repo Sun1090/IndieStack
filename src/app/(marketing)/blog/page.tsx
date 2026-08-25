@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getTranslations } from "next-intl/server";
+import { BlogList } from "./blog-list";
 
 type BlogPost = {
   title: string;
@@ -42,34 +43,8 @@ export default async function BlogPage() {
         <p className="mt-4 text-lg text-muted-foreground">{t("pageDesc")}</p>
       </div>
 
-      {/* Posts */}
-      {posts.length > 0 ? (
-        <div className="mt-12 grid gap-8 md:grid-cols-2">
-          {posts.map((post) => (
-            <Link key={post.slug} href={`/blog/${post.slug}`}>
-              <Card className="h-full transition-colors hover:border-primary/50">
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{post.category}</Badge>
-                    <span className="text-xs text-muted-foreground">{post.date}</span>
-                  </div>
-                  <CardTitle className="mt-2 text-xl">{post.title}</CardTitle>
-                  <CardDescription className="line-clamp-2">{post.excerpt}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>{post.author}</span>
-                    <span>·</span>
-                    <span>{t("minRead", { count: "5" })}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-12 text-center text-muted-foreground">{t("noPosts")}</p>
-      )}
+            {/* Posts（客户端分类过滤） */}
+      <BlogList posts={posts} labels={{ all: t("allPosts"), empty: t("empty") }} />
     </div>
   );
 }
