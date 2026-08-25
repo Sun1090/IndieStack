@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { ProjectDeleteButton } from "@/components/dashboard/project-delete-button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -27,13 +28,18 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("projects.list.metaTitle"), description: t("projects.list.metaDesc") };
 }
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
   const locale = await getLocale();
+  const { status: statusFilter } = await searchParams;
 
   const { data: membership } = (await supabase
     .from("team_members")
@@ -50,8 +56,15 @@ export default async function ProjectsPage() {
         .order("created_at", { ascending: false })
     : { data: [] };
 
-  const projects = (projectRows ??
-    []) as unknown as Database["public"]["Tables"]["projects"]["Row"][];
+  // 状态过滤（服务端 searchParams 驱动）
+  const allProjects =
+    (projectRows as unknown as Database["public"]["Tables"]["projects"]["Row"][]) ?? [];
+  const projects =
+    statusFilter === "active" || statusFilter === "inactive"
+      ? allProjects.filter((p) => p.status === statusFilter)
+      : allProjects;
+
+  // projects 由下方 statusFilter 过滤逻辑生成
 
   function getProjectConfig(project: Database["public"]["Tables"]["projects"]["Row"]) {
     const config = project.config as Record<string, unknown> | null;
@@ -70,6 +83,30 @@ export default async function ProjectsPage() {
           </Link>
         </Button>
       </PageHeader>
+
+      {/* 状态过滤 Tab */}
+      <div className="flex gap-2">
+        {[
+          { key: undefined, label: t("projects.filter.all") },
+          { key: "active", label: t("projects.filter.active") },
+          { key: "inactive", label: t("projects.filter.inactive") },
+        ].map((tab) => {
+          const active = (statusFilter ?? "all") === (tab.key ?? "all");
+          const href = tab.key ? `?status=${tab.key}` : "/dashboard/projects";
+          return (
+            <Link
+              key={tab.label}
+              href={href}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm",
+                active ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent",
+              )}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
 
       {projects.length === 0 ? (
         <EmptyState
