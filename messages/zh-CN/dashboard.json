@@ -1,10 +1,4 @@
 {
-  "commandPalette": {
-    "placeholder": "输入命令或搜索…",
-    "empty": "无结果",
-    "navigateTo": "导航",
-    "theme": "外观"
-  },
   "overview": {
     "metaTitle": "仪表盘",
     "metaDesc": "你的仪表盘概览",

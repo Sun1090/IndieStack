@@ -12,8 +12,10 @@ const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === "tr
 // 指定 next-intl 请求配置文件路径（采用 Cookie 方案，无 URL 前缀）
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+// Docker 构建时启用 standalone（DOCKER_BUILD=1）；Vercel 使用默认输出
+// 规避 Turbopack + standalone 在 Vercel 上的 nft.json 追踪错误
 const nextConfig: NextConfig = {
-  output: "standalone",
+  ...(process.env.DOCKER_BUILD === "1" ? { output: "standalone" as const } : {}),
   reactStrictMode: true,
 
   images: {

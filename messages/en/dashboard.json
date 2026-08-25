@@ -1,10 +1,4 @@
 {
-  "commandPalette": {
-    "placeholder": "Type a command or search...",
-    "empty": "No results",
-    "navigateTo": "Navigate",
-    "theme": "Appearance"
-  },
   "overview": {
     "metaTitle": "Dashboard",
     "metaDesc": "Your dashboard overview",

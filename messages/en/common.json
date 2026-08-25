@@ -131,5 +131,11 @@
     "light": "Light",
     "dark": "Dark",
     "system": "System"
+  },
+  "commandPalette": {
+    "placeholder": "Type a command or search...",
+    "empty": "No results",
+    "navigateTo": "Navigate",
+    "theme": "Appearance"
   }
 }
