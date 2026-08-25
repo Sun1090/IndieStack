@@ -10,16 +10,25 @@ import blogZh from "../../messages/zh-CN/blog.json";
 import blogEn from "../../messages/en/blog.json";
 
 type BlogMessage = {
-  posts?: Array<{ slug: string }>;
+  posts?: Array<{ slug: string; date?: string }>;
 };
 
-/** 聚合中英文博客文章的 slug（去重），确保所有文章进入 sitemap */
-function getBlogSlugs(): string[] {
+interface BlogEntry {
+  slug: string;
+  date?: string;
+}
+
+/** 聚合中英文博客文章（slug 去重，保留日期用于 lastmod） */
+function getBlogEntries(): BlogEntry[] {
   const posts = [
     ...((blogZh as BlogMessage).posts ?? []),
     ...((blogEn as BlogMessage).posts ?? []),
   ];
-  return [...new Set(posts.map((p) => p.slug).filter(Boolean))];
+  const seen = new Map<string, BlogEntry>();
+  for (const p of posts) {
+    if (p.slug && !seen.has(p.slug)) seen.set(p.slug, p);
+  }
+  return [...seen.values()];
 }
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -38,9 +47,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: ROUTES.contact, changeFrequency: "yearly" as const, priority: 0.5 },
   ];
 
-  const blogRoutes = getBlogSlugs().map((slug) => ({
-    url: `${baseUrl}${ROUTES.blog}/${slug}`,
-    lastModified: new Date(),
+  const blogRoutes = getBlogEntries().map((post) => ({
+    url: `${baseUrl}${ROUTES.blog}/${post.slug}`,
+    lastModified: post.date ? new Date(post.date) : new Date(),
     changeFrequency: "weekly" as const,
     priority: 0.7,
   }));
