@@ -201,6 +201,17 @@ docker run -d -p 8080:80 indiestack-docs
 # 访问 http://localhost:8080
 ```
 
+## Sponsor
+
+If you find this project helpful, consider buying the author a coffee to support ongoing development ☕
+
+<table>
+  <tr>
+    <td align="center"><img src="public/donate-alipay.jpg" width="200" alt="Alipay QR" /><br/>Alipay</td>
+    <td align="center"><img src="public/donate-wechat.jpg" width="200" alt="WeChat QR" /><br/>WeChat</td>
+  </tr>
+</table>
+
 ## License
 
 MIT
