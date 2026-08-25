@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/components/providers/theme-provider";
 import { useTranslations } from "next-intl";
 import {
   CommandDialog,
@@ -47,6 +48,7 @@ const items = [
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const { setTheme } = useTheme();
   const t = useTranslations("common");
 
   useEffect(() => {
@@ -70,6 +72,18 @@ export function CommandPalette() {
       <CommandInput placeholder={t("commandPalette.placeholder")} />
       <CommandList>
         <CommandEmpty>{t("commandPalette.empty")}</CommandEmpty>
+        <CommandGroup heading={t("commandPalette.theme")}>
+          <CommandItem value="theme-light" onSelect={() => { setTheme("light"); setOpen(false); }}>
+            ☀️ {t("theme.light")}
+          </CommandItem>
+          <CommandItem value="theme-dark" onSelect={() => { setTheme("dark"); setOpen(false); }}>
+            🌙 {t("theme.dark")}
+          </CommandItem>
+          <CommandItem value="theme-system" onSelect={() => { setTheme("system"); setOpen(false); }}>
+            💻 {t("theme.system")}
+          </CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
         <CommandGroup heading={t("commandPalette.navigateTo")}>
           {items.map((item) =>
             "separator" in item ? (

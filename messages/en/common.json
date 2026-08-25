@@ -126,5 +126,10 @@
     "commandPalette": "Open command palette",
     "shortcutsHelp": "Show shortcuts",
     "closeDialog": "Close dialog"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
   }
 }
