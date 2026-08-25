@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NotificationSettingsForm } from "@/components/forms/notification-settings-form";
 import { ThemeSettingsForm } from "@/components/forms/theme-settings-form";
 import { PasswordForm } from "@/components/forms/password-form";
+import { TwoFactorSection } from "@/components/dashboard/two-factor-section";
 import { PageHeader } from "@/components/shared/page-header";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -54,6 +55,15 @@ export default async function SettingsPage() {
             <CardHeader>
               <CardTitle>{t("notifications.preferences.title")}</CardTitle>
               <CardDescription>{t("notifications.preferences.desc")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TwoFactorSection />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("settings.sections.security.title")}</CardTitle>
             </CardHeader>
             <CardContent>
               <NotificationSettingsForm

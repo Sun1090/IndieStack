@@ -598,6 +598,23 @@ export class MockSupabaseClient {
         data: { subscription: { unsubscribe: () => {} } },
       };
     },
+    // MFA（Mock：返回固定的测试 factor 与验证码通过）
+    mfa: {
+      enroll: async (_params: unknown) => ({
+        data: {
+          id: "mock-factor-id",
+          type: "totp",
+          totp: { qr_code: "", secret: "MOCKSECRET" },
+        },
+        error: null,
+      }),
+      challengeAndVerify: async (_params: unknown) => ({ error: null }),
+      listFactors: async () => ({
+        data: { all: [], totp: [] },
+        error: null,
+      }),
+      unenroll: async (_params: unknown) => ({ data: { id: "mock-factor-id" }, error: null }),
+    },
     // 管理接口：供 createAdminClient() 在 Mock 模式下使用
     admin: {
       listUsers: async () => {
