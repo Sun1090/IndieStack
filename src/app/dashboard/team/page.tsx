@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
 import { PageHeader } from "@/components/shared/page-header";
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Users, Plus } from "lucide-react";
 import { RemoveMemberButton } from "@/components/dashboard/remove-member-button";
@@ -86,6 +87,9 @@ export default async function TeamPage() {
   if (!membership) {
     return (
       <div className="space-y-8">
+        <Breadcrumbs
+          items={[{ label: t("dashboard"), href: "/dashboard" }, { label: t("team.list.title") }]}
+        />
         <PageHeader title={t("team.list.title")} description={t("team.list.desc")} />
         <EmptyState
           icon={Users}

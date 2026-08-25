@@ -158,6 +158,11 @@
         "deleteDesc": "Permanently delete your account and all data. This action is irreversible.",
         "deleteConfirm": "Confirm Delete",
         "confirmPhrase": "Type \"delete\" to confirm"
+      },
+      "security": {
+        "title": "Security",
+        "logoutAll": "Log out all devices",
+        "logoutAllDesc": "Signs you out of every browser and device. You will need to log in again."
       }
     }
   },
