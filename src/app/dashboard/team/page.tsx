@@ -88,7 +88,7 @@ export default async function TeamPage() {
     return (
       <div className="space-y-8">
         <Breadcrumbs
-          items={[{ label: t("dashboard"), href: "/dashboard" }, { label: t("team.list.title") }]}
+          items={[{ label: tc("dashboard"), href: "/dashboard" }, { label: t("team.list.title") }]}
         />
         <PageHeader title={t("team.list.title")} description={t("team.list.desc")} />
         <EmptyState
