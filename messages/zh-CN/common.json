@@ -131,5 +131,11 @@
     "light": "浅色",
     "dark": "深色",
     "system": "跟随系统"
+  },
+  "commandPalette": {
+    "placeholder": "输入命令或搜索…",
+    "empty": "无结果",
+    "navigateTo": "导航",
+    "theme": "外观"
   }
 }
