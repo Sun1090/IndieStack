@@ -19,7 +19,7 @@ import { buildCsp, generateNonce, NONCE_HEADER } from "@/lib/csp";
 const protectedRoutes = ["/dashboard", "/dashboard/(.*)"];
 
 /** 认证相关路由（已登录用户不应访问） */
-const authRoutes = ["/auth/login", "/auth/register"];
+const authRoutes = ["/auth/login", "/auth/register", "/auth/mfa"];
 
 export async function proxy(request: NextRequest) {
   // 每请求生成 CSP nonce：注入请求头供 Server Components 读取，
