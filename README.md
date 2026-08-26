@@ -1,15 +1,17 @@
 # IndieStack
 
+**English** | [中文](README.zh-CN.md)
+
 [![CI](https://github.com/Sun1090/IndieStack/actions/workflows/ci.yml/badge.svg)](https://github.com/Sun1090/IndieStack/actions/workflows/ci.yml)
 
-> A production-ready IndieStack for independent developers.
+> A production-ready SaaS starter for independent developers.
 
 Built with **Next.js 16**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **PostgreSQL**, **Sentry**, **Vercel**, **GitHub Actions**, **Alibaba Cloud OSS**, and **Appark**.
 
 ## Features
 
 ### 🏗️ Architecture
-- Next.js 15 App Router with Route Groups
+- Next.js 16 App Router with Route Groups
 - React Server Components with Server Actions
 - Supabase SSR authentication (Email, GitHub, Google)
 - PostgreSQL with Row Level Security
@@ -58,39 +60,36 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-> 线上演示：https://indie-stack-theta.vercel.app · 文档：https://indie-stack-docs-site.vercel.app
+> Live demo: https://indie-stack-theta.vercel.app · Docs: https://indie-stack-docs-site.vercel.app
 
 ## Documentation
-项目包含两套文档体系：
 
-### 1. 内联文档 `/docs/`
-项目内 `/docs` 目录包含 7 个 Markdown 文件，覆盖架构、设置、技术栈、Supabase、部署、配置等核心主题。
+The project ships two documentation systems:
 
-| 文件 | 说明 |
-|------|------|
-| `architecture.md` | 项目架构、数据流、路由设计 |
-| `setup.md` | 本地开发设置、环境变量说明 |
-| `tech-stack.md` | 每项技术的深度介绍 |
-| `supabase.md` | 数据库 Schema、认证、RLS 策略 |
-| `deployment.md` | Vercel、阿里云、Sentry、GitHub Actions 部署指南 |
-| `configuration.md` | 所有环境变量和配置说明 |
+### 1. Inline docs `/docs/`
+The `/docs` directory contains 7 Markdown files covering architecture, setup, tech stack, Supabase, deployment, and configuration.
 
-### 2. 独立文档站 `docs-site/`（VitePress）
-基于 VitePress 的独立文档网站，支持中英文双语、深色/浅色主题切换，可脱离主应用单独部署。
+| File | Description |
+|------|-------------|
+| `architecture.md` | Project architecture, data flow, route design |
+| `setup.md` | Local dev setup, environment variables |
+| `tech-stack.md` | Deep dive into each technology |
+| `supabase.md` | DB schema, auth, RLS policies |
+| `deployment.md` | Vercel, Alibaba Cloud, Sentry, GitHub Actions guides |
+| `configuration.md` | All environment variables and config |
 
-包含 12 个文档章节，覆盖所有技术主题：
+### 2. Standalone docs site `docs-site/` (VitePress)
+A VitePress docs site supporting bilingual (zh/en) content and dark/light themes; deployable independently.
 
 ```bash
 cd docs-site
 pnpm install
-pnpm dev        # 启动本地开发服务器（默认 http://localhost:5173）
-pnpm build      # 构建静态站点（输出到 .vitepress/dist/）
-pnpm preview    # 本地预览构建结果
+pnpm dev        # dev server (default http://localhost:5173)
+pnpm build      # build static site (output to .vitepress/dist/)
+pnpm preview    # preview the build locally
 ```
 
-**部署方式**：
-- **Vercel**: 在 Vercel 中导入 `docs-site/` 目录，或 `cd docs-site && vercel --prod`
-- **Docker**: `cd docs-site && docker build -t indiestack-docs . && docker run -d -p 8080:80 indiestack-docs`
+**Deployment**: Vercel — import the `docs-site/` directory, or `cd docs-site && vercel --prod`. Docker — `cd docs-site && docker build -t indiestack-docs . && docker run -d -p 8080:80 indiestack-docs`.
 
 ## Project Structure
 
@@ -128,28 +127,28 @@ src/
 | `pnpm lint` | Run ESLint |
 | `pnpm type-check` | TypeScript type check |
 | `pnpm format` | Format code with Prettier |
-| `pnpm check` | type-check + lint + i18n 对称性校验 |
-| `pnpm check:locales` | 校验 en/zh-CN 翻译 key 对称性 |
+| `pnpm check` | type-check + lint + i18n symmetry check |
+| `pnpm check:locales` | Verify en/zh-CN translation key symmetry |
 | `pnpm db:migrate` | Push database migrations |
 | `pnpm db:types` | Generate TypeScript types from DB |
-| `pnpm test` | Vitest 单元 + 组件测试（253+ 用例） |
-| `pnpm test:e2e` | Playwright E2E 冒烟测试 |
+| `pnpm test` | Vitest unit + component tests (253+ cases) |
+| `pnpm test:e2e` | Playwright E2E smoke tests |
 
 ## Testing
 
-- **单元/组件**: Vitest 双项目（node + jsdom），覆盖率门禁核心逻辑 ≥90%
-- **E2E**: Playwright 冒烟测试（`pnpm test:e2e`，本地 Mock 模式无需 Supabase）
-- **CI**: GitHub Actions 五道关卡 —— Lint & Type Check / Build / E2E / Build Docs / CodeQL + gitleaks 安全扫描
+- **Unit/Component**: Vitest dual projects (node + jsdom), coverage gate ≥90% on core logic.
+- **E2E**: Playwright smoke tests (`pnpm test:e2e`; local Mock mode needs no Supabase).
+- **CI**: GitHub Actions — Lint & Type Check / Build / E2E / Build Docs / CodeQL + gitleaks security scan.
 
-## Agent 体系
+## Agent System
 
-项目内置 10 个专业化协作 Agent（见 [AGENTS.md](./AGENTS.md)）：代码编写、代码审查、项目审查、架构师、测试工程师、文档编写、数据库管理、DevOps、UI/UX 设计、提交与发布。
+The project ships 10 specialized collaboration agents (see [AGENTS.md](./AGENTS.md)): Code Writer, Code Reviewer, Project Auditor, Architect, Test Engineer, Documentation Writer, DBA, DevOps, UI/UX, Release Manager.
 
 ## Tech Stack
 
 | Category | Technology |
 |----------|-----------|
-| Framework | Next.js 15 (App Router, RSC) |
+| Framework | Next.js 16 (App Router, RSC) |
 | Styling | Tailwind CSS + shadcn/ui |
 | Auth | Supabase Auth (Email, GitHub, Google) |
 | Database | PostgreSQL (via Supabase) |
@@ -161,44 +160,16 @@ src/
 | Payments | Stripe (ready) |
 | Validation | Zod |
 
-
 ## Standalone Docs Site (`docs-site/`)
 
-项目附带一个基于 **VitePress** 的独立文档站（`docs-site/`），包含 12 个文档章节，支持中英文双语、深色/浅色主题切换，可脱离主应用单独部署。
-
-### 本地开发
+A VitePress-based standalone docs site (`docs-site/`), bilingual, dark/light theme, independently deployable.
 
 ```bash
 cd docs-site
 pnpm install
-pnpm dev        # 启动本地开发服务器（默认 http://localhost:5173）
-```
-
-### 构建静态站点
-
-```bash
-pnpm build      # 输出到 .vitepress/dist/
-pnpm preview    # 本地预览构建结果
-```
-
-### Vercel 部署
-
-在 Vercel 中导入 `docs-site/` 目录，或使用 CLI：
-
-```bash
-cd docs-site
-vercel --prod
-```
-
-Vercel 会自动识别 `vercel.json` 配置使用 `@vercel/static-build` 构建器。
-
-### Docker 部署
-
-```bash
-cd docs-site
-docker build -t indiestack-docs .
-docker run -d -p 8080:80 indiestack-docs
-# 访问 http://localhost:8080
+pnpm dev        # dev server (default http://localhost:5173)
+pnpm build      # build to .vitepress/dist/
+pnpm preview    # preview locally
 ```
 
 ## Sponsor
