@@ -3,6 +3,10 @@
 > The project's AI-assistant system — provides specialized role definitions and workflows for AI collaboration.
 > Each agent focuses on one domain and follows project conventions and best practices.
 
+## Reuse First
+
+Prefer what's already installed over hand-rolled code: check `package.json` for a dependency that covers the need before writing your own, and grep `src/components/shared/` + `src/lib/actions/` for an existing component or action before creating a new one. Queries go through `src/lib/repositories/`; navigation uses `ROUTES.*`. Add a new dependency only when nothing installed or built-in fits, and state why in the PR.
+
 ## Quick Reference
 
 | ID | Agent | Responsibility | File |
