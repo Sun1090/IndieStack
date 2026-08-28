@@ -11,6 +11,7 @@ import { useTranslations } from "next-intl";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { ROUTES } from "@/lib/constants";
 
 export function LogoutAllButton() {
   const t = useTranslations("dashboard.settings.sections.security");
@@ -23,7 +24,7 @@ export function LogoutAllButton() {
     startTransition(async () => {
       const supabase = createClient();
       await supabase.auth.signOut({ scope: "global" });
-      router.push("/auth/login");
+      router.push(ROUTES.login);
       router.refresh();
     });
   }

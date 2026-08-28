@@ -10,7 +10,7 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
-import { SITE_CONFIG } from "@/lib/constants";
+import { SITE_CONFIG, ROUTES } from "@/lib/constants";
 import { getTranslations } from "next-intl/server";
 
 type BlogPost = {
@@ -76,7 +76,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       <div className="mx-auto max-w-3xl">
         <div className="mb-8">
           <Button variant="ghost" asChild className="mb-4">
-            <Link href="/blog">
+            <Link href={ROUTES.blog}>
               <ArrowLeft className="mr-2 h-4 w-4" /> {t("backToBlog")}
             </Link>
           </Button>
