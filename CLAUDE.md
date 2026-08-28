@@ -110,7 +110,7 @@ Action: read/write/create/delete/manage/invite/remove/export
 - 翻译文件在 `messages/` 目录（JSON 格式）
 - 服务端: `getTranslations(namespace)` from `next-intl/server`
 - 客户端: `useTranslations(namespace)` from `next-intl`
-- 命名空间: common/nav/home/features/pricing/about/auth/dashboard/docs/blog/faq/contact/errors
+- 命名空间: common/nav/home/features/pricing/about/auth/dashboard/blog/faq/contact/errors/actions/admin/changelog/footer/privacy/terms
 - Cookie 名: `app-locale`
 - 中间件自动检测浏览器语言偏好
 - 切换语言: 设置 Cookie 后 `router.refresh()` 无刷新更新
