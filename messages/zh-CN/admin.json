@@ -80,6 +80,21 @@
   },
   "webhookLogs": {
     "title": "Webhook 日志",
-    "desc": "Stripe Webhook 投递历史"
+    "desc": "Stripe Webhook 投递历史",
+    "autoRefresh": "自动",
+    "noLogs": "暂无 Webhook 事件"
+  },
+  "messages": {
+    "metaTitle": "联系消息",
+    "metaDesc": "通过公开联系表单提交的消息",
+    "title": "联系消息",
+    "desc": "通过公开联系表单提交的消息",
+    "noMessages": "暂无消息",
+    "name": "姓名",
+    "email": "邮箱",
+    "subject": "主题",
+    "message": "内容",
+    "submittedAt": "提交时间",
+    "reply": "回复"
   }
 }

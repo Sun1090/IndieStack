@@ -58,7 +58,7 @@ export function WebhookEventsPage() {
             onChange={(e) => setAutoRefresh(e.target.checked)}
             className="h-4 w-4"
           />
-          auto
+          {t("webhookLogs.autoRefresh")}
         </label>
         <Button variant="outline" size="sm" onClick={() => void refetch()}>
           <RefreshCw className="mr-2 h-4 w-4" />
@@ -92,7 +92,7 @@ export function WebhookEventsPage() {
             <QueryErrorState onRetry={() => void refetch()} />
           ) : filtered.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              {t("auditLogs.noLogs")}
+              {t("webhookLogs.noLogs")}
             </p>
           ) : (
             <div className="space-y-2">
