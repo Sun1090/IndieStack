@@ -62,6 +62,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         >
           {t("auditLogs.title")}
         </Link>
+        <Link
+          href={ROUTES.adminWebhooks}
+          className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {t("webhookLogs.title")}
+        </Link>
+        <Link
+          href={ROUTES.adminMessages}
+          className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {t("messages.title")}
+        </Link>
       </div>
       {children}
     </div>

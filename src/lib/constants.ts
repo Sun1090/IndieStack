@@ -71,6 +71,8 @@ export const ROUTES = {
   admin: "/dashboard/admin",
   adminUsers: "/dashboard/admin/users",
   adminAuditLogs: "/dashboard/admin/audit-logs",
+  adminWebhooks: "/dashboard/admin/webhooks",
+  adminMessages: "/dashboard/admin/messages",
 
   // API Keys
   apiKeys: "/dashboard/api-keys",

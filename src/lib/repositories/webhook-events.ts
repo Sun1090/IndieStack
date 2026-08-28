@@ -29,7 +29,7 @@ export async function listRecentWebhookEvents(limit = 50): Promise<WebhookEventR
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("webhook_events")
-    .select("id, provider, event_id, event_type, status, error_message, created_at")
+    .select("id, provider, event_id, event_type, status, error_message, payload, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);

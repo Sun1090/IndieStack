@@ -80,6 +80,21 @@
   },
   "webhookLogs": {
     "title": "Webhook Logs",
-    "desc": "Stripe webhook delivery history"
+    "desc": "Stripe webhook delivery history",
+    "autoRefresh": "Auto",
+    "noLogs": "No webhook events yet"
+  },
+  "messages": {
+    "metaTitle": "Contact Messages",
+    "metaDesc": "Messages submitted via the public contact form",
+    "title": "Contact Messages",
+    "desc": "Messages submitted via the public contact form",
+    "noMessages": "No messages yet",
+    "name": "Name",
+    "email": "Email",
+    "subject": "Subject",
+    "message": "Message",
+    "submittedAt": "Submitted",
+    "reply": "Reply"
   }
 }
