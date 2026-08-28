@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { inviteMember } from "@/lib/actions/team";
+import { ROUTES } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +36,7 @@ export function InviteMemberForm() {
     }
 
     toast({ title: t("success"), description: t("successDesc", { email }) });
-    router.push("/dashboard/team");
+    router.push(ROUTES.dashboardTeam);
     router.refresh();
   }
 

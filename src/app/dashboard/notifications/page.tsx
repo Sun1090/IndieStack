@@ -18,6 +18,7 @@ import { MarkAllReadButton } from "@/components/dashboard/mark-all-read-button";
 import { MarkReadAction } from "@/components/dashboard/mark-read-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { ROUTES } from "@/lib/constants";
 import { Bell } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
 import { getLocale } from "next-intl/server";
@@ -86,7 +87,7 @@ export default async function NotificationsPage({
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href="/dashboard/notifications"
+              href={ROUTES.dashboardNotifications}
               className={cn(
                 "rounded-md px-3 py-1.5 text-sm",
                 !showUnreadOnly ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent",
@@ -95,7 +96,7 @@ export default async function NotificationsPage({
               {t("notifications.list.tabAll")}
             </Link>
             <Link
-              href="/dashboard/notifications?filter=unread"
+              href={`${ROUTES.dashboardNotifications}?filter=unread`}
               className={cn(
                 "rounded-md px-3 py-1.5 text-sm",
                 showUnreadOnly ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent",
