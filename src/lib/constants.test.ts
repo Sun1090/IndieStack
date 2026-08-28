@@ -21,6 +21,13 @@ describe("ROUTES 完整性", () => {
       if (key !== "dashboard") expect(path.startsWith("/dashboard"), key).toBe(true);
     }
   });
+
+  it("admin 子路由均在 /dashboard/admin 下", () => {
+    for (const key of ["admin", "adminUsers", "adminAuditLogs", "adminWebhooks", "adminMessages"]) {
+      const path = ROUTES[key as keyof typeof ROUTES];
+      expect(path, key).toMatch(/^\/dashboard\/admin(?:\/|$)/);
+    }
+  });
 });
 
 describe("SUBSCRIPTION_TIERS 翻译完整性", () => {
