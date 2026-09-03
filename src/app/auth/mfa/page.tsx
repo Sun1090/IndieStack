@@ -2,31 +2,37 @@
 
 /**
  * MFA 登录挑战页
- * 登录表单检测到已验证 TOTP 因子时跳转至此，输入验证码完成 aal2 升级后进入 dashboard
+ * 登录表单检测到已验证 TOTP 因子时跳转至此，输入验证码完成 aal2 升级后进入 dashboard；
+ * 验证器丢失时可用恢复码自救（兑换即解除 2FA，需重新登录）。
  */
 
 export const dynamic = "force-dynamic";
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { ROUTES } from "@/lib/constants";
 import { authErrorKey } from "@/lib/auth/errors";
+import { redeemRecoveryCode } from "@/lib/actions/recovery-codes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { useSearchParams as useNextSearchParams } from "next/navigation";
 
 function MfaForm() {
+  const t = useTranslations("auth.mfa");
+  const ta = useTranslations("actions");
   const router = useRouter();
-  const searchParams = useNextSearchParams();
+  const searchParams = useSearchParams();
   const redirect = getSafeRedirect(searchParams.get("redirect"), ROUTES.dashboard);
 
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
   const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -68,11 +74,55 @@ function MfaForm() {
     router.refresh();
   }
 
-  return (
+  async function handleRedeem(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    const result = await redeemRecoveryCode(recoveryCode);
+    setLoading(false);
+    if (!result.ok) {
+      toast({ title: "MFA", description: ta(result.error), variant: "destructive" });
+      return;
+    }
+    // 兑换会登出所有会话，引导重新登录
+    toast({ title: "MFA", description: t("redeemed") });
+    router.push(ROUTES.login);
+    router.refresh();
+  }
+
+  return recoveryMode ? (
+    <form onSubmit={handleRedeem} className="space-y-6">
+      <p className="text-sm text-muted-foreground">{t("recoveryDesc")}</p>
+      <div className="space-y-2">
+        <Label htmlFor="recovery-code" className="sr-only">
+          {t("recoveryTitle")}
+        </Label>
+        <Input
+          id="recovery-code"
+          autoFocus
+          value={recoveryCode}
+          onChange={(e) => setRecoveryCode(e.target.value)}
+          className="text-center font-mono text-xl tracking-[0.3em]"
+          placeholder={t("recoveryPlaceholder")}
+          required
+        />
+      </div>
+      <Button type="submit" disabled={loading || recoveryCode.trim().length === 0} className="w-full">
+        {loading ? "..." : t("recoverySubmit")}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        className="w-full"
+        onClick={() => setRecoveryMode(false)}
+      >
+        {t("backToCode")}
+      </Button>
+    </form>
+  ) : (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-2">
         <Label htmlFor="mfa-code" className="sr-only">
-          verification code
+          {t("codeLabel")}
         </Label>
         <Input
           id="mfa-code"
@@ -88,22 +138,29 @@ function MfaForm() {
         />
       </div>
       <Button type="submit" disabled={loading || code.length !== 6} className="w-full">
-        {loading ? "..." : "Verify"}
+        {loading ? "..." : t("submit")}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        className="w-full"
+        onClick={() => setRecoveryMode(true)}
+      >
+        {t("useRecovery")}
       </Button>
     </form>
   );
 }
 
 export default function MfaPage() {
+  const t = useTranslations("auth.mfa");
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <Suspense fallback={null}>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Two-Factor Authentication</CardTitle>
-          <CardDescription>
-            Enter the 6-digit code from your authenticator app.
-          </CardDescription>
+          <CardTitle>{t("title")}</CardTitle>
+          <CardDescription>{t("desc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <MfaForm />

@@ -19,6 +19,10 @@ import {
   verifyTotpEnrollment,
   unenrollTotp,
 } from "@/lib/actions/mfa";
+import {
+  generateRecoveryCodes,
+  hasRecoveryCodes,
+} from "@/lib/actions/recovery-codes";
 
 type Step = "idle" | "scanning" | "verifying" | "unenrolling";
 
@@ -129,6 +133,7 @@ export function TwoFactorSection() {
               </Button>
             </form>
             {error && <p className="text-sm text-destructive">{error}</p>}
+            <RecoveryCodesSection />
           </>
         ) : step === "idle" ? (
           <>
@@ -186,3 +191,80 @@ export function TwoFactorSection() {
 // Badge 导入补充（避免顶部重复整理）
 import { Badge as _Badge } from "@/components/ui/badge";
 void _Badge;
+
+/**
+ * 恢复码区块（独立组件：明文仅生成时展示一次；重新生成作废旧码）
+ */
+function RecoveryCodesSection() {
+  const t = useTranslations("dashboard.settings.sections.twoFactor");
+  const ta = useTranslations("actions");
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const { data: hasCodes, refetch } = useQuery({
+    queryKey: ["recovery-status"],
+    queryFn: async () => {
+      const result = await hasRecoveryCodes();
+      if (!result.ok) throw new Error(result.error);
+      return result.data?.has ?? false;
+    },
+  });
+
+  function startGenerate() {
+    setError(null);
+    setCopied(false);
+    startTransition(async () => {
+      const result = await generateRecoveryCodes();
+      if (!result.ok) {
+        setError(ta(result.error));
+        return;
+      }
+      setCodes(result.data?.codes ?? []);
+      void refetch();
+    });
+  }
+
+  function copyCodes() {
+    if (!codes) return;
+    void navigator.clipboard.writeText(codes.join("\n")).then(() => setCopied(true));
+  }
+
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <p className="text-sm font-medium">{t("recoveryTitle")}</p>
+      <p className="text-sm text-muted-foreground">{t("recoveryDesc")}</p>
+      {codes ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-amber-600">{t("recoveryShowOnce")}</p>
+          <code className="block rounded bg-muted px-3 py-2 font-mono text-sm leading-7">
+            {codes.map((c) => (
+              <span key={c} className="block">
+                {c}
+              </span>
+            ))}
+          </code>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={copyCodes}>
+              {copied ? t("recoveryCopied") : t("recoveryCopy")}
+            </Button>
+            <Button type="button" size="sm" onClick={() => setCodes(null)}>
+              {t("recoveryDone")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {hasCodes ? t("recoveryHasCodes") : t("recoveryNoCodes")}
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={startGenerate} disabled={pending}>
+            {hasCodes ? t("recoveryRegenerate") : t("recoveryGenerate")}
+          </Button>
+        </>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  );
+}

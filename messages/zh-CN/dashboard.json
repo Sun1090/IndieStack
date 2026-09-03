@@ -141,7 +141,17 @@
         "codeLabel": "验证码",
         "codePlaceholder": "000000",
         "verifyBtn": "验证并启用",
-        "disable": "解除两步验证"
+        "disable": "解除两步验证",
+        "recoveryTitle": "恢复码",
+        "recoveryDesc": "验证器丢失时的备用一次性码。每码仅可用一次；兑换即解除两步验证。",
+        "recoveryGenerate": "生成恢复码",
+        "recoveryRegenerate": "重新生成",
+        "recoveryHasCodes": "你已保存有未使用的恢复码。",
+        "recoveryNoCodes": "还没有恢复码——现在生成吧。",
+        "recoveryShowOnce": "立即保存——关闭后不再显示。重新生成会使旧码失效。",
+        "recoveryCopy": "复制",
+        "recoveryCopied": "已复制！",
+        "recoveryDone": "我已保存"
       },
       "appearance": {
         "title": "外观设置",
