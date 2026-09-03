@@ -6,6 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeTotpCode } from "@/lib/validations/mfa";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 
@@ -78,8 +79,8 @@ export async function verifyTotpEnrollment(
 
   if (!user) return fail("notAuthenticated");
 
-  const cleaned = code.replace(/\s+/g, "");
-  if (!/^\d{6}$/.test(cleaned)) return fail("mfaInvalidCode");
+  const cleaned = normalizeTotpCode(code);
+  if (!cleaned) return fail("mfaInvalidCode");
 
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: cleaned });
 
@@ -104,8 +105,8 @@ export async function unenrollTotp(
 
   if (!user) return fail("notAuthenticated");
 
-  const cleaned = code.replace(/\s+/g, "");
-  if (!/^\d{6}$/.test(cleaned)) return fail("mfaInvalidCode");
+  const cleaned = normalizeTotpCode(code);
+  if (!cleaned) return fail("mfaInvalidCode");
 
   // 先用验证码做一次 challenge 校验身份，再解除
   const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({

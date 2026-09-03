@@ -5,18 +5,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
+import { contactSchema } from "@/lib/validations/contact";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
-
-const contactSchema = z.object({
-  name: z.string().trim().min(1, "nameRequired").max(100),
-  email: z.string().trim().email("emailInvalid").max(200),
-  subject: z.string().trim().min(1, "subjectRequired").max(200),
-  message: z.string().trim().min(1, "messageRequired").max(5000),
-});
 
 export async function submitContactMessage(formData: FormData): Promise<ActionResult> {
   const limits = await rateLimit.check(new Request("http://local/contact"));
