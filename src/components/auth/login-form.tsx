@@ -61,6 +61,7 @@ export function LoginForm() {
     );
     if (verifiedFactors.length > 0) {
       const factorId = verifiedFactors[0].id;
+      toast({ title: t("login.submit"), description: t("login.mfaRedirect") });
       router.push(
         `/auth/mfa?factor=${factorId}&redirect=${encodeURIComponent(redirect)}`,
       );

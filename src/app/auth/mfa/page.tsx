@@ -9,6 +9,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
@@ -34,6 +35,18 @@ function MfaForm() {
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
   const supabase = createClient();
+
+  // 直接访问缺 factor 参数：不渲染表单，给出回登录入口
+  if (!searchParams.get("factor")) {
+    return (
+      <div className="space-y-6 text-center">
+        <p className="text-sm text-muted-foreground">{t("missingFactor")}</p>
+        <Button asChild className="w-full">
+          <Link href={ROUTES.login}>{t("backToLogin")}</Link>
+        </Button>
+      </div>
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
