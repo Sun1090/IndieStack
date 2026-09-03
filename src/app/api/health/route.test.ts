@@ -23,6 +23,7 @@ describe("GET /api/health", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store, must-revalidate");
     const body = await res.json();
     expect(body.checks.supabase.configured).toBe(false);
+    expect(body.checks.supabase.reachable).toBe(false);
     expect(body.checks.sentry.configured).toBe(false);
     expect(body.checks.stripe.configured).toBe(false);
     expect(body.allConfigured).toBe(false);
