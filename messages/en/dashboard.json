@@ -141,7 +141,17 @@
         "codeLabel": "Verification code",
         "codePlaceholder": "000000",
         "verifyBtn": "Verify",
-        "disable": "Disable 2FA"
+        "disable": "Disable 2FA",
+        "recoveryTitle": "Recovery codes",
+        "recoveryDesc": "One-time backup codes for when you lose access to your authenticator. Each code works once; redeeming one turns off 2FA.",
+        "recoveryGenerate": "Generate recovery codes",
+        "recoveryRegenerate": "Regenerate codes",
+        "recoveryHasCodes": "You have unused recovery codes saved.",
+        "recoveryNoCodes": "No recovery codes yet — generate some now.",
+        "recoveryShowOnce": "Save these now — they won't be shown again. Regenerating invalidates old codes.",
+        "recoveryCopy": "Copy",
+        "recoveryCopied": "Copied!",
+        "recoveryDone": "I've saved them"
       },
       "appearance": {
         "title": "Appearance",
