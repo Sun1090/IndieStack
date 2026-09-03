@@ -7,7 +7,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { SITE_CONFIG } from "@/lib/constants";
+import { version as pkgVersion } from "../../../../package.json";
 
 /** 服务启动时间（进程级） */
 const startupTime = Date.now();
@@ -22,8 +22,9 @@ export async function GET() {
     timestamp: new Date().toISOString(),
     uptime,
     uptimeFormatted: formatUptime(uptime),
-    // 与 package.json version 同步（发布流程负责更新；运行时可用 NEXT_PUBLIC_APP_VERSION 覆盖）
-    version: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.3.0",
+    // 单一来源：package.json version（构建时内联，本文件仅服务端运行）；
+    // 部署时可用 NEXT_PUBLIC_APP_VERSION 显式覆盖
+    version: process.env.NEXT_PUBLIC_APP_VERSION ?? pkgVersion,
     environment: process.env.NODE_ENV,
     checks: {
       // Supabase 连接检测（通过检查必需的配置变量）
