@@ -148,8 +148,8 @@ export async function POST(request: Request) {
       }
 
       default:
-        // Unknown event type - log and acknowledge
-        logger.info(`[Stripe Webhook] 未处理事件: ${event.type}`);
+        // 未知事件类型：落表 skipped + Sentry 上报（同 type 自动分组，需人工评估是否适配）
+        await logApiError(`[Stripe Webhook] 未处理事件: ${event.type}`, new Error("unhandled_event_type"));
         status = "skipped";
     }
 
