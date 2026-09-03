@@ -175,6 +175,10 @@ function sidebar_zh() {
           { text: "部署方案", link: "/zh-CN/deployment" },
         ],
       },
+      {
+        text: "版本动态",
+        items: [{ text: "v0.4.0（规划中）", link: "/zh-CN/v0.4.0" }],
+      },
     ],
   };
 }
@@ -210,6 +214,10 @@ function sidebar_en() {
           { text: "Scripts", link: "/scripts" },
           { text: "Deployment", link: "/deployment" },
         ],
+      },
+      {
+        text: "Releases",
+        items: [{ text: "v0.4.0 (Planned)", link: "/v0.4.0" }],
       },
     ],
   };

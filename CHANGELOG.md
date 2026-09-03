@@ -2,6 +2,27 @@
 
 All notable changes to IndieStack will be documented in this file.
 
+## [Unreleased] — v0.4.0（主题：Admin 运营闭环 + 数据层测试 + 集成接线）
+
+### Added（计划）
+
+- Repository 层单测全覆盖（7 个数据访问模块 + trace/csp/api-response）
+- API 路由单测补齐（health/invitations/checkout/callback/og/stripe-webhook）
+- E2E 覆盖 admin 新页面、contact 提交、MFA 流程
+- MFA 备用恢复码、会话管理页、登录审计日志
+- 联系消息处理状态机、管理端搜索/分页、邮件通道方案
+
+### Changed（计划）
+
+- API 错误格式统一收敛到 `api-response`
+- TanStack Query 全局缓存策略统一
+- TanStack Table v9 原生 features 迁移、Tailwind v4 `@theme` 渐进重写
+
+### Fixed（计划）
+
+- RLS 回归脚本覆盖 contact_messages/webhook_events 新表
+- `pnpm audit` 高危清零、CodeQL/gitleaks 告警清零
+
 ## [0.3.0] — 2026-08-23
 
 ### Changed（大版本升级专项）
