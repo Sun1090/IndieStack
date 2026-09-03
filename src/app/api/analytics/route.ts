@@ -11,6 +11,7 @@ import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { safelyRequireAuth } from "@/lib/auth/guards";
+import { logApiError } from "@/lib/api-log";
 
 export const dynamic = "force-dynamic";
 
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
       range,
     });
   } catch (error) {
-    console.error("[Analytics API] 获取分析数据失败:", error);
+    await logApiError("[Analytics API] 获取分析数据失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 }

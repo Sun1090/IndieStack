@@ -9,6 +9,7 @@ import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
+import { logApiError } from "@/lib/api-log";
 import { getProfileById, updateProfile } from "@/lib/repositories/profiles";
 import type { Database } from "@/lib/supabase/database.types";
 import type { PostgrestError } from "@supabase/supabase-js";
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
   const { data: profile, error: profileError } = await getProfileById(user.id);
 
   if (profileError) {
-    console.error("[API /user] 获取用户资料失败:", profileError);
+    await logApiError("[API /user] 获取用户资料失败", profileError);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 
@@ -112,7 +113,7 @@ export async function PATCH(request: NextRequest) {
   const { data: profile, error } = await updateProfile(user.id, updateData);
 
   if (error) {
-    console.error("[API /user] 更新用户资料失败:", error);
+    await logApiError("[API /user] 更新用户资料失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 
@@ -144,7 +145,7 @@ export async function DELETE(request: NextRequest) {
   const { error } = await admin.auth.admin.deleteUser(user.id);
 
   if (error) {
-    console.error("[API /user] 删除用户失败:", error.message);
+    await logApiError("[API /user] 删除用户失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 

@@ -7,11 +7,13 @@
  * DELETE /api/invitations?id=xxx         — 撤销邀请/移除成员
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
 import { safelyRequirePermission, guardHttpStatus } from "@/lib/auth/guards";
+import { logApiError } from "@/lib/api-log";
 import { inviteMemberSchema } from "@/lib/validations/team";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 
@@ -24,7 +26,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 },
     );
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.read);
   if (!auth.success) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: auth.error.message },
       { status: guardHttpStatus(auth.error) },
     );
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const teamId = searchParams.get("team_id");
   if (!teamId) {
-    return NextResponse.json({ error: "team_id is required" }, { status: 400 });
+    return jsonNoStore({ error: "team_id is required" }, { status: 400 });
   }
 
   try {
@@ -55,7 +57,7 @@ export async function GET(request: NextRequest) {
       .eq("user_id", auth.data.id)
       .maybeSingle();
     if (!membership) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return jsonNoStore({ error: "Forbidden" }, { status: 403 });
     }
 
     const { data: members, error } = await supabase
@@ -79,14 +81,14 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("[Invitations API] 获取成员列表失败:", error.message);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      await logApiError("[Invitations API] 获取成员列表失败", error);
+      return jsonNoStore({ error: "Internal server error" }, { status: 500 });
     }
 
-    return NextResponse.json({ invitations: members ?? [] });
+    return jsonNoStore({ invitations: members ?? [] });
   } catch (error) {
-    console.error("[Invitations API] 获取成员列表失败:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    await logApiError("[Invitations API] 获取成员列表失败", error);
+    return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 },
     );
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
 
   const auth = await safelyRequirePermission(PERMISSIONS.team.invite);
   if (!auth.success) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: auth.error.message },
       { status: guardHttpStatus(auth.error) },
     );
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = inviteMemberSchema.safeParse(body);
     if (!validated.success) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: validated.error.issues[0]?.message ?? "Invalid input" },
         { status: 400 },
       );
@@ -126,7 +128,7 @@ export async function POST(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return jsonNoStore({ error: "Not authenticated" }, { status: 401 });
     }
 
     // 获取当前用户的团队
@@ -138,7 +140,7 @@ export async function POST(request: NextRequest) {
       .single()) as unknown as { data: { team_id: string } | null };
 
     if (!membership) {
-      return NextResponse.json({ error: "No team found" }, { status: 404 });
+      return jsonNoStore({ error: "No team found" }, { status: 404 });
     }
 
     const teamId = validated.data.team_id ?? membership.team_id;
@@ -152,7 +154,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()) as unknown as { data: { role: string } | null };
 
     if (!teamRole || !["owner", "admin"].includes(teamRole.role)) {
-      return NextResponse.json({ error: "Only team admins can invite members" }, { status: 403 });
+      return jsonNoStore({ error: "Only team admins can invite members" }, { status: 403 });
     }
 
     // 按邮箱在 profiles 表精确查询目标用户（替代 admin.auth.admin.listUsers() 全量拉取，
@@ -165,7 +167,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (!invitedProfile) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "User not found. They need to register first." },
         { status: 404 },
       );
@@ -180,7 +182,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()) as unknown as { data: { id: string } | null };
 
     if (existing) {
-      return NextResponse.json({ error: "User is already a team member" }, { status: 409 });
+      return jsonNoStore({ error: "User is already a team member" }, { status: 409 });
     }
 
     // 添加成员
@@ -196,8 +198,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      console.error("[Invitations API] 添加成员失败:", insertError.message);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      await logApiError("[Invitations API] 添加成员失败", insertError);
+      return jsonNoStore({ error: "Internal server error" }, { status: 500 });
     }
 
     // 更新成员计数
@@ -214,10 +216,10 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", teamId);
 
-    return NextResponse.json({ invitation: newMember }, { status: 201 });
+    return jsonNoStore({ invitation: newMember }, { status: 201 });
   } catch (error) {
-    console.error("[Invitations API] 发送邀请失败:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    await logApiError("[Invitations API] 发送邀请失败", error);
+    return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -228,14 +230,14 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const limits = await rateLimit.check(request);
   if (!limits.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Too Many Requests", retryAfter: Math.ceil(limits.resetIn / 1000) },
       { status: 429 },
     );
   }
   const auth = await safelyRequirePermission(PERMISSIONS.team.remove);
   if (!auth.success) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: auth.error.message },
       { status: guardHttpStatus(auth.error) },
     );
@@ -245,7 +247,7 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const memberId = searchParams.get("id");
     if (!memberId) {
-      return NextResponse.json({ error: "Member ID is required" }, { status: 400 });
+      return jsonNoStore({ error: "Member ID is required" }, { status: 400 });
     }
 
     const supabase = await createClient();
@@ -256,7 +258,7 @@ export async function DELETE(request: NextRequest) {
       .maybeSingle()) as unknown as { data: { team_id: string; role: string } | null };
 
     if (!member) {
-      return NextResponse.json({ error: "Member not found" }, { status: 404 });
+      return jsonNoStore({ error: "Member not found" }, { status: 404 });
     }
 
     const { data: membership } = (await supabase
@@ -267,11 +269,11 @@ export async function DELETE(request: NextRequest) {
       .maybeSingle()) as unknown as { data: { role: string } | null };
 
     if (!membership || !["owner", "admin"].includes(membership.role)) {
-      return NextResponse.json({ error: "Only team admins can remove members" }, { status: 403 });
+      return jsonNoStore({ error: "Only team admins can remove members" }, { status: 403 });
     }
 
     if (member.role === "owner") {
-      return NextResponse.json({ error: "The team owner cannot be removed" }, { status: 403 });
+      return jsonNoStore({ error: "The team owner cannot be removed" }, { status: 403 });
     }
 
     const admin = createAdminClient();
@@ -282,8 +284,8 @@ export async function DELETE(request: NextRequest) {
       .eq("team_id", member.team_id);
 
     if (error) {
-      console.error("[Invitations API] 移除成员失败:", error.message);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      await logApiError("[Invitations API] 移除成员失败", error);
+      return jsonNoStore({ error: "Internal server error" }, { status: 500 });
     }
 
     const { count } = await admin
@@ -296,9 +298,9 @@ export async function DELETE(request: NextRequest) {
       .update({ member_count: count ?? 0 })
       .eq("id", member.team_id);
 
-    return NextResponse.json({ success: true });
+    return jsonNoStore({ success: true });
   } catch (error) {
-    console.error("[Invitations API] 撤销邀请失败:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    await logApiError("[Invitations API] 撤销邀请失败", error);
+    return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
 }

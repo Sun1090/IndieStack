@@ -7,7 +7,9 @@
  * 并将订阅状态同步到 subscriptions 表（通过 service_role 客户端写入）。
  */
 
-import { NextResponse } from "next/server";
+import { jsonNoStore } from "@/lib/api-response";
+import { logger } from "@/lib/logger";
+import { logApiError } from "@/lib/api-log";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeServer } from "@/lib/stripe";
 import { mapStatus, mapPlan } from "@/lib/stripe/webhook-mappers";
@@ -44,8 +46,9 @@ async function resolveTeamId(
 async function upsertSubscription(subscription: Stripe.Subscription): Promise<void> {
   const teamId = await resolveTeamId(subscription.metadata?.teamId, subscription.metadata?.userId);
   if (!teamId) {
-    console.warn(
+    await logApiError(
       `[Stripe Webhook] 无法解析 team_id，跳过订阅 ${subscription.id}（userId=${subscription.metadata?.userId ?? "unknown"}）`,
+      new Error("unresolvable_team"),
     );
     return;
   }
@@ -91,13 +94,13 @@ export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
   if (!signature) {
-    return NextResponse.json({ error: "Missing signature" }, { status: 400 });
+    return jsonNoStore({ error: "Missing signature" }, { status: 400 });
   }
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("[Stripe Webhook] 缺少 STRIPE_WEBHOOK_SECRET 环境变量");
-    return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
+    await logApiError("[Stripe Webhook] 缺少 STRIPE_WEBHOOK_SECRET 环境变量", new Error("misconfigured"));
+    return jsonNoStore({ error: "Webhook not configured" }, { status: 500 });
   }
 
   // 验签：使用 Stripe SDK 校验事件签名与载荷完整性
@@ -106,8 +109,8 @@ export async function POST(request: Request) {
     const stripe = await getStripeServer();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (error) {
-    console.error("[Stripe Webhook] 签名验证失败:", error);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    await logApiError("[Stripe Webhook] 签名验证失败", error);
+    return jsonNoStore({ error: "Invalid signature" }, { status: 400 });
   }
 
   try {
@@ -127,7 +130,7 @@ export async function POST(request: Request) {
       case "invoice.payment_succeeded": {
         // 订阅状态由 customer.subscription.* 事件维护，此处记录日志即可
         const invoice = event.data.object as Stripe.Invoice;
-        console.log(
+        logger.info(
           `[Stripe Webhook] 付款成功: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
         );
         status = "skipped";
@@ -136,8 +139,9 @@ export async function POST(request: Request) {
 
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
-        console.warn(
+        await logApiError(
           `[Stripe Webhook] 付款失败: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
+          new Error("payment_failed"),
         );
         status = "skipped";
         break;
@@ -145,21 +149,21 @@ export async function POST(request: Request) {
 
       default:
         // Unknown event type - log and acknowledge
-        console.log(`[Stripe Webhook] 未处理事件: ${event.type}`);
+        logger.info(`[Stripe Webhook] 未处理事件: ${event.type}`);
         status = "skipped";
     }
 
     await recordWebhookEvent(event.id, event.type, status);
-    return NextResponse.json({ received: true });
+    return jsonNoStore({ received: true });
   } catch (error) {
-    console.error("[Stripe Webhook] 处理失败:", error);
+    await logApiError("[Stripe Webhook] 处理失败", error);
     await recordWebhookEvent(
       event.id,
       event.type,
       "failed",
       error instanceof Error ? error.message : String(error),
     );
-    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+    return jsonNoStore({ error: "Webhook handler failed" }, { status: 500 });
   }
 }
 
@@ -179,6 +183,6 @@ async function recordWebhookEvent(
       error_message: errorMessage ?? null,
     });
   } catch (logError) {
-    console.error("[Stripe Webhook] 事件日志写入失败:", logError);
+    await logApiError("[Stripe Webhook] 事件日志写入失败", logError);
   }
 }
