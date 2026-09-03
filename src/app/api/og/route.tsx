@@ -9,8 +9,14 @@ export const contentType = "image/png";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const title = (searchParams.get("title") ?? "IndieStack").slice(0, 80);
-  const category = searchParams.get("category")?.slice(0, 40);
+  // 参数校验：截断 + 去控制字符（防 Satori 渲染异常），空标题回退默认
+  const clean = (v: string | null, max: number, fallback: string) => {
+    const s = (v ?? "").replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, max);
+    return s || fallback;
+  };
+  const title = clean(searchParams.get("title"), 80, "IndieStack");
+  const rawCategory = clean(searchParams.get("category"), 40, "");
+  const category = rawCategory || undefined;
 
   return new ImageResponse(
     (
@@ -79,6 +85,13 @@ export async function GET(request: Request) {
         </div>
       </div>
     ),
-    { width: 1200, height: 630 },
+    {
+      width: 1200,
+      height: 630,
+      // 图片内容完全由参数决定，可被 CDN 长缓存
+      headers: {
+        "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=86400",
+      },
+    },
   );
 }

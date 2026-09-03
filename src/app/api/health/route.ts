@@ -6,16 +6,43 @@
  * GET /api/health
  */
 
-import { NextResponse } from "next/server";
+import { jsonNoStore } from "@/lib/api-response";
 import { version as pkgVersion } from "../../../../package.json";
 
 /** 服务启动时间（进程级） */
 const startupTime = Date.now();
 
+/** DB 可达性探测超时（健康检查永不 hanging） */
+const REACHABLE_TIMEOUT_MS = 3000;
+
 export const dynamic = "force-dynamic";
+
+/** 轻量探测 DB 可达性：limit(1) 索引扫描；无配置时跳过不断连 */
+async function checkSupabaseReachable(configured: boolean): Promise<boolean> {
+  if (!configured) return false;
+  try {
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const probe = createAdminClient()
+      .from("profiles")
+      .select("id")
+      .limit(1)
+      .maybeSingle()
+      .then(
+        () => true,
+        () => false,
+      );
+    const timeout = new Promise<false>((resolve) => setTimeout(() => resolve(false), REACHABLE_TIMEOUT_MS));
+    return await Promise.race([probe, timeout]);
+  } catch {
+    return false;
+  }
+}
 
 export async function GET() {
   const uptime = Math.floor((Date.now() - startupTime) / 1000);
+  const supabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  );
 
   const status = {
     status: "ok",
@@ -27,11 +54,10 @@ export async function GET() {
     version: process.env.NEXT_PUBLIC_APP_VERSION ?? pkgVersion,
     environment: process.env.NODE_ENV,
     checks: {
-      // Supabase 连接检测（通过检查必需的配置变量）
+      // Supabase：configured 看 env；reachable 做一次轻量真实探测
       supabase: {
-        configured: Boolean(
-          process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        ),
+        configured: supabaseConfigured,
+        reachable: await checkSupabaseReachable(supabaseConfigured),
       },
       // Sentry 检测
       sentry: {
@@ -47,7 +73,7 @@ export async function GET() {
   // 检查是否所有核心依赖都已配置
   const allConfigured = Object.values(status.checks).every((check) => check.configured);
 
-  return NextResponse.json(
+  return jsonNoStore(
     { ...status, allConfigured },
     {
       status: 200,

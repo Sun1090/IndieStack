@@ -23,6 +23,8 @@ export interface CheckoutSessionParams {
   allowPromotionCodes?: boolean;
   trialDays?: number;
   metadata?: Record<string, string>;
+  /** Stripe 幂等键（防双击/重试建出多个 session） */
+  idempotencyKey?: string;
 }
 
 export type SubscriptionStatus =
@@ -90,25 +92,28 @@ async function createCheckoutSession(
   params?: CheckoutSessionParams,
 ): Promise<{ url: string | null; sessionId: string }> {
   const stripe = await getStripeServer();
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    payment_method_types: ["card"],
-    line_items: [{ price: priceId, quantity: 1 }],
-    customer: params?.customerId,
-    customer_email: params?.customerEmail,
-    client_reference_id: params?.userId,
-    success_url:
-      params?.successUrl ??
-      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/dashboard/billing?success=true`,
-    cancel_url:
-      params?.cancelUrl ??
-      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/dashboard/billing?canceled=true`,
-    allow_promotion_codes: params?.allowPromotionCodes ?? true,
-    subscription_data: {
-      ...(params?.trialDays ? { trial_period_days: params.trialDays } : {}),
-      metadata: { userId: params?.userId ?? "", teamId: params?.teamId ?? "", ...params?.metadata },
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [{ price: priceId, quantity: 1 }],
+      customer: params?.customerId,
+      customer_email: params?.customerEmail,
+      client_reference_id: params?.userId,
+      success_url:
+        params?.successUrl ??
+        `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/dashboard/billing?success=true`,
+      cancel_url:
+        params?.cancelUrl ??
+        `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/dashboard/billing?canceled=true`,
+      allow_promotion_codes: params?.allowPromotionCodes ?? true,
+      subscription_data: {
+        ...(params?.trialDays ? { trial_period_days: params.trialDays } : {}),
+        metadata: { userId: params?.userId ?? "", teamId: params?.teamId ?? "", ...params?.metadata },
+      },
     },
-  });
+    params?.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined,
+  );
   if (!session.url && !session.id) {
     throw new Error("创建 Stripe 结账会话失败");
   }
