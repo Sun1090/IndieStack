@@ -38,6 +38,13 @@ describe("listRecentNotifications()", () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chainMock({})));
     await expect(listRecentNotifications("u1")).resolves.toEqual([]);
   });
+
+  it("查询失败抛错（页面展示错误态）", async () => {
+    createClientMock.mockResolvedValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(listRecentNotifications("u1")).rejects.toThrow("db");
+  });
 });
 
 describe("countUnreadNotifications()", () => {

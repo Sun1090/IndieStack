@@ -386,6 +386,11 @@
       "tabUnread": "Unread",
       "markAllRead": "Mark all read",
       "empty": "No notifications yet",
+      "emptyDesc": "New invites, role changes and billing updates will show up here.",
+      "goSettings": "Notification preferences",
+      "loadFailed": "Couldn't load notifications",
+      "loadFailedDesc": "Please check your connection and try again.",
+      "retry": "Retry",
       "types": {
         "system": "System",
         "team_invite": "Team invite",

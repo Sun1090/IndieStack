@@ -18,6 +18,7 @@ import { MarkAllReadButton } from "@/components/dashboard/mark-all-read-button";
 import { MarkReadAction } from "@/components/dashboard/mark-read-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
 import { Bell } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
@@ -47,7 +48,14 @@ export default async function NotificationsPage({
     .eq("id", user!.id)
     .single()) as unknown as { data: Record<string, unknown> | null };
 
-  const notifications = await listRecentNotifications(user!.id, 10);
+  let notifications: Awaited<ReturnType<typeof listRecentNotifications>> | null = null;
+  let loadError = false;
+  try {
+    notifications = await listRecentNotifications(user!.id, 10);
+  } catch (error) {
+    loadError = true;
+    console.error("[NotificationsPage] 加载通知失败:", error);
+  }
 
   const locale = await getLocale();
   const { filter } = await searchParams;
@@ -118,8 +126,28 @@ export default async function NotificationsPage({
           </div>
         </CardHeader>
         <CardContent>
-          {visibleNotifications.length === 0 ? (
-            <EmptyState icon={Bell} title={t("notifications.list.empty")} />
+          {loadError ? (
+            <EmptyState
+              icon={Bell}
+              title={t("notifications.list.loadFailed")}
+              description={t("notifications.list.loadFailedDesc")}
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link href={ROUTES.dashboardNotifications}>{t("notifications.list.retry")}</Link>
+                </Button>
+              }
+            />
+          ) : visibleNotifications.length === 0 ? (
+            <EmptyState
+              icon={Bell}
+              title={t("notifications.list.empty")}
+              description={t("notifications.list.emptyDesc")}
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link href={ROUTES.dashboardSettings}>{t("notifications.list.goSettings")}</Link>
+                </Button>
+              }
+            />
           ) : (
             <div className="space-y-4">
               {visibleNotifications.map((notification) => (
