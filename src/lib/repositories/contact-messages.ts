@@ -46,6 +46,68 @@ export async function setMessageStatus(id: string, status: MessageStatus): Promi
   if (error) throw new Error(error.message);
 }
 
+export interface ContactMessageFilter {
+  status?: MessageStatus | "all";
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PaginatedMessages {
+  rows: ContactMessageRow[];
+  total: number;
+}
+
+/** 转义 PostgREST like 通配符与 or 分隔符（防注入式破坏查询结构） */
+export function escapeLike(input: string): string {
+  return input.replace(/[\\%,]/g, (c) => `\\${c}`).replace(/_/g, "\\_").slice(0, 100);
+}
+
+/**
+ * 联系消息分页查询（倒序）：状态筛选 + 姓名/邮箱/主题模糊搜 + 服务端分页。
+ */
+export async function listContactMessagesPage(
+  filter: ContactMessageFilter = {},
+): Promise<PaginatedMessages> {
+  const page = Math.max(1, Math.floor(filter.page ?? 1));
+  const pageSize = Math.min(100, Math.max(1, Math.floor(filter.pageSize ?? 20)));
+  const from = (page - 1) * pageSize;
+
+  const admin = createAdminClient();
+  // 条件过滤需重赋值，supabase 链式泛型不支持，收敛为最小结构类型
+  interface FilterChain {
+    eq: (column: string, value: unknown) => FilterChain;
+    or: (filters: string) => FilterChain;
+    order: (column: string, options?: { ascending?: boolean }) => FilterChain;
+    range: (
+      from: number,
+      to: number,
+    ) => Promise<{ data: unknown; error: { message: string } | null; count: number | null }>;
+  }
+  let query = admin
+    .from("contact_messages")
+    .select("id, name, email, subject, message, status, created_at", { count: "exact" }) as unknown as FilterChain;
+
+  if (filter.status && filter.status !== "all") {
+    if (!["new", "in_progress", "resolved"].includes(filter.status)) {
+      throw new Error(`invalid_status:${filter.status}`);
+    }
+    query = query.eq("status", filter.status);
+  }
+
+  const keyword = filter.search?.trim();
+  if (keyword) {
+    const q = escapeLike(keyword);
+    query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,subject.ilike.%${q}%`);
+  }
+
+  const { data, error, count } = await query
+    .order("created_at", { ascending: false })
+    .range(from, from + pageSize - 1);
+  if (error) throw new Error(error.message);
+  return { rows: (data ?? []) as ContactMessageRow[], total: count ?? 0 };
+}
+
 /** 消息总数 */
 export async function countContactMessages(): Promise<number> {
   const admin = createAdminClient();
