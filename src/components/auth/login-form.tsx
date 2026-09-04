@@ -22,6 +22,7 @@ import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
 import { authErrorKey } from "@/lib/auth/errors";
 import { logAuthEvent } from "@/lib/actions/audit";
+import { checkLoginAllowed, recordLoginResult } from "@/lib/actions/login-attempts";
 
 export function LoginForm() {
   const router = useRouter();
@@ -44,6 +45,18 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
 
+    // 分级锁定：失败过多先拦截，不触碰 Supabase
+    const allowed = await checkLoginAllowed(email);
+    if (!allowed.data.allowed) {
+      toast({
+        title: t("login.error"),
+        description: t("login.locked", { sec: allowed.data.retryAfterSec }),
+        variant: "destructive",
+      });
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -57,12 +70,14 @@ export function LoginForm() {
       });
       setNeedsConfirm(error.code === "email_not_confirmed");
       void logAuthEvent("auth.login_failed", { email, method: "password" });
+      void recordLoginResult(email, false);
       setLoading(false);
       return;
     }
     setNeedsConfirm(false);
 
     void logAuthEvent("auth.login", { method: "password" });
+    void recordLoginResult(email, true);
 
     // 已启用两步验证：跳转 MFA 挑战页完成 aal2 升级
     const verifiedFactors = (data.user?.factors ?? []).filter(

@@ -33,8 +33,16 @@ vi.mock("@/lib/actions/audit", () => ({
   logAuthEvent: vi.fn(async () => ({ ok: true })),
 }));
 
+const checkLoginAllowedMock = vi.hoisted(() => vi.fn());
+const recordLoginResultMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/actions/login-attempts", () => ({
+  checkLoginAllowed: checkLoginAllowedMock,
+  recordLoginResult: recordLoginResultMock,
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  checkLoginAllowedMock.mockResolvedValue({ ok: true, data: { allowed: true, retryAfterSec: 0 } });
 });
 
 async function fillAndSubmit(email: string, password: string) {
@@ -73,6 +81,31 @@ describe("LoginForm 重发确认邮件", () => {
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({ title: "login.resendTitle" }),
       );
+    });
+  });
+
+  it("锁定状态直接拦截不触碰 Supabase", async () => {
+    checkLoginAllowedMock.mockResolvedValue({
+      ok: true,
+      data: { allowed: false, retryAfterSec: 300 },
+    });
+    await fillAndSubmit("a@b.com", "password123");
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: "login.locked" }),
+      );
+    });
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("登录失败记录失败结果", async () => {
+    signInMock.mockResolvedValue({
+      data: { user: null },
+      error: { code: "invalid_credentials", message: "bad" },
+    });
+    await fillAndSubmit("a@b.com", "wrong");
+    await waitFor(() => {
+      expect(recordLoginResultMock).toHaveBeenCalledWith("a@b.com", false);
     });
   });
 
