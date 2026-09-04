@@ -17,6 +17,7 @@ import { getSafeRedirect } from "@/lib/safe-redirect";
 import { ROUTES } from "@/lib/constants";
 import { authErrorKey } from "@/lib/auth/errors";
 import { redeemRecoveryCode } from "@/lib/actions/recovery-codes";
+import { logAuthEvent } from "@/lib/actions/audit";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -83,6 +84,7 @@ function MfaForm() {
 
     // aal2 已达成，刷新会话后进入目标页
     await supabase.auth.refreshSession();
+    void logAuthEvent("auth.mfa_verified", {});
     router.push(redirect);
     router.refresh();
   }

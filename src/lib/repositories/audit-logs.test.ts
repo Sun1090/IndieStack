@@ -8,7 +8,7 @@ import { chainMock, dbClientMock } from "./test-helpers";
 const { createAdminClientMock } = vi.hoisted(() => ({ createAdminClientMock: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
-import { listAuditLogsPage, listAllAuditLogs } from "./audit-logs";
+import { listAuditLogsPage, listAllAuditLogs, appendAuditLog } from "./audit-logs";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -26,6 +26,44 @@ describe("listAuditLogsPage()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(listAuditLogsPage()).rejects.toThrow("db");
+  });
+});
+
+describe("appendAuditLog()", () => {
+  const event = {
+    userId: "u1",
+    action: "auth.login",
+    entityType: "auth",
+    entityId: "u1",
+    metadata: { method: "password" },
+  };
+
+  it("成功写入并透传字段", async () => {
+    const chain = chainMock({});
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await expect(appendAuditLog(event)).resolves.toBeUndefined();
+    expect(from).toHaveBeenCalledWith("audit_logs");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: "u1", action: "auth.login", entity_type: "auth" }),
+    );
+  });
+
+  it("缺省字段回退空值", async () => {
+    const chain = chainMock({});
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await appendAuditLog({ userId: null, action: "auth.login_failed", entityType: "auth" });
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: null, entity_id: null }),
+    );
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(appendAuditLog(event)).rejects.toThrow("db");
   });
 });
 
