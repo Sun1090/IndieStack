@@ -5,8 +5,9 @@
  */
 "use server";
 
-import { randomInt, createHash, timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
+// 注：node:crypto 必须动态导入——本模块被客户端组件引用，顶层静态导入会破坏
+// Turbopack 客户端代理的导出分析，导致构建失败。
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
@@ -23,7 +24,8 @@ import { ROUTES } from "@/lib/constants";
 /** 每次生成的恢复码数量 */
 export const RECOVERY_CODE_COUNT = 10;
 
-export function hashRecoveryCode(code: string): string {
+export async function hashRecoveryCode(code: string): Promise<string> {
+  const { createHash } = await import("node:crypto");
   return createHash("sha256").update(code.replace(/-/g, "")).digest("hex");
 }
 
@@ -37,10 +39,12 @@ export async function generateRecoveryCodes(): Promise<ActionResult<{ codes: str
   if (!user) return fail("notAuthenticated");
 
   try {
+    const { randomInt } = await import("node:crypto");
     const codes = Array.from({ length: RECOVERY_CODE_COUNT }, () =>
       generateRecoveryCode((n) => randomInt(n)),
     );
-    await recoveryRepo.replaceRecoveryCodes(user.id, codes.map(hashRecoveryCode));
+    const hashes = await Promise.all(codes.map(hashRecoveryCode));
+    await recoveryRepo.replaceRecoveryCodes(user.id, hashes);
     revalidatePath(ROUTES.dashboardSettings);
     return ok({ codes });
   } catch (error) {
@@ -82,7 +86,8 @@ export async function redeemRecoveryCode(code: string): Promise<ActionResult> {
   if (!user) return fail("notAuthenticated");
 
   try {
-    const targetHash = hashRecoveryCode(normalized);
+    const { timingSafeEqual } = await import("node:crypto");
+    const targetHash = await hashRecoveryCode(normalized);
     const candidates = await recoveryRepo.listUnusedRecoveryCodes(user.id);
     const match = candidates.find((row) => {
       const a = Buffer.from(row.code_hash, "hex");
