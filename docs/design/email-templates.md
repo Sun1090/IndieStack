@@ -57,3 +57,17 @@
 - [ ] SMTP：默认使用 Supabase 内置发件（限速），生产建议配置自定义 SMTP（Resend/阿里云邮件推送）
 - [ ] 重定向域名白名单：Authentication → URL Configuration 加入生产/preview 域名
 - [ ] 测试：分别触发注册/邀请/重置流程，检查各邮件客户端渲染（Gmail/Outlook/QQ 邮箱）
+
+## 应用通知邮件管线（v0.4.0 D02 已落地查询侧）
+
+> 状态：发送通道**未接线**（无服务商凭证）。仓库层已就绪，worker 接入即用。
+
+- 拉取：`listUnsentEmailNotifications()`（未读 + `email_sent=false` + 白名单类型，默认
+  `team_invite/role_changed/payment_succeeded/security_alert`，时间正序，默认 100 条）
+- 回执：`markEmailSent(id)`（发送成功后标记，避免重发）
+- 用户偏好门控：发送前检查 `profiles.notification_settings`（见 D03 联动矩阵）
+- 接线步骤（后续基建任务）：
+  1. 选服务商（Resend 优先）并配置 `RESEND_API_KEY` / 发件域名
+  2. 定时 worker（Supabase Edge Function cron 或外部 cron 调 `/api/cron/digest`）拉取 → 渲染
+     上述 HTML 骨架 → 发送 → `markEmailSent`
+  3. 失败重试与死信：3 次后记 `metadata.email_error` 并跳过，避免阻塞队列

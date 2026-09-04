@@ -31,6 +31,37 @@ export interface NewNotification {
 }
 
 /**
+ * 待发邮件通知（未读 + 未标记已发送 + 限定类型），供邮件 worker 拉取。
+ * 发送通道未接线前仅做查询侧准备，见 docs/design/email-templates.md。
+ */
+export async function listUnsentEmailNotifications(
+  types: NotificationType[] = ["team_invite", "role_changed", "payment_succeeded", "security_alert"],
+  limit = 100,
+): Promise<Notification[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("notifications")
+    .select("*")
+    .eq("email_sent", false)
+    .eq("is_read", false)
+    .in("type", types)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Notification[];
+}
+
+/** 标记邮件已发送（worker 回执） */
+export async function markEmailSent(notificationId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("notifications")
+    .update({ email_sent: true })
+    .eq("id", notificationId);
+  if (error) throw new Error(error.message);
+}
+
+/**
  * 创建通知（service_role）。
  * RLS 仅允许用户自插，他人触发（邀请/改角色/支付）必须走 admin 客户端；
  * 仅受信服务端上下文调用，失败由调用方吞错（不阻断主流程）。
