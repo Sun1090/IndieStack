@@ -64,9 +64,13 @@ beforeEach(() => {
 });
 
 describe("hashRecoveryCode()", () => {
-  it("sha256 十六进制且去分隔符归一", () => {
-    expect(hashRecoveryCode("ABCD-2345")).toBe(createHash("sha256").update("ABCD2345").digest("hex"));
-    expect(hashRecoveryCode("ABCD-2345")).toBe(hashRecoveryCode("ABCD2345"));
+  it("sha256 十六进制且去分隔符归一", async () => {
+    await expect(hashRecoveryCode("ABCD-2345")).resolves.toBe(
+      createHash("sha256").update("ABCD2345").digest("hex"),
+    );
+    await expect(hashRecoveryCode("ABCD-2345")).resolves.toBe(
+      await hashRecoveryCode("ABCD2345"),
+    );
   });
 });
 
@@ -152,7 +156,7 @@ describe("redeemRecoveryCode()", () => {
   it("兑换成功消费并解绑 TOTP", async () => {
     mockServerClient();
     repo.listUnusedRecoveryCodes.mockResolvedValue([
-      { id: "c1", code_hash: hashRecoveryCode(PLAINTEXT), used_at: null },
+      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
     ]);
     repo.consumeRecoveryCode.mockResolvedValue(true);
     const { deleteFactor } = mockAdminMfa([
@@ -168,7 +172,7 @@ describe("redeemRecoveryCode()", () => {
   it("抢占失败返回 mfaInvalidCode", async () => {
     mockServerClient();
     repo.listUnusedRecoveryCodes.mockResolvedValue([
-      { id: "c1", code_hash: hashRecoveryCode(PLAINTEXT), used_at: null },
+      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
     ]);
     repo.consumeRecoveryCode.mockResolvedValue(false);
     mockAdminMfa();
