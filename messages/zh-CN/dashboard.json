@@ -386,6 +386,11 @@
       "tabUnread": "未读",
       "markAllRead": "全部标为已读",
       "empty": "暂无通知",
+      "emptyDesc": "新的邀请、角色变更与账单动态会出现在这里。",
+      "goSettings": "通知偏好设置",
+      "loadFailed": "通知加载失败",
+      "loadFailedDesc": "请检查网络后重试。",
+      "retry": "重试",
       "types": {
         "system": "系统",
         "team_invite": "团队邀请",

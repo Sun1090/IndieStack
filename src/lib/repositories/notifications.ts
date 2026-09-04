@@ -79,18 +79,22 @@ export async function createNotification(input: NewNotification): Promise<void> 
   if (error) throw new Error(error.message);
 }
 
-/** 最近通知列表（登录态，RLS 隔离） */
+/**
+ * 最近通知列表（登录态，RLS 隔离）。
+ * 查询失败抛错（调用方展示错误态），不再吞错回空数组。
+ */
 export async function listRecentNotifications(
   userId: string,
   limit = 10,
 ): Promise<Notification[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("notifications")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (error) throw new Error(error.message);
   return (data as Notification[]) ?? [];
 }
 
