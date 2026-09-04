@@ -1,0 +1,101 @@
+/**
+ * /api/cron/digest 路由测试
+ * 覆盖：鉴权、空队列、发送与回执、发送失败兜底
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+import { POST } from "./route";
+
+const { listUnsentEmailNotificationsMock, markEmailSentMock, createAdminClientMock } = vi.hoisted(() => ({
+  listUnsentEmailNotificationsMock: vi.fn(),
+  markEmailSentMock: vi.fn(async () => {}),
+  createAdminClientMock: vi.fn(),
+}));
+
+vi.mock("@/lib/repositories/notifications", () => ({
+  listUnsentEmailNotifications: listUnsentEmailNotificationsMock,
+  markEmailSent: markEmailSentMock,
+  NOTIFICATION_TYPES: [] as string[],
+}));
+
+vi.mock("@/lib/api-log", () => ({
+  logApiError: vi.fn(async () => {}),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: createAdminClientMock,
+}));
+
+function chainMock(outcome: Record<string, unknown> = {}) {
+  const chain: Record<string, unknown> = {};
+  for (const m of ["from", "select", "in"]) chain[m] = vi.fn(() => chain);
+  Object.assign(chain, { then: (resolve: (v: unknown) => unknown) => resolve(outcome) });
+  return chain;
+}
+
+function req() {
+  return new NextRequest("http://localhost/api/cron/digest", {
+    headers: { "x-cron-secret": "***" },
+  });
+}
+
+const fetchMockResolved: { ok: boolean; text: () => Promise<string> } = { ok: true, text: async () => "" };
+let fetchMock = vi.fn(() => Promise.resolve(fetchMockResolved));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  process.env.CRON_SECRET = "***";
+  process.env.RESEND_API_KEY = "***";
+  process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+  fetchMockResolved.ok = true;
+  fetchMockResolved.text = async () => "";
+  vi.stubGlobal("fetch", fetchMock);
+});
+
+describe("POST /api/cron/digest", () => {
+  it("缺少正确 secret 返回 401", async () => {
+    const res = await POST(new NextRequest("http://localhost/api/cron/digest"));
+    expect(res.status).toBe(401);
+  });
+
+  it("空队列返回 sent=0", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([]);
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0 });
+  });
+
+  it("按用户分组发送并标记已发送", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n2", user_id: "u1", type: "system", title: "B", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+    });
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.anything());
+    expect(markEmailSentMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("发送失败返回 500 且不泄露细节", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+    });
+    fetchMockResolved.ok = false;
+    fetchMockResolved.text = async () => "boom";
+
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("Internal server error");
+    expect(JSON.stringify(body)).not.toMatch(/boom/);
+  });
+});

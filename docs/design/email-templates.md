@@ -60,7 +60,7 @@
 
 ## 应用通知邮件管线（v0.4.0 D02 已落地查询侧）
 
-> 状态：发送通道**未接线**（无服务商凭证）。仓库层已就绪，worker 接入即用。
+> 状态：发送通道**已接线**（使用 Resend）。仓库层已就绪，worker 接入即用。
 
 - 拉取：`listUnsentEmailNotifications()`（未读 + `email_sent=false` + 白名单类型，默认
   `team_invite/role_changed/payment_succeeded/security_alert`，时间正序，默认 100 条）
