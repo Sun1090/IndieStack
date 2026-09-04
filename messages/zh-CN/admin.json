@@ -95,6 +95,13 @@
     "subject": "主题",
     "message": "内容",
     "submittedAt": "提交时间",
-    "reply": "回复"
+    "reply": "回复",
+    "status": {
+      "new": "待处理",
+      "inProgress": "处理中",
+      "resolved": "已解决"
+    },
+    "startProcess": "开始处理",
+    "resolve": "标记解决"
   }
 }

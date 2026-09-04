@@ -5,17 +5,35 @@
  * 展示公开联系表单提交的消息：姓名、邮箱、主题、内容
  */
 
+import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/shared/query-error-state";
-import { listContactMessages, type ContactMessageRecord } from "@/lib/actions/contact-messages";
+import {
+  listContactMessages,
+  updateMessageStatus,
+  type ContactMessageRecord,
+  type MessageStatus,
+} from "@/lib/actions/contact-messages";
 import { formatRelativeTime } from "@/lib/date";
+import { toast } from "@/hooks/use-toast";
+
+const STATUS_VARIANT: Record<string, "secondary" | "warning" | "success"> = {
+  new: "secondary",
+  in_progress: "warning",
+  resolved: "success",
+};
 
 export function ContactMessagesPage() {
   const t = useTranslations("admin.messages");
+  const ta = useTranslations("actions");
+  const queryClient = useQueryClient();
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   const { data: messages = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: ["contact-messages"],
@@ -25,6 +43,26 @@ export function ContactMessagesPage() {
       return result.data ?? [];
     },
   });
+
+  // 状态文案静态映射（避免动态 key 触发缺键错误）
+  const statusLabel: Record<string, string> = {
+    new: t("status.new"),
+    in_progress: t("status.inProgress"),
+    resolved: t("status.resolved"),
+  };
+
+  function changeStatus(id: string, status: MessageStatus) {
+    setPendingId(id);
+    startTransition(async () => {
+      const result = await updateMessageStatus(id, status);
+      setPendingId(null);
+      if (!result.ok) {
+        toast({ title: ta(result.error), variant: "destructive" });
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: ["contact-messages"] });
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -72,8 +110,36 @@ export function ContactMessagesPage() {
                     >
                       {msg.email}
                     </a>
+                    <span>·</span>
+                    <Badge variant={STATUS_VARIANT[msg.status] ?? "secondary"}>
+                      {statusLabel[msg.status] ?? msg.status}
+                    </Badge>
                   </div>
                   <p className="whitespace-pre-wrap text-sm">{msg.message}</p>
+                  {msg.status !== "resolved" && (
+                    <div className="flex gap-2 pt-1">
+                      {msg.status === "new" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={pendingId === msg.id}
+                          onClick={() => changeStatus(msg.id, "in_progress")}
+                        >
+                          {t("startProcess")}
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={pendingId === msg.id}
+                        onClick={() => changeStatus(msg.id, "resolved")}
+                      >
+                        {t("resolve")}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

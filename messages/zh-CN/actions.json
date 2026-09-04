@@ -28,6 +28,7 @@
   "invalidInput": "输入无效",
   "invalidPriceId": "无效的商品",
   "invalidSettings": "无效的设置",
+  "invalidTransition": "非法的状态流转",
   "keyNameRequired": "密钥名称不能为空",
   "memberNotFound": "未找到该成员",
   "membershipNotFound": "未找到团队归属记录",
