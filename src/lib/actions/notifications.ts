@@ -36,6 +36,26 @@ export async function markAllNotificationsRead(): Promise<
 }
 
 /**
+ * 当前用户未读通知数（侧边栏 badge 轮询用）。
+ */
+export async function getUnreadNotificationCount(): Promise<ActionResult<{ unread: number }>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return fail("notAuthenticated");
+
+  try {
+    return ok({ unread: await notificationsRepo.countUnreadNotifications(user.id) });
+  } catch (error) {
+    const traceId = await getTraceId();
+    console.error(`[getUnreadNotificationCount] 失败 trace=${traceId ?? "-"}:`, error);
+    return fail("databaseError");
+  }
+}
+
+/**
  * 标记单条通知已读。
  */
 export async function markNotificationRead(
