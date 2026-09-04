@@ -94,6 +94,17 @@ export async function listRecentNotifications(
   return (data as Notification[]) ?? [];
 }
 
+/** 未读通知数（命中 idx_notifications_unread 部分索引） */
+export async function countUnreadNotifications(userId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("notifications")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("is_read", false);
+  return count ?? 0;
+}
+
 /** 批量标记已读；返回更新的行数 */
 export async function markAllNotificationsRead(userId: string): Promise<number> {
   const supabase = await createClient();

@@ -4,22 +4,25 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { createClientMock, revalidatePathMock, markAllNotificationsReadMock, markNotificationReadMock } =
+const { createClientMock, revalidatePathMock, markAllNotificationsReadMock, markNotificationReadMock, countUnreadNotificationsMock } =
   vi.hoisted(() => ({
     createClientMock: vi.fn(),
     revalidatePathMock: vi.fn(),
     markAllNotificationsReadMock: vi.fn(),
     markNotificationReadMock: vi.fn(),
+    countUnreadNotificationsMock: vi.fn(),
   }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
+
 vi.mock("@/lib/repositories/notifications", () => ({
   markAllNotificationsRead: markAllNotificationsReadMock,
   markNotificationRead: markNotificationReadMock,
+  countUnreadNotifications: countUnreadNotificationsMock,
 }));
 
-import { markAllNotificationsRead, markNotificationRead } from "./notifications";
+import { markAllNotificationsRead, markNotificationRead, getUnreadNotificationCount } from "./notifications";
 
 const USER = { id: "u1", email: "a@b.com" };
 
@@ -53,6 +56,32 @@ describe("markAllNotificationsRead()", () => {
     createClientMock.mockResolvedValue(mockClient());
     markAllNotificationsReadMock.mockRejectedValue(new Error("boom"));
     await expect(markAllNotificationsRead()).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
+  });
+});
+
+describe("getUnreadNotificationCount()", () => {
+  it("未登录返回 notAuthenticated", async () => {
+    createClientMock.mockResolvedValue(mockClient({ user: null }));
+    await expect(getUnreadNotificationCount()).resolves.toEqual({
+      ok: false,
+      error: "notAuthenticated",
+    });
+  });
+
+  it("成功返回未读数", async () => {
+    createClientMock.mockResolvedValue(mockClient());
+    countUnreadNotificationsMock.mockResolvedValue(3);
+    await expect(getUnreadNotificationCount()).resolves.toEqual({ ok: true, data: { unread: 3 } });
+    expect(countUnreadNotificationsMock).toHaveBeenCalledWith("u1");
+  });
+
+  it("仓库异常返回 databaseError", async () => {
+    createClientMock.mockResolvedValue(mockClient());
+    countUnreadNotificationsMock.mockRejectedValue(new Error("boom"));
+    await expect(getUnreadNotificationCount()).resolves.toEqual({
       ok: false,
       error: "databaseError",
     });

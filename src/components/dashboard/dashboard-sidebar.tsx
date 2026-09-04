@@ -15,7 +15,9 @@ import { ROUTES } from "@/lib/constants";
 import { useTranslations } from "next-intl";
 import { useUser } from "@/hooks/use-user";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { getUnreadNotificationCount } from "@/lib/actions/notifications";
 import {
   LayoutDashboard,
   User,
@@ -39,6 +41,19 @@ export function DashboardSidebar() {
   const [isAdmin, setIsAdmin] = useState(false);
   const { user } = useUser();
   const t = useTranslations("common");
+
+  // 未读数 badge：60s 轮询 + 切回前台刷新（D04 实时策略）
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ["unread-count"],
+    enabled: Boolean(user),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    queryFn: async () => {
+      const result = await getUnreadNotificationCount();
+      if (!result.ok) throw new Error(result.error);
+      return result.data?.unread ?? 0;
+    },
+  });
 
   // 检查当前用户角色是否为 admin 或 super_admin
   useEffect(() => {
@@ -114,6 +129,19 @@ export function DashboardSidebar() {
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 {!collapsed && <span>{link.label}</span>}
+                {link.href === ROUTES.dashboardNotifications && unreadCount > 0 && !collapsed && (
+                  <span
+                    className={cn(
+                      "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold",
+                      isActive ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground",
+                    )}
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+                {link.href === ROUTES.dashboardNotifications && unreadCount > 0 && collapsed && (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                )}
               </Link>
             );
           })}

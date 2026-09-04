@@ -14,6 +14,7 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMoc
 
 import {
   listRecentNotifications,
+  countUnreadNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   createNotification,
@@ -36,6 +37,18 @@ describe("listRecentNotifications()", () => {
   it("空数据回退空数组", async () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chainMock({})));
     await expect(listRecentNotifications("u1")).resolves.toEqual([]);
+  });
+});
+
+describe("countUnreadNotifications()", () => {
+  it("返回未读数", async () => {
+    createClientMock.mockResolvedValue(dbClientMock(() => chainMock({ count: 5 })));
+    await expect(countUnreadNotifications("u1")).resolves.toBe(5);
+  });
+
+  it("空计数回退 0", async () => {
+    createClientMock.mockResolvedValue(dbClientMock(() => chainMock({})));
+    await expect(countUnreadNotifications("u1")).resolves.toBe(0);
   });
 });
 
