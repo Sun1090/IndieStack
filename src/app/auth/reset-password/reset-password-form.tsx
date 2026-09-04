@@ -20,6 +20,7 @@ import { ROUTES } from "@/lib/constants";
 import { Lock, Eye, EyeOff } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { authErrorKey } from "@/lib/auth/errors";
+import { PasswordStrength } from "@/components/shared/password-strength";
 
 type SessionStatus = "checking" | "ready" | "invalid";
 
@@ -140,6 +141,7 @@ export function ResetPasswordForm() {
               minLength={8}
               required
             />
+            <PasswordStrength password={password} />
             <button
               type="button"
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"

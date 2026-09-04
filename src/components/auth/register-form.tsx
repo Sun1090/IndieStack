@@ -18,6 +18,7 @@ import { Mail } from "lucide-react";
 import { ROUTES } from "@/lib/constants";
 import { useTranslations } from "next-intl";
 import { authErrorKey } from "@/lib/auth/errors";
+import { PasswordStrength } from "@/components/shared/password-strength";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -90,6 +91,7 @@ export function RegisterForm() {
             minLength={8}
             required
           />
+          <PasswordStrength password={password} />
           <p className="text-xs text-muted-foreground">{t("register.desc")}</p>
         </div>
         <Button disabled={loading} type="submit" className="w-full">
