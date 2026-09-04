@@ -172,7 +172,11 @@
       "security": {
         "title": "Security",
         "logoutAll": "退出所有设备",
-        "logoutAllDesc": "在所有浏览器和设备上登出，需要重新登录。"
+        "logoutAllDesc": "在所有浏览器和设备上登出，需要重新登录。",
+        "signOutOthers": "退出其他设备",
+        "signOutOthersDesc": "保留当前会话，登出其他所有设备。",
+        "signOutOthersDone": "其他设备已登出。",
+        "currentSession": "当前会话：{email} · 上次登录 {time}"
       }
     }
   },

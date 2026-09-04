@@ -7,7 +7,8 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { formatRelativeTime } from "@/lib/date";
 import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +17,7 @@ import { ThemeSettingsForm } from "@/components/forms/theme-settings-form";
 import { PasswordForm } from "@/components/forms/password-form";
 import { TwoFactorSection } from "@/components/dashboard/two-factor-section";
 import { LogoutAllButton } from "@/components/dashboard/logout-all-button";
+import { SignOutOthersButton } from "@/components/dashboard/sign-out-others-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import type { Database } from "@/lib/supabase/database.types";
@@ -72,6 +74,15 @@ export default async function SettingsPage() {
               <CardTitle>{t("settings.sections.security.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {t("settings.sections.security.currentSession", {
+                  email: user?.email ?? "",
+                  time: user?.last_sign_in_at
+                    ? formatRelativeTime(user.last_sign_in_at, { locale: await getLocale() })
+                    : "—",
+                })}
+              </p>
+              <SignOutOthersButton />
               <LogoutAllButton />
               <NotificationSettingsForm
                 settings={(profile?.notification_settings as Record<string, boolean>) ?? {}}
