@@ -24,6 +24,23 @@ const AUTH_ERROR_CODE_MAP: Record<string, string> = {
   signup_disabled: "authSignupDisabled",
   provider_disabled: "authProviderDisabled",
   unexpected_failure: "authUnexpectedFailure",
+  // OAuth / 回调交换
+  access_denied: "authOauthDenied",
+  bad_oauth_state: "authOauthDenied",
+  bad_oauth_callback: "authOauthDenied",
+  server_error: "authUnexpectedFailure",
+  temporarily_unavailable: "authUnexpectedFailure",
+  invalid_grant: "authOtpExpired",
+  invalid_request: "authValidationFailed",
+  // PKCE 会话丢失（需重新登录）
+  flow_state_not_found: "authSessionExpired",
+  flow_state_expired: "authSessionExpired",
+  session_not_found: "authSessionExpired",
+  // MFA 验证
+  mfa_challenge_expired: "authOtpExpired",
+  mfa_verification_failed: "authMfaFailed",
+  mfa_verification_rejected: "authMfaFailed",
+  mfa_factor_not_found: "authMfaFailed",
 };
 
 /**
