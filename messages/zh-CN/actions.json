@@ -49,6 +49,7 @@
   "rateLimited": "请求过于频繁",
   "slugInvalid": "仅允许小写字母、数字和连字符",
   "slugMinLength": "Slug 至少需要 2 个字符",
+  "spamRejected": "消息疑似垃圾内容，已拒绝",
   "stripeNotConfigured": "支付服务尚未配置",
   "superAdminOnly": "超级管理员只能由超级管理员修改",
   "teamNameRequired": "团队名称不能为空",

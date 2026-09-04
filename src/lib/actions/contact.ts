@@ -7,7 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
-import { contactSchema } from "@/lib/validations/contact";
+import { contactSchema, isSpam, scoreSpam } from "@/lib/validations/contact";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 
@@ -24,6 +24,13 @@ export async function submitContactMessage(formData: FormData): Promise<ActionRe
 
   if (!parsed.success) {
     return fail(parsed.error.issues[0]?.message ?? "invalidInput");
+  }
+
+  // 垃圾启发式（限频之后、落库之前；阈值保守，误伤可调 SPAM_REJECT_SCORE）
+  if (isSpam({ message: parsed.data.message, email: parsed.data.email })) {
+    const { score, reasons } = scoreSpam({ message: parsed.data.message, email: parsed.data.email });
+    console.warn(`[submitContactMessage] 疑似垃圾拒收 score=${score}:`, reasons);
+    return fail("spamRejected");
   }
 
   const supabase = await createClient();
