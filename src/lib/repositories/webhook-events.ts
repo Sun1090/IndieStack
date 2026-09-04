@@ -35,3 +35,13 @@ export async function listRecentWebhookEvents(limit = 50): Promise<WebhookEventR
   if (error) throw new Error(error.message);
   return (data ?? []) as WebhookEventRow[];
 }
+
+/** 事件总数 */
+export async function countWebhookEvents(): Promise<number> {
+  const admin = createAdminClient();
+  const { count, error } = await admin
+    .from("webhook_events")
+    .select("*", { count: "exact", head: true });
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
