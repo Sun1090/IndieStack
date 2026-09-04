@@ -8,7 +8,7 @@ import { chainMock, dbClientMock } from "./test-helpers";
 const { createAdminClientMock } = vi.hoisted(() => ({ createAdminClientMock: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
-import { listRecentContactMessages, countContactMessages } from "./contact-messages";
+import { listRecentContactMessages, countContactMessages, setMessageStatus } from "./contact-messages";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,6 +30,50 @@ describe("listRecentContactMessages()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(listRecentContactMessages()).rejects.toThrow("db");
+  });
+});
+
+describe("setMessageStatus()", () => {
+  function mockWithStatus(status: string | null) {
+    const readChain = chainMock({ data: status ? { status } : null });
+    const writeChain = chainMock({});
+    const from = vi.fn((table: string) => {
+      void table;
+      return readChain;
+    });
+    // 第一次 from() 走读链，第二次走写链
+    from.mockImplementationOnce(() => readChain);
+    from.mockImplementationOnce(() => writeChain);
+    createAdminClientMock.mockReturnValue({ from });
+    return { readChain, writeChain, from };
+  }
+
+  it("向前流转成功", async () => {
+    const { from } = mockWithStatus("new");
+    await expect(setMessageStatus("m1", "in_progress")).resolves.toBeUndefined();
+    expect(from).toHaveBeenCalledTimes(2);
+  });
+
+  it("new 可直达 resolved", async () => {
+    mockWithStatus("new");
+    await expect(setMessageStatus("m1", "resolved")).resolves.toBeUndefined();
+  });
+
+  it("回退抛 invalid_transition", async () => {
+    mockWithStatus("resolved");
+    await expect(setMessageStatus("m1", "new")).rejects.toThrow("invalid_transition");
+  });
+
+  it("同态流转抛 invalid_transition", async () => {
+    mockWithStatus("in_progress");
+    await expect(setMessageStatus("m1", "in_progress")).rejects.toThrow("invalid_transition");
+  });
+
+  it("读取失败抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(setMessageStatus("m1", "resolved")).rejects.toThrow("db");
   });
 });
 

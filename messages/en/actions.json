@@ -28,6 +28,7 @@
   "invalidInput": "Invalid input",
   "invalidPriceId": "Invalid product",
   "invalidSettings": "Invalid settings",
+  "invalidTransition": "Invalid status transition",
   "keyNameRequired": "Key name is required",
   "memberNotFound": "Member not found",
   "membershipNotFound": "Team membership not found",

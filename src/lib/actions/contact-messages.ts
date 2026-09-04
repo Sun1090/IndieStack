@@ -4,10 +4,16 @@
  */
 "use server";
 
+import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
-import { listRecentContactMessages } from "@/lib/repositories/contact-messages";
+import {
+  listRecentContactMessages,
+  setMessageStatus,
+  type MessageStatus,
+} from "@/lib/repositories/contact-messages";
 import { safelyRequireRole } from "@/lib/auth/guards";
+import { ROUTES } from "@/lib/constants";
 
 export type ContactMessageRecord = {
   id: string;
@@ -15,8 +21,11 @@ export type ContactMessageRecord = {
   email: string;
   subject: string;
   message: string;
+  status: string;
   created_at: string;
 };
+
+export { type MessageStatus };
 
 function toRecord(row: Record<string, unknown>): ContactMessageRecord {
   return {
@@ -25,6 +34,7 @@ function toRecord(row: Record<string, unknown>): ContactMessageRecord {
     email: String(row.email ?? ""),
     subject: String(row.subject ?? ""),
     message: String(row.message ?? ""),
+    status: String(row.status ?? "new"),
     created_at: String(row.created_at ?? ""),
   };
 }
@@ -46,5 +56,31 @@ export async function listContactMessages(
   } catch (error) {
     console.error("[listContactMessages] 查询失败:", error);
     return fail("databaseError");
+  }
+}
+
+/**
+ * 更新消息处理状态（仅 admin/super_admin，单向流转）。
+ */
+export async function updateMessageStatus(
+  id: string,
+  status: MessageStatus,
+): Promise<ActionResult> {
+  const auth = await safelyRequireRole("admin");
+  if (!auth.success) {
+    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+  }
+
+  try {
+    await setMessageStatus(id, status);
+    revalidatePath(ROUTES.adminMessages);
+    return ok();
+  } catch (error) {
+    console.error("[updateMessageStatus] 更新失败:", error);
+    return fail(
+      error instanceof Error && error.message.startsWith("invalid_transition")
+        ? "invalidTransition"
+        : "databaseError",
+    );
   }
 }

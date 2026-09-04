@@ -4,17 +4,22 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { safelyRequireRoleMock, listRecentContactMessagesMock } = vi.hoisted(() => ({
-  safelyRequireRoleMock: vi.fn(),
-  listRecentContactMessagesMock: vi.fn(),
-}));
+const { safelyRequireRoleMock, listRecentContactMessagesMock, setMessageStatusMock, revalidatePathMock } =
+  vi.hoisted(() => ({
+    safelyRequireRoleMock: vi.fn(),
+    listRecentContactMessagesMock: vi.fn(),
+    setMessageStatusMock: vi.fn(),
+    revalidatePathMock: vi.fn(),
+  }));
 
 vi.mock("@/lib/auth/guards", () => ({ safelyRequireRole: safelyRequireRoleMock }));
 vi.mock("@/lib/repositories/contact-messages", () => ({
   listRecentContactMessages: listRecentContactMessagesMock,
+  setMessageStatus: setMessageStatusMock,
 }));
+vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 
-import { listContactMessages } from "./contact-messages";
+import { listContactMessages, updateMessageStatus } from "./contact-messages";
 
 function unauthorized() {
   return { success: false, error: { code: "UNAUTHORIZED" } };
@@ -76,11 +81,56 @@ describe("listContactMessages()", () => {
           email: "a@b.com",
           subject: "咨询",
           message: "你好",
+          status: "new",
           created_at: "2026-01-01",
         },
-        { id: "null", name: "", email: "", subject: "", message: "", created_at: "" },
+        { id: "null", name: "", email: "", subject: "", message: "", status: "new", created_at: "" },
       ],
     });
     expect(listRecentContactMessagesMock).toHaveBeenCalledWith(5);
+  });
+});
+
+describe("updateMessageStatus()", () => {
+  it("未登录返回 notAuthenticated", async () => {
+    safelyRequireRoleMock.mockResolvedValue(unauthorized());
+    await expect(updateMessageStatus("m1", "resolved")).resolves.toEqual({
+      ok: false,
+      error: "notAuthenticated",
+    });
+  });
+
+  it("非 admin 返回 forbidden", async () => {
+    safelyRequireRoleMock.mockResolvedValue(forbidden());
+    await expect(updateMessageStatus("m1", "resolved")).resolves.toEqual({
+      ok: false,
+      error: "forbidden",
+    });
+  });
+
+  it("成功更新并 revalidate", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    setMessageStatusMock.mockResolvedValue(undefined);
+    await expect(updateMessageStatus("m1", "in_progress")).resolves.toEqual({ ok: true });
+    expect(setMessageStatusMock).toHaveBeenCalledWith("m1", "in_progress");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/dashboard/admin/messages");
+  });
+
+  it("非法流转返回 invalidTransition", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    setMessageStatusMock.mockRejectedValue(new Error("invalid_transition:resolved->new"));
+    await expect(updateMessageStatus("m1", "new")).resolves.toEqual({
+      ok: false,
+      error: "invalidTransition",
+    });
+  });
+
+  it("仓库异常返回 databaseError", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    setMessageStatusMock.mockRejectedValue(new Error("boom"));
+    await expect(updateMessageStatus("m1", "resolved")).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
   });
 });

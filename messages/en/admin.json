@@ -95,6 +95,13 @@
     "subject": "Subject",
     "message": "Message",
     "submittedAt": "Submitted",
-    "reply": "Reply"
+    "reply": "Reply",
+    "status": {
+      "new": "New",
+      "inProgress": "In progress",
+      "resolved": "Resolved"
+    },
+    "startProcess": "Start processing",
+    "resolve": "Mark resolved"
   }
 }
