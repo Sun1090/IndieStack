@@ -65,7 +65,15 @@
 - 拉取：`listUnsentEmailNotifications()`（未读 + `email_sent=false` + 白名单类型，默认
   `team_invite/role_changed/payment_succeeded/security_alert`，时间正序，默认 100 条）
 - 回执：`markEmailSent(id)`（发送成功后标记，避免重发）
-- 用户偏好门控：发送前检查 `profiles.notification_settings`（见 D03 联动矩阵）
+- 用户偏好门控：发送前用 `shouldSendEmail()`（`src/lib/notification-prefs.ts`）检查
+  `profiles.notification_settings`，矩阵如下（站内通知中心不受偏好影响，全量展示）：
+
+  | 通知类型 | 偏好开关 |
+  |----------|----------|
+  | system / team_invite / role_changed / payment_succeeded / billing_update | emailNotifications（总开关，关则全停） |
+  | deployment | productUpdates |
+  | security_alert | securityAlerts |
+  | （营销邮件） | marketingEmails（独立通道，不经 notifications 表） |
 - 接线步骤（后续基建任务）：
   1. 选服务商（Resend 优先）并配置 `RESEND_API_KEY` / 发件域名
   2. 定时 worker（Supabase Edge Function cron 或外部 cron 调 `/api/cron/digest`）拉取 → 渲染
