@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ContactForm } from "./contact-form";
 import { getTranslations } from "next-intl/server";
-import { SITE_CONFIG } from "@/lib/constants";
+import { ROUTES, SITE_CONFIG } from "@/lib/constants";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("contact");
@@ -22,8 +22,33 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ContactPage() {
   const t = await getTranslations("contact");
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ContactPage",
+    name: `${SITE_CONFIG.name} - Contact`,
+    url: `${SITE_CONFIG.url}${ROUTES.contact}`,
+    description: t("pageDesc"),
+    mainEntity: {
+      "@type": "Organization",
+      name: SITE_CONFIG.name,
+      url: SITE_CONFIG.url,
+      email: SITE_CONFIG.contactEmail,
+      sameAs: [SITE_CONFIG.links.github, SITE_CONFIG.links.twitter],
+    },
+    contactPoint: {
+      "@type": "ContactPoint",
+      contactType: "customer support",
+      email: SITE_CONFIG.contactEmail,
+      availableLanguage: ["English", "Chinese"],
+    },
+  };
+
   return (
     <div className="container py-12 lg:py-20">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="mx-auto max-w-3xl">
         <Badge variant="secondary" className="mb-4">
           {t("metaTitle")}
