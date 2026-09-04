@@ -17,6 +17,8 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   createNotification,
+  listUnsentEmailNotifications,
+  markEmailSent,
   NOTIFICATION_TYPES,
 } from "./notifications";
 
@@ -80,6 +82,39 @@ describe("createNotification()", () => {
     await expect(
       createNotification({ userId: "u1", type: "system", title: "hi" }),
     ).rejects.toThrow("db");
+  });
+});
+
+describe("listUnsentEmailNotifications()", () => {
+  it("按未发送+未读+类型拉取并透传 limit", async () => {
+    const rows = [{ id: "n1", type: "team_invite" }];
+    const chain = chainMock({ data: rows });
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await expect(listUnsentEmailNotifications(["team_invite"], 10)).resolves.toEqual(rows);
+    expect(from).toHaveBeenCalledWith("notifications");
+    expect(chain.limit).toHaveBeenCalledWith(10);
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(listUnsentEmailNotifications()).rejects.toThrow("db");
+  });
+});
+
+describe("markEmailSent()", () => {
+  it("成功标记不抛错", async () => {
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({})));
+    await expect(markEmailSent("n1")).resolves.toBeUndefined();
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(markEmailSent("n1")).rejects.toThrow("db");
   });
 });
 
