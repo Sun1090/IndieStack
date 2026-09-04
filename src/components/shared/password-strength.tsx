@@ -6,6 +6,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 export type StrengthLevel = 0 | 1 | 2 | 3 | 4;
@@ -38,6 +39,7 @@ const BAR_COLORS: Record<StrengthLevel, string> = {
 };
 
 export function PasswordStrength({ password }: { password: string }) {
+  const t = useTranslations("common");
   const level = useMemo(() => scorePassword(password), [password]);
   if (!password) return null;
 
@@ -55,7 +57,7 @@ export function PasswordStrength({ password }: { password: string }) {
         ))}
       </div>
       <p className="text-xs text-muted-foreground">
-        {level > 0 ? `strength.${LABELS[level]}` : ""}
+        {level > 0 ? t(`strength.${LABELS[level]}`) : ""}
       </p>
     </div>
   );
