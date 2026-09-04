@@ -34,6 +34,9 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // 上次登录是否因邮箱未确认失败（是则展示重发确认邮件入口）
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [resending, setResending] = useState(false);
 
   const supabase = createClient();
 
@@ -52,10 +55,12 @@ export function LoginForm() {
         description: ta(authErrorKey(error)),
         variant: "destructive",
       });
+      setNeedsConfirm(error.code === "email_not_confirmed");
       void logAuthEvent("auth.login_failed", { email, method: "password" });
       setLoading(false);
       return;
     }
+    setNeedsConfirm(false);
 
     void logAuthEvent("auth.login", { method: "password" });
 
@@ -76,6 +81,22 @@ export function LoginForm() {
     router.push(redirect);
     router.refresh();
   };
+
+  async function handleResendConfirmation() {
+    if (!email) return;
+    setResending(true);
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
+    setResending(false);
+    toast({
+      title: t("login.resendTitle"),
+      description: resendError ? ta(authErrorKey(resendError)) : t("login.resendSent"),
+      variant: resendError ? "destructive" : "default",
+    });
+  }
 
   const handleGitHubLogin = async () => {
     setLoading(true);
@@ -156,6 +177,17 @@ export function LoginForm() {
             {loading ? t("login.loading") : t("login.submit")}
             <Mail className="ml-2 h-4 w-4" />
           </Button>
+          {needsConfirm && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              disabled={resending}
+              onClick={handleResendConfirmation}
+            >
+              {resending ? t("login.resending") : t("login.resend")}
+            </Button>
+          )}
         </div>
       </form>
 
