@@ -11,6 +11,9 @@ export function normalizeTotpCode(code: string): string | null {
 /** 恢复码字符集（去易混淆字符） */
 const RECOVERY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
+/** 每次生成的恢复码数量 */
+export const RECOVERY_CODE_COUNT = 10;
+
 /** 恢复码归一化：去分隔符/空白转大写，8 位合法字符；非法返回 null */
 export function normalizeRecoveryCode(code: string): string | null {
   const cleaned = code.replace(/[^A-Za-z0-9]/g, "").toUpperCase();

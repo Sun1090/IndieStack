@@ -16,13 +16,11 @@ import { fail, ok } from "@/lib/types/action-result";
 import {
   generateRecoveryCode,
   normalizeRecoveryCode,
+  RECOVERY_CODE_COUNT,
 } from "@/lib/validations/mfa";
 import * as recoveryRepo from "@/lib/repositories/mfa-recovery-codes";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
 import { ROUTES } from "@/lib/constants";
-
-/** 每次生成的恢复码数量 */
-export const RECOVERY_CODE_COUNT = 10;
 
 export async function hashRecoveryCode(code: string): Promise<string> {
   const { createHash } = await import("node:crypto");

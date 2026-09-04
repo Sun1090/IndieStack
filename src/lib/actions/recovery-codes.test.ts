@@ -30,8 +30,8 @@ import {
   hasRecoveryCodes,
   redeemRecoveryCode,
   hashRecoveryCode,
-  RECOVERY_CODE_COUNT,
 } from "./recovery-codes";
+import { RECOVERY_CODE_COUNT } from "@/lib/validations/mfa";
 import * as recoveryRepo from "@/lib/repositories/mfa-recovery-codes";
 
 const USER = { id: "u1", email: "a@b.com" };
