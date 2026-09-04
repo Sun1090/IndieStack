@@ -79,3 +79,15 @@
   2. 定时 worker（Supabase Edge Function cron 或外部 cron 调 `/api/cron/digest`）拉取 → 渲染
      上述 HTML 骨架 → 发送 → `markEmailSent`
   3. 失败重试与死信：3 次后记 `metadata.email_error` 并跳过，避免阻塞队列
+
+## 每日 Digest 汇总（D08 设计，未实现）
+
+> 目标：把高频低优通知打包为每日一封，降打扰、省额度。
+
+- 触发：cron 每日 08:00（用户时区后续支持，首版 UTC+8 写死并文档声明）
+- 聚合：前 24h 未读 + `type in (deployment, billing_update, system)`，
+  `security_alert/team_invite/role_changed/payment_succeeded` 保持实时单发
+- 去重：同 team 同 type 合并计数（如“3 条部署通知”），正文列前 5 条 + 站内链接
+- 偏好：`productUpdates=false` 则 digest 跳过 deployment 部分；`emailNotifications=false` 整封跳过
+- 防重：digest 发送后将所含通知 `email_sent=true`（复用 `markEmailSent`）
+- 落地条件：邮件 worker 接线后（D02 接线步骤）顺带实现，单测覆盖聚合函数
