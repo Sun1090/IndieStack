@@ -21,6 +21,7 @@ import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
 import { authErrorKey } from "@/lib/auth/errors";
+import { logAuthEvent } from "@/lib/actions/audit";
 
 export function LoginForm() {
   const router = useRouter();
@@ -51,9 +52,12 @@ export function LoginForm() {
         description: ta(authErrorKey(error)),
         variant: "destructive",
       });
+      void logAuthEvent("auth.login_failed", { email, method: "password" });
       setLoading(false);
       return;
     }
+
+    void logAuthEvent("auth.login", { method: "password" });
 
     // 已启用两步验证：跳转 MFA 挑战页完成 aal2 升级
     const verifiedFactors = (data.user?.factors ?? []).filter(

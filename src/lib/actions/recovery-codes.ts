@@ -17,6 +17,7 @@ import {
   normalizeRecoveryCode,
 } from "@/lib/validations/mfa";
 import * as recoveryRepo from "@/lib/repositories/mfa-recovery-codes";
+import { appendAuditLog } from "@/lib/repositories/audit-logs";
 import { ROUTES } from "@/lib/constants";
 
 /** 每次生成的恢复码数量 */
@@ -92,6 +93,15 @@ export async function redeemRecoveryCode(code: string): Promise<ActionResult> {
 
     const consumed = await recoveryRepo.consumeRecoveryCode(match.id, user.id);
     if (!consumed) return fail("mfaInvalidCode");
+
+    // 先记审计（随后解绑会登出所有会话）
+    await appendAuditLog({
+      userId: user.id,
+      action: "auth.recovery_redeemed",
+      entityType: "auth",
+      entityId: user.id,
+      metadata: {},
+    });
 
     // 解绑该用户全部 TOTP 因子；删 verified factor 会登出所有会话，前端引导重新登录
     const admin = createAdminClient();

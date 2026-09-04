@@ -23,6 +23,7 @@ vi.mock("@/lib/repositories/mfa-recovery-codes", () => ({
   replaceRecoveryCodes: vi.fn(),
   consumeRecoveryCode: vi.fn(),
 }));
+vi.mock("@/lib/repositories/audit-logs", () => ({ appendAuditLog: vi.fn() }));
 
 import {
   generateRecoveryCodes,
