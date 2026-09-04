@@ -49,6 +49,7 @@
   "rateLimited": "Too many requests",
   "slugInvalid": "Only lowercase letters, numbers, and hyphens",
   "slugMinLength": "Slug must be at least 2 characters",
+  "spamRejected": "Message rejected as suspected spam",
   "stripeNotConfigured": "Payment service is not configured",
   "superAdminOnly": "Super admins can only be changed by a super admin",
   "teamNameRequired": "Team name is required",

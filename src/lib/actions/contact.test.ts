@@ -78,6 +78,15 @@ describe("submitContactMessage()", () => {
     });
   });
 
+  it("疑似垃圾返回 spamRejected 且不落库", async () => {
+    const client = mockClient();
+    createClientMock.mockResolvedValue(client);
+    await expect(
+      submitContactMessage(form({ ...VALID, message: "中奖 http://a.com http://b.com http://c.com 速领", email: "s@qq.com" })),
+    ).resolves.toEqual({ ok: false, error: "spamRejected" });
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
   it("写入失败返回 databaseError", async () => {
     createClientMock.mockResolvedValue(mockClient({ insertError: true }));
     await expect(submitContactMessage(form(VALID))).resolves.toEqual({
