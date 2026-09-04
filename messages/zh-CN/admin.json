@@ -9,10 +9,14 @@
       "totalTeams": "团队数",
       "admins": "管理员",
       "normalUsers": "普通用户",
+      "contactMessages": "联系消息",
+      "webhookEvents": "Webhook 事件",
       "totalUsersDesc": "平台注册用户总数",
       "totalTeamsDesc": "已创建的团队数量",
       "adminsDesc": "系统管理员和超级管理员",
-      "normalUsersDesc": "普通用户和只读用户"
+      "normalUsersDesc": "普通用户和只读用户",
+      "contactMessagesDesc": "通过公开联系表单提交的消息",
+      "webhookEventsDesc": "已记录的 Stripe webhook 投递事件"
     },
     "roleDistribution": "角色分布",
     "roleDistributionDesc": "平台用户角色占比",

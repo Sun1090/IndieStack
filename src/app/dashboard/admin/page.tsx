@@ -13,7 +13,9 @@ import { ROUTES } from "@/lib/constants";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Activity, Shield, AlertTriangle } from "lucide-react";
+import { countContactMessages } from "@/lib/repositories/contact-messages";
+import { countWebhookEvents } from "@/lib/repositories/webhook-events";
+import { Users, Activity, Shield, AlertTriangle, Mail, Webhook } from "lucide-react";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin");
@@ -59,6 +61,11 @@ export default async function AdminPage() {
     });
   }
 
+  const [messagesTotal, webhookTotal] = await Promise.all([
+    countContactMessages(),
+    countWebhookEvents(),
+  ]);
+
   const statsCards = [
     {
       title: t("overview.stats.totalUsers"),
@@ -83,6 +90,18 @@ export default async function AdminPage() {
       value: roleCount.member + roleCount.viewer,
       desc: `member ${roleCount.member} / viewer ${roleCount.viewer}`,
       icon: AlertTriangle,
+    },
+    {
+      title: t("overview.stats.contactMessages"),
+      value: messagesTotal,
+      desc: t("overview.stats.contactMessagesDesc"),
+      icon: Mail,
+    },
+    {
+      title: t("overview.stats.webhookEvents"),
+      value: webhookTotal,
+      desc: t("overview.stats.webhookEventsDesc"),
+      icon: Webhook,
     },
   ];
 

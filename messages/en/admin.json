@@ -9,10 +9,14 @@
       "totalTeams": "Teams",
       "admins": "Admins",
       "normalUsers": "Normal Users",
+      "contactMessages": "Contact Messages",
+      "webhookEvents": "Webhook Events",
       "totalUsersDesc": "Total registered users on the platform",
       "totalTeamsDesc": "Total teams created",
       "adminsDesc": "System admins and super admins",
-      "normalUsersDesc": "Regular users and viewers"
+      "normalUsersDesc": "Regular users and viewers",
+      "contactMessagesDesc": "Messages submitted via the public contact form",
+      "webhookEventsDesc": "Stripe webhook deliveries recorded"
     },
     "roleDistribution": "Role Distribution",
     "roleDistributionDesc": "Platform user role distribution",
