@@ -12,6 +12,7 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import { listAllAuditLogs } from "@/lib/repositories/audit-logs";
 import { listAdminUsersPage as fetchAdminUsersPage } from "@/lib/repositories/admin-users";
+import { createNotification } from "@/lib/repositories/notifications";
 
 export type AdminUser = {
   id: string;
@@ -121,6 +122,20 @@ export async function updateUserRole(
     if (error) {
       console.error("[admin] 数据库操作失败:", error);
       return fail("databaseError");
+    }
+
+    // 通知目标用户（失败不阻断角色更新）
+    try {
+      await createNotification({
+        userId,
+        type: "role_changed",
+        title: "账户角色已变更",
+        body: `你的平台角色已更新为 ${role}。`,
+        link: ROUTES.dashboard,
+        metadata: { role },
+      });
+    } catch (notifyError) {
+      console.error("[admin] 角色变更通知写入失败:", notifyError);
     }
 
     revalidatePath(ROUTES.adminUsers);

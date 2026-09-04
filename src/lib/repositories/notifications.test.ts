@@ -5,13 +5,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { chainMock, dbClientMock } from "./test-helpers";
 
-const { createClientMock } = vi.hoisted(() => ({ createClientMock: vi.fn() }));
+const { createClientMock, createAdminClientMock } = vi.hoisted(() => ({
+  createClientMock: vi.fn(),
+  createAdminClientMock: vi.fn(),
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
 import {
   listRecentNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  createNotification,
+  NOTIFICATION_TYPES,
 } from "./notifications";
 
 beforeEach(() => {
@@ -42,6 +48,38 @@ describe("markAllNotificationsRead()", () => {
   it("无更新行返回 0", async () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chainMock({})));
     await expect(markAllNotificationsRead("u1")).resolves.toBe(0);
+  });
+});
+
+describe("NOTIFICATION_TYPES", () => {
+  it("包含 seed 既有与新增类型", () => {
+    for (const t of ["system", "team_invite", "role_changed", "payment_succeeded", "billing_update", "deployment", "security_alert"]) {
+      expect(NOTIFICATION_TYPES).toContain(t);
+    }
+  });
+});
+
+describe("createNotification()", () => {
+  it("成功写入并透传字段", async () => {
+    const chain = chainMock({});
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await expect(
+      createNotification({ userId: "u1", type: "team_invite", title: "hi", link: "/team" }),
+    ).resolves.toBeUndefined();
+    expect(from).toHaveBeenCalledWith("notifications");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: "u1", type: "team_invite", title: "hi", link: "/team" }),
+    );
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(
+      createNotification({ userId: "u1", type: "system", title: "hi" }),
+    ).rejects.toThrow("db");
   });
 });
 
