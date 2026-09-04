@@ -385,7 +385,16 @@
       "tabAll": "全部",
       "tabUnread": "未读",
       "markAllRead": "全部标为已读",
-      "empty": "暂无通知"
+      "empty": "暂无通知",
+      "types": {
+        "system": "系统",
+        "team_invite": "团队邀请",
+        "role_changed": "角色变更",
+        "payment_succeeded": "支付成功",
+        "billing_update": "账单",
+        "deployment": "部署",
+        "security_alert": "安全告警"
+      }
     }
   },
   "integrations": {

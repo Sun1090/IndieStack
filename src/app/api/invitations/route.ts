@@ -16,6 +16,8 @@ import { safelyRequirePermission, guardHttpStatus } from "@/lib/auth/guards";
 import { logApiError } from "@/lib/api-log";
 import { inviteMemberSchema } from "@/lib/validations/team";
 import { PERMISSIONS } from "@/lib/auth/permissions";
+import { ROUTES } from "@/lib/constants";
+import { createNotification } from "@/lib/repositories/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -215,6 +217,20 @@ export async function POST(request: NextRequest) {
           ).count ?? 0,
       })
       .eq("id", teamId);
+
+    // 通知被邀请人（失败不阻断邀请主流程）
+    try {
+      await createNotification({
+        userId: invitedProfile.id,
+        type: "team_invite",
+        title: "新的团队邀请",
+        body: "你被邀请加入团队。",
+        link: ROUTES.dashboardTeam,
+        metadata: { team_id: teamId, role: validated.data.role },
+      });
+    } catch (notifyError) {
+      await logApiError("[Invitations API] 邀请通知写入失败", notifyError);
+    }
 
     return jsonNoStore({ invitation: newMember }, { status: 201 });
   } catch (error) {

@@ -56,11 +56,19 @@ export default async function NotificationsPage({
     (n) => !showUnreadOnly || !n.is_read,
   );
 
+  // 类型 → 徽标样式；未知类型回退 secondary + 原文
   const badgeVariant = (type: string) => {
-    if (type === "success") return "success" as const;
-    if (type === "warning") return "warning" as const;
-    if (type === "error") return "destructive" as const;
+    if (type === "security_alert") return "destructive" as const;
+    if (type === "payment_succeeded" || type === "team_invite") return "success" as const;
+    if (type === "billing_update" || type === "role_changed") return "warning" as const;
     return "secondary" as const;
+  };
+  const typeLabel = (type: string) => {
+    try {
+      return t(`notifications.list.types.${type}`);
+    } catch {
+      return type;
+    }
   };
 
   return (
@@ -123,7 +131,7 @@ export default async function NotificationsPage({
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium">{notification.title}</p>
                       <Badge variant={badgeVariant(notification.type)} className="capitalize">
-                        {notification.type}
+                        {typeLabel(notification.type)}
                       </Badge>
                       {!notification.is_read && (
                         <MarkReadAction notificationId={String(notification.id)} />

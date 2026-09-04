@@ -385,7 +385,16 @@
       "tabAll": "All",
       "tabUnread": "Unread",
       "markAllRead": "Mark all read",
-      "empty": "No notifications yet"
+      "empty": "No notifications yet",
+      "types": {
+        "system": "System",
+        "team_invite": "Team invite",
+        "role_changed": "Role changed",
+        "payment_succeeded": "Payment",
+        "billing_update": "Billing",
+        "deployment": "Deploy",
+        "security_alert": "Security"
+      }
     }
   },
   "integrations": {
