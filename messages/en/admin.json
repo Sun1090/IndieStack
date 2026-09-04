@@ -102,6 +102,13 @@
       "resolved": "Resolved"
     },
     "startProcess": "Start processing",
-    "resolve": "Mark resolved"
+    "resolve": "Mark resolved",
+    "searchPlaceholder": "Search name, email or subject…",
+    "search": "Search",
+    "filterAll": "All",
+    "total": "{count} messages",
+    "pageOf": "Page {page} of {totalPages}",
+    "prev": "Previous",
+    "next": "Next"
   }
 }

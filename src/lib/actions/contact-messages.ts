@@ -9,7 +9,9 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import {
   listRecentContactMessages,
+  listContactMessagesPage as fetchContactMessagesPage,
   setMessageStatus,
+  type ContactMessageFilter,
   type MessageStatus,
 } from "@/lib/repositories/contact-messages";
 import { safelyRequireRole } from "@/lib/auth/guards";
@@ -56,6 +58,35 @@ export async function listContactMessages(
   } catch (error) {
     console.error("[listContactMessages] 查询失败:", error);
     return fail("databaseError");
+  }
+}
+
+export interface ContactMessagePage {
+  rows: ContactMessageRecord[];
+  total: number;
+}
+
+/**
+ * 分页查询联系消息（仅 admin/super_admin，支持状态筛选与模糊搜）。
+ */
+export async function listContactMessagesPage(
+  filter: ContactMessageFilter = {},
+): Promise<ActionResult<ContactMessagePage>> {
+  const auth = await safelyRequireRole("admin");
+  if (!auth.success) {
+    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+  }
+
+  try {
+    const { rows, total } = await fetchContactMessagesPage(filter);
+    return ok({ rows: rows.map((row) => toRecord(row)), total });
+  } catch (error) {
+    console.error("[listContactMessagesPage] 查询失败:", error);
+    return fail(
+      error instanceof Error && error.message.startsWith("invalid_")
+        ? "invalidInput"
+        : "databaseError",
+    );
   }
 }
 

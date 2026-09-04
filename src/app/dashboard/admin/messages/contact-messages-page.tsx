@@ -14,13 +14,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/shared/query-error-state";
 import {
-  listContactMessages,
+  listContactMessagesPage,
   updateMessageStatus,
   type ContactMessageRecord,
   type MessageStatus,
 } from "@/lib/actions/contact-messages";
 import { formatRelativeTime } from "@/lib/date";
 import { toast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 
 const STATUS_VARIANT: Record<string, "secondary" | "warning" | "success"> = {
   new: "secondary",
@@ -35,14 +36,29 @@ export function ContactMessagesPage() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  const { data: messages = [], isLoading: loading, isError, refetch } = useQuery({
-    queryKey: ["contact-messages"],
-    queryFn: async (): Promise<ContactMessageRecord[]> => {
-      const result = await listContactMessages(100);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<"all" | MessageStatus>("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  const { data, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: ["contact-messages", { search, status, page }],
+    queryFn: async (): Promise<{ rows: ContactMessageRecord[]; total: number }> => {
+      const result = await listContactMessagesPage({ search, status, page, pageSize });
       if (!result.ok) throw new Error(result.error);
-      return result.data ?? [];
+      return result.data ?? { rows: [], total: 0 };
     },
   });
+  const messages = data?.rows ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setPage(1);
+    setSearch(searchInput.trim());
+  }
 
   // 状态文案静态映射（避免动态 key 触发缺键错误）
   const statusLabel: Record<string, string> = {
@@ -71,6 +87,42 @@ export function ContactMessagesPage() {
         <p className="text-muted-foreground">{t("desc")}</p>
       </div>
 
+      <form onSubmit={submitSearch} className="flex flex-col gap-2 sm:flex-row">
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder={t("searchPlaceholder")}
+          className="sm:max-w-xs"
+          aria-label={t("searchPlaceholder")}
+        />
+        <div className="flex gap-2">
+          {(
+            [
+              ["all", t("filterAll")],
+              ["new", t("status.new")],
+              ["in_progress", t("status.inProgress")],
+              ["resolved", t("status.resolved")],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              variant={status === value ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setStatus(value);
+                setPage(1);
+              }}
+            >
+              {label}
+            </Button>
+          ))}
+          <Button type="submit" size="sm">
+            {t("search")}
+          </Button>
+        </div>
+      </form>
+
       <Card>
         <CardContent className="pt-6">
           {loading ? (
@@ -87,6 +139,9 @@ export function ContactMessagesPage() {
             </p>
           ) : (
             <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {t("total", { count: total })}
+              </p>
               {messages.map((msg) => (
                 <div
                   key={msg.id}
@@ -142,6 +197,33 @@ export function ContactMessagesPage() {
                   )}
                 </div>
               ))}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    {t("pageOf", { page, totalPages })}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      {t("prev")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      {t("next")}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

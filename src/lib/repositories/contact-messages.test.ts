@@ -8,7 +8,13 @@ import { chainMock, dbClientMock } from "./test-helpers";
 const { createAdminClientMock } = vi.hoisted(() => ({ createAdminClientMock: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
-import { listRecentContactMessages, countContactMessages, setMessageStatus } from "./contact-messages";
+import {
+  listRecentContactMessages,
+  countContactMessages,
+  setMessageStatus,
+  listContactMessagesPage,
+  escapeLike,
+} from "./contact-messages";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -74,6 +80,54 @@ describe("setMessageStatus()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(setMessageStatus("m1", "resolved")).rejects.toThrow("db");
+  });
+});
+
+describe("escapeLike()", () => {
+  it("转义通配符与分隔符并截断", () => {
+    expect(escapeLike("a%b_c\\d,e")).toBe("a\\%b\\_c\\\\d\\,e");
+    expect(escapeLike("x".repeat(200))).toHaveLength(100);
+  });
+});
+
+describe("listContactMessagesPage()", () => {
+  it("默认分页返回行与总数", async () => {
+    const rows = [{ id: "m1" }];
+    const chain = chainMock({ data: rows, count: 42 });
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await expect(listContactMessagesPage()).resolves.toEqual({ rows, total: 42 });
+    expect(from).toHaveBeenCalledWith("contact_messages");
+    expect(chain.range).toHaveBeenCalledWith(0, 19);
+  });
+
+  it("状态筛选透传 eq", async () => {
+    const chain = chainMock({ data: [], count: 0 });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await listContactMessagesPage({ status: "resolved", page: 2, pageSize: 10 });
+    expect(chain.eq).toHaveBeenCalledWith("status", "resolved");
+    expect(chain.range).toHaveBeenCalledWith(10, 19);
+  });
+
+  it("搜索词透传 or（转义后）", async () => {
+    const chain = chainMock({ data: [], count: 0 });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await listContactMessagesPage({ search: "a%b" });
+    expect(chain.or).toHaveBeenCalledWith("name.ilike.%a\\%b%,email.ilike.%a\\%b%,subject.ilike.%a\\%b%");
+  });
+
+  it("非法状态抛错", async () => {
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({})));
+    await expect(
+      listContactMessagesPage({ status: "bogus" as "new" }),
+    ).rejects.toThrow("invalid_status");
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(listContactMessagesPage()).rejects.toThrow("db");
   });
 });
 

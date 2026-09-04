@@ -4,22 +4,24 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { safelyRequireRoleMock, listRecentContactMessagesMock, setMessageStatusMock, revalidatePathMock } =
+const { safelyRequireRoleMock, listRecentContactMessagesMock, setMessageStatusMock, revalidatePathMock, listPageMock } =
   vi.hoisted(() => ({
     safelyRequireRoleMock: vi.fn(),
     listRecentContactMessagesMock: vi.fn(),
     setMessageStatusMock: vi.fn(),
     revalidatePathMock: vi.fn(),
+    listPageMock: vi.fn(),
   }));
 
 vi.mock("@/lib/auth/guards", () => ({ safelyRequireRole: safelyRequireRoleMock }));
 vi.mock("@/lib/repositories/contact-messages", () => ({
   listRecentContactMessages: listRecentContactMessagesMock,
   setMessageStatus: setMessageStatusMock,
+  listContactMessagesPage: listPageMock,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 
-import { listContactMessages, updateMessageStatus } from "./contact-messages";
+import { listContactMessages, updateMessageStatus, listContactMessagesPage } from "./contact-messages";
 
 function unauthorized() {
   return { success: false, error: { code: "UNAUTHORIZED" } };
@@ -88,6 +90,50 @@ describe("listContactMessages()", () => {
       ],
     });
     expect(listRecentContactMessagesMock).toHaveBeenCalledWith(5);
+  });
+});
+
+describe("listContactMessagesPage()", () => {
+  it("未登录返回 notAuthenticated", async () => {
+    safelyRequireRoleMock.mockResolvedValue(unauthorized());
+    await expect(listContactMessagesPage({})).resolves.toEqual({
+      ok: false,
+      error: "notAuthenticated",
+    });
+  });
+
+  it("成功返回映射行与总数", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    listPageMock.mockResolvedValue({
+      rows: [{ id: "m1", name: "A", email: "a@b.c", subject: "s", message: "m", status: "new", created_at: "2026-01-01" }],
+      total: 1,
+    });
+    await expect(listContactMessagesPage({ status: "new", page: 1 })).resolves.toEqual({
+      ok: true,
+      data: {
+        rows: [{ id: "m1", name: "A", email: "a@b.c", subject: "s", message: "m", status: "new", created_at: "2026-01-01" }],
+        total: 1,
+      },
+    });
+    expect(listPageMock).toHaveBeenCalledWith({ status: "new", page: 1 });
+  });
+
+  it("非法参数返回 invalidInput", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    listPageMock.mockRejectedValue(new Error("invalid_status:bogus"));
+    await expect(listContactMessagesPage({})).resolves.toEqual({
+      ok: false,
+      error: "invalidInput",
+    });
+  });
+
+  it("仓库异常返回 databaseError", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    listPageMock.mockRejectedValue(new Error("boom"));
+    await expect(listContactMessagesPage({})).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
   });
 });
 
