@@ -5,13 +5,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ROUTES } from "@/lib/constants";
 
-const { createClientMock, revalidatePathMock } = vi.hoisted(() => ({
+const { createClientMock, revalidatePathMock, upsertPendingSubscriptionMock, deactivateSubscriptionMock, sendConfirmationMock } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
   revalidatePathMock: vi.fn(),
+  upsertPendingSubscriptionMock: vi.fn(),
+  deactivateSubscriptionMock: vi.fn(async () => {}),
+  sendConfirmationMock: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
+vi.mock("@/lib/repositories/marketing", () => ({
+  upsertPendingSubscription: upsertPendingSubscriptionMock,
+  deactivateSubscription: deactivateSubscriptionMock,
+}));
+vi.mock("@/lib/email-marketing", () => ({
+  sendMarketingConfirmationEmail: sendConfirmationMock,
+}));
 
 import { updateNotificationSettings, updatePassword } from "./settings";
 
@@ -62,6 +72,7 @@ function form(values: Record<string, string>): FormData {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  upsertPendingSubscriptionMock.mockResolvedValue({ status: "pending", email: "a@b.com", token: "t1" });
 });
 
 describe("updateNotificationSettings()", () => {
@@ -85,6 +96,33 @@ describe("updateNotificationSettings()", () => {
   it("数据库错误返回 databaseError", async () => {
     createClientMock.mockResolvedValue(mockClient({ profileUpdateError: true }));
     await expect(updateNotificationSettings(form({}))).resolves.toEqual({ ok: false, error: "databaseError" });
+  });
+
+  it("开启营销邮件：创建 pending 订阅并发送确认邮件（A05 double opt-in）", async () => {
+    createClientMock.mockResolvedValue(mockClient());
+    await updateNotificationSettings(form({ marketingEmails: "on" }));
+    expect(upsertPendingSubscriptionMock).toHaveBeenCalledWith("u1", "a@b.com");
+    expect(sendConfirmationMock).toHaveBeenCalledWith("a@b.com", "t1");
+  });
+
+  it("已确认订阅（subscribed）不重发确认邮件", async () => {
+    createClientMock.mockResolvedValue(mockClient());
+    upsertPendingSubscriptionMock.mockResolvedValue({ status: "subscribed", email: "a@b.com", token: "t1" });
+    await updateNotificationSettings(form({ marketingEmails: "on" }));
+    expect(sendConfirmationMock).not.toHaveBeenCalled();
+  });
+
+  it("关闭营销邮件：直接退订", async () => {
+    createClientMock.mockResolvedValue(mockClient());
+    await updateNotificationSettings(form({ marketingEmails: "off" }));
+    expect(deactivateSubscriptionMock).toHaveBeenCalledWith("u1");
+    expect(upsertPendingSubscriptionMock).not.toHaveBeenCalled();
+  });
+
+  it("订阅同步失败不影响保存结果", async () => {
+    createClientMock.mockResolvedValue(mockClient());
+    upsertPendingSubscriptionMock.mockRejectedValue(new Error("db"));
+    await expect(updateNotificationSettings(form({ marketingEmails: "on" }))).resolves.toEqual({ ok: true });
   });
 });
 

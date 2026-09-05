@@ -111,6 +111,22 @@
   （at-least-once）。
 - 非实时类型（system/deployment/billing_update）邮件侧仍只经 digest 打包发送。
 
+### 营销邮件独立通道（v0.5.0 A05）
+
+- 不经过 `notifications` 表，受众来自 `marketing_subscriptions`（迁移 016，仅
+  `status=subscribed` 的行），`profiles.notification_settings.marketingEmails`
+  是订阅入口开关而非直接发送授权。
+- **Double opt-in**：设置页打开开关 → 写入 `pending` 订阅（每用户一行，
+  `user_id` 唯一，重复开关刷新 token 使旧链接失效）→ Resend 发确认邮件 →
+  用户点击 `/api/marketing/confirm?token=…` → `subscribed`。关闭开关或点击
+  `/api/marketing/unsubscribe?token=…` → `unsubscribed`。
+- Token 为 48 位十六进制随机串（不可猜测），公开路由凭 token 操作；
+  未命中返回 404，命中后 302 跳回站点首页（带 `?marketing=confirmed|unsubscribed`）。
+- 发送入口 `sendMarketingEmail()`（`src/lib/email-marketing.ts`）：强制附加
+  该收件人的退订页脚；批量营销/活动内容为后续任务，本版仅收口通道与合规链接。
+- RLS：订阅行允许用户 select/insert/update 自己的行；确认/退订路由走
+  service_role（无用户上下文）。
+
 ### 聚合与发送规则（实际行为）
 
 > v0.4.0 的实现是”按用户合并为一封摘要”，没有独立的实时单发通道：
