@@ -17,12 +17,38 @@ import {
   generateMockUserSessions,
   generateMockApiKeys,
   generateMockAdminStats,
+  generateMockContactMessages,
   MOCK_USER_ID,
   MOCK_TEAM_ID,
 } from "./data";
 
 // Mock 模式检测逻辑抽离至零依赖的 config 模块（供 Edge Middleware 引用），此处转发保持兼容
 export { isMockEnabled, shouldUseMock } from "./config";
+
+// =============================================================================
+// 模块级缓存：统一挂到 globalThis 上，避免 Next.js dev 下 Turbopack 不同 chunk
+// 拆包导致 RSC/Route Handler/Server Action 拿到不同模块实例，写入的 mock 数据
+// 在 GET 路径中读不到（v0.5.0 F02 contact-messages 闭环踩到的真问题）。
+// 生产构建 Turbopack 同样拆 chunk，因此保留该全局复用；mock 仅在
+// NEXT_PUBLIC_MOCK_ENABLED=true 启用（运行内存隔离，无跨用户风险）。
+// =============================================================================
+const MOCK_GLOBAL_KEY = "__indiestackMockCache__";
+type MockGlobal = Record<string, unknown>;
+const MOCK_GLOBAL: MockGlobal =
+  (globalThis as unknown as Record<string, MockGlobal>)[MOCK_GLOBAL_KEY] ??
+  ((globalThis as unknown as Record<string, MockGlobal>)[MOCK_GLOBAL_KEY] = {});
+
+function mockCacheGet<T>(key: string): T | undefined {
+  return MOCK_GLOBAL[key] as T | undefined;
+}
+function mockCacheSet<T>(key: string, value: T): void {
+  MOCK_GLOBAL[key] = value;
+}
+function mockCacheClear(): void {
+  for (const k of Object.keys(MOCK_GLOBAL)) delete MOCK_GLOBAL[k];
+}
+
+
 
 export { generateMockAdminStats };
 
@@ -57,6 +83,7 @@ let _mockUserSessions: ReturnType<typeof generateMockUserSessions> | null = null
 let _mockApiKeys: ReturnType<typeof generateMockApiKeys> | null = null;
 let _mockWorkerRuns: Record<string, unknown>[] | null = null;
 let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
+let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null = null;
 
 /** 重置缓存的 mock 数据（可用于测试或刷新） */
 export function resetMockCache() {
@@ -74,78 +101,152 @@ export function resetMockCache() {
   _mockApiKeys = null;
   _mockWorkerRuns = null;
   _mockMarketingSubscriptions = null;
+  _mockContactMessages = null;
+  mockCacheClear();
 }
 
 function getMockUser() {
-  if (!_mockUser) _mockUser = generateMockUser();
-  return _mockUser;
+  const cached = mockCacheGet<ReturnType<typeof generateMockUser>>("User");
+  if (cached) { _mockUser = cached; return cached; }
+  const fresh = generateMockUser();
+  _mockUser = fresh;
+  mockCacheSet("User", fresh);
+  return fresh;
 }
 
 function getMockProfile() {
-  if (!_mockProfile) _mockProfile = generateMockProfile();
-  return _mockProfile;
+  const cached = mockCacheGet<ReturnType<typeof generateMockProfile>>("Profile");
+  if (cached) { _mockProfile = cached; return cached; }
+  const fresh = generateMockProfile();
+  _mockProfile = fresh;
+  mockCacheSet("Profile", fresh);
+  return fresh;
 }
 
 function getMockTeam() {
-  if (!_mockTeam) _mockTeam = generateMockTeam();
-  return _mockTeam;
+  const cached = mockCacheGet<ReturnType<typeof generateMockTeam>>("Team");
+  if (cached) { _mockTeam = cached; return cached; }
+  const fresh = generateMockTeam();
+  _mockTeam = fresh;
+  mockCacheSet("Team", fresh);
+  return fresh;
 }
 
-function getMockProfiles() {
-  if (!_mockProfiles) {
-    _mockProfiles = [getMockProfile(), ...Array.from({ length: 9 }, () => generateMockProfile())];
+function getMockProfiles(): ReturnType<typeof generateMockProfile>[] {
+  const cached = mockCacheGet<ReturnType<typeof getMockProfiles>>("Profiles");
+  if (cached) {
+    _mockProfiles = cached;
+    return cached;
   }
-  return _mockProfiles;
+  const fresh = [getMockProfile(), ...Array.from({ length: 9 }, () => generateMockProfile())];
+  _mockProfiles = fresh;
+  mockCacheSet("Profiles", fresh);
+  return fresh;
 }
 
-function getMockTeams() {
-  if (!_mockTeams) _mockTeams = [getMockTeam()];
-  return _mockTeams;
+function getMockTeams(): ReturnType<typeof generateMockTeam>[] {
+  const cached = mockCacheGet<ReturnType<typeof getMockTeams>>("Teams");
+  if (cached) {
+    _mockTeams = cached;
+    return cached;
+  }
+  const fresh = [getMockTeam()];
+  _mockTeams = fresh;
+  mockCacheSet("Teams", fresh);
+  return fresh;
 }
 
 function getMockMembers() {
-  if (!_mockMembers) _mockMembers = generateMockTeamMembersWithProfiles();
-  return _mockMembers;
+  const cached = mockCacheGet<ReturnType<typeof generateMockTeamMembersWithProfiles>>("Members");
+  if (cached) { _mockMembers = cached; return cached; }
+  const fresh = generateMockTeamMembersWithProfiles();
+  _mockMembers = fresh;
+  mockCacheSet("Members", fresh);
+  return fresh;
 }
 
 function getMockProjects() {
-  if (!_mockProjects) _mockProjects = generateMockProjects();
-  return _mockProjects;
+  const cached = mockCacheGet<ReturnType<typeof generateMockProjects>>("Projects");
+  if (cached) { _mockProjects = cached; return cached; }
+  const fresh = generateMockProjects();
+  _mockProjects = fresh;
+  mockCacheSet("Projects", fresh);
+  return fresh;
 }
 
 function getMockNotifications() {
-  if (!_mockNotifications) _mockNotifications = generateMockNotifications();
-  return _mockNotifications;
+  const cached = mockCacheGet<ReturnType<typeof generateMockNotifications>>("Notifications");
+  if (cached) { _mockNotifications = cached; return cached; }
+  const fresh = generateMockNotifications();
+  _mockNotifications = fresh;
+  mockCacheSet("Notifications", fresh);
+  return fresh;
 }
 
 function getMockAuditLogs() {
-  if (!_mockAuditLogs) _mockAuditLogs = generateMockAuditLogs();
-  return _mockAuditLogs;
+  const cached = mockCacheGet<ReturnType<typeof generateMockAuditLogs>>("AuditLogs");
+  if (cached) { _mockAuditLogs = cached; return cached; }
+  const fresh = generateMockAuditLogs();
+  _mockAuditLogs = fresh;
+  mockCacheSet("AuditLogs", fresh);
+  return fresh;
 }
 
 function getMockApiUsage() {
-  if (!_mockApiUsage) _mockApiUsage = generateMockApiUsageRows();
-  return _mockApiUsage;
+  const cached = mockCacheGet<ReturnType<typeof generateMockApiUsageRows>>("ApiUsage");
+  if (cached) { _mockApiUsage = cached; return cached; }
+  const fresh = generateMockApiUsageRows();
+  _mockApiUsage = fresh;
+  mockCacheSet("ApiUsage", fresh);
+  return fresh;
 }
 
 function getMockUserSessions() {
-  if (!_mockUserSessions) _mockUserSessions = generateMockUserSessions();
-  return _mockUserSessions;
+  const cached = mockCacheGet<ReturnType<typeof generateMockUserSessions>>("UserSessions");
+  if (cached) { _mockUserSessions = cached; return cached; }
+  const fresh = generateMockUserSessions();
+  _mockUserSessions = fresh;
+  mockCacheSet("UserSessions", fresh);
+  return fresh;
 }
 
 function getMockApiKeys() {
-  if (!_mockApiKeys) _mockApiKeys = generateMockApiKeys();
-  return _mockApiKeys;
+  const cached = mockCacheGet<ReturnType<typeof generateMockApiKeys>>("ApiKeys");
+  if (cached) { _mockApiKeys = cached; return cached; }
+  const fresh = generateMockApiKeys();
+  _mockApiKeys = fresh;
+  mockCacheSet("ApiKeys", fresh);
+  return fresh;
 }
 
-function getMockWorkerRuns() {
-  if (!_mockWorkerRuns) _mockWorkerRuns = [];
-  return _mockWorkerRuns;
+function getMockWorkerRuns(): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>("WorkerRuns");
+  if (cached) { _mockWorkerRuns = cached; return cached; }
+  const fresh: Record<string, unknown>[] = [];
+  _mockWorkerRuns = fresh;
+  mockCacheSet("WorkerRuns", fresh);
+  return fresh;
 }
 
-function getMockMarketingSubscriptions() {
-  if (!_mockMarketingSubscriptions) _mockMarketingSubscriptions = [];
-  return _mockMarketingSubscriptions;
+function getMockMarketingSubscriptions(): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>("MarketingSubscriptions");
+  if (cached) { _mockMarketingSubscriptions = cached; return cached; }
+  const fresh: Record<string, unknown>[] = [];
+  _mockMarketingSubscriptions = fresh;
+  mockCacheSet("MarketingSubscriptions", fresh);
+  return fresh;
+}
+
+export function getMockContactMessages() {
+  const cached = mockCacheGet<ReturnType<typeof generateMockContactMessages>>("ContactMessages");
+  if (cached) {
+    _mockContactMessages = cached;
+    return cached;
+  }
+  const fresh = generateMockContactMessages();
+  _mockContactMessages = fresh;
+  mockCacheSet("ContactMessages", fresh);
+  return fresh;
 }
 
 /**
@@ -440,23 +541,25 @@ class MockQueryBuilder {
       case "team_members_with_profiles":
         return getMockMembers();
       case "notifications":
-        return this.applyFiltersAndPagination(getMockNotifications());
+        return this.applyFiltersAndPagination((getMockNotifications() ?? []) as unknown[]);
       case "audit_logs":
-        return this.applyFiltersAndPagination(getMockAuditLogs());
+        return this.applyFiltersAndPagination((getMockAuditLogs() ?? []) as unknown[]);
       case "projects":
         return this.applyFiltersAndPagination(getMockProjects());
       case "api_usage":
-        return this.applyFiltersAndPagination(getMockApiUsage());
+        return this.applyFiltersAndPagination((getMockApiUsage() ?? []) as unknown[]);
       case "user_sessions":
-        return this.applyFiltersAndPagination(getMockUserSessions());
+        return this.applyFiltersAndPagination((getMockUserSessions() ?? []) as unknown[]);
       case "api_keys":
-        return this.applyFiltersAndPagination(getMockApiKeys());
+        return this.applyFiltersAndPagination((getMockApiKeys() ?? []) as unknown[]);
       case "subscriptions":
         return { id: "mock-sub-001", team_id: MOCK_TEAM_ID, plan: "pro", status: "active" };
       case "email_worker_runs":
-        return this.applyFiltersAndPagination(getMockWorkerRuns());
+        return this.applyFiltersAndPagination((getMockWorkerRuns() ?? []) as unknown[]);
       case "marketing_subscriptions":
-        return this.applyFiltersAndPagination(getMockMarketingSubscriptions());
+        return this.applyFiltersAndPagination((getMockMarketingSubscriptions() ?? []) as unknown[]);
+      case "contact_messages":
+        return this.applyFiltersAndPagination((getMockContactMessages() ?? []) as unknown[]);
       default:
         return [];
     }
@@ -573,6 +676,8 @@ class MockQueryBuilder {
         return getMockWorkerRuns();
       case "marketing_subscriptions":
         return getMockMarketingSubscriptions();
+      case "contact_messages":
+        return getMockContactMessages();
       default:
         return null;
     }

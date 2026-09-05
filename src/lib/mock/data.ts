@@ -321,6 +321,18 @@ export function generateMockAuditLogs(count = 20) {
  * 生成管理后台概览统计（Mock 模式专用）
  * 角色分布遵循系统角色约束（super_admin/admin/member/viewer）
  */
+export function generateMockContactMessages(count = 3) {
+  return Array.from({ length: count }).map((_, i) => ({
+    id: `mock-contact-${String(i + 1).padStart(3, "0")}`,
+    name: faker.person.fullName(),
+    email: faker.internet.email(),
+    subject: faker.lorem.sentence({ min: 3, max: 6 }).slice(0, -1),
+    message: faker.lorem.paragraphs(2, "\n"),
+    status: faker.helpers.arrayElement(["new", "read", "replied", "archived"]),
+    created_at: faker.date.recent({ days: 14 }).toISOString(),
+  }));
+}
+
 export function generateMockAdminStats() {
   const roleCount = {
     super_admin: 1,

@@ -52,6 +52,7 @@ export function ContactForm() {
         <Label htmlFor="name">{t("form.nameLabel")}</Label>
         <Input
           id="name"
+          name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t("form.namePlaceholder")}
@@ -63,6 +64,7 @@ export function ContactForm() {
         <Label htmlFor="contact-email">{t("form.emailLabel")}</Label>
         <Input
           id="contact-email"
+          name="email"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -75,6 +77,7 @@ export function ContactForm() {
         <Label htmlFor="subject">{t("form.subjectLabel")}</Label>
         <Input
           id="subject"
+          name="subject"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder={t("form.subjectPlaceholder")}
@@ -86,6 +89,7 @@ export function ContactForm() {
         <Label htmlFor="message">{t("form.messageLabel")}</Label>
         <Textarea
           id="message"
+          name="message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder={t("form.messagePlaceholder")}

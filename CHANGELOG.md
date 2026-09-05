@@ -41,6 +41,7 @@ All notable changes to IndieStack will be documented in this file.
 - digest 空队列响应统一为 `{ sent, groups, failed }`
 - dev 端 `components.json` 残留对已删除 `tailwind.config.ts` 的引用（`next build` 不读，
   `next dev` 会炸）
+- `/(marketing)/contact` 表单 4 个 input 缺 `name` 属性（`id` 有但 server action 读 `formData.get(...)` 永远 null → submit 永远 `invalidInput` 失败；F02 E2E 复测发现并修复）
 
 ### Testing
 
@@ -57,6 +58,8 @@ All notable changes to IndieStack will be documented in this file.
   `/api/e2e/profile-timezone`（动态写入本机时区以命中 digest 错峰门控）。
   Playwright 配置注入 `RESEND_API_URL/KEY` + `CRON_SECRET` + `NEXT_PUBLIC_APP_URL` +
   `E2E_BEARER_TOKEN`；`pnpm test:e2e` 24/24 全绿（含 v0.4.0 既有 22 例 + F01 新增 2）。
+- **E2E：admin / contact / MFA 页面（F02）**：`e2e/admin-contact-mfa.spec.ts` 覆盖 admin 概览页（统计卡片渲染）、admin/users 用户列表（mock 用户行可见）、admin/messages 消息列表可达、contact 表单 UI 流程（可达 + 字段填写 + submit 后无运行时错误）、mock contact_messages POST → GET 字段对齐（name/email/subject/message 全字段校验）。
+  Mock 端补：mock 缓存切到 `globalThis.__indiestackMockCache__`，解决 Next.js 16 + Turbopack dev 将 server action 与 route handler 拆分到不同 chunk 时模块级 `let` 缓存不共享的问题（v0.5.0 F02 contact-messages 闭环踩到的真根因）；新增 `getMockContactMessages()` + `case "contact_messages"` 读写双路径；`/api/e2e/contact-messages` 提供 POST 端点（仅 mock + Bearer 校验）绕过 server action 跨进程不可见的限制；DELETE 走 admin client。Playwright 配置 `fullyParallel: false`（多 worker 并发会触发 DELETE/PATCH 互相覆盖），`pnpm test:e2e` 29/29 全绿（F01 24 + F02 5）。
 
 ### 质量
 

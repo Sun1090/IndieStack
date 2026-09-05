@@ -27,6 +27,9 @@ export async function submitContactMessage(formData: FormData): Promise<ActionRe
   }
 
   // 垃圾启发式（限频之后、落库之前；阈值保守，误伤可调 SPAM_REJECT_SCORE）
+
+
+
   if (isSpam({ message: parsed.data.message, email: parsed.data.email })) {
     const { score, reasons } = scoreSpam({ message: parsed.data.message, email: parsed.data.email });
     console.warn(`[submitContactMessage] 疑似垃圾拒收 score=${score}:`, reasons);
@@ -34,6 +37,7 @@ export async function submitContactMessage(formData: FormData): Promise<ActionRe
   }
 
   const supabase = await createClient();
+
   const { error } = await supabase.from("contact_messages").insert(parsed.data);
 
   if (error) {
