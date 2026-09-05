@@ -58,9 +58,10 @@ export function generateMockProfile(overrides?: Record<string, unknown>) {
     timezone: "Asia/Shanghai",
     language: "zh",
     notification_settings: {
-      email: true,
-      push: true,
-      marketing: false,
+      emailNotifications: true,
+      marketingEmails: false,
+      productUpdates: true,
+      securityAlerts: true,
     },
     created_at: faker.date.past().toISOString(),
     updated_at: faker.date.recent().toISOString(),
