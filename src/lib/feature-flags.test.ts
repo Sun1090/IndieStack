@@ -3,7 +3,7 @@ import { features } from "./feature-flags";
 
 describe("feature-flags", () => {
   it("导出已知的功能开关集合", () => {
-    expect(Object.keys(features).sort()).toEqual(["auditLogExport", "avatarUpload", "webhookDebugPage"]);
+    expect(Object.keys(features).sort()).toEqual(["auditLogExport", "avatarUpload", "passkey", "webhookDebugPage"]);
   });
 
   it("开关值为布尔类型", () => {

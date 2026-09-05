@@ -183,7 +183,17 @@
         "currentDevice": "This device",
         "lastSeen": "Last active",
         "revokeDevice": "Revoke",
-        "deviceRevoked": "Device revoked"
+        "deviceRevoked": "Device revoked",
+        "passkeyTitle": "Passkeys",
+        "passkeyDesc": "Register a passkey (fingerprint / face / device PIN) for faster, phishing-resistant sign-in.",
+        "passkeyRegister": "Register Passkey",
+        "passkeyRegistering": "Waiting for authenticator...",
+        "passkeyRegistered": "Passkey registered!",
+        "passkeyDeleted": "Passkey removed",
+        "passkeyDelete": "Remove",
+        "passkeyUnnamed": "Passkey",
+        "passkeyLastUsed": "Used before",
+        "passkeyNeverUsed": "Never used"
       }
     }
   },
