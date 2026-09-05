@@ -39,6 +39,24 @@ All notable changes to IndieStack will be documented in this file.
 
 - 邮件模板 `String.replace` 特殊模式（`$&`）可能损坏用户内容 HTML 的隐患
 - digest 空队列响应统一为 `{ sent, groups, failed }`
+- dev 端 `components.json` 残留对已删除 `tailwind.config.ts` 的引用（`next build` 不读，
+  `next dev` 会炸）
+
+### Testing
+
+- **E2E 邮件全链路（F01）**：`e2e/mail-flow.spec.ts` 覆盖 happy path（设置页开启营销邮件 →
+  捕获 double opt-in 确认邮件 → 种通知 → 触发 digest cron → 断言摘要邮件主题含「N 条」
+  + `email_worker_runs` 落表 pulled/sent/groups/failed）与 failure path（`?failNext=1`
+  注入失败 → digest 返回 `failed=1` + `email_worker_runs.failed>0`）。
+  Mock 端补：`MockQueryBuilder` 新增 `.or()/.not()/.contains()/.lt()/.is()/.upsert()`
+  与 JSON 字段路径（`metadata->>email_attempts`）解析；`email_worker_runs` /
+  `marketing_subscriptions` 表接入 mock 读写；mock profile `notification_settings`
+  字段对齐真实 schema；`sendResendEmail` 支持 `RESEND_API_URL` 端点覆盖；
+  E2E 专用路由（仅 mock 启用 + Bearer 校验）`/api/e2e/email-inbox`、
+  `/api/e2e/seed-notifications`、`/api/e2e/email-worker-runs`、
+  `/api/e2e/profile-timezone`（动态写入本机时区以命中 digest 错峰门控）。
+  Playwright 配置注入 `RESEND_API_URL/KEY` + `CRON_SECRET` + `NEXT_PUBLIC_APP_URL` +
+  `E2E_BEARER_TOKEN`；`pnpm test:e2e` 24/24 全绿（含 v0.4.0 既有 22 例 + F01 新增 2）。
 
 ### 质量
 

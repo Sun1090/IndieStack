@@ -27,6 +27,13 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       NEXT_PUBLIC_MOCK_ENABLED: "true",
+      // F01 邮件全链路：Resend 指向本地捕获端点 + 显式注入 cron 鉴权密钥
+      RESEND_API_URL: "http://localhost:3100/api/e2e/email-inbox",
+      RESEND_API_KEY: "e2e-resend-key",
+      CRON_SECRET: "e2e-cron-secret",
+      NEXT_PUBLIC_APP_URL: "http://localhost:3100",
+      // F01 E2E 端点通用 Bearer（seed-notifications / email-worker-runs / email-inbox DELETE）
+      E2E_BEARER_TOKEN: "e2e-bearer-token",
     },
   },
 });

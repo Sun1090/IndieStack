@@ -55,6 +55,8 @@ let _mockAuditLogs: ReturnType<typeof generateMockAuditLogs> | null = null;
 let _mockApiUsage: ReturnType<typeof generateMockApiUsageRows> | null = null;
 let _mockUserSessions: ReturnType<typeof generateMockUserSessions> | null = null;
 let _mockApiKeys: ReturnType<typeof generateMockApiKeys> | null = null;
+let _mockWorkerRuns: Record<string, unknown>[] | null = null;
+let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
 
 /** 重置缓存的 mock 数据（可用于测试或刷新） */
 export function resetMockCache() {
@@ -70,6 +72,8 @@ export function resetMockCache() {
   _mockApiUsage = null;
   _mockUserSessions = null;
   _mockApiKeys = null;
+  _mockWorkerRuns = null;
+  _mockMarketingSubscriptions = null;
 }
 
 function getMockUser() {
@@ -134,6 +138,16 @@ function getMockApiKeys() {
   return _mockApiKeys;
 }
 
+function getMockWorkerRuns() {
+  if (!_mockWorkerRuns) _mockWorkerRuns = [];
+  return _mockWorkerRuns;
+}
+
+function getMockMarketingSubscriptions() {
+  if (!_mockMarketingSubscriptions) _mockMarketingSubscriptions = [];
+  return _mockMarketingSubscriptions;
+}
+
 /**
  * Mock 查询构建器
  * 模拟 Supabase PostgREST 查询链
@@ -174,6 +188,34 @@ class MockQueryBuilder {
   /** 过滤条件 gte */
   gte(column: string, value: unknown) {
     this.filters[`${column}:gte`] = value;
+    return this;
+  }
+
+  /** 过滤条件 lt */
+  lt(column: string, value: unknown) {
+    this.filters[`${column}:lt`] = value;
+    return this;
+  }
+
+  /** JSON 字段包含值（metadata->>key / metadata->key） */
+  contains(column: string, value: unknown) {
+    this.filters[`${column}:contains`] = value;
+    return this;
+  }
+
+  /** 取反过滤器：后续条件挂到 :not 命名空间（如 metadata->>email_attempts.is.null） */
+  not(column: string, value: unknown) {
+    this.filters[`${column}:not`] = value;
+    return this;
+  }
+
+  /**
+   * or 过滤器：接收形如 `metadata->>email_attempts.is.null,metadata->>email_attempts.lt.3`
+   * 的逗号分隔条件串；`:is.` 表示字段为空（null/undefined），`:lt.` 表示数值小于。
+   * 满足任一条件即保留该行。
+   */
+  or(conditions: string) {
+    this.filters[":or"] = conditions;
     return this;
   }
 
@@ -250,6 +292,48 @@ class MockQueryBuilder {
   /** 删除 delete */
   delete() {
     this.writeMode = "delete";
+    return this;
+  }
+
+  /**
+   * upsert：依据 onConflict 指定列查重，存在则更新、不存在则插入。
+   * mock 层实现：先按 conflict 字段过滤列表，命中的行用 writeValue 更新；
+   * 否则按 insert 路径追加。options.onConflict 仅字符串形式支持（如 "user_id"）。
+   */
+  upsert(values: Record<string, unknown>, options?: { onConflict?: string }) {
+    const list = this.getWriteList();
+    const conflictCol = options?.onConflict ?? "id";
+    if (list) {
+      const matched = list.filter((r) => {
+        const row = r as Record<string, unknown>;
+        return row[conflictCol] !== undefined && row[conflictCol] === values[conflictCol];
+      });
+      if (matched.length > 0) {
+        this.writeMode = "update";
+        this.writeValue = values;
+        // 强制按 conflict 列过滤，避免前面挂的 eq/in 干扰
+        this.filters = { [conflictCol]: values[conflictCol] };
+        return this;
+      }
+    }
+    // 不存在匹配行 → 走 insert 路径
+    this.writeMode = "insert";
+    this.writeValue = values;
+    this.persistInsert();
+    return this;
+  }
+
+  /**
+   * is：列值等于 null/undefined（PostgREST 用于 NULL 判定，区别于 eq）。
+   * 行字段为 null/undefined 或缺失视为匹配。
+   */
+  is(column: string, value: unknown) {
+    if (value !== null && value !== undefined) {
+      // mock 暂只实现 is(col, null) 这条真实路径；非 null 用 :eq 退路
+      this.filters[column] = value;
+    } else {
+      this.filters[`${column}:isnull`] = true;
+    }
     return this;
   }
 
@@ -369,6 +453,10 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(getMockApiKeys());
       case "subscriptions":
         return { id: "mock-sub-001", team_id: MOCK_TEAM_ID, plan: "pro", status: "active" };
+      case "email_worker_runs":
+        return this.applyFiltersAndPagination(getMockWorkerRuns());
+      case "marketing_subscriptions":
+        return this.applyFiltersAndPagination(getMockMarketingSubscriptions());
       default:
         return [];
     }
@@ -451,7 +539,8 @@ class MockQueryBuilder {
         if (!(value as unknown[]).includes(row[column])) return false;
         continue;
       }
-      if (key.endsWith(":gte")) continue;
+      if (key.endsWith(":gte") || key.endsWith(":lt") || key.endsWith(":contains") || key.endsWith(":not") || key === ":or") continue;
+      if (key.endsWith(":isnull")) continue;
       // 通用 eq 过滤（如 email），与真实 PostgREST 行为一致
       if (key === "id" || key === "user_id" || key === "team_id") continue;
       if (row[key] !== value) return false;
@@ -480,6 +569,10 @@ class MockQueryBuilder {
         return getMockApiUsage();
       case "user_sessions":
         return getMockUserSessions();
+      case "email_worker_runs":
+        return getMockWorkerRuns();
+      case "marketing_subscriptions":
+        return getMockMarketingSubscriptions();
       default:
         return null;
     }
@@ -519,9 +612,18 @@ class MockQueryBuilder {
     }
     // 通用 eq 过滤（如 email），与真实 PostgREST 行为一致；id/user_id/team_id 已在上面分支处理
     for (const [key, value] of Object.entries(this.filters)) {
-      if (key.endsWith(":in") || key.endsWith(":gte")) continue;
+      if (
+        key.endsWith(":in") ||
+        key.endsWith(":gte") ||
+        key.endsWith(":lt") ||
+        key.endsWith(":contains") ||
+        key.endsWith(":not") ||
+        key === ":or"
+      ) {
+        continue;
+      }
       if (key === "id" || key === "user_id" || key === "team_id") continue;
-      result = result.filter((item: any) => item[key] === value);
+      result = result.filter((item: any) => this.matchValue(item[key], value));
     }
     Object.entries(this.filters).forEach(([key, value]) => {
       if (key.endsWith(":in")) {
@@ -530,9 +632,45 @@ class MockQueryBuilder {
         result = result.filter((item: any) => values.includes(item[column]));
         return;
       }
-      if (!key.endsWith(":gte")) return;
-      const column = key.slice(0, -4);
-      result = result.filter((item: any) => new Date(item[column]) >= new Date(value as string));
+      if (key.endsWith(":gte")) {
+        const column = key.slice(0, -4);
+        result = result.filter(
+          (item: any) => Number(this.readPath(item, column)) >= Number(this.matchValue(value, value)),
+        );
+        return;
+      }
+      if (key.endsWith(":lt")) {
+        const column = key.slice(0, -3);
+        result = result.filter(
+          (item: any) => Number(this.readPath(item, column)) < Number(this.matchValue(value, value)),
+        );
+        return;
+      }
+      if (key.endsWith(":contains")) {
+        const column = key.slice(0, -9);
+        const needle = String(value);
+        result = result.filter((item: any) => {
+          const current = this.readPath(item, column);
+          if (current === null || current === undefined) return false;
+          return typeof current === "string" ? current.includes(needle) : JSON.stringify(current).includes(needle);
+        });
+        return;
+      }
+      if (key.endsWith(":not")) {
+        const column = key.slice(0, -4);
+        result = result.filter((item: any) => !this.matchValue(this.readPath(item, column), value));
+        return;
+      }
+      if (key === ":or") {
+        const conditions = String(value).split(",").map((c) => c.trim());
+        result = result.filter((item: any) => this.matchAnyCondition(item, conditions));
+        return;
+      }
+      if (key.endsWith(":isnull")) {
+        const column = key.slice(0, -7);
+        result = result.filter((item: any) => item[column] === null || item[column] === undefined);
+        return;
+      }
     });
 
     // 排序
@@ -558,6 +696,67 @@ class MockQueryBuilder {
     }
 
     return result;
+  }
+
+  /** 解析 JSON 路径：metadata->>email_attempts → metadata 对象中取 email_attempts */
+  private readPath(row: Record<string, unknown>, path: string): unknown {
+    const parts = path.split("->");
+    let current: unknown = row;
+    for (const part of parts) {
+      const key = part.replace(/^>/, "");
+      if (current === null || current === undefined) return undefined;
+      if (typeof current !== "object") return undefined;
+      current = (current as Record<string, unknown>)[key];
+    }
+    return current;
+  }
+
+  /** 值比较：数值字符串按数值比较（metadata.email_attempts 场景），其余严格等值 */
+  private matchValue(current: unknown, expected: unknown): boolean {
+    if (current === expected) return true;
+    if (
+      typeof current === "number" &&
+      typeof expected === "string" &&
+      expected.trim() !== "" &&
+      !Number.isNaN(Number(expected))
+    ) {
+      return current === Number(expected);
+    }
+    if (
+      typeof current === "string" &&
+      current.trim() !== "" &&
+      !Number.isNaN(Number(current)) &&
+      typeof expected === "number"
+    ) {
+      return Number(current) === expected;
+    }
+    return false;
+  }
+
+  /** 解析 or 条件：`col.is.null`（字段为空）或 `col.lt.3`（数值小于） */
+  private matchAnyCondition(item: Record<string, unknown>, conditions: string[]): boolean {
+    for (const condition of conditions) {
+      if (!condition) continue;
+      const idx = condition.indexOf(".");
+      if (idx === -1) continue;
+      const column = condition.slice(0, idx);
+      const rest = condition.slice(idx + 1);
+      const segIdx = rest.indexOf(".");
+      const op = segIdx === -1 ? rest : rest.slice(0, segIdx);
+      const value = segIdx === -1 ? "" : rest.slice(segIdx + 1);
+      const current = this.readPath(item, column);
+      if (op === "is" && value === "null") {
+        if (current === null || current === undefined) return true;
+        continue;
+      }
+      if (op === "lt") {
+        if (this.matchValue(current, value) && Number(current) < Number(value)) return true;
+        if (typeof current === "number" && typeof value === "string" && current < Number(value)) return true;
+        continue;
+      }
+      if (this.matchValue(current, value)) return true;
+    }
+    return false;
   }
 }
 

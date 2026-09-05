@@ -5,7 +5,7 @@
 > 本文件定范围、里程碑与退出标准；单任务实现时再细分。
 >
 > **进度（2026-09-05）**：M1（A01–A05）、M2（B01–B03、C01–C03）、M3（D01–D03、E01–E03）
-> 全部完成；M4：F03 完成，F01/F02/G01/H01 推进中（H01 发布基建本次落位）。
+> 全部完成；M4：F03 + F01 完成（邮件全链路 E2E：happy + failure path，Mock Resend 闭环 24/24 全绿），F02/G01 推进中。
 
 ## 范围（in scope）
 
@@ -71,7 +71,7 @@
 
 | # | 任务 | 说明 |
 |---|------|------|
-| F01 | E2E：邮件流程 | mock Resend 后走 contact→通知→digest 全链路 |
+| F01 | E2E：邮件流程 | mock Resend → 设置页开启 → double opt-in 确认 → 通知 → digest 全链路（happy + failure path，2026-09-05 完成） |
 | F02 | E2E：admin/contact/MFA 页面补齐 | v0.4.0 新页面 Playwright 用例补齐 |
 | F03 | 覆盖率 branches ≥85% | 现状 78% 门禁，重点补 actions/分支密集模块 |
 
