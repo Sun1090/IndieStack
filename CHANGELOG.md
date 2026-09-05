@@ -2,26 +2,40 @@
 
 All notable changes to IndieStack will be documented in this file.
 
-## [Unreleased] — v0.4.0（主题：Admin 运营闭环 + 数据层测试 + 集成接线）
+## [0.4.0] — 2026-09-05
 
-### Added（计划）
+> 主题：**Admin 运营闭环 + 数据层测试 + 集成接线**
 
-- Repository 层单测全覆盖（7 个数据访问模块 + trace/csp/api-response）
-- API 路由单测补齐（health/invitations/checkout/callback/og/stripe-webhook）
-- E2E 覆盖 admin 新页面、contact 提交、MFA 流程
-- MFA 备用恢复码、会话管理页、登录审计日志
-- 联系消息处理状态机、管理端搜索/分页、邮件通道方案
+### Added
 
-### Changed（计划）
+- **两步验证（TOTP/MFA）全流程**：注册二维码/验证码确认/解除、登录挑战页 `/auth/mfa`（已验证因子强制 aal2）、备用恢复码（生成/兑换 + 前后端单测）
+- **通知体系扩展**：通知类型常量（deployment/security_alert 等）、邀请/角色变更/支付成功的跨用户触发、邮件偏好联动矩阵（`notification-prefs`）、侧边栏未读 badge 轮询、单条/全部已读、读取失败错误态与空态引导
+- **通知邮件 Worker**：`POST /api/cron/digest`（`CRON_SECRET` 鉴权）拉取待发通知 → Resend 发送 → `markEmailSent` 回执；按用户合并为摘要邮件，CTA 链接取 `NEXT_PUBLIC_APP_URL`（设计见 `docs/design/email-templates.md`）
+- **联系消息运营闭环**：迁移 012/015（contact_messages + 处理状态机单向流转）、admin 收件箱（搜索/状态筛选/分页）、垃圾启发式拒收、联系页结构化数据
+- **Admin 后台增强**：聚合看板（联系消息/webhook 事件统计）、用户列表服务端分页、webhook payload 查看、审计元数据 details 查看
+- **登录安全**：失败分级锁定（邮箱滑窗 5 次/15 分钟）、登录审计日志（成功/失败/MFA/兑换/OAuth）、邮箱未确认时重发确认邮件、OAuth/MFA/会话丢失错误码 i18n 全覆盖
+- **会话管理**：当前会话信息聚合 + 退出其他设备
+- **数据保留策略**：迁移 014（pg_cron 守卫调度 + webhook 事件清理函数 + 策略文档 `docs/db/retention.md`）
+- **API 质量**：错误格式统一收敛 `jsonNoStore`、日志 trace-id 统一（api-log）、health DB 自检、checkout 幂等/重复订阅拦截、og 缓存校验、未知 webhook 事件类型 Sentry 告警
+- **环境变量校验模块**（zod 风格诊断 + 单测）
+- **SEO/营销**：博客动态 OG 分享图、twitter card、sitemap 文章真实 lastmod、博客分类过滤、FAQ 搜索过滤、RSS feed、PWA manifest
+- **UX 组件**：⌘K 命令面板（cmdk）+ 最近页面历史、面包屑导航铺开、QueryErrorState 错误重试铺开、EmptyState 统一空态、资料完整度卡片、离线横幅、路由进度条、定价页月/年切换（8 折年付）
+- **测试覆盖**：repository 层 7 模块单测全覆盖、API 路由/actions 单测补齐（health/checkout/notifications/mfa/contact/webhooks）、safe-redirect fuzz/date 边界/CSV 注入变体、a11y 与 trace-id/CSP nonce E2E 断言
 
-- API 错误格式统一收敛到 `api-response`
-- TanStack Query 全局缓存策略统一
-- TanStack Table v9 原生 features 迁移、Tailwind v4 `@theme` 渐进重写
+### Changed
 
-### Fixed（计划）
+- **TanStack Table v9 原生迁移**：移除 legacy 桥，显式 features + 行模型槽位（ADR-009）；DataTable 全面国际化（dataTable.* 751 键）、v9 排序表头自动接线
+- bundle 基线 2467kB → 2603kB（admin 收件箱/恢复码/会话管理等功能增量，无新依赖）
+- 硬编码路由收敛到 `ROUTES` 常量（invite-member/logout-all/notifications/blog 等）
+- `.env.example` 补齐 CONTACT_EMAIL/APP_VERSION/VERBOSE_LOGGING
 
-- RLS 回归脚本覆盖 contact_messages/webhook_events 新表
-- `pnpm audit` 高危清零、CodeQL/gitleaks 告警清零
+### Fixed
+
+- webhook events action 补 admin 守卫（防绕过入口越权读取）
+- 年付节省金额浮点精度取整；三页面面包屑改用 common 命名空间（修复 `dashboard.dashboard` 缺键）
+- RECOVERY_CODE_COUNT 移出 use server 文件；recovery action node:crypto 改动态导入（修客户端代理导出分析失败）
+- standalone 输出条件化（DOCKER_BUILD 门控）
+- 迁移 011 补 profiles lower(email) 函数索引（EXPLAIN 复审发现 Seq Scan）
 
 ## [0.3.0] — 2026-08-23
 

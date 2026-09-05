@@ -177,7 +177,7 @@ function sidebar_zh() {
       },
       {
         text: "版本动态",
-        items: [{ text: "v0.4.0（规划中）", link: "/zh-CN/v0.4.0" }],
+        items: [{ text: "v0.4.0", link: "/zh-CN/v0.4.0" }],
       },
     ],
   };
@@ -217,7 +217,7 @@ function sidebar_en() {
       },
       {
         text: "Releases",
-        items: [{ text: "v0.4.0 (Planned)", link: "/v0.4.0" }],
+        items: [{ text: "v0.4.0", link: "/v0.4.0" }],
       },
     ],
   };

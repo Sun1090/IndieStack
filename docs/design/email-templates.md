@@ -58,9 +58,10 @@
 - [ ] 重定向域名白名单：Authentication → URL Configuration 加入生产/preview 域名
 - [ ] 测试：分别触发注册/邀请/重置流程，检查各邮件客户端渲染（Gmail/Outlook/QQ 邮箱）
 
-## 应用通知邮件管线（v0.4.0 D02 已落地查询侧）
+## 应用通知邮件管线（v0.4.0 已落地）
 
-> 状态：发送通道**已接线**（使用 Resend）。仓库层已就绪，worker 接入即用。
+> 状态：发送通道**已接线**（Resend），入口为 `POST /api/cron/digest`
+> （`src/app/api/cron/digest/route.ts`），由外部 cron 定时调用。
 
 - 拉取：`listUnsentEmailNotifications()`（未读 + `email_sent=false` + 白名单类型，默认
   `team_invite/role_changed/payment_succeeded/security_alert`，时间正序，默认 100 条）
@@ -74,20 +75,48 @@
   | deployment | productUpdates |
   | security_alert | securityAlerts |
   | （营销邮件） | marketingEmails（独立通道，不经 notifications 表） |
-- 接线步骤（后续基建任务）：
-  1. 选服务商（Resend 优先）并配置 `RESEND_API_KEY` / 发件域名
-  2. 定时 worker（Supabase Edge Function cron 或外部 cron 调 `/api/cron/digest`）拉取 → 渲染
-     上述 HTML 骨架 → 发送 → `markEmailSent`
-  3. 失败重试与死信：3 次后记 `metadata.email_error` 并跳过，避免阻塞队列
 
-## 每日 Digest 汇总（D08 设计，未实现）
+### Worker 接口
 
-> 目标：把高频低优通知打包为每日一封，降打扰、省额度。
+- `POST /api/cron/digest`，请求头 `x-cron-secret` 必须等于环境变量 `CRON_SECRET`，
+  否则 401；`CRON_SECRET` 未配置时一律 401（防误开放）。
+- 成功返回 `{ sent, groups }`（发送条数 / 收件人数）；队列为空返回 `{ sent: 0, groups: 0 }`。
+- 任意一步抛错（拉取、Resend 调用、回执）→ 记录错误日志（logApiError）并返回 500，
+  响应体只含 `Internal server error`，不泄露细节。
+- 邮件正文中的站内链接取 `NEXT_PUBLIC_APP_URL`（兜底 `http://localhost:3000`），
+  生产环境必须配置为 https 绝对地址，否则 CTA 链接指向错误域名。
+- 发件人取 `RESEND_FROM`，兜底 `IndieStack <onboarding@indiestack.dev>`；
+  `RESEND_API_KEY` 缺失时发送直接抛错（走 500 分支）。
 
-- 触发：cron 每日 08:00（用户时区后续支持，首版 UTC+8 写死并文档声明）
-- 聚合：前 24h 未读 + `type in (deployment, billing_update, system)`，
-  `security_alert/team_invite/role_changed/payment_succeeded` 保持实时单发
-- 去重：同 team 同 type 合并计数（如“3 条部署通知”），正文列前 5 条 + 站内链接
-- 偏好：`productUpdates=false` 则 digest 跳过 deployment 部分；`emailNotifications=false` 整封跳过
-- 防重：digest 发送后将所含通知 `email_sent=true`（复用 `markEmailSent`）
-- 落地条件：邮件 worker 接线后（D02 接线步骤）顺带实现，单测覆盖聚合函数
+### 调度与时区
+
+- 代码内不含任何时间/时区逻辑，发送频率完全由外部 cron 决定
+  （Vercel Cron / Supabase pg_cron / 系统 crontab 定时 POST 上述接口）。
+- 首版建议每日一次（如 `0 0 * * *` UTC，即北京时间 08:00）。注意 Vercel Cron
+  使用 UTC，面向中国用户的”每天早上”应配置 UTC 0 点；按用户各自时区错峰发送为后续增强，暂不支持。
+- 单次运行最多处理 100 条（`limit` 默认值），超出部分留待下次 cron 批次处理。
+
+### 聚合与发送规则（实际行为）
+
+> v0.4.0 的实现是”按用户合并为一封摘要”，没有独立的实时单发通道：
+> 所有白名单类型的通知都积压到下一次 cron 统一打包发送。
+
+- 按用户分组：同一用户的所有待发通知合并为一封邮件，
+  标题 `IndieStack 通知摘要（N 条）`，正文逐条列出 title + body（HTML 转义），
+  单一 CTA”查看通知”指向站点首页。
+- 逐条偏好过滤：对该用户的每条通知跑 `shouldSendEmail()`，被开关关掉的类型
+  不进入这封摘要（例如 `productUpdates=false` 时 deployment 通知被剔除，
+  而不是整封跳过；`emailNotifications=false` 时整封跳过）。
+- 跳过条件：用户过滤后为空、或 `profiles.email` 为空 → 该用户本次不发。
+- 未做同类型合并计数（设计稿中的”3 条部署通知”折叠为后续增强），
+  也未做”正文只列前 5 条”截断，当前全量列出。
+
+### 失败与重试
+
+- 回执采用”发送成功后才 `markEmailSent`”的顺序，因此失败的批次天然重试：
+  本次运行抛错 → 通知保持 `email_sent=false` → 下一次 cron 调用重新拉取发送
+  （at-least-once 语义，极端情况下用户可能收到重复邮件）。
+- 无重试计数与死信机制：设计稿中”3 次后记 `metadata.email_error` 并跳过”尚未实现，
+  持续失败（如 `RESEND_API_KEY` 失效）会让队列每轮重试并在日志中留痕，需人工介入。
+- 部分成功不可回滚：循环按用户依次发送，某一用户发送失败时，
+  之前用户已发送并标记完成，之后用户留待下一轮。
