@@ -7,10 +7,38 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { notificationSettingsSchema, appearanceSettingsSchema } from "@/lib/validations/settings";
+import { sendMarketingConfirmationEmail } from "@/lib/email-marketing";
+import {
+  upsertPendingSubscription,
+  deactivateSubscription,
+} from "@/lib/repositories/marketing";
 import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
+
+/**
+ * 营销订阅生命周期同步（A05 double opt-in）：开关打开 → pending + 确认邮件；
+ * 关闭 → 直接退订。纯邮件/订阅侧失败只记日志，不阻断偏好保存。
+ */
+async function syncMarketingSubscription(
+  userId: string,
+  email: string | null,
+  enabled: boolean,
+): Promise<void> {
+  try {
+    if (enabled && email) {
+      const sub = await upsertPendingSubscription(userId, email);
+      if (sub.status === "pending") {
+        await sendMarketingConfirmationEmail(sub.email, sub.token);
+      }
+    } else {
+      await deactivateSubscription(userId);
+    }
+  } catch (error) {
+    console.error("[updateSettings] 营销订阅同步失败:", error);
+  }
+}
 
 /**
  * Update notification settings for the current user.
@@ -50,6 +78,8 @@ export async function updateNotificationSettings(formData: FormData) {
     console.error("[updateSettings] 保存设置失败:", error);
     return fail("databaseError");
   }
+
+  await syncMarketingSubscription(user.id, user.email, validated.data.marketingEmails);
 
   revalidatePath(ROUTES.dashboardSettings);
   return ok();
