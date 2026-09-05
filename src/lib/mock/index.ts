@@ -88,6 +88,8 @@ type MockMfaChallenge = {
   id: string;
   factor_id: string;
   expires_at: number;
+  failed_attempts: number;
+  locked_until: number | null;
 };
 type MockMfaFactor = {
   id: string;
@@ -986,7 +988,13 @@ export class MockSupabaseClient {
         }
         const id = `mock-challenge-${Date.now()}-${getMockMfaChallenges().length + 1}`;
         const expiresAt = Date.now() + 5 * 60 * 1000;
-        getMockMfaChallenges().push({ id, factor_id: factorId, expires_at: expiresAt });
+        getMockMfaChallenges().push({
+          id,
+          factor_id: factorId,
+          expires_at: expiresAt,
+          failed_attempts: 0,
+          locked_until: null,
+        });
         return { data: { id, expires_at: Math.floor(expiresAt / 1000) }, error: null };
       },
       verify: async (params: unknown) => {
@@ -1005,11 +1013,26 @@ export class MockSupabaseClient {
         );
         if (challengeIndex === -1) return { error: { message: "Challenge not found" } };
         const challenge = challenges[challengeIndex];
-        if (challenge.expires_at <= Date.now()) {
+        const now = Date.now();
+        if (challenge.expires_at <= now) {
           challenges.splice(challengeIndex, 1);
           return { error: { message: "Challenge expired" } };
         }
-        if (code !== "123456") return { error: { message: "Invalid MFA code" } };
+        if (challenge.locked_until !== null) {
+          if (challenge.locked_until > now) {
+            return { error: { message: "Too many MFA attempts" } };
+          }
+          challenge.locked_until = null;
+          challenge.failed_attempts = 0;
+        }
+        if (code !== "123456") {
+          challenge.failed_attempts += 1;
+          if (challenge.failed_attempts >= 5) {
+            challenge.locked_until = now + 15 * 60 * 1000;
+            return { error: { message: "Too many MFA attempts" } };
+          }
+          return { error: { message: "Invalid MFA code" } };
+        }
         challenges.splice(challengeIndex, 1);
         return { error: null };
       },

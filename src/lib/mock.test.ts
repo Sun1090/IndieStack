@@ -310,6 +310,36 @@ describe("Mock MFA 状态机", () => {
     ).resolves.toEqual({ error: { message: "Challenge not found" } });
   });
 
+  it("连续错误验证码达到阈值后锁定 challenge，锁定期后可重新 challenge", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = createMockSupabaseClient();
+      const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+      const factorId = enrolled.data?.id ?? "";
+      await client.auth.mfa.challengeAndVerify({ factorId, code: "123456" });
+      const challenge = await client.auth.mfa.challenge({ factorId });
+      for (let attempt = 1; attempt < 5; attempt += 1) {
+        await expect(
+          client.auth.mfa.verify({ factorId, challengeId: challenge.data?.id, code: "000000" }),
+        ).resolves.toEqual({ error: { message: "Invalid MFA code" } });
+      }
+      await expect(
+        client.auth.mfa.verify({ factorId, challengeId: challenge.data?.id, code: "000000" }),
+      ).resolves.toEqual({ error: { message: "Too many MFA attempts" } });
+      await expect(
+        client.auth.mfa.verify({ factorId, challengeId: challenge.data?.id, code: "123456" }),
+      ).resolves.toEqual({ error: { message: "Too many MFA attempts" } });
+
+      vi.advanceTimersByTime(15 * 60 * 1000 + 1);
+      const nextChallenge = await client.auth.mfa.challenge({ factorId });
+      await expect(
+        client.auth.mfa.verify({ factorId, challengeId: nextChallenge.data?.id, code: "123456" }),
+      ).resolves.toEqual({ error: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("未验证因子不能创建登录 challenge，过期 challenge 会被拒绝", async () => {
     vi.useFakeTimers();
     try {
