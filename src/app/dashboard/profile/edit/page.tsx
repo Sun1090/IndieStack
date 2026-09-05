@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
 import { ProfileEditForm } from "@/components/forms/profile-edit-form";
+import { AvatarUploadForm } from "@/components/forms/avatar-upload-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 
@@ -31,7 +32,7 @@ export default async function ProfileEditPage() {
 
   const { data: profile } = (await supabase
     .from("profiles")
-    .select("full_name, bio, timezone, language")
+    .select("full_name, bio, timezone, language, avatar_url")
     .eq("id", user.id)
     .single()) as unknown as {
     data: {
@@ -39,6 +40,7 @@ export default async function ProfileEditPage() {
       bio: string | null;
       timezone: string | null;
       language: string | null;
+      avatar_url: string | null;
     } | null;
   };
 
@@ -58,6 +60,16 @@ export default async function ProfileEditPage() {
             timezone={profile?.timezone ?? "UTC"}
             language={profile?.language ?? "en"}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("profile.edit.avatarLabel")}</CardTitle>
+          <CardDescription>{t("profile.edit.avatarDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AvatarUploadForm />
         </CardContent>
       </Card>
     </div>
