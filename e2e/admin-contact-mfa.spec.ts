@@ -132,6 +132,17 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     expect(fatal, `意外运行时错误: ${fatal.join("\n")}`).toEqual([]);
   });
 
+  test("mock reset 端点：Bearer 保护并返回 reset 确认", async () => {
+    const unauthorized = await api.post(`${APP_URL}/api/e2e/mock-reset`);
+    expect(unauthorized.status()).toBe(401);
+
+    const reset = await api.post(`${APP_URL}/api/e2e/mock-reset`, {
+      headers: { authorization: `Bearer ${E2E_BEARER}` },
+    });
+    expect(reset.ok()).toBeTruthy();
+    await expect(reset.json()).resolves.toEqual({ ok: true, reset: true });
+  });
+
   test("mock contact_messages POST → GET 字段对齐", async () => {
     const NAME = "E2E API Tester";
     const EMAIL = "e2e-tester-api@example.com";
