@@ -345,7 +345,12 @@
       "branchLabel": "Git branch",
       "domainLabel": "Domain",
       "frameworkLabel": "Framework",
-      "regionLabel": "Region"
+      "regionLabel": "Region",
+      "coverLabel": "Project Cover",
+      "coverDesc": "Upload a cover image (PNG/JPEG/WebP, up to 2MB)",
+      "uploadCover": "Upload Cover",
+      "coverUploading": "Uploading...",
+      "coverUpdated": "Cover updated!"
     },
     "deleteDelete": "Delete",
     "deleteConfirmTitle": "Delete project?",

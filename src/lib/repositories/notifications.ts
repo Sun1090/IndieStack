@@ -55,6 +55,23 @@ export async function listUnsentEmailNotifications(
   return (data ?? []) as Notification[];
 }
 
+/** 队列积压告警阈值（C03）：待发通知超过该数量时 Sentry 上报 */
+export const EMAIL_BACKLOG_ALERT_THRESHOLD = 500;
+
+/** 待发通知总数（同一过滤口径，不含 limit）：积压告警与看板用（C03） */
+export async function countUnsentEmailNotifications(): Promise<number> {
+  const admin = createAdminClient();
+  const { count, error } = await admin
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("email_sent", false)
+    .eq("is_read", false)
+    .in("type", ["team_invite", "role_changed", "payment_succeeded", "security_alert"])
+    .or(`metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 /** 标记邮件已发送（worker 回执） */
 export async function markEmailSent(notificationId: string): Promise<void> {
   const admin = createAdminClient();

@@ -18,10 +18,13 @@ import { renderEmailHtml } from "@/lib/email-template";
 import { sendResendEmail } from "@/lib/email-send";
 import {
   listUnsentEmailNotifications,
+  countUnsentEmailNotifications,
   markEmailSent,
   markEmailFailed,
+  EMAIL_BACKLOG_ALERT_THRESHOLD,
   type Notification,
 } from "@/lib/repositories/notifications";
+import { recordWorkerRun } from "@/lib/repositories/worker-runs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -125,12 +128,37 @@ export async function POST(request: NextRequest) {
   const now = new Date(Date.now());
 
   try {
+    // C03 积压告警：待发通知超阈值时 Sentry 上报（logApiError → captureException，
+    // 同消息自动分组），每轮 cron 最多提醒一次
+    const backlog = await countUnsentEmailNotifications();
+    if (backlog > EMAIL_BACKLOG_ALERT_THRESHOLD) {
+      await logApiError(
+        `[Cron Digest] 队列积压 ${backlog} 条（阈值 ${EMAIL_BACKLOG_ALERT_THRESHOLD}）`,
+        new Error("email_backlog_threshold_exceeded"),
+      );
+    }
+
     const notifications = await listUnsentEmailNotifications();
-    if (notifications.length === 0) {
+    const pulled = notifications.length;
+    if (pulled === 0) {
+      await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs: 0 });
       return jsonNoStore({ sent: 0, groups: 0, failed: 0 });
     }
 
+    const startedAt = Date.now();
     const result = await runDigest(siteUrl, notifications, now);
+    // C02 运行记录：落表失败不影响发送结果返回
+    try {
+      await recordWorkerRun({
+        pulled,
+        sent: result.sent,
+        groups: result.groups,
+        failed: result.failed,
+        durationMs: Date.now() - startedAt,
+      });
+    } catch (metricsError) {
+      await logApiError("[Cron Digest] 运行记录写入失败", metricsError);
+    }
     return jsonNoStore(result);
   } catch (error) {
     await logApiError("[Cron Digest] 执行失败", error);

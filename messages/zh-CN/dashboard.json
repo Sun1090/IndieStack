@@ -345,7 +345,12 @@
       "branchLabel": "Git 分支",
       "domainLabel": "域名",
       "frameworkLabel": "框架",
-      "regionLabel": "区域"
+      "regionLabel": "区域",
+      "coverLabel": "项目封面",
+      "coverDesc": "上传封面图片（PNG/JPEG/WebP，最大 2MB）",
+      "uploadCover": "上传封面",
+      "coverUploading": "上传中...",
+      "coverUpdated": "封面已更新！"
     },
     "deleteDelete": "删除",
     "deleteConfirmTitle": "确认删除项目？",

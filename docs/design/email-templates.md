@@ -127,6 +127,15 @@
 - RLS：订阅行允许用户 select/insert/update 自己的行；确认/退订路由走
   service_role（无用户上下文）。
 
+### 运行可观测（v0.5.0 C02/C03）
+
+- **运行记录**（迁移 017 `email_worker_runs`）：每轮 digest 落一行
+  `pulled/sent/groups/failed/duration_ms/error`；落表失败只记日志，不影响返回。
+  无用户维度，RLS 启用且无策略（仅 service_role 可读写）。
+- **积压告警**：每轮运行前统计待发通知总数（与拉取同一过滤口径，含死信排除），
+  超过 `EMAIL_BACKLOG_ALERT_THRESHOLD`（500）时经 logApiError 上报 Sentry
+  （同消息自动分组）；持续积压通常意味着 Resend 凭据失效或死信增多，需人工介入。
+
 ### 聚合与发送规则（实际行为）
 
 > v0.4.0 的实现是”按用户合并为一封摘要”，没有独立的实时单发通道：

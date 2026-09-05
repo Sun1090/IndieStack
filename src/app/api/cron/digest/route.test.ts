@@ -6,22 +6,31 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
-const { listUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, createAdminClientMock } = vi.hoisted(() => ({
+const { listUnsentEmailNotificationsMock, countUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, recordWorkerRunMock, logApiErrorMock, createAdminClientMock } = vi.hoisted(() => ({
   listUnsentEmailNotificationsMock: vi.fn(),
+  countUnsentEmailNotificationsMock: vi.fn(async () => 0),
   markEmailSentMock: vi.fn(async () => {}),
   markEmailFailedMock: vi.fn(async () => {}),
+  recordWorkerRunMock: vi.fn(async () => {}),
+  logApiErrorMock: vi.fn(async () => {}),
   createAdminClientMock: vi.fn(),
 }));
 
 vi.mock("@/lib/repositories/notifications", () => ({
   listUnsentEmailNotifications: listUnsentEmailNotificationsMock,
+  countUnsentEmailNotifications: countUnsentEmailNotificationsMock,
   markEmailSent: markEmailSentMock,
   markEmailFailed: markEmailFailedMock,
+  EMAIL_BACKLOG_ALERT_THRESHOLD: 500,
   NOTIFICATION_TYPES: [] as string[],
 }));
 
+vi.mock("@/lib/repositories/worker-runs", () => ({
+  recordWorkerRun: recordWorkerRunMock,
+}));
+
 vi.mock("@/lib/api-log", () => ({
-  logApiError: vi.fn(async () => {}),
+  logApiError: logApiErrorMock,
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -157,5 +166,31 @@ describe("POST /api/cron/digest", () => {
     const init = fetchMock.mock.calls[0][1];
     expect(String(init?.body)).toContain("部署通知 ×3 条");
     expect(String(init?.body)).toContain("S1");
+  });
+
+  it("队列积压超阈值时告警（C03）", async () => {
+    countUnsentEmailNotificationsMock.mockResolvedValue(501);
+    listUnsentEmailNotificationsMock.mockResolvedValue([]);
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("队列积压 501"),
+      expect.objectContaining({ message: "email_backlog_threshold_exceeded" }),
+    );
+  });
+
+  it("执行后落一行运行记录（C02）", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    countUnsentEmailNotificationsMock.mockResolvedValue(1);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+    });
+
+    await POST(req());
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pulled: 1, sent: 1, groups: 1, failed: 0, durationMs: expect.any(Number) }),
+    );
   });
 });
