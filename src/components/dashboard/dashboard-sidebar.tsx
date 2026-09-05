@@ -16,6 +16,7 @@ import { useTranslations } from "next-intl";
 import { useUser } from "@/hooks/use-user";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardQueryOptions, QUERY_KEYS, CACHE_STALE } from "@/lib/query-cache";
 import { createClient } from "@/lib/supabase/client";
 import { getUnreadNotificationCount } from "@/lib/actions/notifications";
 import {
@@ -43,8 +44,10 @@ export function DashboardSidebar() {
   const t = useTranslations("common");
 
   // 未读数 badge：60s 轮询 + 切回前台刷新（D04 实时策略）
-  const { data: unreadCount = 0 } = useQuery({
-    queryKey: ["unread-count"],
+  const { data: unreadCount = 0 } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.unreadCount,
+    staleTime: CACHE_STALE.live,
     enabled: Boolean(user),
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -53,7 +56,7 @@ export function DashboardSidebar() {
       if (!result.ok) throw new Error(result.error);
       return result.data?.unread ?? 0;
     },
-  });
+    }));
 
   // 检查当前用户角色是否为 admin 或 super_admin
   useEffect(() => {

@@ -8,6 +8,7 @@
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { dashboardQueryOptions, CACHE_STALE, QUERY_KEYS } from "@/lib/query-cache";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,14 +43,16 @@ export function ContactMessagesPage() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
-  const { data, isLoading: loading, isError, refetch } = useQuery({
-    queryKey: ["contact-messages", { search, status, page }],
+  const { data, isLoading: loading, isError, refetch } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.contactMessages({ search, status, page }),
+    staleTime: CACHE_STALE.admin,
     queryFn: async (): Promise<{ rows: ContactMessageRecord[]; total: number }> => {
       const result = await listContactMessagesPage({ search, status, page, pageSize });
       if (!result.ok) throw new Error(result.error);
       return result.data ?? { rows: [], total: 0 };
     },
-  });
+    }));
   const messages = data?.rows ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));

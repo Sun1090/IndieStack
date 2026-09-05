@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardQueryOptions, QUERY_KEYS } from "@/lib/query-cache";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,14 +64,15 @@ export function AnalyticsPage() {
   const [showRangeMenu, setShowRangeMenu] = useState(false);
 
   // TanStack Query：内置竞态处理、缓存（staleTime 30s）、重试与加载态
-  const { data, isLoading: loading, isError, refetch } = useQuery({
-    queryKey: ["analytics", range],
+  const { data, isLoading: loading, isError, refetch } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.analytics(range),
     queryFn: async (): Promise<AnalyticsData> => {
       const response = await fetch(`/api/analytics?range=${range}`);
       if (!response.ok) throw new Error("Failed to load analytics");
       return response.json();
     },
-  });
+    }));
 
   const statsCards = [
     {

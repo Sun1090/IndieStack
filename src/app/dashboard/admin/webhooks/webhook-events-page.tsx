@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardQueryOptions, CACHE_STALE, QUERY_KEYS } from "@/lib/query-cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,15 +32,17 @@ export function WebhookEventsPage() {
 
   const [autoRefresh, setAutoRefresh] = useState(false);
 
-  const { data: events = [], isLoading: loading, isError, refetch } = useQuery({
+  const { data: events = [], isLoading: loading, isError, refetch } = useQuery(
+    dashboardQueryOptions({
     refetchInterval: autoRefresh ? 10_000 : false,
-    queryKey: ["webhook-events"],
+    queryKey: QUERY_KEYS.adminWebhookEvents,
+    staleTime: CACHE_STALE.admin,
     queryFn: async (): Promise<WebhookEventRecord[]> => {
       const result = await listWebhookEvents(100);
       if (!result.ok) throw new Error(result.error);
       return result.data ?? [];
     },
-  });
+    }));
 
   const filtered =
     statusFilter === "all" ? events : events.filter((e) => e.status === statusFilter);

@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dashboardQueryOptions, CACHE_STALE, QUERY_KEYS } from "@/lib/query-cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,8 +39,10 @@ export function AdminUsersPage() {
   const queryClient = useQueryClient();
 
   // 用户列表查询
-  const { data: users = [], isLoading: loading, isError, refetch } = useQuery({
-    queryKey: ["admin-users"],
+  const { data: users = [], isLoading: loading, isError, refetch } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.adminUsers,
+    staleTime: CACHE_STALE.admin,
     queryFn: async (): Promise<AdminUser[]> => {
       const result = await listAdminUsers();
       if (!result.ok) {
@@ -52,7 +55,7 @@ export function AdminUsersPage() {
       }
       return result.data ?? [];
     },
-  });
+    }));
 
   /** 更新用户角色（成功后使列表缓存失效） */
   const roleMutation = useMutation({
