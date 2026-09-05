@@ -12,6 +12,7 @@
  */
 
 import type { Stripe } from "@stripe/stripe-js";
+import { trackEvent } from "@/lib/appark";
 
 export interface CheckoutSessionParams {
   customerId?: string;
@@ -117,6 +118,11 @@ async function createCheckoutSession(
   if (!session.url && !session.id) {
     throw new Error("创建 Stripe 结账会话失败");
   }
+  // APM 关键流程埋点（C01）：旁路 no-op（未启用 Appark 时）
+  trackEvent("checkout.session_created", {
+    userId: params?.userId ?? null,
+    teamId: params?.teamId ?? null,
+  });
   return { url: session.url, sessionId: session.id };
 }
 

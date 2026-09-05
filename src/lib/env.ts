@@ -37,6 +37,10 @@ function collect(): EnvReport {
   if (ossCount > 0 && ossCount < ossVars.length) {
     problems.push("OSS_* 配置不完整（需 BUCKET/REGION/ACCESS_KEY_ID/ACCESS_KEY_SECRET 四项），已回退 Supabase Storage");
   }
+  // Appark APM（ADR-011）：KEY 与 ENDPOINT 需同时配置，缺一则旁路关闭
+  if (!!process.env.NEXT_PUBLIC_APPARK_API_KEY !== !!process.env.NEXT_PUBLIC_APPARK_ENDPOINT) {
+    problems.push("NEXT_PUBLIC_APPARK_API_KEY 与 NEXT_PUBLIC_APPARK_ENDPOINT 应同时提供（APM 当前旁路关闭）");
+  }
 
   return { ok: problems.length === 0, problems };
 }
