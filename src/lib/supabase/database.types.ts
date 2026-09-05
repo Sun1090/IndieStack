@@ -502,6 +502,39 @@ export type Database = {
         }
         Relationships: []
       }
+      email_worker_runs: {
+        Row: {
+          created_at: string
+          duration_ms: number
+          error: string | null
+          failed: number
+          groups: number
+          id: string
+          pulled: number
+          sent: number
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number
+          error?: string | null
+          failed?: number
+          groups?: number
+          id?: string
+          pulled?: number
+          sent?: number
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number
+          error?: string | null
+          failed?: number
+          groups?: number
+          id?: string
+          pulled?: number
+          sent?: number
+        }
+        Relationships: []
+      }
       mfa_recovery_codes: {
         Row: {
           code_hash: string

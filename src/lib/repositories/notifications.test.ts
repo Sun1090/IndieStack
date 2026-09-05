@@ -21,6 +21,7 @@ import {
   listUnsentEmailNotifications,
   markEmailSent,
   markEmailFailed,
+  countUnsentEmailNotifications,
   EMAIL_MAX_ATTEMPTS,
   NOTIFICATION_TYPES,
 } from "./notifications";
@@ -134,6 +135,20 @@ describe("listUnsentEmailNotifications()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(listUnsentEmailNotifications()).rejects.toThrow("db");
+  });
+});
+
+describe("countUnsentEmailNotifications()", () => {
+  it("返回待发通知总数（同一过滤口径）", async () => {
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ count: 7 })));
+    await expect(countUnsentEmailNotifications()).resolves.toBe(7);
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(countUnsentEmailNotifications()).rejects.toThrow("db");
   });
 });
 

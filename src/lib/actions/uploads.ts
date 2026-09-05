@@ -12,6 +12,14 @@ import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { ok, fail } from "@/lib/types/action-result";
 
+/** 图片文件统一校验：必填/类型白名单/大小上限；返回 i18n 错误键或 null */
+function validateImageFile(file: FormDataEntryValue | null): string | null {
+  if (!(file instanceof File) || file.size === 0) return "fileRequired";
+  if (!(file.type in ALLOWED_IMAGE_TYPES)) return "fileTypeUnsupported";
+  if (file.size > AVATAR_MAX_BYTES) return "fileTooLarge";
+  return null;
+}
+
 /** 上传当前用户头像：写入存储并更新 profiles.avatar_url */
 export async function uploadAvatar(formData: FormData): Promise<ActionResult<{ url: string }>> {
   const supabase = await createClient();
@@ -21,14 +29,14 @@ export async function uploadAvatar(formData: FormData): Promise<ActionResult<{ u
   if (!user) return fail("notAuthenticated");
 
   const file = formData.get("avatar");
-  if (!(file instanceof File) || file.size === 0) return fail("fileRequired");
-  if (!(file.type in ALLOWED_IMAGE_TYPES)) return fail("fileTypeUnsupported");
-  if (file.size > AVATAR_MAX_BYTES) return fail("fileTooLarge");
+  const validationError = validateImageFile(file);
+  if (validationError) return fail(validationError);
+  const image = file as File;
 
   try {
-    const key = buildObjectKey("avatars", user.id, file.type);
-    const body = Buffer.from(await file.arrayBuffer());
-    const url = await getStorageDriver().put(key, body, file.type);
+    const key = buildObjectKey("avatars", user.id, image.type);
+    const body = Buffer.from(await image.arrayBuffer());
+    const url = await getStorageDriver().put(key, body, image.type);
 
     const { error } = await supabase
       .from("profiles")
@@ -44,6 +52,61 @@ export async function uploadAvatar(formData: FormData): Promise<ActionResult<{ u
     return ok({ url });
   } catch (error) {
     console.error("[uploadAvatar] 上传失败:", error);
+    return fail("uploadFailed");
+  }
+}
+
+/** 上传项目封面（写入 projects.logo_url）：仅项目所属团队的 owner/admin */
+export async function uploadProjectCover(
+  projectId: string,
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return fail("notAuthenticated");
+
+  const { data: project } = (await supabase
+    .from("projects")
+    .select("team_id")
+    .eq("id", projectId)
+    .maybeSingle()) as unknown as { data: { team_id: string } | null };
+  if (!project) return fail("projectNotFound");
+
+  const { data: membership } = (await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", project.team_id)
+    .eq("user_id", user.id)
+    .maybeSingle()) as unknown as { data: { role: string } | null };
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    return fail("onlyAdminsCreateProject");
+  }
+
+  const file = formData.get("cover");
+  const validationError = validateImageFile(file);
+  if (validationError) return fail(validationError);
+  const image = file as File;
+
+  try {
+    const key = buildObjectKey("covers", projectId, image.type);
+    const body = Buffer.from(await image.arrayBuffer());
+    const url = await getStorageDriver().put(key, body, image.type);
+
+    const { error } = await supabase
+      .from("projects")
+      .update({ logo_url: url, updated_at: new Date().toISOString() })
+      .eq("id", projectId);
+    if (error) {
+      console.error("[uploadProjectCover] 封面地址写回失败:", error);
+      return fail("uploadFailed");
+    }
+
+    revalidatePath(`${ROUTES.dashboardProjects}/${projectId}`);
+    return ok({ url });
+  } catch (error) {
+    console.error("[uploadProjectCover] 上传失败:", error);
     return fail("uploadFailed");
   }
 }

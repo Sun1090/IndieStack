@@ -20,6 +20,7 @@ import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { ArrowLeft, FolderKanban, GitBranch, Clock, Globe, Settings2 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/date";
 import { ProjectSettingsForm } from "@/components/dashboard/project-settings-form";
+import { CoverUploadForm } from "@/components/dashboard/cover-upload-form";
 import type { Database } from "@/lib/supabase/database.types";
 
 export async function generateMetadata({
@@ -217,6 +218,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               region: region === "—" ? "" : region,
             }}
           />
+          <div className="border-t pt-4" />
+          <CoverUploadForm projectId={row.id} />
           <div className="border-t pt-4" />
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
