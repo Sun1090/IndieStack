@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
+import { recordCurrentSession } from "@/lib/actions/sessions";
 import { logApiError } from "@/lib/api-log";
 
 /**
@@ -40,6 +41,12 @@ export async function GET(request: NextRequest) {
       });
     } catch (auditError) {
       await logApiError("[Auth Callback] 审计写入失败", auditError);
+    }
+    // D02 设备登记：登录回调即登记当前设备会话（失败不阻断跳转）
+    try {
+      await recordCurrentSession();
+    } catch (sessionError) {
+      await logApiError("[Auth Callback] 设备会话登记失败", sessionError);
     }
   }
 

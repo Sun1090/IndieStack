@@ -67,5 +67,6 @@
   "subjectRequired": "请填写主题",
   "messageRequired": "请填写内容",
   "mfaEnrollFailed": "开启失败",
-  "mfaInvalidCode": "验证码错误"
+  "mfaInvalidCode": "验证码错误",
+  "sessionNotFound": "未找到该会话，可能已被吊销。"
 }

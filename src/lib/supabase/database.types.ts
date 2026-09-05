@@ -420,6 +420,7 @@ export type Database = {
           created_at: string
           id: string
           ip_address: unknown
+          last_seen_at: string
           user_agent: string | null
           user_id: string
         }
@@ -427,6 +428,7 @@ export type Database = {
           created_at?: string
           id?: string
           ip_address?: unknown
+          last_seen_at?: string
           user_agent?: string | null
           user_id: string
         }
@@ -434,6 +436,7 @@ export type Database = {
           created_at?: string
           id?: string
           ip_address?: unknown
+          last_seen_at?: string
           user_agent?: string | null
           user_id?: string
         }
