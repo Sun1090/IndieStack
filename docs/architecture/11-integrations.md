@@ -214,24 +214,28 @@ images: {
 }
 ```
 
-## Appark APM 性能监控（规划中）
+## Appark APM 性能监控（v0.5.0 已接线）
 
-> 状态：**未接线**。Appark APM 模块仅为脚手架占位，未在应用任何位置初始化
-> （`src/lib/appark.ts` 已移除，避免误导）。如需启用，请按以下步骤补齐：
+> 状态：**已接线**（ADR-011，轻量第一方封装，默认旁路关闭）。
+> `src/lib/appark.ts`：`initAppark / trackEvent / trackError / flushEvents`；
+> `src/instrumentation.ts` 初始化；埋点：Stripe 结账（`checkout.session_created`）、
+> cron digest 运行指标（`cron.digest`）。错误主通道仍为 Sentry。
 
-### 待办
+### 启用方式
 
-1. 新建 `src/lib/appark.ts`，封装 `initAppark / trackEvent / trackError / flushEvents`
-2. 在根布局或 `instrumentation.ts` 中调用 `initAppark()` 初始化
-3. 在关键业务流程（注册、结账、错误）接入事件上报
-4. 配置 `NEXT_PUBLIC_APPARK_API_KEY`
+- `NEXT_PUBLIC_APPARK_API_KEY` 与 `NEXT_PUBLIC_APPARK_ENDPOINT` **同时**配置才启用；
+  只配其一会在 env 诊断中告警并保持旁路关闭。
+- 事件批量 POST 到 endpoint（`Authorization: Bearer <key>`），
+  schema：`{ events: [{ event, properties, timestamp, app_version }] }`。
+- 详见 `docs/adr/adr-011-appark-apm.md`。
 
-### 环境变量（预留）
+### 环境变量
 
 | 变量 | 用途 |
 |------|------|
 | `NEXT_PUBLIC_APPARK_API_KEY` | Appark API Key |
-| `NEXT_PUBLIC_APP_VERSION` | 应用版本 |
+| `NEXT_PUBLIC_APPARK_ENDPOINT` | 事件收集端点 |
+| `NEXT_PUBLIC_APP_VERSION` | 应用版本（覆盖 package.json version） |
 
 ## 环境变量总览
 
@@ -249,9 +253,11 @@ images: {
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry | 否 | Sentry DSN |
 | `SENTRY_ORG` | Sentry | 否 | 组织名 |
 | `SENTRY_PROJECT` | Sentry | 否 | 项目名 |
-| `ALIYUN_BUCKET` | OSS | 否 | 存储桶 |
-| `ALIYUN_REGION` | OSS | 否 | 区域 |
-| `ALIYUN_CDN_DOMAIN` | OSS | 否 | CDN 域名 |
-| `NEXT_PUBLIC_APPARK_API_KEY` | Appark（规划中） | 否 | APM Key |
+| `OSS_BUCKET` | OSS（ADR-010 双驱动） | 否 | 与 REGION/KEY/SECRET 四项齐备启用 |
+| `OSS_REGION` | OSS | 否 | 区域 |
+| `OSS_ACCESS_KEY_ID` | OSS | 否 | AccessKey ID |
+| `OSS_ACCESS_KEY_SECRET` | OSS | 否 | AccessKey Secret |
+| `NEXT_PUBLIC_APPARK_API_KEY` | Appark（ADR-011） | 否 | APM Key（与 ENDPOINT 同配） |
+| `NEXT_PUBLIC_APPARK_ENDPOINT` | Appark | 否 | 事件收集端点 |
 
 > *Supabase 变量在 Mock 模式下非必需

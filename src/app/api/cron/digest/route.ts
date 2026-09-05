@@ -25,6 +25,7 @@ import {
   type Notification,
 } from "@/lib/repositories/notifications";
 import { recordWorkerRun } from "@/lib/repositories/worker-runs";
+import { trackEvent, flushEvents } from "@/lib/appark";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -158,6 +159,13 @@ export async function POST(request: NextRequest) {
       });
     } catch (metricsError) {
       await logApiError("[Cron Digest] 运行记录写入失败", metricsError);
+    }
+    // APM 关键流程埋点（C01）：cron 运行指标上报后尽力 flush
+    trackEvent("cron.digest", { pulled, ...result });
+    try {
+      await flushEvents();
+    } catch {
+      // flush 自身已吞错，此处仅兜底
     }
     return jsonNoStore(result);
   } catch (error) {

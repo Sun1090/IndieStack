@@ -167,10 +167,10 @@ graph LR
 - 通过 `instrumentation.ts` 自动初始化
 - 支持 Sourcemaps 上传
 
-### Appark APM（规划中）
+### Appark APM（v0.5.0 已接线）
 
-> 状态：**未接线**。模块已移除，未接入任何页面或初始化入口，如需启用见
-> [第三方集成](./11-integrations.md#appark-apm-性能监控规划中)。
+> 状态：**已接线**（ADR-011）：轻量第一方封装，默认旁路关闭；见
+> [第三方集成](./11-integrations.md#appark-apm-性能监控v050-已接线)。
 
 ### 结构化日志
 
