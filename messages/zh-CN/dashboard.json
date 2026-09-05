@@ -176,7 +176,14 @@
         "signOutOthers": "退出其他设备",
         "signOutOthersDesc": "保留当前会话，登出其他所有设备。",
         "signOutOthersDone": "其他设备已登出。",
-        "currentSession": "当前会话：{email} · 上次登录 {time}"
+        "currentSession": "当前会话：{email} · 上次登录 {time}",
+        "devicesTitle": "登录设备",
+        "devicesDesc": "当前登录本账号的设备；吊销后该设备将被登出。",
+        "devicesEmpty": "暂无其他设备记录。",
+        "currentDevice": "当前设备",
+        "lastSeen": "最后活跃",
+        "revokeDevice": "吊销",
+        "deviceRevoked": "设备已吊销"
       }
     }
   },

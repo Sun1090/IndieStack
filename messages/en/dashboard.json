@@ -176,7 +176,14 @@
         "signOutOthers": "Sign out other devices",
         "signOutOthersDesc": "Keeps this session and signs you out everywhere else.",
         "signOutOthersDone": "Other devices have been signed out.",
-        "currentSession": "Current session: {email} · last sign-in {time}"
+        "currentSession": "Current session: {email} · last sign-in {time}",
+        "devicesTitle": "Signed-in Devices",
+        "devicesDesc": "Devices currently signed in to your account. Revoking a device signs it out.",
+        "devicesEmpty": "No other devices recorded yet.",
+        "currentDevice": "This device",
+        "lastSeen": "Last active",
+        "revokeDevice": "Revoke",
+        "deviceRevoked": "Device revoked"
       }
     }
   },

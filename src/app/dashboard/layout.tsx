@@ -13,6 +13,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { SessionHeartbeat } from "@/components/dashboard/session-heartbeat";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -27,6 +28,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
+      <SessionHeartbeat />
       <div className="flex flex-1">
         <DashboardSidebar />
         <CommandPalette />

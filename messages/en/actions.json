@@ -67,5 +67,6 @@
   "subjectRequired": "Subject is required",
   "messageRequired": "Message is required",
   "mfaEnrollFailed": "Failed to start 2FA setup",
-  "mfaInvalidCode": "Invalid verification code"
+  "mfaInvalidCode": "Invalid verification code",
+  "sessionNotFound": "Session not found. It may already be revoked."
 }
