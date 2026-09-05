@@ -68,7 +68,9 @@ export default async function RootLayout({
         />
         {supabaseOrigin && (
           <>
-            <link rel="preconnect" href={supabaseOrigin} />
+            {/* CORS 预热需带 crossorigin（supabase-js 为带 apikey 头的匿名 CORS 请求），
+                否则浏览器只完成 DNS/TCP，不复用 TLS 连接（E03 复审修正） */}
+            <link rel="preconnect" href={supabaseOrigin} crossOrigin="anonymous" />
             <link rel="dns-prefetch" href={supabaseOrigin} />
           </>
         )}
