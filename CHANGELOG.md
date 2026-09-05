@@ -2,6 +2,54 @@
 
 All notable changes to IndieStack will be documented in this file.
 
+## [0.5.0] — 2026-09-05
+
+> 主题：**邮件通道完善 + 对象存储接入 + 可观测性落地**
+
+### Added
+
+- **邮件通道完善（A 域）**：
+  - 摘要同类型折叠：同类型 ≥3 条合并计数、明细截断 5 条 + 溢出提示（A01）
+  - 发送失败重试计数与死信：`metadata.email_attempts` ≥3 由拉取侧过滤，不再阻塞队列（A02）
+  - 高优先级通知实时单发：security_alert/team_invite/role_changed/payment_succeeded
+    经 `notifyUser()` 事件触发即发，cron 兜底重试（A03）
+  - digest 按用户时区错峰：本地 08:00 发送，空/非法时区回退 Asia/Shanghai（A04）
+  - 营销邮件独立通道（迁移 016）：double opt-in 订阅确认 + 公开确认/退订路由 +
+    强制退订页脚（A05）
+- **对象存储（B 域，ADR-010）**：`StorageDriver` 双驱动抽象——默认 Supabase Storage，
+  `OSS_*` 四项齐备切换阿里云 OSS（`ali-oss` 动态加载）；服务端中转上传
+  （≤2MB，类型白名单/扩展名映射防穿越）；头像上传（B02）与项目封面（B03，复用
+  `projects.logo_url`）接入
+- **可观测性（C 域）**：Appark APM 轻量接入（ADR-011，无厂商 SDK、默认旁路关闭，
+  checkout/cron 埋点）；cron worker 运行记录表（迁移 017，pulled/sent/failed/duration）；
+  待发队列积压超阈值 Sentry 告警
+- **认证安全（D 域）**：登录失败锁定收口进 rate-limit 键控滑窗并新增 IP 维度（D03）；
+  会话设备列表与单设备吊销（迁移 018，GoTrue session id 登记心跳 + 设置页 UI，D02）；
+  WebAuthn/Passkey 试点（迁移 019，feature flag 门控，注册/验证闭环，ADR-012，D01）
+- **其他**：环境变量校验扩展（OSS/Appark 部分配置告警）
+
+### Changed
+
+- **TanStack Query 缓存策略统一（E02）**：`QUERY_KEYS` 单一来源 +
+  `dashboardQueryOptions` 三档缓存档位（live/standard/admin），8 个调用点迁移
+- **前端性能复审（E03）**：Supabase preconnect 补 `crossOrigin`（CORS TLS 复用修正），
+  基线入档 `docs/operations/perf-baseline.md`
+
+### Fixed
+
+- 邮件模板 `String.replace` 特殊模式（`$&`）可能损坏用户内容 HTML 的隐患
+- digest 空队列响应统一为 `{ sent, groups, failed }`
+
+### 质量
+
+- 覆盖率门禁上调：branches 78 → 85（statements 91 / functions 93 / lines 92），
+  实测 92.9 / 85.7 / 95.3 / 93.9；单测 556 → 668 个
+- ADR 增补：ADR-010（对象存储）/ ADR-011（APM）/ ADR-012（Passkey）/ ADR-013（Tailwind v4 原生主题）
+- **Tailwind v4 原生主题迁移（E01）**：移除 `@config` 桥接与 `tailwind.config.ts`，
+  `@theme inline` + `@custom-variant dark` + `@utility container`；动画插件换成
+  CSS-only 的 `tw-animate-css`（移除 tailwindcss-animate 依赖）
+- 新增依赖：`ali-oss`（OSS 驱动，动态加载）、`@simplewebauthn/*`（Passkey 校验）
+
 ## [0.4.0] — 2026-09-05
 
 > 主题：**Admin 运营闭环 + 数据层测试 + 集成接线**
