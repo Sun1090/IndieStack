@@ -37,16 +37,17 @@ function timeZoneForDigestHour8(): string {
   // 等价 UTC offset（小时，半天区向下取整）
   const hostOffsetHours = Math.round(-new Date().getTimezoneOffset() / 60);
   // 所需时区 offset：localHour = (UTC + offset) mod 24 == 8
-  // (UTC + neededOffset) mod 24 = 8
-  // 当前：(hostHour) mod 24 = (UTC + hostOffset) mod 24
-  // ⇒ neededOffset - hostOffset ≡ 8 - hostHour (mod 24)
   // ⇒ neededOffset = hostOffset + (8 - hostHour)
   const neededOffset = hostOffsetHours + (8 - hostHour);
-  // 表达成 Etc/GMT±N：Etc/GMT-(neededOffset)
-  const etcSigned = -neededOffset;
-  const sign = etcSigned >= 0 ? "-" : "+";
-  const abs = Math.abs(etcSigned);
-  return `Etc/GMT${etcSigned === 0 ? "" : sign}${abs}`;
+  // POSIX IANA 命名规则（与直觉相反）：Etc/GMT-N 表示 UTC+N。
+  // 即：要表达真实 offset = neededOffset，应写 Etc/GMT-(-neededOffset) = Etc/GMT-signed，
+  //     其中 signed = -neededOffset 时命名 = Etc/GMT-signed。
+  // 简化：直接映射 neededOffset → Etc/GMT±N（保持视觉一致 — neededOffset=正 → "Etc/GMT-"）：
+  //   neededOffset=+5 (UTC+5) → Etc/GMT-5
+  //   neededOffset=-5 (UTC-5) → Etc/GMT+5
+  const sign = neededOffset >= 0 ? "-" : "+";
+  const abs = Math.abs(neededOffset);
+  return `Etc/GMT${neededOffset === 0 ? "" : sign}${abs}`;
 }
 
 test.describe("邮件全链路 (F01)", () => {
