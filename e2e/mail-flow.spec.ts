@@ -7,7 +7,6 @@
  *   3) 注入 failNext → digest 失败回执：email_attempts 累加 + worker_runs.failed>0
  *
  * 全部 mock：Resend → /api/e2e/email-inbox，cron secret 已注入，digest 时区门控通过
- * PATCH /api/e2e/profile-timezone 动态写入本机时区，让任意时刻都能命中本地 08:00。
  */
 
 import { test, expect, request as pwRequest, type APIRequestContext } from "@playwright/test";
@@ -17,39 +16,6 @@ const CRON_SECRET = "e2e-cron-secret";
 const APP_URL = "http://localhost:3100";
 const MOCK_EMAIL = "dev@indiestack.local";
 
-/**
- * 计算一个 IANA 时区标识，使得 Intl 在当前时刻把它视为本地 08:00。
- * 算法：当前机器本地小时 = H，所需时区的 UTC offset = (8 - H) mod 24。
- * 用 Etc/GMT±N 表达（Posix 命名符号相反：Etc/GMT-8 = UTC+8），
- * 所以 etcSigned = -neededOffset，Etc/GMT-sign|etcSigned|。
- * 整点偏移机器精确；半小时偏移（印度 +5:30、澳大利亚 +9:30）会偏 ±30min，
- * 但 E2E 用例运行在 1-2 秒内，30min 容差足够覆盖（不命中 30min 边界即可）。
- */
-function timeZoneForDigestHour8(): string {
-  const hostTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const hostHour = Number(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: hostTz,
-      hour: "numeric",
-      hour12: false,
-    }).format(new Date()),
-  ) % 24;
-  // 等价 UTC offset（小时，半天区向下取整）
-  const hostOffsetHours = Math.round(-new Date().getTimezoneOffset() / 60);
-  // 所需时区 offset：localHour = (UTC + offset) mod 24 == 8
-  // ⇒ neededOffset = hostOffset + (8 - hostHour)
-  const neededOffset = hostOffsetHours + (8 - hostHour);
-  // POSIX IANA 命名规则（与直觉相反）：Etc/GMT-N 表示 UTC+N。
-  // 即：要表达真实 offset = neededOffset，应写 Etc/GMT-(-neededOffset) = Etc/GMT-signed，
-  //     其中 signed = -neededOffset 时命名 = Etc/GMT-signed。
-  // 简化：直接映射 neededOffset → Etc/GMT±N（保持视觉一致 — neededOffset=正 → "Etc/GMT-"）：
-  //   neededOffset=+5 (UTC+5) → Etc/GMT-5
-  //   neededOffset=-5 (UTC-5) → Etc/GMT+5
-  const sign = neededOffset >= 0 ? "-" : "+";
-  const abs = Math.abs(neededOffset);
-  return `Etc/GMT${neededOffset === 0 ? "" : sign}${abs}`;
-}
-
 test.describe("邮件全链路 (F01)", () => {
   test.describe.configure({ mode: "serial" });
   let api: APIRequestContext;
@@ -57,13 +23,7 @@ test.describe("邮件全链路 (F01)", () => {
   test.beforeAll(async ({ playwright }) => {
     api = await pwRequest.newContext({ baseURL: APP_URL });
 
-    // 全链路 setup：动态时区 → 清空收件箱 → 清空通知
-    const tz = timeZoneForDigestHour8();
-    const tzPatch = await api.patch(`${APP_URL}/api/e2e/profile-timezone`, {
-      headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
-      data: { timezone: tz },
-    });
-    expect(tzPatch.ok(), `profile timezone PATCH 失败: ${tzPatch.status()}`).toBeTruthy();
+    // 全链路 setup：清空收件箱 → 清空通知；cron 用受保护的 mock-only 强制门控。
     await api.delete(`${APP_URL}/api/e2e/email-inbox`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
@@ -129,9 +89,13 @@ test.describe("邮件全链路 (F01)", () => {
     const seedJson = (await seed.json()) as { inserted: number };
     expect(seedJson.inserted).toBe(2);
 
-    // 跑 digest cron（mock 时区已 PATCH 到本地 08:00 一定命中）
+    // 跑 digest cron（mock-only 强制门控，不改变生产时区策略）
     const cronRes = await request.post(`${APP_URL}/api/cron/digest`, {
-      headers: { "x-cron-secret": CRON_SECRET },
+      headers: {
+        "x-cron-secret": CRON_SECRET,
+        authorization: `Bearer ${E2E_BEARER}`,
+        "x-e2e-force-digest": "true",
+      },
     });
     expect(cronRes.ok()).toBeTruthy();
     const cronJson = (await cronRes.json()) as {
@@ -186,7 +150,11 @@ test.describe("邮件全链路 (F01)", () => {
 
     // 跑 cron
     const cronRes = await request.post(`${APP_URL}/api/cron/digest`, {
-      headers: { "x-cron-secret": CRON_SECRET },
+      headers: {
+        "x-cron-secret": CRON_SECRET,
+        authorization: `Bearer ${E2E_BEARER}`,
+        "x-e2e-force-digest": "true",
+      },
     });
     expect(cronRes.ok()).toBeTruthy();
     const cronJson = (await cronRes.json()) as {
