@@ -27,6 +27,7 @@ import {
 import { recordWorkerRun } from "@/lib/repositories/worker-runs";
 import { trackEvent, flushEvents } from "@/lib/appark";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMockEnabled } from "@/lib/mock";
 import type { Database } from "@/lib/supabase/database.types";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +70,12 @@ async function recordEmailFailures(items: Notification[], error: unknown): Promi
   }
 }
 
-async function runDigest(siteUrl: string, notifications: Notification[], now: Date): Promise<{
+async function runDigest(
+  siteUrl: string,
+  notifications: Notification[],
+  now: Date,
+  forceDigestHour = false,
+): Promise<{
   sent: number;
   groups: number;
   failed: number;
@@ -92,7 +98,7 @@ async function runDigest(siteUrl: string, notifications: Notification[], now: Da
     const profile = profiles.get(userId);
     if (!profile?.email) continue;
     // A04 错峰：仅发送处于本地 digest 时刻的用户，未配置/非法时区回退默认时区
-    if (!isDigestHour(profile.timezone, now)) continue;
+    if (!forceDigestHour && !isDigestHour(profile.timezone, now)) continue;
 
     const prefs = (profile.notification_settings ?? {}) as Parameters<typeof shouldSendEmail>[0];
     const filtered = items.filter((n) => shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]));
@@ -125,6 +131,12 @@ export async function POST(request: NextRequest) {
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // 仅供本地 mock E2E：必须同时满足 mock 模式、E2E bearer 与显式 header，
+  // 不改变生产 cron 的真实时区门控。
+  const forceDigestHour =
+    isMockEnabled &&
+    request.headers.get("x-e2e-force-digest") === "true" &&
+    request.headers.get("authorization") === `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}`;
   // 经 Date.now 取当前时间，便于测试以 Date.now spy 固定错峰门控的时钟
   const now = new Date(Date.now());
 
@@ -147,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     const startedAt = Date.now();
-    const result = await runDigest(siteUrl, notifications, now);
+    const result = await runDigest(siteUrl, notifications, now, forceDigestHour);
     // C02 运行记录：落表失败不影响发送结果返回
     try {
       await recordWorkerRun({
