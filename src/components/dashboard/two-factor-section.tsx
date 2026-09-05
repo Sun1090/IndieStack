@@ -39,7 +39,7 @@ export function TwoFactorSection() {
   const [pending, startTransition] = useTransition();
 
   // 查询当前因子状态
-  const { data: factors = [], isLoading } = useQuery(
+  const { data: factors = [], isLoading, refetch: refetchFactors } = useQuery(
     dashboardQueryOptions({
     queryKey: QUERY_KEYS.mfaFactors,
     queryFn: async () => {
@@ -78,6 +78,7 @@ export function TwoFactorSection() {
       setCode("");
       setEnrollData(null);
       setStep("idle");
+      void refetchFactors();
     });
   }
 
@@ -93,6 +94,7 @@ export function TwoFactorSection() {
       }
       setCode("");
       setStep("idle");
+      void refetchFactors();
     });
   }
 

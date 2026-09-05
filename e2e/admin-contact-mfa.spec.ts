@@ -76,6 +76,25 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     await expect(page.locator("body")).not.toBeEmpty();
   });
 
+  test("settings MFA：开启 → 验证后显示已启用", async ({ page }) => {
+    await page.goto("/auth/login", { timeout: 60_000 });
+    await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
+    await page.locator("input[type=password]").first().fill("password123");
+    await page.getByRole("button", { name: /sign in|登录/i }).click();
+    await page.waitForURL("**/dashboard", { timeout: 15_000 });
+
+    await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.getByText(/Two-Factor Authentication|两步验证/i).first()).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole("button", { name: /Enable 2FA|开启两步验证/i }).click();
+    await expect(page.getByText(/Verify|验证并启用/i)).toBeVisible({ timeout: 10_000 });
+    await page.getByLabel(/Verification code|验证码/i).fill("123456");
+    await page.getByRole("button", { name: /Verify|验证并启用/i }).click();
+
+    await expect(page.getByRole("button", { name: /Disable 2FA|解除两步验证/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Enabled|已启用/i).first()).toBeVisible();
+  });
+
   test("contact 表单：可达 + 字段填写 + submit 后无运行时错误", async ({ page }) => {
     // contact 路由位于 (marketing) 组，URL 是 /contact（不需要登录）
     const consoleErrors: string[] = [];
