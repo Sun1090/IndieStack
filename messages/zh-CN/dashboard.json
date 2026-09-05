@@ -183,7 +183,17 @@
         "currentDevice": "当前设备",
         "lastSeen": "最后活跃",
         "revokeDevice": "吊销",
-        "deviceRevoked": "设备已吊销"
+        "deviceRevoked": "设备已吊销",
+        "passkeyTitle": "通行密钥",
+        "passkeyDesc": "注册通行密钥（指纹/面容/设备 PIN），登录更快且更抗钓鱼。",
+        "passkeyRegister": "注册通行密钥",
+        "passkeyRegistering": "等待认证器...",
+        "passkeyRegistered": "通行密钥注册成功！",
+        "passkeyDeleted": "通行密钥已移除",
+        "passkeyDelete": "移除",
+        "passkeyUnnamed": "通行密钥",
+        "passkeyLastUsed": "曾使用",
+        "passkeyNeverUsed": "从未使用"
       }
     }
   },

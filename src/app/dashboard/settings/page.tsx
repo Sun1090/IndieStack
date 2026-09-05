@@ -19,6 +19,9 @@ import { TwoFactorSection } from "@/components/dashboard/two-factor-section";
 import { LogoutAllButton } from "@/components/dashboard/logout-all-button";
 import { SignOutOthersButton } from "@/components/dashboard/sign-out-others-button";
 import { RevokeSessionButton } from "@/components/dashboard/revoke-session-button";
+import { PasskeySection } from "@/components/dashboard/passkey-section";
+import { listMyCredentials } from "@/lib/repositories/webauthn";
+import { features } from "@/lib/feature-flags";
 import { sessionIdFromAccessToken } from "@/lib/session-id";
 import { PageHeader } from "@/components/shared/page-header";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
@@ -59,6 +62,7 @@ export default async function SettingsPage() {
   const currentSessionId = sessionIdFromAccessToken(sessionData?.session?.access_token ?? "");
   const deviceRows = (sessions ?? []) as unknown as Database["public"]["Tables"]["user_sessions"]["Row"][];
   const locale = await getLocale();
+  const passkeyCredentials = features.passkey ? await listMyCredentials() : [];
 
   return (
     <div className="space-y-8">
@@ -158,6 +162,17 @@ export default async function SettingsPage() {
               )}
             </CardContent>
           </Card>
+
+          {features.passkey && (
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>{t("settings.sections.security.passkeyTitle")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <PasskeySection credentials={passkeyCredentials} />
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="appearance">
