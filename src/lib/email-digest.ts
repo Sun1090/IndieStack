@@ -20,6 +20,10 @@ export const EMAIL_TYPE_LABELS: Record<NotificationType, string> = {
 export const DIGEST_MAX_ITEMS = 5;
 /** 同类型折叠阈值：达到该条数合并为一行 */
 export const DIGEST_FOLD_THRESHOLD = 3;
+/** digest 本地发送时刻（小时） */
+export const DIGEST_LOCAL_HOUR = 8;
+/** 用户未配置时区时的回退时区（UTC+8，与首版文档声明一致） */
+export const DIGEST_DEFAULT_TIMEZONE = "Asia/Shanghai";
 
 export type DigestEntry =
   | { kind: "item"; title: string; body: string }
@@ -62,4 +66,31 @@ export function foldDigestNotifications(notifications: Notification[]): DigestFo
     }
   }
   return { entries, overflow };
+}
+
+/**
+ * 某时区在给定时刻的本地小时（0-23）。
+ * 部分运行时午夜会格式化为 "24"，取模归一。
+ * 时区标识非法时 Intl 抛错，由调用方处理。
+ */
+export function localHourInTimeZone(timeZone: string, date: Date): number {
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    hour12: false,
+  }).format(date);
+  return Number(formatted) % 24;
+}
+
+/**
+ * digest 错峰门控（v0.5.0 A04）：该用户此刻是否处于本地发送小时。
+ * 时区为空回退 DIGEST_DEFAULT_TIMEZONE；非法时区同样回退，不让坏数据静默丢弃邮件。
+ */
+export function isDigestHour(timezone: string | null | undefined, now: Date): boolean {
+  const tz = timezone?.trim() || DIGEST_DEFAULT_TIMEZONE;
+  try {
+    return localHourInTimeZone(tz, now) === DIGEST_LOCAL_HOUR;
+  } catch {
+    return localHourInTimeZone(DIGEST_DEFAULT_TIMEZONE, now) === DIGEST_LOCAL_HOUR;
+  }
 }

@@ -86,18 +86,24 @@ export async function markEmailFailed(
  * 创建通知（service_role）。
  * RLS 仅允许用户自插，他人触发（邀请/改角色/支付）必须走 admin 客户端；
  * 仅受信服务端上下文调用，失败由调用方吞错（不阻断主流程）。
+ * 返回新建通知 id（供实时邮件回执 email_sent），库未返回时为 null。
  */
-export async function createNotification(input: NewNotification): Promise<void> {
+export async function createNotification(input: NewNotification): Promise<string | null> {
   const admin = createAdminClient();
-  const { error } = await admin.from("notifications").insert({
-    user_id: input.userId,
-    type: input.type,
-    title: input.title,
-    body: input.body ?? null,
-    link: input.link ?? null,
-    metadata: JSON.parse(JSON.stringify(input.metadata ?? {})) as Database["public"]["Tables"]["notifications"]["Insert"]["metadata"],
-  });
+  const { data, error } = await admin
+    .from("notifications")
+    .insert({
+      user_id: input.userId,
+      type: input.type,
+      title: input.title,
+      body: input.body ?? null,
+      link: input.link ?? null,
+      metadata: JSON.parse(JSON.stringify(input.metadata ?? {})) as Database["public"]["Tables"]["notifications"]["Insert"]["metadata"],
+    })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
+  return (data as { id?: string } | null)?.id ?? null;
 }
 
 /**

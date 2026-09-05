@@ -5,6 +5,8 @@
 import { describe, it, expect } from "vitest";
 import {
   foldDigestNotifications,
+  isDigestHour,
+  localHourInTimeZone,
   DIGEST_MAX_ITEMS,
   EMAIL_TYPE_LABELS,
 } from "./email-digest";
@@ -97,5 +99,36 @@ describe("foldDigestNotifications()", () => {
   it("条目携带 body", () => {
     const result = foldDigestNotifications([notif("s1", "system", "标题", "正文")]);
     expect(result.entries).toEqual([{ kind: "item", title: "标题", body: "正文" }]);
+  });
+});
+
+describe("localHourInTimeZone()", () => {
+  const utcMidnight = new Date("2026-01-01T00:00:00Z");
+
+  it("按 IANA 时区解析本地小时", () => {
+    expect(localHourInTimeZone("Asia/Shanghai", utcMidnight)).toBe(8);
+    expect(localHourInTimeZone("UTC", utcMidnight)).toBe(0);
+    expect(localHourInTimeZone("America/New_York", utcMidnight)).toBe(19);
+  });
+});
+
+describe("isDigestHour()", () => {
+  const shanghaiEight = new Date("2026-01-01T00:00:00Z");
+  const shanghaiNine = new Date("2026-01-01T01:00:00Z");
+
+  it("空时区回退默认时区（UTC+8）", () => {
+    expect(isDigestHour(null, shanghaiEight)).toBe(true);
+    expect(isDigestHour(undefined, shanghaiEight)).toBe(true);
+    expect(isDigestHour("  ", shanghaiEight)).toBe(true);
+  });
+
+  it("用户时区本地到达发送小时才放行", () => {
+    expect(isDigestHour("Asia/Shanghai", shanghaiEight)).toBe(true);
+    expect(isDigestHour("Asia/Shanghai", shanghaiNine)).toBe(false);
+    expect(isDigestHour("America/New_York", shanghaiEight)).toBe(false);
+  });
+
+  it("非法时区回退默认时区而非静默丢弃", () => {
+    expect(isDigestHour("Not/AZone", shanghaiEight)).toBe(true);
   });
 });

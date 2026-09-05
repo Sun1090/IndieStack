@@ -84,17 +84,18 @@ describe("NOTIFICATION_TYPES", () => {
 });
 
 describe("createNotification()", () => {
-  it("成功写入并透传字段", async () => {
-    const chain = chainMock({});
+  it("成功写入并透传字段，返回新建 id", async () => {
+    const chain = chainMock({ data: { id: "n9" } });
     const from = vi.fn(() => chain);
     createAdminClientMock.mockReturnValue({ from });
     await expect(
       createNotification({ userId: "u1", type: "team_invite", title: "hi", link: "/team" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("n9");
     expect(from).toHaveBeenCalledWith("notifications");
     expect(chain.insert).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: "u1", type: "team_invite", title: "hi", link: "/team" }),
     );
+    expect(chain.select).toHaveBeenCalledWith("id");
   });
 
   it("数据库错误抛错", async () => {
