@@ -30,9 +30,12 @@ export interface NewNotification {
   metadata?: Record<string, unknown>;
 }
 
+/** 邮件失败重试上限：达到后进入死信，不再被 worker 拉取 */
+export const EMAIL_MAX_ATTEMPTS = 3;
+
 /**
  * 待发邮件通知（未读 + 未标记已发送 + 限定类型），供邮件 worker 拉取。
- * 发送通道未接线前仅做查询侧准备，见 docs/design/email-templates.md。
+ * 邮件失败重试计数（metadata.email_attempts）达到上限的死信不再进入队列（v0.5.0 A02）。
  */
 export async function listUnsentEmailNotifications(
   types: NotificationType[] = ["team_invite", "role_changed", "payment_succeeded", "security_alert"],
@@ -45,6 +48,7 @@ export async function listUnsentEmailNotifications(
     .eq("email_sent", false)
     .eq("is_read", false)
     .in("type", types)
+    .or(`metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`)
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
@@ -57,6 +61,23 @@ export async function markEmailSent(notificationId: string): Promise<void> {
   const { error } = await admin
     .from("notifications")
     .update({ email_sent: true })
+    .eq("id", notificationId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * 记录一次邮件发送失败（worker 回执）：保留既有 metadata 键，
+ * 累加 email_attempts 并记录最近一次错误（email_error），供死信排查。
+ * metadata 由调用方基于行内现值构造，避免服务端再读一次。
+ */
+export async function markEmailFailed(
+  notificationId: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("notifications")
+    .update({ metadata: JSON.parse(JSON.stringify(metadata)) as Database["public"]["Tables"]["notifications"]["Update"]["metadata"] })
     .eq("id", notificationId);
   if (error) throw new Error(error.message);
 }

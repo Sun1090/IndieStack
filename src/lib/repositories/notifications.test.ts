@@ -20,6 +20,8 @@ import {
   createNotification,
   listUnsentEmailNotifications,
   markEmailSent,
+  markEmailFailed,
+  EMAIL_MAX_ATTEMPTS,
   NOTIFICATION_TYPES,
 } from "./notifications";
 
@@ -116,11 +118,38 @@ describe("listUnsentEmailNotifications()", () => {
     expect(chain.limit).toHaveBeenCalledWith(10);
   });
 
+  it("死信过滤：重试计数达到上限的不再进入队列", async () => {
+    const chain = chainMock({ data: [] });
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await listUnsentEmailNotifications();
+    expect(chain.or).toHaveBeenCalledWith(
+      `metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`,
+    );
+  });
+
   it("数据库错误抛错", async () => {
     createAdminClientMock.mockReturnValue(
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(listUnsentEmailNotifications()).rejects.toThrow("db");
+  });
+});
+
+describe("markEmailFailed()", () => {
+  it("写入重试计数与最近错误", async () => {
+    const chain = chainMock({});
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    const metadata = { email_attempts: 2, email_error: "resend 500: boom" };
+    await expect(markEmailFailed("n1", metadata)).resolves.toBeUndefined();
+    expect(chain.update).toHaveBeenCalledWith({ metadata });
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(markEmailFailed("n1", { email_attempts: 1 })).rejects.toThrow("db");
   });
 });
 

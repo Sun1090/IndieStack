@@ -6,15 +6,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
-const { listUnsentEmailNotificationsMock, markEmailSentMock, createAdminClientMock } = vi.hoisted(() => ({
+const { listUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, createAdminClientMock } = vi.hoisted(() => ({
   listUnsentEmailNotificationsMock: vi.fn(),
   markEmailSentMock: vi.fn(async () => {}),
+  markEmailFailedMock: vi.fn(async () => {}),
   createAdminClientMock: vi.fn(),
 }));
 
 vi.mock("@/lib/repositories/notifications", () => ({
   listUnsentEmailNotifications: listUnsentEmailNotificationsMock,
   markEmailSent: markEmailSentMock,
+  markEmailFailed: markEmailFailedMock,
   NOTIFICATION_TYPES: [] as string[],
 }));
 
@@ -28,7 +30,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 function chainMock(outcome: Record<string, unknown> = {}) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["from", "select", "in"]) chain[m] = vi.fn(() => chain);
+  for (const m of ["from", "select", "in", "or"]) chain[m] = vi.fn(() => chain);
   Object.assign(chain, { then: (resolve: (v: unknown) => unknown) => resolve(outcome) });
   return chain;
 }
@@ -40,7 +42,7 @@ function req() {
 }
 
 const fetchMockResolved: { ok: boolean; text: () => Promise<string> } = { ok: true, text: async () => "" };
-let fetchMock = vi.fn(() => Promise.resolve(fetchMockResolved));
+let fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => Promise.resolve(fetchMockResolved));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,7 +64,7 @@ describe("POST /api/cron/digest", () => {
     listUnsentEmailNotificationsMock.mockResolvedValue([]);
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
   });
 
   it("按用户分组发送并标记已发送", async () => {
@@ -76,15 +78,15 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1 });
+    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.anything());
     expect(markEmailSentMock).toHaveBeenCalledTimes(2);
   });
 
-  it("发送失败返回 500 且不泄露细节", async () => {
+  it("单用户发送失败计入 failed 并累加重试计数，不阻断整轮", async () => {
     listUnsentEmailNotificationsMock.mockResolvedValue([
-      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: { email_attempts: 1, tag: "x" } },
     ]);
     createAdminClientMock.mockReturnValue({
       from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
@@ -93,9 +95,31 @@ describe("POST /api/cron/digest", () => {
     fetchMockResolved.text = async () => "boom";
 
     const res = await POST(req());
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toBe("Internal server error");
+    expect(body).toEqual({ sent: 0, groups: 0, failed: 1 });
     expect(JSON.stringify(body)).not.toMatch(/boom/);
+    expect(markEmailSentMock).not.toHaveBeenCalled();
+    expect(markEmailFailedMock).toHaveBeenCalledWith(
+      "n1",
+      expect.objectContaining({ tag: "x", email_attempts: 2, email_error: expect.stringContaining("resend") }),
+    );
+  });
+
+  it("正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出", async () => {
+    const deploy = (id: string) => ({ id, user_id: "u1", type: "deployment", title: `deploy ${id}`, body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null });
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      ...["d1", "d2", "d3"].map(deploy),
+      { id: "s1", user_id: "u1", type: "system", title: "S1", body: "b1", created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+    });
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    const init = fetchMock.mock.calls[0][1];
+    expect(String(init?.body)).toContain("部署通知 ×3 条");
+    expect(String(init?.body)).toContain("S1");
   });
 });
