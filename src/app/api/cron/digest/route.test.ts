@@ -2,7 +2,7 @@
  * /api/cron/digest 路由测试
  * 覆盖：鉴权、空队列、发送与回执、发送失败兜底
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
@@ -52,6 +52,12 @@ beforeEach(() => {
   fetchMockResolved.ok = true;
   fetchMockResolved.text = async () => "";
   vi.stubGlobal("fetch", fetchMock);
+  // 固定为默认时区（Asia/Shanghai）本地 08:00，使错峰门控放行
+  vi.spyOn(Date, "now").mockReturnValue(new Date("2026-01-01T00:00:00Z").getTime());
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("POST /api/cron/digest", () => {
@@ -104,6 +110,36 @@ describe("POST /api/cron/digest", () => {
       "n1",
       expect.objectContaining({ tag: "x", email_attempts: 2, email_error: expect.stringContaining("resend") }),
     );
+  });
+
+  it("用户时区未到本地发送小时则跳过（A04 错峰）", async () => {
+    // 覆盖默认固定时间：UTC 01:00 = 上海 09:00，不在 08:00 发送窗口
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-01-01T01:00:00Z").getTime());
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+    });
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("用户自带时区按各自本地小时判断（覆盖默认回退窗口）", async () => {
+    // 默认固定时间 UTC 00:00 = 上海 08:00（回退用户会发送）；纽约 19:00 → 该用户跳过
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", timezone: "America/New_York", notification_settings: { emailNotifications: true } }] })),
+    });
+
+    const res = await POST(req());
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出", async () => {

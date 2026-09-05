@@ -11,7 +11,7 @@ import { jsonNoStore } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { logApiError } from "@/lib/api-log";
 import { ROUTES } from "@/lib/constants";
-import { createNotification } from "@/lib/repositories/notifications";
+import { notifyUser } from "@/lib/email-notify";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeServer } from "@/lib/stripe";
 import { mapStatus, mapPlan } from "@/lib/stripe/webhook-mappers";
@@ -194,7 +194,7 @@ async function notifyTeamOwner(invoice: Stripe.Invoice): Promise<void> {
       .maybeSingle();
     const ownerId = (owner as { user_id?: string } | null)?.user_id;
     if (!ownerId) return;
-    await createNotification({
+    await notifyUser({
       userId: ownerId,
       type: "payment_succeeded",
       title: "付款成功",

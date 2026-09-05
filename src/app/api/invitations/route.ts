@@ -17,7 +17,7 @@ import { logApiError } from "@/lib/api-log";
 import { inviteMemberSchema } from "@/lib/validations/team";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import { ROUTES } from "@/lib/constants";
-import { createNotification } from "@/lib/repositories/notifications";
+import { notifyUser } from "@/lib/email-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
 
     // 通知被邀请人（失败不阻断邀请主流程）
     try {
-      await createNotification({
+      await notifyUser({
         userId: invitedProfile.id,
         type: "team_invite",
         title: "新的团队邀请",

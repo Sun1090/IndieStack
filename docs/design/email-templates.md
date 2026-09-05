@@ -88,13 +88,28 @@
 - 发件人取 `RESEND_FROM`，兜底 `IndieStack <onboarding@indiestack.dev>`；
   `RESEND_API_KEY` 缺失时发送直接抛错（走 500 分支）。
 
-### 调度与时区
+### 调度与时区（v0.5.0 A04 错峰）
 
-- 代码内不含任何时间/时区逻辑，发送频率完全由外部 cron 决定
-  （Vercel Cron / Supabase pg_cron / 系统 crontab 定时 POST 上述接口）。
-- 首版建议每日一次（如 `0 0 * * *` UTC，即北京时间 08:00）。注意 Vercel Cron
-  使用 UTC，面向中国用户的”每天早上”应配置 UTC 0 点；按用户各自时区错峰发送为后续增强，暂不支持。
-- 单次运行最多处理 100 条（`limit` 默认值），超出部分留待下次 cron 批次处理。
+- 代码内不含固定调度，发送频率由外部 cron 决定（建议**每小时**调用一次）。
+- 错峰门控：worker 只发送当前处于**本地 08:00** 的用户
+  （`profiles.timezone` IANA 标识，经 `Intl.DateTimeFormat` 解析；
+  为空或非法时回退 `Asia/Shanghai`/UTC+8，不让坏数据静默丢邮件）。
+  因此中国用户在北京时间 08:00-09:00 之间的那次 cron 运行中收到摘要，
+  其他时区用户各自错峰，单次 cron 最多处理 100 条。
+- Vercel Cron 使用 UTC，按小时配置即可（如 `0 * * * *`）；自建 crontab 同理。
+
+### 实时单发通道（v0.5.0 A03）
+
+- 高优先级类型 `security_alert / team_invite / role_changed / payment_succeeded`
+  在事件触发时即时单发，不经 cron 等待：
+  - 支付成功 → Stripe webhook（`payment_succeeded`）
+  - 团队邀请 → 邀请 API（`team_invite`）
+  - 角色变更 → admin action（`role_changed`）
+- 统一入口 `notifyUser()`（`src/lib/email-notify.ts`）：先写站内通知（失败上抛，
+  由调用方吞错），再对实时类型走偏好门控 → 渲染 → Resend 发送 → 回执
+  `markEmailSent`；邮件侧任何失败只记日志，**通知留在队列由 cron digest 兜底重试**
+  （at-least-once）。
+- 非实时类型（system/deployment/billing_update）邮件侧仍只经 digest 打包发送。
 
 ### 聚合与发送规则（实际行为）
 
