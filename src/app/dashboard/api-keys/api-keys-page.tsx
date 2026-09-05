@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dashboardQueryOptions, QUERY_KEYS } from "@/lib/query-cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,8 +59,9 @@ export function ApiKeysPage() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
   // 列表查询：缓存 + 内置加载态
-  const { data: keys = [], isLoading: loading, isError, refetch } = useQuery({
-    queryKey: ["api-keys"],
+  const { data: keys = [], isLoading: loading, isError, refetch } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.apiKeys,
     queryFn: async (): Promise<ApiKeyRecord[]> => {
       const result = await listApiKeys();
       if (!result.ok) {
@@ -72,7 +74,7 @@ export function ApiKeysPage() {
       }
       return result.data ?? [];
     },
-  });
+    }));
 
   /** 创建成功后使列表缓存失效，自动重新拉取 */
   const createMutation = useMutation({

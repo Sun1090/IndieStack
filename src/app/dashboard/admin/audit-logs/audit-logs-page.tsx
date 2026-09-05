@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardQueryOptions, CACHE_STALE, QUERY_KEYS } from "@/lib/query-cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,8 +35,10 @@ export function AdminAuditLogsPage() {
   const [actionFilter, setActionFilter] = useState("all");
 
   // TanStack Query：refetch 手动刷新按钮复用 refetch
-  const { data: logs = [], isLoading: loading, isError, refetch } = useQuery({
-    queryKey: ["audit-logs"],
+  const { data: logs = [], isLoading: loading, isError, refetch } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.adminAuditLogs,
+    staleTime: CACHE_STALE.admin,
     queryFn: async (): Promise<AuditLogRecord[]> => {
       const result = await listAuditLogs();
       if (!result.ok) {
@@ -48,7 +51,7 @@ export function AdminAuditLogsPage() {
       }
       return result.data ?? [];
     },
-  });
+    }));
 
   // 筛选后的日志
   const filteredLogs = logs.filter((log) => {

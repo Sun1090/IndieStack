@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardQueryOptions, QUERY_KEYS } from "@/lib/query-cache";
 import {
   listTotpFactors,
   enrollTotp,
@@ -38,14 +39,15 @@ export function TwoFactorSection() {
   const [pending, startTransition] = useTransition();
 
   // 查询当前因子状态
-  const { data: factors = [], isLoading } = useQuery({
-    queryKey: ["mfa-factors"],
+  const { data: factors = [], isLoading } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.mfaFactors,
     queryFn: async () => {
       const result = await listTotpFactors();
       if (!result.ok) throw new Error(result.error);
       return result.data ?? [];
     },
-  });
+    }));
 
   const activeFactor = factors.find((f) => f.status === "verified");
   const enabled = Boolean(activeFactor);
@@ -203,14 +205,15 @@ function RecoveryCodesSection() {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const { data: hasCodes, refetch } = useQuery({
-    queryKey: ["recovery-status"],
+  const { data: hasCodes, refetch } = useQuery(
+    dashboardQueryOptions({
+    queryKey: QUERY_KEYS.recoveryStatus,
     queryFn: async () => {
       const result = await hasRecoveryCodes();
       if (!result.ok) throw new Error(result.error);
       return result.data?.has ?? false;
     },
-  });
+    }));
 
   function startGenerate() {
     setError(null);
