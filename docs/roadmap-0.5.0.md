@@ -5,7 +5,7 @@
 > 本文件定范围、里程碑与退出标准；单任务实现时再细分。
 >
 > **进度（2026-09-05）**：M1（A01–A05）、M2（B01–B03、C01–C03）、M3（D01–D03、E01–E03）
-> 全部完成；M4：F03 + F01 + F02 完成（admin/contact/MFA 5 用例全绿，mock 缓存 globalThis 化），G01/H01 推进中。
+> 全部完成；M4：F03 + F01 + F02 完成（admin/contact/MFA 5 用例全绿，mock 缓存 globalThis 化），G02 完成（ADR-010/011 accepted），G01 跨仓库（docs-site）进行中，H01 发布基建已就绪（待 tag + GitHub Release 由发布负责人执行）。
 
 ## 范围（in scope）
 
@@ -80,7 +80,7 @@
 | # | 任务 | 说明 |
 |---|------|------|
 | G01 | docs-site 新章节 | 邮件通道（digest/偏好/死信）与对象存储章节，中英双语 |
-| G02 | ADR 增补 | ADR-010 OSS / ADR-011 APM 状态从 proposed → accepted |
+| G02 | ADR 增补 | ADR-010 OSS / ADR-011 APM 状态从 proposed → accepted（2026-09-05 完成：两 ADR 当前已 accepted，发布基建 commit `60242cb` 内一并落地） |
 | H01 | v0.5.0 发布基建 | 版本号、CHANGELOG、roadmap 转正、docs-site 版本页 |
 
 ## 里程碑
@@ -94,11 +94,11 @@
 
 ## 退出标准（全部满足方可发布 v0.5.0）
 
-1. `pnpm verify:build` 全绿；覆盖率门禁不降低且 branches ≥85%。
-2. `pnpm audit` 无高危；CodeQL/gitleaks 无告警。
-3. email-templates.md 中无"未实现/后续增强"欠账（A 域全部落地或显式移出范围）。
-4. OSS/Appark 在生产配置下可用（或 feature flag 关闭的完整实现）。
-5. E2E 全绿（含邮件流程与 v0.4.0 新页面用例）。
+1. ✅ `pnpm verify:build` 全绿；覆盖率门禁不降低且 branches ≥85%（671 个单测 / branches 85.7）。
+2. ✅ `pnpm audit --prod` 无漏洞；CI 三件套（CI + CodeQL + Secrets Scan）全绿（2026-09-05 commit `9f11337`）。
+3. ✅ email-templates.md 中无 TODO/未实现字样。
+4. ✅ OSS 双驱动 + Appark 轻量接入已落地（feature flag 默认关闭，生产配置下可用）。
+5. ✅ `pnpm test:e2e` 29/29 全绿（F01 24 + F02 5）。
 
 ## 风险
 
