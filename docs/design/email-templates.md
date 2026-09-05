@@ -102,21 +102,25 @@
 > 所有白名单类型的通知都积压到下一次 cron 统一打包发送。
 
 - 按用户分组：同一用户的所有待发通知合并为一封邮件，
-  标题 `IndieStack 通知摘要（N 条）`，正文逐条列出 title + body（HTML 转义），
-  单一 CTA”查看通知”指向站点首页。
+  标题 `IndieStack 通知摘要（N 条）`，单一 CTA”查看通知”指向站点首页。
+- 同类型折叠（v0.5.0 A01）：同类型 ≥3 条合并为一行”N 条 ×类型”，
+  其余逐条列出 title + body（HTML 转义），明细最多 5 条，
+  溢出部分显示”另有 N 条通知，请登录查看”（`src/lib/email-digest.ts`）。
 - 逐条偏好过滤：对该用户的每条通知跑 `shouldSendEmail()`，被开关关掉的类型
   不进入这封摘要（例如 `productUpdates=false` 时 deployment 通知被剔除，
   而不是整封跳过；`emailNotifications=false` 时整封跳过）。
 - 跳过条件：用户过滤后为空、或 `profiles.email` 为空 → 该用户本次不发。
-- 未做同类型合并计数（设计稿中的”3 条部署通知”折叠为后续增强），
-  也未做”正文只列前 5 条”截断，当前全量列出。
 
 ### 失败与重试
 
 - 回执采用”发送成功后才 `markEmailSent`”的顺序，因此失败的批次天然重试：
   本次运行抛错 → 通知保持 `email_sent=false` → 下一次 cron 调用重新拉取发送
   （at-least-once 语义，极端情况下用户可能收到重复邮件）。
-- 无重试计数与死信机制：设计稿中”3 次后记 `metadata.email_error` 并跳过”尚未实现，
-  持续失败（如 `RESEND_API_KEY` 失效）会让队列每轮重试并在日志中留痕，需人工介入。
-- 部分成功不可回滚：循环按用户依次发送，某一用户发送失败时，
-  之前用户已发送并标记完成，之后用户留待下一轮。
+- 重试计数与死信（v0.5.0 A02）：单用户发送失败不再阻断整轮，
+  逐条累加 `metadata.email_attempts` 并记录最近错误到 `metadata.email_error`；
+  `email_attempts` 达到 `EMAIL_MAX_ATTEMPTS`（3）的通知由拉取侧 `.or` 过滤排除
+  （死信），不再进入队列，避免持续失败阻塞后续批次。死信需人工排查
+  `notifications.metadata.email_error`。
+- 部分成功按用户隔离：循环按用户依次发送，某一用户发送失败时，
+  之前用户已发送并标记完成，之后用户继续处理；响应体通过
+  `{ sent, groups, failed }` 暴露本轮失败条数。
