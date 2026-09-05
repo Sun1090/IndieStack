@@ -84,6 +84,14 @@ let _mockApiKeys: ReturnType<typeof generateMockApiKeys> | null = null;
 let _mockWorkerRuns: Record<string, unknown>[] | null = null;
 let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
 let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null = null;
+type MockMfaFactor = {
+  id: string;
+  type: "totp";
+  status: "unverified" | "verified";
+  friendly_name: string;
+  created_at: string;
+};
+let _mockMfaFactors: MockMfaFactor[] | null = null;
 
 /** 重置缓存的 mock 数据（可用于测试或刷新） */
 export function resetMockCache() {
@@ -102,6 +110,7 @@ export function resetMockCache() {
   _mockWorkerRuns = null;
   _mockMarketingSubscriptions = null;
   _mockContactMessages = null;
+  _mockMfaFactors = null;
   mockCacheClear();
 }
 
@@ -234,6 +243,18 @@ function getMockMarketingSubscriptions(): Record<string, unknown>[] {
   const fresh: Record<string, unknown>[] = [];
   _mockMarketingSubscriptions = fresh;
   mockCacheSet("MarketingSubscriptions", fresh);
+  return fresh;
+}
+
+function getMockMfaFactors(): MockMfaFactor[] {
+  const cached = mockCacheGet<MockMfaFactor[]>("MfaFactors");
+  if (cached) {
+    _mockMfaFactors = cached;
+    return cached;
+  }
+  const fresh: MockMfaFactor[] = [];
+  _mockMfaFactors = fresh;
+  mockCacheSet("MfaFactors", fresh);
   return fresh;
 }
 
@@ -902,46 +923,53 @@ export class MockSupabaseClient {
         data: { subscription: { unsubscribe: () => {} } },
       };
     },
-    // MFA（Mock：返回固定的测试 factor 与验证码通过）
+    // MFA（Mock：状态化模拟 enrollment → verify → unenroll，供 E2E/单测验证真实状态迁移）
     mfa: {
-      enroll: async (_params: unknown) => ({
-        data: {
-          id: "mock-factor-id",
+      enroll: async (params: unknown) => {
+        const friendlyName =
+          typeof params === "object" && params !== null && "friendlyName" in params
+            ? String((params as { friendlyName?: unknown }).friendlyName ?? "")
+            : "";
+        const id = `mock-factor-${Date.now()}-${getMockMfaFactors().length + 1}`;
+        getMockMfaFactors().push({
+          id,
           type: "totp",
-          totp: { qr_code: "", secret: "MOCKSECRET" },
-        },
-        error: null,
-      }),
-      challengeAndVerify: async (_params: unknown) => ({ error: null }),
+          status: "unverified",
+          friendly_name: friendlyName,
+          created_at: new Date().toISOString(),
+        });
+        return { data: { id, type: "totp", totp: { qr_code: "", secret: "MOCKSECRET" } }, error: null };
+      },
+      challengeAndVerify: async (params: unknown) => {
+        const factorId =
+          typeof params === "object" && params !== null && "factorId" in params
+            ? String((params as { factorId?: unknown }).factorId ?? "")
+            : "";
+        const factor = getMockMfaFactors().find((item) => item.id === factorId);
+        if (!factor) return { error: { message: "Factor not found" } };
+        factor.status = "verified";
+        return { error: null };
+      },
       challenge: async (_params: unknown) => ({
         data: { id: "mock-challenge-id", expires_at: 9999999999 },
         error: null,
       }),
       verify: async (_params: unknown) => ({ error: null }),
-      listFactors: async () => ({
-        data: {
-          all: [
-            {
-              id: "mock-factor-id",
-              type: "totp" as const,
-              status: "verified" as const,
-              friendly_name: "",
-              created_at: new Date().toISOString(),
-            },
-          ],
-          totp: [
-            {
-              id: "mock-factor-id",
-              type: "totp" as const,
-              status: "verified" as const,
-              friendly_name: "",
-              created_at: new Date().toISOString(),
-            },
-          ],
-        },
-        error: null,
-      }),
-      unenroll: async (_params: unknown) => ({ data: { id: "mock-factor-id" }, error: null }),
+      listFactors: async () => {
+        const totp = getMockMfaFactors().map((factor) => ({ ...factor }));
+        return { data: { all: totp, totp }, error: null };
+      },
+      unenroll: async (params: unknown) => {
+        const factorId =
+          typeof params === "object" && params !== null && "factorId" in params
+            ? String((params as { factorId?: unknown }).factorId ?? "")
+            : "";
+        const factors = getMockMfaFactors();
+        const index = factors.findIndex((factor) => factor.id === factorId);
+        if (index === -1) return { data: null, error: { message: "Factor not found" } };
+        factors.splice(index, 1);
+        return { data: { id: factorId }, error: null };
+      },
     },
     // 管理接口：供 createAdminClient() 在 Mock 模式下使用
     admin: {

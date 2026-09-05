@@ -249,3 +249,66 @@ describe("Mock 写操作与真实 PostgREST 行为对齐", () => {
     expect(missing).toBeNull();
   });
 });
+
+describe("Mock MFA 状态机", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  it("enroll → list 返回未验证因子", async () => {
+    const client = createMockSupabaseClient();
+    const enrolled = await client.auth.mfa.enroll({ factorType: "totp", friendlyName: "测试设备" });
+
+    expect(enrolled.error).toBeNull();
+    expect(enrolled.data).toMatchObject({
+      type: "totp",
+      totp: { secret: "MOCKSECRET" },
+    });
+
+    const listed = await client.auth.mfa.listFactors();
+    expect(listed.error).toBeNull();
+    expect(listed.data.totp).toHaveLength(1);
+    expect(listed.data.totp[0]).toMatchObject({
+      id: enrolled.data?.id,
+      status: "unverified",
+      friendly_name: "测试设备",
+    });
+  });
+
+  it("challengeAndVerify 将目标因子标记为 verified", async () => {
+    const client = createMockSupabaseClient();
+    const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+    const factorId = enrolled.data?.id ?? "";
+
+    await expect(client.auth.mfa.challengeAndVerify({ factorId, code: "123456" })).resolves.toEqual({
+      error: null,
+    });
+    const listed = await client.auth.mfa.listFactors();
+    expect(listed.data.totp[0].status).toBe("verified");
+  });
+
+  it("unenroll 移除目标因子，未知因子返回错误", async () => {
+    const client = createMockSupabaseClient();
+    const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+    const factorId = enrolled.data?.id ?? "";
+
+    await expect(client.auth.mfa.unenroll({ factorId })).resolves.toEqual({
+      data: { id: factorId },
+      error: null,
+    });
+    expect((await client.auth.mfa.listFactors()).data.totp).toHaveLength(0);
+    await expect(client.auth.mfa.unenroll({ factorId })).resolves.toEqual({
+      data: null,
+      error: { message: "Factor not found" },
+    });
+  });
+
+  it("resetMockCache 清除跨 client 的 MFA 状态", async () => {
+    const first = createMockSupabaseClient();
+    await first.auth.mfa.enroll({ factorType: "totp" });
+    expect((await createMockSupabaseClient().auth.mfa.listFactors()).data.totp).toHaveLength(1);
+
+    resetMockCache();
+    expect((await createMockSupabaseClient().auth.mfa.listFactors()).data.totp).toHaveLength(0);
+  });
+});
