@@ -18,13 +18,27 @@ const nextConfig: NextConfig = {
   ...(process.env.DOCKER_BUILD === "1" ? { output: "standalone" as const } : {}),
   reactStrictMode: true,
 
+  // ali-oss（v0.5.0 B01 OSS 驱动）依赖链含懒加载可选依赖（urllib→proxy-agent），
+  // Turbopack 静态解析失败 → 标记为服务端外部依赖，运行时经 Node require 加载
+  serverExternalPackages: ["ali-oss"],
+
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
-      // OSS 为规划中/未接线（见 docs/architecture/11-integrations.md），域名白名单暂不预留
+      // 存储域名白名单（v0.5.0 B01 存储抽象：Supabase Storage 默认 / OSS 可选，见 ADR-010）
       {
         protocol: "https",
         hostname: "*.vercel-storage.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.aliyuncs.com",
         pathname: "/**",
       },
     ],

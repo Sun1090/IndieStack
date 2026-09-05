@@ -31,6 +31,12 @@ function collect(): EnvReport {
   ) {
     problems.push("生产环境建议设置 NEXT_PUBLIC_APP_URL 为 https 绝对地址");
   }
+  // OSS 双驱动（ADR-010）：任一变量出现但四项不齐备即告警（运行时回退 Supabase Storage）
+  const ossVars = ["OSS_BUCKET", "OSS_REGION", "OSS_ACCESS_KEY_ID", "OSS_ACCESS_KEY_SECRET"];
+  const ossCount = ossVars.filter((k) => process.env[k]).length;
+  if (ossCount > 0 && ossCount < ossVars.length) {
+    problems.push("OSS_* 配置不完整（需 BUCKET/REGION/ACCESS_KEY_ID/ACCESS_KEY_SECRET 四项），已回退 Supabase Storage");
+  }
 
   return { ok: problems.length === 0, problems };
 }
