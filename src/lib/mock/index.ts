@@ -84,6 +84,11 @@ let _mockApiKeys: ReturnType<typeof generateMockApiKeys> | null = null;
 let _mockWorkerRuns: Record<string, unknown>[] | null = null;
 let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
 let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null = null;
+type MockMfaChallenge = {
+  id: string;
+  factor_id: string;
+  expires_at: number;
+};
 type MockMfaFactor = {
   id: string;
   type: "totp";
@@ -92,6 +97,7 @@ type MockMfaFactor = {
   created_at: string;
 };
 let _mockMfaFactors: MockMfaFactor[] | null = null;
+let _mockMfaChallenges: MockMfaChallenge[] | null = null;
 
 /** 重置缓存的 mock 数据（可用于测试或刷新） */
 export function resetMockCache() {
@@ -111,6 +117,7 @@ export function resetMockCache() {
   _mockMarketingSubscriptions = null;
   _mockContactMessages = null;
   _mockMfaFactors = null;
+  _mockMfaChallenges = null;
   mockCacheClear();
 }
 
@@ -243,6 +250,18 @@ function getMockMarketingSubscriptions(): Record<string, unknown>[] {
   const fresh: Record<string, unknown>[] = [];
   _mockMarketingSubscriptions = fresh;
   mockCacheSet("MarketingSubscriptions", fresh);
+  return fresh;
+}
+
+function getMockMfaChallenges(): MockMfaChallenge[] {
+  const cached = mockCacheGet<MockMfaChallenge[]>("MfaChallenges");
+  if (cached) {
+    _mockMfaChallenges = cached;
+    return cached;
+  }
+  const fresh: MockMfaChallenge[] = [];
+  _mockMfaChallenges = fresh;
+  mockCacheSet("MfaChallenges", fresh);
   return fresh;
 }
 
@@ -947,14 +966,53 @@ export class MockSupabaseClient {
             : "";
         const factor = getMockMfaFactors().find((item) => item.id === factorId);
         if (!factor) return { error: { message: "Factor not found" } };
+        const code =
+          typeof params === "object" && params !== null && "code" in params
+            ? String((params as { code?: unknown }).code ?? "")
+            : "";
+        if (code !== "123456") return { error: { message: "Invalid MFA code" } };
         factor.status = "verified";
         return { error: null };
       },
-      challenge: async (_params: unknown) => ({
-        data: { id: "mock-challenge-id", expires_at: 9999999999 },
-        error: null,
-      }),
-      verify: async (_params: unknown) => ({ error: null }),
+      challenge: async (params: unknown) => {
+        const factorId =
+          typeof params === "object" && params !== null && "factorId" in params
+            ? String((params as { factorId?: unknown }).factorId ?? "")
+            : "";
+        const factor = getMockMfaFactors().find((item) => item.id === factorId);
+        if (!factor) return { data: null, error: { message: "Factor not found" } };
+        if (factor.status !== "verified") {
+          return { data: null, error: { message: "Factor is not verified" } };
+        }
+        const id = `mock-challenge-${Date.now()}-${getMockMfaChallenges().length + 1}`;
+        const expiresAt = Date.now() + 5 * 60 * 1000;
+        getMockMfaChallenges().push({ id, factor_id: factorId, expires_at: expiresAt });
+        return { data: { id, expires_at: Math.floor(expiresAt / 1000) }, error: null };
+      },
+      verify: async (params: unknown) => {
+        const read = (key: string) =>
+          typeof params === "object" && params !== null && key in params
+            ? String((params as Record<string, unknown>)[key] ?? "")
+            : "";
+        const factorId = read("factorId");
+        const challengeId = read("challengeId");
+        const code = read("code");
+        const factor = getMockMfaFactors().find((item) => item.id === factorId);
+        if (!factor || factor.status !== "verified") return { error: { message: "Factor not found" } };
+        const challenges = getMockMfaChallenges();
+        const challengeIndex = challenges.findIndex(
+          (item) => item.id === challengeId && item.factor_id === factorId,
+        );
+        if (challengeIndex === -1) return { error: { message: "Challenge not found" } };
+        const challenge = challenges[challengeIndex];
+        if (challenge.expires_at <= Date.now()) {
+          challenges.splice(challengeIndex, 1);
+          return { error: { message: "Challenge expired" } };
+        }
+        if (code !== "123456") return { error: { message: "Invalid MFA code" } };
+        challenges.splice(challengeIndex, 1);
+        return { error: null };
+      },
       listFactors: async () => {
         const totp = getMockMfaFactors().map((factor) => ({ ...factor }));
         return { data: { all: totp, totp }, error: null };

@@ -3,7 +3,7 @@
  * 验证 Mock Supabase 客户端对 API 密钥表的读写行为
  * （列表、创建追加、吊销更新）
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMockSupabaseClient, resetMockCache } from "./mock";
 import { MOCK_USER_ID } from "./mock/data";
 
@@ -280,11 +280,56 @@ describe("Mock MFA 状态机", () => {
     const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
     const factorId = enrolled.data?.id ?? "";
 
-    await expect(client.auth.mfa.challengeAndVerify({ factorId, code: "123456" })).resolves.toEqual({
-      error: null,
-    });
+    await expect(client.auth.mfa.challengeAndVerify({ factorId, code: "123456" })).resolves.toEqual(
+      {
+        error: null,
+      },
+    );
     const listed = await client.auth.mfa.listFactors();
     expect(listed.data.totp[0].status).toBe("verified");
+  });
+
+  it("verified 因子可创建 challenge，错误验证码失败且成功验证后 challenge 只能消费一次", async () => {
+    const client = createMockSupabaseClient();
+    const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+    const factorId = enrolled.data?.id ?? "";
+    await client.auth.mfa.challengeAndVerify({ factorId, code: "123456" });
+
+    const challenge = await client.auth.mfa.challenge({ factorId });
+    expect(challenge.error).toBeNull();
+    expect(challenge.data?.id).toEqual(expect.any(String));
+
+    await expect(
+      client.auth.mfa.verify({ factorId, challengeId: challenge.data?.id, code: "000000" }),
+    ).resolves.toEqual({ error: { message: "Invalid MFA code" } });
+    await expect(
+      client.auth.mfa.verify({ factorId, challengeId: challenge.data?.id, code: "123456" }),
+    ).resolves.toEqual({ error: null });
+    await expect(
+      client.auth.mfa.verify({ factorId, challengeId: challenge.data?.id, code: "123456" }),
+    ).resolves.toEqual({ error: { message: "Challenge not found" } });
+  });
+
+  it("未验证因子不能创建登录 challenge，过期 challenge 会被拒绝", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = createMockSupabaseClient();
+      const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+      const factorId = enrolled.data?.id ?? "";
+      await expect(client.auth.mfa.challenge({ factorId })).resolves.toEqual({
+        data: null,
+        error: { message: "Factor is not verified" },
+      });
+
+      await client.auth.mfa.challengeAndVerify({ factorId, code: "123456" });
+      const challenge = await client.auth.mfa.challenge({ factorId });
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+      await expect(
+        client.auth.mfa.verify({ factorId, challengeId: challenge.data?.id, code: "123456" }),
+      ).resolves.toEqual({ error: { message: "Challenge expired" } });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("unenroll 移除目标因子，未知因子返回错误", async () => {
