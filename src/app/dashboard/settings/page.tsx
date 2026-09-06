@@ -12,6 +12,7 @@ import { formatRelativeTime } from "@/lib/date";
 import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PushNotificationForm } from "@/components/forms/push-notification-form";
 import { NotificationSettingsForm } from "@/components/forms/notification-settings-form";
 import { ThemeSettingsForm } from "@/components/forms/theme-settings-form";
 import { PasswordForm } from "@/components/forms/password-form";
@@ -104,6 +105,7 @@ export default async function SettingsPage() {
               </p>
               <SignOutOthersButton />
               <LogoutAllButton />
+              <PushNotificationForm />
               <NotificationSettingsForm
                 settings={(profile?.notification_settings as Record<string, boolean>) ?? {}}
               />
