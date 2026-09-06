@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A05 已完成（provider contract、服务端中转 action、上传白名单）；其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A05 已完成；B02 已完成（基础 Service Worker 生命周期与 push/click 处理）（provider contract、服务端中转 action、上传白名单）；其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -25,8 +25,8 @@
 
 ### B. 推送与通知统一（B01–B10）
 
-11. B01 PWA manifest 能力评估
-12. B02 service worker 生命周期策略
+11. B01 PWA manifest 能力评估（完成：manifest 增加 scope/lang/orientation 安装能力元数据）
+12. B02 service worker 生命周期策略（完成：`public/sw.js` 实现 install/activate 控制、push payload 解析、通知点击跳转）
 13. B03 Web Push 订阅表迁移
 14. B04 订阅注册/撤销 action
 15. B05 通知权限与设置 UI
