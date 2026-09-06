@@ -6,6 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  // 默认 60s：吸收 dev server 冷编译（首屏/Stripe SDK 首载）抖动，CI 另有 retries=2
+  timeout: 60_000,
   // Shared mock state remains serial by default. F04 can opt into the
   // isolation experiment without changing the stable CI baseline.
   fullyParallel: process.env.PW_FULLY_PARALLEL === "true",
@@ -33,6 +35,8 @@ export default defineConfig({
       RESEND_API_URL: "http://localhost:3100/api/e2e/email-inbox",
       RESEND_API_KEY: "e2e-resend-key",
       CRON_SECRET: "e2e-cron-secret",
+      STRIPE_SECRET_KEY: "sk_test_e2e_webhook",
+      STRIPE_WEBHOOK_SECRET: "whsec_e2e_webhook",
       NEXT_PUBLIC_APP_URL: "http://localhost:3100",
       // F01 E2E 端点通用 Bearer（seed-notifications / email-worker-runs / email-inbox DELETE）
       E2E_BEARER_TOKEN: "e2e-bearer-token",

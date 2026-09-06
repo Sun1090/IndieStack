@@ -81,7 +81,7 @@
 52. F02 request-scoped mock store 方案（第一阶段完成：`createMockRequestStore` 与隔离测试）
 53. F03 file-backed E2E fixture 评估（完成：运行时暂不引入，采用 request-scoped store；离线快照需脱敏与临时目录隔离）
 54. F04 恢复 fullyParallel 的隔离实验（完成：显式开关实验 31/31 通过但有 dev server 并发噪声，默认仍串行）
-55. F05 webhook events E2E
+55. F05 webhook events E2E（完成：mock 表 webhook_events + Mock-only 查询/清理端点 + 签名缺失/无效 400、未知与 invoice 事件落库 skipped、重复 event id 幂等、Bearer 保护 4 类断言）
 56. F06 audit logs 详情 E2E
 57. F07 storage 上传失败/重试 E2E
 58. F08 通知 provider contract tests
