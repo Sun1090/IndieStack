@@ -79,7 +79,17 @@
       "project:create": "Create Project",
       "project:delete": "Delete Project",
       "billing:update": "Update Billing",
-      "settings:update": "Update Settings"
+      "settings:update": "Update Settings",
+      "profile:update": "Profile Update",
+      "settings:change": "Settings Change",
+      "project:deploy": "Deploy Project",
+      "api_key:create": "Create API Key",
+      "api_key:revoke": "Revoke API Key",
+      "auth:login": "User Login",
+      "auth:login_failed": "Login Failed",
+      "auth:oauth_login": "OAuth Login",
+      "auth:mfa_verified": "2FA Verified",
+      "auth:recovery_redeemed": "Recovery Code Used"
     }
   },
   "webhookLogs": {

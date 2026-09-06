@@ -80,13 +80,11 @@ export function AdminAuditLogsPage() {
     });
   }
 
-  /** 操作类型的中文标签 */
+  /** 操作类型的中文标签（DB 存点号动作 user.login → 翻译键冒号 user:login） */
   function actionLabel(action: string): string {
-    try {
-      return t(`auditLogs.actionLabels.${action}` as any);
-    } catch {
-      return action;
-    }
+    const key = `auditLogs.actionLabels.${action.replace(/\./g, ":")}`;
+    if (t.has(key)) return t(key);
+    return action;
   }
 
   /** 操作类型对应的 Badge 颜色 */
@@ -184,6 +182,7 @@ export function AdminAuditLogsPage() {
               {filteredLogs.map((log) => (
                 <div
                   key={log.id}
+                  data-testid="audit-log-row"
                   className="flex items-center justify-between rounded-lg border p-3 text-sm"
                 >
                   <div className="flex items-center gap-3">

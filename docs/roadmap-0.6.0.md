@@ -82,7 +82,7 @@
 53. F03 file-backed E2E fixture 评估（完成：运行时暂不引入，采用 request-scoped store；离线快照需脱敏与临时目录隔离）
 54. F04 恢复 fullyParallel 的隔离实验（完成：显式开关实验 31/31 通过但有 dev server 并发噪声，默认仍串行）
 55. F05 webhook events E2E（完成：mock 表 webhook_events + Mock-only 查询/清理端点 + 签名缺失/无效 400、未知与 invoice 事件落库 skipped、重复 event id 幂等、Bearer 保护 4 类断言）
-56. F06 audit logs 详情 E2E
+56. F06 audit logs 详情 E2E（完成：mock audit_logs 对齐真实 schema——entity_type/entity_id/metadata、bigint identity 自增、profile 默认 super_admin；audit 页面 action 徽标修复点号→冒号翻译键映射 （消除 MISSING_MESSAGE）+ 行 data-testid；E2E 覆盖详情字段渲染 / action 搜索与空态恢复 / Select 分组过滤 3 类断言；顺带修复 mock profiles 表 10 行重复 id（mock-user-001）导致的 React key 重复与关联错配）
 57. F07 storage 上传失败/重试 E2E
 58. F08 通知 provider contract tests
 59. F09 coverage branch 90% 评估

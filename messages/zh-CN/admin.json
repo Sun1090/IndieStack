@@ -79,7 +79,17 @@
       "project:create": "创建项目",
       "project:delete": "删除项目",
       "billing:update": "更新订阅",
-      "settings:update": "更新设置"
+      "settings:update": "更新设置",
+      "profile:update": "更新资料",
+      "settings:change": "更改设置",
+      "project:deploy": "部署项目",
+      "api_key:create": "创建 API 密钥",
+      "api_key:revoke": "吊销 API 密钥",
+      "auth:login": "登录成功",
+      "auth:login_failed": "登录失败",
+      "auth:oauth_login": "OAuth 登录",
+      "auth:mfa_verified": "两步验证通过",
+      "auth:recovery_redeemed": "使用恢复码"
     }
   },
   "webhookLogs": {
