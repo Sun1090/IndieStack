@@ -422,6 +422,15 @@
         "deployment": "Deploy",
         "security_alert": "Security"
       }
+    },
+    "push": {
+      "title": "Browser notifications",
+      "desc": "Receive real-time notifications in your browser.",
+      "enable": "Enable",
+      "enabled": "Enabled",
+      "failed": "Could not enable browser notifications.",
+      "unsupported": "This browser does not support push notifications.",
+      "unconfigured": "Push notifications are not configured for this deployment."
     }
   },
   "integrations": {
