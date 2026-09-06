@@ -277,6 +277,27 @@ describe("Mock user_sessions", () => {
   });
 });
 
+describe("Mock request-scoped worker/subscription state", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  it("隔离 email worker runs 与 marketing subscriptions 的读写", async () => {
+    const first = createMockSupabaseClient({ store: {} });
+    const second = createMockSupabaseClient({ store: {} });
+
+    await first.from("email_worker_runs").insert({ id: "run-first", status: "sent" });
+    await first
+      .from("marketing_subscriptions")
+      .insert({ id: "subscription-first", user_id: MOCK_USER_ID, status: "pending" });
+
+    expect((await first.from("email_worker_runs").select("*")).data).toHaveLength(1);
+    expect((await first.from("marketing_subscriptions").select("*")).data).toHaveLength(1);
+    expect((await second.from("email_worker_runs").select("*")).data).toHaveLength(0);
+    expect((await second.from("marketing_subscriptions").select("*")).data).toHaveLength(0);
+  });
+});
+
 describe("Mock MFA 状态机", () => {
   beforeEach(() => {
     resetMockCache();
@@ -403,6 +424,16 @@ describe("Mock MFA 状态机", () => {
       data: null,
       error: { message: "Factor not found" },
     });
+  });
+
+  it("request-scoped store 隔离不同 client 的 MFA 状态", async () => {
+    const first = createMockSupabaseClient({ store: {} });
+    const second = createMockSupabaseClient({ store: {} });
+
+    await first.auth.mfa.enroll({ factorType: "totp", friendlyName: "first" });
+
+    expect((await first.auth.mfa.listFactors()).data.totp).toHaveLength(1);
+    expect((await second.auth.mfa.listFactors()).data.totp).toHaveLength(0);
   });
 
   it("resetMockCache 清除跨 client 的 MFA 状态", async () => {
