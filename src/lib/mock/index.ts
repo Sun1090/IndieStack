@@ -34,19 +34,33 @@ export { createMockRequestStore, type MockRequestStore } from "./store";
 // NEXT_PUBLIC_MOCK_ENABLED=true 启用（运行内存隔离，无跨用户风险）。
 // =============================================================================
 const MOCK_GLOBAL_KEY = "__indiestackMockCache__";
-type MockGlobal = Record<string, unknown>;
+export type MockStore = Record<string, unknown>;
+type MockGlobal = MockStore;
 const MOCK_GLOBAL: MockGlobal =
   (globalThis as unknown as Record<string, MockGlobal>)[MOCK_GLOBAL_KEY] ??
   ((globalThis as unknown as Record<string, MockGlobal>)[MOCK_GLOBAL_KEY] = {});
 
-function mockCacheGet<T>(key: string): T | undefined {
-  return MOCK_GLOBAL[key] as T | undefined;
+function mockCacheGet<T>(key: string): T | undefined;
+function mockCacheGet<T>(store: MockStore, key: string): T | undefined;
+function mockCacheGet<T>(storeOrKey: MockStore | string, maybeKey?: string): T | undefined {
+  const store = typeof storeOrKey === "string" ? MOCK_GLOBAL : storeOrKey;
+  const key = typeof storeOrKey === "string" ? storeOrKey : maybeKey;
+  return key === undefined ? undefined : (store[key] as T | undefined);
 }
-function mockCacheSet<T>(key: string, value: T): void {
-  MOCK_GLOBAL[key] = value;
+function mockCacheSet<T>(key: string, value: T): void;
+function mockCacheSet<T>(store: MockStore, key: string, value: T): void;
+function mockCacheSet<T>(
+  storeOrKey: MockStore | string,
+  keyOrValue: string | T,
+  maybeValue?: T,
+): void {
+  const store = typeof storeOrKey === "string" ? MOCK_GLOBAL : storeOrKey;
+  const key = typeof storeOrKey === "string" ? storeOrKey : (keyOrValue as string);
+  const value = typeof storeOrKey === "string" ? (keyOrValue as T) : (maybeValue as T);
+  store[key] = value;
 }
-function mockCacheClear(): void {
-  for (const k of Object.keys(MOCK_GLOBAL)) delete MOCK_GLOBAL[k];
+function mockCacheClear(store: MockStore = MOCK_GLOBAL): void {
+  for (const k of Object.keys(store)) delete store[k];
 }
 
 export { generateMockAdminStats };
@@ -60,8 +74,8 @@ export { generateMockAdminStats };
  * 模拟 Supabase 的 auth 和 query 接口
  * 所有数据来自 @faker-js/faker 生成的随机数据
  */
-export function createMockSupabaseClient() {
-  const mock = new MockSupabaseClient();
+export function createMockSupabaseClient(options: { store?: MockStore } = {}) {
+  const mock = new MockSupabaseClient(options.store);
   return mock;
 }
 
@@ -266,51 +280,51 @@ function getMockApiKeys() {
   return fresh;
 }
 
-function getMockWorkerRuns(): Record<string, unknown>[] {
-  const cached = mockCacheGet<Record<string, unknown>[]>("WorkerRuns");
+function getMockWorkerRuns(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>(store, "WorkerRuns");
   if (cached) {
     _mockWorkerRuns = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
   _mockWorkerRuns = fresh;
-  mockCacheSet("WorkerRuns", fresh);
+  mockCacheSet(store, "WorkerRuns", fresh);
   return fresh;
 }
 
-function getMockMarketingSubscriptions(): Record<string, unknown>[] {
-  const cached = mockCacheGet<Record<string, unknown>[]>("MarketingSubscriptions");
+function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>(store, "MarketingSubscriptions");
   if (cached) {
     _mockMarketingSubscriptions = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
   _mockMarketingSubscriptions = fresh;
-  mockCacheSet("MarketingSubscriptions", fresh);
+  mockCacheSet(store, "MarketingSubscriptions", fresh);
   return fresh;
 }
 
-function getMockMfaChallenges(): MockMfaChallenge[] {
-  const cached = mockCacheGet<MockMfaChallenge[]>("MfaChallenges");
+function getMockMfaChallenges(store: MockStore = MOCK_GLOBAL): MockMfaChallenge[] {
+  const cached = mockCacheGet<MockMfaChallenge[]>(store, "MfaChallenges");
   if (cached) {
     _mockMfaChallenges = cached;
     return cached;
   }
   const fresh: MockMfaChallenge[] = [];
   _mockMfaChallenges = fresh;
-  mockCacheSet("MfaChallenges", fresh);
+  mockCacheSet(store, "MfaChallenges", fresh);
   return fresh;
 }
 
-function getMockMfaFactors(): MockMfaFactor[] {
-  const cached = mockCacheGet<MockMfaFactor[]>("MfaFactors");
+function getMockMfaFactors(store: MockStore = MOCK_GLOBAL): MockMfaFactor[] {
+  const cached = mockCacheGet<MockMfaFactor[]>(store, "MfaFactors");
   if (cached) {
     _mockMfaFactors = cached;
     return cached;
   }
   const fresh: MockMfaFactor[] = [];
   _mockMfaFactors = fresh;
-  mockCacheSet("MfaFactors", fresh);
+  mockCacheSet(store, "MfaFactors", fresh);
   return fresh;
 }
 
@@ -333,6 +347,7 @@ export function getMockContactMessages() {
 class MockQueryBuilder {
   private table: string;
   private columns: string;
+  private store: MockStore;
   private filters: Record<string, unknown> = {};
   private limitCount: number | null = null;
   private orderColumn: string | null = null;
@@ -346,9 +361,10 @@ class MockQueryBuilder {
   private writeMode: "insert" | "update" | "delete" | null = null;
   private writeValue: unknown = null;
 
-  constructor(table: string, columns = "*") {
+  constructor(table: string, columns = "*", store: MockStore = MOCK_GLOBAL) {
     this.table = table;
     this.columns = columns;
+    this.store = store;
   }
 
   /** 过滤条件 eq */
@@ -632,9 +648,11 @@ class MockQueryBuilder {
       case "subscriptions":
         return { id: "mock-sub-001", team_id: MOCK_TEAM_ID, plan: "pro", status: "active" };
       case "email_worker_runs":
-        return this.applyFiltersAndPagination((getMockWorkerRuns() ?? []) as unknown[]);
+        return this.applyFiltersAndPagination((getMockWorkerRuns(this.store) ?? []) as unknown[]);
       case "marketing_subscriptions":
-        return this.applyFiltersAndPagination((getMockMarketingSubscriptions() ?? []) as unknown[]);
+        return this.applyFiltersAndPagination(
+          (getMockMarketingSubscriptions(this.store) ?? []) as unknown[],
+        );
       case "contact_messages":
         return this.applyFiltersAndPagination((getMockContactMessages() ?? []) as unknown[]);
       default:
@@ -757,9 +775,9 @@ class MockQueryBuilder {
       case "user_sessions":
         return getMockUserSessions();
       case "email_worker_runs":
-        return getMockWorkerRuns();
+        return getMockWorkerRuns(this.store);
       case "marketing_subscriptions":
-        return getMockMarketingSubscriptions();
+        return getMockMarketingSubscriptions(this.store);
       case "contact_messages":
         return getMockContactMessages();
       default:
@@ -961,6 +979,8 @@ class MockQueryBuilder {
  * 实现 createBrowserClient / createServerClient 的核心接口
  */
 export class MockSupabaseClient {
+  constructor(private readonly store: MockStore = MOCK_GLOBAL) {}
+
   auth = {
     getUser: async () => {
       const user = getMockUser();
@@ -1000,8 +1020,8 @@ export class MockSupabaseClient {
           typeof params === "object" && params !== null && "friendlyName" in params
             ? String((params as { friendlyName?: unknown }).friendlyName ?? "")
             : "";
-        const id = `mock-factor-${Date.now()}-${getMockMfaFactors().length + 1}`;
-        getMockMfaFactors().push({
+        const id = `mock-factor-${Date.now()}-${getMockMfaFactors(this.store).length + 1}`;
+        getMockMfaFactors(this.store).push({
           id,
           type: "totp",
           status: "unverified",
@@ -1018,7 +1038,7 @@ export class MockSupabaseClient {
           typeof params === "object" && params !== null && "factorId" in params
             ? String((params as { factorId?: unknown }).factorId ?? "")
             : "";
-        const factor = getMockMfaFactors().find((item) => item.id === factorId);
+        const factor = getMockMfaFactors(this.store).find((item) => item.id === factorId);
         if (!factor) return { error: { message: "Factor not found" } };
         const code =
           typeof params === "object" && params !== null && "code" in params
@@ -1033,14 +1053,14 @@ export class MockSupabaseClient {
           typeof params === "object" && params !== null && "factorId" in params
             ? String((params as { factorId?: unknown }).factorId ?? "")
             : "";
-        const factor = getMockMfaFactors().find((item) => item.id === factorId);
+        const factor = getMockMfaFactors(this.store).find((item) => item.id === factorId);
         if (!factor) return { data: null, error: { message: "Factor not found" } };
         if (factor.status !== "verified") {
           return { data: null, error: { message: "Factor is not verified" } };
         }
-        const id = `mock-challenge-${Date.now()}-${getMockMfaChallenges().length + 1}`;
+        const id = `mock-challenge-${Date.now()}-${getMockMfaChallenges(this.store).length + 1}`;
         const expiresAt = Date.now() + 5 * 60 * 1000;
-        getMockMfaChallenges().push({
+        getMockMfaChallenges(this.store).push({
           id,
           factor_id: factorId,
           expires_at: expiresAt,
@@ -1057,10 +1077,10 @@ export class MockSupabaseClient {
         const factorId = read("factorId");
         const challengeId = read("challengeId");
         const code = read("code");
-        const factor = getMockMfaFactors().find((item) => item.id === factorId);
+        const factor = getMockMfaFactors(this.store).find((item) => item.id === factorId);
         if (!factor || factor.status !== "verified")
           return { error: { message: "Factor not found" } };
-        const challenges = getMockMfaChallenges();
+        const challenges = getMockMfaChallenges(this.store);
         const challengeIndex = challenges.findIndex(
           (item) => item.id === challengeId && item.factor_id === factorId,
         );
@@ -1090,7 +1110,7 @@ export class MockSupabaseClient {
         return { error: null };
       },
       listFactors: async () => {
-        const totp = getMockMfaFactors().map((factor) => ({ ...factor }));
+        const totp = getMockMfaFactors(this.store).map((factor) => ({ ...factor }));
         return { data: { all: totp, totp }, error: null };
       },
       unenroll: async (params: unknown) => {
@@ -1098,7 +1118,7 @@ export class MockSupabaseClient {
           typeof params === "object" && params !== null && "factorId" in params
             ? String((params as { factorId?: unknown }).factorId ?? "")
             : "";
-        const factors = getMockMfaFactors();
+        const factors = getMockMfaFactors(this.store);
         const index = factors.findIndex((factor) => factor.id === factorId);
         if (index === -1) return { data: null, error: { message: "Factor not found" } };
         factors.splice(index, 1);
@@ -1119,7 +1139,7 @@ export class MockSupabaseClient {
   };
 
   from(table: string) {
-    return new MockQueryBuilder(table);
+    return new MockQueryBuilder(table, "*", this.store);
   }
 
   channel() {
