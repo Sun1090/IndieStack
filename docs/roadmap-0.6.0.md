@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A03 已完成（provider contract、服务端中转 action、上传白名单）；其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A05 已完成（provider contract、服务端中转 action、上传白名单）；其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -16,7 +16,7 @@
 2. A02 服务端中转上传 action（完成：`uploadAvatar`/`uploadProjectCover` 统一经 Server Actions 鉴权、读取、存储写入、数据库回写和缓存失效；覆盖未登录、项目不存在、团队角色、存储失败与回写失败）
 3. A03 MIME/扩展名/文件大小白名单（完成：仅允许 PNG/JPEG/WebP；扩展名由 MIME 映射生成；头像限制 2MB；覆盖空文件、PDF、超限和路径穿越输入）
 4. A04 对象 key 命名与租户边界
-5. A05 签名 URL 生成与过期校验
+5. A05 签名 URL 生成与过期校验（完成：Supabase/OSS 统一签名 URL contract；过期时间限制 1 秒至 7 天，拒绝小数、零值、负值和超限参数）
 6. A06 OSS 配置完整性诊断
 7. A07 Supabase Storage fallback
 8. A08 头像上传接入 profile

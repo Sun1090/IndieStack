@@ -17,6 +17,14 @@ export const ALLOWED_IMAGE_TYPES: Record<string, string> = {
 
 /** 头像上限 2MB */
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+export const SIGNED_URL_MIN_SECONDS = 1;
+export const SIGNED_URL_MAX_SECONDS = 7 * 24 * 60 * 60;
+
+function validateSignedUrlExpiry(expiresInSeconds: number): void {
+  if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < SIGNED_URL_MIN_SECONDS || expiresInSeconds > SIGNED_URL_MAX_SECONDS) {
+    throw new Error(`invalid signed URL expiry: ${expiresInSeconds}`);
+  }
+}
 
 export interface StorageCapabilities {
   put: true;
@@ -66,6 +74,7 @@ function supabaseDriver(): StorageDriver {
       return data.publicUrl;
     },
     async signedUrl(key, expiresInSeconds) {
+      validateSignedUrlExpiry(expiresInSeconds);
       const { data, error } = await createAdminClient().storage.from("avatars").createSignedUrl(key, expiresInSeconds);
       if (error) throw new Error(`storage signed URL: ${error.message}`);
       return data.signedUrl;
@@ -93,6 +102,7 @@ function ossDriver(): StorageDriver {
       return (result as { url: string }).url;
     },
     async signedUrl(key, expiresInSeconds) {
+      validateSignedUrlExpiry(expiresInSeconds);
       return store.signatureUrl(key, { expires: expiresInSeconds });
     },
     async remove(key) {

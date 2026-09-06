@@ -23,6 +23,7 @@ import {
   isOssConfigured,
   ALLOWED_IMAGE_TYPES,
   AVATAR_MAX_BYTES,
+  SIGNED_URL_MAX_SECONDS,
 } from "./index";
 
 const OSS_ENV = {
@@ -83,6 +84,14 @@ describe("getStorageDriver()", () => {
     await driver.remove("k");
     expect(createSignedUrl).toHaveBeenCalledWith("k", 300);
     expect(remove).toHaveBeenCalledWith(["k"]);
+  });
+
+  it("签名 URL 过期时间限制在 1 秒至 7 天", async () => {
+    createAdminClientMock.mockReturnValue({ storage: { from: vi.fn(() => ({ createSignedUrl: vi.fn(async () => ({ data: { signedUrl: "https://signed" }, error: null })) })) } });
+    const driver = getStorageDriver();
+    await expect(driver.signedUrl("k", 0)).rejects.toThrow("invalid signed URL expiry");
+    await expect(driver.signedUrl("k", SIGNED_URL_MAX_SECONDS + 1)).rejects.toThrow("invalid signed URL expiry");
+    await expect(driver.signedUrl("k", 60.5)).rejects.toThrow("invalid signed URL expiry");
   });
 
   it("Supabase 签名 URL与删除失败会保留错误上下文", async () => {
