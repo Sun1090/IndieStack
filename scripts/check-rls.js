@@ -8,16 +8,36 @@ const fs = require("fs");
 const path = require("path");
 
 const dir = path.join(__dirname, "..", "supabase", "migrations");
-const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+const files = fs
+  .readdirSync(dir)
+  .filter((f) => f.endsWith(".sql"))
+  .sort();
 
+/** 最终数据库状态：记录 public 表、RLS 开关和策略。 */
+const tables = new Set();
+const rlsEnabled = new Set();
 /** 最终策略状态: key = `${table}|${name}` → { cmd, sql } */
 const policies = new Map();
 
 for (const file of files) {
   const sql = fs.readFileSync(path.join(dir, file), "utf8");
 
+  for (const table of sql.matchAll(
+    /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([\w-]+)/gi,
+  )) {
+    tables.add(table[1]);
+  }
+
+  for (const table of sql.matchAll(
+    /alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([\w-]+)[^;]*?enable\s+row\s+level\s+security/gi,
+  )) {
+    rlsEnabled.add(table[1]);
+  }
+
   // 处理 drop（含 if exists），从最终状态移除
-  for (const m of sql.matchAll(/drop\s+policy\s+(?:if\s+exists\s+)?"?([\w-]+)"?\s+on\s+([\w.]+)/gi)) {
+  for (const m of sql.matchAll(
+    /drop\s+policy\s+(?:if\s+exists\s+)?"?([\w-]+)"?\s+on\s+([\w.]+)/gi,
+  )) {
     policies.delete(`${m[2].replace(/^public\./, "")}|${m[1]}`);
   }
 
@@ -26,12 +46,19 @@ for (const file of files) {
     const name = p[1];
     const table = p[2].replace(/^public\./, "");
     const stmt = p[0];
-    const cmd = (stmt.match(/\bFOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\b/i) ?? [])[1]?.toUpperCase() ?? "ALL";
+    const cmd =
+      (stmt.match(/\bFOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\b/i) ?? [])[1]?.toUpperCase() ?? "ALL";
     policies.set(`${table}|${name}`, { cmd, stmt });
   }
 }
 
 const issues = [];
+for (const table of tables) {
+  if (!rlsEnabled.has(table)) {
+    issues.push(`表 ${table} 已创建但最终态未启用 RLS`);
+  }
+}
+
 for (const [key, { cmd, stmt }] of policies) {
   const [table, name] = key.split("|");
   if ((cmd === "UPDATE" || cmd === "INSERT" || cmd === "ALL") && !/\bWITH\s+CHECK\b/i.test(stmt)) {
@@ -48,4 +75,6 @@ if (issues.length) {
   process.exit(1);
 }
 
-console.log(`✅ RLS 迁移检查通过：${files.length} 个迁移，${policies.size} 条最终策略均符合规范`);
+console.log(
+  `✅ RLS 迁移检查通过：${files.length} 个迁移，${tables.size} 张 public 表均启用 RLS，${policies.size} 条最终策略均符合规范`,
+);
