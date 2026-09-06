@@ -116,6 +116,43 @@ describe("requirePermission()", () => {
   });
 });
 
+describe("认证边界回归", () => {
+  it("认证用户没有 email 时不泄露异常并返回 undefined", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ user: { id: "u1", email: null } }));
+    await expect(safelyRequireAuth()).resolves.toEqual({
+      success: true,
+      data: { id: "u1", email: undefined, role: "member" },
+    });
+  });
+
+  it("profile 查询异常时安全守卫拒绝请求", async () => {
+    const supabase = mockSupabase();
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockRejectedValue(new Error("profile unavailable")),
+        }),
+      }),
+    });
+    createClientMock.mockResolvedValue(supabase);
+
+    const result = await safelyRequireAuth();
+    expect(result).toEqual({ success: false, error: UNAUTHORIZED });
+  });
+
+  it("认证用户的非法 profile role 按最低权限 member 处理", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ profileRole: "superuser" }));
+    await expect(safelyRequirePermission("project:read")).resolves.toEqual({
+      success: true,
+      data: { id: "u1", email: "a@b.com", role: "member" },
+    });
+    await expect(safelyRequirePermission("team:invite")).resolves.toEqual({
+      success: false,
+      error: FORBIDDEN,
+    });
+  });
+});
+
 describe("safelyRequireAuth()", () => {
   it("未登录返回 UNAUTHORIZED 结果", async () => {
     createClientMock.mockResolvedValue(mockSupabase({ user: null }));
@@ -149,7 +186,7 @@ describe("safelyRequirePermission()", () => {
 
   it("缺少权限返回 FORBIDDEN", async () => {
     createClientMock.mockResolvedValue(mockSupabase({ profileRole: "viewer" }));
-    const result = await safelyRequirePermission("user:write");
+    const result = await safelyRequirePermission("team:invite");
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error).toBe(FORBIDDEN);
   });
