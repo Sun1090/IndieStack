@@ -4,7 +4,12 @@
  * （列表、创建追加、吊销更新）
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createMockSupabaseClient, resetMockCache } from "./mock";
+import {
+  createMockSupabaseClient,
+  resetMockCache,
+  getMockUploadFailNext,
+  setMockUploadFailNext,
+} from "./mock";
 import { MOCK_USER_ID } from "./mock/data";
 
 type MockRow = Record<string, unknown>;
@@ -443,5 +448,54 @@ describe("Mock MFA 状态机", () => {
 
     resetMockCache();
     expect((await createMockSupabaseClient().auth.mfa.listFactors()).data.totp).toHaveLength(0);
+  });
+});
+
+describe("Mock storage（F07 上传失败/重试）", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  it("upload 成功返回 path，getPublicUrl 生成可公开访问地址", async () => {
+    const client = createMockSupabaseClient();
+    const bucket = client.storage.from("avatars");
+
+    const { data, error } = await bucket.upload("avatars/u1/1.png", Buffer.from("x"), {
+      contentType: "image/png",
+      upsert: true,
+    });
+    expect(error).toBeNull();
+    expect(data).toMatchObject({ path: "avatars/u1/1.png" });
+
+    const { data: urlData } = bucket.getPublicUrl("avatars/u1/1.png");
+    expect(urlData.publicUrl).toBe(
+      "https://mock.supabase.co/storage/v1/object/public/avatars/avatars/u1/1.png",
+    );
+  });
+
+  it("failNext 注入：前 N 次 upload 返回错误，随后恢复成功", async () => {
+    const client = createMockSupabaseClient();
+    setMockUploadFailNext(2);
+
+    for (let i = 0; i < 2; i += 1) {
+      const { error } = await client.storage.from("avatars").upload("k", Buffer.from("x"));
+      expect(error).not.toBeNull();
+    }
+    expect(getMockUploadFailNext()).toBe(0);
+
+    const { error } = await client.storage.from("avatars").upload("k", Buffer.from("x"));
+    expect(error).toBeNull();
+  });
+
+  it("failNext 只在所属 store 内生效（request-scoped 隔离）", async () => {
+    const isolatedStore: Record<string, unknown> = {};
+    const shared = createMockSupabaseClient();
+    createMockSupabaseClient({ store: isolatedStore });
+
+    setMockUploadFailNext(1, isolatedStore);
+
+    const { error } = await shared.storage.from("avatars").upload("k", Buffer.from("x"));
+    expect(error).toBeNull();
+    expect(getMockUploadFailNext(isolatedStore)).toBe(1);
   });
 });
