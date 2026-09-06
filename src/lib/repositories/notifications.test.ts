@@ -21,6 +21,7 @@ import {
   listUnsentEmailNotifications,
   markEmailSent,
   markEmailFailed,
+  listDeadLetterNotifications,
   countUnsentEmailNotifications,
   EMAIL_MAX_ATTEMPTS,
   NOTIFICATION_TYPES,
@@ -157,6 +158,23 @@ describe("listUnsentEmailNotifications()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(listUnsentEmailNotifications()).rejects.toThrow("db");
+  });
+});
+
+describe("listDeadLetterNotifications()", () => {
+  it("按重试上限查询死信并透传 limit", async () => {
+    const chain = chainMock({ data: [{ id: "dead-1" }] });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await expect(listDeadLetterNotifications(20)).resolves.toEqual([{ id: "dead-1" }]);
+    expect(chain.or).toHaveBeenCalledWith("metadata->>email_attempts.gte.3");
+    expect(chain.limit).toHaveBeenCalledWith(20);
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(listDeadLetterNotifications()).rejects.toThrow("db");
   });
 });
 
