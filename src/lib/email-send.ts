@@ -2,8 +2,16 @@
  * Resend 发送通道（从 cron 路由抽出，供 digest 与实时单发共用）
  * RESEND_API_KEY 缺失或接口非 2xx 时抛错，由调用方决定重试/死信/吞错。
  * RESEND_API_URL 可覆盖端点：E2E 用它指向本地捕获端点，验证请求体而无需真实出网。
+ *
+ * 发送契约（F08 provider contract tests 锁定，勿单边改动）：
+ *   POST {RESEND_API_URL ?? 默认端点}
+ *   headers: Content-Type: application/json; Authorization: Bearer {RESEND_API_KEY}
+ *   body: { from: RESEND_FROM ?? 默认, to: [input.to], subject, html }
+ *   非 2xx → 抛 `resend {status}: {detail}`（detail 来自响应体，读取失败仍保留状态码）
+ *   发送层不吞错、不重试：网络/HTTP 错误一律上抛，语义归调用方。
  */
-const DEFAULT_EMAIL_FROM = "IndieStack <onboarding@indiestack.dev>";
+export const DEFAULT_RESEND_ENDPOINT = "https://api.resend.com/emails";
+export const DEFAULT_EMAIL_FROM = "IndieStack <onboarding@indiestack.dev>";
 
 export async function sendResendEmail(input: {
   to: string;
@@ -12,7 +20,7 @@ export async function sendResendEmail(input: {
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("RESEND_API_KEY missing");
-  const endpoint = process.env.RESEND_API_URL ?? "https://api.resend.com/emails";
+  const endpoint = process.env.RESEND_API_URL ?? DEFAULT_RESEND_ENDPOINT;
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -27,7 +35,7 @@ export async function sendResendEmail(input: {
     }),
   });
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await response.text().catch(() => "");
     throw new Error(`resend ${response.status}: ${detail}`);
   }
 }

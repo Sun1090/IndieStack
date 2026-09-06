@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-06）**：C01–C10 已完成；F01–F07 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E）。其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-06）**：C01–C10 已完成；F01–F08 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests）。其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -84,7 +84,7 @@
 55. F05 webhook events E2E（完成：mock 表 webhook_events + Mock-only 查询/清理端点 + 签名缺失/无效 400、未知与 invoice 事件落库 skipped、重复 event id 幂等、Bearer 保护 4 类断言）
 56. F06 audit logs 详情 E2E（完成：mock audit_logs 对齐真实 schema——entity_type/entity_id/metadata、bigint identity 自增、profile 默认 super_admin；audit 页面 action 徽标修复点号→冒号翻译键映射 （消除 MISSING_MESSAGE）+ 行 data-testid；E2E 覆盖详情字段渲染 / action 搜索与空态恢复 / Select 分组过滤 3 类断言；顺带修复 mock profiles 表 10 行重复 id（mock-user-001）导致的 React key 重复与关联错配）
 57. F07 storage 上传失败/重试 E2E（完成：mock storage 层与 supabase-js 对齐——from().upload/getPublicUrl + failNext 注入计数；Mock-only /api/e2e/mock-upload 端点；E2E 覆盖空文件 fileRequired / PDF fileTypeUnsupported / 超 2MB fileTooLarge / 注入失败 uploadFailed→重试成功写回 avatar_url 4 类断言；修复 bodySizeLimit=2mb 与 AVATAR_MAX_BYTES 相等导致 >2MB 请求先触达框架上限、fileTooLarge 分支不可达的缺陷（抬至 3mb 留出 multipart 开销余量））
-58. F08 通知 provider contract tests
+58. F08 通知 provider contract tests（完成：Resend 发送通道契约测试——`email-send.ts` 导出 `DEFAULT_RESEND_ENDPOINT/DEFAULT_EMAIL_FROM` 单一事实源并注释固化契约；新增 `email-send.test.ts` 10 用例锁定 默认端点与 `RESEND_API_URL` 覆盖、`Authorization: Bearer` + JSON 头、body 形状（from 默认/`RESEND_FROM` 覆盖、to 恒为数组）、缺 key 抛错且不发请求、2xx 静默 resolve、非 2xx 抛 `resend {status}: {detail}`、响应体读取失败仍保留状态码、网络错误原样上抛且 fetch 仅一次（不吞错不重试，重试/死信归调用方）；错误映射小加固（text() 失败 detail 置空）；与 E2E email-inbox/mail-flow 双端同构断言防漂移，为 B06 Web Push provider 抽象立契约样板）
 59. F09 coverage branch 90% 评估
 60. F10 CI artifact/coverage 告警清理
 
