@@ -59,6 +59,52 @@ describe("logAuthEvent()", () => {
     expect(appendAuditLogMock).not.toHaveBeenCalled();
   });
 
+  it("保留普通 metadata 并脱敏顶层敏感字段", async () => {
+    mockUser({ id: "u1" });
+    await logAuthEvent("auth.login", {
+      email: "a@b.com",
+      method: "password",
+      password: "hunter2",
+      access_token: "access-secret",
+      verification_code: "123456",
+    });
+
+    expect(appendAuditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          email: "a@b.com",
+          method: "password",
+          password: "[REDACTED]",
+          access_token: "[REDACTED]",
+          verification_code: "[REDACTED]",
+        },
+      }),
+    );
+  });
+
+  it("递归脱敏嵌套对象、数组并处理循环引用", async () => {
+    mockUser({ id: "u1" });
+    const nested: Record<string, unknown> = {
+      factorId: "factor-1",
+      secret: "nested-secret",
+      attempts: [{ code: "654321", result: "failed" }],
+    };
+    nested.self = nested;
+
+    await logAuthEvent("auth.mfa_verified", nested);
+
+    expect(appendAuditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          factorId: "factor-1",
+          secret: "[REDACTED]",
+          attempts: [{ code: "[REDACTED]", result: "failed" }],
+          self: "[REDACTED]",
+        },
+      }),
+    );
+  });
+
   it("仓库异常吞错仍返回 ok（不阻断登录）", async () => {
     mockUser({ id: "u1" });
     appendAuditLogMock.mockRejectedValue(new Error("boom"));

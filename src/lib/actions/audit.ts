@@ -8,6 +8,45 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
 
+const REDACTED_VALUE = "[REDACTED]";
+
+/**
+ * Removes credentials and other authentication secrets before audit metadata is
+ * handed to the repository. Audit records are durable, so this boundary must
+ * remain safe even when a future caller accidentally passes a sensitive field.
+ */
+function isSensitiveMetadataKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  return /(?:^|_)(?:password|passcode|token|secret|code|authorization|cookie)(?:$|_)/.test(
+    normalized,
+  );
+}
+
+function redactAuditMetadataValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactAuditMetadataValue(item, seen));
+  }
+
+  if (value && typeof value === "object") {
+    if (seen.has(value)) return REDACTED_VALUE;
+    seen.add(value);
+
+    const redacted: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+      redacted[key] = isSensitiveMetadataKey(key)
+        ? REDACTED_VALUE
+        : redactAuditMetadataValue(nestedValue, seen);
+    }
+    return redacted;
+  }
+
+  return value;
+}
+
+function redactAuthAuditMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  return redactAuditMetadataValue(metadata) as Record<string, unknown>;
+}
+
 export type AuthAuditAction =
   | "auth.login"
   | "auth.login_failed"
@@ -36,7 +75,7 @@ export async function logAuthEvent(
       action,
       entityType: "auth",
       entityId: user?.id ?? null,
-      metadata,
+      metadata: redactAuthAuditMetadata(metadata),
     });
   } catch (error) {
     console.error("[logAuthEvent] 审计写入失败:", error);
