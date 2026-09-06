@@ -97,6 +97,7 @@ let _mockApiKeys: ReturnType<typeof generateMockApiKeys> | null = null;
 let _mockWorkerRuns: Record<string, unknown>[] | null = null;
 let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
 let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null = null;
+let _mockWebhookEvents: Record<string, unknown>[] | null = null;
 type MockMfaChallenge = {
   id: string;
   factor_id: string;
@@ -131,6 +132,7 @@ export function resetMockCache() {
   _mockWorkerRuns = null;
   _mockMarketingSubscriptions = null;
   _mockContactMessages = null;
+  _mockWebhookEvents = null;
   _mockMfaFactors = null;
   _mockMfaChallenges = null;
   mockCacheClear();
@@ -289,6 +291,18 @@ function getMockWorkerRuns(store: MockStore = MOCK_GLOBAL): Record<string, unkno
   const fresh: Record<string, unknown>[] = [];
   _mockWorkerRuns = fresh;
   mockCacheSet(store, "WorkerRuns", fresh);
+  return fresh;
+}
+
+function getMockWebhookEvents(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>(store, "WebhookEvents");
+  if (cached) {
+    _mockWebhookEvents = cached;
+    return cached;
+  }
+  const fresh: Record<string, unknown>[] = [];
+  _mockWebhookEvents = fresh;
+  mockCacheSet(store, "WebhookEvents", fresh);
   return fresh;
 }
 
@@ -655,6 +669,8 @@ class MockQueryBuilder {
         );
       case "contact_messages":
         return this.applyFiltersAndPagination((getMockContactMessages() ?? []) as unknown[]);
+      case "webhook_events":
+        return this.applyFiltersAndPagination(getMockWebhookEvents(this.store));
       default:
         return [];
     }
@@ -780,6 +796,8 @@ class MockQueryBuilder {
         return getMockMarketingSubscriptions(this.store);
       case "contact_messages":
         return getMockContactMessages();
+      case "webhook_events":
+        return getMockWebhookEvents(this.store);
       default:
         return null;
     }
