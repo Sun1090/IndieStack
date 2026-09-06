@@ -365,6 +365,22 @@ export function getMockContactMessages() {
   return fresh;
 }
 
+
+/**
+ * E2E 注入：让 mock storage 连续失败 N 次（上传失败/重试场景）
+ * 写入共享缓存（与路由/action 同一 globalThis store），供 uploadAvatar 等动作读取。
+ */
+const MOCK_UPLOAD_FAIL_NEXT_KEY = "UploadFailNext";
+
+export function getMockUploadFailNext(store: MockStore = MOCK_GLOBAL): number {
+  const value = mockCacheGet<number>(store, MOCK_UPLOAD_FAIL_NEXT_KEY);
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+export function setMockUploadFailNext(count: number, store: MockStore = MOCK_GLOBAL): void {
+  mockCacheSet(store, MOCK_UPLOAD_FAIL_NEXT_KEY, Math.max(0, Math.floor(count)));
+}
+
 /**
  * Mock 查询构建器
  * 模拟 Supabase PostgREST 查询链
@@ -1171,6 +1187,34 @@ export class MockSupabaseClient {
         return { data: { user: getMockUser() }, error: null };
       },
     },
+  };
+
+
+  // 对象存储（v0.6.0 F07）：镜像 supabase-js storage API（upload/getPublicUrl），
+  // 供 E2E/本地开发验证上传动作（成功与注入失败路径），不依赖真实 bucket。
+  storage = {
+    from: (bucket: string) => ({
+      upload: async (
+        path: string,
+        _body: unknown,
+        _options?: { contentType?: string; upsert?: boolean },
+      ) => {
+        const remaining = getMockUploadFailNext(this.store);
+        if (remaining > 0) {
+          setMockUploadFailNext(remaining - 1, this.store);
+          return {
+            data: null,
+            error: { message: "Mock storage unavailable (E2E injection)" },
+          };
+        }
+        return { data: { path, id: `${bucket}/${path}` }, error: null };
+      },
+      getPublicUrl: (path: string) => ({
+        data: {
+          publicUrl: `https://mock.supabase.co/storage/v1/object/public/${bucket}/${path}`,
+        },
+      }),
+    }),
   };
 
   from(table: string) {

@@ -47,7 +47,10 @@ const nextConfig: NextConfig = {
 
   experimental: {
     serverActions: {
-      bodySizeLimit: "2mb",
+      // 必须大于 AVATAR_MAX_BYTES（2MB）+ multipart 封装开销：
+      // 否则文件 >2MB 时请求体先触达框架上限（500/413），
+      // action 内的 fileTooLarge 友好校验永远不可达（v0.6.0 F07 E2E 暴露）。
+      bodySizeLimit: "3mb",
     },
   },
 
