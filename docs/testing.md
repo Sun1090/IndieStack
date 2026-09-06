@@ -15,13 +15,13 @@
 
 ## 命令
 
-| 命令 | 说明 |
-|------|------|
-| `pnpm test` | 全部单元+组件测试 |
-| `pnpm test:coverage` | 含覆盖率报告（核心逻辑门禁 ≥90%） |
-| `pnpm test:e2e` | Playwright 冒烟（自动起 Mock dev server） |
-| `pnpm verify` | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁 |
-| `pnpm verify:all` | 上述全部校验聚合入口 |
+| 命令                 | 说明                                                             |
+| -------------------- | ---------------------------------------------------------------- |
+| `pnpm test`          | 全部单元+组件测试                                                |
+| `pnpm test:coverage` | 含覆盖率报告（核心逻辑门禁 ≥90%）                                |
+| `pnpm test:e2e`      | Playwright 冒烟（自动起 Mock dev server）                        |
+| `pnpm verify`        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁 |
+| `pnpm verify:all`    | 上述全部校验聚合入口                                             |
 
 ## 双项目结构
 
@@ -52,3 +52,15 @@ statements/functions/lines ≥ 90%，branches ≥ 78%。CI 强制。
 
 push/PR 触发八道关卡：Lint & Type Check（含 i18n/RLS 校验）· Build · E2E · Build Docs · CodeQL · gitleaks。
 任何一道失败即阻塞合并。
+
+## Mock fixture 隔离策略（F02/F03）
+
+默认 E2E 不使用 file-backed fixture。Playwright 的浏览器测试与 Next.js dev server 可能跨 worker、跨模块 chunk 运行；把可变 fixture 写入仓库文件会带来并发覆盖、残留状态、工作区污染和 CI artifact 泄露风险，也无法保证多个 server worker 看到同一份原子状态。
+
+推荐按以下优先级选择状态容器：
+
+1. **request-scoped store**：需要并行请求彼此隔离时，使用 `createMockRequestStore()` 创建 scope，并把它注入 mock adapter/client。
+2. **globalThis mock cache**：仅用于现有 dev server 的跨 chunk 闭环；测试必须通过受保护的 reset endpoint 或 `resetMockCache()` 清理。
+3. **file-backed fixture（仅离线快照）**：只允许用于只读、脱敏的 fixture 生成/调试，不作为运行时数据库，不从用户输入写入，不提交包含 token、cookie、邮件正文或个人数据的文件。
+
+F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped store 解决隔离问题且不增加 IO/锁语义。若未来需要跨进程复现，必须单独设计临时目录、原子 rename、worker 唯一命名、TTL 清理和 CI artifact 脱敏校验。

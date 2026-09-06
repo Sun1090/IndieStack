@@ -79,7 +79,7 @@
 
 51. F01 Mock MFA 状态隔离（本轮优先）
 52. F02 request-scoped mock store 方案（第一阶段完成：`createMockRequestStore` 与隔离测试）
-53. F03 file-backed E2E fixture 评估
+53. F03 file-backed E2E fixture 评估（完成：运行时暂不引入，采用 request-scoped store；离线快照需脱敏与临时目录隔离）
 54. F04 恢复 fullyParallel 的隔离实验
 55. F05 webhook events E2E
 56. F06 audit logs 详情 E2E
