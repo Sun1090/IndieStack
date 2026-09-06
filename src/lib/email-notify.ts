@@ -64,6 +64,7 @@ export async function notifyUser(input: NewNotification): Promise<void> {
 
     const notification: Notification = {
       id: notificationId ?? "",
+      idempotency_key: input.idempotencyKey ?? null,
       user_id: input.userId,
       type: input.type,
       title: input.title,

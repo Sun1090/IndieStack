@@ -122,6 +122,7 @@ export type Database = {
           created_at: string
           email_sent: boolean
           id: string
+          idempotency_key: string | null
           is_read: boolean
           link: string | null
           metadata: Json | null
@@ -134,6 +135,7 @@ export type Database = {
           created_at?: string
           email_sent?: boolean
           id?: string
+          idempotency_key?: string | null
           is_read?: boolean
           link?: string | null
           metadata?: Json | null
@@ -146,6 +148,7 @@ export type Database = {
           created_at?: string
           email_sent?: boolean
           id?: string
+          idempotency_key?: string | null
           is_read?: boolean
           link?: string | null
           metadata?: Json | null
