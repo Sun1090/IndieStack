@@ -13,7 +13,13 @@ const { createClientMock, revalidatePathMock, putMock } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 vi.mock("@/lib/storage", () => ({
-  getStorageDriver: () => ({ put: putMock }),
+  getStorageDriver: () => ({
+    provider: "supabase",
+    capabilities: { put: true, publicUrl: true, signedUrl: true, remove: true },
+    put: putMock,
+    signedUrl: vi.fn(),
+    remove: vi.fn(),
+  }),
   buildObjectKey: vi.fn(() => "avatars/u1/1-abc.png"),
   ALLOWED_IMAGE_TYPES: { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" },
   AVATAR_MAX_BYTES: 2 * 1024 * 1024,

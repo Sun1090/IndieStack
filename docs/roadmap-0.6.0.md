@@ -6,13 +6,13 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01 已完成（OSS provider contract 与能力矩阵）；其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
 ### A. 对象存储与上传（A01–A10）
 
-1. A01 OSS provider 接口与能力矩阵
+1. A01 OSS provider 接口与能力矩阵（完成：统一 `StorageDriver` contract，暴露 provider/capabilities，并覆盖 Supabase signed URL/remove 能力）
 2. A02 服务端中转上传 action
 3. A03 MIME/扩展名/文件大小白名单
 4. A04 对象 key 命名与租户边界
