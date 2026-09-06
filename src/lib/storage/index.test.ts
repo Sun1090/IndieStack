@@ -8,6 +8,14 @@ const { createAdminClientMock } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
 }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
+const { ossStoreMock } = vi.hoisted(() => ({
+  ossStoreMock: {
+    put: vi.fn(async () => ({ url: "https://oss.example/k" })),
+    signatureUrl: vi.fn(() => "https://oss.example/signed"),
+    delete: vi.fn(async () => ({})),
+  },
+}));
+vi.mock("ali-oss", () => ({ default: class MockOSS { put = ossStoreMock.put; signatureUrl = ossStoreMock.signatureUrl; delete = ossStoreMock.delete; } }));
 
 import {
   getStorageDriver,
@@ -51,7 +59,7 @@ describe("getStorageDriver()", () => {
     const upload = vi.fn(async () => ({ error: null }));
     const getPublicUrl = vi.fn(() => ({ data: { publicUrl: "https://cdn.example/m1.png" } }));
     createAdminClientMock.mockReturnValue({
-      storage: { from: vi.fn(() => ({ upload, getPublicUrl })) },
+      storage: { from: vi.fn(() => ({ upload, getPublicUrl, createSignedUrl: vi.fn(), remove: vi.fn() })) },
     });
 
     const driver = getStorageDriver();
@@ -62,6 +70,28 @@ describe("getStorageDriver()", () => {
       expect.any(Buffer),
       expect.objectContaining({ contentType: "image/png" }),
     );
+  });
+
+  it("暴露 provider 能力并支持签名 URL与删除", async () => {
+    const createSignedUrl = vi.fn(async () => ({ data: { signedUrl: "https://signed.example" }, error: null }));
+    const remove = vi.fn(async () => ({ error: null }));
+    createAdminClientMock.mockReturnValue({ storage: { from: vi.fn(() => ({ upload: vi.fn(async () => ({ error: null })), getPublicUrl: vi.fn(() => ({ data: { publicUrl: "https://public.example" } })), createSignedUrl, remove })) } });
+    const driver = getStorageDriver();
+    expect(driver.provider).toBe("supabase");
+    expect(driver.capabilities).toEqual({ put: true, publicUrl: true, signedUrl: true, remove: true });
+    await expect(driver.signedUrl("k", 300)).resolves.toBe("https://signed.example");
+    await driver.remove("k");
+    expect(createSignedUrl).toHaveBeenCalledWith("k", 300);
+    expect(remove).toHaveBeenCalledWith(["k"]);
+  });
+
+  it("Supabase 签名 URL与删除失败会保留错误上下文", async () => {
+    const createSignedUrl = vi.fn(async () => ({ data: null, error: { message: "sign failed" } }));
+    const remove = vi.fn(async () => ({ error: { message: "remove failed" } }));
+    createAdminClientMock.mockReturnValue({ storage: { from: vi.fn(() => ({ createSignedUrl, remove })) } });
+    const driver = getStorageDriver();
+    await expect(driver.signedUrl("k", 60)).rejects.toThrow("sign failed");
+    await expect(driver.remove("k")).rejects.toThrow("remove failed");
   });
 
   it("Supabase 上传失败抛错", async () => {
@@ -75,10 +105,16 @@ describe("getStorageDriver()", () => {
     );
   });
 
-  it("OSS 配置齐备时切换 OSS 驱动（依赖动态加载）", () => {
+  it("OSS 配置齐备时切换 OSS 驱动并支持签名 URL与删除", async () => {
     setOssEnv(OSS_ENV);
     const driver = getStorageDriver();
-    expect(typeof driver.put).toBe("function");
+    expect(driver.provider).toBe("oss");
+    expect(driver.capabilities.signedUrl).toBe(true);
+    await expect(driver.put("k", Buffer.from("x"), "image/png")).resolves.toBe("https://oss.example/k");
+    await expect(driver.signedUrl("k", 300)).resolves.toBe("https://oss.example/signed");
+    await driver.remove("k");
+    expect(ossStoreMock.signatureUrl).toHaveBeenCalledWith("k", { expires: 300 });
+    expect(ossStoreMock.delete).toHaveBeenCalledWith("k");
   });
 });
 
