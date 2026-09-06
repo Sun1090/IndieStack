@@ -6,6 +6,8 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
+> **进度（2026-09-06）**：C01–C10 已完成；F01 已完成；F02 已完成第一阶段（request-scoped store 原语与隔离测试，客户端逐表迁移待后续批次）。其余任务按 M1→M2→M3→M4 推进。
+
 ## 任务池（100 项）
 
 ### A. 对象存储与上传（A01–A10）
@@ -76,7 +78,7 @@
 ### F. 测试基础设施（F01–F10）
 
 51. F01 Mock MFA 状态隔离（本轮优先）
-52. F02 request-scoped mock store 方案
+52. F02 request-scoped mock store 方案（第一阶段完成：`createMockRequestStore` 与隔离测试）
 53. F03 file-backed E2E fixture 评估
 54. F04 恢复 fullyParallel 的隔离实验
 55. F05 webhook events E2E
@@ -136,16 +138,16 @@
 97. J07 tag/release 自动化
 98. J08 发布后回滚演练
 99. J09 v0.6.0 退出报告
-100. J10 v0.7.0 候选池评审
+100.  J10 v0.7.0 候选池评审
 
 ## 里程碑
 
-| 里程碑 | 内容 | 任务域 |
-|---|---|---|
-| M1 安全与测试基建 | Mock 隔离、MFA、RLS、E2E 稳定性 | C、F、H |
-| M2 上传与通知 | OSS 上传、Web Push、统一偏好与回执 | A、B、G |
-| M3 质量与观测 | 多语言/a11y、指标、告警、runbook | D、E |
-| M4 发布收口 | docs-site、CI、smoke、tag/release | I、J |
+| 里程碑            | 内容                               | 任务域  |
+| ----------------- | ---------------------------------- | ------- |
+| M1 安全与测试基建 | Mock 隔离、MFA、RLS、E2E 稳定性    | C、F、H |
+| M2 上传与通知     | OSS 上传、Web Push、统一偏好与回执 | A、B、G |
+| M3 质量与观测     | 多语言/a11y、指标、告警、runbook   | D、E    |
+| M4 发布收口       | docs-site、CI、smoke、tag/release  | I、J    |
 
 ## 退出标准
 
