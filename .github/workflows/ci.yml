@@ -41,8 +41,10 @@ jobs:
       - name: Check RLS migrations
         run: pnpm check:rls
 
-      - name: Run tests
-        run: pnpm test
+      # test:coverage 在 CI 同步 enforce 覆盖率门禁（branches 90%），
+      # 并产出 coverage/ 供下方 artifact 上传（消除空路径告警）
+      - name: Run tests with coverage
+        run: pnpm test:coverage
 
       - name: Upload test coverage
         uses: actions/upload-artifact@v7
