@@ -17,7 +17,8 @@
 - [x] B05 通知权限与设置 UI（VAPID 未配置时安全降级；已补测试）
 - [x] B06 Web Push provider 抽象
 - [x] B07 邮件/Web Push 偏好统一
-- [ ] B08–B10 通知幂等、重试、E2E
+- [x] B08 通知幂等键与数据库唯一索引（021_notification_idempotency.sql）
+- [ ] B09–B10 通知重试、死信、E2E
 - [ ] A06–A10 存储生产能力收口
 
 ## 验证
@@ -26,6 +27,8 @@
 - CI：a46f12d 的 CI、CodeQL、Secrets Scan、Build、E2E 均通过；新提交待阶段统一推送
 
 ## 下一入口
-下一入口：实现 B08 通知幂等键与数据库唯一约束，然后实现 B09 统一重试/死信和 B10 通知链路 E2E。
+下一入口：实现 B09 统一重试/死信查询与回执，再补 B10 通知链路 E2E。
 - [x] B04 订阅 repository：注册 upsert 幂等、按用户+endpoint 撤销
 - [x] B04 repository contract tests and subscribe/unsubscribe Server Actions
+
+- 283e613：增加通知 idempotency_key 字段、唯一索引、repository 透传与测试；verify:build 通过。
