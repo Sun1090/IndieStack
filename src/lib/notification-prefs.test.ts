@@ -2,7 +2,7 @@
  * 通知偏好联动矩阵单测（D03 测试职责）
  */
 import { describe, it, expect } from "vitest";
-import { shouldSendEmail, TYPE_PREFERENCE_MAP } from "./notification-prefs";
+import { shouldSendEmail, shouldSendPush, TYPE_PREFERENCE_MAP } from "./notification-prefs";
 import { NOTIFICATION_TYPES } from "./repositories/notifications";
 
 describe("TYPE_PREFERENCE_MAP", () => {
@@ -33,5 +33,17 @@ describe("shouldSendEmail()", () => {
   it("缺字段默认开启（与表单默认值一致）", () => {
     expect(shouldSendEmail({}, "team_invite")).toBe(true);
     expect(shouldSendEmail({}, "system")).toBe(true);
+  });
+});
+
+describe("shouldSendPush", () => {
+  it("defaults to enabled and respects the push master switch", () => {
+    expect(shouldSendPush({}, "system")).toBe(true);
+    expect(shouldSendPush({ pushNotifications: false }, "system")).toBe(false);
+  });
+
+  it("respects the existing type preference mapping", () => {
+    expect(shouldSendPush({ securityAlerts: false }, "security_alert")).toBe(false);
+    expect(shouldSendPush({ productUpdates: false }, "deployment")).toBe(false);
   });
 });
