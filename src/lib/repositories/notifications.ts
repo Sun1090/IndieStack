@@ -79,6 +79,21 @@ export async function countUnsentEmailNotifications(): Promise<number> {
   return count ?? 0;
 }
 
+/** 已达到重试上限的死信通知，供运维查看与人工恢复。 */
+export async function listDeadLetterNotifications(limit = 100): Promise<Notification[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("notifications")
+    .select("*")
+    .eq("email_sent", false)
+    .eq("is_read", false)
+    .or(`metadata->>email_attempts.gte.${EMAIL_MAX_ATTEMPTS}`)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Notification[];
+}
+
 /** 标记邮件已发送（worker 回执） */
 export async function markEmailSent(notificationId: string): Promise<void> {
   const admin = createAdminClient();
