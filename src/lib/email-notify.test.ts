@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { createNotificationMock, markEmailSentMock, createAdminClientMock } = vi.hoisted(() => ({
-  createNotificationMock: vi.fn(async () => "n1"),
+  createNotificationMock: vi.fn(async () => "n1" as string | null),
   markEmailSentMock: vi.fn(async () => {}),
   createAdminClientMock: vi.fn(),
 }));
@@ -95,10 +95,67 @@ describe("notifyUser()", () => {
     expect(markEmailSentMock).not.toHaveBeenCalled();
   });
 
+  it("fetchProfile 查询出错：吞错记日志，不回执不发信", async () => {
+    const chain: Record<string, unknown> = {};
+    for (const m of ["from", "select", "eq", "limit"]) chain[m] = vi.fn(() => chain);
+    chain.maybeSingle = vi.fn(() =>
+      Promise.resolve({ data: null, error: { message: "db down" } }),
+    );
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await expect(notifyUser(notificationInput("security_alert"))).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(markEmailSentMock).not.toHaveBeenCalled();
+  });
+
+  it("profile 行不存在：静默跳过邮件发送", async () => {
+    profileChain(null);
+    await expect(notifyUser(notificationInput("security_alert"))).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(markEmailSentMock).not.toHaveBeenCalled();
+  });
+
+  it("站内通知写入未返回 id：仍发送邮件但跳过回执", async () => {
+    profileChain({ id: "u1", email: "a@b.c", notification_settings: {} });
+    createNotificationMock.mockResolvedValue(null);
+    await expect(notifyUser(notificationInput("security_alert"))).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSentMock).not.toHaveBeenCalled();
+  });
+
   it("实时类型集合包含四类高优先级通知", () => {
     for (const t of ["security_alert", "team_invite", "role_changed", "payment_succeeded"]) {
       expect(REALTIME_EMAIL_TYPES.has(t as Parameters<typeof notifyUser>[0]["type"])).toBe(true);
     }
     expect(REALTIME_EMAIL_TYPES.has("system")).toBe(false);
+  });
+});
+
+describe("notifyUser() 边界分支", () => {
+  it("NEXT_PUBLIC_APP_URL 未设置时回落 localhost", async () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    profileChain({ id: "u1", email: "a@b.c", notification_settings: {} });
+    await notifyUser(notificationInput("security_alert"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0][1];
+    expect(String(init?.body)).toContain("http://localhost:3000");
+  });
+
+  it("profile 缺 notification_settings 字段时兜底空对象仍可发", async () => {
+    profileChain({ id: "u1", email: "a@b.c" });
+    await notifyUser(notificationInput("security_alert"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSentMock).toHaveBeenCalledWith("n1");
+  });
+
+  it("body/link 缺省时置 null 仍正常发送", async () => {
+    profileChain({ id: "u1", email: "a@b.c", notification_settings: {} });
+    await notifyUser({
+      userId: "u1",
+      type: "security_alert",
+      title: "纯标题通知",
+    } as Parameters<typeof notifyUser>[0]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("纯标题通知");
   });
 });

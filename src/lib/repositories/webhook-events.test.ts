@@ -8,7 +8,7 @@ import { chainMock, dbClientMock } from "./test-helpers";
 const { createAdminClientMock } = vi.hoisted(() => ({ createAdminClientMock: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
-import { upsertWebhookEvent, listRecentWebhookEvents } from "./webhook-events";
+import { upsertWebhookEvent, listRecentWebhookEvents, countWebhookEvents } from "./webhook-events";
 
 const ROW = { provider: "stripe", event_id: "evt_1", event_type: "charge.succeeded", status: "ok" };
 
@@ -53,5 +53,52 @@ describe("listRecentWebhookEvents()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(listRecentWebhookEvents()).rejects.toThrow("db");
+  });
+});
+
+describe("countWebhookEvents()", () => {
+  it("成功返回 count", async () => {
+    const chain = chainMock({ count: 7 });
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await expect(countWebhookEvents()).resolves.toBe(7);
+    expect(chain.select).toHaveBeenCalledWith("*", { count: "exact", head: true });
+  });
+
+  it("count 为 null 时回落 0", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ count: null })),
+    );
+    await expect(countWebhookEvents()).resolves.toBe(0);
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(countWebhookEvents()).rejects.toThrow("db");
+  });
+});
+
+describe("upsertWebhookEvent() payload 分支", () => {
+  it("payload 已提供时原样透传", async () => {
+    const chain = chainMock({});
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    const payload = { email_attempts: 2 };
+    await upsertWebhookEvent({ ...ROW, payload });
+    expect(chain.upsert).toHaveBeenCalledWith(
+      { ...ROW, payload },
+      { onConflict: "event_id" },
+    );
+  });
+});
+
+describe("listRecentWebhookEvents() 空数据分支", () => {
+  it("data 为 null 时回落空数组", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ data: null })),
+    );
+    await expect(listRecentWebhookEvents()).resolves.toEqual([]);
   });
 });

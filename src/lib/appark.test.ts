@@ -3,7 +3,7 @@
  * 覆盖：启用门控、事件入队/flush 清空、非 2xx 保留批次、网络异常吞错、队列上限
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resetApparkForTest, isApparkEnabled, trackEvent, flushEvents, initAppark } from "./appark";
+import { resetApparkForTest, isApparkEnabled, trackEvent, trackError, flushEvents, initAppark } from "./appark";
 
 const fetchMockResolved: { ok: boolean; status?: number } = { ok: true };
 
@@ -19,6 +19,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.NEXT_PUBLIC_APPARK_API_KEY;
   delete process.env.NEXT_PUBLIC_APPARK_ENDPOINT;
+  delete process.env.NEXT_PUBLIC_APP_VERSION;
 });
 
 describe("isApparkEnabled()", () => {
@@ -35,6 +36,42 @@ describe("initAppark()", () => {
       initAppark();
       initAppark();
     }).not.toThrow();
+  });
+});
+
+describe("initAppark() 半配置", () => {
+  it("仅 KEY 无 ENDPOINT：告警但旁路关闭，不抛错", () => {
+    delete process.env.NEXT_PUBLIC_APPARK_ENDPOINT;
+    resetApparkForTest();
+    expect(() => initAppark()).not.toThrow();
+  });
+});
+
+describe("trackError()/版本覆盖", () => {
+  it("Error 实例取 message；非 Error 走 String 归一化", async () => {
+    trackError("boom", new Error("oops"));
+    trackError("boom", 42);
+    await flushEvents();
+    const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    expect(body.events).toHaveLength(2);
+    expect(body.events[0]).toMatchObject({ event: "error.boom", properties: { message: "oops" } });
+    expect(body.events[1]).toMatchObject({ event: "error.boom", properties: { message: "42" } });
+  });
+
+  it("NEXT_PUBLIC_APP_VERSION 覆盖包版本", async () => {
+    process.env.NEXT_PUBLIC_APP_VERSION = "0.6.0-test";
+    trackEvent("e1");
+    await flushEvents();
+    const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    expect(body.events[0].app_version).toBe("0.6.0-test");
+  });
+});
+
+describe("flushEvents() 异常归一化", () => {
+  it("网络异常为非 Error 值：String 归一化后吞错", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue("network down");
+    trackEvent("e1");
+    await expect(flushEvents()).resolves.toBeUndefined();
   });
 });
 

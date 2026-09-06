@@ -132,3 +132,14 @@ describe("isDigestHour()", () => {
     expect(isDigestHour("Not/AZone", shanghaiEight)).toBe(true);
   });
 });
+
+describe("foldDigestNotifications() 未知类型标签", () => {
+  it("类型不在标签表时折叠行标签回退原始类型", () => {
+    const result = foldDigestNotifications([
+      notif("x1", "custom" as Notification["type"]),
+      notif("x2", "custom" as Notification["type"]),
+      notif("x3", "custom" as Notification["type"]),
+    ]);
+    expect(result.entries).toEqual([{ kind: "folded", label: "custom", count: 3 }]);
+  });
+});
