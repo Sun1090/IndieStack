@@ -26,3 +26,4 @@
 ## 下一入口
 实现订阅注册/撤销 repository 与 Server Action，并补充鉴权、幂等和撤销测试。
 - [x] B04 订阅 repository：注册 upsert 幂等、按用户+endpoint 撤销
+- [x] B04 repository contract tests and subscribe/unsubscribe Server Actions
