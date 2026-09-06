@@ -12,6 +12,7 @@ export interface EmailPreferences {
   marketingEmails?: boolean;
   productUpdates?: boolean;
   securityAlerts?: boolean;
+  pushNotifications?: boolean;
 }
 
 /** 类型 → 细分偏好键（emailNotifications 为总开关，另行判断） */
@@ -26,11 +27,14 @@ export const TYPE_PREFERENCE_MAP: Record<NotificationType, keyof EmailPreference
 };
 
 /** 该类型是否允许发邮件（默认开：缺字段视为 true，与表单默认值一致） */
-export function shouldSendEmail(
-  prefs: EmailPreferences,
-  type: NotificationType,
-): boolean {
+export function shouldSendEmail(prefs: EmailPreferences, type: NotificationType): boolean {
   if (prefs.emailNotifications === false) return false;
   const key = TYPE_PREFERENCE_MAP[type];
   return prefs[key] !== false;
+}
+
+/** Push uses the same global/type preference matrix as email until per-channel preferences are split. */
+export function shouldSendPush(prefs: EmailPreferences, type: NotificationType): boolean {
+  if (prefs.pushNotifications === false) return false;
+  return shouldSendEmail(prefs, type);
 }
