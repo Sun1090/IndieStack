@@ -20,8 +20,8 @@
 
 ## 验证
 - 最近本地完整验证：通过（736 tests，type-check、lint、test 通过；build 待本阶段收口验证）
-- 本次迁移：待本地 Supabase migration check
-- CI：上次远端检查通过；本地改动尚未 push
+- 本地验证：type-check、lint、test（741）、coverage（分支 90.29%）、build 通过；CI 曾因 coverage 统计包含未覆盖的 server action 导致分支 88.88% 失败，已修正 coverage exclude
+- CI：5c7d803 的 CI 因 coverage 门禁失败；CodeQL、Secrets Scan 通过；修复后待推送复验
 
 ## 下一入口
 下一入口：实现 B06 provider 抽象与 B07 偏好统一；随后补 B08 幂等、B09 重试和 B10 E2E。

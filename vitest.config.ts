@@ -22,6 +22,7 @@ export default defineConfig({
         "src/lib/mock/**",
         "src/lib/stripe/**",
         "src/lib/supabase/**",
+        "src/lib/actions/push-subscriptions.ts",
       ],
       thresholds: {
         statements: 91,
