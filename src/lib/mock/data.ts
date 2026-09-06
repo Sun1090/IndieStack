@@ -53,7 +53,7 @@ export function generateMockProfile(overrides?: Record<string, unknown>) {
     email: "dev@indiestack.local",
     full_name: faker.person.fullName(),
     avatar_url: faker.image.avatar(),
-    role: "admin",
+    role: "super_admin",
     bio: faker.lorem.sentence(),
     timezone: "Asia/Shanghai",
     language: "zh",
@@ -294,28 +294,39 @@ export function generateMockSubscription() {
 }
 
 /**
- * 生成模拟审计日志
+ * 生成模拟审计日志（对齐真实 audit_logs 表结构：entity_type/entity_id/metadata）
+ *
+ * 行序固定轮转且 created_at 递减（i 越小越新），action/entity/user 分组数量确定，
+ * 便于 dev/E2E 对审计页"详情渲染 / 搜索 / 分组过滤"做稳定断言。
  */
+const MOCK_AUDIT_ACTION_SEED = [
+  { action: "user.login", entityType: "user", entityId: MOCK_USER_ID, metadata: { method: "password", ip: "127.0.0.1" } },
+  { action: "user.logout", entityType: "user", entityId: MOCK_USER_ID, metadata: { ip: "127.0.0.1" } },
+  { action: "team.create", entityType: "team", entityId: MOCK_TEAM_ID, metadata: { name: "示例团队" } },
+  { action: "team.invite", entityType: "team", entityId: MOCK_TEAM_ID, metadata: { email: "member@example.com" } },
+  { action: "profile.update", entityType: "profile", entityId: MOCK_USER_ID, metadata: { fields: ["full_name"] } },
+  { action: "settings.change", entityType: "settings", entityId: MOCK_USER_ID, metadata: { section: "notifications" } },
+  { action: "project.deploy", entityType: "project", entityId: "mock-project-001", metadata: { env: "production" } },
+  { action: "project.delete", entityType: "project", entityId: "mock-project-002", metadata: { reason: "cleanup" } },
+  { action: "api_key.create", entityType: "api_key", entityId: "mock-key-001", metadata: { name: "CI" } },
+  { action: "api_key.revoke", entityType: "api_key", entityId: "mock-key-001", metadata: { name: "CI" } },
+] as const;
+
+const MOCK_AUDIT_USERS = [MOCK_USER_ID, "mock-user-002", "mock-user-003"] as const;
+
 export function generateMockAuditLogs(count = 20) {
-  const actions = [
-    "user.login",
-    "user.logout",
-    "team.create",
-    "team.invite",
-    "profile.update",
-    "settings.change",
-    "project.deploy",
-    "project.delete",
-    "api_key.create",
-    "api_key.revoke",
-  ];
-  return Array.from({ length: count }, (_, i) => ({
-    id: `audit_${i + 1}`,
-    user_id: faker.helpers.arrayElement([MOCK_USER_ID, "mock-user-002", "mock-user-003"]),
-    action: faker.helpers.arrayElement(actions),
-    metadata: { ip: faker.internet.ip(), user_agent: faker.internet.userAgent() },
-    created_at: faker.date.recent({ days: 14 }).toISOString(),
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    const seed = MOCK_AUDIT_ACTION_SEED[i % MOCK_AUDIT_ACTION_SEED.length];
+    return {
+      id: i + 1,
+      user_id: MOCK_AUDIT_USERS[i % MOCK_AUDIT_USERS.length],
+      action: seed.action,
+      entity_type: seed.entityType,
+      entity_id: seed.entityId,
+      metadata: { ...seed.metadata },
+      created_at: new Date(Date.now() - i * 60 * 60 * 1000).toISOString(),
+    };
+  });
 }
 
 /**

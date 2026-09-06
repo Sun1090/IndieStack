@@ -180,7 +180,18 @@ function getMockProfiles(): ReturnType<typeof generateMockProfile>[] {
     _mockProfiles = cached;
     return cached;
   }
-  const fresh = [getMockProfile(), ...Array.from({ length: 9 }, () => generateMockProfile())];
+  // 主用户 + 9 个不同 id/email 的成员（真实 profiles 表 id/email 唯一；
+  // 旧实现全部默认 mock-user-001/dev@indiestack.local 会造成 React key 重复与关联错配）
+  const fresh = [
+    getMockProfile(),
+    ...Array.from({ length: 9 }, (_, i) =>
+      generateMockProfile({
+        id: `mock-user-${String(i + 2).padStart(3, "0")}`,
+        email: `dev${i + 2}@indiestack.local`,
+        role: i < 2 ? "admin" : i < 6 ? "member" : "viewer",
+      }),
+    ),
+  ];
   _mockProfiles = fresh;
   mockCacheSet("Profiles", fresh);
   return fresh;
@@ -684,7 +695,13 @@ class MockQueryBuilder {
     const now = new Date().toISOString();
     const normalized = values.map((value) => {
       const row = { ...(value as Record<string, unknown>) } as Record<string, unknown>;
-      if (!row.id) row.id = crypto.randomUUID();
+      if (!row.id) {
+        // audit_logs.id 是 bigint identity（序列）；其余表用 uuid 主键
+        row.id =
+          this.table === "audit_logs"
+            ? Math.max(0, ...(list ?? []).map((r) => Number((r as Record<string, unknown>).id) || 0)) + 1
+            : crypto.randomUUID();
+      }
       if (!row.created_at) row.created_at = now;
       if (row.updated_at === undefined) row.updated_at = now;
       if (this.table === "api_keys" && row.is_active === undefined) row.is_active = true;

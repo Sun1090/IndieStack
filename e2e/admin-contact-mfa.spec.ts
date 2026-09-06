@@ -11,8 +11,8 @@
  *      导致 mock 内存不可见的问题）
  *   5) mock contact_messages 表端到端：POST → GET 回读 + 字段对齐
  *
- * 全部 mock：默认用户 dev@indiestack.local / password123，role=admin 可访问所有
- * admin 路由。ContactMessages 落库走 mock 表 contact_messages（e2e 端点 GET/POST）。
+ * 全部 mock：默认用户 dev@indiestack.local / password123，role=super_admin（admin 之上，
+ * 可访问全部 admin 路由含 super_admin 专属页）。ContactMessages 落库走 mock 表 contact_messages（e2e 端点 GET/POST）。
  */
 
 import { test, expect, request as pwRequest, type APIRequestContext } from "@playwright/test";
