@@ -72,4 +72,20 @@ describe("env 校验", () => {
     warnOnEnvProblems();
     spy.mockRestore();
   });
+  describe("Web Push 配置诊断", () => {
+    it("VAPID 只配置一项时告警", async () => {
+      vi.stubEnv("VAPID_PRIVATE_KEY", "private");
+      vi.resetModules();
+      const { getEnvReport } = await import("./env");
+      expect(getEnvReport().problems.some((p) => p.includes("VAPID"))).toBe(true);
+    });
+
+    it("VAPID 两项齐全时不产生 VAPID 告警", async () => {
+      vi.stubEnv("VAPID_PRIVATE_KEY", "private");
+      vi.stubEnv("NEXT_PUBLIC_VAPID_PUBLIC_KEY", "public");
+      vi.resetModules();
+      const { getEnvReport } = await import("./env");
+      expect(getEnvReport().problems.some((p) => p.includes("VAPID"))).toBe(false);
+    });
+  });
 });

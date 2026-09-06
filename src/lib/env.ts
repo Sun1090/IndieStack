@@ -35,11 +35,21 @@ function collect(): EnvReport {
   const ossVars = ["OSS_BUCKET", "OSS_REGION", "OSS_ACCESS_KEY_ID", "OSS_ACCESS_KEY_SECRET"];
   const ossCount = ossVars.filter((k) => process.env[k]).length;
   if (ossCount > 0 && ossCount < ossVars.length) {
-    problems.push("OSS_* 配置不完整（需 BUCKET/REGION/ACCESS_KEY_ID/ACCESS_KEY_SECRET 四项），已回退 Supabase Storage");
+    problems.push(
+      "OSS_* 配置不完整（需 BUCKET/REGION/ACCESS_KEY_ID/ACCESS_KEY_SECRET 四项），已回退 Supabase Storage",
+    );
+  }
+  // Web Push（B06）：公钥与私钥需同时配置；缺失时 UI/发送端安全关闭
+  if (!!process.env.VAPID_PRIVATE_KEY !== !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+    problems.push(
+      "VAPID_PRIVATE_KEY 与 NEXT_PUBLIC_VAPID_PUBLIC_KEY 应同时提供（Web Push 当前旁路关闭）",
+    );
   }
   // Appark APM（ADR-011）：KEY 与 ENDPOINT 需同时配置，缺一则旁路关闭
   if (!!process.env.NEXT_PUBLIC_APPARK_API_KEY !== !!process.env.NEXT_PUBLIC_APPARK_ENDPOINT) {
-    problems.push("NEXT_PUBLIC_APPARK_API_KEY 与 NEXT_PUBLIC_APPARK_ENDPOINT 应同时提供（APM 当前旁路关闭）");
+    problems.push(
+      "NEXT_PUBLIC_APPARK_API_KEY 与 NEXT_PUBLIC_APPARK_ENDPOINT 应同时提供（APM 当前旁路关闭）",
+    );
   }
 
   return { ok: problems.length === 0, problems };
