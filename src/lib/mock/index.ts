@@ -24,6 +24,7 @@ import {
 
 // Mock 模式检测逻辑抽离至零依赖的 config 模块（供 Edge Middleware 引用），此处转发保持兼容
 export { isMockEnabled, shouldUseMock } from "./config";
+export { createMockRequestStore, type MockRequestStore } from "./store";
 
 // =============================================================================
 // 模块级缓存：统一挂到 globalThis 上，避免 Next.js dev 下 Turbopack 不同 chunk
@@ -47,8 +48,6 @@ function mockCacheSet<T>(key: string, value: T): void {
 function mockCacheClear(): void {
   for (const k of Object.keys(MOCK_GLOBAL)) delete MOCK_GLOBAL[k];
 }
-
-
 
 export { generateMockAdminStats };
 
@@ -125,7 +124,10 @@ export function resetMockCache() {
 
 function getMockUser() {
   const cached = mockCacheGet<ReturnType<typeof generateMockUser>>("User");
-  if (cached) { _mockUser = cached; return cached; }
+  if (cached) {
+    _mockUser = cached;
+    return cached;
+  }
   const fresh = generateMockUser();
   _mockUser = fresh;
   mockCacheSet("User", fresh);
@@ -134,7 +136,10 @@ function getMockUser() {
 
 function getMockProfile() {
   const cached = mockCacheGet<ReturnType<typeof generateMockProfile>>("Profile");
-  if (cached) { _mockProfile = cached; return cached; }
+  if (cached) {
+    _mockProfile = cached;
+    return cached;
+  }
   const fresh = generateMockProfile();
   _mockProfile = fresh;
   mockCacheSet("Profile", fresh);
@@ -143,7 +148,10 @@ function getMockProfile() {
 
 function getMockTeam() {
   const cached = mockCacheGet<ReturnType<typeof generateMockTeam>>("Team");
-  if (cached) { _mockTeam = cached; return cached; }
+  if (cached) {
+    _mockTeam = cached;
+    return cached;
+  }
   const fresh = generateMockTeam();
   _mockTeam = fresh;
   mockCacheSet("Team", fresh);
@@ -176,7 +184,10 @@ function getMockTeams(): ReturnType<typeof generateMockTeam>[] {
 
 function getMockMembers() {
   const cached = mockCacheGet<ReturnType<typeof generateMockTeamMembersWithProfiles>>("Members");
-  if (cached) { _mockMembers = cached; return cached; }
+  if (cached) {
+    _mockMembers = cached;
+    return cached;
+  }
   const fresh = generateMockTeamMembersWithProfiles();
   _mockMembers = fresh;
   mockCacheSet("Members", fresh);
@@ -185,7 +196,10 @@ function getMockMembers() {
 
 function getMockProjects() {
   const cached = mockCacheGet<ReturnType<typeof generateMockProjects>>("Projects");
-  if (cached) { _mockProjects = cached; return cached; }
+  if (cached) {
+    _mockProjects = cached;
+    return cached;
+  }
   const fresh = generateMockProjects();
   _mockProjects = fresh;
   mockCacheSet("Projects", fresh);
@@ -194,7 +208,10 @@ function getMockProjects() {
 
 function getMockNotifications() {
   const cached = mockCacheGet<ReturnType<typeof generateMockNotifications>>("Notifications");
-  if (cached) { _mockNotifications = cached; return cached; }
+  if (cached) {
+    _mockNotifications = cached;
+    return cached;
+  }
   const fresh = generateMockNotifications();
   _mockNotifications = fresh;
   mockCacheSet("Notifications", fresh);
@@ -203,7 +220,10 @@ function getMockNotifications() {
 
 function getMockAuditLogs() {
   const cached = mockCacheGet<ReturnType<typeof generateMockAuditLogs>>("AuditLogs");
-  if (cached) { _mockAuditLogs = cached; return cached; }
+  if (cached) {
+    _mockAuditLogs = cached;
+    return cached;
+  }
   const fresh = generateMockAuditLogs();
   _mockAuditLogs = fresh;
   mockCacheSet("AuditLogs", fresh);
@@ -212,7 +232,10 @@ function getMockAuditLogs() {
 
 function getMockApiUsage() {
   const cached = mockCacheGet<ReturnType<typeof generateMockApiUsageRows>>("ApiUsage");
-  if (cached) { _mockApiUsage = cached; return cached; }
+  if (cached) {
+    _mockApiUsage = cached;
+    return cached;
+  }
   const fresh = generateMockApiUsageRows();
   _mockApiUsage = fresh;
   mockCacheSet("ApiUsage", fresh);
@@ -221,7 +244,10 @@ function getMockApiUsage() {
 
 function getMockUserSessions() {
   const cached = mockCacheGet<ReturnType<typeof generateMockUserSessions>>("UserSessions");
-  if (cached) { _mockUserSessions = cached; return cached; }
+  if (cached) {
+    _mockUserSessions = cached;
+    return cached;
+  }
   const fresh = generateMockUserSessions();
   _mockUserSessions = fresh;
   mockCacheSet("UserSessions", fresh);
@@ -230,7 +256,10 @@ function getMockUserSessions() {
 
 function getMockApiKeys() {
   const cached = mockCacheGet<ReturnType<typeof generateMockApiKeys>>("ApiKeys");
-  if (cached) { _mockApiKeys = cached; return cached; }
+  if (cached) {
+    _mockApiKeys = cached;
+    return cached;
+  }
   const fresh = generateMockApiKeys();
   _mockApiKeys = fresh;
   mockCacheSet("ApiKeys", fresh);
@@ -239,7 +268,10 @@ function getMockApiKeys() {
 
 function getMockWorkerRuns(): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>("WorkerRuns");
-  if (cached) { _mockWorkerRuns = cached; return cached; }
+  if (cached) {
+    _mockWorkerRuns = cached;
+    return cached;
+  }
   const fresh: Record<string, unknown>[] = [];
   _mockWorkerRuns = fresh;
   mockCacheSet("WorkerRuns", fresh);
@@ -248,7 +280,10 @@ function getMockWorkerRuns(): Record<string, unknown>[] {
 
 function getMockMarketingSubscriptions(): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>("MarketingSubscriptions");
-  if (cached) { _mockMarketingSubscriptions = cached; return cached; }
+  if (cached) {
+    _mockMarketingSubscriptions = cached;
+    return cached;
+  }
   const fresh: Record<string, unknown>[] = [];
   _mockMarketingSubscriptions = fresh;
   mockCacheSet("MarketingSubscriptions", fresh);
@@ -684,7 +719,14 @@ class MockQueryBuilder {
         if (!(value as unknown[]).includes(row[column])) return false;
         continue;
       }
-      if (key.endsWith(":gte") || key.endsWith(":lt") || key.endsWith(":contains") || key.endsWith(":not") || key === ":or") continue;
+      if (
+        key.endsWith(":gte") ||
+        key.endsWith(":lt") ||
+        key.endsWith(":contains") ||
+        key.endsWith(":not") ||
+        key === ":or"
+      )
+        continue;
       if (key.endsWith(":isnull")) continue;
       // 通用 eq 过滤（如 email），与真实 PostgREST 行为一致
       if (key === "id" || key === "user_id" || key === "team_id") continue;
@@ -782,14 +824,16 @@ class MockQueryBuilder {
       if (key.endsWith(":gte")) {
         const column = key.slice(0, -4);
         result = result.filter(
-          (item: any) => Number(this.readPath(item, column)) >= Number(this.matchValue(value, value)),
+          (item: any) =>
+            Number(this.readPath(item, column)) >= Number(this.matchValue(value, value)),
         );
         return;
       }
       if (key.endsWith(":lt")) {
         const column = key.slice(0, -3);
         result = result.filter(
-          (item: any) => Number(this.readPath(item, column)) < Number(this.matchValue(value, value)),
+          (item: any) =>
+            Number(this.readPath(item, column)) < Number(this.matchValue(value, value)),
         );
         return;
       }
@@ -799,7 +843,9 @@ class MockQueryBuilder {
         result = result.filter((item: any) => {
           const current = this.readPath(item, column);
           if (current === null || current === undefined) return false;
-          return typeof current === "string" ? current.includes(needle) : JSON.stringify(current).includes(needle);
+          return typeof current === "string"
+            ? current.includes(needle)
+            : JSON.stringify(current).includes(needle);
         });
         return;
       }
@@ -809,7 +855,9 @@ class MockQueryBuilder {
         return;
       }
       if (key === ":or") {
-        const conditions = String(value).split(",").map((c) => c.trim());
+        const conditions = String(value)
+          .split(",")
+          .map((c) => c.trim());
         result = result.filter((item: any) => this.matchAnyCondition(item, conditions));
         return;
       }
@@ -898,7 +946,8 @@ class MockQueryBuilder {
       }
       if (op === "lt") {
         if (this.matchValue(current, value) && Number(current) < Number(value)) return true;
-        if (typeof current === "number" && typeof value === "string" && current < Number(value)) return true;
+        if (typeof current === "number" && typeof value === "string" && current < Number(value))
+          return true;
         continue;
       }
       if (this.matchValue(current, value)) return true;
@@ -959,7 +1008,10 @@ export class MockSupabaseClient {
           friendly_name: friendlyName,
           created_at: new Date().toISOString(),
         });
-        return { data: { id, type: "totp", totp: { qr_code: "", secret: "MOCKSECRET" } }, error: null };
+        return {
+          data: { id, type: "totp", totp: { qr_code: "", secret: "MOCKSECRET" } },
+          error: null,
+        };
       },
       challengeAndVerify: async (params: unknown) => {
         const factorId =
@@ -1006,7 +1058,8 @@ export class MockSupabaseClient {
         const challengeId = read("challengeId");
         const code = read("code");
         const factor = getMockMfaFactors().find((item) => item.id === factorId);
-        if (!factor || factor.status !== "verified") return { error: { message: "Factor not found" } };
+        if (!factor || factor.status !== "verified")
+          return { error: { message: "Factor not found" } };
         const challenges = getMockMfaChallenges();
         const challengeIndex = challenges.findIndex(
           (item) => item.id === challengeId && item.factor_id === factorId,
