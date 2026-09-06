@@ -21,7 +21,9 @@ export interface PushProvider {
  * Safe default until a server-side Web Push adapter is configured. It fails
  * explicitly rather than silently claiming delivery.
  */
-export function createPushProvider(env: NodeJS.ProcessEnv = process.env): PushProvider {
+export function createPushProvider(
+  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
+): PushProvider {
   const configured = Boolean(env.VAPID_PRIVATE_KEY && env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
   return {
     name: "web-push",
