@@ -111,6 +111,10 @@ export function getStorageDriver(): StorageDriver {
  * 扩展名取自白名单映射（非用户文件名），杜绝路径穿越与任意后缀。
  */
 export function buildObjectKey(prefix: string, userId: string, contentType: string): string {
+  // prefix 与租户标识必须是单一路径段，调用方不能注入 `/`、`.` 或空值跨越租户目录。
+  const pathSegment = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+  if (!pathSegment.test(prefix)) throw new Error("invalid storage prefix");
+  if (!pathSegment.test(userId)) throw new Error("invalid storage tenant");
   const ext = ALLOWED_IMAGE_TYPES[contentType];
   if (!ext) throw new Error(`unsupported content type: ${contentType}`);
   const random = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) =>

@@ -133,4 +133,10 @@ describe("buildObjectKey()", () => {
     expect(() => buildObjectKey("avatars", "u1", "application/pdf")).toThrow("unsupported");
     expect(() => buildObjectKey("avatars", "u1", "../../evil")).toThrow("unsupported");
   });
+
+  it("拒绝跨租户路径段与非法 prefix", () => {
+    expect(() => buildObjectKey("../covers", "u1", "image/png")).toThrow("invalid storage prefix");
+    expect(() => buildObjectKey("avatars", "../other-user", "image/png")).toThrow("invalid storage tenant");
+    expect(() => buildObjectKey("avatars", "", "image/png")).toThrow("invalid storage tenant");
+  });
 });
