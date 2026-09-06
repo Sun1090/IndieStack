@@ -43,9 +43,7 @@ describe("listRecentNotifications()", () => {
   });
 
   it("查询失败抛错（页面展示错误态）", async () => {
-    createClientMock.mockResolvedValue(
-      dbClientMock(() => chainMock({ error: { message: "db" } })),
-    );
+    createClientMock.mockResolvedValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
     await expect(listRecentNotifications("u1")).rejects.toThrow("db");
   });
 });
@@ -78,7 +76,15 @@ describe("markAllNotificationsRead()", () => {
 
 describe("NOTIFICATION_TYPES", () => {
   it("包含 seed 既有与新增类型", () => {
-    for (const t of ["system", "team_invite", "role_changed", "payment_succeeded", "billing_update", "deployment", "security_alert"]) {
+    for (const t of [
+      "system",
+      "team_invite",
+      "role_changed",
+      "payment_succeeded",
+      "billing_update",
+      "deployment",
+      "security_alert",
+    ]) {
       expect(NOTIFICATION_TYPES).toContain(t);
     }
   });
@@ -99,13 +105,29 @@ describe("createNotification()", () => {
     expect(chain.select).toHaveBeenCalledWith("id");
   });
 
+  it("透传幂等键，允许调用方安全重试", async () => {
+    const chain = chainMock({ data: { id: "n-idempotent" } });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await expect(
+      createNotification({
+        userId: "u1",
+        type: "system",
+        title: "retry",
+        idempotencyKey: "event-1",
+      }),
+    ).resolves.toBe("n-idempotent");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotency_key: "event-1" }),
+    );
+  });
+
   it("数据库错误抛错", async () => {
     createAdminClientMock.mockReturnValue(
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
-    await expect(
-      createNotification({ userId: "u1", type: "system", title: "hi" }),
-    ).rejects.toThrow("db");
+    await expect(createNotification({ userId: "u1", type: "system", title: "hi" })).rejects.toThrow(
+      "db",
+    );
   });
 });
 
@@ -190,9 +212,7 @@ describe("markNotificationRead()", () => {
   });
 
   it("数据库错误抛错", async () => {
-    createClientMock.mockResolvedValue(
-      dbClientMock(() => chainMock({ error: { message: "db" } })),
-    );
+    createClientMock.mockResolvedValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
     await expect(markNotificationRead("u1", "n1")).rejects.toThrow("db");
   });
 });

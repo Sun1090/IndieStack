@@ -28,6 +28,8 @@ export interface NewNotification {
   body?: string;
   link?: string | null;
   metadata?: Record<string, unknown>;
+  /** Stable event key; retries return the existing notification id. */
+  idempotencyKey?: string;
 }
 
 /** 邮件失败重试上限：达到后进入死信，不再被 worker 拉取 */
@@ -38,7 +40,12 @@ export const EMAIL_MAX_ATTEMPTS = 3;
  * 邮件失败重试计数（metadata.email_attempts）达到上限的死信不再进入队列（v0.5.0 A02）。
  */
 export async function listUnsentEmailNotifications(
-  types: NotificationType[] = ["team_invite", "role_changed", "payment_succeeded", "security_alert"],
+  types: NotificationType[] = [
+    "team_invite",
+    "role_changed",
+    "payment_succeeded",
+    "security_alert",
+  ],
   limit = 100,
 ): Promise<Notification[]> {
   const admin = createAdminClient();
@@ -94,7 +101,11 @@ export async function markEmailFailed(
   const admin = createAdminClient();
   const { error } = await admin
     .from("notifications")
-    .update({ metadata: JSON.parse(JSON.stringify(metadata)) as Database["public"]["Tables"]["notifications"]["Update"]["metadata"] })
+    .update({
+      metadata: JSON.parse(
+        JSON.stringify(metadata),
+      ) as Database["public"]["Tables"]["notifications"]["Update"]["metadata"],
+    })
     .eq("id", notificationId);
   if (error) throw new Error(error.message);
 }
@@ -115,7 +126,10 @@ export async function createNotification(input: NewNotification): Promise<string
       title: input.title,
       body: input.body ?? null,
       link: input.link ?? null,
-      metadata: JSON.parse(JSON.stringify(input.metadata ?? {})) as Database["public"]["Tables"]["notifications"]["Insert"]["metadata"],
+      metadata: JSON.parse(
+        JSON.stringify(input.metadata ?? {}),
+      ) as Database["public"]["Tables"]["notifications"]["Insert"]["metadata"],
+      ...(input.idempotencyKey ? { idempotency_key: input.idempotencyKey } : {}),
     })
     .select("id")
     .single();
@@ -127,10 +141,7 @@ export async function createNotification(input: NewNotification): Promise<string
  * 最近通知列表（登录态，RLS 隔离）。
  * 查询失败抛错（调用方展示错误态），不再吞错回空数组。
  */
-export async function listRecentNotifications(
-  userId: string,
-  limit = 10,
-): Promise<Notification[]> {
+export async function listRecentNotifications(userId: string, limit = 10): Promise<Notification[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("notifications")
@@ -166,10 +177,7 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
 }
 
 /** 标记单条通知已读（RLS 限定本人） */
-export async function markNotificationRead(
-  userId: string,
-  notificationId: string,
-): Promise<void> {
+export async function markNotificationRead(userId: string, notificationId: string): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("notifications")
