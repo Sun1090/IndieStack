@@ -157,3 +157,5 @@
 4. 上传、通知、MFA 关键路径均有失败/重试/权限边界测试。
 5. 数据库迁移、RLS、发布清单与 docs-site 章节同步完成。
 6. 发布后 smoke 与回滚 runbook 已演练并记录结果。
+
+> 执行记录（2026-09-06）：新增 `020_push_subscriptions.sql`，为 B03 提供 user/endpoint 唯一约束、RLS、索引和更新时间触发器；后续 B04 负责 action 接入。
