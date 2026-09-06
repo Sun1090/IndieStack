@@ -18,7 +18,8 @@
 - [x] B06 Web Push provider 抽象
 - [x] B07 邮件/Web Push 偏好统一
 - [x] B08 通知幂等键与数据库唯一索引（021_notification_idempotency.sql）
-- [ ] B09–B10 通知重试、死信、E2E
+- [x] B09 统一重试/死信查询与回执（既有 email_attempts 上限机制，新增死信查询 API 层）
+- [ ] B10 通知链路 E2E
 - [ ] A06–A10 存储生产能力收口
 
 ## 验证
@@ -27,8 +28,10 @@
 - CI：a46f12d 的 CI、CodeQL、Secrets Scan、Build、E2E 均通过；新提交待阶段统一推送
 
 ## 下一入口
-下一入口：实现 B09 统一重试/死信查询与回执，再补 B10 通知链路 E2E。
+下一入口：补 B10 通知链路 E2E，覆盖队列、失败回执、死信过滤与恢复入口。
 - [x] B04 订阅 repository：注册 upsert 幂等、按用户+endpoint 撤销
 - [x] B04 repository contract tests and subscribe/unsubscribe Server Actions
 
 - 283e613：增加通知 idempotency_key 字段、唯一索引、repository 透传与测试；verify:build 通过。
+
+- 24a9012：新增 listDeadLetterNotifications 及数据库错误/limit 契约测试；verify:build 通过。
