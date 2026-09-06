@@ -6,7 +6,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: false,
+  // Shared mock state remains serial by default. F04 can opt into the
+  // isolation experiment without changing the stable CI baseline.
+  fullyParallel: process.env.PW_FULLY_PARALLEL === "true",
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
