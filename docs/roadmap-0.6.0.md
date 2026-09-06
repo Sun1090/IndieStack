@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-06）**：C01–C10 已完成；F01–F09 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁）。其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -86,7 +86,7 @@
 57. F07 storage 上传失败/重试 E2E（完成：mock storage 层与 supabase-js 对齐——from().upload/getPublicUrl + failNext 注入计数；Mock-only /api/e2e/mock-upload 端点；E2E 覆盖空文件 fileRequired / PDF fileTypeUnsupported / 超 2MB fileTooLarge / 注入失败 uploadFailed→重试成功写回 avatar_url 4 类断言；修复 bodySizeLimit=2mb 与 AVATAR_MAX_BYTES 相等导致 >2MB 请求先触达框架上限、fileTooLarge 分支不可达的缺陷（抬至 3mb 留出 multipart 开销余量））
 58. F08 通知 provider contract tests（完成：Resend 发送通道契约测试——`email-send.ts` 导出 `DEFAULT_RESEND_ENDPOINT/DEFAULT_EMAIL_FROM` 单一事实源并注释固化契约；新增 `email-send.test.ts` 10 用例锁定 默认端点与 `RESEND_API_URL` 覆盖、`Authorization: Bearer` + JSON 头、body 形状（from 默认/`RESEND_FROM` 覆盖、to 恒为数组）、缺 key 抛错且不发请求、2xx 静默 resolve、非 2xx 抛 `resend {status}: {detail}`、响应体读取失败仍保留状态码、网络错误原样上抛且 fetch 仅一次（不吞错不重试，重试/死信归调用方）；错误映射小加固（text() 失败 detail 置空）；与 E2E email-inbox/mail-flow 双端同构断言防漂移，为 B06 Web Push provider 抽象立契约样板）
 59. F09 coverage branch 90% 评估（完成：基线 86.07% → 90.04%（886/984），vitest.config.ts branches 门禁 85→90；补测 email-notify.ts 边界（NEXT_PUBLIC_APP_URL 回落 localhost、profile 缺 notification_settings 兜底空对象、body/link 缺省置 null）、email-digest.ts 未知类型折叠标签回退、webhook-events repo（countWebhookEvents 成功/count null 回落 0/出错抛错、upsert payload 透传、listRecent data null 回落空数组）；4 项阈值 stmts 95.44/branch 90.04/func 96.51/lines 96.17 全过）
-60. F10 CI artifact/coverage 告警清理
+60. F10 CI artifact/coverage 告警清理（完成：`lint-and-type-check` job 的 Run tests 由 `pnpm test` 改为 `pnpm test:coverage`——CI 同步 enforce 覆盖率门禁（branches 90%），coverage/ 目录真实产出后 artifact 上传不再报空路径告警；验证 d2465a3 CI 4 job 全绿、test-coverage artifact 288KB 正常落盘、annotation 消除）
 
 ### G. UI 系统与 Tailwind（G01–G10）
 
