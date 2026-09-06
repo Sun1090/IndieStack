@@ -250,6 +250,33 @@ describe("Mock 写操作与真实 PostgREST 行为对齐", () => {
   });
 });
 
+describe("Mock user_sessions", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  it("生成与真实表一致的 last_seen_at 元数据并支持按最近活跃时间排序", async () => {
+    const client = createMockSupabaseClient();
+    const { data, error } = await client
+      .from("user_sessions")
+      .select("*")
+      .eq("user_id", MOCK_USER_ID)
+      .order("last_seen_at", { ascending: false })
+      .limit(20);
+
+    expect(error).toBeNull();
+    expect(data).toHaveLength(20);
+    const rows = asRows(data);
+    expect(rows.every((row) => typeof row.last_seen_at === "string")).toBe(true);
+    expect(rows.every((row) => typeof row.created_at === "string")).toBe(true);
+    for (let index = 1; index < rows.length; index += 1) {
+      expect(Date.parse(String(rows[index - 1].last_seen_at))).toBeGreaterThanOrEqual(
+        Date.parse(String(rows[index].last_seen_at)),
+      );
+    }
+  });
+});
+
 describe("Mock MFA 状态机", () => {
   beforeEach(() => {
     resetMockCache();

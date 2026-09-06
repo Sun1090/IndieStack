@@ -245,6 +245,7 @@ export function generateMockUserSessions(count = 30) {
     ip_address: faker.internet.ip(),
     user_agent: faker.internet.userAgent(),
     created_at: faker.date.recent({ days: 30 }).toISOString(),
+    last_seen_at: faker.date.recent({ days: 7 }).toISOString(),
   }));
 }
 
