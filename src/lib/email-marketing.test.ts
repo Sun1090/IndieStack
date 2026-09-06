@@ -2,7 +2,7 @@
  * email-marketing 单测（v0.5.0 A05）
  * 覆盖：确认邮件含确认链接与退订链接、营销邮件强制附加退订页脚
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { sendMarketingConfirmationEmail, sendMarketingEmail } from "./email-marketing";
 
 const fetchMockResolved: { ok: boolean; text: () => Promise<string> } = { ok: true, text: async () => "" };
@@ -14,6 +14,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com";
   process.env.RESEND_API_KEY = "***";
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.NEXT_PUBLIC_APP_URL;
+  delete process.env.RESEND_API_KEY;
 });
 
 function sentBody(): string {
@@ -28,6 +34,18 @@ describe("sendMarketingConfirmationEmail()", () => {
     const body = sentBody();
     expect(body).toContain("https://app.example.com/api/marketing/confirm?token=tok1");
     expect(body).toContain("https://app.example.com/api/marketing/unsubscribe?token=tok1");
+  });
+});
+
+describe("站点 URL 回退", () => {
+  it("未设 NEXT_PUBLIC_APP_URL：确认与退订链接回退 localhost 默认值", async () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    await expect(
+      sendMarketingConfirmationEmail("a@b.c", "tok1"),
+    ).resolves.toBeUndefined();
+    const body = sentBody();
+    expect(body).toContain("http://localhost:3000/api/marketing/confirm?token=tok1");
+    expect(body).toContain("http://localhost:3000/api/marketing/unsubscribe?token=tok1");
   });
 });
 
