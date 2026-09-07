@@ -4,12 +4,17 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { createClientMock, revalidatePathMock, putMock, removeMock } = vi.hoisted(() => ({
-  createClientMock: vi.fn(),
-  revalidatePathMock: vi.fn(),
-  putMock: vi.fn(async () => "https://cdn.example/avatars/u1/k.png"),
-  removeMock: vi.fn(async () => undefined),
-}));
+const { createClientMock, revalidatePathMock, putMock, removeMock, extractKeyMock } = vi.hoisted(
+  () => ({
+    createClientMock: vi.fn(),
+    revalidatePathMock: vi.fn(),
+    putMock: vi.fn(async () => "https://cdn.example/avatars/u1/k.png"),
+    removeMock: vi.fn(async () => undefined),
+    extractKeyMock: vi.fn<
+      (url: string | null | undefined, prefix: string, tenant: string) => string | null
+    >(() => null),
+  }),
+);
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
@@ -24,6 +29,7 @@ vi.mock("@/lib/storage", () => ({
   buildObjectKey: vi.fn(() => "avatars/u1/1-abc.png"),
   ALLOWED_IMAGE_TYPES: { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" },
   AVATAR_MAX_BYTES: 2 * 1024 * 1024,
+  extractManagedObjectKey: extractKeyMock,
 }));
 
 import { uploadAvatar, uploadProjectCover } from "./uploads";
@@ -35,6 +41,11 @@ function mockClient(opts: { user?: object | null; profileUpdateError?: boolean }
   return {
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
     from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(() => Promise.resolve({ data: { avatar_url: null } })),
+        })),
+      })),
       update: vi.fn(() => ({
         eq: vi.fn(() =>
           Promise.resolve(profileUpdateError ? { error: { message: "db" } } : { error: null }),
@@ -57,6 +68,7 @@ function form(f: File | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  extractKeyMock.mockReturnValue(null);
 });
 
 describe("uploadAvatar()", () => {
@@ -111,6 +123,23 @@ describe("uploadAvatar()", () => {
     await expect(uploadAvatar(form(file()))).resolves.toEqual({ ok: false, error: "uploadFailed" });
     expect(removeMock).toHaveBeenCalledWith("avatars/u1/1-abc.png");
   });
+
+  it("成功替换时只清理当前用户的旧受管头像", async () => {
+    extractKeyMock.mockReturnValue("avatars/u1/old.png");
+    createClientMock.mockResolvedValue(mockClient());
+    await expect(uploadAvatar(form(file()))).resolves.toEqual({
+      ok: true,
+      data: { url: "https://cdn.example/avatars/u1/k.png" },
+    });
+    expect(removeMock).toHaveBeenCalledWith("avatars/u1/old.png");
+  });
+
+  it("旧头像为外部 URL 时不删除", async () => {
+    extractKeyMock.mockReturnValue(null);
+    createClientMock.mockResolvedValue(mockClient());
+    await uploadAvatar(form(file()));
+    expect(removeMock).not.toHaveBeenCalled();
+  });
 });
 
 function coverForm(f: File | null) {
@@ -130,7 +159,7 @@ describe("uploadProjectCover()", () => {
   ) {
     const {
       user = USER,
-      projectRow = { team_id: "t1" },
+      projectRow = { team_id: "t1", logo_url: null },
       membership = { role: "admin" },
       projectUpdateError = false,
     } = opts;
@@ -206,6 +235,20 @@ describe("uploadProjectCover()", () => {
     expect(putMock).toHaveBeenCalledWith("avatars/u1/1-abc.png", expect.any(Buffer), "image/webp");
     expect(client.from).toHaveBeenCalledWith("projects");
     expect(revalidatePathMock).toHaveBeenCalledWith("/dashboard/projects/p1");
+  });
+
+  it("成功替换时清理当前项目的旧受管封面", async () => {
+    extractKeyMock.mockReturnValue("covers/p1/old.webp");
+    createClientMock.mockResolvedValue(
+      coverClient({
+        projectRow: { team_id: "t1", logo_url: "https://cdn.example/covers/p1/old.webp" },
+      }),
+    );
+    await expect(uploadProjectCover("p1", coverForm(file()))).resolves.toEqual({
+      ok: true,
+      data: { url: "https://cdn.example/avatars/u1/k.png" },
+    });
+    expect(removeMock).toHaveBeenCalledWith("covers/p1/old.webp");
   });
 
   it("存储抛错返回 uploadFailed", async () => {
