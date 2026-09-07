@@ -134,3 +134,37 @@ export function buildObjectKey(prefix: string, userId: string, contentType: stri
   ).join("");
   return `${prefix}/${userId}/${Date.now()}-${random}.${ext}`;
 }
+
+/**
+ * 从受管公共 URL 提取对象键，仅接受预期 prefix/tenant 边界。
+ * 支持 Supabase `/object/public/<bucket>/<key>` 与 OSS `/<key>` URL；
+ * 外部 URL、编码路径穿越或不匹配租户一律返回 null。
+ */
+export function extractManagedObjectKey(
+  rawUrl: string | null | undefined,
+  prefix: string,
+  tenantId: string,
+): string | null {
+  if (!rawUrl) return null;
+  const pathSegment = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+  if (!pathSegment.test(prefix) || !pathSegment.test(tenantId)) return null;
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    const decoded = decodeURIComponent(url.pathname);
+    if (decoded.includes("..") || decoded.includes("\\")) return null;
+    const marker = "/object/public/";
+    const markerIndex = decoded.indexOf(marker);
+    const key =
+      markerIndex >= 0
+        ? decoded.slice(markerIndex + marker.length).replace(/^[^/]+\/?/, "")
+        : decoded.replace(/^\/+/, "");
+    const normalizedKey = key.replace(/^\/+/, "");
+    const boundary = `${prefix}/${tenantId}/`;
+    return normalizedKey.startsWith(boundary) && normalizedKey.length > boundary.length
+      ? normalizedKey
+      : null;
+  } catch {
+    return null;
+  }
+}

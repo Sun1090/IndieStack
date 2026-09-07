@@ -209,3 +209,30 @@ describe("buildObjectKey()", () => {
     expect(() => buildObjectKey("avatars", "", "image/png")).toThrow("invalid storage tenant");
   });
 });
+
+describe("extractManagedObjectKey()", () => {
+  it("解析 Supabase 与 OSS 受管 URL", async () => {
+    const { extractManagedObjectKey } = await import("./index");
+    expect(
+      extractManagedObjectKey(
+        "https://x.supabase.co/storage/v1/object/public/avatars/avatars/u1/a.png",
+        "avatars",
+        "u1",
+      ),
+    ).toBe("avatars/u1/a.png");
+    expect(
+      extractManagedObjectKey("https://bucket.oss.example/covers/p1/a.webp", "covers", "p1"),
+    ).toBe("covers/p1/a.webp");
+  });
+
+  it("拒绝其他租户、路径穿越与非法 URL", async () => {
+    const { extractManagedObjectKey } = await import("./index");
+    expect(
+      extractManagedObjectKey("https://cdn.example/avatars/u2/a.png", "avatars", "u1"),
+    ).toBeNull();
+    expect(
+      extractManagedObjectKey("https://cdn.example/avatars/u1/%2e%2e/secret", "avatars", "u1"),
+    ).toBeNull();
+    expect(extractManagedObjectKey("javascript:alert(1)", "avatars", "u1")).toBeNull();
+  });
+});
