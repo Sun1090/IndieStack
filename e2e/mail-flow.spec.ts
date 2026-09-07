@@ -61,7 +61,10 @@ test.describe("邮件全链路 (F01)", () => {
     if (!(await marketingSwitch.isChecked())) {
       await marketingSwitch.click();
     }
-    await page.getByRole("button", { name: /Save Preferences|保存更改/i }).first().click();
+    await page
+      .getByRole("button", { name: /Save Preferences|保存更改/i })
+      .first()
+      .click();
     await page.waitForTimeout(2000); // 等 server action 完成 + Resend 捕获
 
     // 断言：确认邮件到达 inbox
@@ -134,7 +137,9 @@ test.describe("邮件全链路 (F01)", () => {
     expect(latestRun.failed).toBe(0);
   });
 
-  test("failure path: 注入 failNext → email_attempts 累加 + worker_runs.failed>0", async ({ request }) => {
+  test("failure path: 注入 failNext → email_attempts 累加 + worker_runs.failed>0", async ({
+    request,
+  }) => {
     // 种 1 条
     const seed = await request.post(`${APP_URL}/api/e2e/seed-notifications`, {
       headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
@@ -175,5 +180,76 @@ test.describe("邮件全链路 (F01)", () => {
     const latestRun = runsJson.runs[0];
     expect(latestRun.sent).toBe(0);
     expect(latestRun.failed).toBe(1);
+  });
+});
+
+// B10：重试上限、队列过滤与死信查询
+// 保持与 happy/failure 用例相同的 mock-only 入口，验证真实 cron/repository 链路。
+test.describe("通知失败回执与死信 (B10)", () => {
+  test("达到重试上限后不再拉取，并可查询 dead-letter", async ({ request }) => {
+    const api = await pwRequest.newContext({ baseURL: APP_URL });
+    try {
+      await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+        headers: { authorization: `Bearer ${E2E_BEARER}` },
+      });
+      const seed = await api.post(`${APP_URL}/api/e2e/seed-notifications`, {
+        headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
+        data: { count: 1, type: "payment_succeeded" },
+      });
+      expect(seed.ok()).toBeTruthy();
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const inject = await api.get(`${APP_URL}/api/e2e/email-inbox?failNext=1`, {
+          headers: { authorization: `Bearer ${E2E_BEARER}` },
+        });
+        expect(inject.ok()).toBeTruthy();
+        const cron = await api.post(`${APP_URL}/api/cron/digest`, {
+          headers: {
+            "x-cron-secret": CRON_SECRET,
+            authorization: `Bearer ${E2E_BEARER}`,
+            "x-e2e-force-digest": "true",
+          },
+        });
+        expect(cron.ok()).toBeTruthy();
+        await expect
+          .poll(async () => {
+            const response = await api.get(`${APP_URL}/api/e2e/seed-notifications`, {
+              headers: { authorization: `Bearer ${E2E_BEARER}` },
+            });
+            const body = (await response.json()) as {
+              notifications: { metadata: { email_attempts?: number } }[];
+            };
+            return body.notifications[0]?.metadata?.email_attempts ?? 0;
+          })
+          .toBe(attempt);
+      }
+
+      const fourth = await api.post(`${APP_URL}/api/cron/digest`, {
+        headers: {
+          "x-cron-secret": CRON_SECRET,
+          authorization: `Bearer ${E2E_BEARER}`,
+          "x-e2e-force-digest": "true",
+        },
+      });
+      expect(fourth.ok()).toBeTruthy();
+      await expect(fourth.json()).resolves.toMatchObject({ sent: 0, failed: 0 });
+
+      const deadLetters = await api.get(`${APP_URL}/api/e2e/seed-notifications?deadLetter=true`, {
+        headers: { authorization: `Bearer ${E2E_BEARER}` },
+      });
+      expect(deadLetters.ok()).toBeTruthy();
+      const body = (await deadLetters.json()) as {
+        total: number;
+        notifications: { metadata: { email_attempts?: number; email_error?: string } }[];
+      };
+      expect(body.total).toBe(1);
+      expect(body.notifications[0].metadata.email_attempts).toBe(3);
+      expect(body.notifications[0].metadata.email_error).toBeTruthy();
+    } finally {
+      await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+        headers: { authorization: `Bearer ${E2E_BEARER}` },
+      });
+      await api.dispose();
+    }
   });
 });
