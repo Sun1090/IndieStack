@@ -28,7 +28,7 @@
 - CI：99f218e 的 CI、CodeQL、Secrets Scan、Build、E2E 均通过（CI run 34068093215；E2E 有 1 个 flaky annotation 但最终通过）
 
 ## 下一入口
-下一入口：进入 A06，完成 storage 配置诊断、provider 选择与安全摘要；随后继续 A07–A10。
+下一入口：继续 A07，审计 Supabase fallback contract、能力一致性、错误上下文与敏感信息边界；随后继续 A08–A10。
 - [x] B04 订阅 repository：注册 upsert 幂等、按用户+endpoint 撤销
 - [x] B04 repository contract tests and subscribe/unsubscribe Server Actions
 
@@ -37,3 +37,4 @@
 - 24a9012：新增 listDeadLetterNotifications 及数据库错误/limit 契约测试；verify:build 通过。
 
 - 2026-09-07：完成 B10 通知链路 E2E，新增 mock 通知读取端点用于断言失败回执与 dead-letter；局部 E2E 通过。
+- 2026-09-07：完成 A06 storage 配置安全摘要，统一 provider 选择与 env 诊断，覆盖未配置/部分配置/完整配置测试；verify:build 通过。
