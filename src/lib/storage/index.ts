@@ -89,7 +89,7 @@ function supabaseDriver(): StorageDriver {
 }
 
 function ossDriver(): StorageDriver {
-  // 动态加载：OSS 未配置时（默认路径）完全不引入该依赖
+  // 仅在 OSS 配置完整时实例化客户端；不完整配置始终走 Supabase fallback
   const store = new OSS({
     region: process.env.OSS_REGION as string,
     bucket: process.env.OSS_BUCKET as string,
