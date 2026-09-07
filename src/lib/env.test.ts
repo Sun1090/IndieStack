@@ -88,29 +88,28 @@ describe("env 校验", () => {
       expect(getEnvReport().problems.some((p) => p.includes("VAPID"))).toBe(false);
     });
   });
-});
-
-it("存储配置摘要区分未配置、部分配置和完整配置且不泄露值", async () => {
-  const { getStorageConfigReport } = await import("./env");
-  expect(getStorageConfigReport()).toMatchObject({
-    provider: "supabase",
-    reason: "oss-not-configured",
-    fallback: true,
-  });
-  vi.stubEnv("OSS_BUCKET", "bucket");
-  vi.stubEnv("OSS_ACCESS_KEY_SECRET", "secret");
-  expect(getStorageConfigReport()).toMatchObject({
-    provider: "supabase",
-    reason: "oss-incomplete",
-    missingOssVariables: expect.arrayContaining(["OSS_REGION", "OSS_ACCESS_KEY_ID"]),
-  });
-  vi.stubEnv("OSS_REGION", "region");
-  vi.stubEnv("OSS_ACCESS_KEY_ID", "access-key");
-  expect(getStorageConfigReport()).toEqual({
-    provider: "oss",
-    ossConfigured: true,
-    fallback: false,
-    reason: "oss-configured",
-    missingOssVariables: [],
+  it("存储配置摘要区分未配置、部分配置和完整配置且不泄露值", async () => {
+    const { getStorageConfigReport } = await import("./env");
+    expect(getStorageConfigReport()).toMatchObject({
+      provider: "supabase",
+      reason: "oss-not-configured",
+      fallback: true,
+    });
+    vi.stubEnv("OSS_BUCKET", "bucket");
+    vi.stubEnv("OSS_ACCESS_KEY_SECRET", "secret");
+    expect(getStorageConfigReport()).toMatchObject({
+      provider: "supabase",
+      reason: "oss-incomplete",
+      missingOssVariables: expect.arrayContaining(["OSS_REGION", "OSS_ACCESS_KEY_ID"]),
+    });
+    vi.stubEnv("OSS_REGION", "region");
+    vi.stubEnv("OSS_ACCESS_KEY_ID", "access-key");
+    expect(getStorageConfigReport()).toEqual({
+      provider: "oss",
+      ossConfigured: true,
+      fallback: false,
+      reason: "oss-configured",
+      missingOssVariables: [],
+    });
   });
 });
