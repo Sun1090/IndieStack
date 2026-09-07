@@ -15,7 +15,13 @@ const { ossStoreMock } = vi.hoisted(() => ({
     delete: vi.fn(async () => ({})),
   },
 }));
-vi.mock("ali-oss", () => ({ default: class MockOSS { put = ossStoreMock.put; signatureUrl = ossStoreMock.signatureUrl; delete = ossStoreMock.delete; } }));
+vi.mock("ali-oss", () => ({
+  default: class MockOSS {
+    put = ossStoreMock.put;
+    signatureUrl = ossStoreMock.signatureUrl;
+    delete = ossStoreMock.delete;
+  },
+}));
 
 import {
   getStorageDriver,
@@ -56,11 +62,25 @@ describe("isOssConfigured()", () => {
 describe("getStorageDriver()", () => {
   beforeEach(() => setOssEnv({}));
 
+  it("OSS 配置不完整时明确回退 Supabase，能力集合保持一致", () => {
+    setOssEnv({ OSS_BUCKET: "bucket", OSS_REGION: "region" });
+    const driver = getStorageDriver();
+    expect(driver.provider).toBe("supabase");
+    expect(driver.capabilities).toEqual({
+      put: true,
+      publicUrl: true,
+      signedUrl: true,
+      remove: true,
+    });
+  });
+
   it("默认回退 Supabase 驱动：上传成功返回公共 URL", async () => {
     const upload = vi.fn(async () => ({ error: null }));
     const getPublicUrl = vi.fn(() => ({ data: { publicUrl: "https://cdn.example/m1.png" } }));
     createAdminClientMock.mockReturnValue({
-      storage: { from: vi.fn(() => ({ upload, getPublicUrl, createSignedUrl: vi.fn(), remove: vi.fn() })) },
+      storage: {
+        from: vi.fn(() => ({ upload, getPublicUrl, createSignedUrl: vi.fn(), remove: vi.fn() })),
+      },
     });
 
     const driver = getStorageDriver();
@@ -74,12 +94,29 @@ describe("getStorageDriver()", () => {
   });
 
   it("暴露 provider 能力并支持签名 URL与删除", async () => {
-    const createSignedUrl = vi.fn(async () => ({ data: { signedUrl: "https://signed.example" }, error: null }));
+    const createSignedUrl = vi.fn(async () => ({
+      data: { signedUrl: "https://signed.example" },
+      error: null,
+    }));
     const remove = vi.fn(async () => ({ error: null }));
-    createAdminClientMock.mockReturnValue({ storage: { from: vi.fn(() => ({ upload: vi.fn(async () => ({ error: null })), getPublicUrl: vi.fn(() => ({ data: { publicUrl: "https://public.example" } })), createSignedUrl, remove })) } });
+    createAdminClientMock.mockReturnValue({
+      storage: {
+        from: vi.fn(() => ({
+          upload: vi.fn(async () => ({ error: null })),
+          getPublicUrl: vi.fn(() => ({ data: { publicUrl: "https://public.example" } })),
+          createSignedUrl,
+          remove,
+        })),
+      },
+    });
     const driver = getStorageDriver();
     expect(driver.provider).toBe("supabase");
-    expect(driver.capabilities).toEqual({ put: true, publicUrl: true, signedUrl: true, remove: true });
+    expect(driver.capabilities).toEqual({
+      put: true,
+      publicUrl: true,
+      signedUrl: true,
+      remove: true,
+    });
     await expect(driver.signedUrl("k", 300)).resolves.toBe("https://signed.example");
     await driver.remove("k");
     expect(createSignedUrl).toHaveBeenCalledWith("k", 300);
@@ -87,17 +124,30 @@ describe("getStorageDriver()", () => {
   });
 
   it("签名 URL 过期时间限制在 1 秒至 7 天", async () => {
-    createAdminClientMock.mockReturnValue({ storage: { from: vi.fn(() => ({ createSignedUrl: vi.fn(async () => ({ data: { signedUrl: "https://signed" }, error: null })) })) } });
+    createAdminClientMock.mockReturnValue({
+      storage: {
+        from: vi.fn(() => ({
+          createSignedUrl: vi.fn(async () => ({
+            data: { signedUrl: "https://signed" },
+            error: null,
+          })),
+        })),
+      },
+    });
     const driver = getStorageDriver();
     await expect(driver.signedUrl("k", 0)).rejects.toThrow("invalid signed URL expiry");
-    await expect(driver.signedUrl("k", SIGNED_URL_MAX_SECONDS + 1)).rejects.toThrow("invalid signed URL expiry");
+    await expect(driver.signedUrl("k", SIGNED_URL_MAX_SECONDS + 1)).rejects.toThrow(
+      "invalid signed URL expiry",
+    );
     await expect(driver.signedUrl("k", 60.5)).rejects.toThrow("invalid signed URL expiry");
   });
 
   it("Supabase 签名 URL与删除失败会保留错误上下文", async () => {
     const createSignedUrl = vi.fn(async () => ({ data: null, error: { message: "sign failed" } }));
     const remove = vi.fn(async () => ({ error: { message: "remove failed" } }));
-    createAdminClientMock.mockReturnValue({ storage: { from: vi.fn(() => ({ createSignedUrl, remove })) } });
+    createAdminClientMock.mockReturnValue({
+      storage: { from: vi.fn(() => ({ createSignedUrl, remove })) },
+    });
     const driver = getStorageDriver();
     await expect(driver.signedUrl("k", 60)).rejects.toThrow("sign failed");
     await expect(driver.remove("k")).rejects.toThrow("remove failed");
@@ -106,7 +156,9 @@ describe("getStorageDriver()", () => {
   it("Supabase 上传失败抛错", async () => {
     createAdminClientMock.mockReturnValue({
       storage: {
-        from: vi.fn(() => ({ upload: vi.fn(async () => ({ error: { message: "bucket missing" } })) })),
+        from: vi.fn(() => ({
+          upload: vi.fn(async () => ({ error: { message: "bucket missing" } })),
+        })),
       },
     });
     await expect(getStorageDriver().put("k.png", Buffer.from("x"), "image/png")).rejects.toThrow(
@@ -119,7 +171,9 @@ describe("getStorageDriver()", () => {
     const driver = getStorageDriver();
     expect(driver.provider).toBe("oss");
     expect(driver.capabilities.signedUrl).toBe(true);
-    await expect(driver.put("k", Buffer.from("x"), "image/png")).resolves.toBe("https://oss.example/k");
+    await expect(driver.put("k", Buffer.from("x"), "image/png")).resolves.toBe(
+      "https://oss.example/k",
+    );
     await expect(driver.signedUrl("k", 300)).resolves.toBe("https://oss.example/signed");
     await driver.remove("k");
     expect(ossStoreMock.signatureUrl).toHaveBeenCalledWith("k", { expires: 300 });
@@ -134,7 +188,11 @@ describe("buildObjectKey()", () => {
   });
 
   it("白名单覆盖三类图片", () => {
-    expect(Object.keys(ALLOWED_IMAGE_TYPES).sort()).toEqual(["image/jpeg", "image/png", "image/webp"]);
+    expect(Object.keys(ALLOWED_IMAGE_TYPES).sort()).toEqual([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
     expect(AVATAR_MAX_BYTES).toBe(2 * 1024 * 1024);
   });
 
@@ -145,7 +203,9 @@ describe("buildObjectKey()", () => {
 
   it("拒绝跨租户路径段与非法 prefix", () => {
     expect(() => buildObjectKey("../covers", "u1", "image/png")).toThrow("invalid storage prefix");
-    expect(() => buildObjectKey("avatars", "../other-user", "image/png")).toThrow("invalid storage tenant");
+    expect(() => buildObjectKey("avatars", "../other-user", "image/png")).toThrow(
+      "invalid storage tenant",
+    );
     expect(() => buildObjectKey("avatars", "", "image/png")).toThrow("invalid storage tenant");
   });
 });
