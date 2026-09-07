@@ -10,6 +10,37 @@ export interface EnvReport {
   problems: string[];
 }
 
+export type StorageProvider = "supabase" | "oss";
+
+export interface StorageConfigReport {
+  provider: StorageProvider;
+  ossConfigured: boolean;
+  fallback: boolean;
+  reason: "oss-configured" | "oss-not-configured" | "oss-incomplete";
+  missingOssVariables: string[];
+}
+
+const OSS_VARIABLES = [
+  "OSS_BUCKET",
+  "OSS_REGION",
+  "OSS_ACCESS_KEY_ID",
+  "OSS_ACCESS_KEY_SECRET",
+] as const;
+
+/** 安全的存储配置摘要：不返回任何凭据值。 */
+export function getStorageConfigReport(): StorageConfigReport {
+  const missingOssVariables = OSS_VARIABLES.filter((key) => !process.env[key]);
+  const configured = missingOssVariables.length === 0;
+  const provided = missingOssVariables.length < OSS_VARIABLES.length;
+  return {
+    provider: configured ? "oss" : "supabase",
+    ossConfigured: configured,
+    fallback: !configured,
+    reason: configured ? "oss-configured" : provided ? "oss-incomplete" : "oss-not-configured",
+    missingOssVariables: [...missingOssVariables],
+  };
+}
+
 let cached: EnvReport | null = null;
 
 function collect(): EnvReport {
@@ -32,9 +63,8 @@ function collect(): EnvReport {
     problems.push("生产环境建议设置 NEXT_PUBLIC_APP_URL 为 https 绝对地址");
   }
   // OSS 双驱动（ADR-010）：任一变量出现但四项不齐备即告警（运行时回退 Supabase Storage）
-  const ossVars = ["OSS_BUCKET", "OSS_REGION", "OSS_ACCESS_KEY_ID", "OSS_ACCESS_KEY_SECRET"];
-  const ossCount = ossVars.filter((k) => process.env[k]).length;
-  if (ossCount > 0 && ossCount < ossVars.length) {
+  const storage = getStorageConfigReport();
+  if (storage.reason === "oss-incomplete") {
     problems.push(
       "OSS_* 配置不完整（需 BUCKET/REGION/ACCESS_KEY_ID/ACCESS_KEY_SECRET 四项），已回退 Supabase Storage",
     );

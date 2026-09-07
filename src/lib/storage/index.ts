@@ -6,6 +6,7 @@
  * 说明：首版为服务端中转上传（小文件 ≤2MB），签名直传列为后续优化。
  */
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getStorageConfigReport } from "@/lib/env";
 import OSS from "ali-oss";
 
 /** 允许的图片类型 → 存储扩展名（content-type 白名单，拒绝任意扩展名拼接） */
@@ -21,7 +22,11 @@ export const SIGNED_URL_MIN_SECONDS = 1;
 export const SIGNED_URL_MAX_SECONDS = 7 * 24 * 60 * 60;
 
 function validateSignedUrlExpiry(expiresInSeconds: number): void {
-  if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < SIGNED_URL_MIN_SECONDS || expiresInSeconds > SIGNED_URL_MAX_SECONDS) {
+  if (
+    !Number.isInteger(expiresInSeconds) ||
+    expiresInSeconds < SIGNED_URL_MIN_SECONDS ||
+    expiresInSeconds > SIGNED_URL_MAX_SECONDS
+  ) {
     throw new Error(`invalid signed URL expiry: ${expiresInSeconds}`);
   }
 }
@@ -50,12 +55,7 @@ export interface StorageDriver {
 
 /** OSS_* 四项齐备即启用阿里云 OSS 驱动 */
 export function isOssConfigured(): boolean {
-  return Boolean(
-    process.env.OSS_BUCKET &&
-      process.env.OSS_REGION &&
-      process.env.OSS_ACCESS_KEY_ID &&
-      process.env.OSS_ACCESS_KEY_SECRET,
-  );
+  return getStorageConfigReport().ossConfigured;
 }
 
 function supabaseDriver(): StorageDriver {
@@ -75,7 +75,9 @@ function supabaseDriver(): StorageDriver {
     },
     async signedUrl(key, expiresInSeconds) {
       validateSignedUrlExpiry(expiresInSeconds);
-      const { data, error } = await createAdminClient().storage.from("avatars").createSignedUrl(key, expiresInSeconds);
+      const { data, error } = await createAdminClient()
+        .storage.from("avatars")
+        .createSignedUrl(key, expiresInSeconds);
       if (error) throw new Error(`storage signed URL: ${error.message}`);
       return data.signedUrl;
     },
@@ -113,7 +115,7 @@ function ossDriver(): StorageDriver {
 
 /** 按环境选择驱动；OSS 配置不完整时回退 Supabase（诊断信息见 warnOnEnvProblems 类日志） */
 export function getStorageDriver(): StorageDriver {
-  return isOssConfigured() ? ossDriver() : supabaseDriver();
+  return getStorageConfigReport().provider === "oss" ? ossDriver() : supabaseDriver();
 }
 
 /**
