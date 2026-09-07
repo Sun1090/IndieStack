@@ -28,7 +28,7 @@
 - CI：99f218e 的 CI、CodeQL、Secrets Scan、Build、E2E 均通过（CI run 34068093215；E2E 有 1 个 flaky annotation 但最终通过）
 
 ## 下一入口
-下一入口：继续 A07，审计 Supabase fallback contract、能力一致性、错误上下文与敏感信息边界；随后继续 A08–A10。
+下一入口：继续 A08，审计头像/项目封面上传的对象生命周期、替换清理与失败恢复；随后继续 A09–A10。
 - [x] B04 订阅 repository：注册 upsert 幂等、按用户+endpoint 撤销
 - [x] B04 repository contract tests and subscribe/unsubscribe Server Actions
 
@@ -38,3 +38,4 @@
 
 - 2026-09-07：完成 B10 通知链路 E2E，新增 mock 通知读取端点用于断言失败回执与 dead-letter；局部 E2E 通过。
 - 2026-09-07：完成 A06 storage 配置安全摘要，统一 provider 选择与 env 诊断，覆盖未配置/部分配置/完整配置测试；verify:build 通过。
+- 2026-09-07：完成 A07 fallback contract 测试与 A08 上传失败回收：OSS 不完整时显式回退 Supabase，profile/project 写回失败时清理已上传对象；748 tests 与局部验证通过。
