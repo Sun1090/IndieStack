@@ -8,6 +8,10 @@
  *   body: { count?: number; type?: string }   // 默认 count=2, type="system"
  *   → { inserted: number, ids: string[] }
  *
+ * GET /api/e2e/seed-notifications
+ *   Authorization: Bearer <E2E_BEARER_TOKEN>
+ *   → 读取 mock 用户通知（供失败回执与死信 E2E 断言）
+ *
  * DELETE /api/e2e/seed-notifications
  *   Authorization: Bearer <E2E_BEARER_TOKEN>
  *   → 清空 mock notifications（按当前 mock user）
@@ -67,14 +71,13 @@ export async function POST(request: NextRequest) {
     title: `E2E 种子通知 #${i + 1}`,
     body: `由 seed-notifications 端点注入，供 mail-flow.spec 触发 digest。`,
     link: null,
-    metadata: JSON.parse(JSON.stringify({})) as Database["public"]["Tables"]["notifications"]["Insert"]["metadata"],
+    metadata: JSON.parse(
+      JSON.stringify({}),
+    ) as Database["public"]["Tables"]["notifications"]["Insert"]["metadata"],
     email_sent: false,
     is_read: false,
   }));
-  const { data, error } = await admin
-    .from("notifications")
-    .insert(rows)
-    .select("id");
+  const { data, error } = await admin.from("notifications").insert(rows).select("id");
   if (error) {
     return jsonNoStore({ error: error.message }, { status: 500 });
   }
@@ -82,15 +85,33 @@ export async function POST(request: NextRequest) {
   return jsonNoStore({ inserted: ids.length, ids });
 }
 
+export async function GET(request: NextRequest) {
+  const unauth = authOrThrow(request);
+  if (unauth) return unauth;
+
+  const admin = createAdminClient();
+  const deadLetterOnly = request.nextUrl.searchParams.get("deadLetter") === "true";
+  let query = admin
+    .from("notifications")
+    .select("*")
+    .eq("user_id", MOCK_USER_ID)
+    .eq("email_sent", false)
+    .eq("is_read", false)
+    .order("created_at", { ascending: true });
+  if (deadLetterOnly) {
+    query = query.or("metadata->>email_attempts.gte.3");
+  }
+  const { data, error } = await query;
+  if (error) return jsonNoStore({ error: error.message }, { status: 500 });
+  return jsonNoStore({ total: (data ?? []).length, notifications: data ?? [] });
+}
+
 export async function DELETE(request: NextRequest) {
   const unauth = authOrThrow(request);
   if (unauth) return unauth;
 
   const admin = createAdminClient();
-  const { error } = await admin
-    .from("notifications")
-    .delete()
-    .eq("user_id", MOCK_USER_ID);
+  const { error } = await admin.from("notifications").delete().eq("user_id", MOCK_USER_ID);
   if (error) {
     return jsonNoStore({ error: error.message }, { status: 500 });
   }
