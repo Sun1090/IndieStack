@@ -4,10 +4,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { createClientMock, revalidatePathMock, putMock } = vi.hoisted(() => ({
+const { createClientMock, revalidatePathMock, putMock, removeMock } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   putMock: vi.fn(async () => "https://cdn.example/avatars/u1/k.png"),
+  removeMock: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
@@ -18,7 +19,7 @@ vi.mock("@/lib/storage", () => ({
     capabilities: { put: true, publicUrl: true, signedUrl: true, remove: true },
     put: putMock,
     signedUrl: vi.fn(),
-    remove: vi.fn(),
+    remove: removeMock,
   }),
   buildObjectKey: vi.fn(() => "avatars/u1/1-abc.png"),
   ALLOWED_IMAGE_TYPES: { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" },
@@ -61,7 +62,10 @@ beforeEach(() => {
 describe("uploadAvatar()", () => {
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(mockClient({ user: null }));
-    await expect(uploadAvatar(form(file()))).resolves.toEqual({ ok: false, error: "notAuthenticated" });
+    await expect(uploadAvatar(form(file()))).resolves.toEqual({
+      ok: false,
+      error: "notAuthenticated",
+    });
   });
 
   it("缺文件返回 fileRequired", async () => {
@@ -102,9 +106,10 @@ describe("uploadAvatar()", () => {
     await expect(uploadAvatar(form(file()))).resolves.toEqual({ ok: false, error: "uploadFailed" });
   });
 
-  it("profiles 回写失败返回 uploadFailed", async () => {
+  it("profiles 回写失败返回 uploadFailed 并清理已上传对象", async () => {
     createClientMock.mockResolvedValue(mockClient({ profileUpdateError: true }));
     await expect(uploadAvatar(form(file()))).resolves.toEqual({ ok: false, error: "uploadFailed" });
+    expect(removeMock).toHaveBeenCalledWith("avatars/u1/1-abc.png");
   });
 });
 
@@ -115,12 +120,14 @@ function coverForm(f: File | null) {
 }
 
 describe("uploadProjectCover()", () => {
-  function coverClient(opts: {
-    user?: object | null;
-    projectRow?: object | null;
-    membership?: object | null;
-    projectUpdateError?: boolean;
-  } = {}) {
+  function coverClient(
+    opts: {
+      user?: object | null;
+      projectRow?: object | null;
+      membership?: object | null;
+      projectUpdateError?: boolean;
+    } = {},
+  ) {
     const {
       user = USER,
       projectRow = { team_id: "t1" },
@@ -139,7 +146,9 @@ describe("uploadProjectCover()", () => {
             })),
             update: vi.fn(() => ({
               eq: vi.fn(() =>
-                Promise.resolve(projectUpdateError ? { error: { message: "db" } } : { error: null }),
+                Promise.resolve(
+                  projectUpdateError ? { error: { message: "db" } } : { error: null },
+                ),
               ),
             })),
           };
@@ -188,7 +197,10 @@ describe("uploadProjectCover()", () => {
   it("成功：写入存储、回写 logo_url 并 revalidate 项目页", async () => {
     const client = coverClient();
     createClientMock.mockResolvedValue(client);
-    const result = await uploadProjectCover("p1", coverForm(file({ name: "cover.webp", type: "image/webp" })));
+    const result = await uploadProjectCover(
+      "p1",
+      coverForm(file({ name: "cover.webp", type: "image/webp" })),
+    );
 
     expect(result).toEqual({ ok: true, data: { url: "https://cdn.example/avatars/u1/k.png" } });
     expect(putMock).toHaveBeenCalledWith("avatars/u1/1-abc.png", expect.any(Buffer), "image/webp");
