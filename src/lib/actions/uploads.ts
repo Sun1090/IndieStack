@@ -7,7 +7,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getStorageDriver, buildObjectKey, ALLOWED_IMAGE_TYPES, AVATAR_MAX_BYTES } from "@/lib/storage";
+import {
+  getStorageDriver,
+  buildObjectKey,
+  ALLOWED_IMAGE_TYPES,
+  AVATAR_MAX_BYTES,
+} from "@/lib/storage";
 import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { ok, fail } from "@/lib/types/action-result";
@@ -44,6 +49,12 @@ export async function uploadAvatar(formData: FormData): Promise<ActionResult<{ u
       .eq("id", user.id);
     if (error) {
       console.error("[uploadAvatar] 头像地址写回失败:", error);
+      // 数据库回写失败时回收刚上传对象，避免产生跨租户孤儿文件。
+      try {
+        await getStorageDriver().remove(key);
+      } catch (cleanupError) {
+        console.error("[uploadAvatar] 孤儿对象清理失败:", cleanupError);
+      }
       return fail("uploadFailed");
     }
 
@@ -100,6 +111,12 @@ export async function uploadProjectCover(
       .eq("id", projectId);
     if (error) {
       console.error("[uploadProjectCover] 封面地址写回失败:", error);
+      // 数据库回写失败时回收刚上传对象，避免项目封面孤儿文件。
+      try {
+        await getStorageDriver().remove(key);
+      } catch (cleanupError) {
+        console.error("[uploadProjectCover] 孤儿对象清理失败:", cleanupError);
+      }
       return fail("uploadFailed");
     }
 
