@@ -313,7 +313,9 @@ export type Database = {
           role: string
           status: string
           team_id: string
-          token: string
+          token: string | null
+          token_expires_at: string | null
+          token_hash: string | null
           updated_at: string
         }
         Insert: {
@@ -325,7 +327,9 @@ export type Database = {
           role?: string
           status?: string
           team_id: string
-          token: string
+          token?: string | null
+          token_expires_at?: string | null
+          token_hash?: string | null
           updated_at?: string
         }
         Update: {
@@ -337,7 +341,9 @@ export type Database = {
           role?: string
           status?: string
           team_id?: string
-          token?: string
+          token?: string | null
+          token_expires_at?: string | null
+          token_hash?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -482,7 +488,9 @@ export type Database = {
           email: string
           id: string
           status: string
-          token: string
+          token: string | null
+          token_expires_at: string | null
+          token_hash: string | null
           updated_at: string
           user_id: string
         }
@@ -492,7 +500,9 @@ export type Database = {
           email: string
           id?: string
           status?: string
-          token: string
+          token?: string | null
+          token_expires_at?: string | null
+          token_hash?: string | null
           updated_at?: string
           user_id: string
         }
@@ -502,7 +512,9 @@ export type Database = {
           email?: string
           id?: string
           status?: string
-          token?: string
+          token?: string | null
+          token_expires_at?: string | null
+          token_hash?: string | null
           updated_at?: string
           user_id?: string
         }
