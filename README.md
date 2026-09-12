@@ -125,27 +125,27 @@ src/
 
 ## Scripts
 
-| Command                   | Description                                                      |
-| ------------------------- | ---------------------------------------------------------------- |
-| `pnpm dev`                | Start development server                                         |
-| `pnpm build`              | Build for production                                             |
-| `pnpm start`              | Start production server                                          |
-| `pnpm lint`               | Run ESLint                                                       |
-| `pnpm type-check`         | TypeScript type check                                            |
-| `pnpm format`             | Format code with Prettier                                        |
-| `pnpm check`              | type-check + lint + i18n symmetry check                          |
-| `pnpm check:locales`      | Verify en/zh-CN translation key symmetry                         |
-| `pnpm db:migrate`         | Push database migrations                                         |
-| `pnpm db:types`           | Generate TypeScript types from DB                                |
-| `pnpm check:security`     | Verify secrets/env policy and security-scanner configuration     |
-| `pnpm check:migrations`   | Enforce immutable migration checksums + filename/ordering rules   |
-| `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only)  |
-| `pnpm check:migration-history` | Compare local Supabase migration history (needs `supabase start`) |
-| `pnpm test`               | Vitest unit + component tests (106 files / 1,034 tests)            |
-| `pnpm test:e2e`           | Playwright E2E smoke tests                                       |
-| `pnpm test:visual`        | Compare Linux Chromium visual regression baselines               |
-| `pnpm verify:build`       | Full local release gate: checks, tests, bundle, production build |
-| `pnpm check:release-docs` | Validate release/rollback/smoke documentation artifacts          |
+| Command                           | Description                                                       |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `pnpm dev`                        | Start development server                                          |
+| `pnpm build`                      | Build for production                                              |
+| `pnpm start`                      | Start production server                                           |
+| `pnpm lint`                       | Run ESLint                                                        |
+| `pnpm type-check`                 | TypeScript type check                                             |
+| `pnpm format`                     | Format code with Prettier                                         |
+| `pnpm check`                      | type-check + lint + i18n symmetry check                           |
+| `pnpm check:locales`              | Verify en/zh-CN translation key symmetry                          |
+| `pnpm db:migrate`                 | Push database migrations                                          |
+| `pnpm db:types`                   | Generate TypeScript types from DB                                 |
+| `pnpm check:security`             | Verify secrets/env policy and security-scanner configuration      |
+| `pnpm check:migrations`           | Enforce immutable migration checksums + filename/ordering rules   |
+| `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only)         |
+| `pnpm check:migration-history`    | Compare local Supabase migration history (needs `supabase start`) |
+| `pnpm test`                       | Vitest unit + component tests (106 files / 1,034 tests)           |
+| `pnpm test:e2e`                   | Playwright E2E smoke tests                                        |
+| `pnpm test:visual`                | Compare Linux Chromium visual regression baselines                |
+| `pnpm verify:build`               | Full local release gate: checks, tests, bundle, production build  |
+| `pnpm check:release-docs`         | Validate release/rollback/smoke documentation artifacts           |
 
 ## Release and operations
 

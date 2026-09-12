@@ -191,7 +191,10 @@ describe("inspectClientModules()", () => {
   it("allows server-only access outside client modules", () => {
     expect(
       inspectClientModules([
-        { path: "src/server.ts", content: `process.env.${["SUPABASE_SERVICE", "ROLE_KEY"].join("_")};` },
+        {
+          path: "src/server.ts",
+          content: `process.env.${["SUPABASE_SERVICE", "ROLE_KEY"].join("_")};`,
+        },
       ]),
     ).toEqual([]);
   });

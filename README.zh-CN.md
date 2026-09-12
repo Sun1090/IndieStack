@@ -125,27 +125,27 @@ src/
 
 ## 脚本
 
-| 命令                      | 说明                                             |
-| ------------------------- | ------------------------------------------------ |
-| `pnpm dev`                | 启动开发服务器                                   |
-| `pnpm build`              | 生产构建                                         |
-| `pnpm start`              | 启动生产服务器                                   |
-| `pnpm lint`               | 运行 ESLint                                      |
-| `pnpm type-check`         | TypeScript 类型检查                              |
-| `pnpm format`             | Prettier 格式化                                  |
-| `pnpm check`              | type-check + lint + i18n 对称性校验              |
-| `pnpm check:locales`      | 校验 en/zh-CN 翻译 key 对称性                    |
-| `pnpm db:migrate`         | 推送数据库迁移                                   |
-| `pnpm db:types`           | 从 DB 生成 TypeScript 类型                       |
-| `pnpm check:security`     | 校验 secrets/环境策略与安全扫描配置               |
-| `pnpm check:migrations`   | 校验迁移不可变校验和与命名/顺序规则              |
-| `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加）      |
-| `pnpm check:migration-history` | 比对本地 Supabase 迁移历史（需 `supabase start`） |
-| `pnpm test`               | Vitest 单元 + 组件测试（106 个文件 / 1,034 个测试） |
-| `pnpm test:e2e`           | Playwright E2E 冒烟测试                          |
-| `pnpm test:visual`        | 对比 Linux Chromium 视觉回归基线                 |
-| `pnpm verify:build`       | 完整本地发布门禁：检查、测试、bundle 与生产构建  |
-| `pnpm check:release-docs` | 校验发布、回滚和生产冒烟文档产物                 |
+| 命令                              | 说明                                                |
+| --------------------------------- | --------------------------------------------------- |
+| `pnpm dev`                        | 启动开发服务器                                      |
+| `pnpm build`                      | 生产构建                                            |
+| `pnpm start`                      | 启动生产服务器                                      |
+| `pnpm lint`                       | 运行 ESLint                                         |
+| `pnpm type-check`                 | TypeScript 类型检查                                 |
+| `pnpm format`                     | Prettier 格式化                                     |
+| `pnpm check`                      | type-check + lint + i18n 对称性校验                 |
+| `pnpm check:locales`              | 校验 en/zh-CN 翻译 key 对称性                       |
+| `pnpm db:migrate`                 | 推送数据库迁移                                      |
+| `pnpm db:types`                   | 从 DB 生成 TypeScript 类型                          |
+| `pnpm check:security`             | 校验 secrets/环境策略与安全扫描配置                 |
+| `pnpm check:migrations`           | 校验迁移不可变校验和与命名/顺序规则                 |
+| `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加）                |
+| `pnpm check:migration-history`    | 比对本地 Supabase 迁移历史（需 `supabase start`）   |
+| `pnpm test`                       | Vitest 单元 + 组件测试（106 个文件 / 1,034 个测试） |
+| `pnpm test:e2e`                   | Playwright E2E 冒烟测试                             |
+| `pnpm test:visual`                | 对比 Linux Chromium 视觉回归基线                    |
+| `pnpm verify:build`               | 完整本地发布门禁：检查、测试、bundle 与生产构建     |
+| `pnpm check:release-docs`         | 校验发布、回滚和生产冒烟文档产物                    |
 
 ## 发布与运维
 
