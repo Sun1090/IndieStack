@@ -17,12 +17,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Globe } from "lucide-react";
 
+export function buildLocaleCookie(locale: Locale, secure: boolean): string {
+  const attributes = [
+    `${LOCALE_COOKIE_NAME}=${locale}`,
+    "path=/",
+    `max-age=${60 * 60 * 24 * 365}`,
+    "SameSite=Lax",
+  ];
+  if (secure) attributes.push("Secure");
+  return attributes.join("; ");
+}
+
 export function LocaleSwitcher() {
   const currentLocale = useLocale() as Locale;
 
   // 切换语言：设置 Cookie 并刷新页面以应用新语言
   const switchLocale = useCallback((locale: Locale) => {
-    document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+    document.cookie = buildLocaleCookie(locale, window.location.protocol === "https:");
     window.location.reload();
   }, []);
 
@@ -40,6 +51,7 @@ export function LocaleSwitcher() {
             key={locale}
             onClick={() => switchLocale(locale)}
             className={locale === currentLocale ? "font-bold" : ""}
+            aria-current={locale === currentLocale ? "true" : undefined}
           >
             <span className="mr-2">{localeMeta[locale].flag}</span>
             {localeMeta[locale].label}

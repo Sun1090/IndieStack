@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { LocaleSwitcher } from "./locale-switcher";
+import { buildLocaleCookie, LocaleSwitcher } from "./locale-switcher";
 
 vi.mock("next-intl", () => ({
   useLocale: () => "zh-CN",
@@ -32,7 +32,9 @@ describe("LocaleSwitcher", () => {
     const enItem = screen.getByRole("menuitem", { name: /English/ });
 
     expect(zhItem).toHaveClass("font-bold");
+    expect(zhItem).toHaveAttribute("aria-current", "true");
     expect(enItem).not.toHaveClass("font-bold");
+    expect(enItem).not.toHaveAttribute("aria-current");
   });
 
   it("点击 English 写入 Cookie 并触发刷新", async () => {
@@ -44,5 +46,10 @@ describe("LocaleSwitcher", () => {
 
     expect(document.cookie).toContain("app-locale=en");
     expect(reloadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("仅在 HTTPS 下写入 Secure 属性", () => {
+    expect(buildLocaleCookie("en", false)).not.toContain("Secure");
+    expect(buildLocaleCookie("en", true)).toContain("Secure");
   });
 });

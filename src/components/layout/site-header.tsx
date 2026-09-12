@@ -59,7 +59,7 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full border-b backdrop-blur">
       <div className="container flex h-16 items-center justify-between">
         {/* Logo + 桌面端导航 */}
         <div className="flex items-center gap-6">
@@ -74,7 +74,7 @@ export function SiteHeader() {
                   href={link.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-md px-3 py-2 text-sm font-medium transition-colors"
                 >
                   {link.label}
                 </a>
@@ -82,7 +82,7 @@ export function SiteHeader() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-md px-3 py-2 text-sm font-medium transition-colors"
                 >
                   {link.label}
                 </Link>
@@ -99,7 +99,7 @@ export function SiteHeader() {
 
           {loading ? (
             // 加载中状态：显示骨架屏
-            <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />
+            <div className="bg-muted h-8 w-8 animate-pulse rounded-full" />
           ) : user ? (
             <>
               {/* 已登录：显示仪表盘按钮和用户头像下拉菜单 */}
@@ -110,14 +110,18 @@ export function SiteHeader() {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Button
+                    variant="ghost"
+                    className="relative h-8 w-8 rounded-full"
+                    aria-label={tc("profile")}
+                  >
                     <InitialAvatar name={user.email ?? "U"} className="h-8 w-8" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">{user.email}</p>
+                      <p className="text-sm leading-none font-medium">{user.email}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -179,7 +183,7 @@ export function SiteHeader() {
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+                    className="hover:bg-accent rounded-md px-3 py-2 text-sm font-medium"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {link.label}
@@ -188,7 +192,7 @@ export function SiteHeader() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+                    className="hover:bg-accent rounded-md px-3 py-2 text-sm font-medium"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {link.label}
