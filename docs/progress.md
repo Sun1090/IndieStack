@@ -118,7 +118,7 @@
 - [x] 使用新版烟测逻辑复测生产：commit `527fa5d` 对应别名 `https://indie-stack-theta.vercel.app`，6/6 通过，证据 `/tmp/indiestack-production-smoke-20260912-new.json`。
 - [x] 仓库开放 PR 0、开放 issue 0；Dependabot、Code Scanning、Secret Scanning 开放告警均为 0。
 
-## 2026-09-12 瞬时报错重试与 Auth 配置即代码
+## 2026-09-12 瞬时报错重试与 Auth 配置即代码（PR #25 合并后收口）
 
 - [x] 修复保活误报：`health-check`、`supabase-auto-restore`、production smoke 共用有限重试探测
       （3 次 / 5 秒；只重试网络错误、`408/425/429/5xx` 与未就绪 body，404/401 立即失败）；
@@ -128,12 +128,24 @@
       Sentry；832 → 853 测试全部通过（94/94 文件）。
 - [x] Auth 邮件模板与重定向白名单固化为可执行配置：`pnpm auth:email-config`
       （dry-run / `--apply` / `--verify`，支持 `--scope=templates|redirects|all`），
-      新增 21 个回归测试，并接入 CI 漂移门禁（`security-config`，scope=redirects）。
+      新增 21 个回归测试，并接入 CI 漂移门禁（`security-config`，scope=redirects）；
+      PR [#25](https://github.com/Sun1090/IndieStack/pull/25) 已合并为 `16f3b75`。
 - [x] 生产重定向白名单已写入并回读校验：`ntqggnztzvoavjbiillb` →
       `http://localhost:3000/**,https://indie-stack-theta.vercel.app/**,https://*-sun1090s-projects.vercel.app/**,https://indie-stack-*.vercel.app/**`。
 - [x] 发现并记录免费版硬限制：默认发件人下 Management API 拒绝改模板
       （`Email template modification is not available for free tier...`），且
       `rate_limit_email_sent = 2`（全项目每小时 2 封 Auth 邮件）。模板已就绪，待自定义 SMTP
       或升级套餐后执行 `pnpm auth:email-config -- --apply`。
+- [x] PR #25 合并后的生产 smoke 补跑通过：commit `16f3b75`、生产别名
+      `https://indie-stack-theta.vercel.app`，run [`34681676184`](https://github.com/Sun1090/IndieStack/actions/runs/34681676184)
+      为 **6/6 通过**（health attempt 1，`generatedAt=2026-09-12T07:48:53.011Z`）；
+      artifact `10293909831`、SHA256 `21cb9feb8a6b7b888d119bb4b50046b7b263c9399dc1a5a269598c154ff9793d`，
+      保留至 `2026-10-12T07:48:53Z`。
+- [x] 合并后 Supabase 自动恢复 dry-run 通过：run [`34681676066`](https://github.com/Sun1090/IndieStack/actions/runs/34681676066)
+      检测项目健康，输出“无需恢复”，未触发任何恢复写操作。
+- [x] 合并后 Post-deploy health check 最终通过：run
+      [`34681965716`](https://github.com/Sun1090/IndieStack/actions/runs/34681965716) 为 `success`。
+      此前两次手动 run 的输入把站点根地址当作 `health_url`，HTML 200 被严格 readiness 契约判为未就绪；
+      改为完整 `https://indie-stack-theta.vercel.app/api/health` 并通过独立 `scripts/check-health.js` 复测后成功。
 
 - [ ] 未执行真实“暂停后恢复”破坏性演练。生产测试账号登录、dashboard 租户隔离、合法/非法上传、邮件/通知 provider、合法 Stripe webhook 幂等落库、真实回滚 deployment 切换仍需隔离账号或 provider 才能验证。
