@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { chainMock } from "./test-helpers";
 
 const { createClientMock, createAdminClientMock } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
@@ -8,6 +9,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
 import {
+  getPushSubscriptionById,
   listPushSubscriptions,
   registerPushSubscription,
   removePushSubscription,
@@ -82,5 +84,24 @@ describe("push subscriptions repository", () => {
   it("rethrows remove errors with operation context", async () => {
     createAdminClientMock.mockReturnValue(admin([], { message: "db down" }));
     await expect(removePushSubscription("u1", "e")).rejects.toThrow("push subscription remove: db down");
+  });
+});
+
+describe("getPushSubscriptionById()", () => {
+  it("按 id 读取单个订阅（重试 worker 用）", async () => {
+    const row = { id: "s1", user_id: "u1", endpoint: "e", p256dh: "p", auth: "a", user_agent: null };
+    const chain = chainMock({ data: row });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await expect(getPushSubscriptionById("s1")).resolves.toEqual(row);
+    expect(chain.select).toHaveBeenCalledWith("id,user_id,endpoint,p256dh,auth,user_agent");
+    expect(chain.eq).toHaveBeenCalledWith("id", "s1");
+    expect(chain.maybeSingle).toHaveBeenCalled();
+  });
+
+  it("订阅不存在返回 null，错误带操作上下文抛错", async () => {
+    createAdminClientMock.mockReturnValueOnce({ from: vi.fn(() => chainMock({ data: null })) });
+    await expect(getPushSubscriptionById("s1")).resolves.toBeNull();
+    createAdminClientMock.mockReturnValueOnce({ from: vi.fn(() => chainMock({ error: { message: "db down" } })) });
+    await expect(getPushSubscriptionById("s1")).rejects.toThrow("push subscription get: db down");
   });
 });

@@ -12,7 +12,12 @@ const { createClientMock, createAdminClientMock } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
-import { getProfileById, findUserIdByEmail, updateProfile } from "./profiles";
+import {
+  getProfileById,
+  findUserIdByEmail,
+  listNotificationSettingsByIds,
+  updateProfile,
+} from "./profiles";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -58,5 +63,31 @@ describe("updateProfile()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(updateProfile("u1", {})).resolves.toEqual({ data: null, error: "db" });
+  });
+});
+
+describe("listNotificationSettingsByIds()", () => {
+  it("批量返回用户通知偏好", async () => {
+    const rows = [
+      { id: "u1", notification_settings: { pushNotifications: true } },
+      { id: "u2", notification_settings: null },
+    ];
+    const chain = chainMock({ data: rows });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    const settings = await listNotificationSettingsByIds(["u1", "u2"]);
+    expect(settings.get("u1")).toEqual({ pushNotifications: true });
+    expect(settings.get("u2")).toBeNull();
+    expect(chain.in).toHaveBeenCalledWith("id", ["u1", "u2"]);
+  });
+
+  it("空 id 列表不发查询", async () => {
+    const settings = await listNotificationSettingsByIds([]);
+    expect(settings.size).toBe(0);
+    expect(createAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("查询失败抛出带上下文的错误", async () => {
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ error: { message: "db down" } })));
+    await expect(listNotificationSettingsByIds(["u1"])).rejects.toThrow("profiles notification settings: db down");
   });
 });

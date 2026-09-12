@@ -45,7 +45,8 @@ export function isPushSubscriptionGone(error: unknown): boolean {
   return status === 404 || status === 410;
 }
 
-function failureReason(error: unknown): string {
+/** 机器可读的失败原因：写入 push_delivery_attempts.failure_code，供死信分类与告警 */
+export function pushFailureReason(error: unknown): string {
   const status = errorStatus(error);
   if (status === 404 || status === 410) return "subscription-gone";
   if (status !== null) return `http-${status}`;
@@ -104,7 +105,7 @@ export function createPushProvider(
         });
       } catch (error) {
         recordMetric("push.send.failed", 1, {
-          attributes: { provider: "web-push", reason: failureReason(error) },
+          attributes: { provider: "web-push", reason: pushFailureReason(error) },
         });
         throw error;
       }

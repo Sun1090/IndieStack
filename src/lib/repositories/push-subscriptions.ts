@@ -49,6 +49,19 @@ export async function listPushSubscriptions(userId: string): Promise<PushSubscri
   return (data ?? []) as PushSubscriptionRecord[];
 }
 
+/** Service-role read of a single subscription by id; used by the push retry worker. */
+export async function getPushSubscriptionById(id: string): Promise<PushSubscriptionRecord | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("push_subscriptions")
+    .select("id,user_id,endpoint,p256dh,auth,user_agent")
+    .eq("id", id)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`push subscription get: ${error.message}`);
+  return (data as PushSubscriptionRecord | null) ?? null;
+}
+
 /** Removes a permanently gone browser endpoint (HTTP 404/410 from the push service). */
 export async function removePushSubscription(userId: string, endpoint: string): Promise<void> {
   const admin = createAdminClient();

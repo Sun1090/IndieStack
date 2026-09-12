@@ -40,6 +40,10 @@ secure context (localhost is the development exception).
 Migration `020_push_subscriptions.sql` creates the table, RLS policies, endpoint index, and
 `updated_at` trigger.
 
+Migration `026_push_delivery_attempts.sql` adds the per-endpoint retry and dead-letter table. It is
+server-only: RLS is enabled with no anon/authenticated policies, and the cron worker uses the
+service-role client.
+
 ## Delivery Contract
 
 `notifyUser()` writes the in-app notification first, then attempts Web Push for every active
@@ -57,23 +61,45 @@ subscription. The service worker accepts this JSON payload:
 Delivery uses a 1-hour TTL, a 10-second transport timeout, high urgency, and VAPID authentication.
 It fans out to all subscriptions owned by the user.
 
+Each `(notification_id, endpoint)` pair is persisted before the first transport call. The
+in-app notification remains the source of truth. Web Push itself is at-least-once delivery, so a
+lost success receipt can cause a duplicate push; the service-worker `tag` keeps notification
+display idempotent where the browser supports it.
+
 Push follows the same preference matrix as email and additionally honors `pushNotifications`.
 Set `pushNotifications: false` to disable all browser push without affecting in-app notifications.
+
+## Retry and Dead-Letter Queue
+
+- Transient failures remain `pending` and are retried with exponential backoff (`60s × 2^(n-1)`,
+  capped at 1 hour). With the current three-attempt maximum, the actual waits are 60 seconds and
+  2 minutes.
+- A delivery is attempted at most 3 times including the immediate send. The third failure becomes a
+  `dead` row with `failure_code=max-attempts` and is no longer pulled by the worker.
+- The worker processes up to 50 due rows per invocation. `/api/cron/push-retry` is scheduled every
+  15 minutes in `vercel.json` and requires the same `CRON_SECRET` as `/api/cron/digest`.
+- A missing subscription row, a browser that disabled push in the meantime, or a notification row
+  that no longer exists moves the attempt to the dead-letter queue without another transport call.
+- Dead letters are retained for operator inspection through
+  `listDeadLetterPushDeliveries()`, `countDeadLetterPushDeliveries()`, and
+  `countInvalidPushEndpoints()` in `src/lib/repositories/push-delivery-attempts.ts`.
 
 ## Failure and Cleanup Behavior
 
 - HTTP `404` or `410` means the browser endpoint is permanently gone; IndieStack deletes that
-  subscription immediately.
-- Other failures are logged and do not block the in-app notification or the email channel.
+  subscription immediately and records a `subscription-gone` dead letter.
+- Other transient failures are logged, queued, and do not block the in-app notification or the
+  email channel.
 - Metrics: `push.send.completed` includes a `status_code`; `push.send.failed` includes a reason such
-  as `not-configured`, `subscription-gone`, `timeout`, or `http-*`.
-- Push currently has no durable retry queue or dead-letter table. Transient delivery is best-effort;
-  the in-app notification remains the source of truth.
+  as `not-configured`, `subscription-gone`, `timeout`, or `http-*`. `push.endpoint.revoked` and
+  `push.delivery.dead` classify cleanup and dead-letter reasons. `push.backlog` reports pending
+  rows, and `cron.push-retry.completed` / `cron.push-retry.failed` report worker health.
 
 ## Verification
 
 ```bash
 pnpm test -- src/lib/push-provider.test.ts src/lib/push-notify.test.ts
+pnpm test -- src/lib/push-retry.test.ts src/lib/repositories/push-delivery-attempts.test.ts
 pnpm test -- src/lib/repositories/push-subscriptions.test.ts src/lib/email-notify.test.ts
 pnpm test -- src/components/forms/push-notification-form.test.tsx
 pnpm type-check

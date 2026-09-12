@@ -22,6 +22,7 @@ import {
   markEmailSent,
   markEmailFailed,
   listDeadLetterNotifications,
+  listNotificationsByIds,
   countUnsentEmailNotifications,
   EMAIL_MAX_ATTEMPTS,
   NOTIFICATION_TYPES,
@@ -72,6 +73,26 @@ describe("markAllNotificationsRead()", () => {
   it("无更新行返回 0", async () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chainMock({})));
     await expect(markAllNotificationsRead("u1")).resolves.toBe(0);
+  });
+});
+
+describe("listNotificationsByIds()", () => {
+  it("按 id 批量读取通知（push 重试 worker 用）", async () => {
+    const rows = [{ id: "n1" }, { id: "n2" }];
+    const chain = chainMock({ data: rows });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(listNotificationsByIds(["n1", "n2"])).resolves.toEqual(rows);
+    expect(chain.in).toHaveBeenCalledWith("id", ["n1", "n2"]);
+  });
+
+  it("空 id 列表不发查询", async () => {
+    await expect(listNotificationsByIds([])).resolves.toEqual([]);
+    expect(createAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("查询失败抛错", async () => {
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
+    await expect(listNotificationsByIds(["n1"])).rejects.toThrow("db");
   });
 });
 

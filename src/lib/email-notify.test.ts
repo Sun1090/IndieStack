@@ -8,7 +8,7 @@ const { createNotificationMock, markEmailSentMock, createAdminClientMock, delive
   createNotificationMock: vi.fn(async () => "n1" as string | null),
   markEmailSentMock: vi.fn(async () => {}),
   createAdminClientMock: vi.fn(),
-  deliverPushNotificationMock: vi.fn(async () => ({ attempted: 0, sent: 0, failed: 0, revoked: 0, skipped: true })),
+  deliverPushNotificationMock: vi.fn(async () => ({ attempted: 0, sent: 0, failed: 0, revoked: 0, dead: 0, skipped: true })),
 }));
 
 vi.mock("@/lib/repositories/notifications", () => ({
@@ -55,7 +55,7 @@ let fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => Pr
 beforeEach(() => {
   vi.clearAllMocks();
   createNotificationMock.mockResolvedValue("n1");
-  deliverPushNotificationMock.mockResolvedValue({ attempted: 0, sent: 0, failed: 0, revoked: 0, skipped: true });
+  deliverPushNotificationMock.mockResolvedValue({ attempted: 0, sent: 0, failed: 0, revoked: 0, dead: 0, skipped: true });
   fetchMockResolved.ok = true;
   vi.stubGlobal("fetch", fetchMock);
   process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
@@ -78,6 +78,11 @@ describe("notifyUser()", () => {
     profileChain({ id: "u1", email: "a@b.c", notification_settings: {} });
     await notifyUser(notificationInput("system"));
     expect(deliverPushNotificationMock).toHaveBeenCalledTimes(1);
+    // 站内通知 id 必须透传给 Push 层，才能持久化重试队列
+    expect(deliverPushNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "u1", notificationId: "n1" }),
+      expect.anything(),
+    );
     expect(fetchMock).not.toHaveBeenCalled();
     expect(markEmailSentMock).not.toHaveBeenCalled();
   });

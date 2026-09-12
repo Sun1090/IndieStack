@@ -126,6 +126,11 @@
       "version": "025",
       "fileName": "025_notifications_realtime.sql",
       "sha256": "934f1781d14066fbf692bfec103040029370d90d8be2c2a9cec146ca1f4959c7"
+    },
+    {
+      "version": "026",
+      "fileName": "026_push_delivery_attempts.sql",
+      "sha256": "52c8dd0ce974e755268395dea53d4ea383ddfaad745d9f8f84830548aa09db10"
     }
   ]
 }

@@ -96,18 +96,12 @@ export function resolveProjectRef(
   }
 }
 
-type HeadersLike = { get(name: string): string | null };
-
 /**
  * cron 调用鉴权：接受 `Authorization: Bearer <CRON_SECRET>`（Vercel Cron 自动附加）
  * 或 `x-cron-secret`（与 `/api/cron/digest` 保持一致）。未配置 secret 时一律拒绝。
+ * 实现已抽到 `@/lib/cron-auth`，供 digest / push-retry / supabase-restore 共用。
  */
-export function isCronAuthorized(headers: HeadersLike, expectedSecret: string | undefined): boolean {
-  if (!expectedSecret) return false;
-  const bearer = headers.get("authorization");
-  if (bearer && bearer.startsWith("Bearer ") && bearer.slice(7) === expectedSecret) return true;
-  return headers.get("x-cron-secret") === expectedSecret;
-}
+export { isCronAuthorized } from "@/lib/cron-auth";
 
 export type ProjectStatusOptions = {
   ref: string;

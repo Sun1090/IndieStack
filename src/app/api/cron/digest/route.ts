@@ -13,6 +13,7 @@ import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { logApiError } from "@/lib/api-log";
 import { shouldSendEmail } from "@/lib/notification-prefs";
+import { isCronAuthorized } from "@/lib/cron-auth";
 import { isDigestHour } from "@/lib/email-digest";
 import { renderEmailHtml } from "@/lib/email-template";
 import { sendResendEmail } from "@/lib/email-send";
@@ -125,9 +126,7 @@ async function runDigest(
 }
 
 export async function POST(request: NextRequest) {
-  const secret = request.headers.get("x-cron-secret");
-  const expectedSecret = process.env.CRON_SECRET;
-  if (!expectedSecret || secret !== expectedSecret) {
+  if (!isCronAuthorized(request.headers, process.env.CRON_SECRET)) {
     return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 

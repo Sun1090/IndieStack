@@ -47,7 +47,13 @@
 | `cron.digest.failed` | `count` | `error_type` | 每轮 digest 未处理异常 |
 | `storage.upload.completed` | `ms` | `provider`, `outcome` | 每次对象写入结束 |
 | `provider.fallback` | `count` | `provider`, `reason`, `missing` | OSS 配置不完整并回退 Supabase |
+| `push.send.completed` | `count` | `provider`, `status_code` | 每次 Web Push 传输成功 |
 | `push.send.failed` | `count` | `provider`, `reason` | Web Push 未配置或适配器不可用 |
+| `push.endpoint.revoked` | `count` | `reason`, `channel` | 404/410 或订阅记录缺失导致端点撤销 |
+| `push.delivery.dead` | `count` | `reason`, `channel` | 单条 Push 投递进入死信 |
+| `push.backlog` | `count` | 无 | 每轮 push-retry cron 开始 |
+| `cron.push-retry.completed` | `ms` | `pulled`, `sent`, `retried`, `dead`, `revoked` | 每轮 push-retry 成功结束 |
+| `cron.push-retry.failed` | `count` | `error_type` | 每轮 push-retry 未处理异常 |
 
 指标会丢弃名称为敏感维度的字段（如 `token`、`secret`、`email`、`userId`），并截断过长值；业务代码不得把 URL、邮箱正文或凭据放进 attributes。
 
@@ -61,9 +67,14 @@
 | 上传失败率 | `storage.upload.completed{outcome=failure}` 占比 > 5%，15 分钟且样本 ≥20 | 检查 Storage 权限、配额与 provider 状态 |
 | 配置回退 | `provider.fallback > 0`，15 分钟窗口 | 补齐 OSS 配置或明确保持 Supabase |
 | Push 不可用 | `push.send.failed > 0`，15 分钟窗口 | 检查 VAPID 与适配器发布状态 |
+| Push 重试 worker 失败 | `cron.push-retry.failed > 0`，5 分钟窗口 | 立即排查 `CRON_SECRET`、Supabase 与 VAPID 配置 |
+| Push 队列积压 | `push.backlog > 500`，连续 3 轮或 15 分钟 | 检查 push service、worker 执行时长和死信增长 |
+| Push 失效端点激增 | `push.endpoint.revoked > 10`，1 小时窗口 | 检查浏览器订阅生命周期与 push service 状态码 |
+| Push 死信激增 | `push.delivery.dead > 20`，1 小时窗口 | 按 `reason` 区分瞬时上游故障与永久配置问题 |
 
 去重规则：
 
-- `cron.digest.completed`、`email.backlog` 和 `cron.digest.failed` 每轮最多一条；不要按通知条数放大告警。
+- `cron.digest.completed`、`email.backlog`、`cron.digest.failed`、`push.backlog` 和
+  `cron.push-retry.completed|failed` 每轮最多一条；不要按通知条数放大告警。
 - `provider.fallback` 在单个进程内按缺失变量签名去重。Serverless 冷启动可能跨实例重复，日志平台应再按 `name + attributes.reason + attributes.missing` 聚合，并设置至少 30 分钟恢复窗口。
 - 所有比率告警都设置最小样本量，避免低流量误报；阈值变更须在发布记录中说明并观察一个完整业务周期。

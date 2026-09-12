@@ -6,9 +6,11 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
-- **Web Push 持久化重试与死信队列（尚未实现）**：当前 Push 是即时 best-effort 投递，没有重试队列或死信表。
-  下一里程碑将引入与邮件 `email_attempts` 对齐的持久化重试、上限与死信查询，并补充订阅端点失效统计。
-  本条只是待办声明，不代表任何已完成能力。
+- **Web Push 持久化重试与死信队列**：新增 `026_push_delivery_attempts.sql`，按
+  `(notification_id, endpoint)` 持久化投递状态；瞬时失败按 60 秒起的指数退避重试，最多 3 次后进入死信，
+  404/410 与订阅缺失会撤销端点并计入失效统计。新增受 `CRON_SECRET` 保护的
+  `/api/cron/push-retry`（每 15 分钟、单轮 50 条），补充 `push.backlog`、死信与 worker 指标，
+  站内通知和邮件通道不受 Push 失败影响。
 
 ## [0.7.0] — 2026-09-12
 

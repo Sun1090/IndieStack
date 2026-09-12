@@ -1,0 +1,118 @@
+/**
+ * /api/cron/push-retry 路由测试（v0.8.0）
+ * 覆盖：鉴权、空队列、成功计数、执行失败 500、GET/POST 等价
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { GET, POST } from "./route";
+
+const {
+  runPushRetryMock,
+  countPendingMock,
+  listDueMock,
+  listNotificationsMock,
+  getSubscriptionMock,
+  getNotificationSettingsMock,
+  markSentMock,
+  markRetryMock,
+  markDeadMock,
+  removeSubscriptionMock,
+  createPushProviderMock,
+  logApiErrorMock,
+} = vi.hoisted(() => ({
+  runPushRetryMock: vi.fn(),
+  countPendingMock: vi.fn(async () => 0),
+  listDueMock: vi.fn(async () => []),
+  listNotificationsMock: vi.fn(async () => []),
+  getSubscriptionMock: vi.fn(async () => null),
+  getNotificationSettingsMock: vi.fn(async () => new Map()),
+  markSentMock: vi.fn(async () => {}),
+  markRetryMock: vi.fn(async () => {}),
+  markDeadMock: vi.fn(async () => {}),
+  removeSubscriptionMock: vi.fn(async () => {}),
+  createPushProviderMock: vi.fn(() => ({ name: "web-push", configured: true, send: vi.fn() })),
+  logApiErrorMock: vi.fn(async () => {}),
+}));
+
+vi.mock("@/lib/push-retry", () => ({
+  runPushRetry: runPushRetryMock,
+  PUSH_RETRY_BATCH_SIZE: 50,
+}));
+
+vi.mock("@/lib/repositories/push-delivery-attempts", () => ({
+  PUSH_BACKLOG_ALERT_THRESHOLD: 500,
+  countPendingPushDeliveries: countPendingMock,
+  listDuePushDeliveryAttempts: listDueMock,
+  markPushDeliverySent: markSentMock,
+  markPushDeliveryRetry: markRetryMock,
+  markPushDeliveryDead: markDeadMock,
+}));
+
+vi.mock("@/lib/repositories/push-subscriptions", () => ({
+  getPushSubscriptionById: getSubscriptionMock,
+  removePushSubscription: removeSubscriptionMock,
+}));
+
+vi.mock("@/lib/repositories/notifications", () => ({
+  listNotificationsByIds: listNotificationsMock,
+}));
+
+vi.mock("@/lib/repositories/profiles", () => ({
+  listNotificationSettingsByIds: getNotificationSettingsMock,
+}));
+
+vi.mock("@/lib/push-provider", () => ({
+  createPushProvider: createPushProviderMock,
+}));
+
+vi.mock("@/lib/api-log", () => ({ logApiError: logApiErrorMock }));
+
+function req(secret = "***") {
+  return new NextRequest("http://localhost/api/cron/push-retry", {
+    headers: { "x-cron-secret": secret },
+  });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  process.env.CRON_SECRET = "***";
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("/api/cron/push-retry", () => {
+  it("缺少或错误 secret 返回 401", async () => {
+    expect((await GET(new NextRequest("http://localhost/api/cron/push-retry"))).status).toBe(401);
+    expect((await POST(req("wrong"))).status).toBe(401);
+    expect(runPushRetryMock).not.toHaveBeenCalled();
+  });
+
+  it("接受 Bearer CRON_SECRET（Vercel Cron 语义）", async () => {
+    runPushRetryMock.mockResolvedValue({ pulled: 0, sent: 0, retried: 0, dead: 0, revoked: 0 });
+    const res = await GET(new NextRequest("http://localhost/api/cron/push-retry", {
+      headers: { authorization: "Bearer ***" },
+    }));
+    expect(res.status).toBe(200);
+  });
+
+  it("空队列返回全零计数且不回显敏感信息", async () => {
+    runPushRetryMock.mockResolvedValue({ pulled: 0, sent: 0, retried: 0, dead: 0, revoked: 0 });
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ pulled: 0, sent: 0, retried: 0, dead: 0, revoked: 0 });
+  });
+
+  it("返回脱敏后的成功/重试/死信计数", async () => {
+    runPushRetryMock.mockResolvedValue({ pulled: 4, sent: 2, retried: 1, dead: 1, revoked: 1 });
+    const res = await POST(req());
+    await expect(res.json()).resolves.toEqual({ pulled: 4, sent: 2, retried: 1, dead: 1, revoked: 1 });
+  });
+
+  it("worker 抛错时返回 500 并上报", async () => {
+    runPushRetryMock.mockRejectedValue(new Error("provider not configured"));
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: "Internal server error" });
+    expect(logApiErrorMock).toHaveBeenCalledWith("[Cron Push Retry] 执行失败", expect.any(Error));
+  });
+});

@@ -94,6 +94,15 @@ export async function listDeadLetterNotifications(limit = 100): Promise<Notifica
   return (data ?? []) as Notification[];
 }
 
+/** 按 id 批量读取通知（service_role），供 push 重试 worker 取回投递内容 */
+export async function listNotificationsByIds(ids: string[]): Promise<Notification[]> {
+  if (ids.length === 0) return [];
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("notifications").select("*").in("id", ids);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Notification[];
+}
+
 /** 标记邮件已发送（worker 回执） */
 export async function markEmailSent(notificationId: string): Promise<void> {
   const admin = createAdminClient();

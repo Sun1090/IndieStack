@@ -8,6 +8,10 @@
     {
       "path": "/api/ops/supabase-restore",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/push-retry",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

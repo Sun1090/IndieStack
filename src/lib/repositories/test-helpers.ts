@@ -15,7 +15,7 @@ export interface ChainOutcome {
 export function chainMock(outcome: ChainOutcome = {}) {
   const full = { data: null, error: null, count: null, ...outcome };
   const chain: Record<string, (...args: unknown[]) => unknown> = {};
-  for (const m of ["select", "eq", "gt", "order", "limit", "range", "update", "insert", "upsert", "is", "delete", "in", "or"]) {
+  for (const m of ["select", "eq", "gt", "gte", "lt", "lte", "neq", "order", "limit", "range", "update", "insert", "upsert", "is", "delete", "in", "or"]) {
     chain[m] = vi.fn(() => chain);
   }
   chain.single = vi.fn(() => Promise.resolve(full));
@@ -40,6 +40,11 @@ export function chainThrow(err: Error) {
     update: boom,
     insert: boom,
     upsert: boom,
+    gt: boom,
+    gte: boom,
+    lt: boom,
+    lte: boom,
+    neq: boom,
     is: boom,
     delete: boom,
     in: boom,

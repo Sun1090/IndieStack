@@ -66,8 +66,9 @@ export async function notifyUser(input: NewNotification): Promise<void> {
   }
   if (!profile) return;
 
-  // Web Push is immediate and best-effort. Its failure must never suppress email
-  // delivery or bubble into the business event that created the notification.
+  // Web Push is attempted immediately; per-endpoint failures are queued for cron
+  // retry. Its failure must never suppress email delivery or bubble into the
+  // business event that created the notification.
   try {
     await deliverPushNotification(
       {
@@ -77,6 +78,8 @@ export async function notifyUser(input: NewNotification): Promise<void> {
         body: input.body,
         link: input.link,
         idempotencyKey: input.idempotencyKey,
+        // Persist per-endpoint push attempts so transient failures get retried by cron.
+        notificationId,
       },
       profile.notification_settings,
     );

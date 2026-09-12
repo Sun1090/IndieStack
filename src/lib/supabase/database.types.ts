@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.15"
-  }
   public: {
     Tables: {
       api_keys: {
@@ -116,6 +111,132 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_messages: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          message: string
+          name: string
+          status: string
+          subject: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          message: string
+          name: string
+          status?: string
+          subject: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string
+          name?: string
+          status?: string
+          subject?: string
+        }
+        Relationships: []
+      }
+      email_worker_runs: {
+        Row: {
+          created_at: string
+          duration_ms: number
+          error: string | null
+          failed: number
+          groups: number
+          id: string
+          pulled: number
+          sent: number
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number
+          error?: string | null
+          failed?: number
+          groups?: number
+          id?: string
+          pulled?: number
+          sent?: number
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number
+          error?: string | null
+          failed?: number
+          groups?: number
+          id?: string
+          pulled?: number
+          sent?: number
+        }
+        Relationships: []
+      }
+      marketing_subscriptions: {
+        Row: {
+          confirmed_at: string | null
+          created_at: string
+          email: string
+          id: string
+          status: string
+          token: string
+          token_expires_at: string | null
+          token_hash: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confirmed_at?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          status?: string
+          token: string
+          token_expires_at?: string | null
+          token_hash?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confirmed_at?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          status?: string
+          token?: string
+          token_expires_at?: string | null
+          token_hash?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mfa_recovery_codes: {
+        Row: {
+          code_hash: string
+          created_at: string
+          id: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          id?: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           body: string | null
@@ -154,39 +275,6 @@ export type Database = {
           metadata?: Json | null
           title?: string
           type?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      push_subscriptions: {
-        Row: {
-          auth: string
-          created_at: string
-          endpoint: string
-          id: string
-          p256dh: string
-          updated_at: string
-          user_agent: string | null
-          user_id: string
-        }
-        Insert: {
-          auth: string
-          created_at?: string
-          endpoint: string
-          id?: string
-          p256dh: string
-          updated_at?: string
-          user_agent?: string | null
-          user_id: string
-        }
-        Update: {
-          auth?: string
-          created_at?: string
-          endpoint?: string
-          id?: string
-          p256dh?: string
-          updated_at?: string
-          user_agent?: string | null
           user_id?: string
         }
         Relationships: []
@@ -286,6 +374,105 @@ export type Database = {
           },
         ]
       }
+      push_delivery_attempts: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          endpoint: string
+          failure_code: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          next_attempt_at: string
+          notification_id: string
+          push_subscription_id: string | null
+          sent_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          endpoint: string
+          failure_code?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          next_attempt_at?: string
+          notification_id: string
+          push_subscription_id?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          endpoint?: string
+          failure_code?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          next_attempt_at?: string
+          notification_id?: string
+          push_subscription_id?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_delivery_attempts_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_delivery_attempts_push_subscription_id_fkey"
+            columns: ["push_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "push_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean
@@ -346,9 +533,7 @@ export type Database = {
           role: string
           status: string
           team_id: string
-          token: string | null
-          token_expires_at: string | null
-          token_hash: string | null
+          token: string
           updated_at: string
         }
         Insert: {
@@ -360,9 +545,7 @@ export type Database = {
           role?: string
           status?: string
           team_id: string
-          token?: string | null
-          token_expires_at?: string | null
-          token_hash?: string | null
+          token: string
           updated_at?: string
         }
         Update: {
@@ -374,9 +557,7 @@ export type Database = {
           role?: string
           status?: string
           team_id?: string
-          token?: string | null
-          token_expires_at?: string | null
-          token_hash?: string | null
+          token?: string
           updated_at?: string
         }
         Relationships: [
@@ -484,128 +665,38 @@ export type Database = {
         }
         Relationships: []
       }
-      contact_messages: {
+      webauthn_credentials: {
         Row: {
+          counter: number
           created_at: string
-          email: string
+          credential_id: string
+          device_name: string | null
           id: string
-          message: string
-          name: string
-          status: string
-          subject: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          id?: string
-          message: string
-          name: string
-          status?: string
-          subject: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          id?: string
-          message?: string
-          name?: string
-          status?: string
-          subject?: string
-        }
-        Relationships: []
-      }
-      marketing_subscriptions: {
-        Row: {
-          confirmed_at: string | null
-          created_at: string
-          email: string
-          id: string
-          status: string
-          token: string | null
-          token_expires_at: string | null
-          token_hash: string | null
-          updated_at: string
+          last_used_at: string | null
+          public_key: string
+          transports: string[] | null
           user_id: string
         }
         Insert: {
-          confirmed_at?: string | null
+          counter?: number
           created_at?: string
-          email: string
+          credential_id: string
+          device_name?: string | null
           id?: string
-          status?: string
-          token?: string | null
-          token_expires_at?: string | null
-          token_hash?: string | null
-          updated_at?: string
+          last_used_at?: string | null
+          public_key: string
+          transports?: string[] | null
           user_id: string
         }
         Update: {
-          confirmed_at?: string | null
+          counter?: number
           created_at?: string
-          email?: string
+          credential_id?: string
+          device_name?: string | null
           id?: string
-          status?: string
-          token?: string | null
-          token_expires_at?: string | null
-          token_hash?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      email_worker_runs: {
-        Row: {
-          created_at: string
-          duration_ms: number
-          error: string | null
-          failed: number
-          groups: number
-          id: string
-          pulled: number
-          sent: number
-        }
-        Insert: {
-          created_at?: string
-          duration_ms?: number
-          error?: string | null
-          failed?: number
-          groups?: number
-          id?: string
-          pulled?: number
-          sent?: number
-        }
-        Update: {
-          created_at?: string
-          duration_ms?: number
-          error?: string | null
-          failed?: number
-          groups?: number
-          id?: string
-          pulled?: number
-          sent?: number
-        }
-        Relationships: []
-      }
-      mfa_recovery_codes: {
-        Row: {
-          code_hash: string
-          created_at: string
-          id: string
-          used_at: string | null
-          user_id: string
-        }
-        Insert: {
-          code_hash: string
-          created_at?: string
-          id?: string
-          used_at?: string | null
-          user_id: string
-        }
-        Update: {
-          code_hash?: string
-          created_at?: string
-          id?: string
-          used_at?: string | null
+          last_used_at?: string | null
+          public_key?: string
+          transports?: string[] | null
           user_id?: string
         }
         Relationships: []
@@ -645,42 +736,6 @@ export type Database = {
       }
     }
     Views: {
-      webauthn_credentials: {
-        Row: {
-          counter: number
-          created_at: string
-          credential_id: string
-          device_name: string | null
-          id: string
-          last_used_at: string | null
-          public_key: string
-          transports: string[] | null
-          user_id: string
-        }
-        Insert: {
-          counter?: number
-          created_at?: string
-          credential_id: string
-          device_name?: string | null
-          id?: string
-          last_used_at?: string | null
-          public_key: string
-          transports?: string[] | null
-          user_id: string
-        }
-        Update: {
-          counter?: number
-          created_at?: string
-          credential_id?: string
-          device_name?: string | null
-          id?: string
-          last_used_at?: string | null
-          public_key?: string
-          transports?: string[] | null
-          user_id?: string
-        }
-        Relationships: []
-      }
       user_stats: {
         Row: {
           api_call_count: number | null
@@ -869,3 +924,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

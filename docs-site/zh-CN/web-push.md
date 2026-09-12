@@ -38,6 +38,9 @@ NEXT_PUBLIC_APP_URL=https://app.example.com
 
 迁移 `020_push_subscriptions.sql` 创建数据表、RLS 策略、endpoint 索引和 `updated_at` 触发器。
 
+迁移 `026_push_delivery_attempts.sql` 新增按 endpoint 记录的持久化重试与死信表。该表仅服务端
+使用：启用 RLS 且不对 anon/authenticated 开放策略，cron worker 通过 service-role 客户端访问。
+
 ## 投递契约
 
 `notifyUser()` 先写入站内通知，再向该用户的每个有效订阅尝试 Web Push。Service Worker 接收的
@@ -54,21 +57,41 @@ JSON payload 为：
 
 投递使用 1 小时 TTL、10 秒传输超时、high urgency 和 VAPID 鉴权，并会扇出到用户的全部订阅。
 
+每个 `(notification_id, endpoint)` 在首次传输调用前先落库。站内通知仍是可靠事实来源；Web Push
+本身是至少一次投递，成功回执丢失时可能重复推送，Service Worker 的 `tag` 会在浏览器支持时保持
+通知展示幂等。
+
 Push 与邮件共用类型偏好矩阵，同时额外受 `pushNotifications` 控制。设置
 `pushNotifications: false` 会关闭所有浏览器推送，但不影响站内通知。
 
+## 重试与死信队列
+
+- 瞬时失败保持 `pending`，按指数退避重试（`60s × 2^(n-1)`，上限 1 小时）。当前最多尝试 3 次，
+  因此实际等待为首次失败后 60 秒、随后 2 分钟。
+- 每条投递最多尝试 3 次（含即时投递）。第 3 次仍失败时写入 `dead`，`failure_code=max-attempts`，
+  worker 不再拉取。
+- 每轮最多处理 50 条到期记录。`/api/cron/push-retry` 在 `vercel.json` 中每 15 分钟调度一次，
+  与 `/api/cron/digest` 一样要求 `CRON_SECRET`。
+- 订阅记录已删除、用户期间关闭 Push，或通知记录不存在时，不再调用推送服务，直接进入死信队列。
+- 死信保留供运维排查，可通过 `src/lib/repositories/push-delivery-attempts.ts` 的
+  `listDeadLetterPushDeliveries()`、`countDeadLetterPushDeliveries()` 和
+  `countInvalidPushEndpoints()` 查询。
+
 ## 失败与清理
 
-- HTTP `404` 或 `410` 表示浏览器 endpoint 已永久失效，系统会立即删除该订阅。
-- 其他失败只记录日志，不影响站内通知或邮件通道。
+- HTTP `404` 或 `410` 表示浏览器 endpoint 已永久失效，系统立即删除该订阅并写入
+  `subscription-gone` 死信。
+- 其他瞬时失败会记录日志并进入重试队列，不影响站内通知或邮件通道。
 - 指标：`push.send.completed` 带 `status_code`；`push.send.failed` 带 `not-configured`、
-  `subscription-gone`、`timeout`、`http-*` 等原因。
-- Push 当前没有持久化重试队列或死信表，瞬时失败采用 best-effort；站内通知是可靠的事实来源。
+  `subscription-gone`、`timeout`、`http-*` 等原因。`push.endpoint.revoked` 与
+  `push.delivery.dead` 按原因统计订阅撤销和死信，`push.backlog` 上报待重试积压，
+  `cron.push-retry.completed` / `cron.push-retry.failed` 监控 worker 健康。
 
 ## 验证
 
 ```bash
 pnpm test -- src/lib/push-provider.test.ts src/lib/push-notify.test.ts
+pnpm test -- src/lib/push-retry.test.ts src/lib/repositories/push-delivery-attempts.test.ts
 pnpm test -- src/lib/repositories/push-subscriptions.test.ts src/lib/email-notify.test.ts
 pnpm test -- src/components/forms/push-notification-form.test.tsx
 pnpm type-check
