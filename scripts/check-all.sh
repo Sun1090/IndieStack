@@ -11,6 +11,7 @@ echo "==> check:migrations"; pnpm --silent check:migrations
 echo "==> check:supabase-security"; pnpm --silent check:supabase-security
 echo "==> check:security"; pnpm --silent check:security
 echo "==> check:release-docs"; pnpm --silent check:release-docs
+echo "==> check:changelog";    pnpm --silent check:changelog
 echo "==> check:docs";   pnpm --silent check:docs
 echo "==> check:a11y";   pnpm --silent check:a11y
 echo "==> type-check";   pnpm --silent type-check
