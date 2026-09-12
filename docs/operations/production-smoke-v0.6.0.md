@@ -15,11 +15,11 @@ pnpm smoke:production -- "$PRODUCTION_URL" \
 健康检查复用与保活相同的有限重试策略：网络错误、可重试 5xx、以及
 `200` 但 body 尚未 ready 时最多尝试 3 次（间隔 5 秒）；版本或安全头持续不匹配仍会失败。
 
-## 自动化覆盖（2026-09-12）
+## 自动化覆盖（2026-09-12 PR #25 合并后补跑）
 
 | 场景               | 通过条件                                                                       | 结果/证据                                                                                                         |
 | ------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`  | 200，`status=ok`、`ready=true`、版本与目标一致、`no-store` 且带 `x-request-id` | ✅ 2026-09-12T05:12:57Z，version `0.6.0`，部署 `indie-stack-aqu77mjze-sun1090s-projects.vercel.app`（production） |
+| `GET /api/health`  | 200，`status=ok`、`ready=true`、版本与目标一致、`no-store` 且带 `x-request-id` | ✅ 2026-09-12T07:48:53Z，version `0.6.0`，生产别名 `https://indie-stack-theta.vercel.app`，attempt 1 |
 | 首页/静态资源      | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG                  | ✅ 首页 HTTP 200；`/icon.svg` HTTP 200                                                                            |
 | 未授权 dashboard   | 匿名请求重定向到 `/auth/login`，不返回受保护内容                               | ✅ HTTP 307，Location `/auth/login?redirect=%2Fdashboard`                                                         |
 | Webhook 缺签名     | HTTP 400，`Missing signature`，`no-store`                                      | ✅ HTTP 400，无副作用                                                                                             |
@@ -35,9 +35,12 @@ pnpm smoke:production -- "$PRODUCTION_URL" \
 
 - 结果：**6/6 自动化检查通过**
 - 命令：`pnpm smoke:production -- https://indie-stack-theta.vercel.app --expected-version 0.6.0 --output /tmp/indiestack-production-smoke-latest.json`
-- 目标 commit：`16a285a`（GitHub Deployments：`Production – indie-stack`，deployment id `6406092790`，状态 `success`）
-- Vercel deployment：`indie-stack-aqu77mjze-sun1090s-projects.vercel.app`
-- 证据 JSON：`/tmp/indiestack-production-smoke-latest.json`（`generatedAt` 2026-09-12T05:12:57.855Z；运行器不提交临时 evidence，CI artifact 保留 30 天）
+- 目标 commit：`16f3b75`（PR #25 合并后补跑）
+- GitHub Actions：Production Smoke run [`34681676184`](https://github.com/Sun1090/IndieStack/actions/runs/34681676184)，状态 `success`
+- 证据 artifact：`production-smoke-evidence`，artifact id `10293909831`，大小 `666` bytes；
+  SHA256 `21cb9feb8a6b7b888d119bb4b50046b7b263c9399dc1a5a269598c154ff9793d`，到期时间 `2026-10-12T07:48:53Z`（保留 30 天）
+- 证据 JSON：`generatedAt` `2026-09-12T07:48:53.011Z`；`passed=true`，health attempts `1`，
+  homepage、icon、安全头、匿名 dashboard 重定向与 Stripe 缺签名拒绝全部通过
 
 本文件只记录**无副作用**检查；任何登录、上传、写库、发信场景必须有隔离账号或 provider 才能执行，
 在这些前置条件具备前保持“未验证”，不得用空白结果冒充通过。
