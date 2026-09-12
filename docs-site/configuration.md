@@ -36,7 +36,8 @@ NEXT_PUBLIC_MOCK_ENABLED=true
 | `SENTRY_ORG` | Sentry org name | Sentry Dashboard |
 | `SENTRY_PROJECT` | Sentry project name | Sentry Dashboard |
 | `SENTRY_AUTH_TOKEN` | Sentry auth token | Sentry Dashboard → Auth Tokens |
-| `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key (planned) | Appark Dashboard |
+| `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key (optional; pair with the endpoint) | Appark Dashboard |
+| `NEXT_PUBLIC_APPARK_ENDPOINT` | Appark event collector endpoint | Appark Dashboard |
 
 ```bash
 # Sentry error tracking
@@ -45,28 +46,31 @@ SENTRY_ORG=your-org
 SENTRY_PROJECT=your-project
 SENTRY_AUTH_TOKEN=your-auth-token
 
-# Appark application monitoring (planned / not wired)
+# Appark application monitoring (optional; both values required)
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
+NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
 ```
 
 ### File Storage (Alibaba Cloud OSS)
 
 | Variable | Description | How to Get |
 |----------|-------------|------------|
-| `ALIYUN_ACCESS_KEY_ID` | Alibaba Cloud AccessKey ID | Alibaba Cloud RAM Console |
-| `ALIYUN_ACCESS_KEY_SECRET` | Alibaba Cloud AccessKey Secret | Alibaba Cloud RAM Console |
-| `ALIYUN_BUCKET` | OSS Bucket name | OSS Console |
-| `ALIYUN_REGION` | OSS region (default `oss-cn-hangzhou`) | OSS Console |
-| `ALIYUN_CDN_DOMAIN` | CDN domain (optional) | CDN Console |
+| `OSS_BUCKET` | OSS bucket name | OSS Console |
+| `OSS_REGION` | OSS region, for example `oss-cn-hangzhou` | OSS Console |
+| `OSS_ACCESS_KEY_ID` | Alibaba Cloud AccessKey ID | Alibaba Cloud RAM Console |
+| `OSS_ACCESS_KEY_SECRET` | Alibaba Cloud AccessKey Secret | Alibaba Cloud RAM Console |
 
 ```bash
-# Alibaba Cloud OSS
-ALIYUN_ACCESS_KEY_ID=your-key
-ALIYUN_ACCESS_KEY_SECRET=your-secret
-ALIYUN_BUCKET=your-bucket
-ALIYUN_REGION=oss-cn-hangzhou
-ALIYUN_CDN_DOMAIN=https://static.yourdomain.com
+# All four values must be present to switch from Supabase Storage to OSS.
+OSS_BUCKET=your-bucket
+OSS_REGION=oss-cn-hangzhou
+OSS_ACCESS_KEY_ID=your-key
+OSS_ACCESS_KEY_SECRET=your-secret
 ```
+
+Supabase Storage is the default and creates the public-read `avatars` bucket through migration
+`024_storage_avatars_policies.sql`. See [File Storage](./storage) for the upload contract,
+security boundaries, and cleanup behavior.
 
 ### Payments (Stripe)
 
@@ -258,12 +262,11 @@ NEXT_PUBLIC_SENTRY_DSN=https://your-dsn@sentry.io/project
 SENTRY_ORG=your-org
 SENTRY_PROJECT=your-project
 
-# ===== File Storage =====
-ALIYUN_ACCESS_KEY_ID=your-key
-ALIYUN_ACCESS_KEY_SECRET=your-secret
-ALIYUN_BUCKET=your-bucket
-ALIYUN_REGION=oss-cn-hangzhou
-ALIYUN_CDN_DOMAIN=https://static.yourdomain.com
+# ===== File Storage (optional OSS override) =====
+OSS_BUCKET=your-bucket
+OSS_REGION=oss-cn-hangzhou
+OSS_ACCESS_KEY_ID=your-key
+OSS_ACCESS_KEY_SECRET=your-secret
 
 # ===== Payments =====
 STRIPE_SECRET_KEY=sk_test_xxx
@@ -278,6 +281,7 @@ VERCEL_PROJECT_ID=your-project-id
 VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 GITHUB_TOKEN=your-github-token
 
-# ===== APM (planned) =====
+# ===== APM (optional) =====
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
+NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
 ```
