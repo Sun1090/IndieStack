@@ -439,3 +439,52 @@
 - 下一步：获得用户显式 push / PR / merge / deploy 授权后，推送 `feat/visual-regression-baseline`、
   创建 v0.7.0 PR（rebase 合并）、执行生产 smoke 与回滚演练、生成 exit report；在此之前保持本地冻结。
 - 最后更新：2026-09-12
+
+## 2026-09-13 Web Push 持久化重试与死信队列（v0.8.0 里程碑任务）
+
+- 状态：IN_PROGRESS（功能与门禁已完成并提交；已进入 v0.8.0 `RELEASE_FREEZE`）
+- 里程碑 / 发布目标：`0.8.0`（minor：新增 Web Push 持久化重试能力，无 breaking change；新增迁移 026）
+- 分支 / PR：`feat/visual-regression-baseline` / PR none（LOCAL_ONLY，未推送、未创建 PR）
+- 本地提交：`c514f2c`（feat(push): persist retries and dead-letter deliveries）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（未 fetch 前进，未 rebase）
+- 目标：把 v0.7.0 遗留的“Push 即时 best-effort”缺口补齐为可持久化重试、可上限截断、可死信查询的能力，
+  与邮件 `email_attempts` 语义对齐，并接入 cron worker 与可观测性。
+- 已完成：
+  - 迁移 `026_push_delivery_attempts.sql`：按 `(notification_id, endpoint)` 唯一键持久化投递状态
+    （`pending|sent|dead`）、`attempt_count`、`failure_code`、`next_attempt_at`、`last_attempt_at`、`sent_at`；
+    外键级联/置空、到期队列索引、`handle_updated_at` 触发器；开启 RLS 且**不建 anon/authenticated 策略**（仅 service_role）。
+  - Repository `src/lib/repositories/push-delivery-attempts.ts`：幂等入队（`ignoreDuplicates` 保留 sent/dead 历史）、
+    到期拉取、sent/retry/dead 回执、死信列表、积压/死信/失效端点计数；退避公式 `60s × 2^(n-1)`，上限 1 小时，重试上限 3（含首次）。
+  - 即时投递链路 `src/lib/push-notify.ts`：发送前按端点入队（`next_attempt_at` 留 60s 窗口避免 cron 抢占），
+    成功记 `sent`、瞬时失败记 `pending` 退避、404/410 撤销订阅并记死信；入队失败降级为即时 best-effort，不阻断站内通知与邮件。
+  - Cron worker `src/lib/push-retry.ts` + `/api/cron/push-retry`：每 15 分钟、单轮 50 条，按端点重试；
+    订阅缺失/用户关闭 Push → dead，404/410 → 撤销并 dead；provider 未配置时整轮快速失败（不静默转死信）；返回脱敏计数。
+  - 共享鉴权 `src/lib/cron-auth.ts`（Bearer 或 `x-cron-secret`），digest 与 supabase-restore 路由复用，未配置 secret 一律拒绝。
+  - 可观测性：新增 `push.backlog`（阈值 500 告警）、`push.endpoint.revoked`、`push.delivery.dead`、
+    `cron.push-retry.completed|failed`；文档同步到 `docs/operations/sentry-alerts.md`。
+  - 类型与工具：`db:types` 改为 `--schema public`，避免 regen 引入无关 auth 类型；`database.types.ts` 纳入迁移 026。
+- 变更文件：`supabase/migrations/026_push_delivery_attempts.sql`、`supabase/migration-manifest.json`、
+  `src/lib/repositories/push-delivery-attempts.ts`（+test）、`src/lib/push-retry.ts`（+test）、`src/lib/push-notify.ts`（+test）、
+  `src/app/api/cron/push-retry/route.ts`（+test）、`src/lib/cron-auth.ts`（+test）、`src/lib/email-notify.ts`、
+  `src/lib/push-provider.ts`、`src/lib/ops/supabase-restore.ts`、`src/app/api/cron/digest/route.ts`、
+  `src/lib/repositories/{notifications,profiles,push-subscriptions,test-helpers}.ts`、
+  `src/lib/supabase/database.types.ts`、`vercel.json`、`package.json`、
+  `docs-site/{,zh-CN/}web-push.md`、`docs/operations/sentry-alerts.md`、`CHANGELOG.md`。
+- 验证命令与结果：
+  - `pnpm check:all`：通过 —— locales 972 key、i18n 837 调用、RLS 26 迁移/19 表/23 策略、
+    migrations 26/26 SHA-256 基线、Supabase security、security/config 677 tracked/405 source/8 workflows、
+    release-docs、changelog、docs、a11y、type-check、lint、**test 111 文件 / 1099 测试通过**。
+  - 数据库运行时证据（本地 Supabase）：RLS 开启 0 策略、唯一键/索引/触发器存在、重复入队不生效、
+    到期行可拉取、回执更新 `updated_at`、通知删除级联清理，smoke 后残留行数为 0。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 真实浏览器 Web Push 端到端仍未验证（需 VAPID、HTTPS 与真实 push service），属部署后外部检查。
+  - 抖动/限流下的实际多次退避节奏只在单测与本地 DB 层面验证，未在生产环境观察。
+- 风险与回滚：
+  - 风险：新增一张仅 service_role 可写的队列表；若 cron 未调度，pending 行会累积（已加 `push.backlog` 阈值告警）。
+  - 风险：入队失败会降级为 best-effort（与 v0.7.0 行为一致），不影响站内通知与邮件事实来源。
+  - 回滚：`git revert c514f2c` 回退代码与文档；迁移 026 为纯新增，应用回退后该表可保留（未被读取），
+    确认无消费者后可 `drop table public.push_delivery_attempts` 清理；`020_push_subscriptions.sql` 未改动。
+- 下一步：进入 v0.8.0 `RELEASE_FREEZE`（定版 0.8.0、CHANGELOG 发布章节、发布/回滚/smoke/gap-audit runbook、双语入口、
+  全量 `verify:build` + coverage + e2e + audit + docs build），产出本地 exit report 并停在权限边界。
+- 最后更新：2026-09-13
