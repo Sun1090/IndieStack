@@ -60,8 +60,8 @@
 
 ## 验证
 
-- 最近本地完整验证：通过（93 files / 832 tests；`pnpm verify:build` 通过；Playwright E2E 50/50 单 worker 通过；`pnpm check:all` 与 `pnpm test:coverage` 通过）
-- 覆盖率：Statements 95.37%、Branches 90.60%、Functions 95.72%、Lines 96.64%，branches 门禁 90% 通过
+- 最近本地完整验证：通过（94 files / 853 tests；`pnpm verify:build` 通过；Playwright E2E 50/50 单 worker 通过；`pnpm check:all` 与 `pnpm test:coverage` 通过）
+- 覆盖率：Statements 95.37%、Branches 90.68%、Functions 95.72%、Lines 96.64%，branches 门禁 90% 通过
 - 安全/运维：`pnpm audit --audit-level high` 无已知漏洞；生产 `/api/health` 通过；Supabase auto-restore 手动 dry-run 确认项目健康且无需恢复
 - CI：`0930c1f` 的 CI、CodeQL、Secrets Scan、Security/config checks 均通过（run 34669221490 等）
 
@@ -117,4 +117,23 @@
       异步加载 Sentry。完整 832 测试从超时 6 项恢复为 93/93 文件全部通过，`test:coverage` 同步通过。
 - [x] 使用新版烟测逻辑复测生产：commit `527fa5d` 对应别名 `https://indie-stack-theta.vercel.app`，6/6 通过，证据 `/tmp/indiestack-production-smoke-20260912-new.json`。
 - [x] 仓库开放 PR 0、开放 issue 0；Dependabot、Code Scanning、Secret Scanning 开放告警均为 0。
+
+## 2026-09-12 瞬时报错重试与 Auth 配置即代码
+
+- [x] 修复保活误报：`health-check`、`supabase-auto-restore`、production smoke 共用有限重试探测
+      （3 次 / 5 秒；只重试网络错误、`408/425/429/5xx` 与未就绪 body，404/401 立即失败）；
+      PR [#24](https://github.com/Sun1090/IndieStack/pull/24) 已合并为 `96a27a9`，
+      main 上 CI / CodeQL / Secrets Scan / Security-config 全绿。
+- [x] 修复本地测试抖动：Vitest 每项目 2 worker、Playwright 默认单 worker、logger 仅在生产异步加载
+      Sentry；832 → 853 测试全部通过（94/94 文件）。
+- [x] Auth 邮件模板与重定向白名单固化为可执行配置：`pnpm auth:email-config`
+      （dry-run / `--apply` / `--verify`，支持 `--scope=templates|redirects|all`），
+      新增 21 个回归测试，并接入 CI 漂移门禁（`security-config`，scope=redirects）。
+- [x] 生产重定向白名单已写入并回读校验：`ntqggnztzvoavjbiillb` →
+      `http://localhost:3000/**,https://indie-stack-theta.vercel.app/**,https://*-sun1090s-projects.vercel.app/**,https://indie-stack-*.vercel.app/**`。
+- [x] 发现并记录免费版硬限制：默认发件人下 Management API 拒绝改模板
+      （`Email template modification is not available for free tier...`），且
+      `rate_limit_email_sent = 2`（全项目每小时 2 封 Auth 邮件）。模板已就绪，待自定义 SMTP
+      或升级套餐后执行 `pnpm auth:email-config -- --apply`。
+
 - [ ] 未执行真实“暂停后恢复”破坏性演练。生产测试账号登录、dashboard 租户隔离、合法/非法上传、邮件/通知 provider、合法 Stripe webhook 幂等落库、真实回滚 deployment 切换仍需隔离账号或 provider 才能验证。

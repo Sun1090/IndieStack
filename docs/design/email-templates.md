@@ -12,51 +12,96 @@
 
 ## 需要定制的模板（Supabase Dashboard）
 
-| 模板 | 变量 | CTA |
-|------|------|-----|
-| Confirm Signup | `{{ .ConfirmationURL }}` | 确认邮箱 |
-| Invite User | `{{ .InviteURL }}` | 接受邀请 |
-| Magic Link | `{{ .ConfirmationURL }}` | 登录 |
+| 模板                 | 变量                     | CTA        |
+| -------------------- | ------------------------ | ---------- |
+| Confirm Signup       | `{{ .ConfirmationURL }}` | 确认邮箱   |
+| Invite User          | `{{ .InviteURL }}`       | 接受邀请   |
+| Magic Link           | `{{ .ConfirmationURL }}` | 登录       |
 | Change Email Address | `{{ .ConfirmationURL }}` | 确认新邮箱 |
-| Reset Password | `{{ .RedirectTo }}` | 重置密码 |
+| Reset Password       | `{{ .RedirectTo }}`      | 重置密码   |
 
 ## HTML 骨架（600px 宽，表格布局兼容客户端）
 
 ```html
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:-apple-system,'Segoe UI',sans-serif">
-  <tr><td align="center" style="padding:32px 16px">
-    <table width="600" style="background:#ffffff;border-radius:12px;overflow:hidden">
-      <tr><td style="background:linear-gradient(135deg,#0f172a,#1e1b4b);padding:24px;text-align:center">
-        <span style="color:#fff;font-size:20px;font-weight:700">IndieStack</span>
-      </td></tr>
-      <tr><td style="padding:32px">
-        <h2 style="margin:0 0 8px;color:#0f172a">{{ 邮件标题 }}</h2>
-        <p style="color:#475569;line-height:1.6">{{ 说明文字 }}</p>
-        <a href="{{ CTA_URL }}"
-           style="display:inline-block;margin:24px 0;padding:12px 32px;background:#2563eb;
-                  color:#fff;border-radius:8px;text-decoration:none;font-weight:600">
-          {{ CTA 文案 }}
-        </a>
-        <p style="color:#94a3b8;font-size:12px">
-          或复制链接：<br>{{ CTA_URL }}
-        </p>
-      </td></tr>
-      <tr><td style="padding:16px;background:#f1f5f9;text-align:center">
-        <span style="color:#94a3b8;font-size:12px">
-          If you didn't request this, please ignore this email. / 若非本人操作请忽略此邮件
-        </span>
-      </td></tr>
-    </table>
-  </td></tr>
+<table
+  width="100%"
+  cellpadding="0"
+  cellspacing="0"
+  style="background:#f8fafc;font-family:-apple-system,'Segoe UI',sans-serif"
+>
+  <tr>
+    <td align="center" style="padding:32px 16px">
+      <table width="600" style="background:#ffffff;border-radius:12px;overflow:hidden">
+        <tr>
+          <td
+            style="background:linear-gradient(135deg,#0f172a,#1e1b4b);padding:24px;text-align:center"
+          >
+            <span style="color:#fff;font-size:20px;font-weight:700">IndieStack</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px">
+            <h2 style="margin:0 0 8px;color:#0f172a">{{ 邮件标题 }}</h2>
+            <p style="color:#475569;line-height:1.6">{{ 说明文字 }}</p>
+            <a
+              href="{{ CTA_URL }}"
+              style="display:inline-block;margin:24px 0;padding:12px 32px;background:#2563eb;
+                  color:#fff;border-radius:8px;text-decoration:none;font-weight:600"
+            >
+              {{ CTA 文案 }}
+            </a>
+            <p style="color:#94a3b8;font-size:12px">或复制链接：<br />{{ CTA_URL }}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px;background:#f1f5f9;text-align:center">
+            <span style="color:#94a3b8;font-size:12px">
+              If you didn't request this, please ignore this email. / 若非本人操作请忽略此邮件
+            </span>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 </table>
 ```
 
 ## 接线清单
 
 - [ ] Supabase Dashboard 逐模板粘贴上述骨架并替换变量
+      → 骨架已固化成代码（见下方「自动化接线」），但**生产项目当前无法写入**：Supabase 免费版 +
+      默认发件人会拒绝
+      `Email template modification is not available for free tier projects using the default email provider.`。
+      先配置自定义 SMTP（下一项）或升级套餐，再执行 `pnpm auth:email-config -- --apply --scope=templates`。
 - [ ] SMTP：默认使用 Supabase 内置发件（限速），生产建议配置自定义 SMTP（Resend/阿里云邮件推送）
-- [ ] 重定向域名白名单：Authentication → URL Configuration 加入生产/preview 域名
+      → 2026-09-12 线上读取结果：`smtp_host = null`、`rate_limit_email_sent = 2`，即内置发件对
+      整个项目每小时最多发 2 封 Auth 邮件（注册确认 / 邀请 / 魔法链接 / 重置都共用这一额度）。
+      这既是模板自定义的前置条件，也是注册量增长后的第一个硬瓶颈。
+- [x] 重定向域名白名单：Authentication → URL Configuration 加入生产/preview 域名
+      → 2026-09-12 已应用到生产项目 `ntqggnztzvoavjbiillb` 并回读校验通过：
+      `http://localhost:3000/**,https://indie-stack-theta.vercel.app/**,https://*-sun1090s-projects.vercel.app/**,https://indie-stack-*.vercel.app/**`。
+      `.github/workflows/security-config.yml` 每次 push/PR/周计划都会跑漂移门禁。
 - [ ] 测试：分别触发注册/邀请/重置流程，检查各邮件客户端渲染（Gmail/Outlook/QQ 邮箱）
+      → 需要可收信邮箱与已启用的模板，模板应用前保持未验证；模板写入后再用真实收件箱逐客户端检查。
+
+## 自动化接线（v0.6.0）
+
+模板不再是「照着骨架手工粘贴」，而是可 dry-run、可校验、可重复执行的配置补丁：
+
+| 命令                                                   | 作用                                                |
+| ------------------------------------------------------ | --------------------------------------------------- |
+| `pnpm auth:email-config`                               | 默认 dry-run：读取线上配置并打印将修改的字段        |
+| `pnpm auth:email-config -- --apply`                    | 写入模板 + 重定向白名单（需自定义 SMTP 或付费套餐） |
+| `pnpm auth:email-config -- --apply --scope=redirects`  | 只写重定向白名单（免费版可用）                      |
+| `pnpm auth:email-config -- --verify --scope=redirects` | 只读校验，CI 漂移门禁用                             |
+
+- 单一来源：`scripts/lib/auth-email-templates.js`（5 个模板的 subject/content + 白名单合并规则）。
+- 安全约束：生成前硬校验每封邮件都含自己的 CTA 变量（`.ConfirmationURL` / `.InviteURL`）与品牌头，
+  缺少即抛错，避免把无法完成动作的模板推上线。
+- 凭据：`SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF`；脚本不会回显响应体中的密钥，
+  错误摘要只取 API 的 `message` 并截断到 200 字符。
+- 视觉一致性：`src/lib/auth-email-templates.test.ts` 交叉校验 Auth 模板骨架与站内邮件渲染器
+  （`src/lib/email-template.ts`）同色板、同 600px 表格布局、同安全提示文案。
 
 ## 应用通知邮件管线（v0.4.0 已落地）
 
@@ -69,12 +114,12 @@
 - 用户偏好门控：发送前用 `shouldSendEmail()`（`src/lib/notification-prefs.ts`）检查
   `profiles.notification_settings`，矩阵如下（站内通知中心不受偏好影响，全量展示）：
 
-  | 通知类型 | 偏好开关 |
-  |----------|----------|
-  | system / team_invite / role_changed / payment_succeeded / billing_update | emailNotifications（总开关，关则全停） |
-  | deployment | productUpdates |
-  | security_alert | securityAlerts |
-  | （营销邮件） | marketingEmails（独立通道，不经 notifications 表） |
+  | 通知类型                                                                 | 偏好开关                                           |
+  | ------------------------------------------------------------------------ | -------------------------------------------------- |
+  | system / team_invite / role_changed / payment_succeeded / billing_update | emailNotifications（总开关，关则全停）             |
+  | deployment                                                               | productUpdates                                     |
+  | security_alert                                                           | securityAlerts                                     |
+  | （营销邮件）                                                             | marketingEmails（独立通道，不经 notifications 表） |
 
 ### Worker 接口
 

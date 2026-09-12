@@ -46,6 +46,7 @@
     "check:supabase-security": "node scripts/check-supabase-security.js",
     "check:release-docs": "node scripts/check-release-docs.js",
     "smoke:production": "node scripts/production-smoke.js",
+    "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js"
   },
   "dependencies": {
