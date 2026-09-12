@@ -265,3 +265,48 @@
 - 下一步：由用户决定是否推送该分支；继续处理 roadmap 中其余可本地验证的任务。
 - 提交记录：门禁与单测为 09fe960（8 个文件，808 行新增）；`docs(...)` 提交补充 CHANGELOG、roadmap、testing、docs-site、release-gap audit 与本进度记录。无需 rebase：origin/main 未前进。
 - 最后更新：2026-09-12
+
+## 2026-09-12 H09 migration drift 检查
+
+- 状态：DONE
+- 工作分支：feat/visual-regression-baseline（沿用既有任务分支；项目约定 `feat/*`）
+- PR：none
+- PR 状态：none
+- Base：origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965（未前进，无需 rebase）
+- 远端 Head：none（LOCAL_ONLY 模式，未推送）
+- 本地提交：c3d2c84（`feat(db): add migration checksum drift gate`）
+- 目标：把 `check:migrations` 从“只查文件名”升级为迁移内容与数据库历史漂移门禁（roadmap H09）。
+- 已完成：
+  - 新增纯函数模块 `src/lib/migrations/migration-drift.ts`：`inspectMigrationFiles` 校验迁移命名 `<3位以上编号>_<描述>.sql`、编号连续且唯一、非 SQL 文件、空文件、UTF-8 BOM、CRLF 行尾、结尾换行，并对每个迁移内容计算 SHA-256；`createMigrationManifest` 生成确定性清单；`validateMigrationManifest` 校验清单 schemaVersion/algorithm/条目形状/重复条目/缺失条目/多余条目/哈希漂移；`validateMigrationHistory` 比对 local/remote 版本，报 `HISTORY_MIGRATION_PENDING`（未应用）与 `HISTORY_VERSION_MISSING_LOCAL`（数据库独有）以及重复版本；`parseSupabaseMigrationOutput` 解析 CLI 输出（容忍前置状态文本）。
+  - 原 `scripts/check-migrations.js` 重写为 CJS 包装器，改用 Node 原生 type stripping 调用共享实现 `scripts/lib/migration-drift-check.js`，Node 22 与 Node 26 均无需构建步骤。命令名 `check:migrations` 保持不变，语义升级为 checksum 门禁。
+  - 新增 `supabase/migration-manifest.json`：25 个迁移的 SHA-256 基线（schemaVersion 1 / sha256）。
+  - 新增 `pnpm update:migrations-manifest`（`--update`）：只允许追加新迁移；会把已有清单与当前文件对比，**拒绝改写已基线化迁移**（报 `MANIFEST_HASH_DRIFT` 并提示只能新增前向迁移），清单 JSON 损坏时同样拒绝覆盖，避免用“重跑基线”掩盖历史被篡改。
+  - 新增只读的 `pnpm check:migration-history`（`scripts/check-migration-history.js` + `scripts/lib/migration-history-check.js`）：调用 `supabase migration list --local --output-format json`，比对本地文件与本地数据库历史；Supabase 不可用时给出 `supabase start` 提示。不访问 linked/生产，因依赖 `supabase start` **未**接入 `check:all`/CI 离线聚合。
+  - 门禁自举：先生成清单并让 `pnpm check:migrations` 通过（25 个迁移），再确认 CI 与 `scripts/check-all.sh` 已在调用该命令（本次无需改 CI/聚合脚本）。
+  - 补 43 条单测：`src/lib/migrations/migration-drift.test.ts`（命名/文件类型/重复版本/断号/空文件/BOM/CRLF/结尾换行/清单形状与漂移/历史比对/CLI 输出解析/格式化）与 `src/lib/migrations/migration-check.test.ts`（真实仓库清单通过、缺失清单提示、损坏 JSON、update 模式拒绝非法迁移、**update 模式拒绝改写已基线化迁移**、update 模式允许追加新迁移、update 模式拒绝覆盖损坏清单、历史通过对/pending 失败/Supabase 不可用提示）。
+  - 文档同步：README 双语与 docs-site 双语脚本表新增三条命令（并去掉 docs-site `db:migrate` 重复行）、docs-site 双语 Supabase 文档新增 Migration drift 章节、`docs/testing.md` 新增 H09 门禁说明、`CONTRIBUTING.md` 更新新增迁移流程、`docs/operations/release-runbook-v0.6.0.md` 入口条件与“数据库先行”步骤加入迁移历史一致性预检、`docs/roadmap-0.6.0.md` H09 标记完成、CHANGELOG `[Unreleased]` 增加条目、`docs/operations/release-gap-audit-v0.6.0.md` 记录本次加固。
+- 变更文件：`src/lib/migrations/migration-drift.ts`（新）、`src/lib/migrations/migration-drift.test.ts`（新）、`src/lib/migrations/migration-check.test.ts`（新）、`scripts/lib/migration-drift-check.js`（新）、`scripts/lib/migration-history-check.js`（新）、`scripts/check-migrations.js`（重写）、`scripts/check-migration-history.js`（新）、`supabase/migration-manifest.json`（新）、`package.json`、`CHANGELOG.md`、`README.md`、`README.zh-CN.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs-site/supabase.md`、`docs-site/zh-CN/supabase.md`、`docs/testing.md`、`CONTRIBUTING.md`、`docs/operations/release-runbook-v0.6.0.md`、`docs/operations/release-gap-audit-v0.6.0.md`、`docs/roadmap-0.6.0.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm check:migrations`：通过（`25 immutable migrations match SHA-256 manifest`）。
+  - `pnpm check:migration-history`：通过（`25 local migrations applied`，本地 Supabase 已 `supabase start`）。
+  - `pnpm vitest run src/lib/migrations`：43/43 通过（2 个文件）。
+  - `pnpm type-check`、`pnpm lint`：通过。
+  - `pnpm check:all`：全部检查通过（104 个测试文件 / 980 个测试；含 `check:migrations`、`check:rls` 25 迁移 18 张表 23 条策略、`check:changelog` 6 版本 + 1 Unreleased、`check:release-docs` 7 个产物）。
+  - `pnpm test:coverage`：statements 95.76% / branches 91.44% / functions 96.45% / lines 96.82%（新模块 `lib/migrations` 99.21% / 96.62% / 100% / 99.15%）。
+  - `pnpm verify:build`：通过——104 个测试文件 / 980 个测试；bundle 2795.8 kB / 基线 2733.8 kB（门禁 1.05× 内）；生产构建 23/23 静态页。
+  - `pnpm test:e2e`：52/52 通过。
+  - `pnpm audit --audit-level high`：`No known vulnerabilities found`。
+  - `pnpm --filter indiestack-docs build`：通过（3.14s）。
+  - G10 视觉回归在 Linux 容器内复跑：`docker run --rm --ipc=host --platform linux/amd64 -v "$PWD":/work -w /work -v indiestack-g10-node-modules:/work/node_modules -v indiestack-g10-next-clean:/work/.next mcr.microsoft.com/playwright:v1.63.0-noble bash -lc 'corepack enable && pnpm test:visual'` → 4/4 通过。
+  - Node 22 兼容性：`docker run --rm -v "$PWD":/work -w /work node:22-alpine node --no-warnings --experimental-strip-types scripts/lib/migration-drift-check.js` 通过，排除 CI（Node 22）因 type stripping 失败的可能。
+- 上游依赖：无。
+- 未验证项：
+  - linked/production 迁移历史一致性未验证：需显式凭据与审批，属发布 Runbook 步骤，LOCAL_ONLY 模式下不执行。
+  - GitHub Actions `ubuntu-latest` 上的 `check:migrations` 未实测（本地与 node:22-alpine 容器已验证命令与退出码）。
+- 风险与回滚：
+  - 风险：门禁对既有迁移变严，若有人有意改写历史文件会直接失败——这是设计目标，不是回归。
+  - 风险：`update:migrations-manifest` 的“仅追加”语义依赖清单本身完好；清单损坏时命令会拒绝而非静默重建，需人工用 git 恢复清单。
+  - 回滚：`git revert c3d2c84` 可整体回退；命令名 `check:migrations` 未变化，CI/聚合脚本无需改动即可退回旧语义（需同时恢复 `scripts/check-migrations.js` 旧实现）。
+- 下一步：由用户决定是否推送 `feat/visual-regression-baseline`；首次 CI 运行后确认 `check:migrations` 在 `ubuntu-latest` 上通过。
+- 提交记录：门禁、清单与单测为 c3d2c84（9 个文件，1128 行新增）；`docs(...)` 提交补充 CHANGELOG、README、docs-site、CONTRIBUTING、runbook、roadmap、release-gap audit 与本进度记录。无需 rebase：`git fetch --prune origin` 后 `origin/main` 仍为 15b05eb，未经过 rebase/force push。
+- 最后更新：2026-09-12
