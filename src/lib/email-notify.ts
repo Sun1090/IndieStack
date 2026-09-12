@@ -8,6 +8,7 @@ import { renderEmailHtml } from "@/lib/email-template";
 import { sendResendEmail } from "@/lib/email-send";
 import { shouldSendEmail } from "@/lib/notification-prefs";
 import { logApiError } from "@/lib/api-log";
+import { deliverPushNotification } from "@/lib/push-notify";
 import {
   createNotification,
   markEmailSent,
@@ -56,12 +57,37 @@ async function fetchProfile(userId: string): Promise<{
 export async function notifyUser(input: NewNotification): Promise<void> {
   const notificationId = await createNotification(input);
 
-  if (!REALTIME_EMAIL_TYPES.has(input.type)) return;
+  let profile: Awaited<ReturnType<typeof fetchProfile>>;
   try {
-    const profile = await fetchProfile(input.userId);
-    if (!profile?.email) return;
-    if (!shouldSendEmail(profile.notification_settings, input.type)) return;
+    profile = await fetchProfile(input.userId);
+  } catch (error) {
+    await logApiError("[Email Notify] 用户通知偏好读取失败", error);
+    return;
+  }
+  if (!profile) return;
 
+  // Web Push is immediate and best-effort. Its failure must never suppress email
+  // delivery or bubble into the business event that created the notification.
+  try {
+    await deliverPushNotification(
+      {
+        userId: input.userId,
+        type: input.type,
+        title: input.title,
+        body: input.body,
+        link: input.link,
+        idempotencyKey: input.idempotencyKey,
+      },
+      profile.notification_settings,
+    );
+  } catch (error) {
+    await logApiError("[Push Notify] 实时通知发送失败（不影响站内与邮件通道）", error);
+  }
+
+  if (!REALTIME_EMAIL_TYPES.has(input.type) || !profile.email) return;
+  if (!shouldSendEmail(profile.notification_settings, input.type)) return;
+
+  try {
     const notification: Notification = {
       id: notificationId ?? "",
       idempotency_key: input.idempotencyKey ?? null,

@@ -4,10 +4,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { createNotificationMock, markEmailSentMock, createAdminClientMock } = vi.hoisted(() => ({
+const { createNotificationMock, markEmailSentMock, createAdminClientMock, deliverPushNotificationMock } = vi.hoisted(() => ({
   createNotificationMock: vi.fn(async () => "n1" as string | null),
   markEmailSentMock: vi.fn(async () => {}),
   createAdminClientMock: vi.fn(),
+  deliverPushNotificationMock: vi.fn(async () => ({ attempted: 0, sent: 0, failed: 0, revoked: 0, skipped: true })),
 }));
 
 vi.mock("@/lib/repositories/notifications", () => ({
@@ -22,6 +23,10 @@ vi.mock("@/lib/api-log", () => ({
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: createAdminClientMock,
+}));
+
+vi.mock("@/lib/push-notify", () => ({
+  deliverPushNotification: deliverPushNotificationMock,
 }));
 
 import { notifyUser, REALTIME_EMAIL_TYPES } from "./email-notify";
@@ -50,6 +55,7 @@ let fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => Pr
 beforeEach(() => {
   vi.clearAllMocks();
   createNotificationMock.mockResolvedValue("n1");
+  deliverPushNotificationMock.mockResolvedValue({ attempted: 0, sent: 0, failed: 0, revoked: 0, skipped: true });
   fetchMockResolved.ok = true;
   vi.stubGlobal("fetch", fetchMock);
   process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
@@ -68,10 +74,21 @@ describe("notifyUser()", () => {
     expect(markEmailSentMock).toHaveBeenCalledWith("n1");
   });
 
-  it("非实时类型只写站内通知，不发邮件", async () => {
+  it("非实时类型只发站内通知与 Push，不发邮件", async () => {
+    profileChain({ id: "u1", email: "a@b.c", notification_settings: {} });
     await notifyUser(notificationInput("system"));
+    expect(deliverPushNotificationMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(markEmailSentMock).not.toHaveBeenCalled();
+  });
+
+  it("Push 投递失败不影响实时邮件", async () => {
+    profileChain({ id: "u1", email: "a@b.c", notification_settings: {} });
+    deliverPushNotificationMock.mockRejectedValueOnce(new Error("push down"));
+
+    await expect(notifyUser(notificationInput("security_alert"))).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSentMock).toHaveBeenCalledWith("n1");
   });
 
   it("偏好关闭（总开关）跳过邮件", async () => {

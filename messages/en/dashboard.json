@@ -433,6 +433,8 @@
       "desc": "Receive real-time notifications in your browser.",
       "enable": "Enable",
       "enabled": "Enabled",
+      "disabled": "Disabled",
+      "disable": "Disable",
       "failed": "Could not enable browser notifications.",
       "unsupported": "This browser does not support push notifications.",
       "unconfigured": "Push notifications are not configured for this deployment."
