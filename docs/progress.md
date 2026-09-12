@@ -535,3 +535,75 @@
 - 下一步：获得用户显式 push / PR / merge / deploy 授权后，推送 `feat/visual-regression-baseline`、
   创建 v0.8.0 PR（rebase 合并）、执行生产 smoke 与回滚演练、生成 exit report；在此之前保持本地冻结。
 - 最后更新：2026-09-13
+
+## v0.8.0 / PUSH_RETENTION（Push 队列保留策略，本地验证完成）
+
+- 状态：DONE（本地实现 + 单测 + 全量门禁 + 本地 Supabase 实证均已完成；受权限边界未 push / PR / merge / deploy）
+- 里程碑 / 发布目标：`0.8.0`（并入 v0.8.0 发布内容，不单独升版本；补 v0.8.0 发布说明与运维 runbook）
+- 分支 / PR：`feat/visual-regression-baseline` / PR none（LOCAL_ONLY，未推送、未创建 PR）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（本周期未 fetch 前进，未执行 rebase）
+- 本地提交：`1c7e812`（`fix(mock): compare range filters by ISO timestamp`）、
+  `9f52303`（`feat(push): prune expired delivery queue rows`）
+- 目标：给 `push_delivery_attempts` 加保留策略，避免队列表无限增长；同时修掉 mock 范围查询对 ISO 时间戳的误比较。
+- 已完成：
+  - 代码：`prunePushDeliveryAttempts()` —— `sent` 按 `sent_at` 保留 7 天、`dead` 按 `last_attempt_at` 保留 30 天，
+    单批上限 1000 条并按保留列升序取样；**pending 永不清理**（仍欠投递）。查询与删除都重新断言
+    status + cutoff，避免两条语句之间状态翻转被误删；删除计数缺失时回退为选中行数。
+  - 代码：cron `handle()` 在出完成日志前调用 `pruneWithMetrics()`，失败只记
+    `push.queue.prune_failed` + 日志且不影响投递结果（返回 `null`），响应新增脱敏计数 `pruned`。
+  - 修复：mock query builder 的 `:gte` / `:lt` 原先用 `Number()` 双向强转，ISO 时间戳恒为 NaN、
+    条件永不命中；且 `Date.parse("3")` 会解析成 2001 年而误判数字字符串。现抽出有序比较（仅
+    `YYYY-MM-DD`/`YYYY-MM-DDTHH...` 形态或 `Date` 走时间戳，其余走数值，无法解析返回 null），
+    并补齐 `:lte` 与 `push_delivery_attempts` 表分支以对齐 PostgREST。
+  - 测试：`push-delivery-attempts.test.ts` 新增 `prunePushDeliveryAttempts()` 套件（cutoff/顺序/上限/
+    pending 安全/空集合/默认上限/select 报错/delete 报错/删除计数回退）；`push-retry/route.test.ts`
+    覆盖 `pruned` 响应与清理失败降级；`mock.test.ts` 覆盖 `lte`、排序、limit、保留策略选择与删除，
+    并显式守住「数值字符串不被当作日期」。
+  - 文档：`CHANGELOG.md` 0.8.0 增加保留策略与 mock 范围查询修复；`docs-site/{,zh-CN/}web-push.md`
+    补保留策略、`pruned` 字段与两个新指标；`docs/operations/sentry-alerts.md` 增 `push.queue.pruned` /
+    `push.queue.prune_failed` 指标行与告警/去重说明；`release-runbook` / `rollback-runbook` /
+    `production-smoke` / `release-gap-audit`（均 v0.8.0）同步记录。
+- 变更文件：`src/lib/repositories/push-delivery-attempts.ts`（+test）、`src/app/api/cron/push-retry/route.ts`（+test）、
+  `src/lib/mock/index.ts`、`src/lib/mock.test.ts`、`CHANGELOG.md`、`docs-site/{,zh-CN/}{web-push,v0.8.0}.md`、
+  `docs/operations/{sentry-alerts,release-runbook-v0.8.0,rollback-runbook-v0.8.0,production-smoke-v0.8.0,release-gap-audit-v0.8.0}.md`。
+- 验证命令与结果：
+  - `pnpm vitest run src/lib/mock.test.ts src/lib/repositories/push-delivery-attempts.test.ts src/app/api/cron/push-retry/route.test.ts`
+    → 3 文件 / 58 测试通过。
+  - `pnpm check:all` → 通过（locales、i18n、agents、RLS 26 迁移/19 表/23 策略、migration SHA-256 基线、
+    Supabase security、security/config、release-docs、changelog、docs-site 同步、a11y、type-check、lint、
+    test 111 文件 / **1110 测试**）。
+  - `pnpm test:coverage` → statements **96.08%** / branches **91.08%** / functions **96.28%** / lines **97.04%**。
+  - `pnpm verify:build`（lint + type-check + test + build）→ 通过，production build 23/23 静态页，
+    bundle 2796.6 kB / baseline 2733.8 kB（仍标记 within baseline）。
+  - `pnpm test:e2e` → **52/52 通过**（43.3s）。
+  - `pnpm audit --audit-level high` → No known vulnerabilities found。
+  - `pnpm --filter indiestack-docs build` → 通过。
+  - `pnpm check:migration-history` → `✅ migration history is aligned: 26 local migrations applied`。
+  - `pnpm check:release-docs` → 通过（v0.8.0，7 产物）；`pnpm check:changelog` → 通过（8 已发布版本 + 1 Unreleased）。
+  - **本地 Supabase 实证**（`next dev -p 3101` + `NEXT_PUBLIC_MOCK_ENABLED=false` + `CRON_SECRET=local-retention-check`，
+    指向 `http://127.0.0.1:54321`）：播种 5 行 `endpoint like 'https://retention-check.example/%'`
+    （sent 8 天 / sent 1 天 / dead 31 天 / dead 29 天 / pending 60 天），
+    `curl -H 'x-cron-secret: local-retention-check' /api/cron/push-retry` → **HTTP 200**
+    `{"pulled":0,"sent":0,"retried":0,"dead":0,"revoked":0,"pruned":{"sent":1,"dead":1}}`；
+    剩余行恰为 `fresh-sent` + `fresh-dead` + `old-pending`（pending 未被清理）；服务端指标
+    `push.backlog=1`、`push.queue.pruned{status=sent,retention_days=7}=1`、
+    `push.queue.pruned{status=dead,retention_days=30}=1`、`cron.push-retry.completed`。验证后已删除 5 行探针数据并关闭 dev server（3101 端口已释放）。
+  - 环境注意（非仓库缺陷，供后续复现）：`.env.local` 的 `NEXT_PUBLIC_SUPABASE_URL` 指向远端云项目
+    `ntqggnztzvoavjbiillb`，该库**没有** `push_delivery_attempts` 表；本地实证必须显式覆盖
+    `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` 为
+    `pnpm exec supabase status` 的本地值，否则请求会打到云端并以 500
+    `Could not find the table ... in the schema cache` 失败。若直连 psql 建表后 REST 仍报同样错误，
+    需 `notify pgrst, 'reload schema';` 刷新 PostgREST 缓存。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 真实浏览器 Web Push 端到端仍未验证（需 VAPID 密钥对、HTTPS 与真实 push service），属部署后外部检查。
+  - 保留策略未在远端/生产库执行过；`docs/operations/production-smoke-v0.8.0.md` 保留策略行仍为“未执行”。
+  - 多批（>1000 行）清理只在单测层面覆盖，未在真实大表上压测。
+- 风险与回滚：
+  - 风险：保留窗口写死为 sent 7 天 / dead 30 天；若排障需要更久历史，须先调常量再发布。
+  - 风险：清理为“每轮最多 1000 条”，若历史积压远超单轮上限，需要多轮 cron 才能收敛（有 `push.queue.pruned` 可观测）。
+  - 回滚：`git revert 9f52303` 只回退清理逻辑与文档，队列表与投递链路不受影响（表继续增长但不丢数据）；
+    `git revert 1c7e812` 会同时回退 mock 范围查询修复，请勿单独回退——它已修掉 ISO 时间戳比较失效的真实缺陷。
+- 下一步：补齐 Push 重试链路 E2E 覆盖（mock-only `/api/e2e/*` seed + query 路由驱动
+  失败 → 退避 → 重试 → 死信 → 失效端点撤销），随后继续下一里程碑条目。
+- 最后更新：2026-09-13
