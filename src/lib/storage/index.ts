@@ -8,6 +8,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStorageConfigReport } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { recordMetric, startMetricTimer } from "@/lib/metrics";
 import OSS from "ali-oss";
 
 /** 允许的图片类型 → 存储扩展名（content-type 白名单，拒绝任意扩展名拼接） */
@@ -64,15 +65,22 @@ function supabaseDriver(): StorageDriver {
     provider: "supabase",
     capabilities: { put: true, publicUrl: true, signedUrl: true, remove: true },
     async put(key, body, contentType) {
-      const admin = createAdminClient();
-      // 桶名约定：avatars（公共读）。上线前需在 Supabase Dashboard/迁移中创建。
-      const { error } = await admin.storage.from("avatars").upload(key, body, {
-        contentType,
-        upsert: true,
-      });
-      if (error) throw new Error(`storage upload: ${error.message}`);
-      const { data } = admin.storage.from("avatars").getPublicUrl(key);
-      return data.publicUrl;
+      const timer = startMetricTimer("storage.upload.completed", { provider: "supabase" });
+      try {
+        const admin = createAdminClient();
+        // 桶名约定：avatars（公共读）。上线前需在 Supabase Dashboard/迁移中创建。
+        const { error } = await admin.storage.from("avatars").upload(key, body, {
+          contentType,
+          upsert: true,
+        });
+        if (error) throw new Error(`storage upload: ${error.message}`);
+        const { data } = admin.storage.from("avatars").getPublicUrl(key);
+        timer.end({ outcome: "success" });
+        return data.publicUrl;
+      } catch (error) {
+        timer.end({ outcome: "failure" });
+        throw error;
+      }
     },
     async signedUrl(key, expiresInSeconds) {
       validateSignedUrlExpiry(expiresInSeconds);
@@ -101,8 +109,15 @@ function ossDriver(): StorageDriver {
     provider: "oss",
     capabilities: { put: true, publicUrl: true, signedUrl: true, remove: true },
     async put(key, body, contentType) {
-      const result = await store.put(key, body, { mime: contentType });
-      return (result as { url: string }).url;
+      const timer = startMetricTimer("storage.upload.completed", { provider: "oss" });
+      try {
+        const result = await store.put(key, body, { mime: contentType });
+        timer.end({ outcome: "success" });
+        return (result as { url: string }).url;
+      } catch (error) {
+        timer.end({ outcome: "failure" });
+        throw error;
+      }
     },
     async signedUrl(key, expiresInSeconds) {
       validateSignedUrlExpiry(expiresInSeconds);
@@ -114,9 +129,23 @@ function ossDriver(): StorageDriver {
   };
 }
 
+let lastIncompleteFallback: string | null = null;
+
 /** 按环境选择驱动；OSS 配置不完整时回退 Supabase（诊断信息见 warnOnEnvProblems 类日志） */
 export function getStorageDriver(): StorageDriver {
-  return getStorageConfigReport().provider === "oss" ? ossDriver() : supabaseDriver();
+  const report = getStorageConfigReport();
+  if (report.reason === "oss-incomplete") {
+    const signature = report.missingOssVariables.join(",");
+    if (signature !== lastIncompleteFallback) {
+      lastIncompleteFallback = signature;
+      recordMetric("provider.fallback", 1, {
+        attributes: { provider: "supabase", reason: "oss-incomplete", missing: signature },
+      });
+    }
+  } else {
+    lastIncompleteFallback = null;
+  }
+  return report.provider === "oss" ? ossDriver() : supabaseDriver();
 }
 
 /**

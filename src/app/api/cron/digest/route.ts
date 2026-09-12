@@ -26,6 +26,7 @@ import {
 } from "@/lib/repositories/notifications";
 import { recordWorkerRun } from "@/lib/repositories/worker-runs";
 import { trackEvent, flushEvents } from "@/lib/appark";
+import { recordMetric } from "@/lib/metrics";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMockEnabled } from "@/lib/mock";
 import type { Database } from "@/lib/supabase/database.types";
@@ -144,6 +145,7 @@ export async function POST(request: NextRequest) {
     // C03 积压告警：待发通知超阈值时 Sentry 上报（logApiError → captureException，
     // 同消息自动分组），每轮 cron 最多提醒一次
     const backlog = await countUnsentEmailNotifications();
+    recordMetric("email.backlog", backlog, { unit: "count" });
     if (backlog > EMAIL_BACKLOG_ALERT_THRESHOLD) {
       await logApiError(
         `[Cron Digest] 队列积压 ${backlog} 条（阈值 ${EMAIL_BACKLOG_ALERT_THRESHOLD}）`,
@@ -155,11 +157,16 @@ export async function POST(request: NextRequest) {
     const pulled = notifications.length;
     if (pulled === 0) {
       await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs: 0 });
+      recordMetric("cron.digest.completed", 0, {
+        unit: "ms",
+        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
+      });
       return jsonNoStore({ sent: 0, groups: 0, failed: 0 });
     }
 
     const startedAt = Date.now();
     const result = await runDigest(siteUrl, notifications, now, forceDigestHour);
+    const durationMs = Date.now() - startedAt;
     // C02 运行记录：落表失败不影响发送结果返回
     try {
       await recordWorkerRun({
@@ -167,12 +174,16 @@ export async function POST(request: NextRequest) {
         sent: result.sent,
         groups: result.groups,
         failed: result.failed,
-        durationMs: Date.now() - startedAt,
+        durationMs,
       });
     } catch (metricsError) {
       await logApiError("[Cron Digest] 运行记录写入失败", metricsError);
     }
     // APM 关键流程埋点（C01）：cron 运行指标上报后尽力 flush
+    recordMetric("cron.digest.completed", durationMs, {
+      unit: "ms",
+      attributes: { pulled, ...result },
+    });
     trackEvent("cron.digest", { pulled, ...result });
     try {
       await flushEvents();
@@ -181,6 +192,9 @@ export async function POST(request: NextRequest) {
     }
     return jsonNoStore(result);
   } catch (error) {
+    recordMetric("cron.digest.failed", 1, {
+      attributes: { error_type: error instanceof Error ? error.name : "unknown" },
+    });
     await logApiError("[Cron Digest] 执行失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }

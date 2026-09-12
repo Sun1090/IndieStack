@@ -2,6 +2,8 @@
  * The browser subscription lifecycle is handled by the client; delivery adapters
  * implement this contract without leaking provider SDKs into domain code.
  */
+import { recordMetric } from "@/lib/metrics";
+
 export interface PushMessage {
   endpoint: string;
   p256dh: string;
@@ -29,7 +31,15 @@ export function createPushProvider(
     name: "web-push",
     configured,
     async send() {
-      if (!configured) throw new Error("Web Push provider is not configured");
+      if (!configured) {
+        recordMetric("push.send.failed", 1, {
+          attributes: { provider: "web-push", reason: "not-configured" },
+        });
+        throw new Error("Web Push provider is not configured");
+      }
+      recordMetric("push.send.failed", 1, {
+        attributes: { provider: "web-push", reason: "adapter-unavailable" },
+      });
       throw new Error("Web Push delivery adapter is not installed");
     },
   };
