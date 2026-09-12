@@ -149,7 +149,7 @@ src/
 
 ## 发布与运维
 
-发布前运行 `pnpm verify:build`、`pnpm test:e2e`、`pnpm audit --audit-level high` 和 `pnpm check:release-docs`。请遵循 [v0.6.0 发布 Runbook](docs/operations/release-runbook-v0.6.0.md)，填写[生产 Smoke Test 矩阵](docs/operations/production-smoke-v0.6.0.md)，并让操作人员随时可访问[回滚 Runbook](docs/operations/rollback-runbook-v0.6.0.md)。
+发布前运行 `pnpm verify:build`、`pnpm test:e2e`、`pnpm audit --audit-level high` 和 `pnpm check:release-docs`。请遵循 [v0.7.0 发布 Runbook](docs/operations/release-runbook-v0.7.0.md)，填写[生产 Smoke Test 矩阵](docs/operations/production-smoke-v0.7.0.md)，并让操作人员随时可访问[回滚 Runbook](docs/operations/rollback-runbook-v0.7.0.md)。
 
 ## 测试
 

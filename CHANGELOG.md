@@ -6,6 +6,16 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Web Push 持久化重试与死信队列（尚未实现）**：当前 Push 是即时 best-effort 投递，没有重试队列或死信表。
+  下一里程碑将引入与邮件 `email_attempts` 对齐的持久化重试、上限与死信查询，并补充订阅端点失效统计。
+  本条只是待办声明，不代表任何已完成能力。
+
+## [0.7.0] — 2026-09-12
+
+> 主题：**Web Push 真实投递 + 安全与发布门禁加固**
+
+### Added
+
 - **通知中心实时刷新**：通知页通过 Supabase Realtime `postgres_changes` 订阅当前用户的
   `notifications` INSERT，并在 120ms 合并窗口后刷新列表；连接失败时显示离线状态并保留
   服务端渲染数据。新增 `025_notifications_realtime.sql`、组件测试和实时更新 E2E。
