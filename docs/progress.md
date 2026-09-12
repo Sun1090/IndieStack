@@ -388,3 +388,54 @@
   - 回滚：`git revert f2e0070 6d97f07` 可整体回退文档与实现；`020_push_subscriptions.sql` 未被本批改动，数据库无需回滚。
 - 下一步：进入 v0.7.0 `RELEASE_FREEZE`（版本号、CHANGELOG、发布 runbook/checklist、全量验证与本地发布准备）；推送与 PR 需用户显式授权后执行。
 - 最后更新：2026-09-12
+
+## v0.7.0 / RELEASE_FREEZE（Web Push 真实投递 + 门禁加固里程碑收口）
+
+- 状态：VERIFYING（本地发布准备已完成；生产 smoke 未执行，等待发布权限）
+- 里程碑 / 发布目标：`0.7.0`（minor：新增 Web Push 真实投递能力，无 breaking change、无新迁移）
+- 分支 / PR：`feat/visual-regression-baseline` / PR none（LOCAL_ONLY，未推送、未创建 PR）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（本周期 `git fetch --prune origin` 后未前进，未执行 rebase）
+- 本地提交：`6d97f07`、`f2e0070`、`3f0da27` + 本次 `chore(release): prepare v0.7.0`
+- 目标：把本里程碑（Web Push 真实投递、迁移漂移门禁 H09、安全扫描门禁 H10、实时刷新与上传进度）按 v0.7.0 冻结发布，
+  产出可复现的本地发布证据并停在权限边界。
+- 已完成：
+  - 版本与入口：`package.json` 0.7.0、`.env.example` `NEXT_PUBLIC_APP_VERSION=0.7.0`。
+  - CHANGELOG：新增 `## [0.7.0] — 2026-09-12`（主题：Web Push 真实投递 + 安全与发布门禁加固），
+    `[Unreleased]` 保留一条显式**未实现**待办（Push 持久化重试与死信队列），不冒充已完成能力。
+  - 发布产物：新增 `docs/operations/release-runbook-v0.7.0.md`（含“v0.7.0 发布差异”：VAPID 凭证、HTTPS、
+    无新迁移、best-effort 限制）、`rollback-runbook-v0.7.0.md`（无破坏性 DB 回滚）、
+    `production-smoke-v0.7.0.md`（**重写为干净“未执行”基线**，避免继承 v0.6.0 生产证据）、
+    `release-gap-audit-v0.7.0.md`。
+  - 门禁去版本硬编码：`scripts/check-release-docs.js` 改为从 `package.json` 解析版本，并新增
+    `.github/RELEASE_CHECKLIST.md` 的 tag/runbook/rollback/smoke 引用校验，发版不再需要手改脚本。
+  - 文档入口：双语 README 指向 v0.7.0 产物；新增 `docs-site/v0.7.0.md`、`docs-site/zh-CN/v0.7.0.md`
+    并注册到导航与侧边栏。
+- 变更文件：`package.json`、`.env.example`、`CHANGELOG.md`、`README.md`、`README.zh-CN.md`、
+  `.github/RELEASE_CHECKLIST.md`、`scripts/check-release-docs.js`、`docs/operations/{release-runbook,rollback-runbook,production-smoke,release-gap-audit}-v0.7.0.md`、
+  `docs-site/{,zh-CN/}v0.7.0.md`、`docs-site/.vitepress/config.mts`、`docs/progress.md`。
+- 验证命令与结果（均在本次 release-freeze 工作树上执行通过）：
+  - `pnpm check:release-docs`：`✅ release documentation checks passed (v0.7.0, 7 artifacts)`。
+  - `pnpm check:all`：全部通过 —— locales 972 key 对称、i18n 837 调用、agents 10/10、RLS 25 迁移/18 表/23 策略、
+    migrations 25/25 SHA-256 基线、Supabase security、security/config 671 tracked files / 397 source files / 8 workflows、
+    release-docs 7 产物、changelog 7 版本 + 1 Unreleased、docs-site scripts 同步、a11y、type-check、lint、
+    test 107 文件 / 1050 测试。
+  - `pnpm test:coverage`：statements 95.8% / branches 91.36% / functions 96.64% / lines 96.86%。
+  - `pnpm verify:build`：通过（production build，23/23 静态页面）。
+  - `pnpm test:e2e`：52/52 通过（45.5s）。
+  - `pnpm audit --audit-level high`：No known vulnerabilities found。
+  - `pnpm --filter indiestack-docs build`：VitePress build complete。
+- 阻塞：无技术阻塞；发布侧阻塞为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 真实浏览器 Web Push 未验证：需要 VAPID 密钥对、HTTPS 站点与可用 push service，属部署后外部检查。
+  - `docs/operations/production-smoke-v0.7.0.md` 全部行状态为“未执行”，不得作为通过证据。
+  - 回滚演练未在本版本执行；`pnpm check:migration-history` 需要本地 `supabase start`，未纳入本次离线验证。
+  - GitHub Actions 未在本地重现；v0.7.0 exit report 需在真实发布后生成。
+- 风险与回滚：
+  - 风险：Push 为即时 best-effort（无重试队列/死信表），瞬时失败只写日志与 `push.send.failed` 指标；
+    站内通知始终是事实来源，该限制已写入 CHANGELOG、runbook 与 docs-site。
+  - 风险：`web-push` 及其传递依赖进入生产依赖树，已通过 audit 与供应链策略校验。
+  - 回滚：应用层回退到上一个 deployment；清空 VAPID 密钥即关闭 Push 通道且保留订阅行；
+    本版本无新迁移，不需要 DB down migration。
+- 下一步：获得用户显式 push / PR / merge / deploy 授权后，推送 `feat/visual-regression-baseline`、
+  创建 v0.7.0 PR（rebase 合并）、执行生产 smoke 与回滚演练、生成 exit report；在此之前保持本地冻结。
+- 最后更新：2026-09-12
