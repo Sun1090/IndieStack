@@ -28,6 +28,11 @@ All notable changes to IndieStack will be documented in this file.
 - **Passkey 完整登录闭环**：assertion 验签和计数器更新成功后，通过服务端一次性
   magiclink token 桥接 Supabase SSR 会话；token/action link/邮箱/userId 不返回
   浏览器或写入日志，已有 MFA 因子的用户继续完成 aal2 challenge。
+- **视觉回归基线**：新增 `pnpm test:visual`（`playwright.visual.config.ts` +
+  `e2e-visual/visual.spec.ts`），对首页、功能页、定价页和登录页做 1440×900 全页截图，
+  像素差异门禁 0.1%；基线为 Linux Chromium PNG，需在
+  `mcr.microsoft.com/playwright:v1.63.0-noble` 容器内生成，固定 UTC、浅色主题与
+  禁用动画以消除环境抖动。CI 在 E2E 之后执行该套件，失败时上传 `test-results/` 差异图。
 
 ### Changed
 
@@ -51,6 +56,11 @@ All notable changes to IndieStack will be documented in this file.
 
 - Passkey 登录选项、认证验证、注册选项和注册验证统一补齐 flag 门控、IP 限流、
   `no-store` 与失败后的 challenge cookie 清理；登录表单增加中英双语入口和共享 busy 状态。
+
+### Fixed
+
+- 英文页脚版权符号由 `&copy;` 改为 `©`：ICU 消息不解析 HTML 实体，此前英文站点页脚会
+  原样显示 `&copy;`（中文文案一直使用 `©`）。
 
 ## [0.6.0] — 2026-09-12
 
