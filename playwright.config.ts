@@ -43,6 +43,10 @@ export default defineConfig({
       STRIPE_SECRET_KEY: "sk_test_e2e_webhook",
       STRIPE_WEBHOOK_SECRET: "whsec_e2e_webhook",
       NEXT_PUBLIC_APP_URL: "http://localhost:3100",
+      // F06 Push 重试链路：web-push 适配器要求 VAPID 存在才算 configured，
+      // mock 模式下传输层被 lib/mock/push-transport 替换，因此占位值即可（不参与签名）。
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: "e2e-vapid-public-key",
+      VAPID_PRIVATE_KEY: "e2e-vapid-private-key",
       // F01 E2E 端点通用 Bearer（seed-notifications / email-worker-runs / email-inbox DELETE）
       E2E_BEARER_TOKEN: "e2e-bearer-token",
     },

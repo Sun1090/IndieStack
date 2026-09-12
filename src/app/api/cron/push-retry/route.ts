@@ -18,7 +18,9 @@ import { jsonNoStore } from "@/lib/api-response";
 import { logApiError } from "@/lib/api-log";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { recordMetric } from "@/lib/metrics";
-import { createPushProvider } from "@/lib/push-provider";
+import { isMockEnabled } from "@/lib/mock/config";
+import { createMockPushTransport } from "@/lib/mock/push-transport";
+import { createPushProvider, type PushProvider } from "@/lib/push-provider";
 import { runPushRetry } from "@/lib/push-retry";
 import {
   PUSH_BACKLOG_ALERT_THRESHOLD,
@@ -65,6 +67,17 @@ async function pruneWithMetrics(): Promise<{ sent: number; dead: number } | null
   }
 }
 
+/**
+ * Mock 模式下换成保留端点传输层（E2E 专用，见 `lib/mock/push-transport`）：
+ * web-push 固定走 `https.request`，无法用环境变量把出网请求重定向到本地捕获端点，
+ * 因此只替换传输层，适配器本身的配置校验、载荷构造与错误映射保持真实。
+ */
+function createRuntimePushProvider(): PushProvider {
+  return isMockEnabled
+    ? createPushProvider(undefined, createMockPushTransport())
+    : createPushProvider();
+}
+
 async function handle(request: NextRequest) {
   if (!isCronAuthorized(request.headers, process.env.CRON_SECRET)) {
     return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
@@ -82,7 +95,7 @@ async function handle(request: NextRequest) {
     }
 
     const result = await runPushRetry({
-      createProvider: () => createPushProvider(),
+      createProvider: createRuntimePushProvider,
       listDue: listDuePushDeliveryAttempts,
       listNotifications: listNotificationsByIds,
       getSubscription: getPushSubscriptionById,

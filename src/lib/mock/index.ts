@@ -99,6 +99,7 @@ let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
 let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null = null;
 let _mockWebhookEvents: Record<string, unknown>[] | null = null;
 let _mockPushDeliveryAttempts: Record<string, unknown>[] | null = null;
+let _mockPushSubscriptions: Record<string, unknown>[] | null = null;
 type MockMfaChallenge = {
   id: string;
   factor_id: string;
@@ -135,6 +136,7 @@ export function resetMockCache() {
   _mockContactMessages = null;
   _mockWebhookEvents = null;
   _mockPushDeliveryAttempts = null;
+  _mockPushSubscriptions = null;
   _mockMfaFactors = null;
   _mockMfaChallenges = null;
   mockCacheClear();
@@ -340,6 +342,19 @@ function getMockPushDeliveryAttempts(store: MockStore = MOCK_GLOBAL): Record<str
   const fresh: Record<string, unknown>[] = [];
   _mockPushDeliveryAttempts = fresh;
   mockCacheSet(store, "PushDeliveryAttempts", fresh);
+  return fresh;
+}
+
+/** Push 订阅表（迁移 020）；默认空表，由 E2E 种子端点按需写入 */
+function getMockPushSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>(store, "PushSubscriptions");
+  if (cached) {
+    _mockPushSubscriptions = cached;
+    return cached;
+  }
+  const fresh: Record<string, unknown>[] = [];
+  _mockPushSubscriptions = fresh;
+  mockCacheSet(store, "PushSubscriptions", fresh);
   return fresh;
 }
 
@@ -761,6 +776,8 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(getMockWebhookEvents(this.store));
       case "push_delivery_attempts":
         return this.applyFiltersAndPagination(getMockPushDeliveryAttempts(this.store));
+      case "push_subscriptions":
+        return this.applyFiltersAndPagination(getMockPushSubscriptions(this.store));
       default:
         return [];
     }
@@ -903,6 +920,8 @@ class MockQueryBuilder {
         return getMockWebhookEvents(this.store);
       case "push_delivery_attempts":
         return getMockPushDeliveryAttempts(this.store);
+      case "push_subscriptions":
+        return getMockPushSubscriptions(this.store);
       default:
         return null;
     }

@@ -5,7 +5,7 @@
 ## 测试金字塔
 
 ```
-      E2E（Playwright，52 用例）        ← 关键路径冒烟
+      E2E（Playwright，62 用例）        ← 关键路径冒烟
     ┌──────────────────────────┐
    │ 组件测试（jsdom + Testing Library）│ ← 交互组件
   │──────────────────────────────│
@@ -56,6 +56,10 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围
 - 语言切换同时覆盖 Cookie 持久化与键盘操作：Tab 聚焦触发按钮、Enter 打开菜单、`aria-current` 标识当前语言、Escape 关闭并归还焦点
 - 通知 Realtime 的 Mock 测试在服务端 seed 后派发 `indiestack:mock-realtime` 事件；测试覆盖 event/schema/table/user filter 契约、合并刷新和无需 reload 的 UI 更新
+- Push 持久化重试链路由 `e2e/push-retry.spec.ts` 驱动真实 `/api/cron/push-retry`：mock 模式下
+  `src/lib/mock/push-transport.ts` 只替换 `web-push` 的底层 HTTP 传输（保留端点 `/ok`、`/transient`、
+  `/timeout`、`/gone`），适配器契约与错误映射仍走真实代码；种子数据由 mock-only 的
+  `/api/e2e/push-queue` 端点写入。它不是真实 push service 验证。
 
 ## 视觉回归
 

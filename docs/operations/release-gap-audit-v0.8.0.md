@@ -23,7 +23,7 @@ docs-site 版本页已对齐，`pnpm check:release-docs` 在 `package.json` 版�
 | README 发布入口         | 双语 README 链接旧版本 runbook/smoke                               | `README.md`、`README.zh-CN.md` 指向 v0.8.0 产物并由门禁校验                    | `check:release-docs` 通过      | 文档已补齐           |
 | docs-site 版本页        | 新版本没有中英发布说明页                                           | `docs-site/v0.8.0.md`、`docs-site/zh-CN/v0.8.0.md` 并注册到导航与侧边栏        | 中英页面各 1 个                | 文档已补齐           |
 | v0.8.0 smoke 证据       | 直接复制 v0.7.0 smoke 会把历史证据误认成本版本通过                 | `production-smoke-v0.8.0.md` 重写为干净“未执行”基线，并新增 Push 重试/死信行  | 状态：未执行                   | 执行记录待发布时填写 |
-| Push 重试链路 E2E       | 新重试/死信链目前只有单测 + 本地 DB 证据                           | 记录为 `[Unreleased]` 下一里程碑任务                                          | `check:changelog` 通过         | 已知缺口，已声明     |
+| Push 重试链路 E2E       | 新重试/死信链只有单测 + 本地 DB 证据                               | mock-only 保留端点传输层 + `/api/e2e/push-queue` 种子端点 + `e2e/push-retry.spec.ts` 10 条用例 | `pnpm test:e2e` 62/62 通过     | 已补齐（mock-only）  |
 
 ## 与 v0.7.0 的差异
 
@@ -57,6 +57,8 @@ pnpm --filter indiestack-docs build
 ## 发布前仍需产生的真实证据
 
 1. 从目标 commit 的干净 checkout 保存完整 `pnpm verify:build`、E2E、coverage 与 audit 输出。
+   E2E 已含 mock-only 的 Push 重试链路覆盖（`e2e/push-retry.spec.ts`），但它替换的是出网传输层，
+   不能替代真实 push service 的投递验证。
 2. 在具备 VAPID 密钥与 HTTPS 的环境完成一次真实浏览器推送链路（订阅 → 投递 → 瞬时失败退避重试 →
    关闭订阅/失效端点 → 死信），并记录结果。
 3. 以真实 `CRON_SECRET` 触发一次 `/api/cron/push-retry`，确认返回脱敏计数、`pruned` 清理计数且队列下降。

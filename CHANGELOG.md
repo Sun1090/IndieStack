@@ -4,9 +4,14 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
-### Planned
+### Added
 
-- **Push 重试链路 E2E 覆盖**：当前持久化重试与死信仅由单测与本地数据库证据覆盖，下一里程碑将补充 mock-only 的端到端用例（失败 → 退避 → 重试 → 死信 → 失效端点撤销）。
+- **Push 重试链路 E2E 覆盖**：新增 mock-only 的 `https://push-e2e.test` 保留端点传输层
+  （`src/lib/mock/push-transport.ts`）与 `/api/e2e/push-queue` 种子/查询/重置端点，
+  只替换 `web-push` 的底层 `https.request`，适配器的配置校验、载荷构造与错误映射保持真实；
+  新增 `e2e/push-retry.spec.ts` 10 条用例覆盖 401 鉴权、空队列、成功投递、瞬时失败退避、
+  超过重试上限进入死信、410 撤销订阅、订阅缺失、用户关闭 Push、通知行缺失与终态保留策略清理。
+  该覆盖补齐 v0.8.0 发布文档缺口审计中记录的已知缺口（mock-only，不等同于真实 push service 验证）。
 
 ## [0.8.0] — 2026-09-13
 
