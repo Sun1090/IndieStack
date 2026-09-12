@@ -41,6 +41,13 @@ All notable changes to IndieStack will be documented in this file.
   数据库独有版本报错。规则由 `src/lib/migrations/migration-drift.ts` 的 43 条单测覆盖，静态门禁接入
   `pnpm check:all` 与 CI。
 
+- **Web Push 真实投递**：`push-provider.ts` 从占位实现替换为真实 `web-push` 传输层（VAPID 鉴权、
+  1 小时 TTL、10 秒超时、high urgency；缺密钥时 provider 保持 `configured=false` 并显式失败），
+  新增 `push-notify.ts` 按用户扇出到全部订阅并撤销 push service 返回 404/410 的失效端点；投递接入
+  通知事件边界，Push 失败不会抑制站内通知或邮件。设置页可在刷新后识别既有订阅并关闭通知
+  （同时撤销数据库记录与浏览器订阅），新增 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`
+  配置与中英 docs-site 运维章节。当前 Push 为即时 best-effort，尚无持久化重试队列或死信表。
+
 ### Changed
 
 - **CHANGELOG 结构门禁（I05）**：新增 `pnpm check:changelog`（`scripts/check-changelog.js` +

@@ -352,3 +352,39 @@
   - 回滚：按提交逆序执行 `git revert e6b1dec c98b8dc 42543be` 可完整移除本次 H10 改动、文档和误报修复；不会改写已发布历史。
 - 下一步：由用户决定是否推送 `feat/visual-regression-baseline` 并创建 PR；首次 CI 运行后确认 `Security and configuration checks`、CodeQL 与 Secrets Scan 在 `ubuntu-latest` 上通过。
 - 最后更新：2026-09-12
+
+## I03 / Web Push 真实投递与运维文档
+
+- 状态：DONE
+- 工作分支：feat/visual-regression-baseline（沿用当前功能分支；项目分支约定为 `feat/*`）
+- PR：none
+- PR 状态：none
+- Base：origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965
+- 远端 Head：none（LOCAL_ONLY 模式，未推送）
+- 本地提交：6d97f07（`feat(notifications): implement web push delivery`）、f2e0070（`docs(site): document web push operations`）
+- 目标：把 B06 的 Web Push provider 占位实现替换为真实投递，补齐订阅撤销与失效端点清理，并完成 I03 docs-site 章节同步；同批完成 I01（邮件投递章节，0b94d8e）与 I02（存储章节，e3a2ac1）。
+- 已完成：
+  - `src/lib/push-provider.ts` 接入真实 `web-push` 传输层：VAPID 鉴权、1 小时 TTL、10 秒超时、high urgency；缺公钥或私钥时 `configured=false` 并显式失败，不伪造投递成功。404/410 归类为 `subscription-gone`；成功上报 `push.send.completed{status_code}`，失败上报 `push.send.failed{reason}`（`not-configured`/`subscription-gone`/`timeout`/`http-*`/`network`）。
+  - 新增 `src/lib/push-notify.ts`：按用户扇出到全部订阅，404/410 立即撤销失效端点，瞬时失败仅记录，返回 `attempted/sent/failed/revoked/skipped` 结果。
+  - `src/lib/email-notify.ts` 改为「站内通知 → Web Push（全类型、best-effort）→ 邮件（仅 realtime 类型）」，Push 异常被隔离，不会抑制站内通知与邮件。
+  - 设置页 `push-notification-form.tsx` 刷新后检测既有浏览器订阅，并支持关闭：先撤销数据库记录再 `unsubscribe()` 浏览器订阅；新增 `disable`/`disabled` 中英文案。
+  - `src/lib/repositories/push-subscriptions.ts` 增加 service-role 的 list/remove（服务端投递用），用户可见访问仍由 RLS 约束。
+  - `src/lib/supabase/database.types.ts` 仅补 `push_subscriptions` 表类型：Supabase CLI 生成会额外写入约 1.9k 行无关 `auth` schema，已回退并手工补齐该表。
+  - docs-site 新增 `web-push.md` 与 `zh-CN/web-push.md`（VAPID 配置、订阅流程、投递契约、失败清理、当前无持久化重试的限制），注册到运维导航/侧边栏，并在两份 configuration 参考中补 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`NEXT_PUBLIC_APP_URL`；`.env.example` 补 `VAPID_PRIVATE_KEY`。
+- 变更文件：`package.json`、`pnpm-lock.yaml`、`.env.example`、`messages/{en,zh-CN}/dashboard.json`、`src/lib/push-provider{,.test}.ts`、`src/lib/push-notify{,.test}.ts`、`src/lib/email-notify{,.test}.ts`、`src/lib/repositories/push-subscriptions{,.test}.ts`、`src/components/forms/push-notification-form{,.test}.tsx`、`src/lib/supabase/database.types.ts`、`docs-site/{,zh-CN/}web-push.md`、`docs-site/{,zh-CN/}configuration.md`、`docs-site/.vitepress/config.mts`。
+- 验证命令与结果：
+  - `pnpm check:all`：全部通过 —— 翻译 en/zh-CN 各 972 key 对称、next-intl 837 个静态调用无缺失、RLS 25 迁移/18 表/23 策略、migration manifest 25/25、Supabase security 与 security/config（667 tracked files / 397 source files / 8 workflows）、release-docs 7 产物、changelog 6 版本 + 1 Unreleased、docs-site scripts 同步、a11y；`type-check`、`lint` 通过，`test` 107 文件 / 1050 测试通过。
+  - `pnpm test:coverage`：107 文件 / 1050 测试通过；statements 95.8% / branches 91.36% / functions 96.64% / lines 96.86%（满足 branches ≥ 90% 退出标准）。
+  - `pnpm --filter indiestack-docs build`：VitePress build complete（18.85s）。
+  - `pnpm install --frozen-lockfile`：通过，lockfile 与 `package.json` 一致，供应链策略校验通过。
+  - Web Push 专项（本周期内）：`src/lib/push-provider.test.ts`、`src/lib/push-notify.test.ts`、`src/lib/repositories/push-subscriptions.test.ts`、`src/lib/email-notify.test.ts` 4 文件 / 33 测试通过；设置页 UI 2 测试通过；`src/lib/email-notify.ts` 变更后 `pnpm build` 23/23 静态页通过（无需 `serverExternalPackages`）。
+- 上游依赖：无。
+- 未验证项：
+  - 真实浏览器推送未验证：需要 VAPID 凭证、HTTPS、支持 Push API 的浏览器和 push service，属部署后外部检查，本地仅覆盖传输层契约与失败路径。
+  - 抖动/瞬时限流下的端到端行为未验证：当前 Push 无持久化重试队列或死信表（与邮件的 `email_attempts` 重试上限机制不同），文档已显式声明为 best-effort，不套用 B09 的广义重试/死信结论。
+- 风险与回滚：
+  - 风险：Push 为 best-effort，订阅端点长期失效前会重复投递失败并写日志/指标；404/410 会自动清理，其余错误只记录。
+  - 风险：`web-push` 新增生产依赖（含 `https-proxy-agent`、`asn1.js` 等传递依赖），已通过 `pnpm audit --audit-level high` 与供应链策略校验。
+  - 回滚：`git revert f2e0070 6d97f07` 可整体回退文档与实现；`020_push_subscriptions.sql` 未被本批改动，数据库无需回滚。
+- 下一步：进入 v0.7.0 `RELEASE_FREEZE`（版本号、CHANGELOG、发布 runbook/checklist、全量验证与本地发布准备）；推送与 PR 需用户显式授权后执行。
+- 最后更新：2026-09-12
