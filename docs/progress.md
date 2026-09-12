@@ -310,3 +310,45 @@
 - 下一步：由用户决定是否推送 `feat/visual-regression-baseline`；首次 CI 运行后确认 `check:migrations` 在 `ubuntu-latest` 上通过。
 - 提交记录：门禁、清单与单测为 c3d2c84（9 个文件，1128 行新增）；`docs(...)` 提交补充 CHANGELOG、README、docs-site、CONTRIBUTING、runbook、roadmap、release-gap audit 与本进度记录。无需 rebase：`git fetch --prune origin` 后 `origin/main` 仍为 15b05eb，未经过 rebase/force push。
 - 最后更新：2026-09-12
+
+## H10 依赖与 secrets 扫描门禁
+
+- 状态：DONE
+- 工作分支：feat/visual-regression-baseline（沿用当前功能分支；本轮未重命名，项目约定为 `feat/*`）
+- PR：none
+- PR 状态：none
+- Base：origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965
+- 远端 Head：none（LOCAL_ONLY 模式，未推送）
+- 本地提交：42543be（`feat(security): harden dependency and secrets gate`）、c98b8dc（`docs(security): document dependency and secrets gate`）、e6b1dec（`test(security): avoid service-role audit false positive`）
+- 目标：把依赖漏洞和 secrets/扫描配置检查从单体脚本升级为可测试、fail-closed 的仓库门禁，覆盖环境文件、客户端密钥泄漏、workflow 权限、gitleaks/CodeQL/Dependabot 配置漂移和高危依赖。
+- 已完成：
+  - 新增纯策略模块 `src/lib/security/security-config.ts`，覆盖被跟踪的 `.env*`/私钥文件、环境文件权限不得宽于 `0600`、`.env.development` 服务端密钥、真实 `"use client"` 模块的 dot/bracket `process.env` 服务端变量泄漏、workflow 显式最小权限、gitleaks/CodeQL/security-config/Dependabot 配置契约，以及 `pnpm audit --json` 的 high/critical fail-closed。
+  - 服务端变量清单补齐 `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`；扫描器文件缺失按路径去重报告。
+  - 新增可注入 IO/CLI 实现 `scripts/lib/security-config-check.js`，原 `scripts/check-security-config.js` 改为经 Node 原生 type stripping 调用的薄 wrapper。
+  - 新增 `src/lib/security/security-config.test.ts` 与 `src/lib/security/security-config-check.test.ts`，共 2 个文件 / 54 条专项测试。
+  - 文档同步：`README.md`、`README.zh-CN.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs/roadmap-0.6.0.md`、`docs/testing.md`、`CHANGELOG.md`、`docs/operations/release-gap-audit-v0.6.0.md`。
+  - `pnpm check:all` 首次复跑时发现 `check:supabase-security` 将测试夹具中的 `'use client'` 与 `SUPABASE_SERVICE_ROLE_KEY` 字符串组合误判为客户端 admin 访问；已在不降低 H10 泄漏用例覆盖的前提下拆开夹具字面量，并新增修复提交 e6b1dec，随后全部门禁通过。
+- 变更文件：`src/lib/security/security-config.ts`（新）、`src/lib/security/security-config.test.ts`（新）、`src/lib/security/security-config-check.test.ts`（新）、`scripts/lib/security-config-check.js`（新）、`scripts/check-security-config.js`、`README.md`、`README.zh-CN.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs/roadmap-0.6.0.md`、`docs/testing.md`、`CHANGELOG.md`、`docs/operations/release-gap-audit-v0.6.0.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm exec vitest run src/lib/security`：2 个文件 / 54 个测试通过；修复误报后 `pnpm exec vitest run src/lib/security/security-config.test.ts`：49/49 通过。
+  - `pnpm type-check`、`pnpm lint`：通过。
+  - `pnpm check:security`：`✅ security/config checks passed: 663 tracked files, 395 source files, 8 workflows`。
+  - `pnpm check:supabase-security`：`✅ Supabase security audit passed: 25 migrations, 18 public tables, server-only service role checks`。
+  - `pnpm check:docs`：docs-site scripts 与 package.json 同步；`pnpm check:release-docs`：7 个发布文档产物通过；`pnpm check:changelog`：6 个已发布版本 + 1 个 Unreleased 章节通过。
+  - `pnpm check:all`：最终全部通过（106 个测试文件 / 1,034 个测试；翻译 970 key 对称、RLS 25 迁移/18 表/23 策略、migration manifest 25/25）。
+  - `pnpm test:coverage`：106 个文件 / 1,034 个测试通过；statements 95.9% / branches 91.72% / functions 96.57% / lines 96.92%。
+  - `pnpm verify:build`：通过；106 个文件 / 1,034 个测试；bundle 当前 2795.8 kB / 基线 2733.8 kB（门禁 1.05× 内）；Next.js production build 成功生成 23/23 静态页。
+  - `pnpm test:e2e`：52/52 通过（1 worker，1.4m；dev server 日志中的 mock ECONNRESET 为 E2E 请求结束噪声，测试全部通过）。
+  - `pnpm audit --audit-level high`：`No known vulnerabilities found`。
+  - `pnpm --filter indiestack-docs build`：VitePress build complete（3.92s）。
+  - Node 22 兼容性：`docker run --rm -v "$PWD":/work -w /work node:22-alpine node --input-type=module --no-warnings --experimental-strip-types -e 'await import("./src/lib/security/security-config.ts"); console.log("Node 22 type stripping OK")'` → `Node 22 type stripping OK`。
+- 上游依赖：无。
+- 未验证项：
+  - GitHub Actions `ubuntu-latest` 上尚未实际运行本次新门禁；LOCAL_ONLY 模式未推送，无法触发远端 CI。
+  - 真实 gitleaks/CodeQL 定时扫描结果未在本地观察到；本地只验证其配置契约与触发器，不代替历史提交扫描。
+  - linked/production secrets 与真实凭证检查不在 LOCAL_ONLY 范围；需发布审批与外部环境后验证。
+- 风险与回滚：
+  - 风险：扫描策略变严后，合法的服务端变量或测试夹具可能触发误报；本次已将 Supabase 旧扫描器与 H10 新策略的边界分别验证，但后续新增变量仍需同步维护 `SERVER_ONLY_ENV_NAMES`。
+  - 回滚：按提交逆序执行 `git revert e6b1dec c98b8dc 42543be` 可完整移除本次 H10 改动、文档和误报修复；不会改写已发布历史。
+- 下一步：由用户决定是否推送 `feat/visual-regression-baseline` 并创建 PR；首次 CI 运行后确认 `Security and configuration checks`、CodeQL 与 Secrets Scan 在 `ubuntu-latest` 上通过。
+- 最后更新：2026-09-12
