@@ -60,7 +60,12 @@ export interface PaginatedMessages {
 
 /** 转义 PostgREST like 通配符与 or 分隔符（防注入式破坏查询结构） */
 export function escapeLike(input: string): string {
-  return input.replace(/[\\%,]/g, (c) => `\\${c}`).replace(/_/g, "\\_").slice(0, 100);
+  return input
+    .slice(0, 100)
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_")
+    .replace(/,/g, "\\,");
 }
 
 /**

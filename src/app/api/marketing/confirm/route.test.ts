@@ -78,4 +78,28 @@ describe("marketing routes do not mutate on GET", () => {
   it("unsubscribe GET renders a non-mutating form", async () => {
     expect((await unsubscribeGET(req("/api/marketing/unsubscribe?token=" + "a".repeat(48)))).status).toBe(200);
   });
+
+  it("确认页会安全转义 token，且表单 action 固定", async () => {
+    const payload = '\"><img src=x onerror=alert(1)>';
+    const response = await confirmGET(
+      req(`/api/marketing/confirm?token=${encodeURIComponent(payload)}`),
+    );
+    const html = await response.text();
+
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+    expect(html).toContain('action="/api/marketing/confirm"');
+  });
+
+  it("退订页会安全转义 token，且表单 action 固定", async () => {
+    const payload = '\"><img src=x onerror=alert(1)>';
+    const response = await unsubscribeGET(
+      req(`/api/marketing/unsubscribe?token=${encodeURIComponent(payload)}`),
+    );
+    const html = await response.text();
+
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+    expect(html).toContain('action="/api/marketing/unsubscribe"');
+  });
 });

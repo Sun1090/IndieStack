@@ -6,13 +6,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
+import { renderMarketingActionPage } from "@/lib/marketing-action-page";
 import { confirmSubscription } from "@/lib/repositories/marketing";
 
 export const dynamic = "force-dynamic";
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character] ?? character);
-}
 
 export async function POST(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token") ??
@@ -38,7 +35,12 @@ export async function POST(request: NextRequest) {
 export function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
   if (!token) return jsonNoStore({ error: "token required" }, { status: 400 });
-  return new NextResponse(`<!doctype html><html><head><meta name="referrer" content="no-referrer"><title>确认订阅</title></head><body><main><h1>确认订阅</h1><form method="post" action="${request.nextUrl.pathname}"><input type="hidden" name="token" value="${escapeHtml(token)}"><button type="submit">确认订阅</button></form></main></body></html>`, {
+  return new NextResponse(renderMarketingActionPage({
+    action: "confirm",
+    title: "确认订阅",
+    submitLabel: "确认订阅",
+    token,
+  }), {
     status: 200,
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" },
   });

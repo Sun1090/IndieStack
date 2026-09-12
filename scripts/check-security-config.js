@@ -29,12 +29,22 @@ for (const file of tracked) {
 
 for (const file of [".env.local", ".env.development", ".env.production"]) {
   const full = path.join(root, file);
-  if (!fs.existsSync(full)) continue;
-  const mode = fs.statSync(full).mode & 0o777;
-  if ((mode & 0o077) !== 0) issues.push(`${file}: permissions ${mode.toString(8)} are broader than 0600`);
-  const content = fs.readFileSync(full, "utf8");
-  for (const name of serverOnly) if (new RegExp(`^${name}=`, "m").test(content) && file === ".env.development") {
-    issues.push(`${file}: contains server-only secret ${name}; keep secrets out of shared development env files`);
+  let descriptor;
+  try {
+    descriptor = fs.openSync(full, "r");
+  } catch (error) {
+    if (error.code === "ENOENT") continue;
+    throw error;
+  }
+  try {
+    const mode = fs.fstatSync(descriptor).mode & 0o777;
+    if ((mode & 0o077) !== 0) issues.push(`${file}: permissions ${mode.toString(8)} are broader than 0600`);
+    const content = fs.readFileSync(descriptor, "utf8");
+    for (const name of serverOnly) if (new RegExp(`^${name}=`, "m").test(content) && file === ".env.development") {
+      issues.push(`${file}: contains server-only secret ${name}; keep secrets out of shared development env files`);
+    }
+  } finally {
+    fs.closeSync(descriptor);
   }
 }
 

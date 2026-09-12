@@ -105,6 +105,23 @@ describe("logAuthEvent()", () => {
     );
   });
 
+  it("__proto__ 等键不会污染对象原型", async () => {
+    mockUser({ id: "u1" });
+    const metadata = JSON.parse(
+      '{"__proto__":{"polluted":true},"constructor":"value","safe":"ok"}',
+    ) as Record<string, unknown>;
+
+    await logAuthEvent("auth.login", metadata);
+
+    const redacted = appendAuditLogMock.mock.calls[0][0].metadata as Record<string, unknown>;
+    expect(Object.getPrototypeOf(redacted)).toBe(Object.prototype);
+    expect(Object.prototype).not.toHaveProperty("polluted");
+    expect(Object.getOwnPropertyDescriptor(redacted, "__proto__")?.value).toEqual({
+      polluted: true,
+    });
+    expect(redacted.safe).toBe("ok");
+  });
+
   it("仓库异常吞错仍返回 ok（不阻断登录）", async () => {
     mockUser({ id: "u1" });
     appendAuditLogMock.mockRejectedValue(new Error("boom"));

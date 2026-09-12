@@ -135,6 +135,17 @@ describe("listContactMessagesPage()", () => {
       error: "databaseError",
     });
   });
+
+  it("日志仅记录分类码，不写入异常原文", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    listPageMock.mockRejectedValue(new Error("invalid_status:evil\nforged-log"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await listContactMessagesPage({});
+
+    expect(errorSpy).toHaveBeenCalledWith("[listContactMessagesPage] failed code=invalid_input");
+    errorSpy.mockRestore();
+  });
 });
 
 describe("updateMessageStatus()", () => {
@@ -178,5 +189,16 @@ describe("updateMessageStatus()", () => {
       ok: false,
       error: "databaseError",
     });
+  });
+
+  it("更新失败日志仅记录分类码", async () => {
+    safelyRequireRoleMock.mockResolvedValue(authed());
+    setMessageStatusMock.mockRejectedValue(new Error("invalid_transition:resolved->new\nforged-log"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await updateMessageStatus("m1", "new");
+
+    expect(errorSpy).toHaveBeenCalledWith("[updateMessageStatus] failed code=invalid_transition");
+    errorSpy.mockRestore();
   });
 });

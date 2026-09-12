@@ -31,12 +31,14 @@ if (!fs.existsSync(STATIC_DIR)) {
 const currentKb = Math.round((dirSize(STATIC_DIR) / 1024) * 10) / 10;
 
 let baseline = null;
-if (fs.existsSync(BASELINE_FILE)) {
+try {
   baseline = Number(fs.readFileSync(BASELINE_FILE, "utf8").trim());
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
 }
 
 if (!baseline || Number.isNaN(baseline)) {
-  fs.writeFileSync(BASELINE_FILE, String(currentKb));
+  fs.writeFileSync(BASELINE_FILE, String(currentKb), { flag: "wx" });
   console.log(`✅ 已建立 bundle 基线: ${currentKb} kB（客户端静态资源总量）`);
   process.exit(0);
 }

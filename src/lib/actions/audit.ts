@@ -31,13 +31,16 @@ function redactAuditMetadataValue(value: unknown, seen = new WeakSet<object>()):
     if (seen.has(value)) return REDACTED_VALUE;
     seen.add(value);
 
-    const redacted: Record<string, unknown> = {};
+    const redacted = new Map<string, unknown>();
     for (const [key, nestedValue] of Object.entries(value)) {
-      redacted[key] = isSensitiveMetadataKey(key)
-        ? REDACTED_VALUE
-        : redactAuditMetadataValue(nestedValue, seen);
+      redacted.set(
+        key,
+        isSensitiveMetadataKey(key)
+          ? REDACTED_VALUE
+          : redactAuditMetadataValue(nestedValue, seen),
+      );
     }
-    return redacted;
+    return Object.fromEntries(redacted);
   }
 
   return value;

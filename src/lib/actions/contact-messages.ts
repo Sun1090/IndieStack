@@ -41,6 +41,17 @@ function toRecord(row: Record<string, unknown>): ContactMessageRecord {
   };
 }
 
+function contactMessageErrorCode(error: unknown): "invalid_input" | "invalid_transition" | "unexpected" {
+  if (!(error instanceof Error)) return "unexpected";
+  if (error.message.startsWith("invalid_transition")) return "invalid_transition";
+  if (error.message.startsWith("invalid_")) return "invalid_input";
+  return "unexpected";
+}
+
+function logContactMessageFailure(operation: string, error: unknown): void {
+  console.error(`[${operation}] failed code=${contactMessageErrorCode(error)}`);
+}
+
 /**
  * 列出近期联系消息（仅 admin/super_admin）。
  * 页面层守卫之外，Action 本身亦校验角色，防绕过入口越权读取。
@@ -81,7 +92,7 @@ export async function listContactMessagesPage(
     const { rows, total } = await fetchContactMessagesPage(filter);
     return ok({ rows: rows.map((row) => toRecord(row)), total });
   } catch (error) {
-    console.error("[listContactMessagesPage] 查询失败:", error);
+    logContactMessageFailure("listContactMessagesPage", error);
     return fail(
       error instanceof Error && error.message.startsWith("invalid_")
         ? "invalidInput"
@@ -107,7 +118,7 @@ export async function updateMessageStatus(
     revalidatePath(ROUTES.adminMessages);
     return ok();
   } catch (error) {
-    console.error("[updateMessageStatus] 更新失败:", error);
+    logContactMessageFailure("updateMessageStatus", error);
     return fail(
       error instanceof Error && error.message.startsWith("invalid_transition")
         ? "invalidTransition"
