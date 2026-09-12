@@ -66,3 +66,7 @@ pnpm check:migration-history     # 本地 Supabase 迁移历史（需先 `pnpm e
    观察窗口需一并检查 `push.delivery.dead`、`push.endpoint.revoked` 与 `cron.push-retry.*`。
 6. **语义变化**：Push 不再是即时 best-effort，而是**at-least-once** 投递。极端情况下（进程在回执前崩溃）
    同一端点可能重复收到通知；站内通知仍是唯一事实来源，客户端需保持按 `idempotencyKey` 幂等。
+7. **队列保留策略**：push-retry worker 每轮清理超过 7 天的 `sent` 与超过 30 天的 `dead`，每个状态最多
+   1000 行，`pending` 永不清理。成功时响应含 `pruned: { sent, dead }`；清理失败返回 `pruned: null`
+   并上报 `push.queue.prune_failed`，但不应把当轮投递结果误判为失败。观察窗口需确认清理计数和
+   `push.queue.pruned{status,retention_days}` 正常上报。

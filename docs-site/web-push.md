@@ -83,6 +83,10 @@ Set `pushNotifications: false` to disable all browser push without affecting in-
 - Dead letters are retained for operator inspection through
   `listDeadLetterPushDeliveries()`, `countDeadLetterPushDeliveries()`, and
   `countInvalidPushEndpoints()` in `src/lib/repositories/push-delivery-attempts.ts`.
+- Terminal rows are pruned after a bounded retention window: `sent` for 7 days and `dead` for 30 days,
+  up to 1,000 rows per status on each cron run. `pending` rows are never pruned, so delayed work cannot
+  be lost. The route reports the deleted counts as `pruned: { sent, dead }`; cleanup is best-effort and
+  a failure returns `pruned: null` without changing the delivery result.
 
 ## Failure and Cleanup Behavior
 
@@ -93,7 +97,9 @@ Set `pushNotifications: false` to disable all browser push without affecting in-
 - Metrics: `push.send.completed` includes a `status_code`; `push.send.failed` includes a reason such
   as `not-configured`, `subscription-gone`, `timeout`, or `http-*`. `push.endpoint.revoked` and
   `push.delivery.dead` classify cleanup and dead-letter reasons. `push.backlog` reports pending
-  rows, and `cron.push-retry.completed` / `cron.push-retry.failed` report worker health.
+  rows, `push.queue.pruned` reports terminal-row cleanup by `status` and `retention_days`,
+  `push.queue.prune_failed` reports cleanup failures, and `cron.push-retry.completed` /
+  `cron.push-retry.failed` report worker health.
 
 ## Verification
 

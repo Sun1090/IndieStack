@@ -64,4 +64,6 @@ pnpm health:check -- "$PRODUCTION_URL"
   站内通知与邮件不受影响；重新配置凭证后队列继续投递。
 - **订阅与队列数据保留**：`public.push_subscriptions` 与 `public.push_delivery_attempts` 中的数据不随回滚删除，
   只有 push service 返回 404/410 时才会自动清理端点。
+- **保留策略停止**：正常 worker 会删除超过 7 天的 `sent` 与超过 30 天的 `dead` 行；回滚并停用 cron 后
+  该清理也会停止，表可能继续增长。不要把自动清理当作备份或审计保留机制，需要长期审计时应先导出。
 - **前向修复优先**：若问题来自 worker 逻辑而非 schema，优先以**前向修复迁移/代码补丁**修复，而不是回滚数据库。

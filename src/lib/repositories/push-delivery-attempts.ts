@@ -39,6 +39,15 @@ export const PUSH_BACKOFF_CAP_MS = 60 * 60_000;
 /** 待重试队列积压告警阈值（cron 上报 Sentry） */
 export const PUSH_BACKLOG_ALERT_THRESHOLD = 500;
 
+/** sent 回执保留天数：终态只用于短期排查，过期清理避免队列表无限增长 */
+export const PUSH_SENT_RETENTION_DAYS = 7;
+
+/** dead 行保留天数：死信保留更久，供端点质量分析与人工排查 */
+export const PUSH_DEAD_RETENTION_DAYS = 30;
+
+/** 单轮单状态最多清理行数，避免一次删除锁表过久 */
+export const PUSH_PRUNE_BATCH_LIMIT = 1000;
+
 /** 端点永久失效的 failure_code：push service 拒绝（404/410）或订阅记录已不存在 */
 export const INVALID_PUSH_ENDPOINT_CODES = ["subscription-gone", "subscription-missing"] as const;
 
@@ -220,4 +229,58 @@ export async function countInvalidPushEndpoints(): Promise<number> {
     .in("failure_code", [...INVALID_PUSH_ENDPOINT_CODES]);
   if (error) throw new Error(`push delivery invalid endpoint count: ${error.message}`);
   return count ?? 0;
+}
+
+export interface PushPruneResult {
+  /** 本轮删除的 sent 行数 */
+  sent: number;
+  /** 本轮删除的 dead 行数 */
+  dead: number;
+}
+
+/**
+ * 清理单个终态的历史行：先按时间升序选出有界 id 列表，再按 id 删除。
+ * 先选后删保证单轮工作量有上限（`PUSH_PRUNE_BATCH_LIMIT`），不会因历史积压长时间持锁。
+ */
+async function pruneTerminalRows(
+  status: "sent" | "dead",
+  timeColumn: "sent_at" | "last_attempt_at",
+  cutoff: string,
+  limit: number,
+): Promise<number> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("push_delivery_attempts")
+    .select("id")
+    .eq("status", status)
+    .lt(timeColumn, cutoff)
+    .order(timeColumn, { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(`push delivery prune select (${status}): ${error.message}`);
+  const ids = ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+  if (ids.length === 0) return 0;
+
+  const { count: deleted, error: deleteError } = await admin
+    .from("push_delivery_attempts")
+    .delete({ count: "exact" })
+    .eq("status", status)
+    .lt(timeColumn, cutoff)
+    .in("id", ids);
+  if (deleteError) throw new Error(`push delivery prune delete (${status}): ${deleteError.message}`);
+  return deleted ?? ids.length;
+}
+
+/**
+ * 队列保留策略：删除超过保留期的终态行（sent 7 天、dead 30 天）。
+ * 只处理终态，绝不删除 pending，因此不会丢失待投递工作；幂等，可重复执行。
+ */
+export async function prunePushDeliveryAttempts(
+  now: Date = new Date(),
+  limit: number = PUSH_PRUNE_BATCH_LIMIT,
+): Promise<PushPruneResult> {
+  const sentCutoff = new Date(now.getTime() - PUSH_SENT_RETENTION_DAYS * 86_400_000).toISOString();
+  const deadCutoff = new Date(now.getTime() - PUSH_DEAD_RETENTION_DAYS * 86_400_000).toISOString();
+  const sent = await pruneTerminalRows("sent", "sent_at", sentCutoff, limit);
+  const dead = await pruneTerminalRows("dead", "last_attempt_at", deadCutoff, limit);
+  return { sent, dead };
 }

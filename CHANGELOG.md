@@ -19,6 +19,14 @@ All notable changes to IndieStack will be documented in this file.
   404/410 与订阅缺失会撤销端点并计入失效统计。新增受 `CRON_SECRET` 保护的
   `/api/cron/push-retry`（每 15 分钟、单轮 50 条），补充 `push.backlog`、死信与 worker 指标，
   站内通知和邮件通道不受 Push 失败影响。
+- **Push 队列保留策略**：每次 cron worker 完成后清理超过 7 天的 `sent` 与超过 30 天的 `dead` 行，
+  单一状态每轮最多清理 1000 行，`pending` 永不清理；响应新增 `pruned` 脱敏计数，并上报
+  `push.queue.pruned` / `push.queue.prune_failed`，避免队列表无界增长。
+
+### Fixed
+
+- **Mock 范围查询时间比较**：修正 mock Supabase 的 `gte`/`lt`/`lte` 过滤，使 ISO 日期按时间戳比较、
+  纯数字字符串按数值比较，并补上 `lte` 方法，支持在 mock-only E2E 中验证 Push 重试队列。
 
 ## [0.7.0] — 2026-09-12
 

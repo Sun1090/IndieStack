@@ -76,6 +76,9 @@ Push 与邮件共用类型偏好矩阵，同时额外受 `pushNotifications` 控
 - 死信保留供运维排查，可通过 `src/lib/repositories/push-delivery-attempts.ts` 的
   `listDeadLetterPushDeliveries()`、`countDeadLetterPushDeliveries()` 和
   `countInvalidPushEndpoints()` 查询。
+- 终态行按保留期自动清理：`sent` 保留 7 天，`dead` 保留 30 天，每轮 cron 每个状态最多删除 1000 行；
+  `pending` 永不清理，因此不会丢失延迟任务。路由以 `pruned: { sent, dead }` 返回删除计数；清理是
+  best-effort，失败时返回 `pruned: null`，不影响本轮投递结果。
 
 ## 失败与清理
 
@@ -85,7 +88,8 @@ Push 与邮件共用类型偏好矩阵，同时额外受 `pushNotifications` 控
 - 指标：`push.send.completed` 带 `status_code`；`push.send.failed` 带 `not-configured`、
   `subscription-gone`、`timeout`、`http-*` 等原因。`push.endpoint.revoked` 与
   `push.delivery.dead` 按原因统计订阅撤销和死信，`push.backlog` 上报待重试积压，
-  `cron.push-retry.completed` / `cron.push-retry.failed` 监控 worker 健康。
+  `push.queue.pruned` 按 `status` / `retention_days` 统计终态清理，`push.queue.prune_failed`
+  上报清理失败，`cron.push-retry.completed` / `cron.push-retry.failed` 监控 worker 健康。
 
 ## 验证
 

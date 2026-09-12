@@ -9,7 +9,8 @@
  * `PUSH_RETRY_BATCH_SIZE`，成功/重试/死信回执均落在 `push_delivery_attempts`。
  * 订阅端点永久失效（404/410）时同时撤销本地订阅记录并上报失效端点指标。
  *
- * 返回脱敏计数 `{ pulled, sent, retried, dead, revoked }`，不含 endpoint 或用户标识。
+ * 每轮结束执行保留策略（sent 保留 7 天、dead 保留 30 天，pending 永不清理）。
+ * 返回脱敏计数 `{ pulled, sent, retried, dead, revoked, pruned }`，不含 endpoint 或用户标识。
  */
 
 import { NextRequest } from "next/server";
@@ -21,11 +22,14 @@ import { createPushProvider } from "@/lib/push-provider";
 import { runPushRetry } from "@/lib/push-retry";
 import {
   PUSH_BACKLOG_ALERT_THRESHOLD,
+  PUSH_DEAD_RETENTION_DAYS,
+  PUSH_SENT_RETENTION_DAYS,
   countPendingPushDeliveries,
   listDuePushDeliveryAttempts,
   markPushDeliveryDead,
   markPushDeliveryRetry,
   markPushDeliverySent,
+  prunePushDeliveryAttempts,
 } from "@/lib/repositories/push-delivery-attempts";
 import {
   getPushSubscriptionById,
@@ -35,6 +39,31 @@ import { listNotificationsByIds } from "@/lib/repositories/notifications";
 import { listNotificationSettingsByIds } from "@/lib/repositories/profiles";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * 执行保留策略并上报指标；清理失败只记日志与失败指标，不影响本轮投递结果，
+ * 因此这里吞掉异常并返回 null，让 cron 仍以 200 返回投递计数。
+ */
+async function pruneWithMetrics(): Promise<{ sent: number; dead: number } | null> {
+  try {
+    const pruned = await prunePushDeliveryAttempts();
+    recordMetric("push.queue.pruned", pruned.sent, {
+      unit: "count",
+      attributes: { status: "sent", retention_days: PUSH_SENT_RETENTION_DAYS },
+    });
+    recordMetric("push.queue.pruned", pruned.dead, {
+      unit: "count",
+      attributes: { status: "dead", retention_days: PUSH_DEAD_RETENTION_DAYS },
+    });
+    return pruned;
+  } catch (error) {
+    recordMetric("push.queue.prune_failed", 1, {
+      attributes: { error_type: error instanceof Error ? error.name : "unknown" },
+    });
+    await logApiError("[Cron Push Retry] 队列清理失败（不影响投递结果）", error);
+    return null;
+  }
+}
 
 async function handle(request: NextRequest) {
   if (!isCronAuthorized(request.headers, process.env.CRON_SECRET)) {
@@ -64,11 +93,14 @@ async function handle(request: NextRequest) {
       removeSubscription: removePushSubscription,
     });
 
+    // 保留策略：清理过期终态行，避免队列表无限增长；pending 永不清理。
+    const pruned = await pruneWithMetrics();
+
     recordMetric("cron.push-retry.completed", Date.now() - startedAt, {
       unit: "ms",
       attributes: { ...result },
     });
-    return jsonNoStore(result);
+    return jsonNoStore({ ...result, pruned });
   } catch (error) {
     recordMetric("cron.push-retry.failed", 1, {
       attributes: { error_type: error instanceof Error ? error.name : "unknown" },

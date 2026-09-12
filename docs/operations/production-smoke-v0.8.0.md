@@ -33,6 +33,7 @@ pnpm smoke:production -- "$PRODUCTION_URL" \
 | Push 即时投递回执       | 成功写入 `push_delivery_attempts.status=sent`，`attempt_count=1`               | ⏳ 未执行                                       |
 | Push 重试队列           | 瞬时失败行保持 `pending` 且 `next_attempt_at` ≈ 失败时间 + 60s                 | ⏳ 未执行                                       |
 | Push cron 重试          | `GET /api/cron/push-retry`（带 `CRON_SECRET`）返回脱敏计数且队列下降           | ⏳ 需 `CRON_SECRET`                             |
+| Push 队列保留策略       | 到期 `sent`/`dead` 被清理、`pending` 保留，响应与 `push.queue.pruned` 计数一致  | ⏳ 未执行                                       |
 | Push 401 防护           | 无/错误 `CRON_SECRET` 调用 `/api/cron/push-retry` 返回 401                     | ⏳ 未执行                                       |
 | Push 死信与失效端点     | 404/410 行转 `dead` 且 `push.endpoint.revoked` 上报，订阅被撤销                | ⏳ 需真实 push service 或受限测试端点           |
 | 队列积压告警            | 积压 > 500 时 Sentry 出现 `push_backlog_threshold_exceeded`                    | ⏳ 未执行                                       |

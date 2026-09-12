@@ -1,6 +1,6 @@
 /**
  * push_delivery_attempts repository 单测（v0.8.0，迁移 026）
- * 覆盖：幂等入队、到期队列、成功/重试/死信回执、死信与失效端点统计、错误抛错
+ * 覆盖：幂等入队、到期队列、成功/重试/死信回执、终态保留清理、死信与失效端点统计、错误抛错
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { chainMock, dbClientMock } from "./test-helpers";
@@ -12,7 +12,10 @@ import {
   INVALID_PUSH_ENDPOINT_CODES,
   PUSH_BACKOFF_BASE_MS,
   PUSH_BACKOFF_CAP_MS,
+  PUSH_DEAD_RETENTION_DAYS,
   PUSH_MAX_ATTEMPTS,
+  PUSH_PRUNE_BATCH_LIMIT,
+  PUSH_SENT_RETENTION_DAYS,
   countDeadLetterPushDeliveries,
   countInvalidPushEndpoints,
   countPendingPushDeliveries,
@@ -22,6 +25,7 @@ import {
   markPushDeliveryDead,
   markPushDeliveryRetry,
   markPushDeliverySent,
+  prunePushDeliveryAttempts,
   pushBackoffMs,
 } from "./push-delivery-attempts";
 
@@ -213,5 +217,94 @@ describe("死信与统计查询", () => {
     await expect(countInvalidPushEndpoints()).rejects.toThrow("push delivery invalid endpoint count: db down");
     createAdminClientMock.mockReturnValueOnce(dbClientMock(() => chainMock({ error: { message: "db down" } })));
     await expect(listDeadLetterPushDeliveries()).rejects.toThrow("push delivery dead list: db down");
+  });
+});
+
+describe("prunePushDeliveryAttempts()", () => {
+  it("按 sent/dead 各自保留期分批清理终态，且不触碰 pending", async () => {
+    const chain = chainMock({ data: [{ id: "s1" }] });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    const now = new Date("2026-09-13T12:00:00.000Z");
+    const limit = 17;
+
+    await expect(prunePushDeliveryAttempts(now, limit)).resolves.toEqual({ sent: 1, dead: 1 });
+
+    const sentCutoff = new Date(
+      now.getTime() - PUSH_SENT_RETENTION_DAYS * 86_400_000,
+    ).toISOString();
+    const deadCutoff = new Date(
+      now.getTime() - PUSH_DEAD_RETENTION_DAYS * 86_400_000,
+    ).toISOString();
+    expect(chain.eq).toHaveBeenNthCalledWith(1, "status", "sent");
+    expect(chain.lt).toHaveBeenNthCalledWith(1, "sent_at", sentCutoff);
+    expect(chain.order).toHaveBeenNthCalledWith(1, "sent_at", { ascending: true });
+    expect(chain.eq).toHaveBeenNthCalledWith(2, "status", "sent");
+    expect(chain.lt).toHaveBeenNthCalledWith(2, "sent_at", sentCutoff);
+    expect(chain.eq).toHaveBeenNthCalledWith(3, "status", "dead");
+    expect(chain.lt).toHaveBeenNthCalledWith(3, "last_attempt_at", deadCutoff);
+    expect(chain.order).toHaveBeenNthCalledWith(2, "last_attempt_at", { ascending: true });
+    expect(chain.eq).toHaveBeenNthCalledWith(4, "status", "dead");
+    expect(chain.lt).toHaveBeenNthCalledWith(4, "last_attempt_at", deadCutoff);
+    expect(chain.limit).toHaveBeenNthCalledWith(1, limit);
+    expect(chain.limit).toHaveBeenNthCalledWith(2, limit);
+    expect(chain.delete).toHaveBeenCalledTimes(2);
+    expect(chain.delete).toHaveBeenCalledWith({ count: "exact" });
+    expect(chain.in).toHaveBeenNthCalledWith(1, "id", ["s1"]);
+    expect(chain.in).toHaveBeenNthCalledWith(2, "id", ["s1"]);
+    expect(chain.eq).not.toHaveBeenCalledWith("status", "pending");
+  });
+
+  it("删除回执 count 低于选中数量时以实际删除数为准", async () => {
+    const chain = chainMock({ data: [{ id: "s1" }], count: 0 });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(prunePushDeliveryAttempts()).resolves.toEqual({ sent: 0, dead: 0 });
+  });
+
+  it("没有过期终态时不执行删除", async () => {
+    const chain = chainMock({ data: [] });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(prunePushDeliveryAttempts()).resolves.toEqual({ sent: 0, dead: 0 });
+    expect(chain.delete).not.toHaveBeenCalled();
+  });
+
+  it("默认批次上限限制单轮清理量", async () => {
+    const chain = chainMock({ data: [] });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await prunePushDeliveryAttempts();
+    expect(chain.limit).toHaveBeenNthCalledWith(1, PUSH_PRUNE_BATCH_LIMIT);
+    expect(chain.limit).toHaveBeenNthCalledWith(2, PUSH_PRUNE_BATCH_LIMIT);
+  });
+
+  it("选择失败带状态上下文抛错，不继续后续清理", async () => {
+    const chain = chainMock({ error: { message: "db down" } });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(prunePushDeliveryAttempts()).rejects.toThrow(
+      "push delivery prune select (sent): db down",
+    );
+    expect(chain.delete).not.toHaveBeenCalled();
+  });
+
+  it("删除失败带状态上下文抛错", async () => {
+    let deleteCalled = false;
+    const chain: Record<string, unknown> = {};
+    const chainMethod = vi.fn(() => chain);
+    for (const method of ["select", "eq", "lt", "order", "limit", "in"]) {
+      chain[method] = chainMethod;
+    }
+    chain.delete = vi.fn(() => {
+      deleteCalled = true;
+      return chain;
+    });
+    chain.then = (resolve: (value: unknown) => unknown) =>
+      resolve(
+        deleteCalled
+          ? { data: null, error: { message: "delete down" }, count: null }
+          : { data: [{ id: "s1" }], error: null, count: null },
+      );
+
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(prunePushDeliveryAttempts()).rejects.toThrow(
+      "push delivery prune delete (sent): delete down",
+    );
   });
 });
