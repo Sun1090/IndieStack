@@ -131,8 +131,14 @@ src/
 | `pnpm check:locales` | Verify en/zh-CN translation key symmetry |
 | `pnpm db:migrate` | Push database migrations |
 | `pnpm db:types` | Generate TypeScript types from DB |
-| `pnpm test` | Vitest unit + component tests (253+ cases) |
+| `pnpm test` | Vitest unit + component tests (87 files / 763 tests) |
 | `pnpm test:e2e` | Playwright E2E smoke tests |
+| `pnpm verify:build` | Full local release gate: checks, tests, bundle, production build |
+| `pnpm check:release-docs` | Validate release/rollback/smoke documentation artifacts |
+
+## Release and operations
+
+Before a release, run `pnpm verify:build`, `pnpm test:e2e`, `pnpm audit --audit-level high`, and `pnpm check:release-docs`. Follow the [v0.6.0 release runbook](docs/operations/release-runbook-v0.6.0.md), record the [production smoke matrix](docs/operations/production-smoke-v0.6.0.md), and keep the [rollback runbook](docs/operations/rollback-runbook-v0.6.0.md) available to the operator.
 
 ## Testing
 

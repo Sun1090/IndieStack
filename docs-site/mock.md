@@ -176,7 +176,7 @@ Mock mode does **not** support these real backend features:
 |---------|-------------|-------------|
 | Real Auth | No email/SMS sending | Auto-login success |
 | Realtime | No WebSocket connection | Static data |
-| File Storage | No Alibaba Cloud OSS | Local placeholders |
+| File Storage | Supabase Storage by default; Alibaba Cloud OSS when fully configured | Mock mode uses local placeholder URLs |
 | Stripe Payments | No real payment processing | Mock success response |
 | Permission Check | All users default admin | Local validation |
 | Data Persistence | No persisted storage | In-memory cache |

@@ -190,6 +190,44 @@ npx supabase db push
 
 4. Configure Auth settings (URLs, redirect domains, etc.)
 
+### Free-Tier Keepalive
+
+Supabase free-tier projects get paused after 7 days without API activity. IndieStack keeps
+the project warm with two daily probes, both aimed at `/api/health` (which runs a
+`select id from profiles limit 1` query through the service-role client):
+
+| Layer | File | Schedule (UTC) | Notes |
+|-------|------|----------------|-------|
+| Vercel Cron (primary) | `vercel.json` | `0 2 * * *` | Runs against production deployments only; does not expire |
+| GitHub Actions (backup) | `.github/workflows/health-check.yml` | `17 3 * * *` | GitHub disables `schedule` after 60 days without commits |
+
+The GitHub Actions job reads the repository variable `HEALTHCHECK_URL`
+(Settings → Secrets and variables → Actions → Variables), e.g.
+`https://your-domain.com/api/health`; manual runs can override it with the `health_url` input.
+
+To turn the keepalive off, drop the `crons` block from `vercel.json` or the `schedule`
+trigger from the workflow — a paid Supabase plan makes the probes unnecessary.
+
+#### Auto-Restore Fallback
+
+Should the project ever get paused anyway (for example during a run of failed deploys, or
+when a probe is rate-limited), a fallback workflow restores it automatically:
+
+| Layer | File | Schedule (UTC) | Notes |
+|-------|------|----------------|-------|
+| GitHub Actions | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | Calls the Management API only when the project status is `INACTIVE` |
+
+Configure under Settings → Secrets and variables → Actions:
+
+- Variable `SUPABASE_PROJECT_REF` — the Supabase project ref
+- Secret `SUPABASE_ACCESS_TOKEN` — Management API token (starts with `sbp_`, needs `projects:write`)
+
+`scripts/supabase-auto-restore.js` only restores when the Management API explicitly reports
+`status=INACTIVE`. If the project itself is healthy but the site is down (an application-side
+failure), it reports an error and exits without writing anything. Manual runs default to
+`dry_run=true`, so they never restore anything by accident. Remember to update the secret
+whenever the token is rotated.
+
 ### Database Backup
 
 ```bash

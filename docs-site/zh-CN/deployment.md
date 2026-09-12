@@ -190,6 +190,40 @@ npx supabase db push
 
 4. 配置 Auth 设置（URL、重定向域名等）
 
+### 免费版保活
+
+Supabase 免费版项目连续 7 天无 API 活动会被自动暂停。IndieStack 用两条每日探测保持项目活跃，
+探测目标都是 `/api/health`（内部会对 `profiles` 执行一次 `limit(1)` 查询）：
+
+| 层级 | 文件 | 时间（UTC） | 说明 |
+|------|------|-------------|------|
+| Vercel Cron（主） | `vercel.json` | `0 2 * * *` | 仅对生产部署生效，不会自动失效 |
+| GitHub Actions（备） | `.github/workflows/health-check.yml` | `17 3 * * *` | 仓库 60 天无提交后 GitHub 会自动停用 |
+
+GitHub Actions 侧需要配置仓库变量 `HEALTHCHECK_URL`（Settings → Secrets and variables →
+Actions → Variables），例如 `https://你的域名/api/health`；手动触发时可用 `health_url` 输入覆盖。
+
+关闭方式：删除 `vercel.json` 的 `crons` 块或 workflow 的 `schedule` 触发器。
+升级到付费 Supabase 套餐后不再需要保活。
+
+#### 暂停自动恢复（兜底）
+
+保活探测正常情况下不会让项目进入暂停状态；为防极端情况（例如连续多日部署失败、
+探测失败），仓库另有一个把项目自动拉起来的兜底 workflow：
+
+| 层级 | 文件 | 时间（UTC） | 说明 |
+|------|------|-------------|------|
+| GitHub Actions | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 仅在项目状态为 `INACTIVE` 时调用 Management API 恢复 |
+
+需要在 Settings → Secrets and variables → Actions 配置：
+
+- Variable `SUPABASE_PROJECT_REF`：Supabase 项目 ref
+- Secret `SUPABASE_ACCESS_TOKEN`：Management API 令牌（`sbp_` 开头，需要 `projects:write` 权限）
+
+`scripts/supabase-auto-restore.js` 只有在 Management API 明确返回 `status=INACTIVE` 时才会
+执行恢复；若项目本身健康而站点不可用（属于应用侧故障），它只报错退出，不会误触发写操作。
+手动触发默认 `dry_run=true`，只检测不恢复。轮换令牌后记得同步更新该 secret。
+
 ### 数据库备份
 
 ```bash

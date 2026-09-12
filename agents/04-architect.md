@@ -12,7 +12,7 @@
 │                Vercel Edge                   │
 │  Next.js Middleware (Auth + i18n)            │
 ├─────────────────────────────────────────────┤
-│              Next.js 15 App Router           │
+│              Next.js 16 App Router           │
 │  ┌──────────┐ ┌──────────┐ ┌──────────────┐ │
 │  │ Marketing │ │   Auth   │ │  Dashboard   │ │
 │  │  Pages    │ │  Pages   │ │  + Admin     │ │

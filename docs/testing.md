@@ -21,7 +21,7 @@
 | `pnpm test:coverage` | 含覆盖率报告（核心逻辑门禁 ≥90%）                                |
 | `pnpm test:e2e`      | Playwright 冒烟（自动起 Mock dev server）                        |
 | `pnpm verify`        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁 |
-| `pnpm verify:all`    | 上述全部校验聚合入口                                             |
+| `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                             |
 
 ## 双项目结构
 
@@ -40,7 +40,7 @@ vitest.config.ts 定义两个 project：
 ## 覆盖率门禁
 
 `src/lib/**`（除 mock/stripe/supabase 客户端胶水层）：
-statements/functions/lines ≥ 90%，branches ≥ 78%。CI 强制。
+statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 
 ## E2E
 
@@ -64,3 +64,7 @@ push/PR 触发八道关卡：Lint & Type Check（含 i18n/RLS 校验）· Build 
 3. **file-backed fixture（仅离线快照）**：只允许用于只读、脱敏的 fixture 生成/调试，不作为运行时数据库，不从用户输入写入，不提交包含 token、cookie、邮件正文或个人数据的文件。
 
 F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped store 解决隔离问题且不增加 IO/锁语义。若未来需要跨进程复现，必须单独设计临时目录、原子 rename、worker 唯一命名、TTL 清理和 CI artifact 脱敏校验。
+
+## 发布文档门禁
+
+`pnpm check:release-docs` 校验发布 checklist、发布/回滚 runbook、生产 smoke 矩阵、CHANGELOG 和双语 README 的关键内容与命令。它只证明文档产物结构完整，不证明生产部署、冒烟或回滚演练已经执行；这些必须附带实际命令输出和时间记录。

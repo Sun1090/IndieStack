@@ -12,7 +12,7 @@
 
 ### 2. 配置审查
 - [ ] `.env.example` 是否包含所有必需的环境变量？
-- [ ] 所有配置文件是否正确？（`next.config.ts`, `tailwind.config.ts`, `tsconfig.json` 等）
+- [ ] 所有配置文件是否正确？（`next.config.ts`, `src/app/globals.css`, `tsconfig.json` 等）
 - [ ] Docker 配置是否正确？
 - [ ] CI/CD 工作流是否完整？
 

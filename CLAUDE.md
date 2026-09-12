@@ -164,7 +164,7 @@ Action: read/write/create/delete/manage/invite/remove/export
 - **必需**: Supabase URL + anon key + service role key
 - **可选**: Sentry DSN, Stripe keys, Alibaba Cloud OSS, Appark
 
-关键配置文件: `next.config.ts`, `tailwind.config.ts`, `tsconfig.json`, `src/lib/constants.ts`, `src/proxy.ts`（Next 16 middleware 已更名 proxy）
+关键配置文件: `next.config.ts`, `src/app/globals.css`, `tsconfig.json`, `src/lib/constants.ts`, `src/proxy.ts`（Next 16 middleware 已更名 proxy）
 
 ### 新功能开发模式
 
@@ -230,7 +230,7 @@ const { data: item } = await supabase
  | `.github/PULL_REQUEST_TEMPLATE.md` | PR 模板 |
  | `.github/SECURITY.md` | 安全策略 |
  | `.github/workflows/ci.yml` | CI 工作流（lint + type-check + test） |
- | `.github/workflows/deploy.yml` | 部署工作流（Vercel App + Docs） |
+ | `.github/workflows/health-check.yml` | 手动触发的部署后 health probe；部署由 Vercel 平台/CLI 执行 |
  | `CHANGELOG.md` | 发布历史 |
  | `CONTRIBUTING.md` | 贡献指南 |
  | `docs-site/` | VitePress 独立文档站（13 章节，中英双语，主题切换） |

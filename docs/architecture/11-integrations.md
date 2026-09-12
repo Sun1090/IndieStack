@@ -13,7 +13,7 @@ graph TD
         Stripe["Stripe<br/>支付 + 订阅"]
         Sentry["Sentry<br/>错误监控"]
         OSS["阿里云 OSS<br/>文件存储"]
-        Appark["Appark<br/>APM 性能监控（规划中）"]
+        Appark["Appark<br/>APM 性能监控（可选）"]
     end
 
     Core --> Supabase
@@ -68,12 +68,12 @@ graph LR
 
 ### 环境变量
 
-| 变量 | 用途 |
-|------|------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目 URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 匿名密钥（客户端安全使用） |
-| `SUPABASE_SERVICE_ROLE_KEY` | 服务角色密钥（仅服务端，绕过 RLS） |
-| `SUPABASE_DB_URL` | 直连数据库 URL |
+| 变量                            | 用途                               |
+| ------------------------------- | ---------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase 项目 URL                  |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 匿名密钥（客户端安全使用）         |
+| `SUPABASE_SERVICE_ROLE_KEY`     | 服务角色密钥（仅服务端，绕过 RLS） |
+| `SUPABASE_DB_URL`               | 直连数据库 URL                     |
 
 ### 本地开发
 
@@ -114,24 +114,24 @@ sequenceDiagram
 
 ### API 接口
 
-| 函数 | 端 | 功能 |
-|------|-----|------|
-| `getStripe()` | 客户端 | 获取 Stripe.js 单例 |
-| `redirectToCheckout(priceId)` | 客户端 | 跳转到结账页 |
-| `createCheckoutSession(priceId, params)` | 服务端 | 创建结账会话 |
-| `createPortalSession(customerId)` | 服务端 | 创建客户门户会话 |
-| `getSubscription(subscriptionId)` | 服务端 | 获取订阅信息 |
-| `cancelSubscription(subscriptionId)` | 服务端 | 取消订阅 |
+| 函数                                     | 端     | 功能                |
+| ---------------------------------------- | ------ | ------------------- |
+| `getStripe()`                            | 客户端 | 获取 Stripe.js 单例 |
+| `redirectToCheckout(priceId)`            | 客户端 | 跳转到结账页        |
+| `createCheckoutSession(priceId, params)` | 服务端 | 创建结账会话        |
+| `createPortalSession(customerId)`        | 服务端 | 创建客户门户会话    |
+| `getSubscription(subscriptionId)`        | 服务端 | 获取订阅信息        |
+| `cancelSubscription(subscriptionId)`     | 服务端 | 取消订阅            |
 
 ### 环境变量
 
-| 变量 | 用途 |
-|------|------|
-| `STRIPE_SECRET_KEY` | Stripe 密钥（服务端） |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe 公钥（客户端） |
-| `STRIPE_WEBHOOK_SECRET` | Webhook 签名密钥 |
-| `STRIPE_PRO_PRICE_ID` | Pro 计划价格 ID |
-| `STRIPE_ENTERPRISE_PRICE_ID` | Enterprise 计划价格 ID |
+| 变量                                 | 用途                   |
+| ------------------------------------ | ---------------------- |
+| `STRIPE_SECRET_KEY`                  | Stripe 密钥（服务端）  |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe 公钥（客户端）  |
+| `STRIPE_WEBHOOK_SECRET`              | Webhook 签名密钥       |
+| `STRIPE_PRO_PRICE_ID`                | Pro 计划价格 ID        |
+| `STRIPE_ENTERPRISE_PRICE_ID`         | Enterprise 计划价格 ID |
 
 ## Sentry 错误监控
 
@@ -161,12 +161,12 @@ graph TD
 
 ### 环境变量
 
-| 变量 | 用途 |
-|------|------|
-| `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN |
-| `SENTRY_ORG` | 组织名 |
-| `SENTRY_PROJECT` | 项目名 |
-| `SENTRY_AUTH_TOKEN` | 认证令牌（Sourcaps 上传） |
+| 变量                     | 用途                      |
+| ------------------------ | ------------------------- |
+| `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN                |
+| `SENTRY_ORG`             | 组织名                    |
+| `SENTRY_PROJECT`         | 项目名                    |
+| `SENTRY_AUTH_TOKEN`      | 认证令牌（Sourcaps 上传） |
 
 ### Sourcemaps
 
@@ -175,44 +175,27 @@ pnpm sentry:sourcemaps
 # sentry-cli sourcemaps inject + upload
 ```
 
-## 阿里云 OSS 文件存储（规划中）
+## 阿里云 OSS 文件存储
 
-> 状态：**未接线**。OSS 上传模块当前仅为脚手架占位，未接入任何页面或 API 路由
-> （历史代码已移除，避免误导）。如需启用，请按以下步骤补齐：
+> 状态：**已接线（默认安全回退 Supabase Storage）**。
+> `src/lib/storage/index.ts` 提供统一 `StorageDriver` contract；头像与项目封面通过 Server Actions
+> 完成鉴权、白名单校验、服务端中转上传、数据库回写和对象生命周期清理。仅当 OSS 四项凭据
+> (`OSS_BUCKET`、`OSS_REGION`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`) 完整时才启用 OSS，
+> 配置不完整会显式诊断并回退 Supabase。
 
-### 待办
+### 生命周期与失败恢复
 
-1. 新建 `src/app/api/upload/route.ts`（服务端生成预签名 URL，使用 `ali-oss` SDK 签名）
-2. 新建 `src/app/api/files/[key]/route.ts`（文件代理/访问）
-3. 新建 `src/lib/storage/oss.ts`，封装 `uploadFile / deleteFile / getSignedUrl / listFiles`
-4. 接入头像上传等客户端流程
+- 数据库回写失败时回收刚上传对象，避免产生孤儿文件。
+- 替换头像/项目封面时，只有通过 prefix 与租户边界校验的旧 URL 才会删除。
+- 删除项目后回收受管项目封面；外部 CDN、跨租户 URL、路径穿越输入均不删除。
+- 清理是 best-effort：provider 失败不会回滚已经成功的数据库写入，结构化日志会记录 operation、resourceId、key，供后续人工或定时修复。
+- 清理统一经 `cleanupStorageObject` / `cleanupManagedStorageUrl`，避免各 action 自行实现不一致的安全边界。
 
-### 环境变量（预留）
+### 当前限制与后续
 
-| 变量 | 用途 |
-|------|------|
-| `ALIYUN_ACCESS_KEY_ID` | 访问密钥 ID |
-| `ALIYUN_ACCESS_KEY_SECRET` | 访问密钥 |
-| `ALIYUN_BUCKET` | 存储桶名 |
-| `ALIYUN_REGION` | 区域（默认 oss-cn-hangzhou） |
-| `ALIYUN_CDN_DOMAIN` | CDN 域名 |
-
-### Next.js 图片优化
-
-> 启用 OSS 时，需在 `next.config.ts` 的 `images.remotePatterns` 中重新加入以下域名：
-
-```typescript
-// next.config.ts
-images: {
-  remotePatterns: [
-    {
-      protocol: "https",
-      hostname: "*.oss-cn-hangzhou.aliyuncs.com",
-      pathname: "/**",
-    },
-  ],
-}
-```
+当前上传为服务端中转并限制图片大小；尚未提供 provider 无关的对象列表/自动扫描 API。若需要批量
+清理历史孤儿对象，应先增加受限的 list contract、dry-run 报告和租户级审计，再接入 cron，禁止直接
+按 URL 或用户输入执行批量删除。
 
 ## Appark APM 性能监控（v0.5.0 已接线）
 
@@ -231,33 +214,33 @@ images: {
 
 ### 环境变量
 
-| 变量 | 用途 |
-|------|------|
-| `NEXT_PUBLIC_APPARK_API_KEY` | Appark API Key |
-| `NEXT_PUBLIC_APPARK_ENDPOINT` | 事件收集端点 |
-| `NEXT_PUBLIC_APP_VERSION` | 应用版本（覆盖 package.json version） |
+| 变量                          | 用途                                  |
+| ----------------------------- | ------------------------------------- |
+| `NEXT_PUBLIC_APPARK_API_KEY`  | Appark API Key                        |
+| `NEXT_PUBLIC_APPARK_ENDPOINT` | 事件收集端点                          |
+| `NEXT_PUBLIC_APP_VERSION`     | 应用版本（覆盖 package.json version） |
 
 ## 环境变量总览
 
-| 变量 | 服务 | 必需 | 说明 |
-|------|------|------|------|
-| `NEXT_PUBLIC_APP_URL` | 应用 | 是 | 应用 URL |
-| `NEXT_PUBLIC_APP_NAME` | 应用 | 否 | 应用名称（默认 IndieStack） |
-| `NEXT_PUBLIC_MOCK_ENABLED` | Mock | 否 | 启用 Mock 模式 |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase | 是* | 项目 URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase | 是* | 匿名密钥 |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase | 是 | 服务角色密钥 |
-| `STRIPE_SECRET_KEY` | Stripe | 否 | Stripe 密钥 |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe | 否 | Stripe 公钥 |
-| `STRIPE_WEBHOOK_SECRET` | Stripe | 否 | Webhook 密钥 |
-| `NEXT_PUBLIC_SENTRY_DSN` | Sentry | 否 | Sentry DSN |
-| `SENTRY_ORG` | Sentry | 否 | 组织名 |
-| `SENTRY_PROJECT` | Sentry | 否 | 项目名 |
-| `OSS_BUCKET` | OSS（ADR-010 双驱动） | 否 | 与 REGION/KEY/SECRET 四项齐备启用 |
-| `OSS_REGION` | OSS | 否 | 区域 |
-| `OSS_ACCESS_KEY_ID` | OSS | 否 | AccessKey ID |
-| `OSS_ACCESS_KEY_SECRET` | OSS | 否 | AccessKey Secret |
-| `NEXT_PUBLIC_APPARK_API_KEY` | Appark（ADR-011） | 否 | APM Key（与 ENDPOINT 同配） |
-| `NEXT_PUBLIC_APPARK_ENDPOINT` | Appark | 否 | 事件收集端点 |
+| 变量                                 | 服务                  | 必需 | 说明                              |
+| ------------------------------------ | --------------------- | ---- | --------------------------------- |
+| `NEXT_PUBLIC_APP_URL`                | 应用                  | 是   | 应用 URL                          |
+| `NEXT_PUBLIC_APP_NAME`               | 应用                  | 否   | 应用名称（默认 IndieStack）       |
+| `NEXT_PUBLIC_MOCK_ENABLED`           | Mock                  | 否   | 启用 Mock 模式                    |
+| `NEXT_PUBLIC_SUPABASE_URL`           | Supabase              | 是*  | 项目 URL                          |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`      | Supabase              | 是*  | 匿名密钥                          |
+| `SUPABASE_SERVICE_ROLE_KEY`          | Supabase              | 是   | 服务角色密钥                      |
+| `STRIPE_SECRET_KEY`                  | Stripe                | 否   | Stripe 密钥                       |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe                | 否   | Stripe 公钥                       |
+| `STRIPE_WEBHOOK_SECRET`              | Stripe                | 否   | Webhook 密钥                      |
+| `NEXT_PUBLIC_SENTRY_DSN`             | Sentry                | 否   | Sentry DSN                        |
+| `SENTRY_ORG`                         | Sentry                | 否   | 组织名                            |
+| `SENTRY_PROJECT`                     | Sentry                | 否   | 项目名                            |
+| `OSS_BUCKET`                         | OSS（ADR-010 双驱动） | 否   | 与 REGION/KEY/SECRET 四项齐备启用 |
+| `OSS_REGION`                         | OSS                   | 否   | 区域                              |
+| `OSS_ACCESS_KEY_ID`                  | OSS                   | 否   | AccessKey ID                      |
+| `OSS_ACCESS_KEY_SECRET`              | OSS                   | 否   | AccessKey Secret                  |
+| `NEXT_PUBLIC_APPARK_API_KEY`         | Appark（ADR-011）     | 否   | APM Key（与 ENDPOINT 同配）       |
+| `NEXT_PUBLIC_APPARK_ENDPOINT`        | Appark                | 否   | 事件收集端点                      |
 
 > *Supabase 变量在 Mock 模式下非必需

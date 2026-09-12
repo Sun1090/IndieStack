@@ -26,7 +26,7 @@ v0.4.0 仅对 WebAuthn/Passkey 做了可行性结论（不写生产代码）。v
    `public_key`（base64url）、`counter`（克隆检测）、`device_name`、`transports`；
    RLS 允许用户读写自己的行，服务端验证流程走 admin 客户端。
 6. **试点范围边界**：注册（生成选项 → attestation 校验 → 落库）与认证验证
-   （assertion 校验 → 计数器更新 → 返回 userId）闭环可用；**登录会话签发不在本版**——
+   （assertion 校验 → 计数器更新）可用；**登录会话签发不在本版，认证验证端点默认关闭且不返回 userId**——
    待 GoTrue 提供原生 passkey 登录后接入，`auth-verify` 的返回值即为衔接点。
 
 ## 理由

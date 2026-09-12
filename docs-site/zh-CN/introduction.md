@@ -15,7 +15,7 @@
 
 ## 技术栈
 
-- **框架**: [Next.js 15](https://nextjs.org) App Router —— 默认 Server Components，变更走 Server Actions
+- **框架**: [Next.js 16](https://nextjs.org) App Router —— 默认 Server Components，变更走 Server Actions
 - **数据库**: [Supabase](https://supabase.com)（PostgreSQL），所有表启用 Row Level Security
 - **UI**: [Tailwind CSS](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com)，深色/浅色主题
 - **校验**: [Zod v4](https://zod.dev) schema 在客户端表单与服务端 Action 间共享
