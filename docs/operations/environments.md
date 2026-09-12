@@ -2,11 +2,11 @@
 
 ## 环境拓扑
 
-| 环境 | 分支 | Vercel | Supabase |
-|------|------|--------|----------|
-| 本地开发 | feature/* | `pnpm dev`（Mock 模式可离线） | 本地 supabase start / Mock |
-| Preview | PR / develop | Vercel 自动 preview 部署 | **共享 staging Supabase 项目** |
-| 生产 | main | Vercel production 域名 | 生产 Supabase 项目 |
+| 环境     | 分支         | Vercel                        | Supabase                       |
+| -------- | ------------ | ----------------------------- | ------------------------------ |
+| 本地开发 | feature/*    | `pnpm dev`（Mock 模式可离线） | 本地 supabase start / Mock     |
+| Preview  | PR / develop | Vercel 自动 preview 部署      | **共享 staging Supabase 项目** |
+| 生产     | main         | Vercel production 域名        | 生产 Supabase 项目             |
 
 ## Staging 数据库规范
 
@@ -33,13 +33,15 @@
 
 Supabase 免费版项目 7 天无活动会被暂停，本仓库用三层兜底：
 
-| 层级 | 触发方式 | 时间（UTC） | 作用 |
-|------|----------|-------------|------|
-| 保活主 | Vercel Cron → `/api/health` | `0 2 * * *` | 每次探测触发一次 `profiles limit(1)` 查询 |
-| 保活备 | `.github/workflows/health-check.yml` | `17 3 * * *` | GitHub schedule 60 天静默后会被停用，仅作备份 |
-| 恢复主 | Vercel Cron → `/api/ops/supabase-restore` | `0 4 * * *` | 不受仓库静默影响；`INACTIVE` 时调用 Management API |
-| 恢复备 | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 手动触发默认 `dry_run=true` |
+| 层级   | 触发方式                                      | 时间（UTC）  | 作用                                               |
+| ------ | --------------------------------------------- | ------------ | -------------------------------------------------- |
+| 保活主 | Vercel Cron → `/api/health`                   | `0 2 * * *`  | 每次探测触发一次 `profiles limit(1)` 查询          |
+| 保活备 | `.github/workflows/health-check.yml`          | `17 3 * * *` | GitHub schedule 60 天静默后会被停用，仅作备份      |
+| 恢复主 | Vercel Cron → `/api/ops/supabase-restore`     | `0 4 * * *`  | 不受仓库静默影响；`INACTIVE` 时调用 Management API |
+| 恢复备 | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 手动触发默认 `dry_run=true`                        |
 
+- 保活与恢复探测共用有限重试：冷启动或瞬时 5xx/网络错误最多尝试 3 次（间隔 5 秒）；
+  404/401 等确定错误和持续故障仍会失败，不会把真实故障静默吞掉。
 - 恢复只在 Management API 明确返回 `status=INACTIVE` 时发生；`RESTORING`/`COMING_UP` 等中间态
   只记录不写操作，`REMOVED` 等终态显式失败交给人工。
 - 恢复主层需要 Vercel 环境变量 `CRON_SECRET` + `SUPABASE_ACCESS_TOKEN`（`SUPABASE_PROJECT_REF`

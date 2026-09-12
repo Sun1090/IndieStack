@@ -25,7 +25,7 @@ All notable changes to IndieStack will be documented in this file.
   违反 `auth.users` 外键与 subscriptions 冲突目标无效导致的 `supabase db reset` 失败。
 - **运维文档**：部署文档补充保活/恢复的双层结构与 `CRON_SECRET`、`SUPABASE_ACCESS_TOKEN`
   配置说明；安全审计文档用真实运行时矩阵替换“本地无法启动 Supabase”的过期描述。
-- **测试与发布文档**：README 测试计数同步为 92 个文件 / 826 个测试，Smoke 记录更新到
+- **测试与发布文档**：README 测试计数同步为 93 个文件 / 832 个测试，Smoke 记录更新到
   commit `16a285a` 与对应 Vercel 生产部署。
 
 - Passkey 登录选项、认证验证、注册选项和注册验证统一补齐 flag 门控、IP 限流、
@@ -58,6 +58,8 @@ All notable changes to IndieStack will be documented in this file.
 ### Fixed
 
 - 修正 dashboard、API key、成员角色、资料完整度和项目删除等页面的 i18n key，避免生产构建时遗漏翻译。
+- 保活、自动恢复和生产 smoke 探测改为有限重试瞬时网络错误、5xx 与未就绪 body，避免 Supabase 冷启动期间的 503 被误报为持续故障。
+- 修复测试基础设施：Vitest 每个项目限制为 2 个 worker，Playwright 默认使用单 worker，避免高并发 jsdom / 共享 Mock 状态导致交互超时与互相清理；logger 仅在生产环境异步加载 Sentry，避免测试和构建进程加载监控运行时。
 
 ## [0.5.0] — 2026-09-05
 
@@ -104,17 +106,17 @@ All notable changes to IndieStack will be documented in this file.
 
 - **E2E 邮件全链路（F01）**：`e2e/mail-flow.spec.ts` 覆盖 happy path（设置页开启营销邮件 →
   捕获 double opt-in 确认邮件 → 种通知 → 触发 digest cron → 断言摘要邮件主题含「N 条」
-  + `email_worker_runs` 落表 pulled/sent/groups/failed）与 failure path（`?failNext=1`
-  注入失败 → digest 返回 `failed=1` + `email_worker_runs.failed>0`）。
-  Mock 端补：`MockQueryBuilder` 新增 `.or()/.not()/.contains()/.lt()/.is()/.upsert()`
-  与 JSON 字段路径（`metadata->>email_attempts`）解析；`email_worker_runs` /
-  `marketing_subscriptions` 表接入 mock 读写；mock profile `notification_settings`
-  字段对齐真实 schema；`sendResendEmail` 支持 `RESEND_API_URL` 端点覆盖；
-  E2E 专用路由（仅 mock 启用 + Bearer 校验）`/api/e2e/email-inbox`、
-  `/api/e2e/seed-notifications`、`/api/e2e/email-worker-runs`、
-  `/api/e2e/profile-timezone`（动态写入本机时区以命中 digest 错峰门控）。
-  Playwright 配置注入 `RESEND_API_URL/KEY` + `CRON_SECRET` + `NEXT_PUBLIC_APP_URL` +
-  `E2E_BEARER_TOKEN`；`pnpm test:e2e` 24/24 全绿（含 v0.4.0 既有 22 例 + F01 新增 2）。
+  - `email_worker_runs` 落表 pulled/sent/groups/failed）与 failure path（`?failNext=1`
+    注入失败 → digest 返回 `failed=1` + `email_worker_runs.failed>0`）。
+    Mock 端补：`MockQueryBuilder` 新增 `.or()/.not()/.contains()/.lt()/.is()/.upsert()`
+    与 JSON 字段路径（`metadata->>email_attempts`）解析；`email_worker_runs` /
+    `marketing_subscriptions` 表接入 mock 读写；mock profile `notification_settings`
+    字段对齐真实 schema；`sendResendEmail` 支持 `RESEND_API_URL` 端点覆盖；
+    E2E 专用路由（仅 mock 启用 + Bearer 校验）`/api/e2e/email-inbox`、
+    `/api/e2e/seed-notifications`、`/api/e2e/email-worker-runs`、
+    `/api/e2e/profile-timezone`（动态写入本机时区以命中 digest 错峰门控）。
+    Playwright 配置注入 `RESEND_API_URL/KEY` + `CRON_SECRET` + `NEXT_PUBLIC_APP_URL` +
+    `E2E_BEARER_TOKEN`；`pnpm test:e2e` 24/24 全绿（含 v0.4.0 既有 22 例 + F01 新增 2）。
 - **E2E：admin / contact / MFA 页面（F02）**：`e2e/admin-contact-mfa.spec.ts` 覆盖 admin 概览页（统计卡片渲染）、admin/users 用户列表（mock 用户行可见）、admin/messages 消息列表可达、contact 表单 UI 流程（可达 + 字段填写 + submit 后无运行时错误）、mock contact_messages POST → GET 字段对齐（name/email/subject/message 全字段校验）。
   Mock 端补：mock 缓存切到 `globalThis.__indiestackMockCache__`，解决 Next.js 16 + Turbopack dev 将 server action 与 route handler 拆分到不同 chunk 时模块级 `let` 缓存不共享的问题（v0.5.0 F02 contact-messages 闭环踩到的真根因）；新增 `getMockContactMessages()` + `case "contact_messages"` 读写双路径；`/api/e2e/contact-messages` 提供 POST 端点（仅 mock + Bearer 校验）绕过 server action 跨进程不可见的限制；DELETE 走 admin client。Playwright 配置 `fullyParallel: false`（多 worker 并发会触发 DELETE/PATCH 互相覆盖），`pnpm test:e2e` 29/29 全绿（F01 24 + F02 5）。
 

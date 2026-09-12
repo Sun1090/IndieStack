@@ -12,6 +12,9 @@ const alias = { "@": path.resolve(__dirname, "./src") };
 export default defineConfig({
   plugins: [],
   test: {
+    // 每个项目限制 2 个 worker。8 核本机自动并发会同时创建大量 jsdom，
+    // 导致 user-event 交互超过 5 秒并产生与代码无关的超时。
+    maxWorkers: 2,
     coverage: {
       provider: "v8",
       // 阈值门禁只约束核心业务逻辑；mock 数据 / Stripe / Supabase 客户端封装

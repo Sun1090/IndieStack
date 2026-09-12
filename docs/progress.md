@@ -42,26 +42,26 @@
 ## 2026-09-12 Supabase 运行时证据与自动恢复兜底
 
 - [x] `supabase/seed.sql` 重写为自包含、确定性、可重复执行：先建 `auth.users`（3 个 seed 账号）
-  再写两个隔离团队、三个项目、订阅、邀请、API key、会话、审计、通知与 usage；修复了
-  外键与 subscriptions 冲突目标导致的 seed 失败。`pnpm exec supabase start` 与
-  `pnpm exec supabase db reset`（24 迁移 + seed）均真实执行成功。
+      再写两个隔离团队、三个项目、订阅、邀请、API key、会话、审计、通知与 usage；修复了
+      外键与 subscriptions 冲突目标导致的 seed 失败。`pnpm exec supabase start` 与
+      `pnpm exec supabase db reset`（24 迁移 + seed）均真实执行成功。
 - [x] 新增 `scripts/verify-supabase-identity.js`（`pnpm smoke:supabase-identity`）：真实 Auth +
-  PostgREST + Storage API 的身份矩阵，覆盖 anon 不可见、A/B 租户隔离、私有项目不可读、
-  avatars 前缀写/删权限与 service_role 跨前缀操作；2026-09-12T05:12:32Z 结果 **20/20 通过**，
-  证据 `/tmp/indiestack-identity-matrix.json`。
+      PostgREST + Storage API 的身份矩阵，覆盖 anon 不可见、A/B 租户隔离、私有项目不可读、
+      avatars 前缀写/删权限与 service_role 跨前缀操作；2026-09-12T05:12:32Z 结果 **20/20 通过**，
+      证据 `/tmp/indiestack-identity-matrix.json`。
 - [x] 新增应用侧恢复兜底层 `/api/ops/supabase-restore` + Vercel Cron `0 4 * * *`：GitHub 在仓库
-  静默 60 天后会停用 `schedule`，因此恢复不再只依赖 Actions；仅 `status=INACTIVE` 触发恢复，
-  `CRON_SECRET` 鉴权，缺配置时生产返回 503（非生产安全跳过）；新增 24 个 lib 单测与 8 个路由测试。
+      静默 60 天后会停用 `schedule`，因此恢复不再只依赖 Actions；仅 `status=INACTIVE` 触发恢复，
+      `CRON_SECRET` 鉴权，缺配置时生产返回 503（非生产安全跳过）；新增 24 个 lib 单测与 8 个路由测试。
 - [x] 生产 smoke 重新执行：commit `16a285a`、部署
-  `indie-stack-aqu77mjze-sun1090s-projects.vercel.app`，**6/6 通过**（2026-09-12T05:12:57Z）。
+      `indie-stack-aqu77mjze-sun1090s-projects.vercel.app`，**6/6 通过**（2026-09-12T05:12:57Z）。
 - [x] 文档对齐：`docs/db/security-audit.md`（真实矩阵替换过期描述）、`docs/testing.md`、
-  `docs/operations/environments.md`、`docs/operations/production-smoke-v0.6.0.md`、
-  `docs-site/{,zh-CN/}{deployment,configuration}.md`、README 双语测试计数。
+      `docs/operations/environments.md`、`docs/operations/production-smoke-v0.6.0.md`、
+      `docs-site/{,zh-CN/}{deployment,configuration}.md`、README 双语测试计数。
 
 ## 验证
 
-- 最近本地完整验证：通过（92 files / 826 tests；`pnpm verify:build` 通过；Playwright E2E 50/50 通过；`pnpm check:all` 通过）
-- 覆盖率：Statements 95.34%、Branches 90.13%、Functions 96.83%、Lines 96.49%，branches 门禁 90% 通过
+- 最近本地完整验证：通过（93 files / 832 tests；`pnpm verify:build` 通过；Playwright E2E 50/50 单 worker 通过；`pnpm check:all` 与 `pnpm test:coverage` 通过）
+- 覆盖率：Statements 95.37%、Branches 90.60%、Functions 95.72%、Lines 96.64%，branches 门禁 90% 通过
 - 安全/运维：`pnpm audit --audit-level high` 无已知漏洞；生产 `/api/health` 通过；Supabase auto-restore 手动 dry-run 确认项目健康且无需恢复
 - CI：`0930c1f` 的 CI、CodeQL、Secrets Scan、Security/config checks 均通过（run 34669221490 等）
 
@@ -109,5 +109,12 @@
 - [x] 生产鉴权 no-op 验证通过：HTTP 200、`action=noop`、`projectStatus=ACTIVE_HEALTHY`、`checkedAt=2026-09-12T05:57:14.705Z`；未触发任何恢复写操作。
 - [x] 应用功能提交 `fbad20f` 的生产部署 `dpl_7DvLfkEXQcKkjEDcYU8LjEnnL66J` READY，生产别名 `https://indie-stack-theta.vercel.app`；生产 smoke 6/6 通过，证据 `/tmp/indiestack-production-smoke-latest.json`。
 - [x] GitHub Actions `Supabase auto-restore` 手动 dry-run 成功：run `34676894311`，配置校验与真实 Management API 检测均通过。
+- [x] 修复保活误报：2026-09-12T06:30Z 的真实冷启动返回瞬时 `503 unreachable`，随后恢复健康。
+      `health-check`、`supabase-auto-restore` 与 production smoke 现共用有限重试探测（3 次、间隔 5 秒），
+      仅重试网络错误、5xx 和未就绪 body；404/401 与持续故障仍然失败。新增 6 个 health-probe
+      回归测试，并扩展 production smoke 的瞬时 503 恢复用例。
+- [x] 修复本地测试门禁抖动：Vitest 每项目限制 2 个 worker，Playwright 默认单 worker；logger 仅在生产环境
+      异步加载 Sentry。完整 832 测试从超时 6 项恢复为 93/93 文件全部通过，`test:coverage` 同步通过。
+- [x] 使用新版烟测逻辑复测生产：commit `527fa5d` 对应别名 `https://indie-stack-theta.vercel.app`，6/6 通过，证据 `/tmp/indiestack-production-smoke-20260912-new.json`。
 - [x] 仓库开放 PR 0、开放 issue 0；Dependabot、Code Scanning、Secret Scanning 开放告警均为 0。
 - [ ] 未执行真实“暂停后恢复”破坏性演练。生产测试账号登录、dashboard 租户隔离、合法/非法上传、邮件/通知 provider、合法 Stripe webhook 幂等落库、真实回滚 deployment 切换仍需隔离账号或 provider 才能验证。

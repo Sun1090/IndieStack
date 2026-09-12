@@ -20,8 +20,12 @@
  */
 
 // 可用 SUPABASE_API_BASE 覆盖，便于本地用 mock 验证恢复流程（默认走线上）
+const { probeHealth: probeHealthWithRetry } = require("./lib/health-probe");
+
 const API_BASE = process.env.SUPABASE_API_BASE || "https://api.supabase.com/v1";
 const HEALTH_TIMEOUT_MS = 15_000;
+const HEALTH_ATTEMPTS = 3;
+const HEALTH_RETRY_DELAY_MS = 5_000;
 const API_TIMEOUT_MS = 20_000;
 const POLL_INTERVAL_MS = 15_000;
 const POLL_TIMEOUT_MS = 10 * 60_000;
@@ -90,23 +94,15 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 
 /** 探测线上健康端点；healthy=true 表示服务与数据库都正常 */
 async function probeHealth(url) {
-  try {
-    const response = await fetchWithTimeout(
-      url,
-      { headers: { Accept: "application/json" }, cache: "no-store" },
-      HEALTH_TIMEOUT_MS,
-    );
-    const body = await response.json().catch(() => null);
-    const healthy =
-      response.status === 200 && body?.status === "ok" && body?.ready !== false;
-    return { healthy, status: response.status, error: null };
-  } catch (error) {
-    return {
-      healthy: false,
-      status: 0,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return probeHealthWithRetry(url, {
+    timeoutMs: HEALTH_TIMEOUT_MS,
+    attempts: HEALTH_ATTEMPTS,
+    retryDelayMs: HEALTH_RETRY_DELAY_MS,
+    onRetry: ({ nextAttempt, attempts, result }) => {
+      const detail = result.error || `HTTP ${result.status}`;
+      log(`   健康探测第 ${nextAttempt - 1}/${attempts} 次失败（${detail}），准备重试…`);
+    },
+  });
 }
 
 /** 读取项目当前状态（INACTIVE / RESTORING / ACTIVE_HEALTHY ...） */
@@ -219,9 +215,21 @@ async function main() {
   return 0;
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((error) => {
-    fail(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  });
+if (require.main === module) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((error) => {
+      fail(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    });
+}
+
+module.exports = {
+  API_BASE,
+  HEALTH_ATTEMPTS,
+  HEALTH_RETRY_DELAY_MS,
+  classify,
+  main,
+  probeHealth,
+  readConfig,
+};

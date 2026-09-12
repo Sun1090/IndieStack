@@ -4,13 +4,18 @@
  */
 import { defineConfig, devices } from "@playwright/test";
 
+// 可变 Mock 状态由同一个 dev server 持有；不同 spec 并行时会互相清理/覆盖。
+// 默认保持单 worker，PW_FULLY_PARALLEL=true 才启用隔离实验的并行基线。
+const fullyParallel = process.env.PW_FULLY_PARALLEL === "true";
+
 export default defineConfig({
   testDir: "./e2e",
   // 默认 60s：吸收 dev server 冷编译（首屏/Stripe SDK 首载）抖动，CI 另有 retries=2
   timeout: 60_000,
   // Shared mock state remains serial by default. F04 can opt into the
   // isolation experiment without changing the stable CI baseline.
-  fullyParallel: process.env.PW_FULLY_PARALLEL === "true",
+  fullyParallel,
+  workers: fullyParallel ? undefined : 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",

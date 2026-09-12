@@ -73,7 +73,7 @@
 47. E07 告警阈值与去重
 48. E08 health endpoint 依赖分级（完成：required/optional 分级、configured/reachable/status 字段、Mock 安全降级、生产缺失/不可达返回 503、单元测试与 API 文档）
 49. E09 运维 runbook 与故障演练
-50. E10 发布后 health check 自动化（完成：`.github/workflows/health-check.yml` 手动触发部署后探测，`pnpm health:check` 复用同一校验逻辑，10 秒超时并严格要求 `200 + status=ok + ready=true`）
+50. E10 发布后 health check 自动化（完成：`.github/workflows/health-check.yml` 手动触发部署后探测，`pnpm health:check` 复用同一校验逻辑；单次 10 秒超时、最多 3 次探测，要求 `200 + status=ok` 且 `ready` 不为 `false`，仅对网络错误/5xx/未就绪 body 重试）
 
 ### F. 测试基础设施（F01–F10）
 

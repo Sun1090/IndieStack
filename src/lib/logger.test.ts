@@ -4,6 +4,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
+vi.mock("@sentry/nextjs", () => ({ captureException }));
+
 /** 在指定环境变量下重新加载 logger 模块 */
 async function loadLogger(env: Record<string, string | undefined>) {
   const saved = new Map<string, string | undefined>();
@@ -64,7 +67,15 @@ describe("logger（详细模式）", () => {
 });
 
 describe("logger（生产模式）", () => {
-  it("非 verbose 时不输出 console（error 仅走 Sentry，未初始化时为静默 no-op）", async () => {
+  beforeEach(() => {
+    captureException.mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("非 verbose 时不输出 console，并将 error 上报 Sentry", async () => {
     const spies = {
       debug: vi.spyOn(console, "debug").mockImplementation(() => {}),
       info: vi.spyOn(console, "info").mockImplementation(() => {}),
@@ -76,12 +87,16 @@ describe("logger（生产模式）", () => {
       NODE_ENV: "production",
       NEXT_PUBLIC_VERBOSE_LOGGING: undefined,
     });
+    const error = new Error("x");
     logger.info("安静模式");
-    logger.error("仅上报", { id: 1 }, new Error("x"));
+    logger.error("仅上报", { id: 1 }, error);
 
     for (const spy of Object.values(spies)) {
       expect(spy).not.toHaveBeenCalled();
     }
-    vi.restoreAllMocks();
+    await vi.waitFor(() => expect(captureException).toHaveBeenCalledOnce());
+    expect(captureException).toHaveBeenCalledWith(error, {
+      extra: { id: 1, logLevel: "error" },
+    });
   });
 });
