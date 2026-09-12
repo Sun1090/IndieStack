@@ -21,6 +21,33 @@ const E2E_BEARER = "e2e-bearer-token";
 const APP_URL = "http://localhost:3100";
 const MOCK_EMAIL = "dev@indiestack.local";
 
+async function resetContactMessages(api: APIRequestContext): Promise<void> {
+  const headers = { authorization: `Bearer ${E2E_BEARER}` };
+  let lastError: string | null = null;
+
+  // Turbopack 首次编译 mock route 时偶发关闭 keep-alive 连接（socket hang up）。
+  // 只重试网络错误和服务端错误；鉴权/路由配置错误应立即失败。
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await api.delete(`${APP_URL}/api/e2e/contact-messages`, { headers });
+      if (response.ok()) return;
+
+      const message = `HTTP ${response.status()} ${await response.text()}`;
+      if (response.status() === 401 || response.status() === 404) {
+        throw new Error(`contact-messages reset misconfigured: ${message}`);
+      }
+      lastError = message;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      if (lastError.startsWith("contact-messages reset misconfigured:")) throw error;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+  }
+
+  throw new Error(`contact-messages reset failed after 3 attempts: ${lastError}`);
+}
+
 test.describe("Admin / Contact / MFA 页面 (F02)", () => {
   let api: APIRequestContext;
 
@@ -34,9 +61,7 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
 
   test.beforeEach(async () => {
     // 清空 contact messages，保证 mock 端点测试用例干净
-    await api.delete(`${APP_URL}/api/e2e/contact-messages`, {
-      headers: { authorization: `Bearer ${E2E_BEARER}` },
-    });
+    await resetContactMessages(api);
   });
 
   test("admin 概览页可达并渲染统计卡片", async ({ page }) => {
