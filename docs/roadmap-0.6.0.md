@@ -111,7 +111,7 @@
 76. H06 webhook 幂等约束
 77. H07 审计日志索引复审
 78. H08 数据保留与删除策略
-79. H09 migration drift 检查
+79. H09 migration drift 检查（完成：`pnpm check:migrations` 离线校验迁移命名/编号连续/空文件/BOM/CRLF/结尾换行，并把每个迁移的 SHA-256 与提交的 `supabase/migration-manifest.json` 基线比对；`pnpm update:migrations-manifest` 只允许追加新增迁移，改写已基线化文件会被拒绝，避免用重跑基线掩盖历史篡改。新增 `pnpm check:migration-history` 只读比对本地 Supabase 迁移历史，对未应用迁移和数据库独有版本报错。纯函数 `src/lib/migrations/migration-drift.ts` 由 43 条单测覆盖，CLI 走 Node 原生 type stripping；静态门禁接入 `pnpm check:all` 与 CI，历史门禁因依赖 `supabase start` 不进离线聚合）
 80. H10 依赖与 secrets 扫描门禁
 
 ### I. 文档、发布与开发体验（I01–I10）

@@ -23,31 +23,33 @@
  
  | Command | Description |
  |--------|------------|
- | `pnpm lint` | ESLint (with Next.js rules) |
- | `pnpm type-check` | TypeScript check (`tsc --noEmit`) |
- | `pnpm format` | Prettier format (TS, TSX, CSS, JSON) |
- | `pnpm check` | Type-check + lint together |
+| `pnpm lint` | ESLint (with Next.js rules) |
+| `pnpm type-check` | TypeScript check (`tsc --noEmit`) |
+| `pnpm format` | Prettier format (TS, TSX, CSS, JSON) |
+| `pnpm check` | Type-check + lint together |
 | `pnpm check:changelog` | Validate CHANGELOG.md structure (versions, sections, entries) |
  
  ## Testing
  
  | Command | Description |
  |--------|------------|
- | `pnpm test` | Run all tests (Vitest) |
- | `pnpm test:watch` | Watch mode |
- | `pnpm test:coverage` | Test with coverage report |
- | `pnpm test:e2e` | Run Playwright E2E smoke tests |
- | `pnpm test:visual` | Compare Linux Chromium visual regression baselines |
+| `pnpm test` | Run all tests (Vitest) |
+| `pnpm test:watch` | Watch mode |
+| `pnpm test:coverage` | Test with coverage report |
+| `pnpm test:e2e` | Run Playwright E2E smoke tests |
+| `pnpm test:visual` | Compare Linux Chromium visual regression baselines |
  
  ## Database
  
  | Command | Description |
  |--------|------------|
- | `pnpm db:migrate` | Push migrations to Supabase |
- | `pnpm db:migrate` | Push schema changes |
- | `pnpm db:seed` | Run seed data script |
- | `pnpm db:types` | Generate TypeScript types from Supabase |
- | `pnpm db:status` | Check Supabase local service status |
+| `pnpm db:migrate` | Push migrations to Supabase |
+| `pnpm db:seed` | Run seed data script |
+| `pnpm db:types` | Generate TypeScript types from Supabase |
+| `pnpm db:status` | Check Supabase local service status |
+| `pnpm check:migrations` | Enforce immutable migration checksums + filename/ordering rules |
+| `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only) |
+| `pnpm check:migration-history` | Compare local Supabase migration history (needs `supabase start`) |
  
  ## Helper Scripts
  

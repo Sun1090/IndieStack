@@ -137,6 +137,9 @@ src/
 | `pnpm check:locales`      | 校验 en/zh-CN 翻译 key 对称性                    |
 | `pnpm db:migrate`         | 推送数据库迁移                                   |
 | `pnpm db:types`           | 从 DB 生成 TypeScript 类型                       |
+| `pnpm check:migrations`   | 校验迁移不可变校验和与命名/顺序规则              |
+| `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加）      |
+| `pnpm check:migration-history` | 比对本地 Supabase 迁移历史（需 `supabase start`） |
 | `pnpm test`               | Vitest 单元 + 组件测试（100 个文件 / 899 个测试） |
 | `pnpm test:e2e`           | Playwright E2E 冒烟测试                          |
 | `pnpm test:visual`        | 对比 Linux Chromium 视觉回归基线                 |

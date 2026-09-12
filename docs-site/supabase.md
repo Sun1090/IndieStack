@@ -60,6 +60,25 @@
 | `003_projects_notifications_indexes.sql` | Notifications, index optimization |
 | `025_notifications_realtime.sql` | Enables `notifications` INSERT delivery in the Realtime publication |
 
+## Migration drift
+
+Migrations are immutable once they are applied. The repository enforces this with a checksum
+manifest committed at `supabase/migration-manifest.json`:
+
+```bash
+pnpm check:migrations            # offline gate: filenames, ordering, and SHA-256 checksums
+pnpm update:migrations-manifest  # append-only re-baseline after adding a migration
+pnpm check:migration-history     # local Supabase history (requires `supabase start`)
+```
+
+- Never edit an already-baselined migration; add a new forward migration instead.
+- Run `pnpm update:migrations-manifest` after adding a migration so the manifest records the new file.
+- Run `pnpm check:migrations` before every commit; CI runs it on every push and pull request.
+- `pnpm check:migration-history` compares `supabase/migrations/` with the local database history and
+  fails on pending migrations or versions that only exist in the database.
+- Linked/production history verification is a release step that needs explicit credentials and
+  approval; follow the release runbook instead of pointing the check at production.
+
 ## Realtime notifications
 
 The dashboard notification list subscribes to `postgres_changes` INSERT events for

@@ -33,21 +33,23 @@
  
  | 命令 | 说明 |
  |------|------|
- | `pnpm test` | 运行所有测试（Vitest） |
- | `pnpm test:watch` | 监听模式运行测试 |
- | `pnpm test:coverage` | 运行测试并生成覆盖率报告 |
- | `pnpm test:e2e` | 运行 Playwright E2E 冒烟测试 |
- | `pnpm test:visual` | 对比 Linux Chromium 视觉回归基线 |
+| `pnpm test` | 运行所有测试（Vitest） |
+| `pnpm test:watch` | 监听模式运行测试 |
+| `pnpm test:coverage` | 运行测试并生成覆盖率报告 |
+| `pnpm test:e2e` | 运行 Playwright E2E 冒烟测试 |
+| `pnpm test:visual` | 对比 Linux Chromium 视觉回归基线 |
  
  ## 数据库
  
  | 命令 | 说明 |
  |------|------|
- | `pnpm db:migrate` | 推送数据库迁移到 Supabase |
- | `pnpm db:migrate` | 推送 schema 变更 |
- | `pnpm db:seed` | 执行种子数据脚本 |
- | `pnpm db:types` | 从 Supabase 生成 TypeScript 类型定义 |
- | `pnpm db:status` | 查看 Supabase 本地服务状态 |
+| `pnpm db:migrate` | 推送数据库迁移到 Supabase |
+| `pnpm db:seed` | 执行种子数据脚本 |
+| `pnpm db:types` | 从 Supabase 生成 TypeScript 类型定义 |
+| `pnpm db:status` | 查看 Supabase 本地服务状态 |
+| `pnpm check:migrations` | 校验迁移不可变校验和与命名/顺序规则 |
+| `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加） |
+| `pnpm check:migration-history` | 比对本地 Supabase 迁移历史（需 `supabase start`） |
  
  ## 辅助脚本
  

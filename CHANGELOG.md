@@ -33,6 +33,13 @@ All notable changes to IndieStack will be documented in this file.
   像素差异门禁 0.1%；基线为 Linux Chromium PNG，需在
   `mcr.microsoft.com/playwright:v1.63.0-noble` 容器内生成，固定 UTC、浅色主题与
   禁用动画以消除环境抖动。CI 在 E2E 之后执行该套件，失败时上传 `test-results/` 差异图。
+- **迁移漂移门禁（H09）**：`pnpm check:migrations` 从“只查文件名”升级为离线内容门禁，校验
+  迁移命名、编号连续与唯一、空文件、UTF-8 BOM、CRLF、结尾换行，并把每个迁移的 SHA-256 与提交的
+  `supabase/migration-manifest.json` 基线比对；新增 `pnpm update:migrations-manifest` 做仅追加的
+  重新定基线，改写已基线化迁移会被拒绝，避免用重跑基线掩盖历史篡改。另新增只读的
+  `pnpm check:migration-history`（需本地 `supabase start`）比对数据库迁移历史，对未应用迁移或
+  数据库独有版本报错。规则由 `src/lib/migrations/migration-drift.ts` 的 43 条单测覆盖，静态门禁接入
+  `pnpm check:all` 与 CI。
 
 ### Changed
 

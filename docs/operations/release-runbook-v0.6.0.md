@@ -14,6 +14,8 @@ pnpm verify:build
 pnpm test:e2e
 pnpm audit --audit-level high
 pnpm check:release-docs
+pnpm check:migrations            # 离线：迁移命名/顺序/SHA-256 校验和
+pnpm check:migration-history     # 本地 Supabase 迁移历史（需先 `pnpm exec supabase start`）
 ```
 
 所有命令必须有保存的输出；任一失败即停止，不得以修改清单状态替代修复。
@@ -22,7 +24,7 @@ pnpm check:release-docs
 
 1. **冻结范围**：确认 CHANGELOG 的版本、迁移列表、环境变量变更和已知限制；由第二位审查者复核 migrations、workflows、认证和 storage 变更。
 2. **构建制品**：从目标 commit 的干净 checkout 构建；记录 Node/pnpm 版本、构建日志和制品摘要。
-3. **数据库先行**：执行迁移并保存迁移日志。只允许向前兼容的 schema 变更进入本版本；破坏性变更必须拆分到后续版本。
+3. **数据库先行**：先确认迁移历史一致——本地运行 `pnpm check:migration-history` 必须通过（pending 或数据库独有的版本都会失败），对 linked/生产环境用带显式凭据与审批的只读 `supabase migration list` 复核后再执行迁移，并保存迁移日志。已基线化的迁移不可改写，只能追加前向迁移；破坏性变更必须拆分到后续版本。
 4. **部署应用**：部署同一 commit SHA，不在平台 UI 临时修改代码或环境变量。
 5. **健康检查**：运行 `pnpm health:check -- <url>`（或使用 `.github/workflows/health-check.yml`），验证 `/api/health`、版本、关键依赖状态和安全响应头。
 6. **生产冒烟**：执行 `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version "$EXPECTED_APP_VERSION" --output production-smoke.json`（或触发 `.github/workflows/production-smoke.yml`）验证 health、公共页面、静态资源、匿名 dashboard 跳转、安全头和无效 webhook；需要登录、上传、邮件或合法 webhook 的场景在隔离测试账号/provider 中另行执行。不得使用真实用户数据。

@@ -23,6 +23,10 @@
 
 I05 最初只由 `check-release-docs` 的字符串存在性检查覆盖，无法发现版本标题格式、重复版本、空章节等结构漂移。现已补充独立结构门禁 `pnpm check:changelog`（规则实现 `src/lib/changelog/parse-changelog.ts`，38 条单测），并接入 `pnpm check:all` 与 CI Lint & Type Check job；`check-release-docs` 继续负责发布文档产物存在性，两者职责不重叠。
 
+## 后续加固（2026-09-12，H09 迁移漂移）
+
+`pnpm check:migrations` 此前只校验迁移文件名，无法发现已应用迁移被改写、编号断号或清单漂移。现已升级为内容门禁（规则实现 `src/lib/migrations/migration-drift.ts`，43 条单测）：命名/编号连续与唯一、空文件、UTF-8 BOM、CRLF、结尾换行，以及每个迁移的 SHA-256 与 `supabase/migration-manifest.json` 基线比对；`pnpm update:migrations-manifest` 仅允许追加，拒绝改写已基线化迁移。新增的 `pnpm check:migration-history` 只读比对本地 Supabase 迁移历史，因依赖 `supabase start` 不纳入离线 `check:all`/CI 聚合。linked/production 历史校验保留为发布 Runbook 中的显式凭据 + 审批步骤。
+
 ## 可复现验证
 
 在干净 checkout 中，至少运行：

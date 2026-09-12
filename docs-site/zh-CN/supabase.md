@@ -84,6 +84,22 @@
 | `supabase/migrations/003_projects_notifications_indexes.sql` | 通知系统、索引优化 |
 | `supabase/migrations/025_notifications_realtime.sql` | 将 `notifications` INSERT 事件幂等加入 Realtime publication |
 
+## 迁移漂移门禁（Migration drift）
+
+迁移一旦应用即不可改写。仓库通过提交在 `supabase/migration-manifest.json` 的校验和清单强制执行：
+
+```bash
+pnpm check:migrations            # 离线门禁：文件命名、顺序与 SHA-256 校验和
+pnpm update:migrations-manifest  # 新增迁移后重新生成基线（仅允许追加）
+pnpm check:migration-history     # 本地 Supabase 迁移历史（需先 `supabase start`）
+```
+
+- 禁止修改已建立基线的迁移，只能新增前向迁移。
+- 新增迁移后执行 `pnpm update:migrations-manifest`，让清单记录新文件。
+- 每次提交前执行 `pnpm check:migrations`；CI 会在每次 push 和 PR 时运行。
+- `pnpm check:migration-history` 比对 `supabase/migrations/` 与本地数据库历史，对未应用迁移或只存在于数据库的版本报错。
+- linked/生产历史校验属于发布步骤，需要显式凭据与审批；请遵循发布 Runbook，不要把该检查指向生产环境。
+
 ## 通知 Realtime
 
 仪表盘通知列表订阅 `public.notifications` 的 `postgres_changes` INSERT 事件，并通过

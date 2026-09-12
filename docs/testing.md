@@ -119,3 +119,11 @@ F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped s
 `pnpm check:release-docs` 校验发布 checklist、发布/回滚 runbook、生产 smoke 矩阵、CHANGELOG 和双语 README 的关键内容与命令。它只证明文档产物结构完整，不证明生产部署、冒烟或回滚演练已经执行；这些必须附带实际命令输出和时间记录。
 
 `pnpm check:changelog` 在结构层面校验 `CHANGELOG.md`（I05）：`[Unreleased]` 必须排第一且非空、版本标题形如 `## [x.y.z] — YYYY-MM-DD`、版本按降序排列且不重复、每个版本至少一个 `### 章节` 且章节内至少一个顶层条目、条目不得为空或超长。规则实现位于 `src/lib/changelog/parse-changelog.ts`（纯函数，单测覆盖），由 `scripts/check-changelog.js` 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只覆盖文档结构，不校验文案质量或发布事实。
+
+## 迁移漂移门禁（H09）
+
+`pnpm check:migrations` 是离线门禁：校验 `supabase/migrations/` 的文件命名、编号连续性与无重复、空文件、UTF-8 BOM、CRLF 行尾、结尾换行，并把每个文件的 SHA-256 与提交在 `supabase/migration-manifest.json` 的基线比对。规则实现位于 `src/lib/migrations/migration-drift.ts`（纯函数，单测覆盖），由 `scripts/check-migrations.js` 经 Node 原生 type stripping 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。
+
+关键约束：**已建立基线的迁移不可改写**。新增迁移后执行 `pnpm update:migrations-manifest` 做仅追加的重新定基线；如果改动已基线化文件的内容，更新命令会拒绝并提示补充新的前向迁移，从而避免用“重跑基线”掩盖历史被篡改。
+
+`pnpm check:migration-history` 是本地数据库历史门禁：读取 `supabase migration list --local --output-format json`，对未应用到数据库的迁移（`HISTORY_MIGRATION_PENDING`）和只存在于数据库的版本（`HISTORY_VERSION_MISSING_LOCAL`）报错。它只读本地 Supabase，需要先 `supabase start`，因此**不纳入** `check:all`/CI 的离线聚合；linked/production 历史校验属于发布步骤，需显式凭据与审批，见发布 Runbook。

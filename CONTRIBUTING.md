@@ -47,9 +47,22 @@ npx supabase migration new your_migration_name
 # Apply locally
 npx supabase db push
 
+# Re-baseline the checksum manifest (append-only)
+pnpm update:migrations-manifest
+
+# Verify checksums and ordering before committing
+pnpm check:migrations
+
 # Generate TypeScript types
 pnpm db:types
 ```
+
+Migrations are immutable once applied. `pnpm check:migrations` verifies each file's SHA-256 against
+`supabase/migration-manifest.json`; `pnpm update:migrations-manifest` refuses to rewrite an
+already-baselined migration, so fix forward by adding a new migration instead of editing history.
+With local Supabase running, `pnpm check:migration-history` also fails when a migration is pending
+or the database records a version that no longer exists locally. linked/production history checks
+belong to the release runbook and need explicit credentials and approval.
 
 ## Pull Request Process
 

@@ -137,6 +137,9 @@ src/
 | `pnpm check:locales`      | Verify en/zh-CN translation key symmetry                         |
 | `pnpm db:migrate`         | Push database migrations                                         |
 | `pnpm db:types`           | Generate TypeScript types from DB                                |
+| `pnpm check:migrations`   | Enforce immutable migration checksums + filename/ordering rules   |
+| `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only)  |
+| `pnpm check:migration-history` | Compare local Supabase migration history (needs `supabase start`) |
 | `pnpm test`               | Vitest unit + component tests (100 files / 899 tests)            |
 | `pnpm test:e2e`           | Playwright E2E smoke tests                                       |
 | `pnpm test:visual`        | Compare Linux Chromium visual regression baselines               |
