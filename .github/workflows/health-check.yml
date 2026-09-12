@@ -1,0 +1,49 @@
+name: Post-deploy health check
+
+## 用途一：发布后手动探测生产 /api/health（workflow_dispatch）
+## 用途二：每日定时保活——/api/health 内部会执行一次 Supabase limit(1) 查询，
+##         产生真实数据库活动，避免 Supabase 免费版项目 7 天闲置被自动暂停。
+## 说明：仓库连续 60 天无提交时 GitHub 会自动停用 schedule，
+##       因此生产保活以根目录 vercel.json 的 Vercel Cron 为主，本 workflow 为辅。
+
+on:
+  workflow_dispatch:
+    inputs:
+      health_url:
+        description: "Deployed /api/health URL (defaults to the HEALTHCHECK_URL repository variable)"
+        required: false
+        type: string
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: Probe deployed health endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # 用 github.event.inputs（而非 inputs 上下文）取值：schedule 事件下同样可安全求值
+      HEALTHCHECK_URL: ${{ github.event.inputs.health_url || vars.HEALTHCHECK_URL }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # 刻意不安装依赖：scripts/check-health.js 只用 Node 内置 API，
+      # 保活与发布后探测不应被依赖安装/锁文件问题拖垮
+      - name: Resolve health URL
+        run: |
+          if [ -z "${HEALTHCHECK_URL}" ]; then
+            echo "::error::HEALTHCHECK_URL 未配置：请设置仓库变量 HEALTHCHECK_URL（Settings → Secrets and variables → Actions → Variables），或在手动触发时传入 health_url"
+            exit 1
+          fi
+          echo "Target: ${HEALTHCHECK_URL}"
+
+      - name: Check health
+        run: node scripts/check-health.js "$HEALTHCHECK_URL"
