@@ -199,7 +199,7 @@ Tailwind CSS v4 的自定义颜色、暗色变体和 CSS 变量定义在 `src/ap
 ```typescript
 export const routing = defineRouting({
   locales: ["zh-CN", "en"],
-  defaultLocale: "zh-CN",
+  defaultLocale: "en",
   localePrefix: "never",
 });
 ```

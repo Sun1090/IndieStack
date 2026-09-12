@@ -36,5 +36,5 @@ features:
   - title: "🚀 One-Click Deploy"
     details: Vercel + GitHub Actions CI/CD, Docker containerization, environment-based configuration.
   - title: "🌐 Internationalization"
-    details: Built-in Chinese/English, 50+ translation namespaces, cookie-driven, unified server/client.
+    details: Built-in Chinese/English, 18 translation namespaces, cookie-driven, unified server/client.
 ---

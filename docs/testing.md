@@ -5,7 +5,7 @@
 ## 测试金字塔
 
 ```
-      E2E（Playwright，18 用例）        ← 关键路径冒烟
+      E2E（Playwright，49 用例）        ← 关键路径冒烟
     ┌──────────────────────────┐
    │ 组件测试（jsdom + Testing Library）│ ← 交互组件
   │──────────────────────────────│
@@ -15,13 +15,13 @@
 
 ## 命令
 
-| 命令                 | 说明                                                             |
-| -------------------- | ---------------------------------------------------------------- |
-| `pnpm test`          | 全部单元+组件测试                                                |
-| `pnpm test:coverage` | 含覆盖率报告（核心逻辑门禁 ≥90%）                                |
-| `pnpm test:e2e`      | Playwright 冒烟（自动起 Mock dev server）                        |
-| `pnpm verify`        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁 |
-| `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                             |
+| 命令                                 | 说明                                                             |
+| ------------------------------------ | ---------------------------------------------------------------- |
+| `pnpm test`                          | 全部单元+组件测试                                                |
+| `pnpm test:coverage`                 | 含覆盖率报告（核心逻辑门禁 ≥90%）                                |
+| `pnpm test:e2e`                      | Playwright 冒烟（自动起 Mock dev server）                        |
+| `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁 |
+| `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                             |
 
 ## 双项目结构
 
@@ -47,6 +47,8 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
 - 新页面至少加一条"可渲染"断言到 `e2e/smoke.spec.ts`
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
+- `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围
+- 语言切换同时覆盖 Cookie 持久化与键盘操作：Tab 聚焦触发按钮、Enter 打开菜单、`aria-current` 标识当前语言、Escape 关闭并归还焦点
 
 ## CI 门禁
 

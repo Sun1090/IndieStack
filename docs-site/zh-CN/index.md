@@ -36,5 +36,5 @@ features:
   - title: "🚀 一键部署"
     details: Vercel + GitHub Actions CI/CD，Docker 容器化，环境变量分环境管理。
   - title: "🌐 国际化"
-    details: 内置中文/英文双语言，50+ 翻译命名空间，Cookie 驱动，服务端/客户端统一。
+    details: 内置中文/英文双语言，18 个翻译命名空间，Cookie 驱动，服务端/客户端统一。
 ---

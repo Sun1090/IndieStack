@@ -155,7 +155,8 @@ graph LR
 - **策略** — `localePrefix: "never"`，语言存储在 Cookie 中，URL 无前缀
 - **消息文件** — `messages/{locale}/{namespace}.json`，按命名空间拆分
 - **支持语言** — 简体中文（zh-CN）、English（en）
-- **命名空间** — 17 个命名空间（common, nav, footer, home, features, pricing, about, faq, changelog, contact, blog, privacy, terms, auth, dashboard, admin, errors）
+- **默认语言** — English（`en`），用户可通过 `app-locale` Cookie 切换到简体中文（`zh-CN`）
+- **命名空间** — 18 个命名空间（common, nav, footer, home, features, pricing, about, faq, changelog, contact, blog, privacy, terms, auth, dashboard, admin, errors, actions）
 
 ## 监控与可观测性
 
