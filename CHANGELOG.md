@@ -4,15 +4,33 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-12
+
+> 主题：**发布门禁加固 + Supabase 免费版保活与自动恢复**
+
 ### Added
 
 - **Release operations**：新增 v0.6.0 发布 runbook、生产 smoke test 矩阵和回滚 runbook，明确证据留存、停止条件、数据库向前兼容与回滚后验证。
 - **Release documentation gate**：新增 `pnpm check:release-docs`，检查发布文档、双语 README、CHANGELOG 和关键操作命令是否存在且保持同步。
 - **Supabase 免费版保活**：根目录 `vercel.json` 新增每日 Vercel Cron，`.github/workflows/health-check.yml` 追加每日 `schedule`（并改为免安装依赖、直接运行 `scripts/check-health.js`）；两者都探测 `/api/health`，触发一次 Supabase `limit(1)` 查询，避免免费版项目 7 天闲置被暂停。
+- **Supabase 自动恢复**：新增 `supabase-auto-restore` workflow 与 Management API 脚本；每日检查项目状态，暂停时自动恢复，再等待数据库健康后退出，手动运行默认使用 `dry_run=true`。
+- **Health readiness contract**：`/api/health` 增加 `ready`、`degraded` 和 `supabase.status`，保活与恢复脚本可区分“Web 正常但数据库未就绪”和完整可用。
+
+### Changed
+
+- **数据库迁移**：应用 022–024，补齐 MFA recovery codes 用户外键、营销 token 安全字段和 avatar storage policy；生产迁移前已保存 schema、roles 与业务数据快照。
+- **Passkey 安全门禁**：验证接口默认关闭，只有显式设置 `NEXT_PUBLIC_FEATURE_PASSKEY_LOGIN=true` 且完成后端接入后才开放。
+- **对象存储清理**：统一托管对象的替换/删除清理路径，避免头像与项目封面替换后遗留孤儿对象。
+- **依赖与 CI**：升级 Vitest/coverage-v8 至 5.0.0、TypeScript 6.0.3 与 GitHub Actions；Dependabot 对 Vitest 同组升级，并忽略越过 Node 22 运行时大版本的 `@types/node`。
+- **CI 安全基线**：各 workflow 默认只授予 `contents: read`，a11y 审计不再允许失败，新增依赖审计、i18n 使用检查、迁移漂移检查、Supabase 安全边界与仓库配置检查。
 
 ### Security
 
 - 营销订阅确认/退订改为 POST 执行状态变更，GET 仅展示表单；新 token 使用 hash 和 7 天有效期。
+
+### Fixed
+
+- 修正 dashboard、API key、成员角色、资料完整度和项目删除等页面的 i18n key，避免生产构建时遗漏翻译。
 
 ## [0.5.0] — 2026-09-05
 
