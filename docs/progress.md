@@ -229,3 +229,39 @@
 - 下一步：由用户决定是否推送 `codex/visual-regression-baseline` 并创建 PR；首次 CI 运行后确认 `ubuntu-latest` 与容器基线一致。
 - 提交记录：G10 代码与基线为 dd38cd7，CHANGELOG 为 b93211e；`docs(progress)` 提交只补充证据与 SHA 回填。无需 rebase：`git fetch --prune origin` 后 `origin/main` 仍为 15b05eb，未经过 rebase/force push。
 - 最后更新：2026-09-12
+
+## 2026-09-12 I05 CHANGELOG 自动校验
+
+- 状态：DONE
+- 工作分支：codex/visual-regression-baseline（沿用既有任务分支；项目约定 `feat/*`）
+- PR：none
+- PR 状态：none
+- Base：origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965（未前进，无需 rebase）
+- 远端 Head：none（LOCAL_ONLY 模式，未推送）
+- 本地提交：09fe960（`feat(docs): add changelog structure gate`）
+- 目标：为 CHANGELOG.md 增加结构门禁，防止发布说明漂移（roadmap I05）。
+- 已完成：
+  - 新增纯函数模块 `src/lib/changelog/parse-changelog.ts`：把 CHANGELOG 解析为版本 / 章节 / 条目树，并校验 `# Changelog` 标题与说明、`[Unreleased]` 必须置顶、版本标题 `## [x.y.z] — YYYY-MM-DD` 与日期合法性、版本降序、版本号重复、每版本至少一个 `### 章节`、章节至少一个顶层条目、条目非空且不超过 2000 字符、非法/悬空标题与条目。行尾空白与文件结尾换行也纳入检查（warning / error 分级）。
+  - 新增 `scripts/lib/changelog-check.js`（读文件 + 打印 + 退出码）与 `scripts/check-changelog.js`（Node 原生 type stripping 入口），避免门禁与单测重复实现规则。
+  - `package.json` 新增 `check:changelog`；`scripts/check-all.sh` 与 `.github/workflows/ci.yml` 的 Lint & Type Check job 均执行该门禁。
+  - 补 38 条单测：`src/lib/changelog/parse-changelog.test.ts`（解析树、行号、全部错误码、告警、当前仓库 CHANGELOG 通过）与 `src/lib/changelog/changelog-check.test.ts`（默认路径、合法返回 0、非法返回 1、文件不存在不抛出、warnings 不阻断）。
+  - 文档同步：`docs/testing.md` 新增门禁说明，docs-site 双语 scripts 表补 `pnpm check:changelog`，`docs/roadmap-0.6.0.md` I05 标记完成，CHANGELOG `[Unreleased]` 增加条目。
+  - 门禁自举：先让 `pnpm check:changelog` 校验当前 CHANGELOG.md（6 个已发布版本 + 1 个 Unreleased），通过后才接入聚合入口。
+- 变更文件：`src/lib/changelog/parse-changelog.ts`（新）、`src/lib/changelog/parse-changelog.test.ts`（新）、`src/lib/changelog/changelog-check.test.ts`（新）、`scripts/lib/changelog-check.js`（新）、`scripts/check-changelog.js`（新）、`package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`CHANGELOG.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs/roadmap-0.6.0.md`、`docs/operations/release-gap-audit-v0.6.0.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm check:changelog`：通过（6 个已发布版本，1 个 Unreleased）。
+  - `pnpm vitest run src/lib/changelog`：38/38 通过。
+  - `pnpm type-check`、`pnpm lint`：通过。
+  - `pnpm check:all`：全部检查通过（含本次新增的 `check:changelog`：6 个已发布版本 / 1 个 Unreleased）。
+  - `pnpm test:coverage`：statements 95.54% / branches 91.09% / functions 96.25% / lines 96.66%（新模块 97.94% / 97.77% / 100% / 98.51%）。
+  - `pnpm verify:build`：通过——102 个测试文件 / 937 个测试；bundle 2795.8 kB / 基线 2733.8 kB（1.023×，门禁 1.05×）；生产构建 23/23 静态页。
+  - `pnpm test:e2e`：52/52 通过。
+  - `pnpm audit --audit-level high`：`No known vulnerabilities found`。
+  - `pnpm --filter indiestack-docs build`：通过。
+  - Node 22 兼容性：`docker run --rm -v "$PWD":/work -w /work node:22-alpine node --no-warnings --experimental-strip-types scripts/lib/changelog-check.js` 通过（与 CI 的 Node 22 主版本一致），排除 CI 因 type stripping flag 或类型剥离语法失败的可能。
+- 上游依赖：无。
+- 未验证项：CI 运行前的动作类步骤（`actions/setup-node@v7` 与 pnpm 缓存路径）未实测；Node 版本与命令本身已在 node:22-alpine 容器验证。
+- 风险与回滚：风险为门禁对既有 CHANGELOG 结构变严，可能阻断不合规的新条目；已用 warning/error 分级（行尾空白仅提示）把误报面收敛。回滚方式为 revert 本任务提交并移除 `check:all` / CI 中的调用。
+- 下一步：由用户决定是否推送该分支；继续处理 roadmap 中其余可本地验证的任务。
+- 提交记录：门禁与单测为 09fe960（8 个文件，808 行新增）；`docs(...)` 提交补充 CHANGELOG、roadmap、testing、docs-site、release-gap audit 与本进度记录。无需 rebase：origin/main 未前进。
+- 最后更新：2026-09-12

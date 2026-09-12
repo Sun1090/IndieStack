@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-12）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）。其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-12）**：I05 已完成（CHANGELOG 结构门禁）；C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）。其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -120,7 +120,7 @@
 82. I02 docs-site OSS 章节同步
 83. I03 docs-site Web Push 章节同步
 84. I04 ADR 更新与决策状态
-85. I05 CHANGELOG 自动校验
+85. I05 CHANGELOG 自动校验（完成：新增 `pnpm check:changelog`（`scripts/check-changelog.js` + `scripts/lib/changelog-check.js` + 纯函数 `src/lib/changelog/parse-changelog.ts`），校验 `[Unreleased]` 置顶且非空、版本标题 `## [x.y.z] — YYYY-MM-DD` 与日期合法性、版本降序与重复、每版本至少一个 `### 章节`、章节至少一个顶层条目、条目非空且不超过 2000 字符；行尾空白为 warning 不阻断。门禁接入 `pnpm check:all` 与 CI Lint & Type Check job，38 条单测覆盖解析与 CLI 退出码）
 86. I06 release checklist v0.6.0
 87. I07 本地 mock 开发指南
 88. I08 provider 配置诊断指南

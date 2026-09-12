@@ -117,3 +117,5 @@ F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped s
 ## 发布文档门禁
 
 `pnpm check:release-docs` 校验发布 checklist、发布/回滚 runbook、生产 smoke 矩阵、CHANGELOG 和双语 README 的关键内容与命令。它只证明文档产物结构完整，不证明生产部署、冒烟或回滚演练已经执行；这些必须附带实际命令输出和时间记录。
+
+`pnpm check:changelog` 在结构层面校验 `CHANGELOG.md`（I05）：`[Unreleased]` 必须排第一且非空、版本标题形如 `## [x.y.z] — YYYY-MM-DD`、版本按降序排列且不重复、每个版本至少一个 `### 章节` 且章节内至少一个顶层条目、条目不得为空或超长。规则实现位于 `src/lib/changelog/parse-changelog.ts`（纯函数，单测覆盖），由 `scripts/check-changelog.js` 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只覆盖文档结构，不校验文案质量或发布事实。

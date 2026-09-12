@@ -27,6 +27,7 @@
  | `pnpm type-check` | TypeScript 类型检查（`tsc --noEmit`） |
  | `pnpm format` | Prettier 格式化（TS、TSX、CSS、JSON） |
  | `pnpm check` | 同时运行类型检查和代码检查 |
+| `pnpm check:changelog` | 校验 CHANGELOG.md 结构（版本、章节、条目） |
  
  ## 测试
  

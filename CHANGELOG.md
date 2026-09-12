@@ -36,6 +36,10 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Changed
 
+- **CHANGELOG 结构门禁（I05）**：新增 `pnpm check:changelog`（`scripts/check-changelog.js` +
+  `src/lib/changelog/parse-changelog.ts`），校验 `[Unreleased]` 置顶且非空、版本标题与发布日期格式、
+  版本降序且不重复、每个版本至少一个章节、章节至少一个顶层条目、条目非空且未超长；门禁接入
+  `pnpm check:all` 与 CI 的 Lint & Type Check job，规则本身由 38 条单测覆盖。
 - **依赖安全刷新**：升级 React/React DOM 与类型包到 19.3.0，以及 Sentry、Stripe、
   next-intl、lucide-react、Zod 与 Node 类型的最新 minor/patch；`pnpm audit --audit-level high`
   无已知漏洞，`pnpm peers check`、`pnpm check:all`、`pnpm test:coverage`、`pnpm test:e2e`

@@ -11,13 +11,17 @@
 
 | 缺口 | 之前的问题 | 本次交付物 | 当前证据 | 状态 |
 |---|---|---|---|---|
-| I05 CHANGELOG 校验 | 没有检查发布说明和命令是否仍然存在 | `scripts/check-release-docs.js`、`pnpm check:release-docs` | 本地检查通过 | 已有自动化门禁 |
+| I05 CHANGELOG 校验 | 没有检查发布说明和命令是否仍然存在 | `scripts/check-release-docs.js`、`pnpm check:release-docs`；后续补充结构门禁 `scripts/check-changelog.js`、`pnpm check:changelog` | 两项门禁本地通过 | 已有自动化门禁 |
 | I06 release checklist | 只有版本/构建勾选项，缺少证据和回滚字段 | `.github/RELEASE_CHECKLIST.md` 增加证据、冒烟、回滚栏位 | 文件存在且被门禁读取 | 文档已补齐 |
 | I09 测试矩阵 | README 的测试数量过时，发布前检查分散 | 双语 README 更新测试统计和发布命令 | `check:release-docs` 通过 | 文档已补齐 |
 | I10 迁移回滚 | 没有明确禁止危险的数据库 down migration | `docs/operations/rollback-runbook-v0.6.0.md` | 包含前向修复、快照和批准规则 | runbook 已补齐 |
 | J06 production smoke | 没有结构化的生产验证清单 | `docs/operations/production-smoke-v0.6.0.md` | 覆盖 health、auth、tenant、upload、webhook、安全头 | 执行记录待发布时填写 |
 | J08 rollback exercise | 没有回滚触发条件、决策树或验证步骤 | `docs/operations/rollback-runbook-v0.6.0.md` | 含停止条件和回滚后验证 | 演练证据待实际执行 |
 | J09 exit report | 没有报告模板区分“已写文档”和“已验证发布” | `docs/operations/release-runbook-v0.6.0.md` 发布记录模板 + 本审计 | 明确空白记录不构成通过 | 发布后生成 |
+
+## 后续加固（2026-09-12）
+
+I05 最初只由 `check-release-docs` 的字符串存在性检查覆盖，无法发现版本标题格式、重复版本、空章节等结构漂移。现已补充独立结构门禁 `pnpm check:changelog`（规则实现 `src/lib/changelog/parse-changelog.ts`，38 条单测），并接入 `pnpm check:all` 与 CI Lint & Type Check job；`check-release-docs` 继续负责发布文档产物存在性，两者职责不重叠。
 
 ## 可复现验证
 
