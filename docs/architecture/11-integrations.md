@@ -75,6 +75,31 @@ graph LR
 | `SUPABASE_SERVICE_ROLE_KEY`     | 服务角色密钥（仅服务端，绕过 RLS） |
 | `SUPABASE_DB_URL`               | 直连数据库 URL                     |
 
+### 通知 Realtime 数据流
+
+```mermaid
+sequenceDiagram
+    participant DB as PostgreSQL
+    participant RT as Supabase Realtime
+    participant UI as NotificationsLive
+    participant RSC as Notifications Page
+
+    UI->>RT: channel(notifications:<userId>).on(postgres_changes INSERT)
+    RT->>RT: 应用 notifications RLS + user_id filter
+    DB->>RT: INSERT public.notifications
+    RT-->>UI: 仅当前用户事件
+    UI->>UI: 120ms 合并刷新
+    UI->>RSC: router.refresh()
+    RSC-->>UI: 最新服务端通知列表
+```
+
+- `supabase/migrations/025_notifications_realtime.sql` 幂等把 `public.notifications`
+  加入 `supabase_realtime` publication；订阅者仍受表级 RLS 约束。
+- 浏览器订阅契约位于 `src/components/dashboard/notifications-live.tsx`。Realtime 不可用时
+  只把状态标记为 `offline`，不阻断初始页面数据。
+- Mock 模式不建立 WebSocket；`src/lib/mock/index.ts` 提供同契约的
+  `postgres_changes` 事件桥，供本地开发和 Playwright 验证刷新闭环。
+
 ### 本地开发
 
 ```bash

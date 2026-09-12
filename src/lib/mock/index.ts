@@ -382,6 +382,47 @@ export function setMockUploadFailNext(count: number, store: MockStore = MOCK_GLO
 }
 
 /**
+ * Mock Realtime event bridge.
+ *
+ * Browser-side mock clients cannot observe server-side mutations, so E2E can
+ * dispatch this DOM event after seeding data. The mock channel still enforces
+ * the same postgres_changes event/schema/table/filter contract as Supabase.
+ */
+export const MOCK_REALTIME_EVENT = "indiestack:mock-realtime";
+
+export interface MockRealtimeEventDetail {
+  event: "INSERT" | "UPDATE" | "DELETE";
+  schema: string;
+  table: string;
+  new?: Record<string, unknown>;
+  old?: Record<string, unknown>;
+}
+
+function getMockRealtimeTarget(): EventTarget | null {
+  if (typeof window !== "undefined") return window;
+  if (typeof globalThis !== "undefined" && "addEventListener" in globalThis) {
+    return globalThis as unknown as EventTarget;
+  }
+  return null;
+}
+
+export function emitMockRealtimeEvent(detail: MockRealtimeEventDetail): void {
+  const target = getMockRealtimeTarget();
+  if (!target) return;
+  const event =
+    typeof CustomEvent === "function"
+      ? new CustomEvent<MockRealtimeEventDetail>(MOCK_REALTIME_EVENT, { detail })
+      : Object.assign(new Event(MOCK_REALTIME_EVENT), { detail });
+  target.dispatchEvent(event);
+}
+
+type MockRealtimeSubscription = {
+  event: string;
+  filter?: { event?: string; schema?: string; table?: string; filter?: string };
+  callback: (payload?: unknown) => void;
+};
+
+/**
  * Mock 查询构建器
  * 模拟 Supabase PostgREST 查询链
  */
@@ -1222,11 +1263,62 @@ export class MockSupabaseClient {
   }
 
   channel() {
-    return {
-      on: () => ({ subscribe: () => {} }),
-      subscribe: () => {},
-      unsubscribe: () => {},
+    const subscriptions: MockRealtimeSubscription[] = [];
+    let target: EventTarget | null = null;
+
+    const matchesFilter = (detail: MockRealtimeEventDetail, filter?: string): boolean => {
+      if (!filter) return true;
+      const match = /^([a-z_][a-z0-9_]*)=eq\.(.+)$/i.exec(filter);
+      if (!match) return false;
+      return detail.new?.[match[1]] === match[2];
     };
+
+    const handleRealtimeEvent = (event: Event) => {
+      const detail = (event as CustomEvent<MockRealtimeEventDetail>).detail;
+      if (!detail) return;
+      for (const subscription of subscriptions) {
+        const config = subscription.filter;
+        if (config?.event && config.event !== "*" && config.event !== detail.event) continue;
+        if (config?.schema && config.schema !== detail.schema) continue;
+        if (config?.table && config.table !== detail.table) continue;
+        if (!matchesFilter(detail, config?.filter)) continue;
+        subscription.callback({
+          eventType: detail.event,
+          schema: detail.schema,
+          table: detail.table,
+          new: detail.new ?? {},
+          old: detail.old ?? {},
+        });
+      }
+    };
+
+    const channel = {
+      on: (
+        _type: string,
+        filter: MockRealtimeSubscription["filter"],
+        callback: MockRealtimeSubscription["callback"],
+      ) => {
+        subscriptions.push({ event: _type, filter, callback });
+        return channel;
+      },
+      subscribe: (callback?: (status: string) => void) => {
+        target = getMockRealtimeTarget();
+        target?.addEventListener(MOCK_REALTIME_EVENT, handleRealtimeEvent);
+        callback?.("SUBSCRIBED");
+        return channel;
+      },
+      unsubscribe: () => {
+        target?.removeEventListener(MOCK_REALTIME_EVENT, handleRealtimeEvent);
+        target = null;
+        subscriptions.length = 0;
+        return Promise.resolve("ok");
+      },
+    };
+    return channel;
+  }
+
+  removeChannel(channel: { unsubscribe: () => Promise<unknown> | unknown }) {
+    return Promise.resolve(channel.unsubscribe());
   }
 
   rpc() {

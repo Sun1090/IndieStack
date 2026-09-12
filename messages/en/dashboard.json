@@ -99,7 +99,8 @@
       "avatarDesc": "Click to upload a new avatar",
       "uploadAvatar": "Upload Avatar",
       "submit": "Save Changes",
-      "success": "Profile updated!"
+      "success": "Profile updated!",
+      "uploadProgress": "Uploading… {progress}%"
     },
     "completeness": "Profile completeness"
   },
@@ -367,7 +368,8 @@
       "coverDesc": "Upload a cover image (PNG/JPEG/WebP, up to 2MB)",
       "uploadCover": "Upload Cover",
       "coverUploading": "Uploading...",
-      "coverUpdated": "Cover updated!"
+      "coverUpdated": "Cover updated!",
+      "uploadProgress": "Uploading… {progress}%"
     },
     "deleteDelete": "Delete",
     "deleteConfirmTitle": "Delete project?",
@@ -413,6 +415,9 @@
       "loadFailed": "Couldn't load notifications",
       "loadFailedDesc": "Please check your connection and try again.",
       "retry": "Retry",
+      "live": "Live",
+      "connecting": "Connecting...",
+      "offline": "Live updates unavailable",
       "types": {
         "system": "System",
         "team_invite": "Team invite",

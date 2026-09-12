@@ -5,7 +5,7 @@
 ## 测试金字塔
 
 ```
-      E2E（Playwright，50 用例）        ← 关键路径冒烟
+      E2E（Playwright，52 用例）        ← 关键路径冒烟
     ┌──────────────────────────┐
    │ 组件测试（jsdom + Testing Library）│ ← 交互组件
   │──────────────────────────────│
@@ -53,6 +53,7 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围
 - 语言切换同时覆盖 Cookie 持久化与键盘操作：Tab 聚焦触发按钮、Enter 打开菜单、`aria-current` 标识当前语言、Escape 关闭并归还焦点
+- 通知 Realtime 的 Mock 测试在服务端 seed 后派发 `indiestack:mock-realtime` 事件；测试覆盖 event/schema/table/user filter 契约、合并刷新和无需 reload 的 UI 更新
 
 ## 数据库身份矩阵（本地 Supabase）
 
@@ -64,7 +65,7 @@ API，验证租户隔离、`profiles` 可见范围、私有项目不可读，以
 
 ```bash
 pnpm exec supabase start
-pnpm exec supabase db reset        # 24 个迁移 + seed
+pnpm exec supabase db reset        # 25 个迁移 + seed
 pnpm smoke:supabase-identity -- --output /tmp/indiestack-identity-matrix.json
 ```
 

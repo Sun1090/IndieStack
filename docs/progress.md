@@ -160,4 +160,28 @@
       此前两次手动 run 的输入把站点根地址当作 `health_url`，HTML 200 被严格 readiness 契约判为未就绪；
       改为完整 `https://indie-stack-theta.vercel.app/api/health` 并通过独立 `scripts/check-health.js` 复测后成功。
 
+## 2026-09-12 G08/G09 上传闭环与通知实时刷新
+
+- [x] G08 上传进度与取消：头像/项目封面使用同源 XHR `/api/uploads/*`，读取真实
+      `xhr.upload.onprogress` 并支持 `abort()`；Route Handler 与 Server Action 共用
+      `src/lib/uploads/service.ts`，保留鉴权、MIME/文件头/大小校验、元数据回写失败回滚和旧对象清理。
+      新增 service/client/request/Route/组件测试与头像 E2E 进度/取消闭环。
+- [x] G09 通知实时刷新：`NotificationsLive` 订阅当前用户的 `public.notifications` INSERT，
+      120ms 合并 `router.refresh()`，显示 `connecting/live/offline` 并安全降级；错误 `user_id`
+      事件不会刷新，新通知无需手动 reload 即出现。
+- [x] `025_notifications_realtime.sql` 真实重建证据：2026-09-12 执行 `pnpm exec supabase start`
+      与 `pnpm exec supabase db reset`，25 个迁移和 seed 全部成功；查询
+      `pg_publication_tables` 返回
+      `supabase_realtime|public|notifications`，`schema_migrations` 计数为 25。
+- [x] 修复 `EmptyState` 实际服务端边界缺陷：移除无状态展示组件的 `"use client"`，避免服务端页面
+      传递 Lucide 图标函数时触发 RSC 序列化错误；该问题由通知页真实 E2E 首次暴露。
+- [x] 静态/Mock 定向验证：`pnpm check:migrations`、`pnpm check:locales`、`pnpm check:i18n`、
+      `pnpm check:security`、`pnpm check:supabase-security` 均通过；Realtime 组件测试 3/3、
+      定向 E2E 1/1 通过。
+- [x] 完整门禁：`pnpm verify:build` 通过（100 files / 899 tests；bundle 2761.5 kB，
+      基线 2733.8 kB；生产构建 23/23 静态页生成）；`pnpm test:coverage` 为
+      statements 95.35% / branches 90.62% / functions 96% / lines 96.5%；
+      `pnpm test:e2e` 52/52 单 worker 通过；`pnpm check:all` 全部通过；
+      `pnpm audit --audit-level high` 无已知漏洞。
+
 - [ ] 未执行真实“暂停后恢复”破坏性演练。生产测试账号登录、dashboard 租户隔离、合法/非法上传、邮件/通知 provider、合法 Stripe webhook 幂等落库、真实回滚 deployment 切换仍需隔离账号或 provider 才能验证。

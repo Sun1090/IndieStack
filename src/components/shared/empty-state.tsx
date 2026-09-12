@@ -1,8 +1,9 @@
-"use client";
-
 /**
  * 空状态占位组件
  * 统一的"无数据"视觉：图标 + 标题 + 描述 + 可选操作按钮
+ *
+ * 无状态展示组件不声明客户端边界，避免服务端页面传入 Lucide 图标函数时
+ * 触发 "Functions cannot be passed directly to Client Components" 序列化错误。
  */
 
 import type { LucideIcon } from "lucide-react";
