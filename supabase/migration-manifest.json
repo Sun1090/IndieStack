@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "sha256",
+  "migrations": [
+    {
+      "version": "001",
+      "fileName": "001_initial_schema.sql",
+      "sha256": "f0ac6b80b28764d5bbb83cb2a74fe9df938ab7b1cff38117966dfba3c49f6459"
+    },
+    {
+      "version": "002",
+      "fileName": "002_rbac_audit.sql",
+      "sha256": "8aae639cf24bafbe68b0d09bfd957ed7690342d9801ef2b038c1a9977c58711b"
+    },
+    {
+      "version": "003",
+      "fileName": "003_projects_notifications_indexes.sql",
+      "sha256": "8755530c8e9fc26ab64381134a8b29e19b8134d0a2fda424906581098494e877"
+    },
+    {
+      "version": "004",
+      "fileName": "004_security_fixes.sql",
+      "sha256": "3e613ba091c854ee0f1343f64b4a84ffc439b5edd089f630f3c303dc064a0141"
+    },
+    {
+      "version": "005",
+      "fileName": "005_rls_hardening.sql",
+      "sha256": "38ad6145c8f3b0e1f824fe81deec141db884decf1201e292fbcaaabbe44ec84e"
+    },
+    {
+      "version": "006",
+      "fileName": "006_team_member_profiles.sql",
+      "sha256": "302f7c85857e418b60b1745eb470012969d61977bed37be169169e45490c1c5e"
+    },
+    {
+      "version": "007",
+      "fileName": "007_update_policy_column_guard.sql",
+      "sha256": "a2916b847e6e1f1fe0bf6d94ae8ef14e8f2871d8bd4b7dceb56b3ab0ae26841e"
+    },
+    {
+      "version": "008",
+      "fileName": "008_update_policy_withcheck_rest.sql",
+      "sha256": "9124e48841ac15117569c59a83043ee3a2bc95714fb4bcde7f87f97494160d9d"
+    },
+    {
+      "version": "009",
+      "fileName": "009_team_members_policy_recursion.sql",
+      "sha256": "88cb6364605e4776ac8c2b4dd442ef43a64ea7c7ad0d56793c84bfc5cb61fb11"
+    },
+    {
+      "version": "010",
+      "fileName": "010_webhook_events.sql",
+      "sha256": "ecb86c49912c5f08731ac8b974603c9789d84b485b1affaa411f1375e144983e"
+    },
+    {
+      "version": "011",
+      "fileName": "011_profiles_email_index.sql",
+      "sha256": "8129610596c8896d981570d8a25468aafc348d4696a1a379cd37ce07390668c7"
+    },
+    {
+      "version": "012",
+      "fileName": "012_contact_messages.sql",
+      "sha256": "18c544514f49214aa034fd87a8ea85b6b1e20568d0b3dc1f9c1c021410fc9774"
+    },
+    {
+      "version": "013",
+      "fileName": "013_mfa_recovery_codes.sql",
+      "sha256": "e0b90617027edb27dd268533fcbbb3f3d3b178f1a1c255d73ec3ac4b1c06f31d"
+    },
+    {
+      "version": "014",
+      "fileName": "014_retention_cleanup.sql",
+      "sha256": "0feeaaa0ae02720ca0dd0ae0737cd2c9930b5996b58ac4e23c416b6975346362"
+    },
+    {
+      "version": "015",
+      "fileName": "015_contact_message_status.sql",
+      "sha256": "2898901b12477e605a8a8c16c97479eb713107e8d582af6672accd035882facc"
+    },
+    {
+      "version": "016",
+      "fileName": "016_marketing_subscriptions.sql",
+      "sha256": "45286e0830a1a5390165195b8920b884c97cf01d8346064743698f3f418c4d98"
+    },
+    {
+      "version": "017",
+      "fileName": "017_email_worker_runs.sql",
+      "sha256": "cca0754e2de933ce023c2ec7e9c84c7a50cc10668bbca47fb7e55fc221481aa7"
+    },
+    {
+      "version": "018",
+      "fileName": "018_session_devices.sql",
+      "sha256": "5b07527841bbc15ef17c43a6854d65f93a18a228a7bc39e2a59146ab4e94ecf8"
+    },
+    {
+      "version": "019",
+      "fileName": "019_webauthn_credentials.sql",
+      "sha256": "884c9d2fd4c2be952e227f936bd8e34db20ef9fac5609247a37354be12d88e14"
+    },
+    {
+      "version": "020",
+      "fileName": "020_push_subscriptions.sql",
+      "sha256": "6e2ed4bbade8f9013326c92d11d82f1e22bb504085be8aea11900ed36d5fc842"
+    },
+    {
+      "version": "021",
+      "fileName": "021_notification_idempotency.sql",
+      "sha256": "9508d3fc3ca128a616dbfd4a814a85977f661a22b1ace5b25581ea6a36e1ecaf"
+    },
+    {
+      "version": "022",
+      "fileName": "022_mfa_recovery_codes_user_fk.sql",
+      "sha256": "bd87186da8092008f3db411091f46ba6de2fe785013fa4f9ba22d102ca284283"
+    },
+    {
+      "version": "023",
+      "fileName": "023_marketing_token_security.sql",
+      "sha256": "8e1cd1d5f9d687a4a21b978b1e09c94ec4d574b3585efcc400fa09487c59f934"
+    },
+    {
+      "version": "024",
+      "fileName": "024_storage_avatars_policies.sql",
+      "sha256": "9a3da14f061acfdd505fe8a3d1d12c394735f0c5a1c9ac726c1d02ca83099713"
+    },
+    {
+      "version": "025",
+      "fileName": "025_notifications_realtime.sql",
+      "sha256": "934f1781d14066fbf692bfec103040029370d90d8be2c2a9cec146ca1f4959c7"
+    }
+  ]
+}

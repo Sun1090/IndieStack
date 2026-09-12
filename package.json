@@ -50,7 +50,9 @@
     "check:changelog": "node scripts/check-changelog.js",
     "smoke:production": "node scripts/production-smoke.js",
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
-    "smoke:supabase-identity": "node scripts/verify-supabase-identity.js"
+    "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
+    "check:migration-history": "node scripts/check-migration-history.js",
+    "update:migrations-manifest": "node scripts/check-migrations.js --update"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
