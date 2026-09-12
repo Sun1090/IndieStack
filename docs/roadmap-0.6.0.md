@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-12）**：I05 已完成（CHANGELOG 结构门禁）；C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）。其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-12）**：I05 已完成；H09/H10 已完成（迁移漂移门禁、依赖高危与 secrets/scanner 配置漂移门禁）；C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）。其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -112,7 +112,7 @@
 77. H07 审计日志索引复审
 78. H08 数据保留与删除策略
 79. H09 migration drift 检查（完成：`pnpm check:migrations` 离线校验迁移命名/编号连续/空文件/BOM/CRLF/结尾换行，并把每个迁移的 SHA-256 与提交的 `supabase/migration-manifest.json` 基线比对；`pnpm update:migrations-manifest` 只允许追加新增迁移，改写已基线化文件会被拒绝，避免用重跑基线掩盖历史篡改。新增 `pnpm check:migration-history` 只读比对本地 Supabase 迁移历史，对未应用迁移和数据库独有版本报错。纯函数 `src/lib/migrations/migration-drift.ts` 由 43 条单测覆盖，CLI 走 Node 原生 type stripping；静态门禁接入 `pnpm check:all` 与 CI，历史门禁因依赖 `supabase start` 不进离线聚合）
-80. H10 依赖与 secrets 扫描门禁
+80. H10 依赖与 secrets 扫描门禁（完成：`pnpm check:security` 改为纯函数策略模块 + Node type-stripping CLI，检查 git 索引中的 `.env`/私钥文件、环境文件权限、客户端模块泄漏、workflow 最小权限，以及 gitleaks / CodeQL / security-config / Dependabot 的触发范围、action 版本和权限漂移；补齐旧清单遗漏的 `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`，并对 `pnpm audit --json` 的 high/critical 计数 fail-closed。新增 54 条单测，门禁继续接入 `pnpm check:all` 与 CI）
 
 ### I. 文档、发布与开发体验（I01–I10）
 

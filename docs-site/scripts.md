@@ -27,6 +27,7 @@
 | `pnpm type-check` | TypeScript check (`tsc --noEmit`) |
 | `pnpm format` | Prettier format (TS, TSX, CSS, JSON) |
 | `pnpm check` | Type-check + lint together |
+| `pnpm check:security` | Verify secrets/env policy and security-scanner configuration |
 | `pnpm check:changelog` | Validate CHANGELOG.md structure (versions, sections, entries) |
  
  ## Testing

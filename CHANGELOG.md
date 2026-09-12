@@ -47,6 +47,11 @@ All notable changes to IndieStack will be documented in this file.
   `src/lib/changelog/parse-changelog.ts`），校验 `[Unreleased]` 置顶且非空、版本标题与发布日期格式、
   版本降序且不重复、每个版本至少一个章节、章节至少一个顶层条目、条目非空且未超长；门禁接入
   `pnpm check:all` 与 CI 的 Lint & Type Check job，规则本身由 38 条单测覆盖。
+- **依赖与 secrets 扫描门禁（H10）**：`pnpm check:security` 改为纯策略模块 + Node type-stripping CLI，
+  拒绝被跟踪的环境/私钥文件，校验环境文件权限与客户端服务端密钥泄漏，要求 workflow 显式最小权限，
+  并锁定 gitleaks、CodeQL、security-config 和 Dependabot 的触发范围、版本与权限配置；补齐
+  `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`，对 `pnpm audit --json` 的 high/critical 计数 fail-closed。
+  规则由 54 条专项测试覆盖，继续接入 `pnpm check:all` 与 CI。
 - **依赖安全刷新**：升级 React/React DOM 与类型包到 19.3.0，以及 Sentry、Stripe、
   next-intl、lucide-react、Zod 与 Node 类型的最新 minor/patch；`pnpm audit --audit-level high`
   无已知漏洞，`pnpm peers check`、`pnpm check:all`、`pnpm test:coverage`、`pnpm test:e2e`

@@ -127,3 +127,11 @@ F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped s
 关键约束：**已建立基线的迁移不可改写**。新增迁移后执行 `pnpm update:migrations-manifest` 做仅追加的重新定基线；如果改动已基线化文件的内容，更新命令会拒绝并提示补充新的前向迁移，从而避免用“重跑基线”掩盖历史被篡改。
 
 `pnpm check:migration-history` 是本地数据库历史门禁：读取 `supabase migration list --local --output-format json`，对未应用到数据库的迁移（`HISTORY_MIGRATION_PENDING`）和只存在于数据库的版本（`HISTORY_VERSION_MISSING_LOCAL`）报错。它只读本地 Supabase，需要先 `supabase start`，因此**不纳入** `check:all`/CI 的离线聚合；linked/production 历史校验属于发布步骤，需显式凭据与审批，见发布 Runbook。
+
+## 依赖与 secrets 扫描门禁（H10）
+
+`pnpm check:security` 是仓库级安全配置门禁：读取 git 索引并拒绝被跟踪的 `.env*`（`.env.example` 除外）和私钥类文件；检查已有环境文件权限不得宽于 `0600`；拒绝 `.env.development` 中的服务端密钥；扫描带真实 `"use client"` 指令的源码，拦截 `process.env.X` / `process.env["X"]` 形式的服务端变量泄漏（包含 `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`）；要求所有 workflow 显式声明 permissions 且禁止 `write-all`。
+
+除静态仓库检查外，它还会校验 `secrets-scan.yml`、`security-config.yml`、`codeql.yml` 和 `dependabot.yml` 的关键扫描配置没有漂移，包括 PR/main/develop 触发、gitleaks/codeql action 版本、full git history、只读权限、定时依赖审计、security-extended 查询和 Dependabot 的 npm/GitHub Actions 跟踪。依赖审计读取 `pnpm audit --json`，high/critical 任一大于 0 即失败；输入缺失、不可读或 JSON 形状异常时 fail-closed。
+
+规则实现位于 `src/lib/security/security-config.ts`（纯函数），IO/CLI 位于 `scripts/lib/security-config-check.js`，由 `scripts/check-security-config.js` 经 Node 原生 type stripping 调用。专项测试 54 条覆盖策略函数与 CLI 退出码；`pnpm check:all`、CI Lint & Type Check job 和独立的 `Security and configuration checks` workflow 均会执行。该门禁只证明当前工作树和扫描配置满足策略，不替代 gitleaks 对历史提交的扫描，也不证明历史中不存在已泄露密钥。
