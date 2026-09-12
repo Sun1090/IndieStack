@@ -25,6 +25,10 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Changed
 
+- **依赖安全刷新**：升级 React/React DOM 与类型包到 19.3.0，以及 Sentry、Stripe、
+  next-intl、lucide-react、Zod 与 Node 类型的最新 minor/patch；`pnpm audit --audit-level high`
+  无已知漏洞，`pnpm peers check`、`pnpm check:all`、`pnpm test:coverage`、`pnpm test:e2e`
+  与 `pnpm verify:build` 全部通过。
 - **种子数据重写**：`supabase/seed.sql` 改为自包含、可重复执行，先创建 `auth.users` 再写入
   两个隔离团队、三个项目、订阅、邀请、API key、会话、审计、通知与 usage 数据；修复了
   违反 `auth.users` 外键与 subscriptions 冲突目标无效导致的 `supabase db reset` 失败。

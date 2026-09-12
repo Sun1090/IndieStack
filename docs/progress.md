@@ -65,6 +65,18 @@
 - 安全/运维：`pnpm audit --audit-level high` 无已知漏洞；生产 `/api/health` 通过；Supabase auto-restore 手动 dry-run 确认项目健康且无需恢复
 - CI：`0930c1f` 的 CI、CodeQL、Secrets Scan、Security/config checks 均通过（run 34669221490 等）
 
+## 2026-09-12 依赖安全刷新
+
+- [x] 升级 11 个 minor/patch 依赖：React / React DOM 与对应类型到 `19.3.0`，
+      Sentry `10.74.0`、Stripe server `22.6.2` / client `9.16.0`、next-intl `4.14.3`、
+      lucide-react `1.44.0`、Zod `4.6.2`、`@types/node` `22.20.2`。
+- [x] `pnpm dep:health` 确认无剩余可安全直接升级的 minor/patch；仅保留需要独立迁移验证的
+      ESLint 10 与 TypeScript 7 两个 major 候选。
+- [x] 验证通过：`pnpm peers check`、`pnpm check:all`（94 files / 853 tests）、
+      `pnpm test:coverage`（statements 95.37% / branches 90.68% / functions 95.72% /
+      lines 96.64%）、`pnpm test:e2e`（50/50）、`pnpm verify:build` 与
+      `pnpm audit --audit-level high`（无已知漏洞）。
+
 ## 下一入口
 
 下一入口：v0.6.0 无副作用门禁与本地运行时证据已闭环；剩余未验证项集中在本文件与
