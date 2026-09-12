@@ -25,6 +25,7 @@ import { formatRelativeTime } from "@/lib/date";
 import { getLocale } from "next-intl/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { listRecentNotifications } from "@/lib/repositories/notifications";
+import { NotificationsLive } from "@/components/dashboard/notifications-live";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
@@ -98,7 +99,10 @@ export default async function NotificationsPage({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>{t("notifications.list.title")}</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>{t("notifications.list.title")}</CardTitle>
+              <NotificationsLive userId={user!.id} />
+            </div>
             <CardDescription>{t("notifications.list.desc")}</CardDescription>
           </div>
           <div className="flex items-center gap-2">

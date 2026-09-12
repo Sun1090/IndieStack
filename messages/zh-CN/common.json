@@ -138,5 +138,6 @@
     "navigateTo": "导航",
     "theme": "外观",
     "recent": "最近访问"
-  }
+  },
+  "cancelled": "已取消"
 }

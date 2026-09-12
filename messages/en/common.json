@@ -138,5 +138,6 @@
     "navigateTo": "Navigate",
     "theme": "Appearance",
     "recent": "Recent"
-  }
+  },
+  "cancelled": "Cancelled"
 }

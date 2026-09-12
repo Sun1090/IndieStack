@@ -67,7 +67,15 @@ function mockClient(opts: { user?: object | null; profileUpdateError?: boolean }
 
 function file(input: { name?: string; type?: string; size?: number } = {}) {
   const { name = "avatar.png", type = "image/png", size = 1024 } = input;
-  return new File([new Uint8Array(size)], name, { type });
+  const bytes = new Uint8Array(Math.max(size, 12));
+  if (type === "image/png") {
+    bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  } else if (type === "image/jpeg") {
+    bytes.set([0xff, 0xd8, 0xff]);
+  } else if (type === "image/webp") {
+    bytes.set([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from("WEBP")]);
+  }
+  return new File([bytes], name, { type });
 }
 
 function form(f: File | null) {

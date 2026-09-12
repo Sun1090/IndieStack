@@ -79,11 +79,22 @@
  
  | 文件 | 内容 |
  |------|------|
- | `supabase/migrations/001_initial_schema.sql` | 基础表结构、触发器、RLS 策略 |
- | `supabase/migrations/002_rbac_audit.sql` | RBAC 表、审计日志、权限函数 |
- | `supabase/migrations/003_projects_notifications_indexes.sql` | 通知系统、索引优化 |
- 
- ## RLS 策略
+| `supabase/migrations/001_initial_schema.sql` | 基础表结构、触发器、RLS 策略 |
+| `supabase/migrations/002_rbac_audit.sql` | RBAC 表、审计日志、权限函数 |
+| `supabase/migrations/003_projects_notifications_indexes.sql` | 通知系统、索引优化 |
+| `supabase/migrations/025_notifications_realtime.sql` | 将 `notifications` INSERT 事件幂等加入 Realtime publication |
+
+## 通知 Realtime
+
+仪表盘通知列表订阅 `public.notifications` 的 `postgres_changes` INSERT 事件，并通过
+`user_id=eq.<当前用户 ID>` 过滤。事件在 120ms 窗口内合并后刷新服务端渲染列表。Supabase
+推送前会应用 notifications 的 RLS；Realtime 不可用时客户端显示 `connecting`、`live` 或
+`offline` 状态，但不会阻断初始通知数据。
+
+Mock 模式不建立 WebSocket，而是用本地事件桥提供相同的事件/过滤契约，供单元测试和
+Playwright 验证完整刷新路径。
+
+## RLS 策略
  
  所有表使用 Row Level Security：
  

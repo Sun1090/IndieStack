@@ -9,7 +9,7 @@
 
 ## 静态审计状态（2026-09-12）
 
-`pnpm check:supabase-security` 通过：24 个迁移、18 张 public 表、Storage policy 和
+`pnpm check:supabase-security` 通过：25 个迁移、18 张 public 表、Storage policy 和
 service-role 客户端边界均通过。迁移 `024_storage_avatars_policies.sql` 已将 `avatars`
 bucket（公共读）及按 `auth.uid()` 前缀约束的 INSERT/UPDATE/DELETE policy 纳入版本控制。
 
@@ -20,7 +20,7 @@ bucket（公共读）及按 `auth.uid()` 前缀约束的 INSERT/UPDATE/DELETE po
 ```bash
 # 前置：本地 Supabase 已启动并完成迁移 + seed
 pnpm exec supabase start
-pnpm exec supabase db reset        # 24 个迁移 + supabase/seed.sql
+pnpm exec supabase db reset        # 25 个迁移 + supabase/seed.sql
 
 pnpm smoke:supabase-identity -- --output /tmp/indiestack-identity-matrix.json
 ```

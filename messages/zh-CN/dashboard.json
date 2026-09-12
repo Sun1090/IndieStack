@@ -99,7 +99,8 @@
       "avatarDesc": "点击上传新的头像",
       "uploadAvatar": "上传头像",
       "submit": "保存更改",
-      "success": "资料已更新！"
+      "success": "资料已更新！",
+      "uploadProgress": "上传中… {progress}%"
     },
     "completeness": "资料完整度"
   },
@@ -367,7 +368,8 @@
       "coverDesc": "上传封面图片（PNG/JPEG/WebP，最大 2MB）",
       "uploadCover": "上传封面",
       "coverUploading": "上传中...",
-      "coverUpdated": "封面已更新！"
+      "coverUpdated": "封面已更新！",
+      "uploadProgress": "上传中… {progress}%"
     },
     "deleteDelete": "删除",
     "deleteConfirmTitle": "确认删除项目？",
@@ -413,6 +415,9 @@
       "loadFailed": "通知加载失败",
       "loadFailedDesc": "请检查网络后重试。",
       "retry": "重试",
+      "live": "实时",
+      "connecting": "连接中...",
+      "offline": "实时更新不可用",
       "types": {
         "system": "系统",
         "team_invite": "团队邀请",

@@ -137,7 +137,7 @@ src/
 | `pnpm check:locales`      | 校验 en/zh-CN 翻译 key 对称性                    |
 | `pnpm db:migrate`         | 推送数据库迁移                                   |
 | `pnpm db:types`           | 从 DB 生成 TypeScript 类型                       |
-| `pnpm test`               | Vitest 单元 + 组件测试（94 个文件 / 853 个测试） |
+| `pnpm test`               | Vitest 单元 + 组件测试（100 个文件 / 899 个测试） |
 | `pnpm test:e2e`           | Playwright E2E 冒烟测试                          |
 | `pnpm verify:build`       | 完整本地发布门禁：检查、测试、bundle 与生产构建  |
 | `pnpm check:release-docs` | 校验发布、回滚和生产冒烟文档产物                 |

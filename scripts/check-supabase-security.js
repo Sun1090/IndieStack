@@ -11,6 +11,29 @@ const issues = [];
 const warnings = [];
 const sql = migrations.map((f) => fs.readFileSync(path.join(migrationDir, f), "utf8")).join("\n");
 
+// Browser-side Realtime subscriptions must be enabled by a versioned publication migration.
+const sourceFiles = [];
+function collectSourceFiles(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) collectSourceFiles(full);
+    else if (/\.(ts|tsx)$/.test(entry.name)) sourceFiles.push(full);
+  }
+}
+collectSourceFiles(srcDir);
+const usesNotificationsRealtime = sourceFiles.some((file) => {
+  const body = fs.readFileSync(file, "utf8");
+  return /postgres_changes/.test(body) && /table:\s*["']notifications["']/.test(body);
+});
+if (
+  usesNotificationsRealtime &&
+  !/alter\s+publication\s+supabase_realtime\s+add\s+table\s+public\.notifications/i.test(sql)
+) {
+  issues.push(
+    "public.notifications: postgres_changes subscription exists but supabase_realtime publication migration is missing",
+  );
+}
+
 // SECURITY DEFINER functions must pin search_path to prevent object shadowing.
 for (const [file, body] of migrations.map((f) => [f, fs.readFileSync(path.join(migrationDir, f), "utf8")])) {
   const defs = body.match(/create\s+(?:or\s+replace\s+)?function[\s\S]*?(?=\$\$|;)/gi) || [];

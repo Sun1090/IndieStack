@@ -68,5 +68,6 @@
   "messageRequired": "请填写内容",
   "mfaEnrollFailed": "开启失败",
   "mfaInvalidCode": "验证码错误",
-  "sessionNotFound": "未找到该会话，可能已被吊销。"
+  "sessionNotFound": "未找到该会话，可能已被吊销。",
+  "uploadCancelled": "上传已取消。"
 }

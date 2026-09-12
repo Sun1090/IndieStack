@@ -55,11 +55,23 @@
  
  | File | Content |
  |------|---------|
- | `001_initial_schema.sql` | Base tables, triggers, RLS policies |
- | `002_rbac_audit.sql` | RBAC tables, audit logs, permission functions |
- | `003_projects_notifications_indexes.sql` | Notifications, index optimization |
- 
- ## RLS Policies
+| `001_initial_schema.sql` | Base tables, triggers, RLS policies |
+| `002_rbac_audit.sql` | RBAC tables, audit logs, permission functions |
+| `003_projects_notifications_indexes.sql` | Notifications, index optimization |
+| `025_notifications_realtime.sql` | Enables `notifications` INSERT delivery in the Realtime publication |
+
+## Realtime notifications
+
+The dashboard notification list subscribes to `postgres_changes` INSERT events for
+`public.notifications`, filtered by `user_id=eq.<current-user-id>`. Events are coalesced for
+120ms and the server-rendered list is refreshed. Supabase applies the notifications RLS policy
+before delivering an event, and the client displays `connecting`, `live`, or `offline` without
+blocking initial data when Realtime is unavailable.
+
+Mock mode does not open a WebSocket. It exposes the same event/filter contract through a local
+event bridge so unit and Playwright tests can exercise the complete refresh path.
+
+## RLS Policies
  
  All tables use Row Level Security:
  - **profiles**: Users read/write own data (`id = auth.uid()`)

@@ -6,6 +6,12 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **通知中心实时刷新**：通知页通过 Supabase Realtime `postgres_changes` 订阅当前用户的
+  `notifications` INSERT，并在 120ms 合并窗口后刷新列表；连接失败时显示离线状态并保留
+  服务端渲染数据。新增 `025_notifications_realtime.sql`、组件测试和实时更新 E2E。
+- **上传进度与取消**：头像和项目封面表单改为同源 XHR `/api/uploads/*`，显示真实
+  上传百分比并支持取消；Route Handler 与 Server Action 共用上传领域 service，
+  保留鉴权、MIME/文件头校验、大小限制、元数据回写失败回滚和旧对象清理。
 - **Auth 邮件配置即代码**：新增 `scripts/lib/auth-email-templates.js` 与
   `scripts/apply-auth-email-templates.js`（`pnpm auth:email-config`），把
   [docs/design/email-templates.md](docs/design/email-templates.md) 的 5 封邮件骨架固化为可

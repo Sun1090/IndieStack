@@ -81,6 +81,10 @@ export const ROUTES = {
 export const API_ROUTES = {
   authCallback: "/api/auth/callback",
   user: "/api/user",
+  uploads: {
+    avatar: "/api/uploads/avatar",
+    projectCover: "/api/uploads/project-cover",
+  },
   webhooks: {
     stripe: "/api/webhooks/stripe",
   },
