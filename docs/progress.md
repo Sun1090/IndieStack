@@ -194,7 +194,7 @@
 - PR 状态：none
 - Base：origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965（`git fetch --prune origin` 后 base 未前进，无需 rebase）
 - 远端 Head：none（LOCAL_ONLY 模式，未推送）
-- 本地提交：见本节末尾「提交记录」
+- 本地提交：dd38cd73（`test(e2e): add visual regression baselines for public pages`）、b93211e（`docs(changelog): record G10 visual regression baselines`）
 - 目标：为关键公共页建立可复现的视觉回归基线，并在 CI 中拦截非预期 UI 回归。
 - 已完成：
   - 新增 `playwright.visual.config.ts`：`testDir=./e2e-visual`、单 worker、60s 超时、1440×900、`en-US`/UTC/浅色/Reduced Motion，`expect.toHaveScreenshot.maxDiffPixelRatio=0.001`，dev server 固定 3100 端口并以 Mock 模式启动（`VISUAL_REGRESSION=1`）。
@@ -205,11 +205,11 @@
   - `messages/en/footer.json`：`&copy;` 改为 `©`（ICU 不解析 HTML 实体，英文页脚此前会原样显示 `&copy;`），与中文文案一致。
   - CI `e2e` job 在 E2E 之后执行 `pnpm test:visual`；失败时上传 `playwright-report/` 与 `test-results/`（失败截图与 diff PNG）。
   - 文档同步：`docs/testing.md`（新增视觉回归章节与容器内生成基线命令）、README 双语、docs-site 脚本双语、`docs/roadmap-0.6.0.md` G10。
-- 变更文件：`.github/workflows/ci.yml`、`package.json`、`next.config.ts`、`messages/en/footer.json`、`playwright.visual.config.ts`（新）、`e2e-visual/visual.spec.ts`（新）、`e2e-visual/visual.spec.ts-snapshots/*-chromium-visual-linux.png`（新）、`docs/testing.md`、`README.md`、`README.zh-CN.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs/roadmap-0.6.0.md`、`docs/progress.md`。
+- 变更文件：`CHANGELOG.md`、`.github/workflows/ci.yml`、`package.json`、`next.config.ts`、`messages/en/footer.json`、`playwright.visual.config.ts`（新）、`e2e-visual/visual.spec.ts`（新）、`e2e-visual/visual.spec.ts-snapshots/*-chromium-visual-linux.png`（新）、`docs/testing.md`、`README.md`、`README.zh-CN.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs/roadmap-0.6.0.md`、`docs/progress.md`。
 - 验证命令与结果：
   - `pnpm type-check`：通过（可视配置曾因 `maskColor` 放错层级报 TS 错误，已下移到单测用例选项）。
   - `pnpm verify:build`：通过——100 个测试文件 / 899 个测试；bundle 当前 2795.8 kB / 基线 2733.8 kB（1.023×，门禁 1.05×）；生产构建 23/23 静态页成功。
-  - `pnpm check:all`：全部检查通过。
+  - `pnpm check:all`：全部检查通过（含 `pnpm check:release-docs`：7 个发布文档产物校验通过、type-check、lint、100 files / 899 tests）；CHANGELOG 追加后重跑 `pnpm check:all` 仍全部通过，`npx prettier --check CHANGELOG.md` 通过。
   - `pnpm test:e2e`：52/52 通过。
   - `pnpm test:coverage`：statements 95.35% / branches 90.62% / functions 96% / lines 96.5%。
   - `pnpm audit --audit-level high`：`No known vulnerabilities found`。
@@ -227,5 +227,5 @@
   - 已知局限：页脚版权段落被整段遮罩，该段落自身的文案回归不会被基线捕获（换取年份变化不产生假失败）；若要覆盖可改为仅遮罩年份节点。
   - 回滚：`git revert <本地提交>` 即可整体回退（不涉及数据库、运行时接口或对外契约）；`next.config.ts` 的开关仅在 `VISUAL_REGRESSION=1` 时生效，生产不受影响。
 - 下一步：由用户决定是否推送 `codex/visual-regression-baseline` 并创建 PR；首次 CI 运行后确认 `ubuntu-latest` 与容器基线一致。
-- 提交记录：本地提交 SHA 由紧随其后的 `docs(progress)` 提交回填（保证记录的是真实 SHA）。
+- 提交记录：G10 代码与基线为 dd38cd7，CHANGELOG 为 b93211e；`docs(progress)` 提交只补充证据与 SHA 回填。无需 rebase：`git fetch --prune origin` 后 `origin/main` 仍为 15b05eb，未经过 rebase/force push。
 - 最后更新：2026-09-12
