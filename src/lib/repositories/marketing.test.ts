@@ -70,18 +70,18 @@ describe("confirmSubscription()/unsubscribeByToken()", () => {
   it("token 命中返回 true", async () => {
     const chain = chainMock({ data: [{ id: "m1" }] });
     createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
-    await expect(confirmSubscription("t1")).resolves.toBe(true);
+    await expect(confirmSubscription("a".repeat(48))).resolves.toBe(true);
     expect(chain.update).toHaveBeenCalledWith(expect.objectContaining({ status: "subscribed" }));
   });
 
   it("token 未命中返回 false", async () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ data: [] })));
-    await expect(unsubscribeByToken("bad")).resolves.toBe(false);
+    await expect(unsubscribeByToken("b".repeat(48))).resolves.toBe(false);
   });
 
   it("数据库错误抛错", async () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
-    await expect(confirmSubscription("t1")).rejects.toThrow("db");
+    await expect(confirmSubscription("a".repeat(48))).rejects.toThrow("db");
   });
 });
 

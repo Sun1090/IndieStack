@@ -4,8 +4,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { GET as confirmGET } from "./route";
-import { GET as unsubscribeGET } from "../unsubscribe/route";
+import { POST as confirmPOST, GET as confirmGET } from "./route";
+import { POST as unsubscribePOST, GET as unsubscribeGET } from "../unsubscribe/route";
 
 const { confirmMock, unsubscribeMock } = vi.hoisted(() => ({
   confirmMock: vi.fn(),
@@ -26,15 +26,15 @@ function req(path: string) {
   return new NextRequest(`https://app.example.com${path}`);
 }
 
-describe("GET /api/marketing/confirm", () => {
+describe("POST /api/marketing/confirm", () => {
   it("缺 token 返回 400", async () => {
-    const res = await confirmGET(req("/api/marketing/confirm"));
+    const res = await confirmPOST(req("/api/marketing/confirm"));
     expect(res.status).toBe(400);
   });
 
   it("token 命中：置 subscribed 并 302 跳转", async () => {
     confirmMock.mockResolvedValue(true);
-    const res = await confirmGET(req("/api/marketing/confirm?token=t1"));
+    const res = await confirmPOST(req("/api/marketing/confirm?token=t1"));
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("https://app.example.com/?marketing=confirmed");
     expect(confirmMock).toHaveBeenCalledWith("t1");
@@ -42,22 +42,22 @@ describe("GET /api/marketing/confirm", () => {
 
   it("token 未命中返回 404", async () => {
     confirmMock.mockResolvedValue(false);
-    const res = await confirmGET(req("/api/marketing/confirm?token=bad"));
+    const res = await confirmPOST(req("/api/marketing/confirm?token=bad"));
     expect(res.status).toBe(404);
   });
 
   it("数据库错误返回 500 不泄露细节", async () => {
     confirmMock.mockRejectedValue(new Error("boom detail"));
-    const res = await confirmGET(req("/api/marketing/confirm?token=t1"));
+    const res = await confirmPOST(req("/api/marketing/confirm?token=t1"));
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toMatch(/boom/);
   });
 });
 
-describe("GET /api/marketing/unsubscribe", () => {
+describe("POST /api/marketing/unsubscribe", () => {
   it("token 命中：置 unsubscribed 并 302 跳转", async () => {
     unsubscribeMock.mockResolvedValue(true);
-    const res = await unsubscribeGET(req("/api/marketing/unsubscribe?token=t1"));
+    const res = await unsubscribePOST(req("/api/marketing/unsubscribe?token=t1"));
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("https://app.example.com/?marketing=unsubscribed");
     expect(unsubscribeMock).toHaveBeenCalledWith("t1");
@@ -65,7 +65,17 @@ describe("GET /api/marketing/unsubscribe", () => {
 
   it("token 未命中返回 404", async () => {
     unsubscribeMock.mockResolvedValue(false);
-    const res = await unsubscribeGET(req("/api/marketing/unsubscribe?token=bad"));
+    const res = await unsubscribePOST(req("/api/marketing/unsubscribe?token=bad"));
     expect(res.status).toBe(404);
+  });
+});
+
+
+describe("marketing routes do not mutate on GET", () => {
+  it("confirm GET renders a non-mutating form", async () => {
+    expect((await confirmGET(req("/api/marketing/confirm?token=" + "a".repeat(48)))).status).toBe(200);
+  });
+  it("unsubscribe GET renders a non-mutating form", async () => {
+    expect((await unsubscribeGET(req("/api/marketing/unsubscribe?token=" + "a".repeat(48)))).status).toBe(200);
   });
 });

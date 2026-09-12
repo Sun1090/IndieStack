@@ -3,9 +3,16 @@
  * double opt-in：开关打开 → pending + 确认邮件 → 用户点击确认链接 → subscribed。
  * 状态流转全部经 service_role（公开退订路由无用户上下文），应用层负责约束。
  */
+import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type MarketingSubscriptionStatus = "pending" | "subscribed" | "unsubscribed";
+
+const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function hashSubscriptionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 export interface MarketingSubscription {
   user_id: string;
@@ -49,7 +56,15 @@ export async function upsertPendingSubscription(
   const { data, error } = await admin
     .from("marketing_subscriptions")
     .upsert(
-      { user_id: userId, email, status: "pending", token, confirmed_at: null },
+      {
+        user_id: userId,
+        email,
+        status: "pending",
+        token,
+        token_hash: hashSubscriptionToken(token),
+        token_expires_at: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
+        confirmed_at: null,
+      },
       { onConflict: "user_id" },
     )
     .select("user_id,email,status,token")
@@ -59,26 +74,30 @@ export async function upsertPendingSubscription(
 }
 
 async function updateStatusByToken(token: string, status: MarketingSubscriptionStatus): Promise<boolean> {
+  if (typeof token !== "string" || token.length < 16 || token.length > 256) return false;
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("marketing_subscriptions")
-    .update({
-      status,
-      updated_at: new Date().toISOString(),
-      ...(status === "subscribed" ? { confirmed_at: new Date().toISOString() } : {}),
-    })
-    .eq("token", token)
+  const now = new Date().toISOString();
+  const base = admin.from("marketing_subscriptions");
+  const update = {
+    status,
+    updated_at: now,
+    ...(status === "subscribed" ? { confirmed_at: now } : {}),
+  };
+  const hashed = await base
+    .update(update)
+    .eq("token_hash", hashSubscriptionToken(token))
+    .gt("token_expires_at", now)
     .select("id");
-  if (error) throw new Error(error.message);
-  return (data ?? []).length > 0;
+  if (hashed.error) throw new Error(hashed.error.message);
+  return (hashed.data ?? []).length > 0;
 }
 
-/** 确认订阅（公开确认路由凭 token 调用）；token 无效返回 false */
+/** 确认订阅（公开路由凭 token 调用）；token 无效或过期返回 false */
 export async function confirmSubscription(token: string): Promise<boolean> {
   return updateStatusByToken(token, "subscribed");
 }
 
-/** 退订（公开退订路由凭 token 调用）；token 无效返回 false */
+/** 退订（公开路由凭 token 调用）；token 无效或过期返回 false */
 export async function unsubscribeByToken(token: string): Promise<boolean> {
   return updateStatusByToken(token, "unsubscribed");
 }

@@ -1,7 +1,7 @@
 /**
  * 营销邮件订阅确认（double opt-in，v0.5.0 A05）
  * 邮件中的确认链接点击入口：凭 token 置 subscribed 后跳回站点。
- * GET /api/marketing/confirm?token=***
+ * POST /api/marketing/confirm?token=***
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,8 +10,15 @@ import { confirmSubscription } from "@/lib/repositories/marketing";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
-  const token = request.nextUrl.searchParams.get("token");
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character] ?? character);
+}
+
+export async function POST(request: NextRequest) {
+  const token = request.nextUrl.searchParams.get("token") ??
+    (request.headers.get("content-type")?.includes("application/json")
+      ? ((await request.json().catch(() => null)) as { token?: string } | null)?.token
+      : (await request.formData().catch(() => null))?.get("token")?.toString());
   if (!token) {
     return jsonNoStore({ error: "token required" }, { status: 400 });
   }
@@ -26,4 +33,13 @@ export async function GET(request: NextRequest) {
   } catch {
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+export function GET(request: NextRequest) {
+  const token = request.nextUrl.searchParams.get("token");
+  if (!token) return jsonNoStore({ error: "token required" }, { status: 400 });
+  return new NextResponse(`<!doctype html><html><head><meta name="referrer" content="no-referrer"><title>确认订阅</title></head><body><main><h1>确认订阅</h1><form method="post" action="${request.nextUrl.pathname}"><input type="hidden" name="token" value="${escapeHtml(token)}"><button type="submit">确认订阅</button></form></main></body></html>`, {
+    status: 200,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" },
+  });
 }
