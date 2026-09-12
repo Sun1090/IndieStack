@@ -20,6 +20,8 @@
 | `pnpm test`                          | 全部单元+组件测试                                                               |
 | `pnpm test:coverage`                 | 含覆盖率报告（核心逻辑门禁 ≥90%）                                               |
 | `pnpm test:e2e`                      | Playwright 冒烟（自动起 Mock dev server）                                       |
+| `pnpm test:visual`                   | 对比 Linux Chromium 视觉基线（CI 自动执行）                                     |
+| `pnpm test:visual:update`            | 在 Linux 容器中更新视觉基线，不从 macOS 直接生成                                |
 | `pnpm smoke:supabase-identity`       | 本地/staging Supabase 真实身份矩阵（anon/authenticated/service_role + Storage） |
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
@@ -54,6 +56,27 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围
 - 语言切换同时覆盖 Cookie 持久化与键盘操作：Tab 聚焦触发按钮、Enter 打开菜单、`aria-current` 标识当前语言、Escape 关闭并归还焦点
 - 通知 Realtime 的 Mock 测试在服务端 seed 后派发 `indiestack:mock-realtime` 事件；测试覆盖 event/schema/table/user filter 契约、合并刷新和无需 reload 的 UI 更新
+
+## 视觉回归
+
+`e2e-visual/visual.spec.ts` 对首页、功能页、定价页和登录页执行桌面端全页截图，与
+`e2e-visual/visual.spec.ts-snapshots/` 中的 Linux Chromium PNG 对比。CI 在常规 E2E
+之后自动运行 `pnpm test:visual`，像素差异门禁为 0.1%。
+
+基线必须使用与 CI 相同的 Linux 容器生成，不要在 macOS 直接运行 `--update-snapshots`：
+
+```bash
+docker run --rm --ipc=host --platform linux/amd64 \
+  -v "$PWD":/work -w /work \
+  -v indiestack-visual-node-modules:/work/node_modules \
+  -v indiestack-visual-next:/work/.next \
+  mcr.microsoft.com/playwright:v1.63.0-noble \
+  bash -lc 'corepack enable && pnpm install --frozen-lockfile && pnpm test:visual:update'
+```
+
+容器镜像的 Playwright 版本必须与 `@playwright/test` 保持一致。视觉配置固定单 worker、
+UTC、浅色主题、关闭动画，并隐藏仅用于开发的 Next.js 指示器；版权年份在截图前遮罩，避免
+时间变化造成假失败。
 
 ## 数据库身份矩阵（本地 Supabase）
 

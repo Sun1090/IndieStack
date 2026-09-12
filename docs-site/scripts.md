@@ -35,6 +35,8 @@
  | `pnpm test` | Run all tests (Vitest) |
  | `pnpm test:watch` | Watch mode |
  | `pnpm test:coverage` | Test with coverage report |
+ | `pnpm test:e2e` | Run Playwright E2E smoke tests |
+ | `pnpm test:visual` | Compare Linux Chromium visual regression baselines |
  
  ## Database
  

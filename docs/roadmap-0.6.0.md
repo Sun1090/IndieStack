@@ -99,7 +99,7 @@
 67. G07 键盘与 screen reader 交互
 68. G08 上传组件进度与取消（完成：头像/封面改为同源 XHR Route Handler，`xhr.upload.onprogress` 显示真实百分比并支持 `abort()`；Action 与 Route 共用上传 service，保留鉴权、类型/大小/文件头校验、存储回滚与旧对象清理；补 service/client/request/Route/组件单测及头像 E2E 进度/取消闭环）
 69. G09 通知中心实时刷新（完成：通知页客户端订阅 `public.notifications` 的 `INSERT` Postgres Changes，并按 `user_id=eq.<当前用户>` 过滤；120ms 合并 `router.refresh()`，连接中/已连接/离线状态有可访问文本并安全降级。`025_notifications_realtime.sql` 幂等加入 Realtime publication，RLS 继续限制订阅数据。新增组件单测、真实本地迁移重建和 Playwright E2E，覆盖错误用户过滤与无需 reload 的新通知展示）
-70. G10 视觉回归基线
+70. G10 视觉回归基线（完成：新增 `playwright.visual.config.ts` 与 `e2e-visual/visual.spec.ts`，对首页/功能页/定价页/登录页 4 个公共页做 1440×900 全页截图，`maxDiffPixelRatio=0.001`；基线为 Linux Chromium PNG，在 `mcr.microsoft.com/playwright:v1.63.0-noble` 容器内生成，固定单 worker、UTC、浅色主题、Reduced Motion 并关闭动画/过渡，遮罩版权年份避免时间假失败；CI 在 E2E 之后自动执行 `pnpm test:visual`，失败时上传 `test-results/` 差异图；同时修正英文页脚 `&copy;` 未渲染为 © 的问题）
 
 ### H. 数据库与安全（H01–H10）
 

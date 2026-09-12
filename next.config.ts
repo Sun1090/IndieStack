@@ -16,6 +16,9 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 // 规避 Turbopack + standalone 在 Vercel 上的 nft.json 追踪错误
 const nextConfig: NextConfig = {
   ...(process.env.DOCKER_BUILD === "1" ? { output: "standalone" as const } : {}),
+  // Visual regression runs against `next dev`; hide its fixed, interactive badge so
+  // full-page screenshots contain the application UI only.
+  ...(process.env.VISUAL_REGRESSION === "1" ? { devIndicators: false as const } : {}),
   reactStrictMode: true,
 
   // ali-oss（v0.5.0 B01 OSS 驱动）依赖链含懒加载可选依赖（urllib→proxy-agent），

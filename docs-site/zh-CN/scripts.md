@@ -35,6 +35,8 @@
  | `pnpm test` | 运行所有测试（Vitest） |
  | `pnpm test:watch` | 监听模式运行测试 |
  | `pnpm test:coverage` | 运行测试并生成覆盖率报告 |
+ | `pnpm test:e2e` | 运行 Playwright E2E 冒烟测试 |
+ | `pnpm test:visual` | 对比 Linux Chromium 视觉回归基线 |
  
  ## 数据库
  

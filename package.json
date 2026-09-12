@@ -35,6 +35,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:visual": "playwright test --config=playwright.visual.config.ts",
+    "test:visual:update": "playwright test --config=playwright.visual.config.ts --update-snapshots",
     "dev:mock": "NEXT_PUBLIC_MOCK_ENABLED=true pnpm dev",
     "dev:supabase": "bash scripts/dev.sh start",
     "generate:locales": "echo 'JSON locale files are source of truth — edit directly in messages/'",

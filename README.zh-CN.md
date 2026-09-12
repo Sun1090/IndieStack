@@ -139,6 +139,7 @@ src/
 | `pnpm db:types`           | 从 DB 生成 TypeScript 类型                       |
 | `pnpm test`               | Vitest 单元 + 组件测试（100 个文件 / 899 个测试） |
 | `pnpm test:e2e`           | Playwright E2E 冒烟测试                          |
+| `pnpm test:visual`        | 对比 Linux Chromium 视觉回归基线                 |
 | `pnpm verify:build`       | 完整本地发布门禁：检查、测试、bundle 与生产构建  |
 | `pnpm check:release-docs` | 校验发布、回滚和生产冒烟文档产物                 |
 
@@ -150,6 +151,7 @@ src/
 
 - **单元/组件**：Vitest 双项目（node + jsdom），核心逻辑覆盖率门禁 ≥90%。
 - **E2E**：Playwright 冒烟测试（`pnpm test:e2e`，本地 Mock 模式无需 Supabase）。
+- **视觉回归**：关键公共页面的 Linux Chromium 基线（`pnpm test:visual`）。
 - **数据库身份矩阵**：`pnpm smoke:supabase-identity` 在真实本地/staging Supabase 上验证 RLS 与 Storage。
 - **CI**：GitHub Actions 五道关卡 —— Lint & Type Check / Build / E2E / Build Docs / CodeQL + gitleaks 安全扫描。
 
