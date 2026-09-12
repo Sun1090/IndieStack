@@ -1,0 +1,65 @@
+name: Production Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Production base URL
+        required: true
+        default: https://indie-stack-theta.vercel.app
+        type: string
+      expected_version:
+        description: Expected application version (optional)
+        required: false
+        default: ""
+        type: string
+      timeout_ms:
+        description: Per-request timeout in milliseconds
+        required: true
+        default: "10000"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Side-effect-free production smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run production smoke
+        shell: bash
+        env:
+          SMOKE_URL: ${{ inputs.url }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          TIMEOUT_MS: ${{ inputs.timeout_ms }}
+        run: |
+          args=( "$SMOKE_URL" --timeout-ms "$TIMEOUT_MS" --output production-smoke.json )
+          if [[ -n "$EXPECTED_VERSION" ]]; then
+            args+=( --expected-version "$EXPECTED_VERSION" )
+          fi
+          pnpm smoke:production -- "${args[@]}"
+
+      - name: Upload smoke evidence
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: production-smoke-evidence
+          path: production-smoke.json
+          retention-days: 30
+          if-no-files-found: warn
