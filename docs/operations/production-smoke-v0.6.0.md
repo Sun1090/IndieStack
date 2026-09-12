@@ -16,7 +16,7 @@ pnpm smoke:production -- "$PRODUCTION_URL" \
 
 | 场景 | 通过条件 | 结果/证据 |
 |---|---|---|
-| `GET /api/health` | 200，`status=ok`、`ready=true`、版本与目标一致、`no-store` 且带 `x-request-id` | ✅ 2026-09-12T04:34:50Z，version `0.6.0`，部署 `indie-stack-e9uqet9rf-sun1090s-projects.vercel.app`（production） |
+| `GET /api/health` | 200，`status=ok`、`ready=true`、版本与目标一致、`no-store` 且带 `x-request-id` | ✅ 2026-09-12T05:12:57Z，version `0.6.0`，部署 `indie-stack-aqu77mjze-sun1090s-projects.vercel.app`（production） |
 | 首页/静态资源 | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG | ✅ 首页 HTTP 200；`/icon.svg` HTTP 200 |
 | 未授权 dashboard | 匿名请求重定向到 `/auth/login`，不返回受保护内容 | ✅ HTTP 307，Location `/auth/login?redirect=%2Fdashboard` |
 | Webhook 缺签名 | HTTP 400，`Missing signature`，`no-store` | ✅ HTTP 400，无副作用 |
@@ -31,9 +31,12 @@ pnpm smoke:production -- "$PRODUCTION_URL" \
 ## 执行结果
 
 - 结果：**6/6 自动化检查通过**
-- 命令：`pnpm smoke:production -- https://indie-stack-theta.vercel.app --expected-version 0.6.0`
-- 目标 commit：`f34f574`
-- Vercel deployment：`indie-stack-e9uqet9rf-sun1090s-projects.vercel.app`
-- 证据 JSON：`/tmp/indiestack-production-smoke.json`（运行器不提交临时 evidence；CI artifact 保留 30 天）
+- 命令：`pnpm smoke:production -- https://indie-stack-theta.vercel.app --expected-version 0.6.0 --output /tmp/indiestack-production-smoke-latest.json`
+- 目标 commit：`16a285a`（GitHub Deployments：`Production – indie-stack`，deployment id `6406092790`，状态 `success`）
+- Vercel deployment：`indie-stack-aqu77mjze-sun1090s-projects.vercel.app`
+- 证据 JSON：`/tmp/indiestack-production-smoke-latest.json`（`generatedAt` 2026-09-12T05:12:57.855Z；运行器不提交临时 evidence，CI artifact 保留 30 天）
+
+本文件只记录**无副作用**检查；任何登录、上传、写库、发信场景必须有隔离账号或 provider 才能执行，
+在这些前置条件具备前保持“未验证”，不得用空白结果冒充通过。
 
 生产 smoke 的结果必须附在 release 记录中；未执行的有副作用场景继续保持未验证，不能用空白结果冒充通过。

@@ -5,7 +5,7 @@
 ## 测试金字塔
 
 ```
-      E2E（Playwright，49 用例）        ← 关键路径冒烟
+      E2E（Playwright，50 用例）        ← 关键路径冒烟
     ┌──────────────────────────┐
    │ 组件测试（jsdom + Testing Library）│ ← 交互组件
   │──────────────────────────────│
@@ -20,6 +20,7 @@
 | `pnpm test`                          | 全部单元+组件测试                                                |
 | `pnpm test:coverage`                 | 含覆盖率报告（核心逻辑门禁 ≥90%）                                |
 | `pnpm test:e2e`                      | Playwright 冒烟（自动起 Mock dev server）                        |
+| `pnpm smoke:supabase-identity`       | 本地/staging Supabase 真实身份矩阵（anon/authenticated/service_role + Storage） |
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁 |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                             |
 
@@ -49,6 +50,25 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围
 - 语言切换同时覆盖 Cookie 持久化与键盘操作：Tab 聚焦触发按钮、Enter 打开菜单、`aria-current` 标识当前语言、Escape 关闭并归还焦点
+
+## 数据库身份矩阵（本地 Supabase）
+
+`pnpm smoke:supabase-identity` 是**真实运行时**回归，不是静态检查：它登录 `seed.sql`
+里的确定性账号，用 anon / authenticated / service_role 三种身份打 PostgREST 与 Storage
+API，验证租户隔离、`profiles` 可见范围、私有项目不可读，以及 `avatars` 前缀写权限。
+
+前置条件：
+
+```bash
+pnpm exec supabase start
+pnpm exec supabase db reset        # 24 个迁移 + seed
+pnpm smoke:supabase-identity -- --output /tmp/indiestack-identity-matrix.json
+```
+
+- 只有在本地/staging 才运行：seed 账号密码是公开固定值。
+- 可用 `--url` / `--anon-key` / `--service-role-key` 覆盖目标（例如受控 staging）。
+- 脚本结束时清理自己创建的临时对象；失败项会在 JSON 的 `checks[].passed=false` 中列出。
+- 覆盖范围与局限见 [db/security-audit.md](./db/security-audit.md)。
 
 ## CI 门禁
 

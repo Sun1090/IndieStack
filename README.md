@@ -131,7 +131,7 @@ src/
 | `pnpm check:locales` | Verify en/zh-CN translation key symmetry |
 | `pnpm db:migrate` | Push database migrations |
 | `pnpm db:types` | Generate TypeScript types from DB |
-| `pnpm test` | Vitest unit + component tests (88 files / 784 tests) |
+| `pnpm test` | Vitest unit + component tests (92 files / 826 tests) |
 | `pnpm test:e2e` | Playwright E2E smoke tests |
 | `pnpm verify:build` | Full local release gate: checks, tests, bundle, production build |
 | `pnpm check:release-docs` | Validate release/rollback/smoke documentation artifacts |
@@ -144,6 +144,7 @@ Before a release, run `pnpm verify:build`, `pnpm test:e2e`, `pnpm audit --audit-
 
 - **Unit/Component**: Vitest dual projects (node + jsdom), coverage gate ≥90% on core logic.
 - **E2E**: Playwright smoke tests (`pnpm test:e2e`; local Mock mode needs no Supabase).
+- **Database identity matrix**: `pnpm smoke:supabase-identity` runs the RLS/Storage matrix against a real local/staging Supabase.
 - **CI**: GitHub Actions — Lint & Type Check / Build / E2E / Build Docs / CodeQL + gitleaks security scan.
 
 ## Agent System

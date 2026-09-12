@@ -213,16 +213,21 @@ Actions → Variables），例如 `https://你的域名/api/health`；手动触�
 
 | 层级 | 文件 | 时间（UTC） | 说明 |
 |------|------|-------------|------|
-| GitHub Actions | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 仅在项目状态为 `INACTIVE` 时调用 Management API 恢复 |
+| Vercel Cron（主） | `vercel.json` → `/api/ops/supabase-restore` | `0 4 * * *` | 不受仓库静默影响；需要 `CRON_SECRET` 与下方 Management 变量 |
+| GitHub Actions（备） | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 仅在项目状态为 `INACTIVE` 时调用 Management API 恢复 |
 
-需要在 Settings → Secrets and variables → Actions 配置：
+需要在 GitHub（供 workflow 使用）与 Vercel 项目环境（供 cron 路由使用）配置：
 
-- Variable `SUPABASE_PROJECT_REF`：Supabase 项目 ref
+- Variable `SUPABASE_PROJECT_REF`：Supabase 项目 ref；Vercel 侧可留空，路由会从
+  `NEXT_PUBLIC_SUPABASE_URL`（`https://<ref>.supabase.co`）推断
 - Secret `SUPABASE_ACCESS_TOKEN`：Management API 令牌（`sbp_` 开头，需要 `projects:write` 权限）
+- `CRON_SECRET`：Vercel Cron 会自动以 `Authorization: Bearer <CRON_SECRET>` 调用
 
-`scripts/supabase-auto-restore.js` 只有在 Management API 明确返回 `status=INACTIVE` 时才会
-执行恢复；若项目本身健康而站点不可用（属于应用侧故障），它只报错退出，不会误触发写操作。
-手动触发默认 `dry_run=true`，只检测不恢复。轮换令牌后记得同步更新该 secret。
+两层都只有在 Management API 明确返回 `status=INACTIVE` 时才会执行恢复；`RESTORING`、
+`COMING_UP` 等中间态只等待，未知/不可恢复状态会显式失败交给人工处理。
+`scripts/supabase-auto-restore.js` 在项目本身健康而站点不可用时（应用侧故障）只报错退出，
+不会误触发写操作；手动触发默认 `dry_run=true`。`/api/ops/supabase-restore` 在生产缺少配置
+时返回 `503`，避免兜底层静默失效。轮换令牌后记得同步更新两处 secret。
 
 ### 数据库备份
 

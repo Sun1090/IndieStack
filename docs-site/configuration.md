@@ -100,6 +100,28 @@ VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 GITHUB_TOKEN=your-github-token
 ```
 
+### Free-Tier Auto-Restore (Optional)
+
+Used by the daily Vercel Cron route `/api/ops/supabase-restore` (and by the GitHub Actions
+fallback). Server-side only — never expose these with a `NEXT_PUBLIC_` prefix.
+
+| Variable | Description | How to Get |
+|----------|-------------|------------|
+| `SUPABASE_PROJECT_REF` | Supabase project ref (optional: inferred from `NEXT_PUBLIC_SUPABASE_URL`) | Supabase Dashboard → Project Settings |
+| `SUPABASE_ACCESS_TOKEN` | Management API token (`sbp_…`, needs `projects:write`) | Supabase Dashboard → Account → Access Tokens |
+| `CRON_SECRET` | Shared secret; Vercel Cron sends it as `Authorization: Bearer <CRON_SECRET>` | Generate a random string |
+
+```bash
+SUPABASE_PROJECT_REF=your-project-ref
+SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxxxxxxxxxx
+CRON_SECRET=your-cron-secret
+```
+
+Without a valid `CRON_SECRET` the route always answers `401`. With the secret but without the
+management variables it returns `200 skipped` outside production and `503` in production, so a
+silently disabled safety net shows up instead of hiding. See
+[Deployment → Auto-Restore Fallback](./deployment#auto-restore-fallback) for the full flow.
+
 ## App Constant Configuration
 
 Core configuration lives in `src/lib/constants.ts`:
