@@ -215,18 +215,25 @@ when a probe is rate-limited), a fallback workflow restores it automatically:
 
 | Layer | File | Schedule (UTC) | Notes |
 |-------|------|----------------|-------|
-| GitHub Actions | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | Calls the Management API only when the project status is `INACTIVE` |
+| Vercel Cron (primary) | `vercel.json` → `/api/ops/supabase-restore` | `0 4 * * *` | Survives repository silence; requires `CRON_SECRET` plus the management env vars below |
+| GitHub Actions (backup) | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | Calls the Management API only when the project status is `INACTIVE` |
 
-Configure under Settings → Secrets and variables → Actions:
+Configure under Settings → Secrets and variables → Actions (for the workflow) and in the
+Vercel project environment (for the cron route):
 
-- Variable `SUPABASE_PROJECT_REF` — the Supabase project ref
+- Variable `SUPABASE_PROJECT_REF` — the Supabase project ref; on Vercel it may be omitted and
+  inferred from `NEXT_PUBLIC_SUPABASE_URL` (`https://<ref>.supabase.co`)
 - Secret `SUPABASE_ACCESS_TOKEN` — Management API token (starts with `sbp_`, needs `projects:write`)
+- `CRON_SECRET` — Vercel Cron sends it automatically as `Authorization: Bearer <CRON_SECRET>`
 
-`scripts/supabase-auto-restore.js` only restores when the Management API explicitly reports
-`status=INACTIVE`. If the project itself is healthy but the site is down (an application-side
-failure), it reports an error and exits without writing anything. Manual runs default to
-`dry_run=true`, so they never restore anything by accident. Remember to update the secret
-whenever the token is rotated.
+Both layers only restore when the Management API explicitly reports `status=INACTIVE`;
+transient states (`RESTORING`, `COMING_UP`, …) are left alone, and unknown or unrecoverable
+states fail loudly for a human to handle. `scripts/supabase-auto-restore.js` does not write
+anything when the project itself is healthy but the site is down (an application-side
+failure); manual workflow runs default to `dry_run=true`. The `/api/ops/supabase-restore`
+route returns `503` in production when its configuration is missing, so a silently disabled
+safety net is visible instead of hidden. Remember to update both secrets when the token is
+rotated.
 
 ### Database Backup
 

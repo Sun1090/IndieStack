@@ -42,6 +42,21 @@ test.describe("Dashboard（Mock 模式）", () => {
 });
 
 test.describe("安全与容错", () => {
+  test("运维 cron 端点未授权时拒绝访问", async ({ request }) => {
+    const anonymous = await request.get("/api/ops/supabase-restore");
+    expect(anonymous.status()).toBe(401);
+    expect(anonymous.headers()["cache-control"]).toBe("no-store");
+
+    const wrongSecret = await request.get("/api/ops/supabase-restore", {
+      headers: { "x-cron-secret": "wrong-secret" },
+    });
+    expect(wrongSecret.status()).toBe(401);
+
+    // 正确的 bearer 只做鉴权断言，不在 E2E 中触发真实 Management API 调用
+    const body = await anonymous.json();
+    expect(body).toEqual({ ok: false, error: "Unauthorized" });
+  });
+
   test("安全响应头齐全（CSP / nosniff / X-Frame-Options）", async ({ request }) => {
     const response = await request.get("/");
     const headers = response.headers();

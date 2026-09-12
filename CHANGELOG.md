@@ -6,11 +6,27 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **运行时身份矩阵**：新增 `pnpm smoke:supabase-identity`（`scripts/verify-supabase-identity.js`），
+  使用真实 Auth + PostgREST + Storage API 验证 anon / authenticated / service_role 的
+  租户隔离、`profiles` 可见范围、私有项目不可读与 `avatars` 前缀写权限；最近一次 20/20 通过，
+  证据与局限记录在 `docs/db/security-audit.md`。
+- **Supabase 自动恢复（应用侧兜底）**：新增 `/api/ops/supabase-restore` 与 Vercel Cron
+  `0 4 * * *`。GitHub Actions 的 `schedule` 会在仓库 60 天无提交后被停用，因此恢复能力
+  不再只依赖 GitHub；路由复用与 `scripts/supabase-auto-restore.js` 相同的判定（只有
+  `status=INACTIVE` 才恢复），并以 `CRON_SECRET` 鉴权、`no-store` 返回结构化 action。
 - **Passkey 完整登录闭环**：assertion 验签和计数器更新成功后，通过服务端一次性
   magiclink token 桥接 Supabase SSR 会话；token/action link/邮箱/userId 不返回
   浏览器或写入日志，已有 MFA 因子的用户继续完成 aal2 challenge。
 
 ### Changed
+
+- **种子数据重写**：`supabase/seed.sql` 改为自包含、可重复执行，先创建 `auth.users` 再写入
+  两个隔离团队、三个项目、订阅、邀请、API key、会话、审计、通知与 usage 数据；修复了
+  违反 `auth.users` 外键与 subscriptions 冲突目标无效导致的 `supabase db reset` 失败。
+- **运维文档**：部署文档补充保活/恢复的双层结构与 `CRON_SECRET`、`SUPABASE_ACCESS_TOKEN`
+  配置说明；安全审计文档用真实运行时矩阵替换“本地无法启动 Supabase”的过期描述。
+- **测试与发布文档**：README 测试计数同步为 92 个文件 / 826 个测试，Smoke 记录更新到
+  commit `16a285a` 与对应 Vercel 生产部署。
 
 - Passkey 登录选项、认证验证、注册选项和注册验证统一补齐 flag 门控、IP 限流、
   `no-store` 与失败后的 challenge cookie 清理；登录表单增加中英双语入口和共享 busy 状态。

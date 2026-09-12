@@ -39,16 +39,38 @@
 - [x] i18n 文档对齐：默认语言修正为 `en`，命名空间更新为 18 个并补入 `actions`；`pnpm check:locales` 与 `pnpm check:i18n` 通过。
 - [x] 发布文档收口：release runbook 和 checklist 加入 `pnpm smoke:production`、Production Smoke workflow 与 30 天 artifact 要求；`pnpm check:release-docs` 通过。
 
+## 2026-09-12 Supabase 运行时证据与自动恢复兜底
+
+- [x] `supabase/seed.sql` 重写为自包含、确定性、可重复执行：先建 `auth.users`（3 个 seed 账号）
+  再写两个隔离团队、三个项目、订阅、邀请、API key、会话、审计、通知与 usage；修复了
+  外键与 subscriptions 冲突目标导致的 seed 失败。`pnpm exec supabase start` 与
+  `pnpm exec supabase db reset`（24 迁移 + seed）均真实执行成功。
+- [x] 新增 `scripts/verify-supabase-identity.js`（`pnpm smoke:supabase-identity`）：真实 Auth +
+  PostgREST + Storage API 的身份矩阵，覆盖 anon 不可见、A/B 租户隔离、私有项目不可读、
+  avatars 前缀写/删权限与 service_role 跨前缀操作；2026-09-12T05:12:32Z 结果 **20/20 通过**，
+  证据 `/tmp/indiestack-identity-matrix.json`。
+- [x] 新增应用侧恢复兜底层 `/api/ops/supabase-restore` + Vercel Cron `0 4 * * *`：GitHub 在仓库
+  静默 60 天后会停用 `schedule`，因此恢复不再只依赖 Actions；仅 `status=INACTIVE` 触发恢复，
+  `CRON_SECRET` 鉴权，缺配置时生产返回 503（非生产安全跳过）；新增 24 个 lib 单测与 8 个路由测试。
+- [x] 生产 smoke 重新执行：commit `16a285a`、部署
+  `indie-stack-aqu77mjze-sun1090s-projects.vercel.app`，**6/6 通过**（2026-09-12T05:12:57Z）。
+- [x] 文档对齐：`docs/db/security-audit.md`（真实矩阵替换过期描述）、`docs/testing.md`、
+  `docs/operations/environments.md`、`docs/operations/production-smoke-v0.6.0.md`、
+  `docs-site/{,zh-CN/}{deployment,configuration}.md`、README 双语测试计数。
+
 ## 验证
 
-- 最近本地完整验证：通过（90 files / 794 tests；`pnpm verify:build` 通过；Playwright E2E 49/49 通过；`pnpm check:all` 通过）
+- 最近本地完整验证：通过（92 files / 826 tests；`pnpm verify:build` 通过；Playwright E2E 50/50 通过；`pnpm check:all` 通过）
 - 覆盖率：Statements 95.34%、Branches 90.13%、Functions 96.83%、Lines 96.49%，branches 门禁 90% 通过
 - 安全/运维：`pnpm audit --audit-level high` 无已知漏洞；生产 `/api/health` 通过；Supabase auto-restore 手动 dry-run 确认项目健康且无需恢复
 - CI：`0930c1f` 的 CI、CodeQL、Secrets Scan、Security/config checks 均通过（run 34669221490 等）
 
 ## 下一入口
 
-下一入口：继续 B/C 之外的 v0.6.0 质量收口，优先处理 D/E/H/I/J 未验证项。
+下一入口：v0.6.0 无副作用门禁与本地运行时证据已闭环；剩余未验证项集中在本文件与
+`docs/operations/production-smoke-v0.6.0.md` 中标注的生产有副作用场景（生产测试账号登录、
+生产 dashboard 隔离、合法/非法上传、邮件/通知 provider、合法 Stripe webhook 幂等落库、
+回滚切换演练），需要隔离账号或 provider 才能真实执行。
 
 - [x] B04 订阅 repository：注册 upsert 幂等、按用户+endpoint 撤销
 - [x] B04 repository contract tests and subscribe/unsubscribe Server Actions
@@ -75,5 +97,6 @@
 - 2026-09-09：收紧 Passkey 认证验证端点：新增独立 `NEXT_PUBLIC_FEATURE_PASSKEY_LOGIN` 开关，未完成 Supabase session bridge 前默认关闭；启用前不会暴露 `userId`，验证成功响应仅含 `{ verified: true }`。同步更新路由测试与 feature flag 测试，763 tests、lint、type-check 通过。
 
 - 2026-09-09：新增 `024_storage_avatars_policies.sql`，将 `avatars` 公共 bucket 与按用户前缀限制的 Storage 对象策略纳入迁移；`check:supabase-security`、`check:rls`、`check:migrations` 全部通过。`pnpm db:status` 仍受本机缺失 `supabase_db_indiestack` 容器阻塞，真实数据库身份矩阵尚未宣称完成。
+- 2026-09-12 更新：本机 Supabase 容器阻塞已解除（`pnpm exec supabase start` / `db reset` 成功），上一条的“身份矩阵尚未完成”已由 `pnpm smoke:supabase-identity` 20/20 运行时结果取代，见 [db/security-audit.md](./db/security-audit.md)。
 - 2026-09-09：CI/聚合门禁接入 migration、Supabase security、repository security、release-docs 检查；`pnpm verify:all` 通过（763 tests）。`pnpm test:e2e` 通过（43/43）。
 - 2026-09-12：完成 Passkey 登录会话桥接。assertion 与计数器更新成功后由服务端生成并立即消费一次性 magiclink token，通过 `@supabase/ssr` 下发会话 cookie；MFA 用户保留 aal2 跳转；token/action link/邮箱/userId 不出服务端，失败统一 503/400 并清理 challenge cookie。四路由补齐 10 次/分钟 IP 限流、`no-store` 和 flag 门控；新增 8 个契约测试。`verify:build`、E2E 43/43、coverage、audit 与生产 health 均通过。

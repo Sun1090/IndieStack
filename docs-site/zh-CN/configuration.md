@@ -100,6 +100,27 @@ VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 GITHUB_TOKEN=your-github-token
 ```
 
+### 免费版自动恢复（可选）
+
+供每日 Vercel Cron 路由 `/api/ops/supabase-restore` 与 GitHub Actions 兜底 workflow 使用。
+全部为服务端变量，禁止加 `NEXT_PUBLIC_` 前缀。
+
+| 变量 | 说明 | 获取方式 |
+|------|------|----------|
+| `SUPABASE_PROJECT_REF` | Supabase 项目 ref（可留空，从 `NEXT_PUBLIC_SUPABASE_URL` 推断） | Supabase Dashboard → Project Settings |
+| `SUPABASE_ACCESS_TOKEN` | Management API 令牌（`sbp_…`，需要 `projects:write`） | Supabase Dashboard → Account → Access Tokens |
+| `CRON_SECRET` | 共享密钥；Vercel Cron 以 `Authorization: Bearer <CRON_SECRET>` 发送 | 自行生成随机字符串 |
+
+```bash
+SUPABASE_PROJECT_REF=your-project-ref
+SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxxxxxxxxxx
+CRON_SECRET=your-cron-secret
+```
+
+没有有效 `CRON_SECRET` 时路由一律返回 `401`；有密钥但缺少 Management 变量时，非生产返回
+`200 skipped`、生产返回 `503`——兜底层被静默关闭会直接暴露出来。完整流程见
+[部署 → 暂停自动恢复（兜底）](./deployment#暂停自动恢复兜底)。
+
 ## 应用常量配置
 
 核心配置集中在 `src/lib/constants.ts`，包括：
