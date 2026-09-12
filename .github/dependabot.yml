@@ -10,6 +10,11 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    # 运行时是 Node 22（.nvmrc / engines.node / CI），@types/node 不得越过运行时大版本，
+    # 否则类型会放行 Node 22 上不存在的 API，问题只在运行时暴露
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions 版本跟进
   - package-ecosystem: github-actions
