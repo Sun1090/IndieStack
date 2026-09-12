@@ -27,6 +27,15 @@
 - [x] A06–A10 存储生产能力收口
 - [x] Passkey → Supabase session bridge：一次性 magiclink 服务端消费、MFA aal2 衔接、四路由限流与 challenge 清理、中英双语登录入口
 
+## 2026-09-12 可观测性与发布验证批次
+
+- [x] E03 cron worker 指标：`cron.digest.completed` / `cron.digest.failed` 输出结构化耗时、拉取、发送、分组和失败数。
+- [x] E04 邮件队列积压指标：每轮 digest 输出 `email.backlog`，阈值行为与 Sentry 异常告警保持并存。
+- [x] E05 存储成功率指标：Supabase/OSS 每次上传输出 `storage.upload.completed` 与 `outcome`。
+- [x] E06 provider fallback 指标：OSS 配置不完整时按缺失变量签名去重输出 `provider.fallback`；邮件和 Push 失败也输出结构化事件。
+- [x] E07 告警阈值与去重：`docs/operations/sentry-alerts.md` 已记录指标契约、最小样本、聚合维度和恢复窗口。
+- [x] J06 production smoke：新增无副作用 `pnpm smoke:production`、手动 GitHub Actions 工作流和 JSON artifact；2026-09-12 对目标 `f34f574` / v0.6.0 生产部署执行 6/6 通过。
+
 ## 验证
 
 - 最近本地完整验证：通过（88 files / 784 tests；`pnpm verify:build` 通过；Playwright E2E 43/43 通过）
