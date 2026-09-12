@@ -25,6 +25,8 @@ export const features = {
   webhookDebugPage: flag("WEBHOOK_DEBUG_PAGE", false),
   /** 通行密钥（Passkey/WebAuthn 试点，v0.5.0 D01，见 docs/adr/adr-012-passkey.md） */
   passkey: flag("PASSKEY", false),
+  /** Passkey sign-in requires a complete Supabase session bridge; disabled until then. */
+  passkeyLogin: flag("PASSKEY_LOGIN", false),
 } as const;
 
 export type FeatureFlags = typeof features;

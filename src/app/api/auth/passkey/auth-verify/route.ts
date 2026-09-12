@@ -2,7 +2,7 @@
  * Passkey 认证验证（v0.5.0 D01 试点，ADR-012，feature flag 门控）
  * POST /api/auth/passkey/auth-verify —— 校验 assertion、更新计数器（克隆检测）。
  * 试点范围说明：会话签发仍由 Supabase Auth 承担（尚无 passkey 登录通道），
- * 本端点验证凭据有效性并返回 userId，供后续接入完整登录流。
+ * 本端点仅在 PASSKEY_LOGIN 明确启用时可用；验证成功不暴露 userId，避免形成伪登录信号。
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,7 +23,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  if (!features.passkey) {
+  if (!features.passkey || !features.passkeyLogin) {
     return jsonNoStore({ error: "Not found" }, { status: 404 });
   }
 
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     await updateCredentialCounter(credential.credential_id, verification.authenticationInfo.newCounter);
-    return clearChallengeCookie(NextResponse.json({ verified: true, userId: credential.user_id }));
+    return clearChallengeCookie(NextResponse.json({ verified: true }));
   } catch (error) {
     console.error("[passkey auth-verify] 校验失败:", error);
     return jsonNoStore({ error: "Verification failed" }, { status: 400 });

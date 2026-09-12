@@ -14,7 +14,7 @@ const { createClientMock, createAdminClientMock, listMock, createCredMock, findM
   updateCounterMock: vi.fn(async () => {}),
 }));
 
-vi.mock("@/lib/feature-flags", () => ({ features: { passkey: true } }));
+vi.mock("@/lib/feature-flags", () => ({ features: { passkey: true, passkeyLogin: true } }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 vi.mock("@/lib/repositories/webauthn", () => ({
@@ -137,7 +137,7 @@ describe("POST /api/auth/passkey/auth-verify", () => {
       jsonReq("/api/auth/passkey/auth-verify", { response: { id: "cred1" } }, { pk_challenge: "auth-challenge" }),
     );
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ verified: true, userId: USER.id });
+    await expect(res.json()).resolves.toEqual({ verified: true });
     expect(updateCounterMock).toHaveBeenCalledWith("cred1", 5);
   });
 
