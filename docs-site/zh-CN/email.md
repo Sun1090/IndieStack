@@ -1,0 +1,84 @@
+# 邮件投递
+
+IndieStack 的应用邮件通过 Resend 发送；Supabase Auth 邮件由 Supabase 项目独立配置。账号邮件与
+产品通知因此有不同的运维边界。
+
+## 配置
+
+| 变量 | 必需性 | 用途 |
+| --- | --- | --- |
+| `RESEND_API_KEY` | 应用邮件必需 | Resend API Key，仅服务端使用 |
+| `RESEND_FROM` | 建议配置 | 已验证发件人，例如 `IndieStack <hello@example.com>` |
+| `RESEND_API_URL` | 可选 | 仅测试环境覆盖端点，E2E 用它捕获请求 |
+| `CRON_SECRET` | digest 必需 | 通过 `x-cron-secret` 请求头校验 `POST /api/cron/digest` |
+
+```bash
+RESEND_API_KEY=re_xxxxxxxxx
+RESEND_FROM="IndieStack <hello@example.com>"
+CRON_SECRET=replace-with-a-random-secret
+```
+
+禁止给 `RESEND_API_KEY` 或 `CRON_SECRET` 添加 `NEXT_PUBLIC_` 前缀。
+
+## 通知邮件
+
+`notifyUser()` 写入站内通知后，只有以下高优先级类型会立即尝试单发邮件：
+
+- `security_alert`
+- `team_invite`
+- `role_changed`
+- `payment_succeeded`
+
+实时发送同样受 `shouldSendEmail()` 控制。发送成功会写入已发送回执；发送失败则保留在队列中，
+等待 digest worker 重试。其他类型的通知在当前实现中仅站内展示。
+
+## Digest Worker
+
+`POST /api/cron/digest` 每轮最多拉取 100 条待发通知，按用户分组并按用户时区错峰，只向本地时间
+08:00 的用户发送。时区缺失或非法时回退到 `Asia/Shanghai`。实时发送失败和尚未发送的通知都由
+该 worker 继续处理。
+
+Worker 会折叠大量同类型通知并限制正文明细数量，避免邮件随队列无限膨胀；同时输出积压量和运行
+指标供运维监控。
+
+请使用外部调度器每小时调用一次，让所有支持的时区都能命中各自本地 08:00。仓库中的 Vercel cron
+没有调度该 digest 路由。
+
+## 偏好与重试
+
+邮件偏好矩阵同时作用于实时单发和 digest。全局 `emailNotifications` 开关会关闭产品邮件；
+`securityAlerts` 和 `productUpdates` 提供按类型控制。
+
+每次发送失败都会累加 `metadata.email_attempts` 并记录 `metadata.email_error`。达到 3 次后，该通知
+进入死信，不再被 digest 拉取；运维可通过通知 repository API 查询死信。
+
+## 营销邮件
+
+营销邮件是独立的 double opt-in 通道，不使用 `notifications` 表：
+
+- 确认和退订操作只接受 `POST`。
+- Token 以 SHA-256 摘要存储，7 天后失效。
+- 每封营销邮件都附带当前收件人的专属退订链接。
+
+## Supabase Auth 邮件
+
+注册确认、邀请、Magic Link 和重置密码由 Supabase Auth 发送，不经过 Resend。模板与重定向白名单
+通过以下命令管理：
+
+```bash
+pnpm auth:email-config
+pnpm auth:email-config -- --apply
+pnpm auth:email-config -- --verify --scope=templates
+```
+
+命令默认只做 dry-run。当前免费版使用 Supabase 默认发件人，全项目每小时只能发送 2 封 Auth
+邮件。生产注册量增长前或需要修改模板前，必须先配置自定义 SMTP。
+
+## 验证
+
+```bash
+pnpm test -- src/lib/email-send.test.ts src/lib/email-notify.test.ts
+pnpm test -- src/app/api/cron/digest/route.test.ts
+pnpm test:e2e -- e2e/mail-flow.spec.ts
+pnpm auth:email-config
+```

@@ -1,0 +1,91 @@
+# Email Delivery
+
+IndieStack uses Resend for application email. Supabase Auth email is configured separately through
+the Supabase project, so account emails and product notifications have different operational
+boundaries.
+
+## Configuration
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `RESEND_API_KEY` | For application email | Server-only Resend API key |
+| `RESEND_FROM` | Recommended | Verified sender, for example `IndieStack <hello@example.com>` |
+| `RESEND_API_URL` | No | Test-only endpoint override used by the E2E mail capture server |
+| `CRON_SECRET` | For digest | Authenticates `POST /api/cron/digest` through the `x-cron-secret` header |
+
+```bash
+RESEND_API_KEY=re_xxxxxxxxx
+RESEND_FROM="IndieStack <hello@example.com>"
+CRON_SECRET=replace-with-a-random-secret
+```
+
+Never expose `RESEND_API_KEY` or `CRON_SECRET` through a `NEXT_PUBLIC_` variable.
+
+## Notification Delivery
+
+When `notifyUser()` creates an in-app notification, only these high-priority types attempt an
+immediate email:
+
+- `security_alert`
+- `team_invite`
+- `role_changed`
+- `payment_succeeded`
+
+Immediate delivery respects `shouldSendEmail()`. A successful send records the notification as
+sent; a failure leaves it queued for the digest worker. Other notification types remain in-app
+only in the current implementation.
+
+## Digest Worker
+
+`POST /api/cron/digest` processes up to 100 queued notifications per run. It groups them by user,
+checks the user's timezone, and sends only when the user's local time is 08:00. A missing or invalid
+timezone falls back to `Asia/Shanghai`. Immediate-send failures and queued items are retried by this
+worker.
+
+The worker can fold large groups and caps the visible digest details, keeping the message size
+bounded. It also emits backlog and worker metrics for operational monitoring.
+
+Schedule the endpoint hourly with an external scheduler so every supported timezone reaches its
+local 08:00 window. Vercel cron in this repository does not schedule the digest route.
+
+## Preferences and Retries
+
+The email preference matrix applies to both immediate sends and digest delivery. The global
+`emailNotifications` switch disables product email; `securityAlerts` and `productUpdates` provide
+type-level control.
+
+Each failed send increments `metadata.email_attempts` and records `metadata.email_error`. Once the
+attempt count reaches 3, the notification becomes a dead letter and is excluded from further
+digest pulls. Operators can query dead letters through the notification repository API.
+
+## Marketing Email
+
+Marketing mail is a separate double opt-in channel and does not use the `notifications` table:
+
+- Subscription confirmation and unsubscribe operations only accept `POST`.
+- Tokens are stored as SHA-256 digests and expire after 7 days.
+- Every marketing message includes a recipient-specific unsubscribe link.
+
+## Supabase Auth Email
+
+Account verification, invitations, magic links, and password resets are sent by Supabase Auth, not
+Resend. Manage the templates and redirect allowlist with:
+
+```bash
+pnpm auth:email-config
+pnpm auth:email-config -- --apply
+pnpm auth:email-config -- --verify --scope=templates
+```
+
+The command defaults to a dry run. On the current free-tier setup, Supabase uses the default sender
+and allows only 2 Auth emails per hour for the entire project. Configure custom SMTP before relying
+on production signup volume or trying to update templates.
+
+## Verification
+
+```bash
+pnpm test -- src/lib/email-send.test.ts src/lib/email-notify.test.ts
+pnpm test -- src/app/api/cron/digest/route.test.ts
+pnpm test:e2e -- e2e/mail-flow.spec.ts
+pnpm auth:email-config
+```
