@@ -11,6 +11,7 @@
 ## 功能特性
 
 ### 🏗️ 架构
+
 - Next.js 16 App Router + Route Groups
 - React Server Components + Server Actions
 - Supabase SSR 认证（邮箱、GitHub、Google）
@@ -19,6 +20,7 @@
 - Stripe-ready 订阅计费
 
 ### 🎨 UI/UX
+
 - shadcn/ui 组件库（完全可定制）
 - 暗色/亮色模式（跟随系统）
 - 响应式设计（移动优先）
@@ -26,6 +28,7 @@
 - 加载骨架与错误边界
 
 ### 📊 仪表盘
+
 - 概览页（统计与活动流）
 - 用量分析
 - 个人资料编辑
@@ -34,6 +37,7 @@
 - 通知偏好
 
 ### 🛡️ 生产就绪
+
 - Sentry 错误监控（客户端 + 服务端 + edge）
 - 安全响应头（XSS、CSRF、点击劫持）
 - 限流基础设施
@@ -67,18 +71,20 @@ pnpm dev
 项目包含两套文档体系：
 
 ### 1. 内联文档 `/docs/`
+
 `/docs` 目录包含 7 个 Markdown 文件，覆盖架构、设置、技术栈、Supabase、部署、配置等。
 
-| 文件 | 说明 |
-|------|------|
-| `architecture.md` | 项目架构、数据流、路由设计 |
-| `setup.md` | 本地开发设置、环境变量 |
-| `tech-stack.md` | 每项技术的深度介绍 |
-| `supabase.md` | 数据库 Schema、认证、RLS 策略 |
-| `deployment.md` | Vercel、阿里云、Sentry、GitHub Actions 部署指南 |
-| `configuration.md` | 所有环境变量和配置说明 |
+| 文件               | 说明                                            |
+| ------------------ | ----------------------------------------------- |
+| `architecture.md`  | 项目架构、数据流、路由设计                      |
+| `setup.md`         | 本地开发设置、环境变量                          |
+| `tech-stack.md`    | 每项技术的深度介绍                              |
+| `supabase.md`      | 数据库 Schema、认证、RLS 策略                   |
+| `deployment.md`    | Vercel、阿里云、Sentry、GitHub Actions 部署指南 |
+| `configuration.md` | 所有环境变量和配置说明                          |
 
 ### 2. 独立文档站 `docs-site/`（VitePress）
+
 基于 VitePress 的独立文档站，支持中英双语、暗色/亮色主题，可脱离主应用单独部署。
 
 ```bash
@@ -119,22 +125,22 @@ src/
 
 ## 脚本
 
-| 命令 | 说明 |
-|---------|-------------|
-| `pnpm dev` | 启动开发服务器 |
-| `pnpm build` | 生产构建 |
-| `pnpm start` | 启动生产服务器 |
-| `pnpm lint` | 运行 ESLint |
-| `pnpm type-check` | TypeScript 类型检查 |
-| `pnpm format` | Prettier 格式化 |
-| `pnpm check` | type-check + lint + i18n 对称性校验 |
-| `pnpm check:locales` | 校验 en/zh-CN 翻译 key 对称性 |
-| `pnpm db:migrate` | 推送数据库迁移 |
-| `pnpm db:types` | 从 DB 生成 TypeScript 类型 |
-| `pnpm test` | Vitest 单元 + 组件测试（92 个文件 / 826 个测试） |
-| `pnpm test:e2e` | Playwright E2E 冒烟测试 |
-| `pnpm verify:build` | 完整本地发布门禁：检查、测试、bundle 与生产构建 |
-| `pnpm check:release-docs` | 校验发布、回滚和生产冒烟文档产物 |
+| 命令                      | 说明                                             |
+| ------------------------- | ------------------------------------------------ |
+| `pnpm dev`                | 启动开发服务器                                   |
+| `pnpm build`              | 生产构建                                         |
+| `pnpm start`              | 启动生产服务器                                   |
+| `pnpm lint`               | 运行 ESLint                                      |
+| `pnpm type-check`         | TypeScript 类型检查                              |
+| `pnpm format`             | Prettier 格式化                                  |
+| `pnpm check`              | type-check + lint + i18n 对称性校验              |
+| `pnpm check:locales`      | 校验 en/zh-CN 翻译 key 对称性                    |
+| `pnpm db:migrate`         | 推送数据库迁移                                   |
+| `pnpm db:types`           | 从 DB 生成 TypeScript 类型                       |
+| `pnpm test`               | Vitest 单元 + 组件测试（93 个文件 / 832 个测试） |
+| `pnpm test:e2e`           | Playwright E2E 冒烟测试                          |
+| `pnpm verify:build`       | 完整本地发布门禁：检查、测试、bundle 与生产构建  |
+| `pnpm check:release-docs` | 校验发布、回滚和生产冒烟文档产物                 |
 
 ## 发布与运维
 
@@ -153,19 +159,19 @@ src/
 
 ## 技术栈
 
-| 类别 | 技术 |
-|----------|-----------|
-| 框架 | Next.js 16（App Router, RSC） |
-| 样式 | Tailwind CSS + shadcn/ui |
-| 认证 | Supabase Auth（邮箱、GitHub、Google） |
-| 数据库 | PostgreSQL（via Supabase） |
-| 存储 | 阿里云 OSS |
-| 监控 | Sentry |
-| CI/CD | GitHub Actions |
-| 托管 | Vercel |
-| APM | Appark |
-| 支付 | Stripe（ready） |
-| 校验 | Zod |
+| 类别   | 技术                                  |
+| ------ | ------------------------------------- |
+| 框架   | Next.js 16（App Router, RSC）         |
+| 样式   | Tailwind CSS + shadcn/ui              |
+| 认证   | Supabase Auth（邮箱、GitHub、Google） |
+| 数据库 | PostgreSQL（via Supabase）            |
+| 存储   | 阿里云 OSS                            |
+| 监控   | Sentry                                |
+| CI/CD  | GitHub Actions                        |
+| 托管   | Vercel                                |
+| APM    | Appark                                |
+| 支付   | Stripe（ready）                       |
+| 校验   | Zod                                   |
 
 ## 独立文档站（`docs-site/`）
 

@@ -11,6 +11,7 @@ Built with **Next.js 16**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **Post
 ## Features
 
 ### 🏗️ Architecture
+
 - Next.js 16 App Router with Route Groups
 - React Server Components with Server Actions
 - Supabase SSR authentication (Email, GitHub, Google)
@@ -19,6 +20,7 @@ Built with **Next.js 16**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **Post
 - Stripe-ready subscription billing
 
 ### 🎨 UI/UX
+
 - shadcn/ui component library (fully customizable)
 - Dark/Light mode with system detection
 - Responsive design (mobile-first)
@@ -26,6 +28,7 @@ Built with **Next.js 16**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **Post
 - Loading skeletons & error boundaries
 
 ### 📊 Dashboard
+
 - Overview with stats and activity feed
 - Analytics with usage metrics
 - Profile management with edit form
@@ -34,6 +37,7 @@ Built with **Next.js 16**, **Tailwind CSS**, **shadcn/ui**, **Supabase**, **Post
 - Notification preferences
 
 ### 🛡️ Production Ready
+
 - Sentry error monitoring (client + server + edge)
 - Security headers (XSS, CSRF, clickjacking)
 - Rate limiting infrastructure
@@ -67,18 +71,20 @@ Open [http://localhost:3000](http://localhost:3000).
 The project ships two documentation systems:
 
 ### 1. Inline docs `/docs/`
+
 The `/docs` directory contains 7 Markdown files covering architecture, setup, tech stack, Supabase, deployment, and configuration.
 
-| File | Description |
-|------|-------------|
-| `architecture.md` | Project architecture, data flow, route design |
-| `setup.md` | Local dev setup, environment variables |
-| `tech-stack.md` | Deep dive into each technology |
-| `supabase.md` | DB schema, auth, RLS policies |
-| `deployment.md` | Vercel, Alibaba Cloud, Sentry, GitHub Actions guides |
-| `configuration.md` | All environment variables and config |
+| File               | Description                                          |
+| ------------------ | ---------------------------------------------------- |
+| `architecture.md`  | Project architecture, data flow, route design        |
+| `setup.md`         | Local dev setup, environment variables               |
+| `tech-stack.md`    | Deep dive into each technology                       |
+| `supabase.md`      | DB schema, auth, RLS policies                        |
+| `deployment.md`    | Vercel, Alibaba Cloud, Sentry, GitHub Actions guides |
+| `configuration.md` | All environment variables and config                 |
 
 ### 2. Standalone docs site `docs-site/` (VitePress)
+
 A VitePress docs site supporting bilingual (zh/en) content and dark/light themes; deployable independently.
 
 ```bash
@@ -119,22 +125,22 @@ src/
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start development server |
-| `pnpm build` | Build for production |
-| `pnpm start` | Start production server |
-| `pnpm lint` | Run ESLint |
-| `pnpm type-check` | TypeScript type check |
-| `pnpm format` | Format code with Prettier |
-| `pnpm check` | type-check + lint + i18n symmetry check |
-| `pnpm check:locales` | Verify en/zh-CN translation key symmetry |
-| `pnpm db:migrate` | Push database migrations |
-| `pnpm db:types` | Generate TypeScript types from DB |
-| `pnpm test` | Vitest unit + component tests (92 files / 826 tests) |
-| `pnpm test:e2e` | Playwright E2E smoke tests |
-| `pnpm verify:build` | Full local release gate: checks, tests, bundle, production build |
-| `pnpm check:release-docs` | Validate release/rollback/smoke documentation artifacts |
+| Command                   | Description                                                      |
+| ------------------------- | ---------------------------------------------------------------- |
+| `pnpm dev`                | Start development server                                         |
+| `pnpm build`              | Build for production                                             |
+| `pnpm start`              | Start production server                                          |
+| `pnpm lint`               | Run ESLint                                                       |
+| `pnpm type-check`         | TypeScript type check                                            |
+| `pnpm format`             | Format code with Prettier                                        |
+| `pnpm check`              | type-check + lint + i18n symmetry check                          |
+| `pnpm check:locales`      | Verify en/zh-CN translation key symmetry                         |
+| `pnpm db:migrate`         | Push database migrations                                         |
+| `pnpm db:types`           | Generate TypeScript types from DB                                |
+| `pnpm test`               | Vitest unit + component tests (93 files / 832 tests)             |
+| `pnpm test:e2e`           | Playwright E2E smoke tests                                       |
+| `pnpm verify:build`       | Full local release gate: checks, tests, bundle, production build |
+| `pnpm check:release-docs` | Validate release/rollback/smoke documentation artifacts          |
 
 ## Release and operations
 
@@ -153,19 +159,19 @@ The project ships 10 specialized collaboration agents (see [AGENTS.md](./AGENTS.
 
 ## Tech Stack
 
-| Category | Technology |
-|----------|-----------|
-| Framework | Next.js 16 (App Router, RSC) |
-| Styling | Tailwind CSS + shadcn/ui |
-| Auth | Supabase Auth (Email, GitHub, Google) |
-| Database | PostgreSQL (via Supabase) |
-| Storage | Alibaba Cloud OSS |
-| Monitoring | Sentry |
-| CI/CD | GitHub Actions |
-| Hosting | Vercel |
-| APM | Appark |
-| Payments | Stripe (ready) |
-| Validation | Zod |
+| Category   | Technology                            |
+| ---------- | ------------------------------------- |
+| Framework  | Next.js 16 (App Router, RSC)          |
+| Styling    | Tailwind CSS + shadcn/ui              |
+| Auth       | Supabase Auth (Email, GitHub, Google) |
+| Database   | PostgreSQL (via Supabase)             |
+| Storage    | Alibaba Cloud OSS                     |
+| Monitoring | Sentry                                |
+| CI/CD      | GitHub Actions                        |
+| Hosting    | Vercel                                |
+| APM        | Appark                                |
+| Payments   | Stripe (ready)                        |
+| Validation | Zod                                   |
 
 ## Standalone Docs Site (`docs-site/`)
 

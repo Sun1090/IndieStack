@@ -4,6 +4,19 @@
  * Usage: pnpm health:check -- https://example.com/api/health
  */
 
+const { DEFAULT_ATTEMPTS, DEFAULT_RETRY_DELAY_MS, probeHealth } = require("./lib/health-probe");
+
+function parseHealthUrl(value) {
+  if (!value) return null;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  return /^https?:$/.test(parsed.protocol) ? parsed : null;
+}
+
 async function main() {
   const args = process.argv.slice(2).filter((arg) => arg !== "--");
   const url = args[0] || process.env.HEALTHCHECK_URL;
@@ -12,49 +25,38 @@ async function main() {
     return 2;
   }
 
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    console.error(`❌ Invalid health URL: ${url}`);
-    return 2;
-  }
-
-  if (!/^https?:$/.test(parsed.protocol)) {
+  const parsed = parseHealthUrl(url);
+  if (!parsed) {
     console.error("❌ Health URL must use http or https");
     return 2;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const response = await fetch(parsed, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    const body = await response.json().catch(() => null);
-    // 向后兼容：v0.6.0 起 body 带 ready 字段；更早的部署只有 status，
-    // 只要没显式 ready:false 就算健康，避免保活探测在版本切换期误报。
-    const healthy =
-      response.status === 200 && body?.status === "ok" && body?.ready !== false;
+  const result = await probeHealth(parsed, {
+    attempts: DEFAULT_ATTEMPTS,
+    retryDelayMs: DEFAULT_RETRY_DELAY_MS,
+    onRetry: ({ nextAttempt, attempts, result: failed }) => {
+      const detail = failed.error || `HTTP ${failed.status}`;
+      console.error(
+        `⚠️ Health check attempt ${nextAttempt - 1}/${attempts} failed (${detail}); retrying`,
+      );
+    },
+  });
 
-    if (!healthy) {
-      console.error(`❌ Health check failed: HTTP ${response.status}`);
-      if (body) console.error(JSON.stringify(body));
-      return 1;
-    }
-
-    console.log(`✅ Health check passed: ${parsed.origin}${parsed.pathname}`);
-    return 0;
-  } catch (error) {
-    console.error(
-      `❌ Health check request failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  if (!result.healthy) {
+    const detail = result.error || `HTTP ${result.status}`;
+    console.error(`❌ Health check failed after ${result.attempts} attempt(s): ${detail}`);
+    if (result.body) console.error(JSON.stringify(result.body));
     return 1;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  console.log(
+    `✅ Health check passed: ${parsed.origin}${parsed.pathname} (attempt ${result.attempts})`,
+  );
+  return 0;
 }
 
-main().then((code) => process.exit(code));
+if (require.main === module) {
+  main().then((code) => process.exit(code));
+}
+
+module.exports = { main, parseHealthUrl };

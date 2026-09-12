@@ -36,11 +36,11 @@ vercel --prod
 
 部署时需要在 Vercel 中添加以下环境变量：
 
-| 环境 | 来源 | 说明 |
-|------|------|------|
-| Production | Vercel Dashboard → Settings → Environment Variables | 生产环境配置 |
-| Preview | 同 Production | Preview 部署自动继承 |
-| Development | `.env.local` | 本地开发配置 |
+| 环境        | 来源                                                | 说明                 |
+| ----------- | --------------------------------------------------- | -------------------- |
+| Production  | Vercel Dashboard → Settings → Environment Variables | 生产环境配置         |
+| Preview     | 同 Production                                       | Preview 部署自动继承 |
+| Development | `.env.local`                                        | 本地开发配置         |
 
 ### 域名绑定
 
@@ -153,6 +153,7 @@ server {
 ### `ci.yml` — PR 自动检查
 
 每次 Push 和 PR 时自动运行：
+
 - TypeScript 类型检查（`pnpm type-check`）
 - ESLint 检查（`pnpm lint`）
 - 单元测试（`pnpm test`）
@@ -195,13 +196,15 @@ npx supabase db push
 Supabase 免费版项目连续 7 天无 API 活动会被自动暂停。IndieStack 用两条每日探测保持项目活跃，
 探测目标都是 `/api/health`（内部会对 `profiles` 执行一次 `limit(1)` 查询）：
 
-| 层级 | 文件 | 时间（UTC） | 说明 |
-|------|------|-------------|------|
-| Vercel Cron（主） | `vercel.json` | `0 2 * * *` | 仅对生产部署生效，不会自动失效 |
+| 层级                 | 文件                                 | 时间（UTC）  | 说明                                 |
+| -------------------- | ------------------------------------ | ------------ | ------------------------------------ |
+| Vercel Cron（主）    | `vercel.json`                        | `0 2 * * *`  | 仅对生产部署生效，不会自动失效       |
 | GitHub Actions（备） | `.github/workflows/health-check.yml` | `17 3 * * *` | 仓库 60 天无提交后 GitHub 会自动停用 |
 
 GitHub Actions 侧需要配置仓库变量 `HEALTHCHECK_URL`（Settings → Secrets and variables →
 Actions → Variables），例如 `https://你的域名/api/health`；手动触发时可用 `health_url` 输入覆盖。
+两条保活探测都会对瞬时网络错误、5xx 和未就绪响应最多重试 3 次，间隔 5 秒；404/401
+等确定错误以及持续故障仍会失败并告警，不会被静默吞掉。
 
 关闭方式：删除 `vercel.json` 的 `crons` 块或 workflow 的 `schedule` 触发器。
 升级到付费 Supabase 套餐后不再需要保活。
@@ -211,10 +214,10 @@ Actions → Variables），例如 `https://你的域名/api/health`；手动触�
 保活探测正常情况下不会让项目进入暂停状态；为防极端情况（例如连续多日部署失败、
 探测失败），仓库另有一个把项目自动拉起来的兜底 workflow：
 
-| 层级 | 文件 | 时间（UTC） | 说明 |
-|------|------|-------------|------|
-| Vercel Cron（主） | `vercel.json` → `/api/ops/supabase-restore` | `0 4 * * *` | 不受仓库静默影响；需要 `CRON_SECRET` 与下方 Management 变量 |
-| GitHub Actions（备） | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 仅在项目状态为 `INACTIVE` 时调用 Management API 恢复 |
+| 层级                 | 文件                                          | 时间（UTC）  | 说明                                                        |
+| -------------------- | --------------------------------------------- | ------------ | ----------------------------------------------------------- |
+| Vercel Cron（主）    | `vercel.json` → `/api/ops/supabase-restore`   | `0 4 * * *`  | 不受仓库静默影响；需要 `CRON_SECRET` 与下方 Management 变量 |
+| GitHub Actions（备） | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 仅在项目状态为 `INACTIVE` 时调用 Management API 恢复        |
 
 需要在 GitHub（供 workflow 使用）与 Vercel 项目环境（供 cron 路由使用）配置：
 

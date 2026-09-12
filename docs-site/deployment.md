@@ -36,11 +36,11 @@ vercel --prod
 
 Add these in Vercel Dashboard → Project → Settings → Environment Variables:
 
-| Environment | Source | Notes |
-|-------------|--------|-------|
-| Production | Vercel Dashboard → Settings → Environment Variables | Production config |
-| Preview | Same as Production | Preview deploys inherit from Production |
-| Development | `.env.local` | Local dev config |
+| Environment | Source                                              | Notes                                   |
+| ----------- | --------------------------------------------------- | --------------------------------------- |
+| Production  | Vercel Dashboard → Settings → Environment Variables | Production config                       |
+| Preview     | Same as Production                                  | Preview deploys inherit from Production |
+| Development | `.env.local`                                        | Local dev config                        |
 
 ### Custom Domain
 
@@ -153,6 +153,7 @@ The `.github/workflows/` directory contains pre-configured CI/CD workflows:
 ### `ci.yml` — PR Checks
 
 Runs on every push and PR:
+
 - TypeScript type check (`pnpm type-check`)
 - ESLint check (`pnpm lint`)
 - Unit tests (`pnpm test`)
@@ -196,14 +197,17 @@ Supabase free-tier projects get paused after 7 days without API activity. IndieS
 the project warm with two daily probes, both aimed at `/api/health` (which runs a
 `select id from profiles limit 1` query through the service-role client):
 
-| Layer | File | Schedule (UTC) | Notes |
-|-------|------|----------------|-------|
-| Vercel Cron (primary) | `vercel.json` | `0 2 * * *` | Runs against production deployments only; does not expire |
-| GitHub Actions (backup) | `.github/workflows/health-check.yml` | `17 3 * * *` | GitHub disables `schedule` after 60 days without commits |
+| Layer                   | File                                 | Schedule (UTC) | Notes                                                     |
+| ----------------------- | ------------------------------------ | -------------- | --------------------------------------------------------- |
+| Vercel Cron (primary)   | `vercel.json`                        | `0 2 * * *`    | Runs against production deployments only; does not expire |
+| GitHub Actions (backup) | `.github/workflows/health-check.yml` | `17 3 * * *`   | GitHub disables `schedule` after 60 days without commits  |
 
 The GitHub Actions job reads the repository variable `HEALTHCHECK_URL`
 (Settings → Secrets and variables → Actions → Variables), e.g.
 `https://your-domain.com/api/health`; manual runs can override it with the `health_url` input.
+Both keepalive probes retry transient network errors, 5xx responses, and not-ready bodies up
+to three times with a five-second delay. Permanent errors such as 404/401 and sustained
+failures still fail loudly.
 
 To turn the keepalive off, drop the `crons` block from `vercel.json` or the `schedule`
 trigger from the workflow — a paid Supabase plan makes the probes unnecessary.
@@ -213,10 +217,10 @@ trigger from the workflow — a paid Supabase plan makes the probes unnecessary.
 Should the project ever get paused anyway (for example during a run of failed deploys, or
 when a probe is rate-limited), a fallback workflow restores it automatically:
 
-| Layer | File | Schedule (UTC) | Notes |
-|-------|------|----------------|-------|
-| Vercel Cron (primary) | `vercel.json` → `/api/ops/supabase-restore` | `0 4 * * *` | Survives repository silence; requires `CRON_SECRET` plus the management env vars below |
-| GitHub Actions (backup) | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | Calls the Management API only when the project status is `INACTIVE` |
+| Layer                   | File                                          | Schedule (UTC) | Notes                                                                                  |
+| ----------------------- | --------------------------------------------- | -------------- | -------------------------------------------------------------------------------------- |
+| Vercel Cron (primary)   | `vercel.json` → `/api/ops/supabase-restore`   | `0 4 * * *`    | Survives repository silence; requires `CRON_SECRET` plus the management env vars below |
+| GitHub Actions (backup) | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *`   | Calls the Management API only when the project status is `INACTIVE`                    |
 
 Configure under Settings → Secrets and variables → Actions (for the workflow) and in the
 Vercel project environment (for the cron route):

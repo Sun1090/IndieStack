@@ -15,14 +15,14 @@
 
 ## 命令
 
-| 命令                                 | 说明                                                             |
-| ------------------------------------ | ---------------------------------------------------------------- |
-| `pnpm test`                          | 全部单元+组件测试                                                |
-| `pnpm test:coverage`                 | 含覆盖率报告（核心逻辑门禁 ≥90%）                                |
-| `pnpm test:e2e`                      | Playwright 冒烟（自动起 Mock dev server）                        |
+| 命令                                 | 说明                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------- |
+| `pnpm test`                          | 全部单元+组件测试                                                               |
+| `pnpm test:coverage`                 | 含覆盖率报告（核心逻辑门禁 ≥90%）                                               |
+| `pnpm test:e2e`                      | Playwright 冒烟（自动起 Mock dev server）                                       |
 | `pnpm smoke:supabase-identity`       | 本地/staging Supabase 真实身份矩阵（anon/authenticated/service_role + Storage） |
-| `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁 |
-| `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                             |
+| `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
+| `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
 ## 双项目结构
 
@@ -30,6 +30,8 @@ vitest.config.ts 定义两个 project：
 
 - **node**：`src/**/*.test.ts` — Server Actions、纯函数、路由处理器
 - **jsdom**：`src/**/*.test.tsx` 与 `*.dom.test.ts` — 需要DOM 的组件
+
+Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导致交互测试超时。
 
 ## 编写规范
 
@@ -46,6 +48,7 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 ## E2E
 
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
+- 默认单 worker 串行执行，避免多个 spec 通过同一个 dev server 互相清理/覆盖可变 Mock 状态；仅隔离实验可设置 `PW_FULLY_PARALLEL=true`
 - 新页面至少加一条"可渲染"断言到 `e2e/smoke.spec.ts`
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围

@@ -4,10 +4,22 @@ import { describe, expect, it, vi } from "vitest";
 const require = createRequire(import.meta.url);
 const smoke = require("../../scripts/production-smoke.js") as {
   parseBaseUrl: (value: string) => URL;
-  parseArgs: (argv: string[]) => { url?: string; expectedVersion?: string; output?: string; timeoutMs: number };
+  parseArgs: (argv: string[]) => {
+    url?: string;
+    expectedVersion?: string;
+    output?: string;
+    timeoutMs: number;
+  };
   runProductionSmoke: (
     url: string,
-    options: { fetchImpl: typeof fetch; expectedVersion?: string; timeoutMs?: number },
+    options: {
+      fetchImpl: typeof fetch;
+      expectedVersion?: string;
+      timeoutMs?: number;
+      healthAttempts?: number;
+      healthRetryDelayMs?: number;
+      sleepImpl?: (ms: number) => Promise<void>;
+    },
   ) => Promise<{
     passed: boolean;
     checks: Array<{ name: string; passed: boolean; detail: string; status: number | null }>;
@@ -66,14 +78,25 @@ describe("production smoke CLI", () => {
 
   it("rejects flags without safe non-empty values", () => {
     expect(() => smoke.parseArgs(["--expected-version"])).toThrow(/requires a value/);
-    expect(() => smoke.parseArgs(["--output", "--expected-version=0.6.0"])).toThrow(/requires a value/);
+    expect(() => smoke.parseArgs(["--output", "--expected-version=0.6.0"])).toThrow(
+      /requires a value/,
+    );
     expect(() => smoke.parseArgs(["--expected-version="])).toThrow(/non-empty/);
   });
 
   it("passes all side-effect-free checks", async () => {
+    let healthCalls = 0;
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = new URL(String(input));
       if (url.pathname === "/api/health") {
+        healthCalls += 1;
+        if (healthCalls === 1) {
+          return jsonResponse(
+            { status: "degraded", ready: false, version: "0.6.0" },
+            503,
+            secureHeaders({ "cache-control": "no-store" }),
+          );
+        }
         return jsonResponse(
           { status: "ok", ready: true, version: "0.6.0" },
           200,
@@ -81,7 +104,10 @@ describe("production smoke CLI", () => {
         );
       }
       if (url.pathname === "/icon.svg") {
-        return new Response("<svg></svg>", { status: 200, headers: { "content-type": "image/svg+xml" } });
+        return new Response("<svg></svg>", {
+          status: 200,
+          headers: { "content-type": "image/svg+xml" },
+        });
       }
       if (url.pathname === "/dashboard") {
         return new Response(null, {
@@ -91,16 +117,27 @@ describe("production smoke CLI", () => {
       }
       if (url.pathname === "/api/webhooks/stripe") {
         expect(init?.method).toBe("POST");
-        return jsonResponse({ error: "Missing signature" }, 400, secureHeaders({ "cache-control": "no-store" }));
+        return jsonResponse(
+          { error: "Missing signature" },
+          400,
+          secureHeaders({ "cache-control": "no-store" }),
+        );
       }
-      return htmlResponse('<!doctype html><main id="main-content">IndieStack</main>', 200, secureHeaders());
+      return htmlResponse(
+        '<!doctype html><main id="main-content">IndieStack</main>',
+        200,
+        secureHeaders(),
+      );
     });
 
     const report = await smoke.runProductionSmoke("https://example.com", {
       fetchImpl: fetchImpl as typeof fetch,
       expectedVersion: "0.6.0",
+      healthRetryDelayMs: 0,
     });
+    expect(report.checks.filter((check) => !check.passed)).toEqual([]);
     expect(report.passed).toBe(true);
+    expect(healthCalls).toBe(2);
     expect(report.checks.map((check) => check.name)).toEqual([
       "health",
       "homepage",
@@ -118,13 +155,15 @@ describe("production smoke CLI", () => {
         return jsonResponse({ status: "degraded", ready: false, version: "0.5.0" }, 503);
       }
       if (url.pathname === "/dashboard") return new Response(null, { status: 200 });
-      if (url.pathname === "/api/webhooks/stripe") return jsonResponse({ error: "unexpected" }, 500);
+      if (url.pathname === "/api/webhooks/stripe")
+        return jsonResponse({ error: "unexpected" }, 500);
       return htmlResponse("not found", 404);
     });
 
     const report = await smoke.runProductionSmoke("https://example.com", {
       fetchImpl: fetchImpl as typeof fetch,
       expectedVersion: "0.6.0",
+      healthRetryDelayMs: 0,
     });
     expect(report.passed).toBe(false);
     expect(report.checks.every((check) => !check.passed)).toBe(true);

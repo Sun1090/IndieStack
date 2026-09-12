@@ -33,6 +33,9 @@ interface LogEntry {
 /** 是否为开发环境 */
 const isDev = process.env.NODE_ENV === "development";
 
+/** 是否为生产环境；测试/构建环境不应加载 Sentry 运行时 */
+const isProduction = process.env.NODE_ENV === "production";
+
 /** 是否启用详细日志 */
 const isVerbose = process.env.NEXT_PUBLIC_VERBOSE_LOGGING === "true";
 
@@ -88,16 +91,17 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown>, e
     }
   }
 
-  // 生产环境错误上报 Sentry
-  if (level === "error" && !isDev && typeof process !== "undefined") {
-    try {
-      const Sentry = require("@sentry/nextjs");
-      Sentry.captureException(error ?? new Error(message), {
-        extra: { ...data, logLevel: level },
+  // 生产环境错误上报 Sentry；异步加载，日志调用本身不阻塞请求
+  if (level === "error" && isProduction) {
+    void import("@sentry/nextjs")
+      .then((Sentry) =>
+        Sentry.captureException(error ?? new Error(message), {
+          extra: { ...data, logLevel: level },
+        }),
+      )
+      .catch(() => {
+        // Sentry 未配置时静默处理
       });
-    } catch {
-      // Sentry 未配置时静默处理
-    }
   }
 }
 
