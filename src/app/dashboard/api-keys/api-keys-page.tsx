@@ -48,6 +48,7 @@ import { formatDate } from "@/lib/date";
 
 export function ApiKeysPage() {
   const t = useTranslations("dashboard");
+  const tc = useTranslations("common");
   const ta = useTranslations("actions");
   const locale = useLocale();
   const queryClient = useQueryClient();
@@ -159,7 +160,7 @@ export function ApiKeysPage() {
 
   return (
     <div className="space-y-8">
-      <Breadcrumbs items={[{ label: t("dashboard") }, { label: t("apiKeys.title") }]} />
+      <Breadcrumbs items={[{ label: tc("dashboard") }, { label: t("apiKeys.title") }]} />
       <PageHeader title={t("apiKeys.title")} description={t("apiKeys.desc")}>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
