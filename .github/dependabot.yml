@@ -10,6 +10,10 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+      # vitest 与 @vitest/coverage-v8 必须同大版本升级，否则 coverage provider 报
+      # "Expected string coverage payload, received object" 并让覆盖率门禁归零
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
     # 运行时是 Node 22（.nvmrc / engines.node / CI），@types/node 不得越过运行时大版本，
     # 否则类型会放行 Node 22 上不存在的 API，问题只在运行时暴露
     ignore:
