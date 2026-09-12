@@ -121,8 +121,8 @@ Project/
 │   ├── middleware.ts             # Edge Middleware
 │   └── instrumentation.ts       # Sentry 初始化
 ├── messages/                     # i18n 消息文件
-│   ├── en/                       # 英文（17 个命名空间）
-│   └── zh-CN/                    # 简体中文（17 个命名空间）
+│   ├── en/                       # 英文（18 个命名空间）
+│   └── zh-CN/                    # 简体中文（18 个命名空间）
 ├── public/                       # 静态资源
 ├── supabase/                     # Supabase 本地开发
 │   ├── config.toml               # Supabase CLI 配置

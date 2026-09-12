@@ -34,11 +34,14 @@
 - [x] E05 存储成功率指标：Supabase/OSS 每次上传输出 `storage.upload.completed` 与 `outcome`。
 - [x] E06 provider fallback 指标：OSS 配置不完整时按缺失变量签名去重输出 `provider.fallback`；邮件和 Push 失败也输出结构化事件。
 - [x] E07 告警阈值与去重：`docs/operations/sentry-alerts.md` 已记录指标契约、最小样本、聚合维度和恢复窗口。
-- [x] J06 production smoke：新增无副作用 `pnpm smoke:production`、手动 GitHub Actions 工作流和 JSON artifact；2026-09-12 对目标 `f34f574` / v0.6.0 生产部署执行 6/6 通过。
+- [x] D09 键盘导航与焦点回归：语言菜单支持 Enter 打开、Escape 关闭并归还焦点，`aria-current` 标识当前语言；共享 header 用户菜单补齐可访问名称。
+- [x] D10 自动化 a11y 门禁：新增 `e2e/a11y.spec.ts`，使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 审计；5/5 通过。
+- [x] i18n 文档对齐：默认语言修正为 `en`，命名空间更新为 18 个并补入 `actions`；`pnpm check:locales` 与 `pnpm check:i18n` 通过。
+- [x] 发布文档收口：release runbook 和 checklist 加入 `pnpm smoke:production`、Production Smoke workflow 与 30 天 artifact 要求；`pnpm check:release-docs` 通过。
 
 ## 验证
 
-- 最近本地完整验证：通过（88 files / 784 tests；`pnpm verify:build` 通过；Playwright E2E 43/43 通过）
+- 最近本地完整验证：通过（90 files / 794 tests；`pnpm verify:build` 通过；Playwright E2E 49/49 通过；`pnpm check:all` 通过）
 - 覆盖率：Statements 95.34%、Branches 90.13%、Functions 96.83%、Lines 96.49%，branches 门禁 90% 通过
 - 安全/运维：`pnpm audit --audit-level high` 无已知漏洞；生产 `/api/health` 通过；Supabase auto-restore 手动 dry-run 确认项目健康且无需恢复
 - CI：`0930c1f` 的 CI、CodeQL、Secrets Scan、Security/config checks 均通过（run 34669221490 等）

@@ -199,7 +199,7 @@ Multi-language config at `src/i18n/routing.ts`:
 ```typescript
 export const routing = defineRouting({
   locales: ["zh-CN", "en"],
-  defaultLocale: "zh-CN",
+  defaultLocale: "en",
   localePrefix: "never",
 });
 ```

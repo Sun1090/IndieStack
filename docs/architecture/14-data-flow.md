@@ -219,7 +219,7 @@ flowchart TD
     Select --> SetCookie["设置 Cookie<br/>app-locale"]
     SetCookie --> Reload["刷新页面"]
     Reload --> Server["服务端读取 Cookie"]
-    Server --> LoadMsg["loadMessages(locale)<br/>加载 17 个命名空间"]
+    Server --> LoadMsg["loadMessages(locale)<br/>加载 18 个命名空间"]
     LoadMsg --> Provider["NextIntlClientProvider<br/>注入新 messages"]
     Provider --> Render["渲染新语言 UI"]
 ```
