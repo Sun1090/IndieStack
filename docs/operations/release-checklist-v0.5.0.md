@@ -20,6 +20,7 @@
 | `OSS_BUCKET/REGION/ACCESS_KEY_ID/ACCESS_KEY_SECRET` | 可选 | 四项齐备启用 OSS，否则 Supabase Storage（需建 `avatars` 公共读桶） |
 | `NEXT_PUBLIC_APPARK_API_KEY` + `NEXT_PUBLIC_APPARK_ENDPOINT` | 可选 | 两项齐备启用 APM |
 | `NEXT_PUBLIC_FEATURE_PASSKEY` | 可选 | `true` 启用通行密钥（需 https） |
+| `NEXT_PUBLIC_FEATURE_PASSKEY_LOGIN` | 可选 | `true` 启用完整通行密钥登录；必须同时启用 `NEXT_PUBLIC_FEATURE_PASSKEY` |
 
 ## 发布后验证
 

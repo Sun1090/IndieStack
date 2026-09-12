@@ -1,6 +1,6 @@
 /**
  * LoginForm 组件测试（C07 测试职责）
- * 覆盖：邮箱未确认失败时展示重发入口、重发成功 toast
+ * 覆盖：邮箱密码登录、重发确认邮件、通行密钥登录。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -24,6 +24,13 @@ vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({ auth: { signInWithPassword: signInMock, resend: resendMock } }),
 }));
 
+const startAuthenticationMock = vi.hoisted(() => vi.fn());
+vi.mock("@simplewebauthn/browser", () => ({
+  startAuthentication: startAuthenticationMock,
+}));
+
+const fetchMock = vi.hoisted(() => vi.fn());
+
 const toastMock = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-toast", () => ({
   toast: toastMock,
@@ -43,6 +50,7 @@ vi.mock("@/lib/actions/login-attempts", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   checkLoginAllowedMock.mockResolvedValue({ ok: true, data: { allowed: true, retryAfterSec: 0 } });
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 async function fillAndSubmit(email: string, password: string) {
@@ -119,5 +127,86 @@ describe("LoginForm 重发确认邮件", () => {
       expect(toastMock).toHaveBeenCalled();
     });
     expect(screen.queryByRole("button", { name: "login.resend" })).toBeNull();
+  });
+});
+
+describe("LoginForm 通行密钥登录", () => {
+  it("功能关闭时不展示入口", () => {
+    render(<LoginForm />);
+    expect(screen.queryByRole("button", { name: "login.passkey" })).toBeNull();
+  });
+
+  it("功能开启时展示入口", () => {
+    render(<LoginForm passkeyEnabled />);
+    expect(screen.getByRole("button", { name: "login.passkey" })).toBeInTheDocument();
+  });
+
+  it("断言成功后建立会话并跳转", async () => {
+    const browserResponse = { id: "credential-id", response: {} };
+    startAuthenticationMock.mockResolvedValue(browserResponse);
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ challenge: "challenge" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ verified: true, mfaRequired: false }),
+      });
+
+    render(<LoginForm passkeyEnabled />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "login.passkey" }));
+
+    await waitFor(() => {
+      expect(startAuthenticationMock).toHaveBeenCalledWith({
+        optionsJSON: { challenge: "challenge" },
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/auth/passkey/auth-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: browserResponse }),
+      });
+      expect(pushMock).toHaveBeenCalledWith("/dashboard");
+      expect(refreshMock).toHaveBeenCalled();
+    });
+  });
+
+  it("账户启用 MFA 时跳转验证页", async () => {
+    startAuthenticationMock.mockResolvedValue({ id: "credential-id" });
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ challenge: "c" }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          verified: true,
+          mfaRequired: true,
+          factorId: "factor-123",
+        }),
+      });
+
+    render(<LoginForm passkeyEnabled />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "login.passkey" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(
+        "/auth/mfa?factor=factor-123&redirect=%2Fdashboard",
+      );
+    });
+  });
+
+  it("验证失败时展示通行密钥错误", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, json: vi.fn().mockResolvedValue({}) });
+
+    render(<LoginForm passkeyEnabled />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "login.passkey" }));
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "login.passkeyError",
+          variant: "destructive",
+        }),
+      );
+    });
   });
 });

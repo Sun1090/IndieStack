@@ -14,6 +14,10 @@
 | POST   | `/api/stripe/checkout`      | 登录            | 创建 Stripe Checkout Session，返回跳转 URL                                                                                                                                                                                                                    |
 | POST   | `/api/webhooks/stripe`      | **签名验证**    | Stripe 事件回调（subscription.* / invoice.*）。无 rate limit（防重试丢失）                                                                                                                                                                                    |
 | GET    | `/api/auth/callback`        | OAuth state     | Supabase OAuth 回调，交换 code 换 session（by-design 公开：code 一次性 + `getSafeRedirect` 防开放重定向）                                                                                                                                                     |
+| POST   | `/api/auth/passkey/register-options` | 登录 + flag | 已登录用户创建 WebAuthn registration options；要求 `NEXT_PUBLIC_FEATURE_PASSKEY=true`，10 次/分钟 IP 限流，challenge 存短时 httpOnly cookie |
+| POST   | `/api/auth/passkey/register-verify` | 登录 + flag | 校验 attestation、持久化凭据并清除 challenge；flag 关闭返回 404，校验失败返回通用 400，存储不可用返回 503 |
+| POST   | `/api/auth/passkey/auth-options` | flag | 创建 discoverable-credential authentication options；要求 passkey 与 passkey-login 双 flag，10 次/分钟 IP 限流 |
+| POST   | `/api/auth/passkey/auth-verify` | flag | 校验 assertion、更新 counter、消费一次性 magiclink 并建立 Supabase SSR session；仅返回 verified/MFA 结果，不泄漏 token、action link、邮箱或 userId |
 | GET    | `/api/invitations`          | 团队读权限      | 团队邀请信息查询                                                                                                                                                                                                                                              |
 | POST   | `/api/invitations`          | 团队邀请权限    | 发送邀请（邮箱查 ID，白名单校验；**直接加入模式**：即时写入 team_members，无 pending 态，`team_invitations` 表暂为孤儿——pending 邀请制见 G 域）                                                                                                               |
 | DELETE | `/api/invitations`          | 团队移除权限    | 撤销邀请/移除成员（owner 不可移除）                                                                                                                                                                                                                           |
@@ -37,7 +41,7 @@
 
 ### 限流（B03 审计结论 v0.4.0）
 
-- 限流覆盖：`invitations`（GET/POST/DELETE）、`user`（GET/PATCH/DELETE）、`analytics`、`stripe/checkout`、`contact` action
+- 限流覆盖：`invitations`（GET/POST/DELETE）、`user`（GET/PATCH/DELETE）、`analytics`、`stripe/checkout`、`contact` action、四个 passkey 路由（10 次/分钟/IP）
 - by-design 不限流：`webhooks/stripe`（事件重试语义，签名验签保障）、`auth/callback`（code 一次性）、`health`/`og`（纯静态无数据写）
 - 内存滑窗实现，多实例部署需迁移 Redis/Upstash
 

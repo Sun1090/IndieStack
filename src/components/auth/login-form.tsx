@@ -16,7 +16,8 @@ import { GithubIcon } from "@/components/shared/github-icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { Mail } from "lucide-react";
+import { KeyRound, Mail } from "lucide-react";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
@@ -24,7 +25,7 @@ import { authErrorKey } from "@/lib/auth/errors";
 import { logAuthEvent } from "@/lib/actions/audit";
 import { checkLoginAllowed, recordLoginResult } from "@/lib/actions/login-attempts";
 
-export function LoginForm() {
+export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = getSafeRedirect(searchParams.get("redirect"), ROUTES.dashboard);
@@ -35,11 +36,13 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   // 上次登录是否因邮箱未确认失败（是则展示重发确认邮件入口）
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [resending, setResending] = useState(false);
 
   const supabase = createClient();
+  const busy = loading || passkeyLoading;
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,6 +152,51 @@ export function LoginForm() {
     }
   };
 
+  const handlePasskeyLogin = async () => {
+    setPasskeyLoading(true);
+    try {
+      const optionsResponse = await fetch("/api/auth/passkey/auth-options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!optionsResponse.ok) throw new Error("passkey_options_failed");
+
+      const options = await optionsResponse.json();
+      const response = await startAuthentication({ optionsJSON: options });
+
+      const verifyResponse = await fetch("/api/auth/passkey/auth-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response }),
+      });
+      const result = (await verifyResponse.json().catch(() => null)) as
+        | { verified?: boolean; mfaRequired?: boolean; factorId?: string }
+        | null;
+      if (!verifyResponse.ok || !result?.verified) throw new Error("passkey_verify_failed");
+
+      void logAuthEvent("auth.passkey_login", { method: "passkey" });
+
+      if (result.mfaRequired && result.factorId) {
+        toast({ title: t("login.submit"), description: t("login.mfaRedirect") });
+        router.push(
+          `/auth/mfa?factor=${encodeURIComponent(result.factorId)}&redirect=${encodeURIComponent(redirect)}`,
+        );
+        return;
+      }
+
+      router.push(redirect);
+      router.refresh();
+    } catch {
+      toast({
+        title: t("login.error"),
+        description: t("login.passkeyError"),
+        variant: "destructive",
+      });
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
   return (
     <div className="grid gap-6">
       <form onSubmit={handleEmailLogin}>
@@ -164,7 +212,7 @@ export function LoginForm() {
               autoCapitalize="none"
               autoComplete="email"
               autoCorrect="off"
-              disabled={loading}
+              disabled={busy}
               required
             />
           </div>
@@ -176,7 +224,7 @@ export function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
-              disabled={loading}
+              disabled={busy}
               required
             />
             <div className="flex justify-end">
@@ -188,7 +236,7 @@ export function LoginForm() {
               </Link>
             </div>
           </div>
-          <Button disabled={loading} type="submit" className="w-full">
+          <Button disabled={busy} type="submit" className="w-full">
             {loading ? t("login.loading") : t("login.submit")}
             <Mail className="ml-2 h-4 w-4" />
           </Button>
@@ -206,6 +254,20 @@ export function LoginForm() {
         </div>
       </form>
 
+      {passkeyEnabled && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={handlePasskeyLogin}
+          disabled={busy}
+          aria-busy={passkeyLoading}
+        >
+          <KeyRound className="mr-2 h-4 w-4" />
+          {passkeyLoading ? t("login.passkeyLoading") : t("login.passkey")}
+        </Button>
+      )}
+
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
           <span className="w-full border-t" />
@@ -216,10 +278,10 @@ export function LoginForm() {
       </div>
 
       <div className="grid gap-3">
-        <Button variant="outline" onClick={handleGitHubLogin} disabled={loading}>
+        <Button variant="outline" onClick={handleGitHubLogin} disabled={busy}>
           <GithubIcon className="mr-2 h-4 w-4" /> {t("login.oauthGithub")}
         </Button>
-        <Button variant="outline" onClick={handleGoogleLogin} disabled={loading}>
+        <Button variant="outline" onClick={handleGoogleLogin} disabled={busy}>
           <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"

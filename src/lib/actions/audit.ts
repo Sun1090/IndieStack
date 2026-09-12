@@ -54,6 +54,7 @@ export type AuthAuditAction =
   | "auth.login"
   | "auth.login_failed"
   | "auth.oauth_login"
+  | "auth.passkey_login"
   | "auth.mfa_verified"
   | "auth.recovery_redeemed";
 

@@ -15,12 +15,77 @@ import {
   readChallengeCookie,
   rpId,
 } from "@/lib/auth/passkey";
+import { createRateLimit } from "@/lib/rate-limit";
+import { logApiError } from "@/lib/api-log";
 
 export const dynamic = "force-dynamic";
+
+const registerVerifyRateLimit = createRateLimit({ maxRequests: 10, windowMs: 60_000 });
+
+interface RegistrationCredential {
+  credentialId: string;
+  publicKey: string;
+  counter: number;
+  transports: string[] | null;
+}
+
+function clearChallenge(response: NextResponse): NextResponse {
+  return clearChallengeCookie(response);
+}
+
+async function verifyAttestation(
+  attestation: Record<string, unknown>,
+  challenge: string,
+): Promise<RegistrationCredential | null> {
+  try {
+    const verification = await verifyRegistrationResponse({
+      response: attestation as never,
+      expectedChallenge: challenge,
+      expectedOrigin: expectedOrigin(),
+      expectedRPID: rpId(),
+      requireUserVerification: true,
+    });
+
+    if (!verification.verified || !verification.registrationInfo) return null;
+    const { credential } = verification.registrationInfo;
+    return {
+      credentialId: credential.id,
+      publicKey: Buffer.from(credential.publicKey).toString("base64url"),
+      counter: credential.counter,
+      transports: credential.transports ?? null,
+    };
+  } catch (error) {
+    await logApiError("[passkey register-verify] attestation verification failed", error);
+    return null;
+  }
+}
+
+async function persistCredential(
+  userId: string,
+  credential: RegistrationCredential,
+  deviceName: string | null,
+): Promise<boolean> {
+  try {
+    await createCredential({ userId, ...credential, deviceName });
+    return true;
+  } catch (error) {
+    await logApiError("[passkey register-verify] credential persistence failed", error);
+    return false;
+  }
+}
 
 export async function POST(request: NextRequest) {
   if (!features.passkey) {
     return jsonNoStore({ error: "Not found" }, { status: 404 });
+  }
+
+  const limits = await registerVerifyRateLimit.check(request);
+  if (!limits.allowed) {
+    const retryAfter = Math.ceil(limits.resetIn / 1000);
+    return jsonNoStore(
+      { error: "Too Many Requests", retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
   }
 
   const supabase = await createClient();
@@ -35,35 +100,26 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | { response?: { deviceName?: string } & Record<string, unknown> }
     | null;
-  if (!body?.response) return jsonNoStore({ error: "Invalid body" }, { status: 400 });
+  if (!body?.response) {
+    return clearChallenge(jsonNoStore({ error: "Invalid body" }, { status: 400 }));
+  }
   const { deviceName, ...attestation } = body.response;
 
-  try {
-    const verification = await verifyRegistrationResponse({
-      response: attestation as never,
-      expectedChallenge: challenge,
-      expectedOrigin: expectedOrigin(),
-      expectedRPID: rpId(),
-      requireUserVerification: true,
-    });
-
-    if (!verification.verified || !verification.registrationInfo) {
-      return jsonNoStore({ error: "Verification failed" }, { status: 400 });
-    }
-
-    const { credential } = verification.registrationInfo;
-    await createCredential({
-      userId: user.id,
-      credentialId: credential.id,
-      publicKey: Buffer.from(credential.publicKey).toString("base64url"),
-      counter: credential.counter,
-      deviceName: typeof deviceName === "string" ? deviceName : null,
-      transports: credential.transports ?? null,
-    });
-
-    return clearChallengeCookie(NextResponse.json({ verified: true }));
-  } catch (error) {
-    console.error("[passkey register-verify] 校验失败:", error);
-    return jsonNoStore({ error: "Verification failed" }, { status: 400 });
+  const credential = await verifyAttestation(attestation, challenge);
+  if (!credential) {
+    return clearChallenge(jsonNoStore({ error: "Verification failed" }, { status: 400 }));
   }
+
+  const persisted = await persistCredential(
+    user.id,
+    credential,
+    typeof deviceName === "string" ? deviceName : null,
+  );
+  if (!persisted) {
+    return clearChallenge(
+      jsonNoStore({ error: "Authentication unavailable" }, { status: 503 }),
+    );
+  }
+
+  return clearChallenge(jsonNoStore({ verified: true }));
 }

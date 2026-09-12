@@ -4,6 +4,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Passkey 完整登录闭环**：assertion 验签和计数器更新成功后，通过服务端一次性
+  magiclink token 桥接 Supabase SSR 会话；token/action link/邮箱/userId 不返回
+  浏览器或写入日志，已有 MFA 因子的用户继续完成 aal2 challenge。
+
+### Changed
+
+- Passkey 登录选项、认证验证、注册选项和注册验证统一补齐 flag 门控、IP 限流、
+  `no-store` 与失败后的 challenge cookie 清理；登录表单增加中英双语入口和共享 busy 状态。
+
 ## [0.6.0] — 2026-09-12
 
 > 主题：**发布门禁加固 + Supabase 免费版保活与自动恢复**

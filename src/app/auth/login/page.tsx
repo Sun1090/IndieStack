@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { ROUTES } from "@/lib/constants";
 import { getTranslations } from "next-intl/server";
+import { features } from "@/lib/feature-flags";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("auth");
@@ -39,7 +40,7 @@ export default async function LoginPage() {
           <CardDescription>{t("login.desc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoginForm />
+          <LoginForm passkeyEnabled={features.passkey && features.passkeyLogin} />
         </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-muted-foreground">

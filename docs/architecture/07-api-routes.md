@@ -142,6 +142,40 @@ Supabase OAuth 回调处理。
 - **认证** — 不需要
 - **流程** — 交换 code 为 session，重定向到 dashboard
 
+### POST /api/auth/passkey/register-options
+
+为已登录用户创建 WebAuthn registration options。
+
+- **认证** — 需要 Supabase 会话
+- **Feature flag** — `NEXT_PUBLIC_FEATURE_PASSKEY=true`
+- **速率限制** — 10 次/分钟/IP
+- **Cookie** — 短时 httpOnly challenge cookie，`no-store`
+
+### POST /api/auth/passkey/register-verify
+
+校验 attestation 并将凭据写入 `webauthn_credentials`。
+
+- **认证** — 需要 Supabase 会话
+- **Feature flag** — `NEXT_PUBLIC_FEATURE_PASSKEY=true`
+- **失败边界** — 校验失败清除 challenge 并返回通用 400；持久化失败返回 503
+
+### POST /api/auth/passkey/auth-options
+
+创建 discoverable-credential authentication options，不接收用户标识。
+
+- **认证** — 不需要 Supabase 会话（由 WebAuthn assertion 完成用户识别）
+- **Feature flag** — `NEXT_PUBLIC_FEATURE_PASSKEY` 与 `NEXT_PUBLIC_FEATURE_PASSKEY_LOGIN` 同时为 true
+- **速率限制** — 10 次/分钟/IP
+
+### POST /api/auth/passkey/auth-verify
+
+校验 assertion、更新签名计数器，并为已验签用户建立 Supabase 会话。
+
+- **认证** — 依赖 WebAuthn assertion 与 httpOnly challenge cookie
+- **会话桥接** — 服务端生成并立即消费一次性 magiclink token；浏览器只收到 Supabase SSR HttpOnly cookie
+- **响应** — `{ verified: true, mfaRequired: false }`，或 MFA 用户返回 `factorId` 以继续 aal2
+- **安全** — 不返回 token、action link、邮箱或 userId；失败清除 challenge；服务端桥接失败返回通用 503
+
 ### POST /api/webhooks/stripe
 
 Stripe Webhook 事件处理。
@@ -198,7 +232,7 @@ graph LR
 ```
 
 - **算法** — 内存滑动窗口
-- **限制** — 100 次/分钟（IP 级）
+- **限制** — 默认 100 次/分钟（IP 级）；四个 passkey 路由为 10 次/分钟（IP 级）
 - **清理** — 每 60 秒清理过期条目
 - **生产建议** — 替换为 Redis 实现（@upstash/ratelimit 或 Vercel KV）
 

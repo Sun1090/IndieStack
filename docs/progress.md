@@ -2,8 +2,8 @@
 
 ## 当前阶段
 
-- 阶段：通知与基础设施收口
-- 日期：2026-09-08
+- 阶段：Passkey 完整登录闭环与发布验证
+- 日期：2026-09-12
 - 策略：本地连续开发、阶段完成后统一推送
 
 ## 已完成
@@ -11,7 +11,7 @@
 - C01–C10、F01–F10
 - A01–A10
 - B01–B10
-- E08
+- E08、E10
 - 提交：b8a4fd8（CI、CodeQL、Secrets Scan 均成功）
 
 ## 本批次
@@ -25,12 +25,14 @@
 - [x] B09 统一重试/死信查询与回执（既有 email_attempts 上限机制，新增死信查询 API 层）
 - [x] B10 通知链路 E2E：成功回执、失败 attempts/error、重试上限过滤、死信查询与 cron 鉴权
 - [x] A06–A10 存储生产能力收口
+- [x] Passkey → Supabase session bridge：一次性 magiclink 服务端消费、MFA aal2 衔接、四路由限流与 challenge 清理、中英双语登录入口
 
 ## 验证
 
-- 最近本地完整验证：通过（761 tests；verify:build 通过；完整 Playwright E2E 43/43 通过）
-- 本地验证：type-check、lint、test（761）、coverage（分支 90.27%）、build 通过；CI 曾因 coverage 统计包含未覆盖的 server action 导致分支 88.88% 失败，已修正 coverage exclude
-- CI：99f218e 的 CI、CodeQL、Secrets Scan、Build、E2E 均通过（CI run 34068093215；E2E 有 1 个 flaky annotation 但最终通过）
+- 最近本地完整验证：通过（88 files / 784 tests；`pnpm verify:build` 通过；Playwright E2E 43/43 通过）
+- 覆盖率：Statements 95.34%、Branches 90.13%、Functions 96.83%、Lines 96.49%，branches 门禁 90% 通过
+- 安全/运维：`pnpm audit --audit-level high` 无已知漏洞；生产 `/api/health` 通过；Supabase auto-restore 手动 dry-run 确认项目健康且无需恢复
+- CI：`0930c1f` 的 CI、CodeQL、Secrets Scan、Security/config checks 均通过（run 34669221490 等）
 
 ## 下一入口
 
@@ -62,3 +64,4 @@
 
 - 2026-09-09：新增 `024_storage_avatars_policies.sql`，将 `avatars` 公共 bucket 与按用户前缀限制的 Storage 对象策略纳入迁移；`check:supabase-security`、`check:rls`、`check:migrations` 全部通过。`pnpm db:status` 仍受本机缺失 `supabase_db_indiestack` 容器阻塞，真实数据库身份矩阵尚未宣称完成。
 - 2026-09-09：CI/聚合门禁接入 migration、Supabase security、repository security、release-docs 检查；`pnpm verify:all` 通过（763 tests）。`pnpm test:e2e` 通过（43/43）。
+- 2026-09-12：完成 Passkey 登录会话桥接。assertion 与计数器更新成功后由服务端生成并立即消费一次性 magiclink token，通过 `@supabase/ssr` 下发会话 cookie；MFA 用户保留 aal2 跳转；token/action link/邮箱/userId 不出服务端，失败统一 503/400 并清理 challenge cookie。四路由补齐 10 次/分钟 IP 限流、`no-store` 和 flag 门控；新增 8 个契约测试。`verify:build`、E2E 43/43、coverage、audit 与生产 health 均通过。
