@@ -499,3 +499,117 @@ describe("Mock storage（F07 上传失败/重试）", () => {
     expect(getMockUploadFailNext(isolatedStore)).toBe(1);
   });
 });
+
+describe("Mock push delivery queue", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  it("支持按到期时间 lte 过滤并按时间升序取批次", async () => {
+    const client = createMockSupabaseClient();
+    await client.from("push_delivery_attempts").insert([
+      {
+        notification_id: "n1",
+        user_id: "u1",
+        endpoint: "https://push/older",
+        status: "pending",
+        next_attempt_at: "2026-09-13T00:00:00.000Z",
+      },
+      {
+        notification_id: "n1",
+        user_id: "u1",
+        endpoint: "https://push/boundary",
+        status: "pending",
+        next_attempt_at: "2026-09-13T01:00:00.000Z",
+      },
+      {
+        notification_id: "n1",
+        user_id: "u1",
+        endpoint: "https://push/future",
+        status: "pending",
+        next_attempt_at: "2026-09-13T02:00:00.000Z",
+      },
+    ]);
+
+    const { data, error } = await client
+      .from("push_delivery_attempts")
+      .select("*")
+      .eq("status", "pending")
+      .lte("next_attempt_at", "2026-09-13T01:00:00.000Z")
+      .order("next_attempt_at", { ascending: true })
+      .limit(2);
+
+    expect(error).toBeNull();
+    expect(asRows(data).map((row) => row.endpoint)).toEqual([
+      "https://push/older",
+      "https://push/boundary",
+    ]);
+  });
+
+  it("支持先按时间选终态再按 id 删除，且 pending 不受影响", async () => {
+    const client = createMockSupabaseClient();
+    await client.from("push_delivery_attempts").insert([
+      {
+        notification_id: "n1",
+        user_id: "u1",
+        endpoint: "https://push/aged-sent",
+        status: "sent",
+        sent_at: "2026-09-01T00:00:00.000Z",
+      },
+      {
+        notification_id: "n1",
+        user_id: "u1",
+        endpoint: "https://push/fresh-sent",
+        status: "sent",
+        sent_at: "2026-09-12T00:00:00.000Z",
+      },
+      {
+        notification_id: "n1",
+        user_id: "u1",
+        endpoint: "https://push/old-pending",
+        status: "pending",
+        next_attempt_at: "2026-09-14T00:00:00.000Z",
+      },
+    ]);
+
+    const { data: aged } = await client
+      .from("push_delivery_attempts")
+      .select("id")
+      .eq("status", "sent")
+      .lt("sent_at", "2026-09-08T00:00:00.000Z")
+      .order("sent_at", { ascending: true })
+      .limit(1000);
+    const ids = asRows(aged).map((row) => row.id as string);
+    expect(ids).toHaveLength(1);
+
+    await client.from("push_delivery_attempts").delete().in("id", ids);
+
+    const { data: remaining } = await client.from("push_delivery_attempts").select("*");
+    expect(asRows(remaining).map((row) => row.endpoint).sort()).toEqual([
+      "https://push/fresh-sent",
+      "https://push/old-pending",
+    ]);
+  });
+
+  it("纯数字字符串仍按数值比较，不被 Date.parse 误判", async () => {
+    const client = createMockSupabaseClient();
+    await client.from("push_delivery_attempts").insert([
+      { notification_id: "n1", endpoint: "https://push/2", attempt_count: "2" },
+      { notification_id: "n1", endpoint: "https://push/3", attempt_count: "3" },
+      { notification_id: "n1", endpoint: "https://push/20", attempt_count: "20" },
+      { notification_id: "n1", endpoint: "https://push/21", attempt_count: "21" },
+    ]);
+
+    const { data } = await client
+      .from("push_delivery_attempts")
+      .select("*")
+      .gte("attempt_count", "3")
+      .lte("attempt_count", "20")
+      .order("attempt_count", { ascending: true });
+
+    expect(asRows(data).map((row) => row.endpoint).sort()).toEqual([
+      "https://push/20",
+      "https://push/3",
+    ]);
+  });
+});

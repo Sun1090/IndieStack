@@ -98,6 +98,7 @@ let _mockWorkerRuns: Record<string, unknown>[] | null = null;
 let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
 let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null = null;
 let _mockWebhookEvents: Record<string, unknown>[] | null = null;
+let _mockPushDeliveryAttempts: Record<string, unknown>[] | null = null;
 type MockMfaChallenge = {
   id: string;
   factor_id: string;
@@ -133,6 +134,7 @@ export function resetMockCache() {
   _mockMarketingSubscriptions = null;
   _mockContactMessages = null;
   _mockWebhookEvents = null;
+  _mockPushDeliveryAttempts = null;
   _mockMfaFactors = null;
   _mockMfaChallenges = null;
   mockCacheClear();
@@ -329,6 +331,18 @@ function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<s
   return fresh;
 }
 
+function getMockPushDeliveryAttempts(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>(store, "PushDeliveryAttempts");
+  if (cached) {
+    _mockPushDeliveryAttempts = cached;
+    return cached;
+  }
+  const fresh: Record<string, unknown>[] = [];
+  _mockPushDeliveryAttempts = fresh;
+  mockCacheSet(store, "PushDeliveryAttempts", fresh);
+  return fresh;
+}
+
 function getMockMfaChallenges(store: MockStore = MOCK_GLOBAL): MockMfaChallenge[] {
   const cached = mockCacheGet<MockMfaChallenge[]>(store, "MfaChallenges");
   if (cached) {
@@ -470,6 +484,12 @@ class MockQueryBuilder {
   /** 过滤条件 lt */
   lt(column: string, value: unknown) {
     this.filters[`${column}:lt`] = value;
+    return this;
+  }
+
+  /** 过滤条件 lte */
+  lte(column: string, value: unknown) {
+    this.filters[`${column}:lte`] = value;
     return this;
   }
 
@@ -739,6 +759,8 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination((getMockContactMessages() ?? []) as unknown[]);
       case "webhook_events":
         return this.applyFiltersAndPagination(getMockWebhookEvents(this.store));
+      case "push_delivery_attempts":
+        return this.applyFiltersAndPagination(getMockPushDeliveryAttempts(this.store));
       default:
         return [];
     }
@@ -827,14 +849,21 @@ class MockQueryBuilder {
         if (!(value as unknown[]).includes(row[column])) return false;
         continue;
       }
-      if (
-        key.endsWith(":gte") ||
-        key.endsWith(":lt") ||
-        key.endsWith(":contains") ||
-        key.endsWith(":not") ||
-        key === ":or"
-      )
+      if (key.endsWith(":gte") || key.endsWith(":lt") || key.endsWith(":lte")) {
+        const suffix = key.endsWith(":gte") ? ":gte" : key.endsWith(":lt") ? ":lt" : ":lte";
+        const column = key.slice(0, -suffix.length);
+        const comparison = this.compareOrdered(row[column], value);
+        if (
+          comparison === null ||
+          (suffix === ":gte" && comparison < 0) ||
+          (suffix === ":lt" && comparison >= 0) ||
+          (suffix === ":lte" && comparison > 0)
+        ) {
+          return false;
+        }
         continue;
+      }
+      if (key.endsWith(":contains") || key.endsWith(":not") || key === ":or") continue;
       if (key.endsWith(":isnull")) continue;
       // 通用 eq 过滤（如 email），与真实 PostgREST 行为一致
       if (key === "id" || key === "user_id" || key === "team_id") continue;
@@ -872,6 +901,8 @@ class MockQueryBuilder {
         return getMockContactMessages();
       case "webhook_events":
         return getMockWebhookEvents(this.store);
+      case "push_delivery_attempts":
+        return getMockPushDeliveryAttempts(this.store);
       default:
         return null;
     }
@@ -915,6 +946,7 @@ class MockQueryBuilder {
         key.endsWith(":in") ||
         key.endsWith(":gte") ||
         key.endsWith(":lt") ||
+        key.endsWith(":lte") ||
         key.endsWith(":contains") ||
         key.endsWith(":not") ||
         key === ":or"
@@ -931,20 +963,16 @@ class MockQueryBuilder {
         result = result.filter((item: any) => values.includes(item[column]));
         return;
       }
-      if (key.endsWith(":gte")) {
-        const column = key.slice(0, -4);
-        result = result.filter(
-          (item: any) =>
-            Number(this.readPath(item, column)) >= Number(this.matchValue(value, value)),
-        );
-        return;
-      }
-      if (key.endsWith(":lt")) {
-        const column = key.slice(0, -3);
-        result = result.filter(
-          (item: any) =>
-            Number(this.readPath(item, column)) < Number(this.matchValue(value, value)),
-        );
+      if (key.endsWith(":gte") || key.endsWith(":lt") || key.endsWith(":lte")) {
+        const suffix = key.endsWith(":gte") ? ":gte" : key.endsWith(":lt") ? ":lt" : ":lte";
+        const column = key.slice(0, -suffix.length);
+        result = result.filter((item: any) => {
+          const comparison = this.compareOrdered(this.readPath(item, column), value);
+          if (comparison === null) return false;
+          if (suffix === ":gte") return comparison >= 0;
+          if (suffix === ":lt") return comparison < 0;
+          return comparison <= 0;
+        });
         return;
       }
       if (key.endsWith(":contains")) {
@@ -1014,6 +1042,36 @@ class MockQueryBuilder {
       current = (current as Record<string, unknown>)[key];
     }
     return current;
+  }
+
+  /**
+   * 有序比较：ISO 日期字符串按时间戳比较，数值字符串按数值比较；
+   * 无法解析时返回 null，避免把无效值误判为满足范围条件。
+   */
+  private compareOrdered(current: unknown, expected: unknown): number | null {
+    if (current === null || current === undefined || expected === null || expected === undefined) {
+      return null;
+    }
+    const currentTime = this.toIsoTimestamp(current);
+    const expectedTime = this.toIsoTimestamp(expected);
+    if (currentTime !== null && expectedTime !== null) {
+      return currentTime - expectedTime;
+    }
+    const currentNumber = Number(current);
+    const expectedNumber = Number(expected);
+    if (!Number.isFinite(currentNumber) || !Number.isFinite(expectedNumber)) return null;
+    return currentNumber - expectedNumber;
+  }
+
+  /** 仅把明确 ISO 日期形态的字符串（或 Date）识别为时间，避免 "3" / "20" 被 Date.parse 误判 */
+  private toIsoTimestamp(value: unknown): number | null {
+    if (value instanceof Date) {
+      const timestamp = value.getTime();
+      return Number.isFinite(timestamp) ? timestamp : null;
+    }
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value)) return null;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : null;
   }
 
   /** 值比较：数值字符串按数值比较（metadata.email_attempts 场景），其余严格等值 */
