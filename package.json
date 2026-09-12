@@ -26,6 +26,7 @@
     "check:a11y": "node scripts/check-a11y.js",
     "dep:health": "node scripts/dep-health.js",
     "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
+    "check:all": "bash scripts/check-all.sh",
     "verify:all": "bash scripts/check-all.sh",
     "check:perf": "node scripts/check-perf.js",
     "db:status": "supabase status",
@@ -37,7 +38,13 @@
     "dev:mock": "NEXT_PUBLIC_MOCK_ENABLED=true pnpm dev",
     "dev:supabase": "bash scripts/dev.sh start",
     "generate:locales": "echo 'JSON locale files are source of truth — edit directly in messages/'",
-    "postinstall": "echo 'next-intl JSON locale files live in messages/'"
+    "postinstall": "echo 'next-intl JSON locale files live in messages/'",
+    "health:check": "node scripts/check-health.js",
+    "check:i18n": "node scripts/check-i18n-usage.js",
+    "check:migrations": "node scripts/check-migrations.js",
+    "check:security": "node scripts/check-security-config.js",
+    "check:supabase-security": "node scripts/check-supabase-security.js",
+    "check:release-docs": "node scripts/check-release-docs.js"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
