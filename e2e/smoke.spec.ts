@@ -70,6 +70,19 @@ test.describe("登录全流程（Mock）", () => {
 });
 
 test.describe("语言切换", () => {
+  test("键盘可打开语言菜单并识别当前语言", async ({ page }) => {
+    await page.goto("/");
+    const trigger = page.getByRole("button", { name: "切换语言 / Switch language" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+
+    await expect(page.getByRole("menu")).toBeVisible();
+    await expect(page.locator('[role="menuitem"][aria-current="true"]')).toHaveText(/English/);
+
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+  });
+
   test("切换到 English 后 Cookie 持久化", async ({ page }) => {
     await page.goto("/");
     // 打开语言菜单并选择 English
