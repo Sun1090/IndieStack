@@ -11,6 +11,7 @@ import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import type { Database } from "@/lib/supabase/database.types";
+import { cleanupManagedStorageUrl } from "@/lib/storage";
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(1, "projectNameRequired").max(100),
@@ -98,9 +99,11 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
   // 权限校验：当前用户须为项目所属团队的 owner/admin
   const { data: project } = (await supabase
     .from("projects")
-    .select("team_id")
+    .select("team_id, logo_url")
     .eq("id", projectId)
-    .maybeSingle()) as unknown as { data: { team_id: string } | null };
+    .maybeSingle()) as unknown as {
+    data: { team_id: string; logo_url: string | null } | null;
+  };
 
   if (!project) return fail("projectNotFound");
 
@@ -123,6 +126,10 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
   }
 
   revalidatePath(ROUTES.dashboardProjects);
+  await cleanupManagedStorageUrl(project.logo_url, "covers", projectId, {
+    operation: "project-delete",
+    resourceId: projectId,
+  });
   return ok();
 }
 

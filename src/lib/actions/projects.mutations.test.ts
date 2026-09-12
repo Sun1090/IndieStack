@@ -4,11 +4,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { deleteProject, updateProject } from "./projects";
 
+const { removeMock, extractKeyMock } = vi.hoisted(() => ({
+  removeMock: vi.fn(async (_key?: string) => undefined),
+  extractKeyMock: vi.fn<(url: string | null, prefix: string, tenant: string) => string | null>(
+    () => null,
+  ),
+}));
+
+vi.mock("@/lib/storage", () => ({
+  getStorageDriver: () => ({ remove: removeMock }),
+  extractManagedObjectKey: extractKeyMock,
+  cleanupManagedStorageUrl: vi.fn(async (url: string | null, prefix: string, tenant: string) => {
+    const key = extractKeyMock(url, prefix, tenant);
+    if (!key) return false;
+    await removeMock(key);
+    return true;
+  }),
+}));
+
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const mockState = vi.hoisted(() => ({
   user: null as unknown,
-  project: null as { team_id: string } | null,
+  project: null as { team_id: string; logo_url: string | null } | null,
   membershipRole: null as string | null,
   updateError: null as { message: string } | null,
   deleteError: null as { message: string } | null,
@@ -51,7 +69,8 @@ vi.mock("@/lib/supabase/server", () => ({
 
 beforeEach(() => {
   mockState.user = { id: "u1" };
-  mockState.project = { team_id: "t1" };
+  mockState.project = { team_id: "t1", logo_url: null };
+  extractKeyMock.mockReturnValue(null);
   mockState.membershipRole = "owner";
   mockState.updateError = null;
   mockState.deleteError = null;
@@ -85,6 +104,14 @@ describe("deleteProject()", () => {
     mockState.deleteError = { message: "db" };
     const result = await deleteProject("p1");
     expect(result).toEqual({ ok: false, error: "databaseError" });
+  });
+
+  it("删除成功后清理当前项目的受管封面", async () => {
+    extractKeyMock.mockReturnValue("covers/p1/old.webp");
+    mockState.project = { team_id: "t1", logo_url: "https://cdn.example/covers/p1/old.webp" };
+    const result = await deleteProject("p1");
+    expect(result).toEqual({ ok: true });
+    expect(removeMock).toHaveBeenCalledWith("covers/p1/old.webp");
   });
 });
 

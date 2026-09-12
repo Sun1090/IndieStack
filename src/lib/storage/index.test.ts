@@ -30,6 +30,8 @@ import {
   ALLOWED_IMAGE_TYPES,
   AVATAR_MAX_BYTES,
   SIGNED_URL_MAX_SECONDS,
+  cleanupStorageObject,
+  cleanupManagedStorageUrl,
 } from "./index";
 
 const OSS_ENV = {
@@ -234,5 +236,57 @@ describe("extractManagedObjectKey()", () => {
       extractManagedObjectKey("https://cdn.example/avatars/u1/%2e%2e/secret", "avatars", "u1"),
     ).toBeNull();
     expect(extractManagedObjectKey("javascript:alert(1)", "avatars", "u1")).toBeNull();
+  });
+});
+
+describe("storage cleanup helpers", () => {
+  let remove: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    setOssEnv({});
+    remove = vi.fn(async () => ({ error: null }));
+    createAdminClientMock.mockClear();
+    createAdminClientMock.mockReturnValue({
+      storage: {
+        from: vi.fn(() => ({ remove })),
+      },
+    });
+  });
+
+  it("成功清理受管对象并返回 true", async () => {
+    await expect(
+      cleanupStorageObject("avatars/u1/old.png", { operation: "test", resourceId: "u1" }),
+    ).resolves.toBe(true);
+    expect(remove).toHaveBeenCalledWith(["avatars/u1/old.png"]);
+  });
+
+  it("拒绝危险 key 且不触发 provider", async () => {
+    await expect(
+      cleanupStorageObject("../secret", { operation: "test", resourceId: "u1" }),
+    ).resolves.toBe(false);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("provider 删除失败时返回 false 而不抛出", async () => {
+    const remove = vi.fn(async () => ({ error: { message: "provider unavailable" } }));
+    createAdminClientMock.mockReturnValue({ storage: { from: vi.fn(() => ({ remove })) } });
+    await expect(
+      cleanupStorageObject("avatars/u1/old.png", { operation: "test", resourceId: "u1" }),
+    ).resolves.toBe(false);
+  });
+
+  it("仅清理匹配租户的 URL", async () => {
+    await expect(
+      cleanupManagedStorageUrl("https://cdn.example/avatars/u1/old.png", "avatars", "u1", {
+        operation: "test",
+        resourceId: "u1",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      cleanupManagedStorageUrl("https://cdn.example/avatars/u2/old.png", "avatars", "u1", {
+        operation: "test",
+        resourceId: "u1",
+      }),
+    ).resolves.toBe(false);
   });
 });

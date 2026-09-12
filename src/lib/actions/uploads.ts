@@ -12,6 +12,8 @@ import {
   buildObjectKey,
   ALLOWED_IMAGE_TYPES,
   AVATAR_MAX_BYTES,
+  cleanupManagedStorageUrl,
+  cleanupStorageObject,
   extractManagedObjectKey,
 } from "@/lib/storage";
 import { ROUTES } from "@/lib/constants";
@@ -56,11 +58,7 @@ export async function uploadAvatar(formData: FormData): Promise<ActionResult<{ u
     if (error) {
       console.error("[uploadAvatar] 头像地址写回失败:", error);
       // 数据库回写失败时回收刚上传对象，避免产生跨租户孤儿文件。
-      try {
-        await getStorageDriver().remove(key);
-      } catch (cleanupError) {
-        console.error("[uploadAvatar] 孤儿对象清理失败:", cleanupError);
-      }
+      await cleanupStorageObject(key, { operation: "avatar-upload-rollback", resourceId: user.id });
       return fail("uploadFailed");
     }
 
@@ -68,11 +66,10 @@ export async function uploadAvatar(formData: FormData): Promise<ActionResult<{ u
     revalidatePath(ROUTES.dashboardProfileEdit);
     const oldKey = extractManagedObjectKey(previousProfile?.avatar_url, "avatars", user.id);
     if (oldKey && oldKey !== key) {
-      try {
-        await getStorageDriver().remove(oldKey);
-      } catch (cleanupError) {
-        console.error("[uploadAvatar] 旧头像清理失败:", cleanupError);
-      }
+      await cleanupManagedStorageUrl(previousProfile?.avatar_url, "avatars", user.id, {
+        operation: "avatar-replace",
+        resourceId: user.id,
+      });
     }
     return ok({ url });
   } catch (error) {
@@ -128,22 +125,20 @@ export async function uploadProjectCover(
     if (error) {
       console.error("[uploadProjectCover] 封面地址写回失败:", error);
       // 数据库回写失败时回收刚上传对象，避免项目封面孤儿文件。
-      try {
-        await getStorageDriver().remove(key);
-      } catch (cleanupError) {
-        console.error("[uploadProjectCover] 孤儿对象清理失败:", cleanupError);
-      }
+      await cleanupStorageObject(key, {
+        operation: "project-cover-upload-rollback",
+        resourceId: projectId,
+      });
       return fail("uploadFailed");
     }
 
     revalidatePath(`${ROUTES.dashboardProjects}/${projectId}`);
     const oldKey = extractManagedObjectKey(project.logo_url, "covers", projectId);
     if (oldKey && oldKey !== key) {
-      try {
-        await getStorageDriver().remove(oldKey);
-      } catch (cleanupError) {
-        console.error("[uploadProjectCover] 旧封面清理失败:", cleanupError);
-      }
+      await cleanupManagedStorageUrl(project.logo_url, "covers", projectId, {
+        operation: "project-cover-replace",
+        resourceId: projectId,
+      });
     }
     return ok({ url });
   } catch (error) {
