@@ -7,6 +7,7 @@
  */
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStorageConfigReport } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import OSS from "ali-oss";
 
 /** 允许的图片类型 → 存储扩展名（content-type 白名单，拒绝任意扩展名拼接） */
@@ -167,4 +168,56 @@ export function extractManagedObjectKey(
   } catch {
     return null;
   }
+}
+
+export interface StorageCleanupContext {
+  operation: string;
+  resourceId: string;
+}
+
+/**
+ * Best-effort managed-object cleanup used after a successful metadata mutation
+ * or when a metadata write fails after the object was uploaded. Cleanup is
+ * deliberately non-blocking: the database remains the source of truth and a
+ * failed provider call is recorded with structured context for later repair.
+ */
+export async function cleanupStorageObject(
+  key: string,
+  context: StorageCleanupContext,
+): Promise<boolean> {
+  if (!key || key.includes("..") || key.includes("\\") || key.startsWith("/")) {
+    logger.warn("storage cleanup skipped: invalid managed key", {
+      operation: context.operation,
+      resourceId: context.resourceId,
+    });
+    return false;
+  }
+
+  try {
+    await getStorageDriver().remove(key);
+    logger.info("storage object cleaned", {
+      operation: context.operation,
+      resourceId: context.resourceId,
+      key,
+    });
+    return true;
+  } catch (error) {
+    logger.error(
+      "storage object cleanup failed",
+      { operation: context.operation, resourceId: context.resourceId, key },
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    return false;
+  }
+}
+
+/** Extracts and cleans a URL only when it belongs to the expected tenant. */
+export async function cleanupManagedStorageUrl(
+  rawUrl: string | null | undefined,
+  prefix: string,
+  tenantId: string,
+  context: StorageCleanupContext,
+): Promise<boolean> {
+  const key = extractManagedObjectKey(rawUrl, prefix, tenantId);
+  return key ? cleanupStorageObject(key, context) : false;
 }

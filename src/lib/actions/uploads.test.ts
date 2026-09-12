@@ -9,7 +9,7 @@ const { createClientMock, revalidatePathMock, putMock, removeMock, extractKeyMoc
     createClientMock: vi.fn(),
     revalidatePathMock: vi.fn(),
     putMock: vi.fn(async () => "https://cdn.example/avatars/u1/k.png"),
-    removeMock: vi.fn(async () => undefined),
+    removeMock: vi.fn(async (_key?: string) => undefined),
     extractKeyMock: vi.fn<
       (url: string | null | undefined, prefix: string, tenant: string) => string | null
     >(() => null),
@@ -30,6 +30,16 @@ vi.mock("@/lib/storage", () => ({
   ALLOWED_IMAGE_TYPES: { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" },
   AVATAR_MAX_BYTES: 2 * 1024 * 1024,
   extractManagedObjectKey: extractKeyMock,
+  cleanupStorageObject: vi.fn(async (key: string) => {
+    await removeMock(key);
+    return true;
+  }),
+  cleanupManagedStorageUrl: vi.fn(async (url: string | null, prefix: string, tenant: string) => {
+    const key = extractKeyMock(url, prefix, tenant);
+    if (!key) return false;
+    await removeMock(key);
+    return true;
+  }),
 }));
 
 import { uploadAvatar, uploadProjectCover } from "./uploads";
