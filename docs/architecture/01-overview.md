@@ -49,7 +49,7 @@ graph TB
         Stripe["Stripe<br/>(支付/订阅)"]
         Sentry["Sentry<br/>(错误监控)"]
         OSS["阿里云 OSS<br/>(文件存储)"]
-        Appark["Appark<br/>(APM 性能监控，规划中)"]
+        Appark["Appark<br/>(APM 性能监控)"]
     end
 
     Browser --> MW
@@ -108,7 +108,7 @@ graph LR
 2. **中间件层** — Edge Middleware，处理会话刷新和路由级保护，在每个请求到达页面前执行
 3. **业务逻辑层** — Server Actions、API Route Handlers、Auth Guards，处理业务逻辑和权限校验
 4. **数据访问层** — Supabase 客户端（Server/Browser/Admin）、Stripe 客户端、OSS 客户端，封装外部服务访问
-5. **基础设施层** — PostgreSQL 数据库、Stripe 支付网关、Sentry 错误监控、阿里云 OSS（规划中）、Appark APM（规划中）
+5. **基础设施层** — PostgreSQL 数据库、Stripe 支付网关、Sentry 错误监控、阿里云 OSS（按配置启用）、Appark APM（按配置启用）
 
 ## 核心设计原则
 
@@ -122,21 +122,21 @@ graph LR
 
 ## 技术栈速览
 
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| 框架 | Next.js (App Router) | ^15.2.0 |
-| 语言 | TypeScript | ^5.7.3 |
-| UI | React + Tailwind CSS + shadcn/ui | React ^19.0.0 |
-| 数据库 | PostgreSQL (via Supabase) | Supabase ^2.49.1 |
-| 认证 | Supabase Auth (Cookie SSR) | @supabase/ssr ^0.6.1 |
-| 支付 | Stripe | ^22.3.2 |
-| 国际化 | next-intl | ^4.13.2 |
-| 错误监控 | Sentry | @sentry/nextjs ^9.5.0 |
-| 文件存储 | 阿里云 OSS | 自定义封装 |
-| 性能监控 | Appark APM（规划中） | 自定义封装（未接线） |
-| 测试 | Vitest + @faker-js/faker | Vitest ^4.1.10 |
-| 包管理 | pnpm | — |
-| 部署 | Docker / Vercel | — |
+| 层级     | 技术                             | 版本                                                             |
+| -------- | -------------------------------- | ---------------------------------------------------------------- |
+| 框架     | Next.js (App Router)             | ^16.3.2                                                          |
+| 语言     | TypeScript                       | ^5.7.3                                                           |
+| UI       | React + Tailwind CSS + shadcn/ui | React ^19.0.0                                                    |
+| 数据库   | PostgreSQL (via Supabase)        | Supabase ^2.49.1                                                 |
+| 认证     | Supabase Auth (Cookie SSR)       | @supabase/ssr ^0.6.1                                             |
+| 支付     | Stripe                           | ^22.3.2                                                          |
+| 国际化   | next-intl                        | ^4.13.2                                                          |
+| 错误监控 | Sentry                           | @sentry/nextjs ^9.5.0                                            |
+| 文件存储 | Supabase Storage / 阿里云 OSS    | `StorageDriver`，OSS 配置不完整时安全回退                        |
+| 性能监控 | Appark APM（可选）               | `src/lib/appark.ts` 轻量封装，API Key 与 endpoint 同时配置才启用 |
+| 测试     | Vitest + @faker-js/faker         | Vitest ^4.1.10                                                   |
+| 包管理   | pnpm                             | —                                                                |
+| 部署     | Docker / Vercel                  | —                                                                |
 
 ## 页面路由分组
 
@@ -226,18 +226,18 @@ sequenceDiagram
 
 ## 文档导航
 
-| 文档 | 内容 |
-|------|------|
-| [02-tech-stack.md](./02-tech-stack.md) | 技术栈详解 |
-| [03-project-structure.md](./03-project-structure.md) | 目录结构说明 |
-| [04-routing.md](./04-routing.md) | 路由体系 |
-| [05-auth-rbac.md](./05-auth-rbac.md) | 认证与 RBAC 权限系统 |
-| [06-database.md](./06-database.md) | 数据库设计 |
-| [07-api-routes.md](./07-api-routes.md) | API 路由设计 |
-| [08-server-actions.md](./08-server-actions.md) | Server Actions |
-| [09-frontend-components.md](./09-frontend-components.md) | 前端组件体系 |
-| [10-i18n.md](./10-i18n.md) | 国际化方案 |
-| [11-integrations.md](./11-integrations.md) | 第三方集成 |
-| [12-deployment.md](./12-deployment.md) | 部署架构 |
-| [13-mock-system.md](./13-mock-system.md) | Mock 开发模式 |
-| [14-data-flow.md](./14-data-flow.md) | 核心业务数据流程 |
+| 文档                                                     | 内容                 |
+| -------------------------------------------------------- | -------------------- |
+| [02-tech-stack.md](./02-tech-stack.md)                   | 技术栈详解           |
+| [03-project-structure.md](./03-project-structure.md)     | 目录结构说明         |
+| [04-routing.md](./04-routing.md)                         | 路由体系             |
+| [05-auth-rbac.md](./05-auth-rbac.md)                     | 认证与 RBAC 权限系统 |
+| [06-database.md](./06-database.md)                       | 数据库设计           |
+| [07-api-routes.md](./07-api-routes.md)                   | API 路由设计         |
+| [08-server-actions.md](./08-server-actions.md)           | Server Actions       |
+| [09-frontend-components.md](./09-frontend-components.md) | 前端组件体系         |
+| [10-i18n.md](./10-i18n.md)                               | 国际化方案           |
+| [11-integrations.md](./11-integrations.md)               | 第三方集成           |
+| [12-deployment.md](./12-deployment.md)                   | 部署架构             |
+| [13-mock-system.md](./13-mock-system.md)                 | Mock 开发模式        |
+| [14-data-flow.md](./14-data-flow.md)                     | 核心业务数据流程     |

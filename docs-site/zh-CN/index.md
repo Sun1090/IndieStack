@@ -5,7 +5,7 @@ layout: home
 hero:
   name: "IndieStack"
   text: "独立开发者的 SaaS 启动模板"
-  tagline: Next.js 15 · Tailwind CSS · shadcn/ui · Supabase · PostgreSQL · Sentry · 阿里云 · Vercel
+  tagline: Next.js 16 · Tailwind CSS · shadcn/ui · Supabase · PostgreSQL · Sentry · 阿里云 · Vercel
   image:
     src: /favicon.svg
     alt: IndieStack
@@ -22,7 +22,7 @@ hero:
 
 features:
   - title: "🏗️ 现代架构"
-    details: Next.js 15 App Router + Server Components + Server Actions + Route Groups，构建类型安全的全栈应用。
+    details: Next.js 16 App Router + Server Components + Server Actions + Route Groups，构建类型安全的全栈应用。
   - title: "🎨 组件驱动"
     details: 基于 shadcn/ui 的 23 个可定制组件，Tailwind CSS 深色/浅色双主题，响应式设计。
   - title: "🔐 开箱即用认证"

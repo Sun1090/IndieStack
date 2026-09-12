@@ -22,25 +22,38 @@ flowchart TD
 
 ### GET /api/health
 
-健康检查端点，用于负载均衡器和监控系统。
+健康检查端点，用于负载均衡器、Docker HEALTHCHECK 和监控系统。
 
 - **认证** — 不需要
 - **速率限制** — 不适用
-- **响应** — 服务状态、运行时间、依赖检查
+- **缓存** — `Cache-Control: no-store, must-revalidate`
+- **Supabase required** — 非 Mock 模式必需 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY` 和 `SUPABASE_SERVICE_ROLE_KEY`；执行 `profiles` 的 `limit(1)` 探测，超时为 3 秒
+- **可选依赖** — Sentry、Stripe 缺失不会使服务进入 degraded/error
+- **HTTP 状态** — `200` 表示 ready；required 依赖缺失为 `503` + `error`；required 依赖已配置但不可达为 `503` + `degraded`；本地 Mock 模式下 Supabase 为 `skipped` 且返回 `200`
+
+响应示例（生产环境 required 依赖正常时）：
 
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-08-02T...",
-  "uptime": 3600,
-  "environment": "production",
+  "ready": true,
+  "degraded": false,
+  "mockMode": false,
   "checks": {
-    "supabase": { "configured": true },
-    "sentry": { "configured": true },
-    "stripe": { "configured": true }
-  }
+    "supabase": {
+      "required": true,
+      "configured": true,
+      "reachable": true,
+      "status": "ok"
+    },
+    "sentry": { "required": false, "configured": false, "status": "missing" },
+    "stripe": { "required": false, "configured": false, "status": "missing" }
+  },
+  "allConfigured": false
 }
 ```
+
+`allConfigured` 为兼容旧消费者保留，表示包括可选依赖在内是否全部配置；监控和负载均衡应使用 `status`/`ready`，不要使用该兼容字段。
 
 ### GET /api/user
 
@@ -158,16 +171,16 @@ Stripe Webhook 事件处理。
 
 ### 常见状态码
 
-| 状态码 | 含义 | 场景 |
-|--------|------|------|
-| 200 | OK | 请求成功 |
-| 204 | No Content | 删除成功 |
-| 400 | Bad Request | 输入验证失败 |
-| 401 | Unauthorized | 未登录 |
-| 403 | Forbidden | 权限不足 |
-| 404 | Not Found | 资源不存在 |
-| 429 | Too Many Requests | 速率限制 |
-| 500 | Internal Server Error | 服务端错误 |
+| 状态码 | 含义                  | 场景         |
+| ------ | --------------------- | ------------ |
+| 200    | OK                    | 请求成功     |
+| 204    | No Content            | 删除成功     |
+| 400    | Bad Request           | 输入验证失败 |
+| 401    | Unauthorized          | 未登录       |
+| 403    | Forbidden             | 权限不足     |
+| 404    | Not Found             | 资源不存在   |
+| 429    | Too Many Requests     | 速率限制     |
+| 500    | Internal Server Error | 服务端错误   |
 
 ## 速率限制
 

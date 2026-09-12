@@ -149,7 +149,7 @@ Project/
 ├── .vscode/                      # VS Code 配置
 ├── package.json
 ├── tsconfig.json
-├── tailwind.config.ts
+├── src/app/globals.css       # Tailwind v4 @theme 与设计令牌
 ├── next.config.ts
 ├── eslint.config.mjs
 ├── vitest.config.ts

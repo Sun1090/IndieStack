@@ -25,8 +25,9 @@
 ### 环境变量
 
 所有环境变量在 `.env.example` 中有文档说明，分为：
+
 - **必需**: Supabase URL + anon key + service role key
-- **可选**: Sentry DSN, Stripe keys, Alibaba Cloud OSS（规划中）, Appark（规划中）
+- **可选**: Sentry DSN, Stripe keys, Alibaba Cloud OSS（四项 `OSS_*` 齐备时启用，否则安全回退 Supabase Storage）, Appark（`APPARK_API_KEY` 与 `APPARK_ENDPOINT` 齐备时启用，默认旁路关闭）
 
 ### Vercel 部署
 
@@ -42,18 +43,21 @@ vercel --prod
 ```
 
 #### Vercel 项目配置
+
 - **App**: Next.js 自动检测
 - **Docs**: VitePress 静态构建（配置见 `docs-site/vercel.json`）
 
 ### Docker 部署
 
 **App**（`Dockerfile`，多阶段 Node standalone 构建）:
+
 ```bash
 docker build -t indiestack .
 docker run -p 3000:3000 --env-file .env.production indiestack
 ```
 
 **Docs**（`docs-site/Dockerfile`，Nginx 提供静态文件）:
+
 ```bash
 cd docs-site
 docker build -t indiestack-docs .
@@ -63,6 +67,7 @@ docker run -p 8080:80 indiestack-docs
 ### Docker Compose（本地开发）
 
 `docker-compose.yml` 提供本地 PostgreSQL + pgAdmin：
+
 ```bash
 docker compose up -d         # 启动 PostgreSQL
 docker compose down          # 停止
@@ -70,17 +75,17 @@ docker compose down          # 停止
 
 ### GitHub Actions
 
-| 工作流 | 触发 | 操作 |
-|--------|------|------|
-| `ci.yml` | PR / push | lint → type-check → test |
-| `deploy.yml` | main 分支推送 | 构建并部署到 Vercel（App + Docs）|
+| 工作流   | 触发      | 操作                                                                    |
+| -------- | --------- | ----------------------------------------------------------------------- |
+| `ci.yml` | PR / push | lint → type-check → test                                                |
+| （无）   | —         | 当前仓库没有托管部署 workflow；Vercel 部署由项目平台/CLI 按发布清单执行 |
 
 ### 监控
 
-| 服务 | 用途 | 集成方式 |
-|------|------|----------|
-| Sentry | 错误监控 | `@sentry/nextjs`（client/edge/server 配置）|
-| Appark | APM 性能监控（规划中） | 未接线，模块已移除 |
+| 服务   | 用途         | 集成方式                                                                       |
+| ------ | ------------ | ------------------------------------------------------------------------------ |
+| Sentry | 错误监控     | `@sentry/nextjs`（client/edge/server 配置）                                    |
+| Appark | APM 性能监控 | `src/lib/appark.ts` 轻量接线，默认旁路关闭；checkout/cron 等路径按采样配置上报 |
 
 ## 本地开发环境
 

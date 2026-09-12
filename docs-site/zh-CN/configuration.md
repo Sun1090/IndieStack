@@ -4,13 +4,13 @@
 
 ### 必需配置
 
-| 变量名 | 说明 | 获取方式 |
-|--------|------|---------|
-| `NEXT_PUBLIC_APP_URL` | 应用部署 URL（开发环境为 `http://localhost:3000`） | 自行填写 |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目 URL | Supabase Dashboard → Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 匿名 Key | Supabase Dashboard → Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 服务角色 Key（仅服务端使用） | Supabase Dashboard → Settings → API |
-| `SUPABASE_DB_URL` | Supabase 数据库连接字符串 | Supabase Dashboard → Settings → Database |
+| 变量名                          | 说明                                               | 获取方式                                 |
+| ------------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| `NEXT_PUBLIC_APP_URL`           | 应用部署 URL（开发环境为 `http://localhost:3000`） | 自行填写                                 |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase 项目 URL                                  | Supabase Dashboard → Settings → API      |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 匿名 Key                                  | Supabase Dashboard → Settings → API      |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Supabase 服务角色 Key（仅服务端使用）              | Supabase Dashboard → Settings → API      |
+| `SUPABASE_DB_URL`               | Supabase 数据库连接字符串                          | Supabase Dashboard → Settings → Database |
 
 ```bash
 # 必需 — 启动最低配置
@@ -30,13 +30,13 @@ NEXT_PUBLIC_MOCK_ENABLED=true
 
 ### 监控（推荐）
 
-| 变量名 | 说明 | 获取方式 |
-|--------|------|---------|
-| `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN | Sentry Dashboard → 项目设置 |
-| `SENTRY_ORG` | Sentry 组织名 | Sentry Dashboard |
-| `SENTRY_PROJECT` | Sentry 项目名 | Sentry Dashboard |
-| `SENTRY_AUTH_TOKEN` | Sentry 认证 Token | Sentry Dashboard → Auth Tokens |
-| `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key（规划中） | Appark Dashboard |
+| 变量名                       | 说明                                             | 获取方式                       |
+| ---------------------------- | ------------------------------------------------ | ------------------------------ |
+| `NEXT_PUBLIC_SENTRY_DSN`     | Sentry DSN                                       | Sentry Dashboard → 项目设置    |
+| `SENTRY_ORG`                 | Sentry 组织名                                    | Sentry Dashboard               |
+| `SENTRY_PROJECT`             | Sentry 项目名                                    | Sentry Dashboard               |
+| `SENTRY_AUTH_TOKEN`          | Sentry 认证 Token                                | Sentry Dashboard → Auth Tokens |
+| `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key（可选，与 endpoint 同时配置） | Appark Dashboard               |
 
 ```bash
 # Sentry 错误追踪
@@ -45,19 +45,19 @@ SENTRY_ORG=your-org
 SENTRY_PROJECT=your-project
 SENTRY_AUTH_TOKEN=your-auth-token
 
-# Appark 应用监控（规划中/未接线）
+# Appark 应用监控（可选）
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 ```
 
 ### 文件存储（阿里云 OSS）
 
-| 变量名 | 说明 | 获取方式 |
-|--------|------|---------|
-| `ALIYUN_ACCESS_KEY_ID` | 阿里云 AccessKey ID | 阿里云 RAM 控制台 |
-| `ALIYUN_ACCESS_KEY_SECRET` | 阿里云 AccessKey Secret | 阿里云 RAM 控制台 |
-| `ALIYUN_BUCKET` | OSS Bucket 名称 | OSS 控制台 |
-| `ALIYUN_REGION` | OSS 区域（默认 `oss-cn-hangzhou`） | OSS 控制台 |
-| `ALIYUN_CDN_DOMAIN` | CDN 加速域名（可选） | CDN 控制台 |
+| 变量名                     | 说明                               | 获取方式          |
+| -------------------------- | ---------------------------------- | ----------------- |
+| `ALIYUN_ACCESS_KEY_ID`     | 阿里云 AccessKey ID                | 阿里云 RAM 控制台 |
+| `ALIYUN_ACCESS_KEY_SECRET` | 阿里云 AccessKey Secret            | 阿里云 RAM 控制台 |
+| `ALIYUN_BUCKET`            | OSS Bucket 名称                    | OSS 控制台        |
+| `ALIYUN_REGION`            | OSS 区域（默认 `oss-cn-hangzhou`） | OSS 控制台        |
+| `ALIYUN_CDN_DOMAIN`        | CDN 加速域名（可选）               | CDN 控制台        |
 
 ```bash
 # 阿里云 OSS
@@ -70,13 +70,13 @@ ALIYUN_CDN_DOMAIN=https://static.yourdomain.com
 
 ### 支付（Stripe）
 
-| 变量名 | 说明 | 获取方式 |
-|--------|------|---------|
-| `STRIPE_SECRET_KEY` | Stripe 密钥（以 `sk_` 开头） | Stripe Dashboard → Developers → API Keys |
-| `STRIPE_WEBHOOK_SECRET` | Webhook 签名密钥（以 `whsec_` 开头） | Stripe Dashboard → Developers → Webhooks |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | 可发布密钥（以 `pk_` 开头） | Stripe Dashboard → Developers → API Keys |
-| `STRIPE_PRO_PRICE_ID` | Pro 方案价格 ID | Stripe Dashboard → Products |
-| `STRIPE_ENTERPRISE_PRICE_ID` | Enterprise 方案价格 ID | Stripe Dashboard → Products |
+| 变量名                               | 说明                                 | 获取方式                                 |
+| ------------------------------------ | ------------------------------------ | ---------------------------------------- |
+| `STRIPE_SECRET_KEY`                  | Stripe 密钥（以 `sk_` 开头）         | Stripe Dashboard → Developers → API Keys |
+| `STRIPE_WEBHOOK_SECRET`              | Webhook 签名密钥（以 `whsec_` 开头） | Stripe Dashboard → Developers → Webhooks |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | 可发布密钥（以 `pk_` 开头）          | Stripe Dashboard → Developers → API Keys |
+| `STRIPE_PRO_PRICE_ID`                | Pro 方案价格 ID                      | Stripe Dashboard → Products              |
+| `STRIPE_ENTERPRISE_PRICE_ID`         | Enterprise 方案价格 ID               | Stripe Dashboard → Products              |
 
 ```bash
 # Stripe 支付
@@ -154,7 +154,7 @@ export const SUBSCRIPTION_TIERS = {
 
 ```typescript
 export const RATE_LIMIT = {
-  maxRequests: 100,    // 每分钟最大请求数
+  maxRequests: 100, // 每分钟最大请求数
   windowMs: 60 * 1000, // 窗口大小（1 分钟）
 };
 ```
@@ -163,24 +163,19 @@ export const RATE_LIMIT = {
 
 ### Tailwind CSS
 
-`tailwind.config.ts` 中配置了自定义颜色和 CSS 变量：
+Tailwind CSS v4 的自定义颜色、暗色变体和 CSS 变量定义在 `src/app/globals.css`：
 
-```typescript
-export default {
-  darkMode: ["class"],
-  content: ["./src/**/*.{ts,tsx}"],
-  theme: {
-    extend: {
-      colors: {
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },
-        // ...
-      },
-    },
-  },
-};
+```css
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
+}
 ```
+
+项目不再使用 `tailwind.config.ts` 或 Tailwind v3 的 `content` 配置；源码扫描和主题 token 均由 Tailwind v4 CSS 配置负责。
 
 ### CSS 变量
 
@@ -188,8 +183,12 @@ export default {
 
 ```css
 @layer base {
-  :root { /* 浅色主题变量 */ }
-  .dark { /* 深色主题变量 */ }
+  :root {
+    /* 浅色主题变量 */
+  }
+  .dark {
+    /* 深色主题变量 */
+  }
 }
 ```
 
@@ -214,11 +213,11 @@ export const routing = defineRouting({
 
 权限系统位于 `src/lib/auth/`：
 
-| 文件 | 作用 |
-|------|------|
-| `permissions.ts` | 定义 28 个权限常量，按域分组 |
-| `roles.ts` | 定义 4 个角色（super_admin / admin / member / viewer），角色-权限映射 |
-| `guards.ts` | 路由守卫：requireAuth()、requireRole()、requirePermission() |
+| 文件             | 作用                                                                  |
+| ---------------- | --------------------------------------------------------------------- |
+| `permissions.ts` | 定义 28 个权限常量，按域分组                                          |
+| `roles.ts`       | 定义 4 个角色（super_admin / admin / member / viewer），角色-权限映射 |
+| `guards.ts`      | 路由守卫：requireAuth()、requireRole()、requirePermission()           |
 
 ## 完整配置示例
 
@@ -257,6 +256,6 @@ VERCEL_PROJECT_ID=your-project-id
 VERCEL_DOCS_PROJECT_ID=your-docs-project-id
 GITHUB_TOKEN=your-github-token
 
-# ===== APM（规划中） =====
+# ===== APM（可选） =====
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 ```

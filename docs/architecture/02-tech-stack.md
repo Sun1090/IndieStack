@@ -2,14 +2,14 @@
 
 ## 核心框架
 
-### Next.js 15 (App Router)
+### Next.js 16 (App Router)
 
-项目基于 Next.js 15 的 App Router 架构，充分利用以下特性：
+项目基于 Next.js 16 的 App Router 架构，充分利用以下特性：
 
 - **Server Components** — 默认服务端渲染，减少客户端 JS 体积
 - **Server Actions** — 直接在组件中调用服务端函数，无需手写 API
 - **Route Handlers** — `app/api/` 下的 RESTful API 路由
-- **Edge Middleware** — 请求级中间件，处理认证和路由保护
+- **Proxy（Next.js 16）** — 请求级中间件，处理认证和路由保护
 - **Streaming SSR** — 通过 `loading.tsx` 实现流式渲染
 - **Metadata API** — 自动生成 SEO 元数据和 OpenGraph 图片
 - **standalone 输出** — `output: "standalone"` 适配 Docker 部署
@@ -22,14 +22,14 @@
 
 ## UI 层
 
-### Tailwind CSS 3
+### Tailwind CSS 4
 
 ```mermaid
 graph LR
     subgraph TailwindConfig
-        Content["content 扫描路径"]
-        Theme["theme.extend"]
-        Plugins["tailwindcss-animate"]
+        SourceDetection["v4 自动源码检测"]
+        Theme["@theme inline"]
+        Utilities["@utility / tw-animate-css"]
     end
     subgraph DesignTokens["CSS 变量设计令牌"]
         Colors["HSL 色彩变量<br/>--background / --foreground / --primary ..."]
@@ -39,10 +39,10 @@ graph LR
     TailwindConfig --> DesignTokens
 ```
 
-- **Dark Mode** — `darkMode: ["class"]`，通过 class 切换
+- **Dark Mode** — `@custom-variant dark`，通过 `.dark` class 切换
 - **设计令牌** — 全部使用 CSS HSL 变量，支持主题切换
 - **侧边栏主题** — 独立的 sidebar 色彩变量集
-- **动画** — `tailwindcss-animate` 插件提供手风琴等动画
+- **动画** — `tw-animate-css` 提供 CSS-only 动画工具
 
 ### shadcn/ui 组件库
 

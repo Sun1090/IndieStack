@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-06）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A05 已完成；B02 已完成（基础 Service Worker 生命周期与 push/click 处理）（provider contract、服务端中转 action、上传白名单）；其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-08）**：C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）。其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -71,9 +71,9 @@
 45. E05 OSS 上传成功率指标
 46. E06 provider fallback 指标
 47. E07 告警阈值与去重
-48. E08 health endpoint 依赖分级
+48. E08 health endpoint 依赖分级（完成：required/optional 分级、configured/reachable/status 字段、Mock 安全降级、生产缺失/不可达返回 503、单元测试与 API 文档）
 49. E09 运维 runbook 与故障演练
-50. E10 发布后 health check 自动化
+50. E10 发布后 health check 自动化（完成：`.github/workflows/health-check.yml` 手动触发部署后探测，`pnpm health:check` 复用同一校验逻辑，10 秒超时并严格要求 `200 + status=ok + ready=true`）
 
 ### F. 测试基础设施（F01–F10）
 
