@@ -2,6 +2,9 @@ name: CI
 ## CI 工作流
 ## 每次 push 到 main/develop 或 PR 到 main/develop 时运行
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, develop]
@@ -29,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Dependency security audit
+        run: pnpm audit --audit-level high
+
       - name: Lint
         run: pnpm lint
 
@@ -38,8 +44,23 @@ jobs:
       - name: Check i18n locale symmetry
         run: pnpm check:locales
 
+      - name: Check i18n translation usage
+        run: pnpm check:i18n
+
       - name: Check RLS migrations
         run: pnpm check:rls
+
+      - name: Check migration ordering and drift hazards
+        run: pnpm check:migrations
+
+      - name: Check Supabase security boundaries
+        run: pnpm check:supabase-security
+
+      - name: Check repository security configuration
+        run: pnpm check:security
+
+      - name: Check release documentation
+        run: pnpm check:release-docs
 
       # test:coverage 在 CI 同步 enforce 覆盖率门禁（branches 90%），
       # 并产出 coverage/ 供下方 artifact 上传（消除空路径告警）
@@ -86,7 +107,7 @@ jobs:
         run: pnpm build
 
       - name: a11y static audit
-        run: pnpm --silent check:a11y || true
+        run: pnpm check:a11y
 
       - name: Bundle performance assertions
         run: node scripts/check-perf.js

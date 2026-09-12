@@ -2,6 +2,18 @@
 
 All notable changes to IndieStack will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Release operations**：新增 v0.6.0 发布 runbook、生产 smoke test 矩阵和回滚 runbook，明确证据留存、停止条件、数据库向前兼容与回滚后验证。
+- **Release documentation gate**：新增 `pnpm check:release-docs`，检查发布文档、双语 README、CHANGELOG 和关键操作命令是否存在且保持同步。
+- **Supabase 免费版保活**：根目录 `vercel.json` 新增每日 Vercel Cron，`.github/workflows/health-check.yml` 追加每日 `schedule`（并改为免安装依赖、直接运行 `scripts/check-health.js`）；两者都探测 `/api/health`，触发一次 Supabase `limit(1)` 查询，避免免费版项目 7 天闲置被暂停。
+
+### Security
+
+- 营销订阅确认/退订改为 POST 执行状态变更，GET 仅展示表单；新 token 使用 hash 和 7 天有效期。
+
 ## [0.5.0] — 2026-09-05
 
 > 主题：**邮件通道完善 + 对象存储接入 + 可观测性落地**

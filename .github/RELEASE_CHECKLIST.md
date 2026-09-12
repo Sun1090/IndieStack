@@ -7,7 +7,7 @@
 
 - [ ] `package.json` version 已更新
 - [ ] `.env.example` 中 `NEXT_PUBLIC_APP_VERSION` 已同步
-- [ ] `/api/health` 版本兜底已同步（或已改为读 package.json）
+- [ ] `/api/health` 版本兜底已同步（当前默认读取 `package.json`，并验证 required/optional 依赖状态）
 
 ## 文档
 
@@ -18,12 +18,21 @@
 ## 门禁
 
 - [ ] 本地 `pnpm verify:build` 全绿（lint / type-check / test / build）
-- [ ] CI 八道关卡全绿（Lint&Type / Build / E2E / Docs / CodeQL / gitleaks…）
-- [ ] 覆盖率门禁未降低（statements/functions/lines ≥ 90%、branches ≥ 78%）
+- [ ] CI 工作流全绿（Lint&Type / Build / Docs / E2E / CodeQL / Secrets Scan）
+- [ ] 覆盖率门禁未降低（statements/functions/lines ≥ 90%、branches ≥ 90%）
 - [ ] RLS 回归脚本通过；`pnpm audit` 无高危
 
 ## 打标签
 
 ```bash
-git tag v0.4.0 && git push origin v0.4.0
+git tag v0.6.0 && git push origin v0.6.0
 ```
+
+
+## 证据与回滚
+
+- [ ] `pnpm check:release-docs` 通过，且发布记录附命令输出
+- [ ] [v0.6.0 发布 Runbook](../docs/operations/release-runbook-v0.6.0.md) 的 commit、迁移、观察窗口字段已填写
+- [ ] [生产 Smoke Test](../docs/operations/production-smoke-v0.6.0.md) 每项均有时间、状态和证据
+- [ ] [回滚 Runbook](../docs/operations/rollback-runbook-v0.6.0.md) 已由操作者和审查者复核；数据库回滚决策已明确
+- [ ] 回滚演练结果单独记录；空白模板或勾选项不视为演练证据
