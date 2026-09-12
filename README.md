@@ -137,7 +137,7 @@ src/
 | `pnpm check:locales`      | Verify en/zh-CN translation key symmetry                         |
 | `pnpm db:migrate`         | Push database migrations                                         |
 | `pnpm db:types`           | Generate TypeScript types from DB                                |
-| `pnpm test`               | Vitest unit + component tests (93 files / 832 tests)             |
+| `pnpm test`               | Vitest unit + component tests (94 files / 853 tests)             |
 | `pnpm test:e2e`           | Playwright E2E smoke tests                                       |
 | `pnpm verify:build`       | Full local release gate: checks, tests, bundle, production build |
 | `pnpm check:release-docs` | Validate release/rollback/smoke documentation artifacts          |

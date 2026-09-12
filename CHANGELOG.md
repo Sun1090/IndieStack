@@ -6,6 +6,11 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Auth 邮件配置即代码**：新增 `scripts/lib/auth-email-templates.js` 与
+  `scripts/apply-auth-email-templates.js`（`pnpm auth:email-config`），把
+  [docs/design/email-templates.md](docs/design/email-templates.md) 的 5 封邮件骨架固化为可
+  dry-run / apply / verify 的 Supabase Auth 配置补丁，并在生成前硬校验 CTA 变量与品牌头；
+  CI `Security and configuration checks` 增加重定向白名单漂移门禁。
 - **运行时身份矩阵**：新增 `pnpm smoke:supabase-identity`（`scripts/verify-supabase-identity.js`），
   使用真实 Auth + PostgREST + Storage API 验证 anon / authenticated / service_role 的
   租户隔离、`profiles` 可见范围、私有项目不可读与 `avatars` 前缀写权限；最近一次 20/20 通过，
@@ -25,8 +30,14 @@ All notable changes to IndieStack will be documented in this file.
   违反 `auth.users` 外键与 subscriptions 冲突目标无效导致的 `supabase db reset` 失败。
 - **运维文档**：部署文档补充保活/恢复的双层结构与 `CRON_SECRET`、`SUPABASE_ACCESS_TOKEN`
   配置说明；安全审计文档用真实运行时矩阵替换“本地无法启动 Supabase”的过期描述。
-- **测试与发布文档**：README 测试计数同步为 93 个文件 / 832 个测试，Smoke 记录更新到
+- **测试与发布文档**：README 测试计数同步为 94 个文件 / 853 个测试，Smoke 记录更新到
   commit `16a285a` 与对应 Vercel 生产部署。
+- **Auth 重定向白名单**：生产 Supabase 项目补入 Vercel preview 通配域名并回读校验通过
+  （`http://localhost:3000/**`、生产别名、`https://*-sun1090s-projects.vercel.app/**`、
+  `https://indie-stack-*.vercel.app/**`），preview 部署的登录回跳不再被白名单拦截。
+- **Auth 邮件模板待启用**：Supabase 免费版 + 默认发件人禁止通过 Management API 修改模板
+  （`rate_limit_email_sent = 2`，全项目每小时 2 封）。模板与命令已就绪，配置自定义 SMTP 或
+  升级套餐后执行 `pnpm auth:email-config -- --apply`；在此之前该限制会在每次注册洪峰时先暴露。
 
 - Passkey 登录选项、认证验证、注册选项和注册验证统一补齐 flag 门控、IP 限流、
   `no-store` 与失败后的 challenge cookie 清理；登录表单增加中英双语入口和共享 busy 状态。

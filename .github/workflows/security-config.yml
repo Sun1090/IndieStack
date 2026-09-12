@@ -28,3 +28,15 @@ jobs:
         run: pnpm check:security
       - name: Dependency audit
         run: pnpm audit --audit-level high
+      - name: Auth email config drift check
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "${SUPABASE_PROJECT_REF}" ] || [ -z "${SUPABASE_ACCESS_TOKEN}" ]; then
+            echo "::notice::跳过 Auth 邮件配置校验（缺少 SUPABASE_PROJECT_REF / SUPABASE_ACCESS_TOKEN）"
+            exit 0
+          fi
+          # 免费套餐使用默认发件人时无法通过 API 改模板，因此门禁只校验重定向白名单；
+          # 配置自定义 SMTP 后应改为 --verify（scope=all）。
+          node scripts/apply-auth-email-templates.js --verify --scope=redirects

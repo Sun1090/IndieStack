@@ -49,6 +49,20 @@ Supabase 免费版项目 7 天无活动会被暂停，本仓库用三层兜底�
 - Secrets 只以加密形式保存于 GitHub/Vercel，协作者通常只能看到名称；拥有管理权限的
   所有者/管理员可以轮换或删除，因此令牌轮换后需同步更新两处。
 
+## Auth 邮件与重定向白名单
+
+- 生产 Supabase 项目（`ntqggnztzvoavjbiillb`）的重定向白名单已包含本地、生产别名与 Vercel preview
+  通配域名；`pnpm auth:email-config -- --verify --scope=redirects` 可随时复核，CI 的
+  `Security and configuration checks` 也会在 push/PR/周计划上做漂移门禁。
+- Auth 邮件模板固化在 `scripts/lib/auth-email-templates.js`（设计稿
+  [design/email-templates.md](../design/email-templates.md)）。当前套餐使用默认发件人，
+  Management API 会拒绝模板写入，因此 CI 门禁只校验白名单；配置自定义 SMTP 后应改为
+  `pnpm auth:email-config -- --verify`（scope=all）。
+- 默认发件人的 `rate_limit_email_sent = 2`（全项目每小时 2 封）是注册量增长后的硬瓶颈，
+  上线前必须换成自定义 SMTP，否则注册确认/邀请/重置会直接失败。
+- Preview 部署若要完成登录回跳，域名必须落在白名单内；新增自定义域名时同步更新
+  `scripts/lib/auth-email-templates.js` 的 `PREVIEW_REDIRECT_PATTERNS`。
+
 ## 发布流程
 
 ```
