@@ -72,6 +72,25 @@ Supabase Storage is the default and creates the public-read `avatars` bucket thr
 `024_storage_avatars_policies.sql`. See [File Storage](./storage) for the upload contract,
 security boundaries, and cleanup behavior.
 
+### Web Push (Browser Notifications)
+
+| Variable | Description | How to Get |
+|----------|-------------|------------|
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser application-server key | `pnpm exec web-push generate-vapid-keys` |
+| `VAPID_PRIVATE_KEY` | Server-only VAPID signing key | Same generated key pair |
+| `NEXT_PUBLIC_APP_URL` | VAPID contact subject; use HTTPS in production | Set manually |
+
+```bash
+# Both keys come from one generated VAPID key pair.
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-key
+VAPID_PRIVATE_KEY=your-private-key
+NEXT_PUBLIC_APP_URL=https://app.example.com
+```
+
+Missing either key disables push; the settings page reports an explicit "not configured" state.
+See [Web Push](./web-push) for subscription storage, delivery behavior, failure cleanup, and the
+current durable-retry limitation.
+
 ### Payments (Stripe)
 
 | Variable | Description | How to Get |
@@ -284,4 +303,8 @@ GITHUB_TOKEN=your-github-token
 # ===== APM (optional) =====
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
+
+# ===== Web Push =====
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-key
+VAPID_PRIVATE_KEY=your-private-key
 ```

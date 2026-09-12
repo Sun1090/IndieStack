@@ -107,6 +107,7 @@ function nav_zh() {
       text: "运维",
       items: [
         { text: "邮件投递", link: "/zh-CN/email" },
+        { text: "Web Push", link: "/zh-CN/web-push" },
         { text: "文件存储", link: "/zh-CN/storage" },
         { text: "配置指南", link: "/zh-CN/configuration" },
         { text: "脚本工具", link: "/zh-CN/scripts" },
@@ -138,6 +139,7 @@ function nav_en() {
       text: "Operations",
       items: [
         { text: "Email Delivery", link: "/email" },
+        { text: "Web Push", link: "/web-push" },
         { text: "File Storage", link: "/storage" },
         { text: "Configuration", link: "/configuration" },
         { text: "Scripts", link: "/scripts" },
@@ -175,6 +177,7 @@ function sidebar_zh() {
         text: "运维部署",
         items: [
           { text: "邮件投递", link: "/zh-CN/email" },
+          { text: "Web Push", link: "/zh-CN/web-push" },
           { text: "文件存储", link: "/zh-CN/storage" },
           { text: "配置指南", link: "/zh-CN/configuration" },
           { text: "脚本工具", link: "/zh-CN/scripts" },
@@ -221,6 +224,7 @@ function sidebar_en() {
         text: "Operations",
         items: [
           { text: "Email Delivery", link: "/email" },
+          { text: "Web Push", link: "/web-push" },
           { text: "File Storage", link: "/storage" },
           { text: "Configuration", link: "/configuration" },
           { text: "Scripts", link: "/scripts" },

@@ -71,6 +71,24 @@ OSS_ACCESS_KEY_SECRET=your-secret
 Supabase Storage 是默认方案，迁移 `024_storage_avatars_policies.sql` 会创建公共读
 `avatars` 桶。上传契约、安全边界和清理行为见[文件存储](./storage)。
 
+### Web Push（浏览器通知）
+
+| 变量名                         | 说明                               | 获取方式                                 |
+| ------------------------------ | ---------------------------------- | ---------------------------------------- |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | 浏览器使用的 VAPID 公钥            | `pnpm exec web-push generate-vapid-keys` |
+| `VAPID_PRIVATE_KEY`            | 服务端 VAPID 签名私钥              | 同一组生成密钥                           |
+| `NEXT_PUBLIC_APP_URL`          | VAPID 联系主体；生产环境使用 HTTPS | 手动设置                                 |
+
+```bash
+# 两个密钥来自同一组 VAPID 密钥对。
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-key
+VAPID_PRIVATE_KEY=your-private-key
+NEXT_PUBLIC_APP_URL=https://app.example.com
+```
+
+缺少任一密钥即关闭推送，设置页会显示明确的「未配置」状态。订阅存储、投递行为、失败清理
+和当前持久化重试限制见 [Web Push](./web-push)。
+
 ### 支付（Stripe）
 
 | 变量名                               | 说明                                 | 获取方式                                 |
@@ -282,4 +300,8 @@ GITHUB_TOKEN=your-github-token
 # ===== APM（可选） =====
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
+
+# ===== Web Push =====
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-key
+VAPID_PRIVATE_KEY=your-private-key
 ```

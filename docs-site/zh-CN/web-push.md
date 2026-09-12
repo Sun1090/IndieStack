@@ -1,0 +1,78 @@
+# Web Push
+
+IndieStack 通过 Web Push 协议发送浏览器通知。订阅关系持久化在 Supabase，服务端投递使用
+`web-push` 适配器与 VAPID 凭证。
+
+## 配置
+
+| 变量                           | 必需性   | 用途                                         |
+| ------------------------------ | -------- | -------------------------------------------- |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | 必需     | 浏览器使用的 VAPID 公钥                      |
+| `VAPID_PRIVATE_KEY`            | 必需     | 服务端签名私钥，禁止添加 `NEXT_PUBLIC_` 前缀 |
+| `NEXT_PUBLIC_APP_URL`          | 建议配置 | VAPID 联系主体；生产环境必须使用 HTTPS       |
+
+生成一组密钥并写入部署环境：
+
+```bash
+pnpm exec web-push generate-vapid-keys
+
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-key
+VAPID_PRIVATE_KEY=your-private-key
+NEXT_PUBLIC_APP_URL=https://app.example.com
+```
+
+当 `NEXT_PUBLIC_APP_URL` 不是 HTTPS 时，适配器使用 `mailto:support@indiestack.dev` 作为 VAPID
+主体。公钥或私钥缺失会明确关闭 provider；设置页会显示“未配置”，不会伪装成发送成功。
+
+生产环境必须使用 HTTPS，因为除 localhost 开发环境外，浏览器只在安全上下文中提供 Service Worker
+和 PushManager。
+
+## 订阅流程
+
+1. 用户在 `/dashboard/settings` 开启**浏览器通知**。
+2. 浏览器注册 `/sw.js` 并创建 Push API 订阅。
+3. endpoint、`p256dh` 和 `auth` 写入 `public.push_subscriptions`。
+4. `user_id + endpoint` 唯一，因此重复注册是幂等的。
+5. 关闭通知时同时删除数据库记录和浏览器订阅。
+6. 页面重新加载后，设置表单会识别已有浏览器订阅。
+
+迁移 `020_push_subscriptions.sql` 创建数据表、RLS 策略、endpoint 索引和 `updated_at` 触发器。
+
+## 投递契约
+
+`notifyUser()` 先写入站内通知，再向该用户的每个有效订阅尝试 Web Push。Service Worker 接收的
+JSON payload 为：
+
+```json
+{
+  "title": "安全告警",
+  "body": "请检查你的登录会话",
+  "url": "/dashboard/settings",
+  "tag": "event-idempotency-key"
+}
+```
+
+投递使用 1 小时 TTL、10 秒传输超时、high urgency 和 VAPID 鉴权，并会扇出到用户的全部订阅。
+
+Push 与邮件共用类型偏好矩阵，同时额外受 `pushNotifications` 控制。设置
+`pushNotifications: false` 会关闭所有浏览器推送，但不影响站内通知。
+
+## 失败与清理
+
+- HTTP `404` 或 `410` 表示浏览器 endpoint 已永久失效，系统会立即删除该订阅。
+- 其他失败只记录日志，不影响站内通知或邮件通道。
+- 指标：`push.send.completed` 带 `status_code`；`push.send.failed` 带 `not-configured`、
+  `subscription-gone`、`timeout`、`http-*` 等原因。
+- Push 当前没有持久化重试队列或死信表，瞬时失败采用 best-effort；站内通知是可靠的事实来源。
+
+## 验证
+
+```bash
+pnpm test -- src/lib/push-provider.test.ts src/lib/push-notify.test.ts
+pnpm test -- src/lib/repositories/push-subscriptions.test.ts src/lib/email-notify.test.ts
+pnpm test -- src/components/forms/push-notification-form.test.tsx
+pnpm type-check
+```
+
+真实浏览器 Push 还需要 VAPID 凭证、HTTPS、支持 Push 的浏览器和推送服务，因此端到端路径属于部署
+环境检查，不由本地单测替代。
