@@ -46,8 +46,8 @@ export function MemberRoleSelect({ memberId, currentRole, disabled }: MemberRole
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="member">{t("roleMember")}</SelectItem>
-        <SelectItem value="admin">{t("roleAdmin")}</SelectItem>
+        <SelectItem value="member">{t("roles.member")}</SelectItem>
+        <SelectItem value="admin">{t("roles.admin")}</SelectItem>
       </SelectContent>
     </Select>
   );

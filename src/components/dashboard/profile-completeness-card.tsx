@@ -14,7 +14,7 @@ export async function ProfileCompletenessCard({
 
   const fields = [
     { label: t("profile.view.name"), filled: Boolean(profile.full_name) },
-    { label: t("profile.edit.bio"), filled: Boolean(profile.bio) },
+    { label: t("profile.edit.bioLabel"), filled: Boolean(profile.bio) },
     { label: t("profile.view.timezone"), filled: Boolean(profile.timezone) },
     { label: t("profile.view.language"), filled: Boolean(profile.language) },
   ];

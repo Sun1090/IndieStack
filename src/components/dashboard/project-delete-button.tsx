@@ -30,15 +30,15 @@ export function ProjectDeleteButton({ projectId, projectName }: ProjectDeleteBut
         toast({ title: tc("error"), description: result.error, variant: "destructive" });
         return;
       }
-      toast({ title: t("deleted") });
+      toast({ title: t("deleteDeleted") });
     });
   }
 
   return (
     <ConfirmDialog
-      title={t("confirmTitle")}
-      description={t("confirmDesc")}
-      confirmText={t("delete")}
+      title={t("deleteConfirmTitle")}
+      description={t("deleteConfirmDesc")}
+      confirmText={t("deleteDelete")}
       cancelText={tc("cancel")}
       variant="destructive"
       onConfirm={handleConfirm}
@@ -48,7 +48,7 @@ export function ProjectDeleteButton({ projectId, projectName }: ProjectDeleteBut
         size="icon"
         className="h-8 w-8 text-muted-foreground hover:text-destructive"
         disabled={pending}
-        aria-label={`${t("delete")}: ${projectName}`}
+        aria-label={`${t("deleteDelete")}: ${projectName}`}
       >
         <Trash2 className="h-4 w-4" />
       </Button>
