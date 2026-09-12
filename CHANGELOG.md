@@ -4,6 +4,14 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Planned
+
+- **Push 重试链路 E2E 覆盖**：当前持久化重试与死信仅由单测与本地数据库证据覆盖，下一里程碑将补充 mock-only 的端到端用例（失败 → 退避 → 重试 → 死信 → 失效端点撤销）。
+
+## [0.8.0] — 2026-09-13
+
+> 主题：**Web Push 持久化重试与死信队列**
+
 ### Added
 
 - **Web Push 持久化重试与死信队列**：新增 `026_push_delivery_attempts.sql`，按
