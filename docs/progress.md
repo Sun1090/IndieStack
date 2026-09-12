@@ -665,3 +665,39 @@
     不影响生产 Push 投递链路（`src/lib/push-provider.ts` 未被本提交改动）。
 - 下一步：继续推进下一批可本地执行的工作（优先真实缺口与失败/未验证项），并保持 v0.8.0 冻结产物不变。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / DEPS_REFRESH_2026-09-13（依赖补丁刷新，本地完成）
+
+- 状态：DONE（本地实现 + 全量门禁通过；受权限边界未 push / PR / merge / deploy）
+- 里程碑 / 发布目标：维护性批次，记录在 `[Unreleased]`（不单独升版本）
+- 分支 / PR：`feat/visual-regression-baseline` / PR none（LOCAL_ONLY，未推送、未创建 PR）
+- 本地提交：`24b9461`（chore(deps): refresh next.js and tooling patch releases）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（本周期未 fetch 前进，未执行 rebase）
+- 目标：消化 `pnpm dep:health` 报告的 minor/patch 可升级项，缩小运行时与工具链的已知修复缺口；
+  major（eslint 10 / typescript 7）需要专项迁移，评估后不在本批次冒险升级。
+- 已完成：
+  - `next` 16.3.4 → **16.3.5**、`eslint-config-next` 16.3.4 → **16.3.5**、
+    `@next/bundle-analyzer` 16.3.4 → **16.3.5**、`next-intl` 4.14.3 → **4.14.4**、
+    `lucide-react` 1.44.0 → **1.45.0**（`pnpm-lock.yaml` 同步重解，`pnpm up` 通过供应链策略校验）。
+  - 未处理：`eslint` 9.39.5 → 10.10.0、`typescript` 6.0.3 → 7.0.2 均为 major，
+    需要独立迁移批次（flat config / tsconfig / 规则行为），本批次保持不动并在此声明。
+- 变更文件：`package.json`、`pnpm-lock.yaml`、`CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm verify:build` → 通过（`pnpm check` + `pnpm test` + bundle 门禁 + production build；
+    Next.js 16.3.5 下 23/23 静态页正常生成）。
+  - `pnpm test:e2e` → **62/62 通过**（2.5m，Mock 模式 dev server 在 next 16.3.5 下正常）。
+  - `pnpm --filter indiestack-docs build` → 通过（VitePress build complete）。
+  - `pnpm audit --audit-level high` → No known vulnerabilities found。
+  - `pnpm check:migration-history` → `✅ migration history is aligned: 26 local migrations applied`。
+  - `pnpm dep:health` → 剩余 major 2 项（eslint、typescript）、minor/patch 0 项。
+  - `pnpm peers check` → 仅剩 docs-site 的 `@docsearch/react` 要求 React <19（VitePress 1.6 传递依赖，
+    与本批次升级无关，属既有告警）；根应用 peer 无新增问题。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 升级后的 Next.js 在真实部署（Vercel）上的构建/运行时行为未验证，需部署权限。
+  - `pnpm peers check` 的 docs-site React 19 peer 告警未修复（属既有状态，非本批次引入）。
+- 风险与回滚：
+  - 风险：patch 升级理论上可能改变构建/运行时行为；本批次已用全量门禁 + E2E + docs build 覆盖。
+  - 回滚：`git revert 24b9461` 回到 16.3.4 / 4.14.3 / 1.44.0，并重新安装依赖（lockfile 一并回退）。
+- 下一步：继续下一批可本地执行的工作（优先真实缺口与未验证项）。
+- 最后更新：2026-09-13
