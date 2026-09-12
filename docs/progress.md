@@ -607,3 +607,61 @@
 - 下一步：补齐 Push 重试链路 E2E 覆盖（mock-only `/api/e2e/*` seed + query 路由驱动
   失败 → 退避 → 重试 → 死信 → 失效端点撤销），随后继续下一里程碑条目。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / PUSH_RETRY_E2E（Push 重试链路端到端覆盖，本地完成）
+
+- 状态：DONE（本地实现 + E2E + 全量门禁通过；受权限边界未 push / PR / merge / deploy）
+- 里程碑 / 发布目标：`0.8.0` 缺口收口项，记录在 `[Unreleased]`（不单独升版本；v0.8.0 已冻结，本项不改变其发布内容）
+- 分支 / PR：`feat/visual-regression-baseline` / PR none（LOCAL_ONLY，未推送、未创建 PR）
+- 本地提交：`5c76873`（test(e2e): cover push retry chain end to end）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（本周期未 fetch 前进，未执行 rebase）
+- 目标：把 v0.8.0 发布文档缺口审计中唯一未闭合的测试缺口（Push 重试/死信只有单测 + 本地 DB 证据）
+  补成可复现的端到端用例，且不引入真实 VAPID 凭据或出网依赖。
+- 已完成：
+  - `src/lib/mock/push-transport.ts`：mock-only 保留端点传输层（`https://push-e2e.test/{ok,transient,timeout,gone}`）。
+    真实的 `web-push` 适配器固定走 `https.request`，无法像 Resend 那样用 `RESEND_API_URL` 重定向到本地捕获端点
+    （`http://` 会直接 TLS 失败），因此只替换底层传输：`createPushProvider()` 的配置校验、载荷构造、
+    指标上报与错误映射全部保持真实代码路径；未识别端点一律失败，避免“忘了注入传输层”被误判为投递成功。
+  - `src/app/api/cron/push-retry/route.ts`：mock 模式经 `createRuntimePushProvider()` 注入上述传输层；非 mock 路径不变。
+  - `src/lib/mock/index.ts`：补齐 `push_subscriptions` 表读/写支持（缓存持有者、`getMockPushSubscriptions()`、reset 与读写分支）。
+  - `src/app/api/e2e/push-queue/route.ts`：mock-only 种子/查询/重置端点（Bearer `E2E_BEARER_TOKEN` 鉴权，
+    非 mock 一律 404）。POST 支持 endpoint/status/attemptCount/dueInMs/withNotification/withSubscription/
+    pushDisabled/终态时间偏移；DELETE 清空队列表、订阅与通知并复位 push 偏好。
+  - `e2e/push-retry.spec.ts`：**10 条用例**，直接驱动真实 `POST /api/cron/push-retry`，覆盖
+    401 鉴权（cron + 种子端点）、空队列全零计数、成功投递 `pending → sent`、瞬时失败保持 `pending`
+    且指数退避到未来（防 cron 空转热循环）、超过重试上限进入死信 `max-attempts`、410 死信并撤销本地订阅、
+    订阅记录缺失、用户关闭 Push、通知行缺失、终态保留策略清理（sent 8 天/dead 31 天被清理，
+    sent 1 天/dead 29 天/pending 保留）。
+  - `playwright.config.ts`：webServer 增加占位 `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`，
+    让 provider 判定为 configured 而不需要真实密钥（mock 模式传输层不参与签名）。
+  - 文档：`CHANGELOG.md` `[Unreleased]` 用真实条目替换原先“下一里程碑将补充 E2E”的 Planned 待办；
+    `docs/operations/release-gap-audit-v0.8.0.md` 该缺口行更新为“已补齐（mock-only）”并声明其不等同于
+    真实 push service 验证；`docs/testing.md` E2E 用例数 52 → 62 并新增 Push 重试链路覆盖说明。
+- 变更文件：`e2e/push-retry.spec.ts`、`src/lib/mock/push-transport.ts`、`src/lib/mock/index.ts`、
+  `src/app/api/e2e/push-queue/route.ts`、`src/app/api/cron/push-retry/route.ts`、`playwright.config.ts`、
+  `CHANGELOG.md`、`docs/testing.md`、`docs/operations/release-gap-audit-v0.8.0.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm lint` / `pnpm type-check` → 通过。
+  - `pnpm check:all` → 通过（locales 972 key、i18n 837 调用、agents 10/10、RLS 26 迁移/19 表/23 策略、
+    migrations 26/26 SHA-256 基线、Supabase security、security/config 692 tracked/407 source/8 workflows、
+    release-docs（v0.8.0，7 产物）、changelog（8 已发布 + 1 Unreleased）、docs、a11y、type-check、lint、
+    **test 111 文件 / 1110 测试**）。
+  - `pnpm test:e2e` → **62/62 通过**（39.4s，新增 10 条 push 重试用例全绿）。
+  - `pnpm verify:build` → 通过（production build，含 check + test + bundle 门禁）。
+  - `pnpm check:changelog` / `pnpm check:release-docs` / `pnpm check:docs` → 通过。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 本套用例替换的是出网传输层，**不等于**真实 push service 投递验证；真实浏览器订阅 → 推送
+    仍需 VAPID 密钥对、HTTPS 站点与可用 push service，属部署后外部检查。
+  - mock-only 端点在生产（`NEXT_PUBLIC_MOCK_ENABLED` 非 true）返回 404 的行为只有代码路径保证，
+    未在真实部署上探测。
+  - v0.8.0 生产 smoke 仍未执行（`docs/operations/production-smoke-v0.8.0.md` 全部行保持“未执行”）。
+- 风险与回滚：
+  - 风险：`/api/e2e/push-queue` 会写入 mock 队列表与订阅表；它只在 mock 模式存在且需要
+    `E2E_BEARER_TOKEN`，生产不注册该行为（`isMockEnabled` 为假时直接 404）。
+  - 风险：`push_subscriptions` mock 表默认为空，真实 E2E 里订阅由种子端点写入；若未来有人依赖
+    预置订阅数据需显式 seed。
+  - 回滚：`git revert 5c76873` 回退新增/修改的测试与 mock 传输层、种子端点、占位 VAPID 环境变量与文档，
+    不影响生产 Push 投递链路（`src/lib/push-provider.ts` 未被本提交改动）。
+- 下一步：继续推进下一批可本地执行的工作（优先真实缺口与失败/未验证项），并保持 v0.8.0 冻结产物不变。
+- 最后更新：2026-09-13
