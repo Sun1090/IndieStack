@@ -13,6 +13,12 @@ All notable changes to IndieStack will be documented in this file.
   超过重试上限进入死信、410 撤销订阅、订阅缺失、用户关闭 Push、通知行缺失与终态保留策略清理。
   该覆盖补齐 v0.8.0 发布文档缺口审计中记录的已知缺口（mock-only，不等同于真实 push service 验证）。
 
+### Changed
+
+- **依赖补丁刷新**：`next` / `eslint-config-next` / `@next/bundle-analyzer` 16.3.4 → 16.3.5，
+  `next-intl` 4.14.3 → 4.14.4，`lucide-react` 1.44.0 → 1.45.0；`eslint` 10 与 `typescript` 7
+  两个 major 升级需要专项迁移，本次不动（`pnpm dep:health` 继续跟踪）。
+
 ## [0.8.0] — 2026-09-13
 
 > 主题：**Web Push 持久化重试与死信队列**
