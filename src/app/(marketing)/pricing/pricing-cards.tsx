@@ -32,6 +32,7 @@ export function PricingCards() {
           type="button"
           role="switch"
           aria-checked={yearly}
+          aria-label={t("billingPeriod")}
           onClick={() => setYearly((v) => !v)}
           className={`relative h-6 w-11 rounded-full transition-colors ${yearly ? "bg-primary" : "bg-muted"}`}
         >

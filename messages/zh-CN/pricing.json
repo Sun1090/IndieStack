@@ -3,6 +3,7 @@
   "metaDesc": "查看 IndieStack 的定价方案",
   "pageTitle": "简洁透明的定价",
   "pageDesc": "选择适合你的方案。所有方案均包含 14 天免费试用，无需信用卡。",
+  "billingPeriod": "计费周期",
   "monthly": "按月",
   "yearly": "按年",
   "savePercentage": "节省 {percentage}%",

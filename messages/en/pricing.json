@@ -3,6 +3,7 @@
   "metaDesc": "View IndieStack pricing plans",
   "pageTitle": "Simple, transparent pricing",
   "pageDesc": "Choose the plan that's right for you. All plans include a 14-day free trial, no credit card required.",
+  "billingPeriod": "Billing period",
   "monthly": "Monthly",
   "yearly": "Yearly",
   "savePercentage": "Save {percentage}%",
