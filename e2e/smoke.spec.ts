@@ -114,16 +114,18 @@ test.describe("主题切换", () => {
   test("点击切换按钮后 html 根元素 dark 类变化", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const html = page.locator("html");
-    const before = await html.getAttribute("class");
-    await page.getByRole("button", { name: /toggleTheme|切换主题|Toggle theme/i }).first().click();
-    // next-themes 写 localStorage 并同步 class
-    await page.waitForFunction(
-      (prev) => document.documentElement.className !== prev,
-      before ?? "",
-      { timeout: 5_000 },
-    );
-    const after = await html.getAttribute("class");
-    expect(after).not.toBe(before);
+    const toggle = page.getByRole("button", {
+      name: /toggleTheme|切换主题|Toggle theme/i,
+    }).first();
+
+    // G05 起首屏内联脚本已在 hydration 前写好主题 class，class 不再"从无到有"，
+    // 因此必须由真实点击驱动；重试用于吸收 dev server 冷编译导致的 hydration 延迟
+    // （未 hydrate 的按钮点击会被丢弃）。
+    await expect(async () => {
+      const before = (await html.getAttribute("class")) ?? "";
+      await toggle.click();
+      await expect(html).not.toHaveAttribute("class", before);
+    }).toPass({ timeout: 15_000 });
   });
 });
 

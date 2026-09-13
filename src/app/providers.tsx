@@ -41,7 +41,7 @@ export function Providers({
   return (
     <NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Shanghai">
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="system" storageKey="ui-theme">
+        <ThemeProvider defaultTheme="system">
           <TooltipProvider delayDuration={0}>
           <OfflineBanner />
           <NavigationProgress />

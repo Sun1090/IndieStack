@@ -4,8 +4,11 @@
  * 使用 next-intl 在服务端获取 locale 和 messages，传递给客户端 Provider
  */
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { getLocale, getMessages } from "next-intl/server";
 import { SITE_CONFIG } from "@/lib/constants";
+import { buildThemeScript } from "@/lib/theme/theme";
+import { NONCE_HEADER } from "@/lib/csp";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -51,6 +54,8 @@ export default async function RootLayout({
   // next-intl 服务端：从 Cookie 读取 locale，加载对应消息
   const locale = await getLocale();
   const messages = await getMessages();
+  // CSP nonce：内联首屏主题脚本必须带 nonce，否则被 strict-dynamic 拦截（G05）
+  const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
 
   // 预连接 Supabase（Auth/REST 请求延迟优化）
   const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -60,6 +65,8 @@ export default async function RootLayout({
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
+        {/* G05：CSS 解析前同步应用主题，避免深色用户看到浅色首帧 */}
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: buildThemeScript() }} />
         <link
           rel="alternate"
           type="application/rss+xml"
