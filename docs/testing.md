@@ -26,6 +26,15 @@
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
+## 贡献者测试矩阵（I09）
+
+按改动领域选最小门禁集，见 [docs-site/testing.md](../docs-site/testing.md)（中文版
+[docs-site/zh-CN/testing.md](../docs-site/zh-CN/testing.md)）：11 个领域（UI、Server Actions、Route Handlers、
+认证 MFA、数据库迁移、RLS 安全、多语言、Provider、Mock、CI 脚本、文档）各自列出覆盖路径与必须运行的门禁。
+矩阵的单一事实源是 `src/lib/testing/test-matrix.ts`，`pnpm check:test-matrix` 校验两份文档登记了全部领域、
+每条命令都写在该领域行内、引用的 `pnpm <script>` 真实存在于 `package.json`，并在 IO 层确认覆盖路径仍存在；
+抽取为空时失败封闭。改动跨越多个领域时取并集，拿不准就跑 `pnpm check:all`。
+
 ## 双项目结构
 
 vitest.config.ts 定义两个 project：

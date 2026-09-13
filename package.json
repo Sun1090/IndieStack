@@ -51,6 +51,7 @@
     "check:adr": "node scripts/check-adr.js",
     "check:gates": "node scripts/check-gates.js",
     "check:mock-docs": "node scripts/check-mock-docs.js",
+    "check:test-matrix": "node scripts/check-test-matrix.js",
     "check:provider-docs": "node scripts/check-provider-docs.js",
     "provider:doctor": "node scripts/provider-doctor.js",
     "check:tailwind": "node scripts/check-tailwind.js",

@@ -5,7 +5,8 @@
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/your-feature`
 3. Make your changes
-4. Run the full verification: `pnpm verify:all`（校验/测试）+ `pnpm build`
+4. Run the checks for the area you touched — see the [contributor test matrix](./docs-site/testing.md) — or the
+   full verification: `pnpm verify:all`（校验/测试）+ `pnpm build`
 5. Commit with conventional commit messages（commitlint 强制校验，规范详见 [agents/10-release-manager.md](./agents/10-release-manager.md)）
 6. Push and open a Pull Request（PR 目标分支：`develop` 或 `main`）
 

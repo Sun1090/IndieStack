@@ -32,6 +32,7 @@
 | `pnpm check:adr` | Validate ADR numbering, status, index, sections, and supersession links |
 | `pnpm check:gates` | Audit that every `check:*` gate is wired into `check-all.sh` and CI, or exempt with a reason |
 | `pnpm check:mock-docs` | Audit that the Mock docs match the Mock client tables and E2E endpoints |
+| `pnpm check:test-matrix` | Audit that the contributor test matrix documents every change area and real script |
 | `pnpm check:provider-docs` | Audit that both provider diagnostics guides document every provider and environment key |
 | `pnpm provider:doctor` | Print a credential-free provider configuration report and fail on partial setups |
 | `pnpm check:tailwind` | Enforce Tailwind v4 native theme usage (no JS config, `@theme` tokens, renamed utilities) |

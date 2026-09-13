@@ -34,6 +34,15 @@ All notable changes to IndieStack will be documented in this file.
   时失败封闭），24 条单测随 `pnpm check:all` 与 CI 执行。
 
 
+- **贡献者测试矩阵与门禁**：新增 `docs-site/testing.md` / `docs-site/zh-CN/testing.md` 与单一事实源
+  `src/lib/testing/test-matrix.ts`，把 11 个改动领域（UI、Server Actions、Route Handlers、认证 MFA、
+  数据库迁移、RLS 安全、多语言、Provider、Mock、CI 脚本、文档）映射到覆盖路径与**最小**必须运行的门禁，
+  避免贡献者只跑 `pnpm test` 就提交。新增 `pnpm check:test-matrix` 校验两份文档：每个领域必须登记且
+  命令必须写在该领域自己的行里，引用的每个 `pnpm <script>` 必须真实存在于 `package.json`（内置命令
+  白名单除外），IO 层另外确认覆盖路径在磁盘上仍然存在，抽取为空时失败封闭，14 条单测随 `pnpm check:all`
+  与 CI 执行。
+
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

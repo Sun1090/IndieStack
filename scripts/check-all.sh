@@ -15,6 +15,7 @@ echo "==> check:changelog";    pnpm --silent check:changelog
 echo "==> check:gates";        pnpm --silent check:gates
 echo "==> check:adr";         pnpm --silent check:adr
 echo "==> check:mock-docs";      pnpm --silent check:mock-docs
+echo "==> check:test-matrix";  pnpm --silent check:test-matrix
 echo "==> check:provider-docs";  pnpm --silent check:provider-docs
 echo "==> check:tailwind";       pnpm --silent check:tailwind
 echo "==> check:tokens";     pnpm --silent check:tokens

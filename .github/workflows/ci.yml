@@ -80,6 +80,9 @@ jobs:
       - name: Check Mock documentation parity
         run: pnpm check:mock-docs
 
+      - name: Check contributor test matrix parity
+        run: pnpm check:test-matrix
+
       - name: Check provider documentation parity
         run: pnpm check:provider-docs
 
