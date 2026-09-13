@@ -154,6 +154,32 @@ Lint & Type Check job 均会执行。门禁只验证治理结构和引用完整�
 `scripts/lib/gate-wiring-check.js`，由 `scripts/check-gates.js` 经 Node 原生 type stripping 调用；
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明门禁被接线，不证明门禁本身的强度。
 
+## Mock 文档一致性门禁（I07）
+
+`pnpm check:mock-docs` 解决的是「Mock 文档没人维护」：Mock 客户端每次扩表、`proxy` 改名、
+E2E 端点新增，`docs-site/mock.md`、`docs-site/zh-CN/mock.md` 与
+`docs/architecture/13-mock-system.md` 都会悄悄过期。此前三份文档只描述最早的六个表、把缓存
+说成「请求级」，并把路由分支写成已随 ADR-007 退役的 `middleware.ts`。
+
+门禁按实现事实做双向校验：
+
+1. 客户端 `switch (this.table)` 的每个表名必须出现在每份文档的「表名清单」里，反之亦然
+   → `MOCK_TABLE_UNDOCUMENTED` / `MOCK_TABLE_UNKNOWN`；
+2. `src/app/api/e2e/*/route.ts` 的每个端点必须被文档登记，文档不得引用已删除端点
+   → `MOCK_ENDPOINT_UNDOCUMENTED` / `MOCK_ENDPOINT_UNKNOWN`；
+3. 每份文档必须覆盖开启开关、自动降级边界（`NODE_ENV` + `NEXT_PUBLIC_SUPABASE_URL`）、
+   `src/proxy.ts` 接入点、`resetMockCache()` 与 `/api/e2e/mock-reset`、`createMockRequestStore()`
+   → `MOCK_REQUIRED_FACT_MISSING`；
+4. 已核验为错的旧表述不得回流（`STALE_DOC_CLAIMS`：请求级缓存、路由保护全部失效）
+   → `MOCK_STALE_CLAIM`；
+5. 抽不到表名/端点/文档时失败封闭 → `MOCK_DOC_SOURCE_EMPTY`。
+
+「表名清单」只认首列表头为 `Table` / `表名` 且数据行首列是行内代码的 markdown 表格，示例代码里的
+表名不计入登记。规则实现位于 `src/lib/mock/mock-docs.ts`（纯函数，28 条单测），IO/CLI 位于
+`scripts/lib/mock-docs-check.js`，由 `scripts/check-mock-docs.js` 经 Node 原生 type stripping 调用；
+`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明文档与代码的事实一致，
+不判断文案质量，也不替代人工复核。
+
 ## Tailwind v4 原生主题门禁（G01）
 
 `pnpm check:tailwind` 把 ADR-013 的「不再有 JS 配置」从一次性迁移变成可持续约束。规则分两层：

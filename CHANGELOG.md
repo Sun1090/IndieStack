@@ -16,6 +16,15 @@ All notable changes to IndieStack will be documented in this file.
   脚本、`.github/RELEASE_CHECKLIST.md` 逐字引用的 workflow / job 名真实存在、打标签版本与 `package.json`
   一致。审计发现并修复了 `check:agents` / `check:docs` 只在本地聚合执行、CI 从未覆盖的缺口。
 
+- **本地 Mock 开发指南与一致性门禁**：重写 `docs-site/mock.md`、`docs-site/zh-CN/mock.md` 与
+  `docs/architecture/13-mock-system.md`——三份文档此前只登记 6 张表、把进程级缓存说成「请求级」，
+  并把路由分支写成已随 ADR-007 退役的 `middleware.ts`。新文档给出 18 张受支持表的完整清单、
+  Mock 状态模型（`globalThis.__indiestackMockCache__` + `resetMockCache()` + `createMockRequestStore()`）、
+  9 个 mock-only E2E 端点、Push 保留端点、Playwright 注入的环境变量与真实限制。新增
+  `pnpm check:mock-docs` 按实现做双向校验（表名/端点逐项相等、每份文档必须覆盖开启条件与
+  `src/proxy.ts` 接入点、旧错说法不得回流，抽取为空时失败封闭），21 条门禁单测随 `pnpm check:all`
+  与 CI 执行。
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

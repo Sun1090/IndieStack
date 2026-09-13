@@ -1,197 +1,233 @@
-
 # Mock 模式开发指南
 
 ## 概述
 
-IndieStack 内置了一套完整的 Mock 系统，基于 `@faker-js/faker` 生成模拟数据。开启 Mock 模式后，无需真实 Supabase 后端即可进行完整的本地开发和调试。
+IndieStack 内置 Mock 后端，无需搭建 Supabase 项目即可在本地跑通整个应用。Mock 实现位于
+`src/lib/mock/`，对外保持与真实客户端相同的调用形态，业务代码不需要写「当前是不是 Mock」的分支。
 
-### 为什么需要 Mock 模式
+### 什么时候该用 Mock 模式
 
-- **脱机开发**：没有网络或 Supabase 服务不可用时仍可开发
-- **快速启动**：跳过数据库配置，秒级启动开发服务器
-- **前端优先**：专注于 UI 开发和调试，后端就绪后再连接
-- **API 模拟**：配合 Apifox 等工具，可以完整模拟 API 接口
-- **测试友好**：确定性数据生成，便于编写和复现测试
+| 适用场景 | 不适用场景 |
+| -------- | ---------- |
+| 无网络、无 Supabase 时的 UI 开发 | 验证 RLS、策略与租户隔离 |
+| Playwright E2E 与单元测试 | 验证真实认证、邮件投递与 OAuth |
+| 演示与新人上手（零配置） | 验证 Stripe、存储与 Edge Function 行为 |
+
+Mock 模式**不构成**任何安全边界成立的证据。真实边界由数据库身份矩阵覆盖（见
+`docs/testing.md`）。
 
 ## 开启 Mock 模式
 
-### 方式一：环境变量（推荐）
+是否开启由 `src/lib/mock/config.ts` 的单一判断决定。
 
-在 `.env.local` 中设置：
+### 方式一：显式开关（推荐）
 
 ```bash
-# 开发 Mock 模式
+# .env.local
 NEXT_PUBLIC_MOCK_ENABLED=true
 ```
 
-### 方式二：自动启用
+### 方式二：自动降级（仅限非生产环境）
 
-当 `NEXT_PUBLIC_SUPABASE_URL` 或 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 未设置时，系统会自动启用 Mock 模式。
+未设置 `NEXT_PUBLIC_MOCK_ENABLED` 时，下列条件**同时**成立才会自动启用：
+
+- `NODE_ENV` 不是 `"production"`，且
+- `NEXT_PUBLIC_SUPABASE_URL` 缺失。
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` 与该判断无关。生产构建永不自动降级：生产环境缺少
+Supabase URL 会直接报错，而不是静默地给出 Mock 用户。
 
 ### 方式三：命令行脚本
 
 ```bash
-# 使用 Mock 模式启动
-pnpm dev:mock
-
-# 使用 Supabase 启动
-pnpm dev:supabase
+pnpm dev:mock       # NEXT_PUBLIC_MOCK_ENABLED=true pnpm dev
+pnpm dev:supabase   # bash scripts/dev.sh start（本地 Supabase 栈）
 ```
 
-## Mock 数据生成
-
-Mock 数据基于 `@faker-js/faker`，位于 `src/lib/mock/data.ts`：
-
-| 数据类型 | 生成函数 | 说明 |
-|---------|---------|------|
-| 用户 | `generateMockUser()` | 包含 ID、邮箱、头像 |
-| 会话 | `generateMockSession()` | 模拟 Supabase 会话 |
-| 个人资料 | `generateMockProfile()` | 含姓名、简介、头像 |
-| 团队 | `generateMockTeam()` | 团队名称、描述 |
-| 团队成员 | `generateMockTeamMembersWithProfiles()` | 含角色、状态 |
-| 项目 | `generateMockProjects()` | 项目名、状态、进度 |
-| 通知 | `generateMockNotifications()` | 通知标题、内容、类型 |
-| 审计日志 | `generateMockAuditLogs()` | 操作记录、IP、时间 |
-| API 用量 | `generateMockApiUsage()` | 请求次数、错误率 |
-| 订阅 | `generateMockSubscription()` | 方案、状态、续费日期 |
-
-### 数据缓存策略
-
-Mock 数据在**一次请求内**保持缓存一致，每次请求生成新的随机数据。可以通过 `resetMockCache()` 手动刷新。
-
-## Mock Supabase 客户端
-
-Mock 系统实现了一个 `MockSupabaseClient` 类，模拟了 Supabase 的核心接口：
-
-### 支持的 API
+### 在代码里判断 Mock 模式
 
 ```typescript
-// 认证 API
-const { data: { user } } = await supabase.auth.getUser()
-const { data: { session } } = await supabase.auth.getSession()
-const { data } = await supabase.auth.signUp({ email, password })
-const { data } = await supabase.auth.signInWithPassword({ email, password })
-const { data } = await supabase.auth.signInWithOAuth({ provider: "github" })
-await supabase.auth.signOut()
-await supabase.auth.resetPasswordForEmail({ email })
-await supabase.auth.updateUser({ ... })
+import { isMockEnabled, shouldUseMock } from "@/lib/mock/config";
 
-// 数据库查询（链式调用）
-const { data } = await supabase
-  .from("profiles")
-  .select("*")
-  .eq("id", userId)
-  .single()
-
-const { data } = await supabase
-  .from("team_members")
-  .select("*")
-  .order("created_at", { ascending: false })
-  .limit(10)
-
-// 插入 / 更新 / 删除
-await supabase.from("profiles").insert({ ... })
-await supabase.from("profiles").update({ ... }).eq("id", userId)
-await supabase.from("profiles").delete().eq("id", userId)
+if (shouldUseMock()) {
+  // 路由处理、种子数据与测试辅助
+}
 ```
 
-### 支持的查询表
+`src/lib/mock/config.ts` 刻意不引入 `@faker-js/faker` 等 Mock 数据依赖，这样
+`src/proxy.ts` 可以在请求路径上引用而不把 fixture 生成器打进运行时。
 
-| 表名 | 返回数据 |
-|------|---------|
-| `profiles` | 10 条随机个人资料 |
-| `teams` | 1 个团队 |
-| `team_members` | 多个团队成员 |
-| `notifications` | 通知列表 |
-| `audit_logs` | 审计日志列表 |
-| `subscriptions` | 订阅信息 |
+## 支持的数据表
 
-## Apifox 集成
+`MockSupabaseClient` 用内存数据集响应 `from(table)`。下表就是客户端
+`switch (this.table)` 分支实际接受的全部表名；其它表名读取返回空结果、写入为空操作。
 
-Apifox 可以帮助你更好地管理 API 和 Mock 数据：
+| 表名 | 类型 | 说明 |
+| ---- | ---- | ---- |
+| `profiles` | 预置，可写 | Mock 用户的资料，角色为 `super_admin` |
+| `teams` | 预置，可写 | 确定性团队（`MOCK_TEAM_ID`） |
+| `team_members` | 预置，可写 | 通过 `applyRelationships()` 解析角色 |
+| `team_members_with_profiles` | 预置，只读 | 成员列表使用的联表视图 |
+| `subscriptions` | 常量，只读 | 固定返回 Mock 团队的 `pro / active` |
+| `notifications` | 预置，可写 | 驱动下文的实时事件桥 |
+| `audit_logs` | 预置，可写 | |
+| `projects` | 预置，可写 | |
+| `api_usage` | 预置，可写 | |
+| `api_keys` | 预置，可写 | |
+| `user_sessions` | 预置，可写 | |
+| `email_worker_runs` | 预置，可写 | 由 `/api/e2e/email-worker-runs` 读取 |
+| `marketing_subscriptions` | 预置，可写 | |
+| `contact_messages` | 预置，可写 | 联系表单闭环 |
+| `webhook_events` | 预置，可写 | Stripe 幂等闭环 |
+| `push_delivery_attempts` | 预置，可写 | Push 重试闭环 |
+| `push_subscriptions` | 预置，可写 | |
+| `upload_objects` | 预置，可写 | 存储元数据闭环 |
 
-### 为什么使用 Apifox
+### 查询构建器行为
 
-- **API 文档自动生成**：从代码注释或 OpenAPI 规范导入
-- **Mock 数据管理**：自定义 Mock 规则
-- **接口调试**：可视化请求/响应
-- **团队协作**：共享 API 文档
+| 能力 | 行为 |
+| ---- | ---- |
+| `select()` | 在本地应用过滤、`order()`、`limit()`/`range()`、`single()`/`maybeSingle()` |
+| `eq()` / `neq()` / `in()` / `is()` | 支持 |
+| `insert()` / `update()` / `delete()` | 就地修改缓存列表，后续读取可见 |
+| `rpc()` | 只实现 `claim_webhook_event`，其它函数名返回 `null` 数据 |
+| 未知表名 | 读取返回 `[]`，写入不落库 |
 
-### 配置步骤
+认证接口：`getUser`、`getSession`、`signInWithPassword`、`signUp`、`signInWithOAuth`、
+`signOut`、`resetPasswordForEmail`、`updateUser`，以及 MFA
+（`enroll`、`challenge`、`challengeAndVerify`、`verify`、`unenroll`）都返回确定性结果，
+MFA 状态迁移由共享缓存承载。
 
-1. **导出 OpenAPI 规范**
+## 状态模型与隔离
 
-   安装并运行 API 路由导出工具：
+Mock 客户端的数据集保存在**进程级**缓存里，而不是请求级：
 
-   ```bash
-   pnpm install -g apifox-cli
-   ```
+- 模块级缓存同时镜像到 `globalThis.__indiestackMockCache__`。这个 `globalThis` 跳板是必要的：
+  Next.js 的 dev 与生产构建都会把 Mock 模块拆成多个 chunk，没有它时 RSC/路由处理里的写入
+  在后续 Server Action 读取中不可见（v0.5.0 实际踩过的 bug）。
+- 调用 `resetMockCache()` 可以清空所有缓存列表、Mock 用户/会话以及 MFA 状态。
+- 因为缓存是进程级的，两个浏览器同时访问同一个 dev server 会共享变更，所以 E2E 默认串行
+  （Playwright `workers: 1`）。
 
-2. **在 Apifox 中创建项目**
+需要请求级隔离时——并行 spec、并发场景测试、adapter 单测——创建独立 scope 并注入：
 
-   - 新建项目，选择「导入」
-   - 选择「OpenAPI / Swagger」格式
-   - 上传或粘贴 API 规范
+```typescript
+import { createMockRequestStore, createMockSupabaseClient } from "@/lib/mock";
 
-3. **配置环境**
+const store = createMockRequestStore();
+const supabase = createMockSupabaseClient({ store });
+```
 
-   - 开发环境：`http://localhost:3000`
-   - 生产环境：`https://your-app.vercel.app`
+`createMockRequestStore()` 基于私有 `Map` 提供 `get` / `set` / `getOrCreate` / `clear`，
+请求之间不会互相泄漏。仓库**不使用** file-backed fixture 作为运行时数据库，原因见
+`docs/testing.md` 的 F02/F03 结论。
 
-4. **开启 Apifox Mock**
+### 重置运行中的 dev server
 
-   - 在 Apifox 中开启「云端 Mock」
-   - 设置 Mock 规则：字段类型、长度、格式
-   - 使用 Apifox 提供的 Mock URL 进行调试
+`POST /api/e2e/mock-reset` 无需重启即可清空进程级缓存。它在非 Mock 模式下返回 404，
+并要求 `Authorization: Bearer <E2E_BEARER_TOKEN>`：
 
-5. **自定义 Mock 规则示例**
+```bash
+curl -X POST http://localhost:3000/api/e2e/mock-reset \
+  -H "Authorization: Bearer $E2E_BEARER_TOKEN"
+# → { "ok": true, "reset": true }
+```
 
-   ```json
-   {
-     "code": 0,
-     "message": "success",
-     "data": {
-       "id": "@integer(1, 10000)",
-       "name": "@cname",
-       "email": "@email",
-       "avatar": "@image(200x200)",
-       "createdAt": "@datetime"
-     }
-   }
-   ```
+## Mock 模式接入点
 
-### 与项目 Mock 配合使用
+| 接入点 | Mock 行为 |
+| ------ | --------- |
+| `src/proxy.ts` | 仍然生成 CSP nonce、`x-request-id` 并执行 `updateSession()`，然后提前返回、跳过路由级重定向 |
+| 页面级守卫 | `requireRole()` / `requirePermission()` 仍然执行——Mock 只跳过 proxy 的重定向层 |
+| Supabase 服务端客户端 | 返回 `MockSupabaseClient` |
+| Supabase 浏览器客户端 | 返回 `MockSupabaseClient` |
+| Realtime | 服务端 seed 后派发 `indiestack:mock-realtime` DOM 事件供客户端订阅消费 |
+| 存储 | 使用本地占位 URL；`/api/e2e/mock-upload` 注入 `put()` 失败 |
+| Push 传输 | `src/lib/mock/push-transport.ts` 只替换 `web-push` 的底层 HTTP 传输，配置检查、载荷构造、重试与错误映射仍走真实代码 |
+| Admin 客户端 | 永不 Mock——service role 路径必须打真实数据库 |
 
-- 项目内置 Mock 适合**前端开发阶段**，零配置即可运行
-- Apifox Mock 适合**接口联调阶段**，精细化控制每个接口的响应
-- 两者可以配合使用：先用内置 Mock 快速开发 UI，再用 Apifox Mock 验证接口逻辑
+## 仅 E2E 使用的端点
 
-## 限制与注意事项
+`src/app/api/e2e/` 下的辅助端点只在 Mock 模式存在，非 Mock 模式一律 404，除特殊说明外
+都需要 `Authorization: Bearer <E2E_BEARER_TOKEN>`。
 
-### 功能限制
+| 端点 | 方法 | 用途 |
+| ---- | ---- | ---- |
+| `/api/e2e/mock-reset` | POST | 清空进程级 Mock 缓存 |
+| `/api/e2e/seed-notifications` | GET, POST | 写入通知行并派发实时事件 |
+| `/api/e2e/push-queue` | GET, POST | 写入 Push 订阅/投递记录并检查重试队列 |
+| `/api/e2e/mock-upload` | GET, POST | 读取/设置 `failNext`，让 `storage.put()` 确定性失败 |
+| `/api/e2e/email-inbox` | GET, POST, DELETE | 本地邮件收件箱（`RESEND_API_URL` 指向它） |
+| `/api/e2e/email-worker-runs` | GET | 检查 cron 处理器写入的 worker run |
+| `/api/e2e/webhook-events` | GET, DELETE | 检查/清空已占位的 webhook 事件 |
+| `/api/e2e/contact-messages` | GET, POST, DELETE | 检查/清空联系表单提交 |
+| `/api/e2e/profile-timezone` | PATCH | 强制 Mock 资料时区，供时区相关 spec 使用 |
 
-Mock 模式**不支持**以下真实后端功能：
+Push 保留端点基于 `E2E_PUSH_ENDPOINT_BASE`：
 
-| 功能 | 说明 | 替代方案 |
-|------|------|---------|
-| 真实认证 | 不会发送真实邮件/短信 | 模拟登录成功 |
-| Realtime 订阅 | 不会建立 WebSocket 连接 | 本地事件桥提供相同契约，供开发/E2E 使用 |
-| 文件存储 | 默认使用 Supabase Storage；四项 OSS 配置齐备时切换阿里云 OSS | Mock 模式使用本地占位 URL |
-| Stripe 支付 | 不会处理真实支付 | 模拟成功响应 |
-| 权限验证 | 所有用户默认 admin 角色 | 本地校验 |
-| 数据库持久化 | 数据不会持久化存储 | 内存缓存 |
+| 端点 | 场景 |
+| ---- | ---- |
+| `E2E_PUSH_ENDPOINTS.ok` | 投递成功（201） |
+| `E2E_PUSH_ENDPOINTS.transient` | 网络错误，退避重试直至死信 |
+| `E2E_PUSH_ENDPOINTS.timeout` | 超时，`failure_code=timeout` |
+| `E2E_PUSH_ENDPOINTS.gone` | 410，撤销本地订阅 |
 
-### 代码位置
+其它端点一律抛错，确保「忘了注入 fixture」不会被误判为投递成功。
+
+## Playwright 接线
+
+`playwright.config.ts` 启动 `pnpm dev -p 3100` 并注入 Mock 所需环境：
+
+| 变量 | 取值 | 作用 |
+| ---- | ---- | ---- |
+| `NEXT_PUBLIC_MOCK_ENABLED` | `true` | 开启 Mock 模式 |
+| `E2E_BEARER_TOKEN` | `e2e-bearer-token` | 保护上表的 `/api/e2e/*` 端点 |
+| `RESEND_API_URL` | `http://localhost:3100/api/e2e/email-inbox` | 本地捕获出站邮件 |
+| `CRON_SECRET` | `e2e-cron-secret` | 认证 cron 路由调用 |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | `sk_test_e2e_webhook` / `whsec_e2e_webhook` | 驱动 webhook 幂等闭环 |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | 占位值 | 让 `web-push` 配置检查通过，签名由 Mock 传输层替换 |
+
+dev server 是共享可变状态，因此 `workers` 默认 `1`；只有隔离实验会设置
+`PW_FULLY_PARALLEL=true`。
+
+## 限制
+
+| 能力 | Mock 行为 | 真实替代 |
+| ---- | --------- | -------- |
+| 认证 | 不做邮件/OAuth/MFA 往返，直接返回 Mock 会话 | 本地 Supabase |
+| 行级安全 | 不生效 | `pnpm smoke:supabase-identity` |
+| Realtime | 派发 `indiestack:mock-realtime` DOM 事件，不建 WebSocket | 本地 Supabase 真实频道 |
+| 文件存储 | 占位 URL，可选注入失败 | 本地 Supabase Storage 或 OSS 配置 |
+| 支付 | 不发送 Stripe SDK 请求 | Stripe CLI test mode |
+| Push 通知 | 进程内替换传输层 | 本地不覆盖，见 `docs/operations/` |
+| 持久化 | 仅内存，重启即失 | 本地 Supabase |
+| 数据质量 | 由 `@faker-js/faker` 随机生成，但 spec 依赖的 ID/时间戳为确定性 | `supabase/seed.sql` 种子 |
+
+仓库不提供 OpenAPI 导出，也不集成外部 Mock 工具；内置 Mock 客户端与上表的
+`/api/e2e/*` 端点就是受支持的路径。
+
+## 退出 Mock 模式
+
+```bash
+# .env.local
+NEXT_PUBLIC_MOCK_ENABLED=false
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+重启开发服务器即可。需要完全本地的 Supabase 栈时使用 `pnpm dev:supabase`。
+
+## 代码位置
 
 ```
 src/lib/mock/
-  index.ts   # Mock 入口、客户端、查询构建器
-  data.ts    # 数据生成器（使用 @faker-js/faker）
+  config.ts          # 零依赖的开启判断（proxy 可安全引用）
+  data.ts            # @faker-js/faker 生成器 + 确定性 ID
+  index.ts           # MockSupabaseClient、缓存、重置、实时桥、上传注入
+  store.ts           # createMockRequestStore() 请求级原语
+  push-transport.ts  # E2E 用的 web-push 传输层替换
+src/app/api/e2e/     # 仅 Mock 模式开放的测试端点
 ```
 
-### 开发建议
-
-1. **新功能开发**：先用 Mock 模式快速迭代 UI
-2. **接口联调**：切换到真实 Supabase 验证 API 逻辑
-3. **自动化测试**：Mock 模式可用于 CI 中的前端测试
-4. **团队协作**：推荐使用 Apifox 共享接口文档
+架构视角的同一份契约见 `docs/architecture/13-mock-system.md`；
+`pnpm check:mock-docs` 会在任一份文档与代码漂移时让构建失败。

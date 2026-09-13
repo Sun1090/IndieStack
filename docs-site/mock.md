@@ -1,197 +1,240 @@
-
 # Mock Mode Development Guide
 
 ## Overview
 
-IndieStack includes a complete Mock system built on `@faker-js/faker` for generating realistic test data. With Mock mode enabled, you can do full local development and debugging without a real Supabase backend.
+IndieStack ships a built-in Mock backend so you can run the full app locally without a
+Supabase project. Mock mode is implemented in `src/lib/mock/` and keeps the same
+call shapes the real client uses, so feature code does not branch on "am I mocked?".
 
-### Why Mock Mode
+### When to use Mock mode
 
-- **Offline Development**: Keep working without network or Supabase access
-- **Quick Start**: Skip database setup, start dev server in seconds
-- **Frontend-First**: Focus on UI development first, connect backend when ready
-- **API Simulation**: Combine with Apifox for complete API mocking
-- **Test-Friendly**: Deterministic data generation for reliable tests
+| Use it for | Do not use it for |
+| ---------- | ----------------- |
+| UI work without network or Supabase | Verifying RLS, policies or tenant isolation |
+| Playwright E2E and unit tests | Verifying real auth, email delivery or OAuth |
+| Demos and onboarding (zero config) | Verifying Stripe, storage or Edge Function behaviour |
 
-## Enabling Mock Mode
+Mock mode must never be treated as evidence that a security boundary works. Real
+boundaries are covered by the database identity matrix instead (see `docs/testing.md`).
 
-### Method 1: Environment Variable (Recommended)
+## Enabling Mock mode
 
-Set in `.env.local`:
+Mock mode is enabled by a single runtime check in `src/lib/mock/config.ts`.
+
+### 1. Explicit flag (recommended)
 
 ```bash
-# Development Mock Mode
+# .env.local
 NEXT_PUBLIC_MOCK_ENABLED=true
 ```
 
-### Method 2: Automatic Enable
+### 2. Automatic fallback (non-production only)
 
-Mock mode activates automatically when `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` is not set.
+If `NEXT_PUBLIC_MOCK_ENABLED` is unset, Mock mode still activates when **all** of the
+following hold:
 
-### Method 3: CLI Scripts
+- `NODE_ENV` is **not** `"production"`, and
+- `NEXT_PUBLIC_SUPABASE_URL` is missing.
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` is irrelevant to this decision. Production builds never
+fall back automatically: a production deploy with a missing Supabase URL fails loudly
+instead of silently serving mock users.
+
+### 3. CLI scripts
 
 ```bash
-# Start with Mock mode
-pnpm dev:mock
-
-# Start with Supabase
-pnpm dev:supabase
+pnpm dev:mock       # NEXT_PUBLIC_MOCK_ENABLED=true pnpm dev
+pnpm dev:supabase   # bash scripts/dev.sh start (local Supabase stack)
 ```
 
-## Mock Data Generation
-
-Mock data is powered by `@faker-js/faker`, defined in `src/lib/mock/data.ts`:
-
-| Data Type | Generator | Description |
-|-----------|-----------|-------------|
-| User | `generateMockUser()` | ID, email, avatar |
-| Session | `generateMockSession()` | Simulates Supabase session |
-| Profile | `generateMockProfile()` | Name, bio, avatar |
-| Team | `generateMockTeam()` | Team name, description |
-| Team Members | `generateMockTeamMembersWithProfiles()` | Roles, statuses |
-| Projects | `generateMockProjects()` | Name, status, progress |
-| Notifications | `generateMockNotifications()` | Title, content, type |
-| Audit Logs | `generateMockAuditLogs()` | Actions, IP, timestamp |
-| API Usage | `generateMockApiUsage()` | Request count, error rate |
-| Subscription | `generateMockSubscription()` | Plan, status, renewal |
-
-### Caching Strategy
-
-Mock data is **cached per request** for consistency. Each request generates fresh random data. Call `resetMockCache()` to manually refresh.
-
-## Mock Supabase Client
-
-The system implements a `MockSupabaseClient` class that simulates the core Supabase API:
-
-### Supported APIs
+### Detecting Mock mode in code
 
 ```typescript
-// Auth API
-const { data: { user } } = await supabase.auth.getUser()
-const { data: { session } } = await supabase.auth.getSession()
-const { data } = await supabase.auth.signUp({ email, password })
-const { data } = await supabase.auth.signInWithPassword({ email, password })
-const { data } = await supabase.auth.signInWithOAuth({ provider: "github" })
-await supabase.auth.signOut()
-await supabase.auth.resetPasswordForEmail({ email })
-await supabase.auth.updateUser({ ... })
+import { isMockEnabled, shouldUseMock } from "@/lib/mock/config";
 
-// Database Query (Chained)
-const { data } = await supabase
-  .from("profiles")
-  .select("*")
-  .eq("id", userId)
-  .single()
-
-const { data } = await supabase
-  .from("team_members")
-  .select("*")
-  .order("created_at", { ascending: false })
-  .limit(10)
-
-// Insert / Update / Delete
-await supabase.from("profiles").insert({ ... })
-await supabase.from("profiles").update({ ... }).eq("id", userId)
-await supabase.from("profiles").delete().eq("id", userId)
+if (shouldUseMock()) {
+  // route handlers, seeds and test helpers
+}
 ```
 
-### Supported Tables
+`src/lib/mock/config.ts` is intentionally dependency-free (no `@faker-js/faker`) so
+`src/proxy.ts` can import it without pulling fixture generators into the request path.
 
-| Table | Returns |
-|-------|---------|
-| `profiles` | 10 random profiles |
-| `teams` | 1 team |
-| `team_members` | Team members |
-| `notifications` | Notification list |
-| `audit_logs` | Audit log entries |
-| `subscriptions` | Subscription info |
+## Supported tables
 
-## Apifox Integration
+`MockSupabaseClient` answers `from(table)` from an in-memory dataset. The table set below
+is the exact list accepted by the client's `switch (this.table)` branches; anything else
+returns an empty result (reads) or a no-op (writes).
 
-Apifox enhances your API and Mock workflow alongside the built-in system:
+| Table | Kind | Notes |
+| ----- | ---- | ----- |
+| `profiles` | seeded, writable | Profile of the mock user, role `super_admin` |
+| `teams` | seeded, writable | One deterministic team (`MOCK_TEAM_ID`) |
+| `team_members` | seeded, writable | Roles resolved through `applyRelationships()` |
+| `team_members_with_profiles` | seeded, read-only | Joined view used by member lists |
+| `subscriptions` | constant, read-only | Always `pro / active` for the mock team |
+| `notifications` | seeded, writable | Drives the realtime bridge below |
+| `audit_logs` | seeded, writable | |
+| `projects` | seeded, writable | |
+| `api_usage` | seeded, writable | |
+| `api_keys` | seeded, writable | |
+| `user_sessions` | seeded, writable | |
+| `email_worker_runs` | seeded, writable | Read by `/api/e2e/email-worker-runs` |
+| `marketing_subscriptions` | seeded, writable | |
+| `contact_messages` | seeded, writable | Contact form loop |
+| `webhook_events` | seeded, writable | Stripe idempotency loop |
+| `push_delivery_attempts` | seeded, writable | Push retry loop |
+| `push_subscriptions` | seeded, writable | |
+| `upload_objects` | seeded, writable | Storage metadata loop |
 
-### Why Apifox
+### Query builder behaviour
 
-- **Auto-Generated API Docs**: Import from code comments or OpenAPI specs
-- **Mock Data Management**: Custom mock rules
-- **API Debugging**: Visual request/response inspection
-- **Team Collaboration**: Share API documentation
+| Feature | Behaviour |
+| ------- | --------- |
+| `select()` | Filters, `order()`, `limit()`/`range()` and `single()`/`maybeSingle()` are applied locally |
+| `eq()` / `neq()` / `in()` / `is()` | Supported filters |
+| `insert()` / `update()` / `delete()` | Mutate the cached list in place so later reads see the write |
+| `rpc()` | Only `claim_webhook_event` is implemented; other names return `null` data |
+| Unknown table | Reads resolve `[]`, writes resolve without persisting |
 
-### Setup Steps
+Auth surface: `getUser`, `getSession`, `signInWithPassword`, `signUp`,
+`signInWithOAuth`, `signOut`, `resetPasswordForEmail`, `updateUser`, plus the MFA surface
+(`enroll`, `challenge`, `challengeAndVerify`, `verify`, `unenroll`) all return deterministic
+mock results, with stateful MFA transitions backed by the shared cache.
 
-1. **Export OpenAPI Spec**
+## State model and isolation
 
-   Install the Apifox CLI:
+The Mock client keeps its dataset in a **process-wide** cache, not a per-request one:
 
-   ```bash
-   pnpm install -g apifox-cli
-   ```
+- Module-level caches are mirrored into `globalThis.__indiestackMockCache__`. The
+  `globalThis` hop exists because Next.js dev and production builds both split the mock
+  module into several chunks; without it, an RSC/route-handler write would be invisible to
+  a later server-action read (this was a real v0.5.0 bug).
+- Call `resetMockCache()` to clear every cached list, the mock user/session and MFA state.
+- Because the cache is process-wide, two concurrent browsers hitting the same dev server
+  share mutations. Keep E2E specs serial (Playwright defaults to a single worker).
 
-2. **Create Apifox Project**
+When you need per-request isolation instead — parallel specs, concurrent scenario tests,
+adapter unit tests — create a scoped store and pass it in:
 
-   - New project, choose "Import"
-   - Select "OpenAPI / Swagger" format
-   - Upload or paste the API spec
+```typescript
+import { createMockRequestStore, createMockSupabaseClient } from "@/lib/mock";
 
-3. **Configure Environments**
+const store = createMockRequestStore();
+const supabase = createMockSupabaseClient({ store });
+```
 
-   - Development: `http://localhost:3000`
-   - Production: `https://your-app.vercel.app`
+`createMockRequestStore()` returns `get` / `set` / `getOrCreate` / `clear` over a private
+`Map`, so nothing leaks between requests. File-backed fixtures are deliberately **not**
+used as a runtime database; see `docs/testing.md` for the F02/F03 rationale.
 
-4. **Enable Apifox Mock**
+### Resetting a running dev server
 
-   - Turn on "Cloud Mock" in Apifox
-   - Configure mock rules: field types, length, format
-   - Use Apifox Mock URL for debugging
+`POST /api/e2e/mock-reset` clears the process-wide cache without restarting the server.
+It is mock-only (404 otherwise) and requires `Authorization: Bearer <E2E_BEARER_TOKEN>`:
 
-5. **Custom Mock Rule Example**
+```bash
+curl -X POST http://localhost:3000/api/e2e/mock-reset \
+  -H "Authorization: Bearer $E2E_BEARER_TOKEN"
+# → { "ok": true, "reset": true }
+```
 
-   ```json
-   {
-     "code": 0,
-     "message": "success",
-     "data": {
-       "id": "@integer(1, 10000)",
-       "name": "@cname",
-       "email": "@email",
-       "avatar": "@image(200x200)",
-       "createdAt": "@datetime"
-     }
-   }
-   ```
+## How Mock mode plugs into the app
 
-### Working Together
+| Integration point | Mock behaviour |
+| ----------------- | -------------- |
+| `src/proxy.ts` | Still generates the CSP nonce, `x-request-id` and runs `updateSession()`, then returns early before route-level redirects |
+| Page-level guards | `requireRole()` / `requirePermission()` still run — Mock mode only skips the proxy's redirect layer |
+| Supabase server client | Returns `MockSupabaseClient` |
+| Supabase browser client | Returns `MockSupabaseClient` |
+| Realtime | Server-side seeds dispatch the `indiestack:mock-realtime` DOM event consumed by the client subscription |
+| Storage | Local placeholder URLs; `/api/e2e/mock-upload` injects `put()` failures |
+| Push transport | `src/lib/mock/push-transport.ts` replaces only the `web-push` HTTP transport; config checks, payload building, retry and error mapping stay real |
+| Admin client | Never mocked — service-role code paths must be exercised against a real database |
 
-- Built-in Mock is ideal for **frontend development** — zero config
-- Apifox Mock excels at **API integration** — fine-grained response control
-- Combine both: use built-in Mock for rapid UI iteration, then Apifox Mock for API verification
+## E2E-only endpoints
+
+`src/app/api/e2e/` contains Mock-mode-only helpers. Every route returns 404 outside Mock
+mode and requires `Authorization: Bearer <E2E_BEARER_TOKEN>` unless noted.
+
+| Endpoint | Methods | Purpose |
+| -------- | ------- | ------- |
+| `/api/e2e/mock-reset` | POST | Clear the process-wide Mock cache |
+| `/api/e2e/seed-notifications` | GET, POST | Seed notification rows and dispatch realtime events |
+| `/api/e2e/push-queue` | GET, POST | Seed push subscriptions/attempts and inspect the retry queue |
+| `/api/e2e/mock-upload` | GET, POST | Read/set `failNext` so `storage.put()` fails deterministically |
+| `/api/e2e/email-inbox` | GET, POST, DELETE | Captured outbound email (`RESEND_API_URL` points here) |
+| `/api/e2e/email-worker-runs` | GET | Inspect worker run rows written by cron handlers |
+| `/api/e2e/webhook-events` | GET, DELETE | Inspect/clear claimed webhook events |
+| `/api/e2e/contact-messages` | GET, POST, DELETE | Inspect/clear contact-form submissions |
+| `/api/e2e/profile-timezone` | PATCH | Force the mock profile timezone for timezone-sensitive specs |
+
+Reserved push endpoints use `E2E_PUSH_ENDPOINT_BASE`:
+
+| Endpoint | Scenario |
+| -------- | -------- |
+| `E2E_PUSH_ENDPOINTS.ok` | Delivered (201) |
+| `E2E_PUSH_ENDPOINTS.transient` | Network error, retried until dead-letter |
+| `E2E_PUSH_ENDPOINTS.timeout` | Timeout, `failure_code=timeout` |
+| `E2E_PUSH_ENDPOINTS.gone` | 410, local subscription revoked |
+
+Any other push endpoint throws, so a forgotten fixture fails instead of looking delivered.
+
+## Playwright wiring
+
+`playwright.config.ts` starts `pnpm dev -p 3100` and injects the environment Mock mode
+needs:
+
+| Variable | Value | Why |
+| -------- | ----- | --- |
+| `NEXT_PUBLIC_MOCK_ENABLED` | `true` | Turn Mock mode on |
+| `E2E_BEARER_TOKEN` | `e2e-bearer-token` | Guard the `/api/e2e/*` endpoints above |
+| `RESEND_API_URL` | `http://localhost:3100/api/e2e/email-inbox` | Capture outbound email locally |
+| `CRON_SECRET` | `e2e-cron-secret` | Authenticate cron route calls |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | `sk_test_e2e_webhook` / `whsec_e2e_webhook` | Drive the webhook idempotency loop |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | placeholders | `web-push` config checks pass; signing is replaced by the mock transport |
+
+The web server is shared mutable state, so `workers` defaults to `1`. Only the isolation
+experiment sets `PW_FULLY_PARALLEL=true`.
 
 ## Limitations
 
-### Feature Gaps
+| Feature | Mock behaviour | Real alternative |
+| ------- | -------------- | ---------------- |
+| Authentication | No email, OAuth or MFA round-trip; mock session returned | Run local Supabase |
+| Row Level Security | Not enforced | `pnpm smoke:supabase-identity` |
+| Realtime | `indiestack:mock-realtime` DOM event, no WebSocket | Local Supabase + real channel |
+| File storage | Placeholder URLs; optional injected failures | Local Supabase Storage or OSS config |
+| Payments | Stripe SDK calls are not sent | Stripe CLI in test mode |
+| Push notifications | Transport replaced in-process | Not covered locally; see `docs/operations/` |
+| Persistence | In-memory only, lost on restart | Local Supabase |
+| Data quality | Randomized by `@faker-js/faker`, but IDs/timestamps are deterministic where specs depend on them | Seeds in `supabase/seed.sql` |
 
-Mock mode does **not** support these real backend features:
+The project does not ship an OpenAPI export or an external Mock-tool integration; the
+built-in Mock client and the `/api/e2e/*` endpoints above are the supported path.
 
-| Feature | Description | Alternative |
-|---------|-------------|-------------|
-| Real Auth | No email/SMS sending | Auto-login success |
-| Realtime | No WebSocket connection | Same-contract local event bridge for dev/E2E |
-| File Storage | Supabase Storage by default; Alibaba Cloud OSS when fully configured | Mock mode uses local placeholder URLs |
-| Stripe Payments | No real payment processing | Mock success response |
-| Permission Check | All users default admin | Local validation |
-| Data Persistence | No persisted storage | In-memory cache |
+## Exiting Mock mode
 
-### Source Code
+```bash
+# .env.local
+NEXT_PUBLIC_MOCK_ENABLED=false
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+Restart the dev server. Use `pnpm dev:supabase` if you want a fully local Supabase stack.
+
+## Source layout
 
 ```
 src/lib/mock/
-  index.ts   # Mock entry, client, query builder
-  data.ts    # Data generators (powered by @faker-js/faker)
+  config.ts          # dependency-free enable check (safe for proxy)
+  data.ts            # @faker-js/faker generators + deterministic IDs
+  index.ts           # MockSupabaseClient, cache, reset, realtime bridge, upload injection
+  store.ts           # createMockRequestStore() request-scoped primitive
+  push-transport.ts  # web-push transport replacement for E2E
+src/app/api/e2e/     # mock-gated test endpoints
 ```
 
-### Development Tips
-
-1. **New Features**: Start with Mock mode for rapid UI iteration
-2. **API Integration**: Switch to real Supabase to verify API logic
-3. **Automated Tests**: Mock mode works well in CI for frontend tests
-4. **Team Collaboration**: Use Apifox for shared API documentation
+`docs/architecture/13-mock-system.md` covers the same contract in Chinese, and
+`pnpm check:mock-docs` fails the build when any of these documents drift from the code.

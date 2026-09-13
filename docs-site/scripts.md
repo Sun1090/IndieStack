@@ -31,6 +31,7 @@
 | `pnpm check:changelog` | Validate CHANGELOG.md structure (versions, sections, entries) |
 | `pnpm check:adr` | Validate ADR numbering, status, index, sections, and supersession links |
 | `pnpm check:gates` | Audit that every `check:*` gate is wired into `check-all.sh` and CI, or exempt with a reason |
+| `pnpm check:mock-docs` | Audit that the Mock docs match the Mock client tables and E2E endpoints |
 | `pnpm check:tailwind` | Enforce Tailwind v4 native theme usage (no JS config, `@theme` tokens, renamed utilities) |
 | `pnpm check:tokens` | Enforce design token registry ↔ `globals.css` consistency and ban raw status palettes |
 | `pnpm check:fields` | Enforce shared `FormField` / `NativeSelect` usage and ban raw selects, copied control classes, and direct label imports |
