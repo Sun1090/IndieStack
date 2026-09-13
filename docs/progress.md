@@ -2053,3 +2053,47 @@
     完整步骤见 `docs/operations/rollback-runbook-v0.10.0.md`。
 - 下一里程碑：roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（I04、I06–I10、J02–J10）。
 - 最后更新：2026-09-13
+
+## I04 ADR 更新与决策状态（DONE）
+
+- 状态：DONE（M3「文档与发布体验」roadmap `docs/roadmap-0.6.0.md` 第 84 项）
+- 里程碑与发布目标：M3 I 段（I01–I10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`41dedbb`（feat(adr): add ADR governance gate and reconcile decision status）
+- 目标：让 ADR 决策状态与 README 索引不再人工漂移，把编号 / 状态 / 必要章节 / 取代关系固化为可执行门禁
+- 已完成：
+  - 新增纯函数审计模块 `src/lib/adr/adr-rules.ts`（文件名与标题编号一致、`状态`/`日期` 字段、状态枚举
+    `提议 / 已接受（附注）/ 已废弃（被 ADR-NNN 取代）`、日期合法且不晚于今天、必要章节
+    背景 / 决策 / （影响|后果）、README 索引双向逐字匹配、编号连续、索引升序、后继 ADR 必须显式引用被取代项）
+  - 新增 `scripts/lib/adr-check.js` + `scripts/check-adr.js`，注册为 `pnpm check:adr`
+  - `scripts/check-all.sh` 在 `check:changelog` 之后执行 `check:adr`；`.github/workflows/ci.yml` 新增
+    "Check ADR governance" 步骤
+  - 决策状态收口：ADR-005 标记「已废弃（被 ADR-013 取代）」、ADR-009 标记「已废弃（被 ADR-014 取代）」，
+    ADR-010–013 的 `accepted` 统一为 `已接受`，ADR-001 的日期附注移出 `日期:` 字段，ADR-007 补齐 `## 背景`
+  - 新增 `docs/adr/adr-014-react-table-v9-native.md`（React Table v9 原生 API 取代 legacy 桥）
+  - `docs/adr/README.md` 索引重建为 14 行（标题与状态逐字对应正文）
+  - `agents/04-architect.md` 删除与 `docs/adr/` 冲突的内嵌 ADR-001–004 副本，改为指向索引并提示跑门禁
+  - 文档同步：`docs/testing.md` 新增「ADR 治理门禁（I04）」、`docs-site/scripts.md` 与中文版新增 `check:adr` 行、
+    `CHANGELOG.md` `[Unreleased] / Added` 记录该门禁
+- 变更文件：`src/lib/adr/adr-rules.ts`、`src/lib/adr/adr-rules.test.ts`、`scripts/lib/adr-check.js`、
+  `scripts/check-adr.js`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`docs/adr/*`（14 篇 + README）、
+  `agents/04-architect.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、
+  `docs/roadmap-0.6.0.md`、`CHANGELOG.md`、`package.json`
+- 验证命令与结果（提交 `41dedbb` 前后各跑一遍）：
+  - `pnpm exec vitest run src/lib/adr/adr-rules.test.ts` → ✅ 21 passed
+  - `node scripts/check-adr.js` → ✅ `ADR 治理通过：14 篇（接受 12 / 提议 0 / 已废弃 2），索引 14 条`
+  - `node scripts/check-docs-scripts.js` → ✅ docs-site scripts 与 package.json 同步
+  - `pnpm lint` → ✅ 无告警（`parseAdrDocument` 拆分为 heading/status/date/sections 四个子审计函数后复杂度回到阈值内）
+  - `pnpm type-check` → ✅ 无错误
+  - `pnpm check:all` → ✅ 全部校验通过（type-check、lint、139 文件 1402 测试）
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过
+  - `pnpm check:changelog` → ✅ 10 个已发布版本 + 1 个 Unreleased 章节
+- 阻塞：无
+- 风险与回滚：
+  - 风险：门禁要求 README 索引标题 / 状态与正文逐字一致，改 ADR 正文标题或状态时若忘记同步索引会直接失败；
+    这是刻意的回归保护，修复方式是同时改两处。
+  - 风险：`DATE_FUTURE` 用注入的 `today`（默认系统 UTC 日期），在时区跨日的 CI 上可能出现仅数小时的边界差异；
+    单测已固定 `today`。
+  - 回滚：`git revert 41dedbb` 即移除门禁并恢复旧索引 / 状态写法；纯文档与校验脚本改动，无数据库、迁移或运行时影响。
+- 下一步：I06 release checklist v0.6.0 语义收口（现有 `check:release-docs` / `.github/RELEASE_CHECKLIST.md` 已覆盖 v0.10.0）。
+- 最后更新：2026-09-13
