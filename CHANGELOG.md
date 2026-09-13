@@ -22,6 +22,10 @@ All notable changes to IndieStack will be documented in this file.
 - **依赖补丁刷新**：`next` / `eslint-config-next` / `@next/bundle-analyzer` 16.3.4 → 16.3.5，
   `next-intl` 4.14.3 → 4.14.4，`lucide-react` 1.44.0 → 1.45.0；`eslint` 10 与 `typescript` 7
   两个 major 升级需要专项迁移，本次不动（`pnpm dep:health` 继续跟踪）。
+- **Stripe Webhook 幂等键收窄为 `(provider, event_id)`**：`webhook_events` 的唯一约束由
+  `event_id` 单列改为 `(provider, event_id)` 复合唯一，并新增 `attempts` / `last_attempt_at`
+  两列记录占位次数与最近一次占位时间（迁移 `030`）。避免将来接入第二个 provider 时 event id
+  互相碰撞，同时让"某个事件被 Stripe 重试了多少次"直接可查。
 - **审计日志分页不再请求精确总数**：`listAuditLogsPage()` 默认不再下发 PostgREST
   `count: "exact"`，改为可选 `{ withExactTotal: true }`，默认返回 `total: null`。
   `audit_logs` 永久保留、只追加，全表 `count(*)` 是这条查询里唯一随表增长的开销：
@@ -31,6 +35,19 @@ All notable changes to IndieStack will be documented in this file.
   复审数据见 [docs/db/index-review.md](docs/db/index-review.md)。
 
 ### Fixed
+
+- **Stripe Webhook 重复投递不再重放副作用**：此前 `webhook_events` 只是"最后写一行日志"的
+  记录表，处理器**先执行全部副作用**（写订阅状态、发"付款成功"通知）再 upsert，而 Stripe 是
+  at-least-once 投递且会对非 2xx 重试，同一 `event.id` 反复投递会**重复写订阅、重复发通知**；
+  F05 的"重复 event id 幂等"用例只断言日志行数，因此无法发现。现改为**先占位 → 再处理 → 后落状态**
+  的租约模型：新增 `claim_webhook_event()`（`security definer` + 空 `search_path`，只授予
+  `service_role`）原子占位，重复投递返回 `duplicate` 并回 200 且不执行任何副作用；副作用失败标记
+  `failed` 并回 500，让 Stripe 的下一次重试可以重新占位（`attempts` 累加）；`received` 停留超过
+  15 分钟（进程崩溃）同样可回收。占位 RPC 报错时**失败封闭**成 500 而非降级为 `duplicate`
+  （否则数据库故障会被伪装成"已处理"，Stripe 收到 200 停止重试而静默丢失状态同步）；副作用**成功
+  后**的落状态失败只记日志、仍回 200（此时回 500 会让下次重试必然重放副作用）。E2E 断言从
+  "日志行数"改为"副作用本身（通知行数）在两次投递后仍为 1"。协议、运维检查与回滚步骤见
+  [docs/db/webhook-idempotency.md](docs/db/webhook-idempotency.md)。
 
 - **RLS 全表回归门禁不再漏检策略**：`pnpm check:rls` 原先把策略名按"单个单词"截断
   （`"?([\w-]+)"?`），本仓库 35 条策略几乎全是带空格的句子
