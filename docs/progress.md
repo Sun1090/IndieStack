@@ -2179,3 +2179,61 @@
   - 回滚：`git revert 0405e2b` 即移除门禁与新文档；纯文档 / 校验脚本改动，无数据库、迁移或运行时影响。
 - 下一步：I08 provider 配置诊断指南。
 - 最后更新：2026-09-13
+
+
+## I08 Provider 配置诊断指南（DONE）
+
+- 状态：DONE（M3「文档与发布体验」roadmap `docs/roadmap-0.6.0.md` 第 88 项）
+- 里程碑与发布目标：M3 I 段（I01–I10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`1c80cd0`（feat(providers): add credential-free configuration diagnostics）
+- 目标：把 provider 的启用条件、fallback 规则与缺失变量诊断写成可回归的事实，既给出可跑的自检工具，
+  又用门禁阻止文档和运行时注册表再次分叉
+- 已完成：
+  - 新增纯函数模块 `src/lib/providers/diagnostics.ts`：`PROVIDER_REGISTRY` 登记 9 个 provider / 28 个环境变量，
+    `diagnoseProviders(env)` 产出 `ready` / `disabled` / `degraded` / `misconfigured` / `missing` 五态报告，
+    逐项列出缺失变量名，**从不输出任何凭据值**；`formatProviderReport()` 渲染人类可读文本
+  - provider 语义：`supabase`（运行时三键必需、`SUPABASE_DB_URL` 可选否则 degraded）、`storage`
+    （OSS 四键 → `oss`、全空 → `supabase` fallback、部分配置 → `misconfigured`、mock 模式 → `mock` `ready`）、
+    `email` / `webpush` / `appark` / `stripe` / `sentry`（DSN 与构建期键）、`supabase-restore`
+    （token + 显式或从 `<ref>.supabase.co` 推导的 project ref，三者关系细化到 misconfigured）、`cron`（`CRON_SECRET`）
+  - 新增 CLI `scripts/lib/provider-doctor.js` + `scripts/provider-doctor.js`（Node 原生 type stripping），
+    支持 `--json` / `--help`，存在阻塞问题时退出码 1；注册为 `pnpm provider:doctor`
+  - 新增文档一致性门禁 `src/lib/providers/provider-docs.ts` + `scripts/lib/provider-docs-check.js` +
+    `scripts/check-provider-docs.js`：拿 `PROVIDER_REGISTRY` 对 `docs-site/provider-diagnostics.md` 与
+    `docs-site/zh-CN/provider-diagnostics.md` 做双向校验，缺 provider id 或环境变量即失败，文档源为空时
+    失败封闭（`PROVIDER_DOC_SOURCE_EMPTY` / `PROVIDER_DOC_MISSING_PROVIDER` / `PROVIDER_DOC_MISSING_KEY`）；
+    注册为 `pnpm check:provider-docs`
+  - 新增 24 条单测（`diagnostics.test.ts` 18 + `provider-docs.test.ts` 6），覆盖五态判定、fallback、
+    ref 推导、JSON/文本渲染、文档漂移与空文档
+  - 重写 `docs-site/provider-diagnostics.md`（英文）与中文版：状态模型、28 键 provider 表、工作流、
+    JSON 形状、排障映射与文档门禁说明
+  - 接线：`scripts/check-all.sh` 与 CI `Lint & Type Check` job 均执行 `check:provider-docs`；
+    双语 `docs-site/scripts.md` 新增 `check:provider-docs` 与 `provider:doctor` 两行；
+    `docs-site/.vitepress/config.mts` 双语 nav + sidebar 增加 Provider 诊断入口；
+    `CHANGELOG.md` `[Unreleased] / Added` 记录；roadmap 第 88 项与头部进度标注完成
+- 变更文件：`src/lib/providers/diagnostics.ts`、`src/lib/providers/diagnostics.test.ts`、
+  `src/lib/providers/provider-docs.ts`、`src/lib/providers/provider-docs.test.ts`、
+  `scripts/lib/provider-doctor.js`、`scripts/provider-doctor.js`、`scripts/lib/provider-docs-check.js`、
+  `scripts/check-provider-docs.js`、`package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、
+  `docs-site/provider-diagnostics.md`、`docs-site/zh-CN/provider-diagnostics.md`、`docs-site/scripts.md`、
+  `docs-site/zh-CN/scripts.md`、`docs-site/.vitepress/config.mts`、`docs/testing.md`、`CHANGELOG.md`、
+  `docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `1c80cd0`）：
+  - `pnpm check:provider-docs` → ✅ `9 个 provider / 28 个环境变量 × 2 份文档`
+  - `node scripts/lib/provider-doctor.js` → ✅ `Result: no blocking provider configuration problems`（当前环境 mock 模式，退出码 0）
+  - `pnpm vitest run src/lib/providers/diagnostics.test.ts src/lib/providers/provider-docs.test.ts` → ✅ 24 passed
+  - `pnpm check:gates` → ✅ `22 个门禁（本地 19 / CI 20 / 豁免 3），8 个工作流`
+  - `pnpm check:docs`、`pnpm check:changelog` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:all` → ✅ 143 文件 / 1482 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过
+- 阻塞：无
+- 风险与回滚：
+  - 风险：新增 provider 或环境变量而不同步两份文档 / 注册表时，`check:provider-docs` 会直接失败；这是刻意的防漂移设计。
+  - 风险：`provider:doctor` 只做变量存在性判断，不校验凭据是否有效；真实连通性仍由各 provider 的 smoke / contract 测试覆盖。
+  - 风险：`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md` 不满足仓库级 Prettier 格式（既有表格约定），
+    本次未对这些文件运行 Prettier；新增 / 修改的 TS 文件已通过 Prettier。
+  - 回滚：`git revert 1c80cd0` 即移除诊断模块、CLI、门禁与两份指南；纯校验 / 文档改动，无数据库、迁移或运行时影响。
+- 下一步：I09 贡献者测试矩阵。
+- 最后更新：2026-09-13
