@@ -1718,3 +1718,95 @@
 - G01 Tailwind v4 试点页迁移（M2 里程碑下一项）。
 
 - 最后更新：2026-09-13
+
+## v0.9.0 后续 / G01_TAILWIND_V4_NATIVE（Tailwind v4 原生主题收口，本地完成）
+
+- 状态：DONE（本地验证完成；未 push / 未开 PR / 未 merge / 未 deploy）
+- 里程碑与发布目标：M2「UI 系统收口」（[docs/roadmap-0.6.0.md](roadmap-0.6.0.md) G01–G10），
+  退出后进入下一里程碑 release freeze；当前版本仍是 `0.9.0`，本任务不升版本。
+- 分支 / PR：`feat/visual-regression-baseline`（LOCAL_ONLY，无 PR）；base
+  `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`
+- 本地提交：`2a75e87`（feat）
+- 目标：把仓库里最后一批 v3 时代的 Tailwind 写法迁到 v4 原生机制，并用一个构建门禁把规则锁死，
+  避免 `@config` / JS 配置 / v3 重命名工具类再次回潮。
+
+### 已完成
+
+- 自持动画收口到 v4 原生 theme token：`src/app/globals.css` 的 `@theme` 里新增
+  `--animate-progress-indeterminate`（`progress-indeterminate 1.5s ease-in-out infinite`）与
+  `--animate-navprogress`（`navprogress 0.8s ease-in-out infinite`），两段 `@keyframes` 内联进同一块；
+  使用处回到 `animate-<token>` 工具类，宽度这类非动画声明由使用方用普通工具类表达。
+- 删除死代码：`@layer utilities` 里的 `.step` / `.step:before`（全仓库与 docs-site 均无引用）以及
+  手写的 `.animate-progress-indeterminate` 类，还有尾部的裸 `@keyframes navprogress`。
+- 使用处更新：`src/components/ui/progress.tsx` 改为 `w-[30%] animate-progress-indeterminate`；
+  `src/components/layout/navigation-progress.tsx` 的 `animate-[navprogress_0.8s_ease-in-out_infinite]`
+  改为 `animate-navprogress`。
+- v3 语义类名升级：试点页 `src/app/page.tsx` 的 `bg-gradient-to-b` → `bg-linear-to-b`；
+  `outline-none` → `outline-hidden` 扫过 3 个文件共 4 处：`src/app/(marketing)/faq/faq-list.tsx`（1 处）、
+  `src/components/forms/invite-member-form.tsx`（1 处）、`src/components/forms/profile-edit-form.tsx`（2 处，focus-visible 场景）。
+- 新增构建门禁 `pnpm check:tailwind`：
+  - `src/lib/tailwind/native-theme.ts`（纯规则，~280 行）定义 7 类规则码：
+    `TW_CONFIG_FILE_PRESENT`、`TW_CONFIG_DIRECTIVE`、`TW_ANIMATE_PLUGIN_DEP`、`TW_THEME_MISSING`、
+    `TW_KEYFRAME_UNTOKENED`、`TW_ARBITRARY_ANIMATE`、`TW_RENAMED_UTILITY`；导出
+    `auditTailwindNative` / `findUntokenedKeyframes` / `findRenamedUtilities` / `formatTailwindNativeIssues` /
+    `stripCssComments` / `RENAMED_UTILITIES` / `ARBITRARY_ANIMATE_PATTERN`。
+  - 结构层：不允许 `tailwind.config.*`、不允许真实 `@config`（先剥注释）、不允许 `tailwindcss-animate` 依赖、
+    `@theme` 必须存在、每个 `@keyframes` 必须被某个 `--animate-*` token 整词认领。
+  - 应用层（`src/**` 去掉 `src/components/ui/**`、规则文件自身与测试）：禁止 `animate-[...]` 与 v3 名称
+    `bg-gradient-to-*` / `outline-none` / `flex-shrink*` / `flex-grow*` / `overflow-ellipsis` / `decoration-slice|clone`。
+  - `shadow` / `rounded` / `blur` 刻意不禁止——已在构建产物 CSS 里确认本仓库 `@theme inline` 把 `.rounded` 与
+    `.rounded-sm` 都映射到 4px，重命名只是无意义 diff。
+  - `src/components/ui/**` 是上游 shadcn 领地，仅输出一条非阻断告警（当前「25 处 v3 类名待跟随上游收口」）。
+  - `scripts/lib/tailwind-native-check.js` 提供 `buildSnapshot` / `runTailwindNativeCheck`（接受 repo root 参数，
+    供临时目录单测使用）；`scripts/check-tailwind.js` 用 Node `--experimental-strip-types` 运行 ESM。
+- 门禁接线：`package.json` 新脚本、`scripts/check-all.sh`（紧跟 `check:changelog`）、CI workflow
+  `lint-and-type-check` job 新增 "Check Tailwind v4 native theme usage" 步骤。
+- 文档：`docs/testing.md` 新增「Tailwind v4 原生主题门禁（G01）」小节；`docs-site/scripts.md` 与
+  `docs-site/zh-CN/scripts.md` 各补一行 `pnpm check:tailwind`。
+
+### 变更文件
+
+- `src/app/globals.css`、`src/app/page.tsx`
+- `src/components/ui/progress.tsx`、`src/components/layout/navigation-progress.tsx`
+- `src/components/forms/invite-member-form.tsx`、`src/components/forms/profile-edit-form.tsx`
+- `src/app/(marketing)/faq/faq-list.tsx`
+- `src/lib/tailwind/native-theme.ts`、`native-theme.test.ts`（新增 16 条）、`tailwind-check.test.ts`（新增 8 条）
+- `scripts/check-tailwind.js`、`scripts/lib/tailwind-native-check.js`（新增）
+- `package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`
+- `docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`
+- `CHANGELOG.md`（`[Unreleased] / ### Fixed`）、`docs/roadmap-0.6.0.md`（G01 完成说明）
+
+### 验证命令与结果
+
+- `pnpm check:tailwind` → ✅ 通过（无 `@config`/JS 配置，1 个样式文件、272 个应用层文件写法合规；1 条非阻断 ui 告警）
+- `pnpm test` → ✅ **128 文件 1296 测试**（G07 前 126 文件 1272 测试）
+- `pnpm lint` → ✅ `eslint .` 无告警
+- `pnpm type-check` → ✅ `tsc --noEmit` 无错误
+- `pnpm build` → ✅ 成功；已复核构建产物 CSS：`.animate-navprogress`（`0.8s ease-in-out infinite navprogress`）、
+  `.animate-progress-indeterminate`、`.bg-linear-to-b`、`.outline-hidden`（含 `@media (forced-colors:active)`）、
+  `.w-[30%]` 均落盘
+- `pnpm test:e2e` → ✅ **86 passed (1.0m)**
+- `pnpm check:all` → ✅ 全部校验通过（含新增 `check:tailwind`）
+- `pnpm test:visual`（`mcr.microsoft.com/playwright:v1.63.0-noble` 容器内，按
+  [docs/testing.md](testing.md) 的 Linux 基线流程）→ ✅ **4 passed**，1440×900 桌面全页截图无像素变化
+
+### 阻塞
+
+- 无本地阻塞。
+
+### 风险与回滚
+
+- 风险：`--animate-progress-indeterminate` / `--animate-navprogress` 是自持 token，若后续有人把 keyframes 移出
+  `@theme` 或改名，`check:tailwind` 的 `TW_KEYFRAME_UNTOKENED` 会立刻失败。
+- 风险：`check:tailwind` 应用层规则会拦住 `animate-[...]` 任意值与 `bg-gradient-to-*` 等 v3 名称，
+  新代码写完未跑 `check:all` 时可能在 CI 才发现（本地 `pnpm check:tailwind` 可先自查）。
+- 风险：`src/components/ui/**` 仍留 25 处 v3 类名（上游 shadcn 领地），当前降级为非阻断告警；
+  跟随上游升级时再收口。
+- 回滚：`git revert 2a75e87` 即回到「动画走 `@layer utilities` 手写类 + 试点页 `bg-gradient-to-b` + 无 Tailwind 门禁」状态；
+  纯样式与门禁改动，无数据 / 迁移影响。
+
+### 下一步
+
+- G02 design token 收口（M2 里程碑下一项）。
+
+- 最后更新：2026-09-13

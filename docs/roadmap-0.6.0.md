@@ -90,7 +90,7 @@
 
 ### G. UI 系统与 Tailwind（G01–G10）
 
-61. G01 Tailwind v4 试点页迁移
+61. G01 Tailwind v4 试点页迁移（完成：自持动画收口到 `@theme` 的 `--animate-progress-indeterminate` / `--animate-navprogress` token（`@keyframes` 内联进同一块），删除无引用的 `@layer utilities` 死代码（`.step`/`.step:before`）与裸 `@keyframes navprogress`；试点页 `bg-gradient-to-b`→`bg-linear-to-b`，`outline-none`→`outline-hidden` 扫过 4 个文件；新增 `pnpm check:tailwind` 构建门禁（`src/lib/tailwind/native-theme.ts` 纯规则 + `scripts/lib/tailwind-native-check.js`，7 类规则码含 `@config`/JS 配置/`tailwindcss-animate`/无 token 的 `@keyframes`/任意值动画/v3 重命名工具类，24 条单测），接入 `pnpm check:all` 与 CI；构建产物 CSS 复核 animation/`bg-linear-to-b`/`outline-hidden`/`w-[30%]` 均落盘，Linux 容器视觉基线 4 项无变化）
 62. G02 design token 收口
 63. G03 shared form field 统一
 64. G04 loading/empty/error 状态统一

@@ -30,6 +30,7 @@ All notable changes to IndieStack will be documented in this file.
   移动抽屉共用，避免两侧漂移；新增 18 条单测与 11 条 E2E，Linux 容器内 4 项视觉基线保持无变化。
 - **键盘与 screen reader 交互回归：跳过导航不生效、Esc 不关闭菜单、折叠侧边栏无可访问名称（G07）**：新增 `e2e/keyboard.spec.ts`（6 条，全部基于角色与可访问名称断言）后暴露四处真实缺口。其一，`#main-content` 不可聚焦，键盘用户激活「跳到主要内容」后焦点仍停在链接上，屏幕阅读器不会切换上下文；现在四处 `<main>` 补 `tabindex="-1"`，激活后焦点确实落进主内容。其二，移动端页头菜单只能再点按钮关闭，Esc 无反应且焦点丢失；现在 Esc 关闭并把焦点交还汉堡按钮。其三，仪表盘折叠按钮没有可访问名称也不暴露状态，折叠后图标链接只剩 `title`；现在按钮带 `aria-label` / `aria-expanded` / `aria-controls`，折叠后的链接改用 `aria-label` 保留名称。其四，`?` 快捷键只挡了 input/textarea/select，在 contenteditable 与 `role="textbox"`（命令面板输入框）里输入 `?` 会误弹帮助，且 `⌘?` / `Ctrl+?` / `Alt+?` 未排除，现已一并拦截。新增 13 条单测与 6 条键盘 E2E，Linux 容器内 4 项视觉基线保持无变化。
 
+- **Tailwind v3 遗留写法收口到 v4 原生机制（G01）**：自持的两段动画（进度条不确定态、路由切换进度条）从「裸 `@keyframes` + `@layer utilities` 手写类」迁到 `@theme` 的 `--animate-progress-indeterminate` / `--animate-navprogress` token（keyframes 内联进同一块），使用处回到 `animate-<token>` 工具类，宽度用普通工具类 `w-[30%]` 表达；删除仓库内已无引用的 `.step` / `.step:before` 死代码与尾部裸 `@keyframes navprogress`。同时把试点页与共享表单里的 v3 语义类名升级：`bg-gradient-to-b`→`bg-linear-to-b`、`outline-none`→`outline-hidden`（focus-visible 场景，含 forced-colors 处理）。为防回潮新增 `pnpm check:tailwind` 构建门禁（7 类规则码：`@config`/JS 配置/`tailwindcss-animate` 依赖/`@theme` 缺失/未被 token 认领的 `@keyframes`/任意值动画/v3 重命名工具类，24 条单测），接入 `pnpm check:all` 与 CI；构建产物 CSS 已复核 `.animate-navprogress`、`.animate-progress-indeterminate`、`.bg-linear-to-b`、`.outline-hidden` 正常落盘。
 ## [0.9.0] — 2026-09-13
 
 > 主题：**安全与权限边界收口 + 测试与发布门禁加固**
