@@ -19,6 +19,7 @@ import {
   ADMIN_CLIENT_INVENTORY,
   inspectAdminClientBoundary,
 } from "../../src/lib/security/admin-client-boundary.ts";
+import { inspectStoragePolicies } from "../../src/lib/security/storage-policies.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -77,59 +78,23 @@ function checkTableRls(sources) {
     .map((issue) => `[${issue.code}] ${issue.message}`);
 }
 
-const STORAGE_POLICY_RULES = [
-  [
-    "Public can read avatars",
-    /create\s+policy\s+"Public can read avatars"[\s\S]*?on\s+storage\.objects\s+for\s+select[\s\S]*?bucket_id\s*=\s*'avatars'/i,
-  ],
-  [
-    "Users can upload own avatars",
-    /create\s+policy\s+"Users can upload own avatars"[\s\S]*?on\s+storage\.objects\s+for\s+insert[\s\S]*?bucket_id\s*=\s*'avatars'[\s\S]*?storage\.foldername\(name\)[^;]*?auth\.uid\(\)/i,
-  ],
-  [
-    "Users can update own avatars",
-    /create\s+policy\s+"Users can update own avatars"[\s\S]*?on\s+storage\.objects\s+for\s+update[\s\S]*?using[\s\S]*?bucket_id\s*=\s*'avatars'[\s\S]*?storage\.foldername\(name\)[^;]*?auth\.uid\(\)[\s\S]*?with\s+check[\s\S]*?bucket_id\s*=\s*'avatars'/i,
-  ],
-  [
-    "Users can delete own avatars",
-    /create\s+policy\s+"Users can delete own avatars"[\s\S]*?on\s+storage\.objects\s+for\s+delete[\s\S]*?using[\s\S]*?bucket_id\s*=\s*'avatars'[\s\S]*?storage\.foldername\(name\)[^;]*?auth\.uid\(\)/i,
-  ],
-];
-
-/** The avatars bucket and its tenant-scoped storage policies must be versioned. */
-function checkStoragePolicies(srcDir, sql) {
-  const issues = [];
-  const warnings = [];
-  const entryPoint = path.join(srcDir, "lib", "storage", "index.ts");
-  const usesStorage =
-    fs.existsSync(entryPoint) &&
-    /storage\.from\(["\']avatars["\']\)/.test(fs.readFileSync(entryPoint, "utf8"));
-  if (!usesStorage) return { issues, warnings };
-
-  if (!/create\s+policy[\s\S]*?on\s+storage\.objects/i.test(sql)) {
-    issues.push(
-      "storage.objects: no versioned RLS policy found for the avatars bucket used by the application",
-    );
-  }
-  if (!/insert\s+into\s+storage\.buckets[\s\S]*?avatars/i.test(sql)) {
-    warnings.push(
-      "storage.buckets: avatars bucket is not created by a migration; provisioning is external and must be documented",
-    );
-  }
-  for (const [name, pattern] of STORAGE_POLICY_RULES) {
-    if (!pattern.test(sql)) {
-      issues.push(`storage.objects: policy "${name}" is missing or not tenant-scoped`);
-    }
-  }
-  return { issues, warnings };
-}
-
 /**
  * Test files are never part of the Next.js client bundle: a fixture that prints `"use client"`
  * or that mocks `@/lib/supabase/admin` is not a production client module.
  */
 function isTestSource(file) {
   return /\.(test|spec)\.(ts|tsx)$/.test(file);
+}
+
+/** Non-test application sources with repository-relative file names, used by the static gates. */
+function readAppSources(srcDir, root) {
+  return collectSourceFiles(srcDir)
+    .filter((file) => !isTestSource(file))
+    .map((file) => ({
+      fileName: path.relative(root, file).split(path.sep).join("/"),
+      content: fs.readFileSync(file, "utf8"),
+    }))
+    .sort((left, right) => left.fileName.localeCompare(right.fileName));
 }
 
 /** service_role must stay server-only and never be imported by a client component. */
@@ -154,14 +119,9 @@ function checkClientServiceRole(srcDir, root) {
  * module starts using service_role without being classified.
  */
 function checkAdminClientBoundary(srcDir, root) {
-  const sources = collectSourceFiles(srcDir)
-    .filter((file) => !isTestSource(file))
-    .map((file) => ({
-      fileName: path.relative(root, file).split(path.sep).join("/"),
-      content: fs.readFileSync(file, "utf8"),
-    }))
-    .sort((left, right) => left.fileName.localeCompare(right.fileName));
-  return inspectAdminClientBoundary(sources).map((issue) => `[${issue.code}] ${issue.message}`);
+  return inspectAdminClientBoundary(readAppSources(srcDir, root)).map(
+    (issue) => `[${issue.code}] ${issue.message}`,
+  );
 }
 
 /** Run the static audit and return a process exit code without terminating the caller. */
@@ -174,7 +134,10 @@ export function runSupabaseSecurityCheck(options = {}) {
   const sql = sources.map((source) => source.content).join("\n");
   const definerIssues = inspectSecurityDefinerGrants(sources);
   const writeIssues = inspectClientWritePolicies(sources);
-  const storage = checkStoragePolicies(srcDir, sql);
+  const storage = inspectStoragePolicies({
+    migrations: sources,
+    appSources: readAppSources(srcDir, root),
+  });
   const adminClient = { issues: checkAdminClientBoundary(srcDir, root) };
   const effectivePolicyCount = extractEffectivePolicies(sources).length;
   const tableCount = new Set(
@@ -188,7 +151,7 @@ export function runSupabaseSecurityCheck(options = {}) {
     ...definerIssues.map((issue) => `[${issue.code}] ${issue.fileName}: ${issue.message}`),
     ...writeIssues.map((issue) => `[${issue.code}] ${issue.fileName}: ${issue.message}`),
     ...checkTableRls(sources),
-    ...storage.issues,
+    ...storage.issues.map((issue) => `[${issue.code}] ${issue.message}`),
     ...checkClientServiceRole(srcDir, root),
     ...adminClient.issues,
   ];
