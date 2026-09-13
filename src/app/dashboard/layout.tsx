@@ -12,6 +12,7 @@ import { ROUTES } from "@/lib/constants";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
+import { MobileDashboardNav } from "@/components/dashboard/mobile-dashboard-nav";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { SessionHeartbeat } from "@/components/dashboard/session-heartbeat";
 
@@ -32,7 +33,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex flex-1">
         <DashboardSidebar />
         <CommandPalette />
-        <main id="main-content" className="flex-1 overflow-auto p-6 lg:p-8">{children}</main>
+        {/* G06：<768px 侧边栏整体隐藏，移动端抽屉保证导航可达 */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <MobileDashboardNav />
+          <main id="main-content" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

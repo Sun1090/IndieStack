@@ -66,7 +66,7 @@ export function SiteHeader() {
           <Link href={ROUTES.home} className="flex items-center gap-2 text-xl font-bold">
             <span>{SITE_CONFIG.name}</span>
           </Link>
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden items-center gap-1 lg:flex">
             {marketingLinks.map((link) =>
               isExternalUrl(link.href) ? (
                 <a
@@ -92,8 +92,11 @@ export function SiteHeader() {
         </div>
 
         {/* 右侧操作区 */}
-        <div className="flex items-center gap-3">
-          <ShortcutsDialog />
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* 触屏没有物理键盘，快捷键入口只在 md 以上出现（G06 窄屏溢出） */}
+          <div className="hidden md:block">
+            <ShortcutsDialog />
+          </div>
           <LocaleSwitcher />
           <ThemeToggle />
 
@@ -103,7 +106,7 @@ export function SiteHeader() {
           ) : user ? (
             <>
               {/* 已登录：显示仪表盘按钮和用户头像下拉菜单 */}
-              <Button variant="ghost" size="sm" asChild className="hidden md:flex">
+              <Button variant="ghost" size="sm" asChild className="hidden lg:flex">
                 <Link href={ROUTES.dashboard}>
                   <LayoutDashboard className="mr-2 h-4 w-4" /> {t("dashboard")}
                 </Link>
@@ -149,7 +152,7 @@ export function SiteHeader() {
             </>
           ) : (
             // 未登录：显示登录和注册按钮
-            <div className="hidden items-center gap-2 md:flex">
+            <div className="hidden items-center gap-2 lg:flex">
               <Button variant="ghost" asChild>
                 <Link href={ROUTES.login}>{t("signIn")}</Link>
               </Button>
@@ -163,7 +166,10 @@ export function SiteHeader() {
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            className="lg:hidden"
+            aria-label={tc("menu")}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="site-mobile-menu"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -173,7 +179,7 @@ export function SiteHeader() {
 
       {/* 移动端导航菜单 */}
       {mobileMenuOpen && (
-        <div className="border-t md:hidden">
+        <div id="site-mobile-menu" className="border-t lg:hidden">
           <div className="container space-y-3 py-4">
             <nav className="flex flex-col gap-1">
               {marketingLinks.map((link) =>

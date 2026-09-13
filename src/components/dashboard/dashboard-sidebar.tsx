@@ -13,78 +13,24 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/constants";
 import { useTranslations } from "next-intl";
-import { useUser } from "@/hooks/use-user";
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { dashboardQueryOptions, QUERY_KEYS, CACHE_STALE } from "@/lib/query-cache";
-import { createClient } from "@/lib/supabase/client";
-import { getUnreadNotificationCount } from "@/lib/actions/notifications";
-import {
-  LayoutDashboard,
-  User,
-  Settings,
-  Users,
-  CreditCard,
-  BarChart3,
-  FolderKanban,
-  Bell,
-  Puzzle,
-  Key,
-  Shield,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { useState } from "react";
+import { LayoutDashboard, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  ADMIN_NAV_LINK,
+  buildDashboardNavLinks,
+  isNotificationsLink,
+} from "./dashboard-nav-links";
+import { useIsAdmin } from "@/hooks/use-is-admin";
+import { useUnreadNotificationCount } from "@/hooks/use-unread-notifications";
 
 export function DashboardSidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const { user } = useUser();
   const t = useTranslations("common");
-
-  // 未读数 badge：60s 轮询 + 切回前台刷新（D04 实时策略）
-  const { data: unreadCount = 0 } = useQuery(
-    dashboardQueryOptions({
-    queryKey: QUERY_KEYS.unreadCount,
-    staleTime: CACHE_STALE.live,
-    enabled: Boolean(user),
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
-    queryFn: async () => {
-      const result = await getUnreadNotificationCount();
-      if (!result.ok) throw new Error(result.error);
-      return result.data?.unread ?? 0;
-    },
-    }));
-
-  // 检查当前用户角色是否为 admin 或 super_admin
-  useEffect(() => {
-    if (!user) return;
-    const supabase = createClient();
-    supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-      .then(({ data }: { data: { role?: string } | null }) => {
-        const role = (data as { role?: string } | null)?.role;
-        setIsAdmin(role === "admin" || role === "super_admin");
-      });
-  }, [user]);
-
-  const sidebarLinks = [
-    { href: ROUTES.dashboard, label: t("dashboard"), icon: LayoutDashboard },
-    { href: ROUTES.dashboardAnalytics, label: t("analytics"), icon: BarChart3 },
-    { href: ROUTES.dashboardProjects, label: t("projects"), icon: FolderKanban },
-    { href: ROUTES.dashboardProfile, label: t("profile"), icon: User },
-    { href: ROUTES.dashboardTeam, label: t("team"), icon: Users },
-    { href: ROUTES.dashboardBilling, label: t("billing"), icon: CreditCard },
-    { href: ROUTES.apiKeys, label: t("apiKeys"), icon: Key },
-    { href: ROUTES.dashboardSettings, label: t("settings"), icon: Settings },
-    { href: ROUTES.dashboardNotifications, label: t("notifications"), icon: Bell },
-    { href: ROUTES.dashboardIntegrations, label: t("integrations"), icon: Puzzle },
-  ];
+  const isAdmin = useIsAdmin();
+  const unreadCount = useUnreadNotificationCount();
+  const sidebarLinks = buildDashboardNavLinks(t);
 
   return (
     <aside
@@ -132,7 +78,7 @@ export function DashboardSidebar() {
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 {!collapsed && <span>{link.label}</span>}
-                {link.href === ROUTES.dashboardNotifications && unreadCount > 0 && !collapsed && (
+                {isNotificationsLink(link.href) && unreadCount > 0 && !collapsed && (
                   <span
                     className={cn(
                       "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold",
@@ -142,7 +88,7 @@ export function DashboardSidebar() {
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
-                {link.href === ROUTES.dashboardNotifications && unreadCount > 0 && collapsed && (
+                {isNotificationsLink(link.href) && unreadCount > 0 && collapsed && (
                   <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
                 )}
               </Link>
@@ -154,7 +100,7 @@ export function DashboardSidebar() {
             <>
               <div className="my-2 border-t" />
               <Link
-                href={ROUTES.admin}
+                href={ADMIN_NAV_LINK.href}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   pathname.startsWith("/dashboard/admin")
@@ -162,14 +108,14 @@ export function DashboardSidebar() {
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                 )}
               >
-                <Shield className="h-4 w-4 shrink-0" />
+                <ADMIN_NAV_LINK.icon className="h-4 w-4 shrink-0" />
                 <span>{t("admin")}</span>
               </Link>
             </>
           )}
           {isAdmin && collapsed && (
             <Link
-              href={ROUTES.admin}
+              href={ADMIN_NAV_LINK.href}
               className={cn(
                 "flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium transition-colors",
                 pathname.startsWith("/dashboard/admin")
@@ -178,7 +124,7 @@ export function DashboardSidebar() {
               )}
               title={t("admin")}
             >
-              <Shield className="h-4 w-4 shrink-0" />
+              <ADMIN_NAV_LINK.icon className="h-4 w-4 shrink-0" />
             </Link>
           )}
         </nav>
