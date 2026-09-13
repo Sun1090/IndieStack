@@ -2457,3 +2457,33 @@
   - 回滚：`git revert 517b17a` 即移除门禁、runbook 与文档接线；纯校验、CI 与文档改动，无数据库、运行时接口或部署影响。
 - 下一步：J07 tag/release 自动化（J06 / J08 仍受生产环境与部署权限阻塞）。
 - 最后更新：2026-09-13
+## J07 Tag / Release Notes 自动化（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 97 项）
+- 里程碑与发布目标：M4 J 段（J01–J10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`9e760db`（ci(release): gate tags on verified changelog notes）
+- 目标：把「打 tag 后自动建 Release」从只检查工作流存在，推进为可执行契约，确保 tag、`package.json` 版本、已发布 CHANGELOG 章节三者一致，并禁止 GitHub 自动生成未经仓库审核的 Release Notes
+- 已完成：
+  - 新增纯函数 `src/lib/release/release-tag-policy.ts`：严格校验 `vX.Y.Z`（拒绝 `v1`、`v1.2`、前导零、预发布后缀等非发布标签），要求 tag 去掉 `v` 后与 `package.json` 完全一致，并要求 `CHANGELOG.md` 存在同版本、带合法 `YYYY-MM-DD` 日期且正文非空的已发布章节
+  - Release Notes 生成：从目标版本的 CHANGELOG 章节提取标题与正文，生成稳定的 `release-notes.md`；章节缺失、日期非法、正文为空、写入路径非法时失败，不允许回退到空 notes 或自动生成 notes
+  - 工作流审计：`release.yml` 契约覆盖 `v*` tag 触发、`contents: write`、`fetch-depth: 0`、`pnpm install --frozen-lockfile`、`pnpm check:all`、`pnpm check:release-tag --tag "$GITHUB_REF_NAME" --notes-output <file>`、`gh release create --notes-file <同一文件>`、`timeout-minutes` 与创建前门禁顺序；显式禁止 `--generate-notes`
+  - 新增 `scripts/lib/release-tag-check.js` 与 `scripts/check-release-tag.js`，支持 `--tag`、`--notes-output`、`--help`；无 tag 时只审计策略与工作流，传入 tag 时额外校验版本与 CHANGELOG，退出码 1 表示策略失败、2 表示参数或 IO 错误
+  - 把 `release.yml` 改写为：冻结安装 → `pnpm check:all` → 生成并校验 Release Notes → `gh release create --notes-file release-notes.md`；`package.json` 注册 `pnpm check:release-tag`，本地 `scripts/check-all.sh` 与 CI `Lint & Type Check` 均执行
+  - 修复 `src/lib/release/gate-wiring.ts` 的潜在误判：只有 CI job 明确执行聚合 `pnpm check:all` 时才算接线，其他 workflow 中的 `check:all` 不再错把刻意豁免门禁视为已被 CI 覆盖；新增回归测试
+  - 新增 46 条发布标签策略单测，覆盖严格 semver、CHANGELOG 抽取/日期/空正文、notes 输出、17 类规则码、工作流 drift 和真实仓库快照零问题；门禁接线测试同步扩充
+  - 文档与接线：更新 `.github/RELEASE_CHECKLIST.md`、双语 `docs-site/scripts.md`、双语 `docs-site/testing.md`、`docs/testing.md`、`CHANGELOG.md [Unreleased]`、`src/lib/testing/test-matrix.ts` 与 roadmap 第 97 项
+- 变更文件：`src/lib/release/release-tag-policy.ts`、`src/lib/release/release-tag-policy.test.ts`、`src/lib/release/gate-wiring.ts`、`src/lib/release/gate-wiring.test.ts`、`scripts/lib/release-tag-check.js`、`scripts/check-release-tag.js`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`.github/workflows/release.yml`、`.github/RELEASE_CHECKLIST.md`、`package.json`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs-site/testing.md`、`docs-site/zh-CN/testing.md`、`src/lib/testing/test-matrix.ts`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `9e760db`）：
+  - `pnpm exec vitest run src/lib/release` → ✅ 2 文件 / 75 测试通过
+  - `pnpm check:release-tag` → ✅ `v0.10.0`，22 条契约断言通过
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:docs`、`pnpm check:test-matrix`、`pnpm check:changelog`、`pnpm check:release-docs`、`pnpm check:gates`、`pnpm check:workflows` → ✅ 全部通过
+  - `pnpm check:all` → ✅ 150 文件 / 1686 测试通过，全部门禁绿色（28 个门禁：本地 25 / CI 26 / 豁免 3；8 个工作流 / 12 个作业 / 37 个 action 引用）
+- 阻塞：真实 tag 创建与 GitHub Release 发布需要推送 / tag 权限，本地只验证门禁与工作流契约，未创建 tag
+- 风险与回滚：
+  - 风险：Release Notes 以 CHANGELOG 已发布章节为唯一来源；若以后需要额外 release 文案，应先写入 CHANGELOG，而不是在 workflow 中绕过门禁
+  - 风险：严格 semver 不接受预发布后缀；若未来采用 RC 流程，需要先扩展策略与测试，不能直接放宽 workflow
+  - 回滚：`git revert 9e760db` 即移除标签策略、notes 生成、workflow 门禁与文档接线；纯校验 / CI / 文档改动，无数据库或运行时接口影响
+- 下一步：J06 production smoke 与 J08 发布后回滚演练的本地可执行部分；真正生产执行仍受部署、生产 URL 与隔离账号权限约束
+- 最后更新：2026-09-13
