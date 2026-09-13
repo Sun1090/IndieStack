@@ -6,14 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { version as pkgVersion } from "../../../../package.json";
 import { GET } from "./route";
 
-const mockCreateAdminClient = vi.fn();
-vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: mockCreateAdminClient,
+const mockCreateClient = vi.hoisted(() => vi.fn());
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: mockCreateClient,
 }));
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  mockCreateAdminClient.mockReset();
+  mockCreateClient.mockReset();
 });
 
 describe("GET /api/health", () => {
@@ -70,12 +70,31 @@ describe("GET /api/health", () => {
     });
   });
 
+  it("缺少 service_role 时 readiness 失败且不发起 anon 探测", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://db.example.test");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon");
+
+    const res = await GET();
+    const body = await res.json();
+    expect(mockCreateClient).not.toHaveBeenCalled();
+    expect(res.status).toBe(503);
+    expect(body.status).toBe("error");
+    expect(body.ready).toBe(false);
+    expect(body.checks.supabase).toMatchObject({
+      required: true,
+      configured: false,
+      reachable: false,
+      status: "missing",
+    });
+  });
+
   it("required Supabase 已配置但不可达时返回 degraded/503", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://db.example.test");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service");
-    mockCreateAdminClient.mockReturnValue({
+    mockCreateClient.mockReturnValue({
       from: () => ({
         select: () => ({
           limit: () => ({
@@ -104,7 +123,7 @@ describe("GET /api/health", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://db.example.test");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service");
-    mockCreateAdminClient.mockReturnValue({
+    mockCreateClient.mockReturnValue({
       from: () => ({
         select: () => ({
           limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
@@ -114,6 +133,9 @@ describe("GET /api/health", () => {
 
     const res = await GET();
     const body = await res.json();
+    expect(mockCreateClient).toHaveBeenCalledWith("https://db.example.test", "anon", {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
     expect(res.status).toBe(200);
     expect(body.status).toBe("ok");
     expect(body.ready).toBe(true);

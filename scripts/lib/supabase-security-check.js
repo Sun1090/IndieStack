@@ -1,10 +1,10 @@
 /**
  * Supabase security audit: migrations, storage policies, admin-client boundaries,
- * SECURITY DEFINER execution grants and client-writable RLS policies.
+ * SECURITY DEFINER execution grants, client-writable RLS policies and the least-privilege
+ * inventory of every service-role call site.
  *
- * The pure rules live in src/lib/security/security-definer-grants.ts and
- * src/lib/security/client-write-policies.ts; both are covered by Vitest. This module handles
- * filesystem IO and process output.
+ * The pure rules live in src/lib/security/*.ts; all of them are covered by Vitest. This module
+ * handles filesystem IO and process output.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -15,6 +15,10 @@ import {
   inspectClientWritePolicies,
 } from "../../src/lib/security/client-write-policies.ts";
 import { inspectRlsCoverage } from "../../src/lib/security/rls-coverage.ts";
+import {
+  ADMIN_CLIENT_INVENTORY,
+  inspectAdminClientBoundary,
+} from "../../src/lib/security/admin-client-boundary.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -120,10 +124,18 @@ function checkStoragePolicies(srcDir, sql) {
   return { issues, warnings };
 }
 
+/**
+ * Test files are never part of the Next.js client bundle: a fixture that prints `"use client"`
+ * or that mocks `@/lib/supabase/admin` is not a production client module.
+ */
+function isTestSource(file) {
+  return /\.(test|spec)\.(ts|tsx)$/.test(file);
+}
+
 /** service_role must stay server-only and never be imported by a client component. */
 function checkClientServiceRole(srcDir, root) {
   const issues = [];
-  for (const file of collectSourceFiles(srcDir)) {
+  for (const file of collectSourceFiles(srcDir).filter((file) => !isTestSource(file))) {
     const body = fs.readFileSync(file, "utf8");
     const isClientModule = /['"]use client['"]/.test(body);
     const touchesAdmin = /supabase\/admin|createAdminClient|SUPABASE_SERVICE_ROLE_KEY/.test(body);
@@ -132,6 +144,24 @@ function checkClientServiceRole(srcDir, root) {
     }
   }
   return issues;
+}
+
+/**
+ * Least-privilege inventory of `createAdminClient()` call sites.
+ *
+ * `src/lib/security/admin-client-boundary.ts` owns the rules and the committed inventory; this
+ * wrapper only feeds it repository-sourced files so `check:supabase-security` fails closed when a
+ * module starts using service_role without being classified.
+ */
+function checkAdminClientBoundary(srcDir, root) {
+  const sources = collectSourceFiles(srcDir)
+    .filter((file) => !isTestSource(file))
+    .map((file) => ({
+      fileName: path.relative(root, file).split(path.sep).join("/"),
+      content: fs.readFileSync(file, "utf8"),
+    }))
+    .sort((left, right) => left.fileName.localeCompare(right.fileName));
+  return inspectAdminClientBoundary(sources).map((issue) => `[${issue.code}] ${issue.message}`);
 }
 
 /** Run the static audit and return a process exit code without terminating the caller. */
@@ -145,6 +175,7 @@ export function runSupabaseSecurityCheck(options = {}) {
   const definerIssues = inspectSecurityDefinerGrants(sources);
   const writeIssues = inspectClientWritePolicies(sources);
   const storage = checkStoragePolicies(srcDir, sql);
+  const adminClient = { issues: checkAdminClientBoundary(srcDir, root) };
   const effectivePolicyCount = extractEffectivePolicies(sources).length;
   const tableCount = new Set(
     [...sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_][\w]*)/gi)].map(
@@ -159,6 +190,7 @@ export function runSupabaseSecurityCheck(options = {}) {
     ...checkTableRls(sources),
     ...storage.issues,
     ...checkClientServiceRole(srcDir, root),
+    ...adminClient.issues,
   ];
 
   if (storage.warnings.length) {
@@ -176,11 +208,18 @@ export function runSupabaseSecurityCheck(options = {}) {
         "  hint: add a forward migration dropping the client write policy (service_role bypasses RLS)",
       );
     }
+    if (adminClient.issues.length > 0) {
+      console.error(
+        "  hint: classify the call site in ADMIN_CLIENT_INVENTORY (src/lib/security/admin-client-boundary.ts) " +
+          "or remove the service-role dependency",
+      );
+    }
     return 1;
   }
   console.log(
     `✅ Supabase security audit passed: ${sources.length} migrations, ${tableCount} public tables, ` +
-      `server-only service role checks, ${effectivePolicyCount} effective RLS policies`,
+      `server-only service role checks, ${effectivePolicyCount} effective RLS policies, ` +
+      `${ADMIN_CLIENT_INVENTORY.length} classified service-role call sites`,
   );
   return 0;
 }

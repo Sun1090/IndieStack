@@ -7,6 +7,8 @@
  */
 
 import { jsonNoStore } from "@/lib/api-response";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
 import { version as pkgVersion } from "../../../../package.json";
 
 /** 服务启动时间（进程级） */
@@ -19,12 +21,16 @@ type DependencyStatus = "ok" | "missing" | "unreachable" | "skipped";
 
 export const dynamic = "force-dynamic";
 
-/** 轻量探测 DB 可达性：limit(1) 索引扫描；未配置时跳过不断连 */
+/** 轻量探测 DB 可达性：使用公开 anon 身份 limit(1)，不借 service_role 做健康检查 */
 async function checkSupabaseReachable(configured: boolean): Promise<boolean> {
   if (!configured) return false;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return false;
   try {
-    const { createAdminClient } = await import("@/lib/supabase/admin");
-    const probe = createAdminClient()
+    const probe = createClient<Database>(url, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
       .from("profiles")
       .select("id")
       .limit(1)
@@ -52,6 +58,8 @@ function isMockMode(): boolean {
 export async function GET() {
   const uptime = Math.floor((Date.now() - startupTime) / 1000);
   const mockMode = isMockMode();
+  // readiness 仍需三个 Supabase 凭据齐全：探测走 anon（最小权限），但 server 端功能
+  // （webhook / cron / 跨用户写入）依赖 service_role。缺它时部署是配置错误，必须报 503。
   const supabaseConfigured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
