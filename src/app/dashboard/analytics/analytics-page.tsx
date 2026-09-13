@@ -232,13 +232,13 @@ export function AnalyticsPage() {
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`h-2 w-2 rounded-full ${isError ? "bg-red-500" : "bg-green-500"}`}
+                        className={`h-2 w-2 rounded-full ${isError ? "bg-destructive" : "bg-success"}`}
                       />
                       <span className="text-sm font-medium">{event.method}</span>
                       <span className="font-mono text-xs text-muted-foreground">{event.path}</span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className={isError ? "font-medium text-red-600" : ""}>
+                      <span className={isError ? "font-medium text-destructive" : ""}>
                         {event.status_code ?? "—"}
                       </span>
                       <span>{formatEventTime(event.created_at)}</span>

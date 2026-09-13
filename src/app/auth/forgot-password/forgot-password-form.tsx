@@ -50,7 +50,7 @@ export function ForgotPasswordForm() {
   if (sent) {
     return (
       <div className="flex flex-col items-center gap-4 text-center">
-        <CheckCircle2 className="h-12 w-12 text-green-500" />
+        <CheckCircle2 className="h-12 w-12 text-success" />
         <div>
           <p className="font-medium">{t("forgotPassword.success")}</p>
           <p className="mt-1 text-sm text-muted-foreground">

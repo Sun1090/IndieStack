@@ -32,10 +32,10 @@ const LABELS: Record<StrengthLevel, string> = {
 
 const BAR_COLORS: Record<StrengthLevel, string> = {
   0: "bg-transparent",
-  1: "bg-red-500",
-  2: "bg-amber-500",
-  3: "bg-sky-500",
-  4: "bg-emerald-500",
+  1: "bg-destructive",
+  2: "bg-warning",
+  3: "bg-info",
+  4: "bg-success",
 };
 
 export function PasswordStrength({ password }: { password: string }) {

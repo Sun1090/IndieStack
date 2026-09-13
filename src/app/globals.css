@@ -35,6 +35,23 @@
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
+  /* G02：状态语义色 token。此前状态提示直接写 Tailwind 原生调色板（green-500 / amber-600 /
+     red-500 …），同一语义在不同文件里色阶不一致、深色模式也没有统一回退；收口成
+     success / warning / info 三组（destructive 复用 shadcn 既有定义）。 */
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+
+  /* G02：图表色板此前只定义了原始变量，没有 @theme 映射，text-chart-1/fill-chart-1 并不存在。 */
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -109,6 +126,12 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 26 83% 14%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
@@ -144,6 +167,12 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    --success: 142 69% 58%;
+    --success-foreground: 144 61% 10%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 26 83% 14%;
+    --info: 213 94% 68%;
+    --info-foreground: 214 95% 10%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;

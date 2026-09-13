@@ -49,6 +49,7 @@
     "check:release-docs": "node scripts/check-release-docs.js",
     "check:changelog": "node scripts/check-changelog.js",
     "check:tailwind": "node scripts/check-tailwind.js",
+    "check:tokens": "node scripts/check-tokens.js",
     "smoke:production": "node scripts/production-smoke.js",
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",

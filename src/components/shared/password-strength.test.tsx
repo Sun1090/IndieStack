@@ -44,4 +44,20 @@ describe("PasswordStrength", () => {
     render(<PasswordStrength password="abcdefgh" />);
     expect(screen.getByText("strength.weak")).toBeInTheDocument();
   });
+
+  // G02：强度条颜色必须走语义 token，而不是 Tailwind 原生调色板
+  it.each([
+    ["abcdefgh", 1, "bg-destructive"],
+    ["abcdefgh1", 2, "bg-warning"],
+    ["abcdefgh1!", 3, "bg-info"],
+    ["Abcdef123456!@#", 4, "bg-success"],
+  ])("强度 %i 级使用 %s 语义色（%s）", (password, level, expected) => {
+    const { container } = render(<PasswordStrength password={password} />);
+    expect(scorePassword(password)).toBe(level);
+    const bars = Array.from(container.querySelectorAll(".flex-1"));
+    expect(bars).toHaveLength(4);
+    for (const [index, bar] of bars.entries()) {
+      expect(bar.className).toContain(index < level ? expected : "bg-muted");
+    }
+  });
 });

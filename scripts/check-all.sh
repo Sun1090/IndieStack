@@ -13,6 +13,7 @@ echo "==> check:security"; pnpm --silent check:security
 echo "==> check:release-docs"; pnpm --silent check:release-docs
 echo "==> check:changelog";    pnpm --silent check:changelog
 echo "==> check:tailwind";   pnpm --silent check:tailwind
+echo "==> check:tokens";     pnpm --silent check:tokens
 echo "==> check:docs";   pnpm --silent check:docs
 echo "==> check:a11y";   pnpm --silent check:a11y
 echo "==> type-check";   pnpm --silent type-check

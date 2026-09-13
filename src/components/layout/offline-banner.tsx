@@ -29,7 +29,7 @@ export function OfflineBanner() {
   return (
     <div
       role="status"
-      className="fixed inset-x-0 top-0 z-[200] flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white"
+      className="fixed inset-x-0 top-0 z-[200] flex items-center justify-center gap-2 bg-warning px-4 py-1.5 text-sm font-medium text-warning-foreground"
     >
       <WifiOff className="h-4 w-4" />
       {t("offline")}

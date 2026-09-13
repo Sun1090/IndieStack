@@ -96,7 +96,7 @@ export default async function BillingPage() {
                   <ul className="space-y-2">
                     {tier.features.map((feature: string) => (
                       <li key={feature} className="flex items-center gap-2 text-sm">
-                        <Check className="h-4 w-4 shrink-0 text-green-500" />
+                        <Check className="h-4 w-4 shrink-0 text-success" />
                         {tc(`tierFeatures.${feature}`)}
                       </li>
                     ))}

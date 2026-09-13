@@ -135,6 +135,31 @@ F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped s
 
 规则实现位于 `src/lib/tailwind/native-theme.ts`（纯函数，24 条单测覆盖），IO/CLI 位于 `scripts/lib/tailwind-native-check.js`（支持传入临时仓库根做反例测试），由 `scripts/check-tailwind.js` 经 Node 原生 type stripping 调用；`pnpm check:all` 与 CI Lint & Type Check job 均会执行。该门禁只证明类名与主题写法合规，不替代视觉回归（`pnpm test:visual`）对像素结果的验证。
 
+## 设计 token 门禁（G02）
+
+`pnpm check:tokens` 把「语义色只有一套来源」变成可持续约束。token 清单集中在 `src/lib/design/tokens.ts`
+的 `DESIGN_TOKENS`（单一事实源），门禁读取 `src/app/globals.css` 做双向核对：
+
+1. 注册表里的每个 token 必须真的定义在 `:root`（`TOKEN_MISSING_ROOT`）；
+2. 标记 `dark: true` 的 token 必须在 `.dark` 里有覆盖（`TOKEN_MISSING_DARK`）——否则深色模式下会静默沿用浅色值；
+3. 标记 `utility: true` 的 token 必须有对应的 `--color-*` 映射（`THEME_MAPPING_MISSING`）——这条正对应历史上的
+   `--chart-*` 缺口：`:root` 里定义了 5 个图表变量却没有 `@theme` 映射，`text-chart-1` / `fill-chart-1` 其实并不存在；
+4. 每条 `--color-*` 映射引用的 `var()` 必须真的存在（`THEME_MAPPING_DANGLING`），防拼写错误或「删变量不删映射」；
+5. `@theme` 里不得出现未登记进注册表的 `--color-*`（`THEME_MAPPING_UNREGISTERED`）；
+6. 应用层不得用 Tailwind 原生调色板表达状态语义（`RAW_STATUS_PALETTE`），必须走 `success` / `warning` / `info` /
+   `destructive`。装饰性多色调色板（`initial-avatar` 的头像底色、changelog 的分类徽标、admin 的统计卡）在
+   `STATUS_PALETTE_ALLOWLIST` 里显式白名单，改白名单要在同一提交里说明理由。
+
+G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各带 `-foreground`，浅色与深色两套取值，
+并把 11 个文件里散落的状态提示（`bg-green-500`、`text-amber-600`、`text-emerald-500` …）迁到语义 token。
+`--chart-1..5` 补上 `--color-chart-*` 映射以对齐 shadcn 上游；图表组件仍以 `hsl(var(--chart-N))` 消费原始变量，
+因为 `@theme inline` 只把值内联进工具类、并不会在运行时输出 `--color-*` 自定义属性，SVG `<stop stopColor>` 拿不到它。
+
+规则实现位于 `src/lib/design/tokens.ts`（纯函数，28 条单测覆盖），IO/CLI 位于 `scripts/lib/design-token-check.js`
+（支持传入临时仓库根做反例测试），由 `scripts/check-tokens.js` 经 Node 原生 type stripping 调用；
+`pnpm check:all` 与 CI Lint & Type Check job 均会执行。该门禁只证明 token 层自洽，不校验像素结果，
+视觉回归仍由 `pnpm test:visual` 负责。
+
 ## 迁移漂移门禁（H09）
 
 `pnpm check:migrations` 是离线门禁：校验 `supabase/migrations/` 的文件命名、编号连续性与无重复、空文件、UTF-8 BOM、CRLF 行尾、结尾换行，并把每个文件的 SHA-256 与提交在 `supabase/migration-manifest.json` 的基线比对。规则实现位于 `src/lib/migrations/migration-drift.ts`（纯函数，单测覆盖），由 `scripts/check-migrations.js` 经 Node 原生 type stripping 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。

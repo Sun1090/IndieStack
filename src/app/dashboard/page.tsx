@@ -133,10 +133,10 @@ export default async function DashboardOverview() {
   ];
 
   const activityDotColor = (type: string) => {
-    if (type === "success") return "bg-green-500";
-    if (type === "warning") return "bg-yellow-500";
-    if (type === "error") return "bg-red-500";
-    return "bg-blue-500";
+    if (type === "success") return "bg-success";
+    if (type === "warning") return "bg-warning";
+    if (type === "error") return "bg-destructive";
+    return "bg-info";
   };
 
   return (

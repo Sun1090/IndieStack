@@ -14,12 +14,10 @@ const mocks = vi.hoisted(() => {
   let onChange: (() => void) | undefined;
   let onStatus: ((status: string) => void) | undefined;
   const channel = {
-    on: vi.fn(
-      (_type: string, _filter: unknown, callback: () => void): typeof channel => {
-        onChange = callback;
-        return channel;
-      },
-    ),
+    on: vi.fn((_type: string, _filter: unknown, callback: () => void): typeof channel => {
+      onChange = callback;
+      return channel;
+    }),
     subscribe: vi.fn((callback?: (status: string) => void): typeof channel => {
       onStatus = callback;
       return channel;
@@ -93,6 +91,19 @@ describe("NotificationsLive", () => {
 
     act(() => mocks.getOnStatus()?.("CHANNEL_ERROR"));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("offline"));
+  });
+
+  // G02：状态点颜色走语义 token，而不是 Tailwind 原生调色板
+  it("状态点按连接状态使用语义 token 颜色", async () => {
+    const { container } = render(<NotificationsLive userId="user-1" />);
+    const dot = () => container.querySelector('[aria-hidden="true"]');
+    expect(dot()?.className).toContain("bg-warning");
+
+    act(() => mocks.getOnStatus()?.("SUBSCRIBED"));
+    await waitFor(() => expect(dot()?.className).toContain("bg-success"));
+
+    act(() => mocks.getOnStatus()?.("TIMED_OUT"));
+    await waitFor(() => expect(dot()?.className).toContain("bg-muted-foreground/50"));
   });
 
   it("客户端初始化异常时安全降级", async () => {

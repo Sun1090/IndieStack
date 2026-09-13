@@ -73,7 +73,7 @@ export function PricingCards() {
                   </span>
                 </CardDescription>
                 {yearly && tier.price > 0 && (
-                  <p className="text-xs text-emerald-600">
+                  <p className="text-xs text-success">
                     {t("youSave", { amount: Math.round(tier.price * 12 * 0.2) })}
                   </p>
                 )}

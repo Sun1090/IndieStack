@@ -104,8 +104,8 @@ export function NotificationsLive({ userId }: NotificationsLiveProps) {
         aria-hidden="true"
         className={cn(
           "size-2 rounded-full",
-          status === "live" && "bg-emerald-500",
-          status === "connecting" && "animate-pulse bg-amber-500",
+          status === "live" && "bg-success",
+          status === "connecting" && "animate-pulse bg-warning",
           status === "offline" && "bg-muted-foreground/50",
         )}
       />

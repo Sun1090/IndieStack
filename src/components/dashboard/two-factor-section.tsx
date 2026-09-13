@@ -103,9 +103,9 @@ export function TwoFactorSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           {enabled ? (
-            <ShieldCheck className="h-5 w-5 text-emerald-500" />
+            <ShieldCheck className="h-5 w-5 text-success" />
           ) : (
-            <ShieldAlert className="h-5 w-5 text-amber-500" />
+            <ShieldAlert className="h-5 w-5 text-warning" />
           )}
           {t("title")}
           {enabled && (
@@ -242,7 +242,7 @@ function RecoveryCodesSection() {
       <p className="text-sm text-muted-foreground">{t("recoveryDesc")}</p>
       {codes ? (
         <div className="space-y-2">
-          <p className="text-sm font-medium text-amber-600">{t("recoveryShowOnce")}</p>
+          <p className="text-sm font-medium text-warning">{t("recoveryShowOnce")}</p>
           <code className="block rounded bg-muted px-3 py-2 font-mono text-sm leading-7">
             {codes.map((c) => (
               <span key={c} className="block">
