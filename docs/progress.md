@@ -1048,3 +1048,86 @@
   H05 storage policy 复审、H06 webhook 幂等约束、I04 ADR 状态、I06/I07/I08/I09/I10 文档与
   runbook、J02 E2E shard 策略、J03 CI 缓存、J07 tag/release 自动化等）。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H04_SERVICE_ROLE_LEAST_PRIVILEGE（service_role 调用点清点门禁，本地完成）
+
+- 状态：DONE（本地）
+- 里程碑与发布目标：v0.8.0 后续补强（安全门禁），进入下一里程碑（v0.9.0）候选清单；本项不改版本号。
+- 分支/PR：`feat/visual-regression-baseline`（本地分支，无 PR）；base `origin/main@15b05ebe`（本轮未 fetch/rebase）。
+- 本地提交：`ec8a7dc`（fix(security): inventory every service-role admin client call site）、
+  `b3b1549`（docs(security): document the service-role least-privilege inventory）、本进度条目的 docs 提交。
+- 目标：roadmap H04「service-role 最小权限审计」——`service_role` 带 `BYPASSRLS`，
+  每个 `createAdminClient()` 调用点都是一次信任边界决策，但此前**没有任何门禁**证明这个集合稳定：
+  新路由只要 `import` 一次 admin client 就能悄悄读写真表，RLS 门禁与静态检查都不会报警。
+- 已完成：
+  - 新增 `src/lib/security/admin-client-boundary.ts`：基于 TypeScript Compiler API 的 AST 清点器。
+    逐模块记录**外层调用点路径**（如 `supabaseDriver.put`、`markEmailSent`）+ 该模块触达的
+    PostgREST 表、RPC、storage bucket、`auth.admin` 方法与 `use client` 标记；
+    注释与字符串里的 `createAdminClient()` 不计入（含"模块内对象方法要带上 owner 路径"的回归用例）。
+  - `ADMIN_CLIENT_INVENTORY` 收录 **29 个模块 / 80 个调用点**，每条含 `surface`（10 类）、
+    `trust.kind`（7 类）、`trust.evidence`（**必须保持存在的源码字面量**）与 `rationale`。
+    分布：data-access 12、e2e-mock-route 6、server-action 3、request-handler 2、
+    trusted-worker / webhook-handler / server-component / auth-bridge / server-internal /
+    storage-adapter 各 1；14 个模块带字面量授权证据。
+    触达面：14 张表、1 个 bucket（`avatars`）、0 个 RPC、5 个 `auth.admin` 方法
+    （`deleteUser` / `generateLink` / `getUserById` / `listFactors` / `deleteFactor`）。
+  - 9 条失败封闭规则：`ADMIN_CLIENT_UNCLASSIFIED`、`ADMIN_CLIENT_STALE_INVENTORY`、
+    `ADMIN_CLIENT_CALL_SITE_DRIFT`、`ADMIN_CLIENT_TABLE_NOT_ALLOWED`、
+    `ADMIN_CLIENT_RPC_NOT_ALLOWED`、`ADMIN_CLIENT_STORAGE_BUCKET_NOT_ALLOWED`、
+    `ADMIN_CLIENT_AUTH_ADMIN_NOT_ALLOWED`、`ADMIN_CLIENT_CLIENT_MODULE`、
+    `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING`。`mock-bearer` 类入口要求 `isMockEnabled` 与
+    `E2E_BEARER_TOKEN` **同时**存在，避免只留 mock 开关就暴露跨用户读写。
+  - 接入 `scripts/lib/supabase-security-check.js`（因此 `pnpm check:all` 也强制），
+    失败时输出 `hint:` 指向 `ADMIN_CLIENT_INVENTORY`；通过时打印已分类调用点数。
+  - **配套收口**：`/api/health` 不再持有 service_role。未鉴权的公开端点改用 anon key
+    （`auth: { autoRefreshToken: false, persistSession: false }`）证明 PostgREST 可达；
+    readiness 仍要求三个 Supabase 凭据齐全（server 端 webhook / cron / 跨用户写入依赖
+    `service_role`，缺它属于部署配置错误），新增用例锁定"缺 key 时不发起探测且报 503"。
+  - 修复两处真实的误报路径：`checkClientServiceRole` 与新的 boundary 清点都会误伤测试文件
+    （测试固件里印着 `"use client"`、或 mock `@/lib/supabase/admin`），现统一排除
+    `*.test.*` / `*.spec.*`（测试文件从不进入客户端 bundle）；`Buffer.from("x")` /
+    `Array.from(...)` 这类内建 `.from()` 曾被当成 PostgREST 表访问，现按内建接收者豁免，
+    未知接收者仍保守计入。
+  - 文档：`docs/db/security-audit.md` 新增「service_role 最小权限清单（2026-09-13 加固）」章节
+    （清点结果表、规则表、失败封闭证据、信任证据模型、已知边界、健康检查收口）；
+    `CHANGELOG.md` `[Unreleased] → ### Security` 追加条目。
+- 变更文件：`src/lib/security/admin-client-boundary.ts`、`src/lib/security/admin-client-boundary.test.ts`、
+  `src/app/api/health/route.ts`、`src/app/api/health/route.test.ts`、
+  `scripts/lib/supabase-security-check.js`、`docs/db/security-audit.md`、`CHANGELOG.md`、
+  `docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm check:supabase-security` → ✅ 29 迁移、19 张表、39 条生效策略、
+    **29 classified service-role call sites**。
+  - **AST 清点自检**（`src/**` 递归，排除测试文件）→ 29 文件 / 80 调用点 / 0 issue。
+  - **失败封闭验证**（临时探针，验证后已清理，退出码均为 1）：
+    新增 `src/app/api/__gate-probe/route.ts` 调用 `createAdminClient()` → `ADMIN_CLIENT_UNCLASSIFIED`；
+    在 `cron/digest` 已分类模块内追加 `admin.from("secret_table")` →
+    `ADMIN_CLIENT_TABLE_NOT_ALLOWED`（只报未登记项，已登记项不误报）。
+  - `pnpm vitest run src/lib/security/admin-client-boundary.test.ts src/app/api/health/route.test.ts`
+    → **21/21 通过**（含"已提交清单自校验"用例：29 文件 / 80 调用点 / 0 issue）。
+  - `pnpm lint`（复杂度 ≤ 15：清点器重构为 `collectAdminClientCall` / `collectFromCall` /
+    `collectAuthAdminCall` / `collectSupabaseOperation` 四个纯函数，visitor 复杂度降为 1）
+    / `pnpm type-check` → 通过。
+  - `pnpm check:all` → 通过（**115 文件 / 1168 测试**，较上一批 +15 条）。
+  - `pnpm build` → 通过（production build）。
+  - `pnpm check:docs` / `pnpm check:changelog` → 通过。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产 `pg_roles` / `proacl` / `has_table_privilege` 未探测（需生产只读凭证）；
+    本项为**静态**门禁，不替代运行时权限检查。
+  - `trust.evidence` 是字面量存在性检查，**不评估谓词语义**（`if (!isCronAuthorized)` 也能通过）；
+    真正约束仍由代码评审 + 运行时身份矩阵（20/20）保证。
+  - `surface` / `rationale` 是审计文档字段，不参与判定；运行期拼接的表名与动态 SQL 不在范围内。
+  - `/api/health` 的 anon 探测未对真实 Supabase 端点跑通（仅 mock 断言调用参数）。
+- 风险与回滚：
+  - 风险：新增门禁会让**未来任何** service_role 调用点直接红，属有意的失败封闭；
+    正确做法是在 `ADMIN_CLIENT_INVENTORY` 补一条并写明授权证据与理由（而不是放宽规则）。
+  - 风险：操作按**模块**而非变量收集，模块内只要有一次 admin client 调用，
+    其余 `.from(...)` 也要求登记，会多要一次评审。
+  - 回滚：`git revert b3b1549 ec8a7dc`（移除清点器与新门禁、恢复 health 的 service_role 探测）；
+    无迁移、无 schema 变更，不需要数据库侧回滚。
+- 下一步：继续 roadmap 中可本地执行的缺口（H02 上传元数据迁移、H05 storage policy 复审、
+  H06 webhook 幂等约束、I04 ADR 状态、I06 release checklist v0.8.0、I07 本地 mock 开发指南、
+  I08 provider 诊断指南、I09 贡献者测试矩阵、I10 迁移回滚 runbook、J02 E2E shard 策略、
+  J03 CI 缓存、J07 tag/release 自动化等）。
+- 最后更新：2026-09-13
