@@ -14,6 +14,7 @@ import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { useTranslations } from "next-intl";
 import { authErrorKey } from "@/lib/auth/errors";
+import { LoadingIndicator } from "@/components/shared/page-loading";
 
 function CallbackHandler() {
   const router = useRouter();
@@ -68,26 +69,14 @@ function CallbackHandler() {
     handleAuthCallback();
   }, [router, redirect, searchParams, t, ta]);
 
-  return (
-    <div className="text-center">
-      <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      <p className="mt-4 text-muted-foreground">{status}</p>
-    </div>
-  );
+  return <LoadingIndicator label={status} />;
 }
 
 export default function AuthCallbackPage() {
   const t = useTranslations("auth");
   return (
     <div className="container flex h-screen w-screen flex-col items-center justify-center">
-      <Suspense
-        fallback={
-          <div className="text-center">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            <p className="mt-4 text-muted-foreground">{t("callback.loading")}</p>
-          </div>
-        }
-      >
+      <Suspense fallback={<LoadingIndicator label={t("callback.loading")} />}>
         <CallbackHandler />
       </Suspense>
     </div>

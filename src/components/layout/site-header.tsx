@@ -117,8 +117,12 @@ export function SiteHeader() {
           <ThemeToggle />
 
           {loading ? (
-            // 加载中状态：显示骨架屏
-            <div className="bg-muted h-8 w-8 animate-pulse rounded-full" />
+            // 加载中状态：显示骨架屏（role=status 让屏幕阅读器知道是占位而非空白）
+            <div
+              role="status"
+              aria-label={tc("loading")}
+              className="bg-muted h-8 w-8 animate-pulse rounded-full"
+            />
           ) : user ? (
             <>
               {/* 已登录：显示仪表盘按钮和用户头像下拉菜单 */}

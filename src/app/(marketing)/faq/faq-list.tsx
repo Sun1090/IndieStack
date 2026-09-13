@@ -5,7 +5,8 @@
  */
 
 import { useMemo, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search, SearchX } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
 
 interface FaqQuestion {
   q: string;
@@ -17,7 +18,15 @@ interface FaqCategory {
   questions: FaqQuestion[];
 }
 
-export function FaqList({ categories }: { categories: FaqCategory[] }) {
+export function FaqList({
+  categories,
+  searchPlaceholder,
+  noResults,
+}: {
+  categories: FaqCategory[];
+  searchPlaceholder: string;
+  noResults: string;
+}) {
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -27,8 +36,7 @@ export function FaqList({ categories }: { categories: FaqCategory[] }) {
       .map((cat) => ({
         ...cat,
         questions: cat.questions.filter(
-          (item) =>
-            item.q.toLowerCase().includes(q) || item.a.toLowerCase().includes(q),
+          (item) => item.q.toLowerCase().includes(q) || item.a.toLowerCase().includes(q),
         ),
       }))
       .filter((cat) => cat.questions.length > 0);
@@ -39,21 +47,21 @@ export function FaqList({ categories }: { categories: FaqCategory[] }) {
   return (
     <>
       {/* 搜索框 */}
-      <div className="mx-auto mt-8 max-w-md relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="relative mx-auto mt-8 max-w-md">
+        <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={search_placeholder()}
-          aria-label={search_placeholder()}
-          className="h-10 w-full rounded-lg border bg-background pl-9 pr-4 text-sm outline-hidden focus:ring-2 focus:ring-ring"
+          placeholder={searchPlaceholder}
+          aria-label={searchPlaceholder}
+          className="bg-background focus:ring-ring h-10 w-full rounded-lg border pr-4 pl-9 text-sm outline-hidden focus:ring-2"
         />
       </div>
 
       <div className="mx-auto mt-16 max-w-3xl space-y-12">
         {totalResults === 0 ? (
-          <p className="py-12 text-center text-muted-foreground">{no_results()}</p>
+          <EmptyState icon={SearchX} title={noResults} />
         ) : (
           filtered.map((category) => (
             <div key={category.name}>
@@ -62,13 +70,13 @@ export function FaqList({ categories }: { categories: FaqCategory[] }) {
                 {category.questions.map((item) => (
                   <details
                     key={item.q}
-                    className="group rounded-lg border bg-card transition-colors hover:border-primary/50"
+                    className="group bg-card hover:border-primary/50 rounded-lg border transition-colors"
                   >
                     <summary className="flex cursor-pointer items-center justify-between p-4 text-sm font-medium">
                       {item.q}
-                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                      <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
                     </summary>
-                    <div className="border-t px-4 py-3 text-sm text-muted-foreground">{item.a}</div>
+                    <div className="text-muted-foreground border-t px-4 py-3 text-sm">{item.a}</div>
                   </details>
                 ))}
               </div>
@@ -78,11 +86,4 @@ export function FaqList({ categories }: { categories: FaqCategory[] }) {
       </div>
     </>
   );
-}
-
-function search_placeholder() {
-  return "Search FAQ...";
-}
-function no_results() {
-  return "No matching questions found.";
 }

@@ -40,6 +40,16 @@ All notable changes to IndieStack will be documented in this file.
   `native-select.tsx`（补齐此前漂移掉的 `disabled:` 外观）。`globals.css` 为 `[aria-invalid="true"]` 提供统一
   可见红边；新增 `pnpm check:fields` 门禁，禁止业务层直接写 `<select>`、复制控件类名长串或直接导入
   `ui/label`（3 类规则码、8 条门禁单测 + 17 条原语单测），接入 `pnpm check:all` 与 CI。
+- **加载 / 空 / 错误状态各写一套，骨架屏丢 aria、加载文案硬编码（G04）**：新增 `src/components/shared/error-state.tsx`
+  统一「图标 + 标题 + 说明 + 操作」的错误展示，4 个错误边界（`error` / `dashboard/error` / `global-error` /
+  `not-found`）与查询失败卡片一并收敛到它，`code` 渲染页面唯一 `h1`，默认 `role="alert"`、只读提示可传
+  `role="status"`。`page-loading.tsx` 重写为 `PageLoading`（`cards` / `dashboard` / `stats` / `list` / `spinner` 五种骨架）
+  与 `LoadingIndicator` 单一来源，容器补 `aria-busy="true"`、骨架内嵌 `role="status"` 的 `sr-only` 加载文案并改走
+  next-intl（此前 3 个手写骨架没有 `aria-busy`，加载文案硬编码中文）。12 个 `loading.tsx` 中 3 个手写 `Skeleton`
+  全部收敛（仪表盘首页 60 行手写骨架 → `variant="dashboard"`），10 处裸 `<p>` 空态改用带图标的 `EmptyState`，
+  同时删除零引用的重复加载组件 `page-loader.tsx` / `loading-state.tsx`。顺带修掉 `faq-list` 硬编码英文——
+  搜索占位符与无结果文案改为 props（双语各补 2 个 key）。新增 `pnpm check:states` 门禁（4 类规则码、
+  13 条门禁单测 + 14 条原语单测），接入 `pnpm check:all` 与 CI。
 
 ## [0.9.0] — 2026-09-13
 

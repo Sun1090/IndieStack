@@ -15,7 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/shared/query-error-state";
-import { Search, RefreshCw, Filter, Download } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Search, RefreshCw, Filter, Download, FileSearch } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -35,23 +36,29 @@ export function AdminAuditLogsPage() {
   const [actionFilter, setActionFilter] = useState("all");
 
   // TanStack Query：refetch 手动刷新按钮复用 refetch
-  const { data: logs = [], isLoading: loading, isError, refetch } = useQuery(
+  const {
+    data: logs = [],
+    isLoading: loading,
+    isError,
+    refetch,
+  } = useQuery(
     dashboardQueryOptions({
-    queryKey: QUERY_KEYS.adminAuditLogs,
-    staleTime: CACHE_STALE.admin,
-    queryFn: async (): Promise<AuditLogRecord[]> => {
-      const result = await listAuditLogs();
-      if (!result.ok) {
-        toast({
-          title: t("auditLogs.noLogs"),
-          description: ta(result.error),
-          variant: "destructive",
-        });
-        throw new Error(result.error);
-      }
-      return result.data ?? [];
-    },
-    }));
+      queryKey: QUERY_KEYS.adminAuditLogs,
+      staleTime: CACHE_STALE.admin,
+      queryFn: async (): Promise<AuditLogRecord[]> => {
+        const result = await listAuditLogs();
+        if (!result.ok) {
+          toast({
+            title: t("auditLogs.noLogs"),
+            description: ta(result.error),
+            variant: "destructive",
+          });
+          throw new Error(result.error);
+        }
+        return result.data ?? [];
+      },
+    }),
+  );
 
   // 筛选后的日志
   const filteredLogs = logs.filter((log) => {
@@ -134,7 +141,7 @@ export function AdminAuditLogsPage() {
       {/* 筛选栏 */}
       <div className="flex flex-wrap gap-3">
         <div className="relative max-w-xs flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder={t("auditLogs.searchPlaceholder")}
             value={search}
@@ -176,7 +183,7 @@ export function AdminAuditLogsPage() {
           ) : isError ? (
             <QueryErrorState onRetry={() => void refetch()} />
           ) : filteredLogs.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">{t("auditLogs.noLogs")}</div>
+            <EmptyState icon={FileSearch} title={t("auditLogs.noLogs")} />
           ) : (
             <div className="space-y-2">
               {filteredLogs.map((log) => (
@@ -195,14 +202,14 @@ export function AdminAuditLogsPage() {
                         {log.entity_id ? ` / ${log.entity_id.slice(0, 8)}...` : ""}
                       </p>
                       {log.metadata && Object.keys(log.metadata).length > 0 && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-muted-foreground text-xs">
                           {JSON.stringify(log.metadata).slice(0, 60)}
                           {JSON.stringify(log.metadata).length > 60 ? "..." : ""}
                         </p>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="text-muted-foreground flex items-center gap-3 text-xs">
                     <span>{log.user_id ? log.user_id.slice(0, 8) : "system"}</span>
                     <span>{formatTime(log.created_at)}</span>
                   </div>

@@ -21,6 +21,8 @@ import { Lock, Eye, EyeOff } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { authErrorKey } from "@/lib/auth/errors";
 import { PasswordStrength } from "@/components/shared/password-strength";
+import { LoadingIndicator } from "@/components/shared/page-loading";
+import { ErrorState } from "@/components/shared/error-state";
 
 type SessionStatus = "checking" | "ready" | "invalid";
 
@@ -106,21 +108,20 @@ export function ResetPasswordForm() {
   };
 
   if (status === "checking") {
-    return (
-      <p className="text-muted-foreground py-8 text-center text-sm">
-        {t("resetPassword.checking")}
-      </p>
-    );
+    return <LoadingIndicator label={t("resetPassword.checking")} className="py-8" />;
   }
 
   if (status === "invalid") {
     return (
-      <div className="space-y-4 py-4 text-center">
-        <p className="text-muted-foreground text-sm">{t("resetPassword.invalidSession")}</p>
-        <Button asChild variant="outline" className="w-full">
-          <Link href={ROUTES.forgotPassword}>{t("resetPassword.backToForgot")}</Link>
-        </Button>
-      </div>
+      <ErrorState
+        className="py-4"
+        description={<p>{t("resetPassword.invalidSession")}</p>}
+        action={
+          <Button asChild variant="outline" className="w-full">
+            <Link href={ROUTES.forgotPassword}>{t("resetPassword.backToForgot")}</Link>
+          </Button>
+        }
+      />
     );
   }
 

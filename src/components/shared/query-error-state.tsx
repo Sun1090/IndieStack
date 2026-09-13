@@ -3,11 +3,14 @@
 /**
  * 数据错误重试卡片
  * TanStack Query 查询失败时展示，提供重试按钮（替代裸错误文本）
+ *
+ * G04 起展示层下沉到 `error-state.tsx`，这里只负责客户端重试交互与默认文案。
  */
 
 import { useTranslations } from "next-intl";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, RotateCcw } from "lucide-react";
+import { ErrorState } from "@/components/shared/error-state";
 
 interface QueryErrorStateProps {
   /** 重试回调（通常是 refetch） */
@@ -22,16 +25,15 @@ export function QueryErrorState({ onRetry, message, className }: QueryErrorState
   const t = useTranslations("common");
 
   return (
-    <div
-      role="alert"
-      className={`flex flex-col items-center justify-center gap-3 py-10 text-center ${className ?? ""}`}
-    >
-      <AlertCircle className="h-8 w-8 text-destructive/70" />
-      <p className="text-sm text-muted-foreground">{message ?? t("error")}</p>
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        <RotateCcw className="mr-2 h-4 w-4" />
-        {t("retry")}
-      </Button>
-    </div>
+    <ErrorState
+      className={className}
+      description={message ?? t("error")}
+      action={
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+          {t("retry")}
+        </Button>
+      }
+    />
   );
 }

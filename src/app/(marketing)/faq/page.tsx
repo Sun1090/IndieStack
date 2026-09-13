@@ -35,11 +35,15 @@ export default async function FAQPage() {
           {t("metaTitle")}
         </Badge>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t("pageTitle")}</h1>
-        <p className="mt-4 text-lg text-muted-foreground">{t("pageDesc")}</p>
+        <p className="text-muted-foreground mt-4 text-lg">{t("pageDesc")}</p>
       </div>
 
-            {/* FAQ 列表（客户端搜索） */}
-      <FaqList categories={categories} />
+      {/* FAQ 列表（客户端搜索） */}
+      <FaqList
+        categories={categories}
+        searchPlaceholder={t("searchPlaceholder")}
+        noResults={t("noResults")}
+      />
     </div>
   );
 }

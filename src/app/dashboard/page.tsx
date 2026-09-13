@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTranslations, getLocale } from "next-intl/server";
 import type { Metadata } from "next";
 import { StatsCard } from "@/components/dashboard/stats-card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, Users, CreditCard, FolderKanban } from "lucide-react";
@@ -188,17 +189,17 @@ export default async function DashboardOverview() {
               </div>
               <Link
                 href={ROUTES.dashboardBilling}
-                className="text-sm text-primary underline-offset-4 hover:underline"
+                className="text-primary text-sm underline-offset-4 hover:underline"
               >
                 {td("overview.plan.upgrade")}
               </Link>
             </div>
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{td("overview.plan.teamMembers")}</p>
+              <p className="text-muted-foreground text-sm">{td("overview.plan.teamMembers")}</p>
               <p className="text-sm font-medium">{teamInfo?.member_count ?? 1}</p>
             </div>
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{td("overview.plan.storageUsed")}</p>
+              <p className="text-muted-foreground text-sm">{td("overview.plan.storageUsed")}</p>
               <p className="text-sm font-medium">—</p>
             </div>
           </CardContent>
@@ -213,7 +214,11 @@ export default async function DashboardOverview() {
           <CardContent>
             <div className="space-y-4">
               {recentActivity.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{td("overview.activity.empty")}</p>
+                <EmptyState
+                  icon={Activity}
+                  title={td("overview.activity.empty")}
+                  className="py-6"
+                />
               ) : (
                 recentActivity.map((activity) => (
                   <div
@@ -225,11 +230,11 @@ export default async function DashboardOverview() {
                       <div>
                         <p className="text-sm font-medium">{activity.title}</p>
                         {activity.body && (
-                          <p className="text-xs text-muted-foreground">{activity.body}</p>
+                          <p className="text-muted-foreground text-xs">{activity.body}</p>
                         )}
                       </div>
                     </div>
-                    <span className="text-xs text-muted-foreground">{activity.time}</span>
+                    <span className="text-muted-foreground text-xs">{activity.time}</span>
                   </div>
                 ))
               )}

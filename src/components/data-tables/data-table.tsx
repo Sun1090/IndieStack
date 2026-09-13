@@ -30,7 +30,6 @@ import {
   SlidersHorizontal,
   Eye,
   EyeOff,
-  Loader2,
 } from "lucide-react";
 
 import {
@@ -57,6 +56,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTranslations } from "next-intl";
+import { LoadingIndicator } from "@/components/shared/page-loading";
+import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/utils";
 
 // =========================================================================
@@ -134,11 +135,11 @@ export function SortableHeader({ label, sortDirection, onToggle, className }: So
     <Button
       variant="ghost"
       size="sm"
-      className={cn("-ml-3 h-8 data-[state=open]:bg-accent", className)}
+      className={cn("data-[state=open]:bg-accent -ml-3 h-8", className)}
       onClick={onToggle}
     >
       <span>{label}</span>
-      <ArrowUpDown className="ml-2 h-3.5 w-3.5 text-muted-foreground/60" />
+      <ArrowUpDown className="text-muted-foreground/60 ml-2 h-3.5 w-3.5" />
     </Button>
   );
 }
@@ -199,7 +200,7 @@ export function DataTable<TData extends Record<string, unknown>>({
         <div className="flex flex-1 items-center gap-2">
           {searchKey && (
             <div className="relative max-w-sm flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
               <Input
                 placeholder={searchPlaceholder ?? t("searchPlaceholder")}
                 value={globalFilter}
@@ -273,10 +274,7 @@ export function DataTable<TData extends Record<string, unknown>>({
             {loading ? (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-32 text-center">
-                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>{t("loading")}</span>
-                  </div>
+                  <LoadingIndicator label={t("loading")} />
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length > 0 ? (
@@ -284,7 +282,7 @@ export function DataTable<TData extends Record<string, unknown>>({
                 <TableRow
                   key={row.id}
 
-                  className={cn(onRowClick && "cursor-pointer hover:bg-muted/50")}
+                  className={cn(onRowClick && "hover:bg-muted/50 cursor-pointer")}
                   onClick={() => onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -297,10 +295,7 @@ export function DataTable<TData extends Record<string, unknown>>({
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-32 text-center">
-                  <div className="flex flex-col items-center justify-center gap-1 text-muted-foreground">
-                    <EyeOff className="h-8 w-8 opacity-40" />
-                    <p className="text-sm">{emptyText ?? t("empty")}</p>
-                  </div>
+                  <EmptyState icon={EyeOff} title={emptyText ?? t("empty")} className="py-6" />
                 </TableCell>
               </TableRow>
             )}
@@ -311,12 +306,12 @@ export function DataTable<TData extends Record<string, unknown>>({
       {/* 分页 */}
       {!hidePagination && filteredRows > pageSize && (
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex items-center gap-2 text-sm">
             <span>
               {t("paginationInfo", { total: filteredRows, start: startRow, end: endRow })}
             </span>
             <span className="text-muted-foreground/50">|</span>
-            
+
             <Select
               value={String(currentPageSize)}
               onValueChange={(value) => {
@@ -334,7 +329,6 @@ export function DataTable<TData extends Record<string, unknown>>({
                 ))}
               </SelectContent>
             </Select>
-            
           </div>
 
           <div className="flex items-center gap-1">

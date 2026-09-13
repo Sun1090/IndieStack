@@ -27,7 +27,6 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("team.list.metaTitle"), description: t("team.list.metaDesc") };
 }
 
-
 /** 单成员行展示（父组件预计算所有值） */
 function TeamMemberRow({
   avatarName,
@@ -52,16 +51,13 @@ function TeamMemberRow({
         <InitialAvatar name={avatarName} className="h-10 w-10 text-sm" />
         <div>
           <p className="text-sm font-medium">{displayName}</p>
-          <p className="text-xs text-muted-foreground">{email}</p>
+          <p className="text-muted-foreground text-xs">{email}</p>
         </div>
         <Badge variant="outline">{roleLabel}</Badge>
       </div>
       {canModify && (
         <div className="flex items-center gap-2">
-          <MemberRoleSelect
-            memberId={memberId}
-            currentRole={memberRole as "admin" | "member"}
-          />
+          <MemberRoleSelect memberId={memberId} currentRole={memberRole as "admin" | "member"} />
           <RemoveMemberButton memberId={memberId} />
         </div>
       )}
@@ -198,7 +194,7 @@ export default async function TeamPage() {
         <CardContent>
           <div className="space-y-4">
             {memberProfiles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("team.list.noMembers")}</p>
+              <EmptyState icon={Users} title={t("team.list.noMembers")} className="py-6" />
             ) : (
               memberProfiles.map((raw) => {
                 const p = (raw.profiles ?? {}) as Record<string, string | null>;
@@ -206,8 +202,7 @@ export default async function TeamPage() {
                 const roleLabel = t.has(`team.list.roles.${role}`)
                   ? t(`team.list.roles.${role}`)
                   : role;
-                const canModify =
-                  canManage && role !== "owner" && p.id !== user!.id;
+                const canModify = canManage && role !== "owner" && p.id !== user!.id;
                 const displayName =
                   (p.full_name as string | undefined) ?? t("team.list.unknownMember");
                 return (

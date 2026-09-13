@@ -25,7 +25,9 @@ import { listMyCredentials } from "@/lib/repositories/webauthn";
 import { features } from "@/lib/feature-flags";
 import { sessionIdFromAccessToken } from "@/lib/session-id";
 import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
+import { MonitorSmartphone } from "lucide-react";
 import type { Database } from "@/lib/supabase/database.types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -61,7 +63,8 @@ export default async function SettingsPage() {
     supabase.auth.getSession(),
   ]);
   const currentSessionId = sessionIdFromAccessToken(sessionData?.session?.access_token ?? "");
-  const deviceRows = (sessions ?? []) as unknown as Database["public"]["Tables"]["user_sessions"]["Row"][];
+  const deviceRows = (sessions ??
+    []) as unknown as Database["public"]["Tables"]["user_sessions"]["Row"][];
   const locale = await getLocale();
   const passkeyCredentials = features.passkey ? await listMyCredentials() : [];
 
@@ -95,7 +98,7 @@ export default async function SettingsPage() {
               <CardTitle>{t("settings.sections.security.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 {t("settings.sections.security.currentSession", {
                   email: user?.email ?? "",
                   time: user?.last_sign_in_at
@@ -131,9 +134,11 @@ export default async function SettingsPage() {
             </CardHeader>
             <CardContent>
               {deviceRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("settings.sections.security.devicesEmpty")}
-                </p>
+                <EmptyState
+                  icon={MonitorSmartphone}
+                  title={t("settings.sections.security.devicesEmpty")}
+                  className="py-6"
+                />
               ) : (
                 <ul className="divide-y">
                   {deviceRows.map((device) => {
@@ -144,12 +149,12 @@ export default async function SettingsPage() {
                           <p className="truncate text-sm font-medium">
                             {device.user_agent ?? "—"}
                             {isCurrent && (
-                              <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                              <span className="bg-primary/10 text-primary ml-2 rounded px-1.5 py-0.5 text-xs">
                                 {t("settings.sections.security.currentDevice")}
                               </span>
                             )}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-muted-foreground text-xs">
                             {String(device.ip_address ?? "")}
                             {device.ip_address ? " · " : ""}
                             {t("settings.sections.security.lastSeen")}:{" "}

@@ -83,12 +83,11 @@ graph LR
 |------|------|------|
 | PageContainer | `shared/page-container.tsx` | 页面容器（标题 + 内容） |
 | PageHeader | `shared/page-header.tsx` | 页面标题区域 |
-| PageLoader | `shared/page-loader.tsx` | 全屏加载状态 |
 | Breadcrumbs | `shared/breadcrumbs.tsx` | 面包屑导航 |
 | ConfirmDialog | `shared/confirm-dialog.tsx` | 确认对话框 |
 | EmptyState | `shared/empty-state.tsx` | 空数据状态 |
 | ErrorState | `shared/error-state.tsx` | 错误状态 |
-| LoadingState | `shared/loading-state.tsx` | 加载状态 |
+| PageLoading | `shared/page-loading.tsx` | 路由级骨架屏与局部加载指示器（`PageLoading` / `LoadingIndicator`，自带 `aria-busy` / `role="status"`） |
 | PermissionGate | `shared/permission-gate.tsx` | 权限控制组件 |
 | SearchInput | `shared/search-input.tsx` | 搜索输入框 |
 | Section | `shared/section.tsx` | 内容分区 |

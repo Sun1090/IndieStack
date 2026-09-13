@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Search, MoreHorizontal } from "lucide-react";
+import { Search, SearchX, Users, MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/shared/query-error-state";
+import { EmptyState } from "@/components/shared/empty-state";
 import { toast } from "@/hooks/use-toast";
 import {
   listAdminUsers,
@@ -39,23 +40,29 @@ export function AdminUsersPage() {
   const queryClient = useQueryClient();
 
   // 用户列表查询
-  const { data: users = [], isLoading: loading, isError, refetch } = useQuery(
+  const {
+    data: users = [],
+    isLoading: loading,
+    isError,
+    refetch,
+  } = useQuery(
     dashboardQueryOptions({
-    queryKey: QUERY_KEYS.adminUsers,
-    staleTime: CACHE_STALE.admin,
-    queryFn: async (): Promise<AdminUser[]> => {
-      const result = await listAdminUsers();
-      if (!result.ok) {
-        toast({
-          title: t("users.updateFailed"),
-          description: ta(result.error),
-          variant: "destructive",
-        });
-        throw new Error(result.error);
-      }
-      return result.data ?? [];
-    },
-    }));
+      queryKey: QUERY_KEYS.adminUsers,
+      staleTime: CACHE_STALE.admin,
+      queryFn: async (): Promise<AdminUser[]> => {
+        const result = await listAdminUsers();
+        if (!result.ok) {
+          toast({
+            title: t("users.updateFailed"),
+            description: ta(result.error),
+            variant: "destructive",
+          });
+          throw new Error(result.error);
+        }
+        return result.data ?? [];
+      },
+    }),
+  );
 
   /** 更新用户角色（成功后使列表缓存失效） */
   const roleMutation = useMutation({
@@ -73,7 +80,11 @@ export function AdminUsersPage() {
       void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     },
     onError: (err) => {
-      toast({ title: t("users.updateFailed"), description: ta(err.message), variant: "destructive" });
+      toast({
+        title: t("users.updateFailed"),
+        description: ta(err.message),
+        variant: "destructive",
+      });
     },
   });
 
@@ -117,7 +128,7 @@ export function AdminUsersPage() {
 
       {/* 搜索栏 */}
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
         <Input
           placeholder={t("users.searchPlaceholder")}
           value={search}
@@ -151,9 +162,10 @@ export function AdminUsersPage() {
           ) : isError ? (
             <QueryErrorState onRetry={() => void refetch()} />
           ) : filteredUsers.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
-              {search ? t("users.noMatch") : t("users.noUsers")}
-            </div>
+            <EmptyState
+              icon={search ? SearchX : Users}
+              title={search ? t("users.noMatch") : t("users.noUsers")}
+            />
           ) : (
             <div className="divide-y">
               {filteredUsers.map((user) => (
@@ -170,11 +182,11 @@ export function AdminUsersPage() {
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-medium leading-none">
+                      <p className="text-sm leading-none font-medium">
                         {user.full_name || t("users.nameNotSet")}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">{user.email}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
+                      <p className="text-muted-foreground mt-1 text-xs">{user.email}</p>
+                      <p className="text-muted-foreground mt-0.5 text-xs">
                         {t("users.registeredAt", {
                           date: new Date(user.created_at).toLocaleDateString(),
                         })}

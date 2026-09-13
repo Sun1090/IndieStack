@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/shared/query-error-state";
+import { EmptyState } from "@/components/shared/empty-state";
 
 /**
  * 面积图组件：动态加载（recharts 体积较大）
@@ -64,15 +65,21 @@ export function AnalyticsPage() {
   const [showRangeMenu, setShowRangeMenu] = useState(false);
 
   // TanStack Query：内置竞态处理、缓存（staleTime 30s）、重试与加载态
-  const { data, isLoading: loading, isError, refetch } = useQuery(
+  const {
+    data,
+    isLoading: loading,
+    isError,
+    refetch,
+  } = useQuery(
     dashboardQueryOptions({
-    queryKey: QUERY_KEYS.analytics(range),
-    queryFn: async (): Promise<AnalyticsData> => {
-      const response = await fetch(`/api/analytics?range=${range}`);
-      if (!response.ok) throw new Error("Failed to load analytics");
-      return response.json();
-    },
-    }));
+      queryKey: QUERY_KEYS.analytics(range),
+      queryFn: async (): Promise<AnalyticsData> => {
+        const response = await fetch(`/api/analytics?range=${range}`);
+        if (!response.ok) throw new Error("Failed to load analytics");
+        return response.json();
+      },
+    }),
+  );
 
   const statsCards = [
     {
@@ -142,11 +149,11 @@ export function AnalyticsPage() {
               <ChevronDown className="ml-1 h-4 w-4" />
             </Button>
             {showRangeMenu && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-md border bg-popover p-1 shadow-md">
+              <div className="bg-popover absolute top-full right-0 z-50 mt-1 w-36 rounded-md border p-1 shadow-md">
                 {RANGE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    className={`w-full rounded-sm px-3 py-1.5 text-left text-sm hover:bg-accent ${
+                    className={`hover:bg-accent w-full rounded-sm px-3 py-1.5 text-left text-sm ${
                       opt.value === range ? "bg-accent font-medium" : ""
                     }`}
                     onMouseDown={() => {
@@ -168,11 +175,11 @@ export function AnalyticsPage() {
           <Card key={stat.labelKey}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">{t(stat.labelKey)}</CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
+              <stat.icon className="text-muted-foreground h-4 w-4" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">{t("analytics.vsLastPeriod")}</p>
+              <p className="text-muted-foreground text-xs">{t("analytics.vsLastPeriod")}</p>
             </CardContent>
           </Card>
         ))}
@@ -184,7 +191,7 @@ export function AnalyticsPage() {
             <CardTitle>{t("analytics.usageOverview.title")}</CardTitle>
             <CardDescription>{t("analytics.usageOverview.desc")}</CardDescription>
           </div>
-          <Sparkles className="h-5 w-5 text-muted-foreground" />
+          <Sparkles className="text-muted-foreground h-5 w-5" />
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -198,9 +205,7 @@ export function AnalyticsPage() {
               errorLabel={t("analytics.stats.errors")}
             />
           ) : (
-            <p className="py-16 text-center text-sm text-muted-foreground">
-              {t("analytics.recentEvents.empty")}
-            </p>
+            <EmptyState icon={Activity} title={t("analytics.recentEvents.empty")} />
           )}
         </CardContent>
       </Card>
@@ -218,9 +223,7 @@ export function AnalyticsPage() {
               ))}
             </div>
           ) : !data || data.recent.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {t("analytics.recentEvents.empty")}
-            </p>
+            <EmptyState icon={Activity} title={t("analytics.recentEvents.empty")} />
           ) : (
             <div className="space-y-3">
               {data.recent.map((event, i) => {
@@ -235,10 +238,10 @@ export function AnalyticsPage() {
                         className={`h-2 w-2 rounded-full ${isError ? "bg-destructive" : "bg-success"}`}
                       />
                       <span className="text-sm font-medium">{event.method}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{event.path}</span>
+                      <span className="text-muted-foreground font-mono text-xs">{event.path}</span>
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className={isError ? "font-medium text-destructive" : ""}>
+                    <div className="text-muted-foreground flex items-center gap-4 text-xs">
+                      <span className={isError ? "text-destructive font-medium" : ""}>
                         {event.status_code ?? "—"}
                       </span>
                       <span>{formatEventTime(event.created_at)}</span>

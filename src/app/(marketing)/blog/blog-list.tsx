@@ -8,6 +8,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/shared/empty-state";
+import { FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Post {
@@ -50,17 +52,15 @@ export function BlogList({ posts, labels }: { posts: Post[]; labels: Record<stri
 
       <div className="container mx-auto mt-12 grid max-w-5xl gap-8 px-4 md:grid-cols-2">
         {filtered.length === 0 ? (
-          <p className="col-span-full py-12 text-center text-muted-foreground">
-            {labels.empty ?? ""}
-          </p>
+          <EmptyState icon={FileText} title={labels.empty ?? ""} className="col-span-full" />
         ) : (
           filtered.map((post) => (
             <Link key={post.slug} href={`/blog/${post.slug}`}>
-              <Card className="h-full transition-colors hover:border-primary/50">
+              <Card className="hover:border-primary/50 h-full transition-colors">
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     {post.category && <Badge variant="secondary">{post.category}</Badge>}
-                    <span className="text-xs text-muted-foreground">{post.date}</span>
+                    <span className="text-muted-foreground text-xs">{post.date}</span>
                   </div>
                   <CardTitle>{post.title}</CardTitle>
                   {post.excerpt && <CardDescription>{post.excerpt}</CardDescription>}

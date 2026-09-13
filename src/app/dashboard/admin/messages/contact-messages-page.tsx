@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/shared/query-error-state";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Mail } from "lucide-react";
 import {
   listContactMessagesPage,
   updateMessageStatus,
@@ -43,16 +45,22 @@ export function ContactMessagesPage() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
-  const { data, isLoading: loading, isError, refetch } = useQuery(
+  const {
+    data,
+    isLoading: loading,
+    isError,
+    refetch,
+  } = useQuery(
     dashboardQueryOptions({
-    queryKey: QUERY_KEYS.contactMessages({ search, status, page }),
-    staleTime: CACHE_STALE.admin,
-    queryFn: async (): Promise<{ rows: ContactMessageRecord[]; total: number }> => {
-      const result = await listContactMessagesPage({ search, status, page, pageSize });
-      if (!result.ok) throw new Error(result.error);
-      return result.data ?? { rows: [], total: 0 };
-    },
-    }));
+      queryKey: QUERY_KEYS.contactMessages({ search, status, page }),
+      staleTime: CACHE_STALE.admin,
+      queryFn: async (): Promise<{ rows: ContactMessageRecord[]; total: number }> => {
+        const result = await listContactMessagesPage({ search, status, page, pageSize });
+        if (!result.ok) throw new Error(result.error);
+        return result.data ?? { rows: [], total: 0 };
+      },
+    }),
+  );
   const messages = data?.rows ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -137,35 +145,25 @@ export function ContactMessagesPage() {
           ) : isError ? (
             <QueryErrorState onRetry={() => void refetch()} />
           ) : messages.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {t("noMessages")}
-            </p>
+            <EmptyState icon={Mail} title={t("noMessages")} />
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">
-                {t("total", { count: total })}
-              </p>
+              <p className="text-muted-foreground text-xs">{t("total", { count: total })}</p>
               {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className="space-y-2 rounded-md border p-4"
-                >
+                <div key={msg.id} className="space-y-2 rounded-md border p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary">{t("subject")}</Badge>
                       <span className="font-medium">{msg.subject}</span>
                     </div>
-                    <time className="shrink-0 text-xs text-muted-foreground">
+                    <time className="text-muted-foreground shrink-0 text-xs">
                       {formatRelativeTime(msg.created_at)}
                     </time>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">{msg.name}</span>
+                  <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                    <span className="text-foreground font-medium">{msg.name}</span>
                     <span>·</span>
-                    <a
-                      href={`mailto:${msg.email}`}
-                      className="text-primary hover:underline"
-                    >
+                    <a href={`mailto:${msg.email}`} className="text-primary hover:underline">
                       {msg.email}
                     </a>
                     <span>·</span>
@@ -173,7 +171,7 @@ export function ContactMessagesPage() {
                       {statusLabel[msg.status] ?? msg.status}
                     </Badge>
                   </div>
-                  <p className="whitespace-pre-wrap text-sm">{msg.message}</p>
+                  <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
                   {msg.status !== "resolved" && (
                     <div className="flex gap-2 pt-1">
                       {msg.status === "new" && (
@@ -202,7 +200,7 @@ export function ContactMessagesPage() {
               ))}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-2">
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     {t("pageOf", { page, totalPages })}
                   </p>
                   <div className="flex gap-2">

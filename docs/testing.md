@@ -179,6 +179,30 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 经 Node 原生 type stripping 调用，`pnpm check:all` 与 CI 均会执行。该门禁只证明静态写法合规，运行时 ARIA
 行为由 `form-field.test.tsx` / `native-select.test.tsx` 覆盖，不能替代浏览器级键盘与 a11y 回归。
 
+## 共享状态门禁（G04）
+
+`pnpm check:states` 把「加载 / 空 / 错误三种状态各自只有一个落脚点」变成可持续约束。三种语义分别对应
+`src/components/shared/page-loading.tsx`（`PageLoading` / `LoadingIndicator`，容器带 `aria-busy="true"`、
+骨架内嵌 `role="status"` 的 `sr-only` 文案并走 next-intl）、`src/components/shared/empty-state.tsx`
+（`EmptyState`）与 `src/components/shared/error-state.tsx`（`ErrorState`，默认 `role="alert"`）。
+
+门禁规则实现位于 `src/lib/ui/state-rules.ts`（纯函数），扫描 `src/app` 与 `src/components` 下的非测试
+`.tsx`，四类规则码分别是：
+
+1. `RAW_ROUTE_SKELETON`：每个 `src/app/**/loading.tsx` 必须渲染共享 `PageLoading`，手写 `Skeleton` 会重新丢掉
+   `aria-busy` / `role="status"`；
+2. `LEGACY_LOADER_MODULE`：G04 删除的重复加载组件 `page-loader.tsx` / `loading-state.tsx` 不得重新出现；
+3. `RAW_SPINNER`：`animate-spin` 只允许出现在白名单（加载原语自身与 `confirm-dialog` 的按钮内联 spinner），
+   其余场景走 `LoadingIndicator`；
+4. `BARE_PLACEHOLDER`：不得再写「居中（`text-center`）+ 固定纵向内边距（`py-6/8/10/12/16`）」的裸占位符，
+   空态走 `EmptyState`、错误走 `ErrorState`。
+
+`src/components/ui/**` 是上游 shadcn 基元，不参与扫描；`EmptyState` / `ErrorState` 只豁免第 4 条规则（它们
+本身就是裸占位符的唯一落脚点）。IO/CLI 位于 `scripts/lib/state-check.js`，由 `scripts/check-states.js` 经 Node
+原生 type stripping 调用，`pnpm check:all` 与 CI 均会执行。该门禁只证明静态写法合规，运行时 ARIA 行为由
+`page-loading.test.tsx` / `empty-state.test.tsx` / `error-state.test.tsx` / `query-error-state.test.tsx` 覆盖，
+不能替代浏览器级视觉回归。
+
 ## 迁移漂移门禁（H09）
 
 `pnpm check:migrations` 是离线门禁：校验 `supabase/migrations/` 的文件命名、编号连续性与无重复、空文件、UTF-8 BOM、CRLF 行尾、结尾换行，并把每个文件的 SHA-256 与提交在 `supabase/migration-manifest.json` 的基线比对。规则实现位于 `src/lib/migrations/migration-drift.ts`（纯函数，单测覆盖），由 `scripts/check-migrations.js` 经 Node 原生 type stripping 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。

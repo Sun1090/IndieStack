@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/shared/query-error-state";
-import { RefreshCw } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { RefreshCw, Webhook } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { listWebhookEvents, type WebhookEventRecord } from "@/lib/actions/webhooks";
 
@@ -32,17 +33,23 @@ export function WebhookEventsPage() {
 
   const [autoRefresh, setAutoRefresh] = useState(false);
 
-  const { data: events = [], isLoading: loading, isError, refetch } = useQuery(
+  const {
+    data: events = [],
+    isLoading: loading,
+    isError,
+    refetch,
+  } = useQuery(
     dashboardQueryOptions({
-    refetchInterval: autoRefresh ? 10_000 : false,
-    queryKey: QUERY_KEYS.adminWebhookEvents,
-    staleTime: CACHE_STALE.admin,
-    queryFn: async (): Promise<WebhookEventRecord[]> => {
-      const result = await listWebhookEvents(100);
-      if (!result.ok) throw new Error(result.error);
-      return result.data ?? [];
-    },
-    }));
+      refetchInterval: autoRefresh ? 10_000 : false,
+      queryKey: QUERY_KEYS.adminWebhookEvents,
+      staleTime: CACHE_STALE.admin,
+      queryFn: async (): Promise<WebhookEventRecord[]> => {
+        const result = await listWebhookEvents(100);
+        if (!result.ok) throw new Error(result.error);
+        return result.data ?? [];
+      },
+    }),
+  );
 
   const filtered =
     statusFilter === "all" ? events : events.filter((e) => e.status === statusFilter);
@@ -54,7 +61,7 @@ export function WebhookEventsPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t("webhookLogs.title")}</h1>
           <p className="text-muted-foreground">{t("webhookLogs.desc")}</p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <label className="text-muted-foreground flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={autoRefresh}
@@ -94,9 +101,7 @@ export function WebhookEventsPage() {
           ) : isError ? (
             <QueryErrorState onRetry={() => void refetch()} />
           ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {t("webhookLogs.noLogs")}
-            </p>
+            <EmptyState icon={Webhook} title={t("webhookLogs.noLogs")} />
           ) : (
             <div className="space-y-2">
               {filtered.map((event) => (
@@ -106,28 +111,32 @@ export function WebhookEventsPage() {
                 >
                   <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2">
-                      <Badge variant={statusVariant[event.status as keyof typeof statusVariant] ?? "outline"}>
+                      <Badge
+                        variant={
+                          statusVariant[event.status as keyof typeof statusVariant] ?? "outline"
+                        }
+                      >
                         {event.status}
                       </Badge>
-                      <span className="font-mono text-xs text-muted-foreground">
+                      <span className="text-muted-foreground font-mono text-xs">
                         {event.event_type}
                       </span>
                     </div>
-<details className="min-w-0">
-                      <summary className="cursor-pointer truncate font-mono text-xs text-muted-foreground">
+                    <details className="min-w-0">
+                      <summary className="text-muted-foreground cursor-pointer truncate font-mono text-xs">
                         {event.event_id}
                       </summary>
                       {event.payload && Object.keys(event.payload).length > 0 && (
-                        <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 text-[10px]">
+                        <pre className="bg-muted mt-1 max-h-40 overflow-auto rounded p-2 text-[10px]">
                           {JSON.stringify(event.payload, null, 2)}
                         </pre>
                       )}
                     </details>
                     {event.error_message && (
-                      <p className="text-xs text-destructive">{event.error_message}</p>
+                      <p className="text-destructive text-xs">{event.error_message}</p>
                     )}
                   </div>
-                  <time className="shrink-0 text-xs text-muted-foreground">
+                  <time className="text-muted-foreground shrink-0 text-xs">
                     {new Date(event.created_at).toLocaleString()}
                   </time>
                 </div>
@@ -135,7 +144,7 @@ export function WebhookEventsPage() {
             </div>
           )}
           {!loading && filtered.length > 0 && (
-            <p className="mt-4 text-center text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-4 text-center text-xs">
               {ta("loadedAt")} {new Date().toLocaleTimeString()}
             </p>
           )}

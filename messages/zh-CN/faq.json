@@ -69,5 +69,7 @@
   "ctaTitle": "还有问题？",
   "ctaDesc": "找不到答案？欢迎联系我们的团队。",
   "ctaButton": "联系我们",
-  "dashboardButton": "前往仪表盘"
+  "dashboardButton": "前往仪表盘",
+  "searchPlaceholder": "搜索常见问题…",
+  "noResults": "没有找到匹配的问题。"
 }
