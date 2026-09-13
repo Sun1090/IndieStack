@@ -2653,3 +2653,36 @@
   - 回滚：`git revert 545b2e9` 会移除请求终态指标与契约模块、恢复驱动内联指标名与两份重复的测试工具，不改数据库、外部接口或告警平台配置
 - 下一步：E06 provider fallback 指标（审计 `provider.fallback` 的去重语义、覆盖范围与「回退原因」维度是否足够，再补真实缺口）
 - 最后更新：2026-09-13
+
+## E06 provider fallback 指标（DONE）
+
+- 状态：DONE（roadmap `docs/roadmap-0.6.0.md` 第 46 项，E 段可观测性与运维）
+- 里程碑与发布目标：M4 J 段之后继续 E 段；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`aaa3f13`（feat(observability): contract provider fallback metrics）
+- 目标：核对 `provider.fallback` 的去重语义，并审计「哪些 provider 降级在指标里根本看不见」
+- 已完成：
+  - 审计结论一：`provider.fallback` 的埋点、环境诊断告警与运维文档此前都已存在（A06/A07 段），但指标名、`provider`/`reason`/`missing` 三个维度取值全部是 `src/lib/storage/index.ts` 里的内联字面量，缺少 E05 已确立的「指标契约集中一处」模式；且 `provider` 维度写死 `supabase`，一旦回退目标变化指标就会说谎
+  - 审计结论二（真实盲区）：`sendResendEmail` 在读取 `RESEND_API_KEY` 失败时**先抛错、后启动计时器**，因此 `RESEND_API_KEY` 缺失的部署里 `email.send.completed` 一条样本都不产生。后果是「provider 没配上、邮件一封都发不出去」在失败率告警（分子/分母都为空）里完全不可见，只能等 `email.backlog` 涨到 500 才暴露；Web Push 侧早有 `push.send.failed{reason="not-configured"}`，邮件侧是明显的不对称
+  - 新增 `src/lib/observability/provider-metrics.ts`：固化 `PROVIDER_FALLBACK_METRIC`、`PROVIDER_FALLBACK_REASONS`（当前仅 `oss-incomplete`）、`OSS_INCOMPLETE_REASON`、`NOT_CONFIGURED_REASON`；`providerFallbackSignature()` 把缺失变量名排序后拼接，使去重签名只取决于「缺了哪些变量」，与调用方顺序和配置书写顺序无关；`createProviderFallbackGate()` 把去重状态机做成可单测的纯对象（同一签名放行一次 → 签名变化重新放行 → `null` 表示配置恢复并重置 → `reset()` 忘记上次签名）
+  - `src/lib/storage/index.ts`：删除模块级 `lastIncompleteFallback` 与内联字面量，改用 `storageFallbackGate`（导出以便测试重置与未来配置热重载）；`provider` 维度改取 `report.provider`（实际提供服务的驱动）；显式区分「配了一半 = 回退」与「四项全空 = 默认驱动」，后者不再进入任何告警口径
+  - `src/lib/email-send.ts`：把指标名与 provider 取值固化为 `EMAIL_SEND_METRIC` / `RESEND_PROVIDER_NAME`，并把 `startMetricTimer` 提到读取配置之前；`RESEND_API_KEY` 缺失时立即以 `{outcome:"failure", reason:"not-configured"}` 结束计时器再抛错，使该场景在失败率告警里既有分子也有分母
+  - 明确不做的事（避免为了指标而加指标）：Appark 的旁路关闭、时区/权限等业务兜底、React Suspense fallback 均不纳入本指标——Appark 是只读 APM 旁路、无用户可见失败，且 E01 已覆盖其配置诊断与告警，其余属于业务语义而非 provider 降级
+  - 新增 14 条测试：契约常量 2、去重签名 2、上报维度 1、闸门状态机 3（`src/lib/observability/provider-metrics.test.ts`）、存储侧 4（不完整配置只上报一次且维度正确、缺失集合变化重新上报、配置补齐后重置再降级仍上报、四项全空不告警，并在同一用例里断言 `getStorageConfigReport().reason === OSS_INCOMPLETE_REASON` 防止两处 reason 字面量漂移）、邮件侧 2（缺 key 上报 `reason=not-configured` 且不发请求、成功样本带 `status` 不带 `reason`）
+  - 文档同步：`docs/operations/sentry-alerts.md` 指标表更新 `email.send.completed` 维度与 `provider.fallback` 口径、告警表新增「邮件 provider 未配置」行、去重规则写清签名排序语义与「全空不算降级」；`docs-site/storage.md` 与 `docs-site/zh-CN/storage.md` 补回退指标章节并补齐验证命令；`CHANGELOG.md` 与 roadmap 同步
+- 变更文件：`src/lib/observability/provider-metrics.ts`、`src/lib/observability/provider-metrics.test.ts`、`src/lib/storage/index.ts`、`src/lib/storage/index.test.ts`、`src/lib/email-send.ts`、`src/lib/email-send.test.ts`、`docs/operations/sentry-alerts.md`、`docs-site/storage.md`、`docs-site/zh-CN/storage.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `aaa3f13`）：
+  - `pnpm vitest run src/lib/observability/provider-metrics.test.ts src/lib/storage/index.test.ts src/lib/email-send.test.ts` → ✅ 3 文件 / 46 测试通过
+  - `pnpm vitest run src/lib/email-send.test.ts src/app/api/cron/digest/route.test.ts src/lib/email-notify.test.ts src/lib/email-marketing.test.ts src/lib/observability/provider-metrics.test.ts src/lib/storage/index.test.ts` → ✅ 6 文件 / 75 测试通过（确认未配置路径的新增样本不干扰 digest 路由既有指标断言）
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:changelog`、`pnpm check:cron-contract`、`pnpm check:docs`、`pnpm check:test-matrix` → ✅ 通过
+  - `pnpm check:all` → ✅ 161 文件 / 1824 测试通过（较 E05 新增 1 文件 / 14 测试），全部门禁绿色
+  - `pnpm verify:build` → ✅ 类型、lint、测试、bundle（2853.1 kB / 基线 2733.8 kB，未变化）与生产构建全部通过
+- 阻塞：无
+- 风险与回滚：
+  - 风险：`missing` 维度取值由原先按配置清单顺序拼接改为按字母排序，仪表盘若按原始字符串分组会出现新旧两组值；文档已写明签名口径，按 `reason` 聚合的告警不受影响
+  - 风险：`email.send.completed{reason="not-configured"}` 每封邮件尝试计数，摘要轮次一次可能几十条；文档已注明按 `provider + reason` 聚合，不要与上游失败率共用抑制策略
+  - 风险：去重闸门仍是进程内状态，Serverless 冷启动会跨实例重复上报；运维文档要求日志平台按 `name + attributes.reason + attributes.missing` 聚合并设 30 分钟恢复窗口
+  - 回滚：`git revert aaa3f13` 会恢复内联指标字面量与模块级去重变量、移除邮件未配置样本；不改数据库、外部接口与告警平台配置
+- 下一步：E07 告警阈值与去重（核对该章节承诺与现有告警表/去重规则是否逐条成立，再补真实缺口）
+- 最后更新：2026-09-13
