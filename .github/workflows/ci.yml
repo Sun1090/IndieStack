@@ -117,6 +117,9 @@ jobs:
       - name: Check secrets scan policy
         run: pnpm check:secrets-scan
 
+      - name: Check request trace coverage
+        run: pnpm check:trace-coverage
+
       - name: Check release tag policy
         run: pnpm check:release-tag
 

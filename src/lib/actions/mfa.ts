@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizeTotpCode } from "@/lib/validations/mfa";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 export interface MfaFactor {
   id: string;
@@ -27,7 +28,7 @@ export async function listTotpFactors(): Promise<ActionResult<MfaFactor[]>> {
 
   const { data, error } = await supabase.auth.mfa.listFactors();
   if (error) {
-    console.error("[listTotpFactors] 查询失败:", error.message);
+    await logActionError("[listTotpFactors] 查询失败", error);
     return fail("databaseError");
   }
   return ok(
@@ -56,7 +57,7 @@ export async function enrollTotp(): Promise<
   });
 
   if (error || !data) {
-    console.error("[enrollTotp] 注册失败:", error?.message);
+    await logActionError("[enrollTotp] 注册失败", error ?? new Error("mfa_enroll_no_data"));
     return fail("mfaEnrollFailed");
   }
 
@@ -85,7 +86,7 @@ export async function verifyTotpEnrollment(
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: cleaned });
 
   if (error) {
-    console.error("[verifyTotpEnrollment] 验证失败:", error.message);
+    await logActionError("[verifyTotpEnrollment] 验证失败", error);
     return fail(error.message.includes("Invalid") ? "mfaInvalidCode" : "databaseError");
   }
 
@@ -118,7 +119,7 @@ export async function unenrollTotp(
   const { error } = await supabase.auth.mfa.unenroll(factorId);
 
   if (error) {
-    console.error("[unenrollTotp] 解除失败:", error.message);
+    await logActionError("[unenrollTotp] 解除失败", error);
     return fail("databaseError");
   }
 

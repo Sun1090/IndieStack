@@ -18,6 +18,7 @@ import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 /**
  * Get the current user's team.
@@ -89,7 +90,7 @@ export async function createTeam(input: CreateTeamInput): Promise<
     if (teamError.code === "23505") {
       return fail("teamSlugExists");
     }
-    console.error("[createTeam] 创建团队失败:", teamError);
+    await logActionError("[createTeam] 创建团队失败", teamError);
     return fail("databaseError");
   }
 
@@ -103,7 +104,7 @@ export async function createTeam(input: CreateTeamInput): Promise<
   if (memberError) {
     // 回滚刚创建的团队，避免留下没有所有者的孤儿团队
     await admin.from("teams").delete().eq("id", team.id);
-    console.error("[createTeam] 添加所有者失败，已回滚:", memberError);
+    await logActionError("[createTeam] 添加所有者失败，已回滚", memberError);
     return fail("databaseError");
   }
 
@@ -176,7 +177,7 @@ export async function inviteMember(input: InviteMemberInput): Promise<ActionResu
   });
 
   if (inviteError) {
-    console.error("[inviteMember] 添加成员失败:", inviteError);
+    await logActionError("[inviteMember] 添加成员失败", inviteError);
     return fail("databaseError");
   }
 
@@ -247,7 +248,7 @@ export async function removeMember(memberId: string): Promise<ActionResult> {
     .eq("team_id", team.id);
 
   if (error) {
-    console.error("[removeMember] 移除成员失败:", error);
+    await logActionError("[removeMember] 移除成员失败", error);
     return fail("databaseError");
   }
 
@@ -312,7 +313,7 @@ export async function updateMemberRole(
     .eq("team_id", team.id);
 
   if (error) {
-    console.error("[updateMemberRole] 失败:", error);
+    await logActionError("[updateMemberRole] 失败", error);
     return fail("databaseError");
   }
 

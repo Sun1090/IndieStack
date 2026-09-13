@@ -8,6 +8,7 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import { listRecentWebhookEvents } from "@/lib/repositories/webhook-events";
 import { safelyRequireRole } from "@/lib/auth/guards";
+import { logActionError } from "@/lib/api-log";
 
 export type WebhookEventRecord = {
   id: string;
@@ -36,7 +37,7 @@ export async function listWebhookEvents(
   try {
     return ok((await listRecentWebhookEvents(limit)) as WebhookEventRecord[]);
   } catch (error) {
-    console.error("[listWebhookEvents] 查询失败:", error);
+    await logActionError("[listWebhookEvents] 查询失败", error);
     return fail("databaseError");
   }
 }

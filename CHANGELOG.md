@@ -6,6 +6,8 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **请求链路追踪关联 ID（E02）**：`x-request-id` 现在由 `src/proxy.ts` 统一解析上游值或生成新 ID，注入下游请求头并回写到响应头（放行与重定向分支各一次）；上游 ID 只接受不超过 128 字符、仅含 `[A-Za-z0-9._:-]` 的可打印 token，换行/制表/空格与超长值一律拒绝并重新生成，避免日志注入。新增 `logActionError` 与已有的 `logApiError` 共用同一实现，所有 Server Action 的裸 `console.*` 与`logger.error` 迁移到带 trace 的入口。配套 `pnpm check:trace-coverage` 门禁把约定固化为可执行规则：扫描 Route Handler 与 Server Action 禁止裸日志、校验错误入口与 `src/lib/trace-id.ts`、`src/proxy.ts` 契约，边界集合为空或豁免登记过期即失败。
+
 - **Appark 生产采样配置（E01）**：新增 `NEXT_PUBLIC_APPARK_SAMPLE_RATE`，以事件级概率采样控制
   APM 流量；取值 `[0, 1]`，缺省 `1` 保持全量，`0` 可静音，非法值在环境与 provider 诊断中告警并
   回退到 `1`，避免配置笔误静默关闭可观测性。采样在入队前执行，业务与错误事件使用同一策略。

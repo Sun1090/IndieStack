@@ -16,6 +16,7 @@ import { ROUTES } from "@/lib/constants";
 import type { Database } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 /**
  * 营销订阅生命周期同步（A05 double opt-in）：开关打开 → pending + 确认邮件；
@@ -36,7 +37,7 @@ async function syncMarketingSubscription(
       await deactivateSubscription(userId);
     }
   } catch (error) {
-    console.error("[updateSettings] 营销订阅同步失败:", error);
+    await logActionError("[updateSettings] 营销订阅同步失败", error);
   }
 }
 
@@ -75,7 +76,7 @@ export async function updateNotificationSettings(formData: FormData) {
     .eq("id", user.id);
 
   if (error) {
-    console.error("[updateSettings] 保存设置失败:", error);
+    await logActionError("[updateSettings] 保存设置失败", error);
     return fail("databaseError");
   }
 
@@ -129,7 +130,7 @@ export async function updatePassword(formData: FormData) {
   });
 
   if (error) {
-    console.error("[updateSettings] 保存设置失败:", error);
+    await logActionError("[updateSettings] 保存设置失败", error);
     return fail("databaseError");
   }
 

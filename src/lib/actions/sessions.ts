@@ -14,6 +14,7 @@ import { sessionIdFromAccessToken } from "@/lib/session-id";
 import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { ok, fail } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 async function requestMeta(): Promise<{ userAgent: string | null; ip: string | null }> {
   try {
@@ -55,7 +56,7 @@ export async function recordCurrentSession(): Promise<ActionResult> {
     { onConflict: "id" },
   );
   if (error) {
-    console.error("[recordCurrentSession] 会话登记失败:", error);
+    await logActionError("[recordCurrentSession] 会话登记失败", error);
     return fail("databaseError");
   }
   return ok();
@@ -83,7 +84,7 @@ export async function revokeSession(sessionId: string): Promise<ActionResult> {
   // 「退出其他设备」(auth.signOut({ scope: "others" })) 与会话过期兜底。
   const { error } = await supabase.from("user_sessions").delete().eq("id", sessionId);
   if (error) {
-    console.error("[revokeSession] 会话记录删除失败:", error);
+    await logActionError("[revokeSession] 会话记录删除失败", error);
     return fail("databaseError");
   }
 

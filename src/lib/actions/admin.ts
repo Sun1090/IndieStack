@@ -13,6 +13,7 @@ import { fail, ok } from "@/lib/types/action-result";
 import { listAllAuditLogs } from "@/lib/repositories/audit-logs";
 import { listAdminUsersPage as fetchAdminUsersPage } from "@/lib/repositories/admin-users";
 import { notifyUser } from "@/lib/email-notify";
+import { logActionError } from "@/lib/api-log";
 
 export type AdminUser = {
   id: string;
@@ -58,13 +59,13 @@ export async function listAdminUsers(): Promise<
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("[admin] 数据库操作失败:", error);
+      await logActionError("[admin] 数据库操作失败", error);
       return fail("databaseError");
     }
 
     return ok((data ?? []).map((row) => toAdminUser(row as unknown as Record<string, unknown>)));
   } catch (error) {
-    console.error("[admin] 数据库操作失败:", error);
+    await logActionError("[admin] 数据库操作失败", error);
     return fail("databaseError");
   }
 }
@@ -84,7 +85,7 @@ export async function listAdminUsersPage(
     const { users, total } = await fetchAdminUsersPage(page, pageSize);
     return ok({ users, total });
   } catch (error) {
-    console.error("[admin] 数据库操作失败:", error);
+    await logActionError("[admin] 数据库操作失败", error);
     return fail("databaseError");
   }
 }
@@ -120,7 +121,7 @@ export async function updateUserRole(
       .eq("id", userId);
 
     if (error) {
-      console.error("[admin] 数据库操作失败:", error);
+      await logActionError("[admin] 数据库操作失败", error);
       return fail("databaseError");
     }
 
@@ -135,13 +136,13 @@ export async function updateUserRole(
         metadata: { role },
       });
     } catch (notifyError) {
-      console.error("[admin] 角色变更通知写入失败:", notifyError);
+      await logActionError("[admin] 角色变更通知写入失败", notifyError);
     }
 
     revalidatePath(ROUTES.adminUsers);
     return ok();
   } catch (error) {
-    console.error("[admin] 数据库操作失败:", error);
+    await logActionError("[admin] 数据库操作失败", error);
     return fail("databaseError");
   }
 }
@@ -168,7 +169,7 @@ export async function listAuditLogs(): Promise<
     }));
     return ok(data);
   } catch (error) {
-    console.error("[admin] 数据库操作失败:", error);
+    await logActionError("[admin] 数据库操作失败", error);
     return fail("databaseError");
   }
 }

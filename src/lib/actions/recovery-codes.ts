@@ -21,6 +21,7 @@ import {
 import * as recoveryRepo from "@/lib/repositories/mfa-recovery-codes";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
 import { ROUTES } from "@/lib/constants";
+import { logActionError } from "@/lib/api-log";
 
 export async function hashRecoveryCode(code: string): Promise<string> {
   const { createHash } = await import("node:crypto");
@@ -46,7 +47,7 @@ export async function generateRecoveryCodes(): Promise<ActionResult<{ codes: str
     revalidatePath(ROUTES.dashboardSettings);
     return ok({ codes });
   } catch (error) {
-    console.error("[generateRecoveryCodes] 生成失败:", error);
+    await logActionError("[generateRecoveryCodes] 生成失败", error);
     return fail("databaseError");
   }
 }
@@ -63,7 +64,7 @@ export async function hasRecoveryCodes(): Promise<ActionResult<{ has: boolean }>
   try {
     return ok({ has: await recoveryRepo.hasUnusedRecoveryCodes(user.id) });
   } catch (error) {
-    console.error("[hasRecoveryCodes] 查询失败:", error);
+    await logActionError("[hasRecoveryCodes] 查询失败", error);
     return fail("databaseError");
   }
 }
@@ -118,7 +119,7 @@ export async function redeemRecoveryCode(code: string): Promise<ActionResult> {
     revalidatePath(ROUTES.login);
     return ok();
   } catch (error) {
-    console.error("[redeemRecoveryCode] 兑换失败:", error);
+    await logActionError("[redeemRecoveryCode] 兑换失败", error);
     return fail("databaseError");
   }
 }

@@ -14,6 +14,7 @@ import { updateSession } from "@/lib/supabase/middleware";
 import { ROUTES } from "@/lib/constants";
 import { shouldUseMock } from "@/lib/mock/config";
 import { buildCsp, generateNonce, NONCE_HEADER } from "@/lib/csp";
+import { TRACE_HEADER, resolveTraceId } from "@/lib/trace-id";
 
 /** 需要登录保护的路由列表 */
 const protectedRoutes = ["/dashboard", "/dashboard/(.*)"];
@@ -29,15 +30,15 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
 
-  // 请求级 trace-id：透传上游 x-request-id 或生成新的，响应头回写便于全链路排障
-  const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
-  requestHeaders.set("x-request-id", requestId);
+  // 请求级 trace-id：透传上游合法 ID（归一化后）或生成新的，响应头回写便于全链路排障
+  const requestId = resolveTraceId(request.headers.get(TRACE_HEADER));
+  requestHeaders.set(TRACE_HEADER, requestId);
 
   const requestWithNonce = new NextRequest(request.url, { headers: requestHeaders });
 
   const { supabaseResponse, user } = await updateSession(requestWithNonce);
   supabaseResponse.headers.set("Content-Security-Policy", csp);
-  supabaseResponse.headers.set("x-request-id", requestId);
+  supabaseResponse.headers.set(TRACE_HEADER, requestId);
   const pathname = request.nextUrl.pathname;
 
   // Mock 模式：跳过所有权限检查
@@ -62,7 +63,7 @@ export async function proxy(request: NextRequest) {
     const loginUrl = new URL(ROUTES.login, request.url);
     loginUrl.searchParams.set("redirect", pathname);
     const redirect = NextResponse.redirect(loginUrl);
-    redirect.headers.set("x-request-id", requestId);
+    redirect.headers.set(TRACE_HEADER, requestId);
     redirect.headers.set("Content-Security-Policy", csp);
     return redirect;
   }
@@ -70,7 +71,7 @@ export async function proxy(request: NextRequest) {
   // 已登录用户访问登录/注册页时重定向到仪表盘
   if (isAuthRoute && user) {
     const redirect = NextResponse.redirect(new URL(ROUTES.dashboard, request.url));
-    redirect.headers.set("x-request-id", requestId);
+    redirect.headers.set(TRACE_HEADER, requestId);
     redirect.headers.set("Content-Security-Policy", csp);
     return redirect;
   }

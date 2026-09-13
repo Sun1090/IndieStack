@@ -7,6 +7,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
+import { logActionError } from "@/lib/api-log";
+import { logger } from "@/lib/logger";
 import { contactSchema, isSpam, scoreSpam } from "@/lib/validations/contact";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
@@ -32,7 +34,7 @@ export async function submitContactMessage(formData: FormData): Promise<ActionRe
 
   if (isSpam({ message: parsed.data.message, email: parsed.data.email })) {
     const { score, reasons } = scoreSpam({ message: parsed.data.message, email: parsed.data.email });
-    console.warn(`[submitContactMessage] 疑似垃圾拒收 score=${score}:`, reasons);
+    logger.warn("[submitContactMessage] 疑似垃圾拒收", { score, reasons });
     return fail("spamRejected");
   }
 
@@ -41,7 +43,7 @@ export async function submitContactMessage(formData: FormData): Promise<ActionRe
   const { error } = await supabase.from("contact_messages").insert(parsed.data);
 
   if (error) {
-    console.error("[submitContactMessage] 写入失败:", error);
+    await logActionError("[submitContactMessage] 写入失败", error);
     return fail("databaseError");
   }
 

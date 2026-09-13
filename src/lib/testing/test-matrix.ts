@@ -50,14 +50,14 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     zh: "Server Actions 与仓储",
     en: "Server actions & repositories",
     paths: ["src/lib/actions", "src/lib/repositories"],
-    commands: ["test", "test:coverage", "type-check", "check:rls"],
+    commands: ["test", "test:coverage", "type-check", "check:rls", "check:trace-coverage"],
   },
   {
     id: "api-routes",
     zh: "Route Handlers",
     en: "Route handlers",
     paths: ["src/app/api"],
-    commands: ["test", "test:e2e"],
+    commands: ["test", "test:e2e", "check:trace-coverage"],
   },
   {
     id: "auth-mfa",

@@ -53,6 +53,7 @@
     "check:workflows": "node scripts/check-workflows.js",
     "check:codeql": "node scripts/check-codeql.js",
     "check:secrets-scan": "node scripts/check-secrets-scan.js",
+    "check:trace-coverage": "node scripts/check-trace-coverage.js",
     "check:release-tag": "node scripts/check-release-tag.js",
     "check:mock-docs": "node scripts/check-mock-docs.js",
     "check:test-matrix": "node scripts/check-test-matrix.js",

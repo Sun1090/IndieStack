@@ -12,6 +12,7 @@ import { ROUTES } from "@/lib/constants";
 import { listApiKeysByUser, insertApiKey, deactivateApiKey } from "@/lib/repositories/api-keys";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 const createApiKeySchema = z.object({
   name: z.string().trim().min(1, "keyNameRequired").max(60),
@@ -57,7 +58,7 @@ export async function listApiKeys(): Promise<ActionResult<ApiKeyRecord[]>> {
   try {
     return ok((await listApiKeysByUser(user.id)).map((row) => toRecord(row)));
   } catch (error) {
-    console.error("[listApiKeys] 获取密钥列表失败:", error);
+    await logActionError("[listApiKeys] 获取密钥列表失败", error);
     return fail("databaseError");
   }
 }
@@ -94,7 +95,7 @@ export async function createApiKey(
     });
     record = toRecord(row);
   } catch (error) {
-    console.error("[createApiKey] 创建密钥失败:", error);
+    await logActionError("[createApiKey] 创建密钥失败", error);
     return fail("databaseError");
   }
 
@@ -114,7 +115,7 @@ export async function revokeApiKey(keyId: string): Promise<ActionResult> {
   try {
     await deactivateApiKey(user.id, keyId);
   } catch (error) {
-    console.error("[revokeApiKey] 吊销密钥失败:", error);
+    await logActionError("[revokeApiKey] 吊销密钥失败", error);
     return fail("databaseError");
   }
 

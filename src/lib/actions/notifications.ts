@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import * as notificationsRepo from "@/lib/repositories/notifications";
-import { getTraceId } from "@/lib/trace";
+import { logActionError } from "@/lib/api-log";
 
 /**
  * 将当前用户的所有未读通知标记为已读。
@@ -29,8 +29,7 @@ export async function markAllNotificationsRead(): Promise<
     revalidatePath("/dashboard/notifications");
     return ok({ updated });
   } catch (error) {
-    const traceId = await getTraceId();
-    console.error(`[markAllNotificationsRead] 标记已读失败 trace=${traceId ?? "-"}:`, error);
+    await logActionError("[markAllNotificationsRead] 标记已读失败", error);
     return fail("databaseError");
   }
 }
@@ -49,8 +48,7 @@ export async function getUnreadNotificationCount(): Promise<ActionResult<{ unrea
   try {
     return ok({ unread: await notificationsRepo.countUnreadNotifications(user.id) });
   } catch (error) {
-    const traceId = await getTraceId();
-    console.error(`[getUnreadNotificationCount] 失败 trace=${traceId ?? "-"}:`, error);
+    await logActionError("[getUnreadNotificationCount] 失败", error);
     return fail("databaseError");
   }
 }
@@ -73,8 +71,7 @@ export async function markNotificationRead(
     revalidatePath("/dashboard/notifications");
     return ok();
   } catch (error) {
-    const traceId = await getTraceId();
-    console.error(`[markNotificationRead] 失败 trace=${traceId ?? "-"}:`, error);
+    await logActionError("[markNotificationRead] 失败", error);
     return fail("databaseError");
   }
 }

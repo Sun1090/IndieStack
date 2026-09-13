@@ -34,6 +34,7 @@
 | `pnpm check:workflows` | 校验 CI 工作流卫生：action 固定版本、作业超时、`needs` 目标、PR 并发取消、脚本名真实存在，以及 ci.yml 并行/缓存契约 |
 | `pnpm check:codeql` | 校验 CodeQL 扫描强度与告警处置策略：action major、语言、查询套件、SARIF category、权限、超时、分支/定时覆盖、路径过滤与 runbook 事实一致性 |
 | `pnpm check:secrets-scan` | 校验 gitleaks 扫描强度与泄漏处置策略：action major、全历史 fetch-depth、触发覆盖、token 接线、写权限、allowlist 条目与 runbook 事实一致性 |
+| `pnpm check:trace-coverage` | 校验所有 Route Handler 与 Server Action 都经带 trace 的 `logApiError` / `logActionError` 记录错误，且 `src/lib/trace-id.ts` 与 `src/proxy.ts` 的 `x-request-id` 契约未漂移 |
 | `pnpm check:release-tag` | 校验 `vX.Y.Z` 标签与 `package.json` 一致、CHANGELOG 存在带日期的对应章节，并要求 `release.yml` 跑完全部门禁后才发布审核过的 Notes |
 | `pnpm check:mock-docs` | 校验 Mock 文档的表名清单与 E2E 端点同实现保持一致 |
 | `pnpm check:test-matrix` | 校验贡献者测试矩阵登记了全部改动领域与真实存在的脚本 |

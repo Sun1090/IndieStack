@@ -9,12 +9,13 @@ import { deleteMyCredential } from "@/lib/repositories/webauthn";
 import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { ok, fail } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 export async function deletePasskey(id: string): Promise<ActionResult> {
   try {
     await deleteMyCredential(id);
   } catch (error) {
-    console.error("[deletePasskey] 删除失败:", error);
+    await logActionError("[deletePasskey] 删除失败", error);
     return fail("databaseError");
   }
   revalidatePath(ROUTES.dashboardSettings);

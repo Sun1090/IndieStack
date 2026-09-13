@@ -13,7 +13,10 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers({ "user-agent": "Mozilla/5.0 Test", "x-real-ip": "203.0.113.7" })),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/api-log", () => ({ logApiError: vi.fn(async () => {}) }));
+vi.mock("@/lib/api-log", () => ({
+  logApiError: vi.fn(async () => {}),
+  logActionError: vi.fn(async () => {}),
+}));
 
 import { recordCurrentSession, revokeSession } from "./sessions";
 import { sessionIdFromAccessToken } from "@/lib/session-id";

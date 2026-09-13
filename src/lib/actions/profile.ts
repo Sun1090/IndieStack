@@ -10,6 +10,7 @@ import { profileSettingsSchema } from "@/lib/validations/profile";
 import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 /**
  * Update profile settings (full bio, timezone, language).
@@ -48,7 +49,7 @@ export async function updateProfileSettings(formData: FormData) {
     .eq("id", user.id);
 
   if (error) {
-    console.error("[updateProfileSettings] 更新资料设置失败:", error);
+    await logActionError("[updateProfileSettings] 更新资料设置失败", error);
     return fail("databaseError");
   }
 

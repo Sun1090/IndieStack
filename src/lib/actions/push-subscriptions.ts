@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { registerPushSubscription, revokePushSubscription } from "@/lib/repositories/push-subscriptions";
 import { fail, ok } from "@/lib/types/action-result";
+import { logActionError } from "@/lib/api-log";
 
 function readSubscription(formData: FormData) {
   const endpoint = formData.get("endpoint");
@@ -19,7 +20,7 @@ export async function subscribeToPush(formData: FormData) {
   const subscription = readSubscription(formData);
   if (!subscription) return fail("invalidSettings");
   try { await registerPushSubscription(user.id, subscription); return ok(); }
-  catch (error) { console.error("[subscribeToPush] failed", error); return fail("databaseError"); }
+  catch (error) { await logActionError("[subscribeToPush] failed", error); return fail("databaseError"); }
 }
 
 export async function unsubscribeFromPush(formData: FormData) {
@@ -29,5 +30,5 @@ export async function unsubscribeFromPush(formData: FormData) {
   const endpoint = formData.get("endpoint");
   if (typeof endpoint !== "string" || !endpoint.trim()) return fail("invalidSettings");
   try { await revokePushSubscription(user.id, endpoint); return ok(); }
-  catch (error) { console.error("[unsubscribeFromPush] failed", error); return fail("databaseError"); }
+  catch (error) { await logActionError("[unsubscribeFromPush] failed", error); return fail("databaseError"); }
 }

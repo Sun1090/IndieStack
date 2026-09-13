@@ -416,3 +416,31 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 除静态仓库检查外，它还会校验 `secrets-scan.yml`、`security-config.yml`、`codeql.yml` 和 `dependabot.yml` 的关键扫描配置没有漂移，包括 PR/main/develop 触发、gitleaks/codeql action 版本、full git history、只读权限、定时依赖审计、security-extended 查询和 Dependabot 的 npm/GitHub Actions 跟踪。依赖审计读取 `pnpm audit --json`，high/critical 任一大于 0 即失败；输入缺失、不可读或 JSON 形状异常时 fail-closed。
 
 规则实现位于 `src/lib/security/security-config.ts`（纯函数），IO/CLI 位于 `scripts/lib/security-config-check.js`，由 `scripts/check-security-config.js` 经 Node 原生 type stripping 调用。专项测试 54 条覆盖策略函数与 CLI 退出码；`pnpm check:all`、CI Lint & Type Check job 和独立的 `Security and configuration checks` workflow 均会执行。该门禁只证明当前工作树和扫描配置满足策略，不替代 gitleaks 对历史提交的扫描，也不证明历史中不存在已泄露密钥。
+
+## 请求链路追踪覆盖门禁（E02）
+
+`x-request-id` 由 `src/proxy.ts` 生成并注入很容易，难的是它不会随时间退化：新增一个 Server Action
+时顺手 `console.error`、新写一个 Route Handler 时直接 `logger.error`，请求关联就会静默丢失，而此前没有任何
+门禁能发现。`pnpm check:trace-coverage` 把这条约定固化为可执行规则：
+
+- 服务端边界（`src/app/api` 子树下的 `route.ts` 与 `src/lib/actions/*.ts`）不得使用裸 `console.*`；
+- 服务端边界不得直接调用 `logger.error`，错误必须经 `logApiError` / `logActionError` 这两个带 trace 的入口；
+  非错误级别的 `logger.warn` / `logger.info` 仍允许直接使用；
+- `src/lib/api-log.ts` 必须同时导出两个入口并读取 `getTraceId()`；`getTraceId` 缺失即失败；
+- `src/lib/trace-id.ts` 必须保留 `TRACE_HEADER`、`MAX_TRACE_ID_LENGTH`、`normalizeTraceId`、
+  `createTraceId`、`resolveTraceId` 五个导出，避免 header 名或归一化语义漂移；
+- `src/proxy.ts` 必须用 `resolveTraceId()` 解析上游 ID、把 trace 注入下游请求头，并在放行与重定向分支
+  各回写一次响应头；绕过契约直接调用 `crypto.randomUUID()` 或不经 `@/lib/trace-id` 取 header 名都会失败；
+- 扫描到的边界文件为空时失败封闭（glob 写错不会被当成零问题），登记豁免的文件如果已不再使用裸日志
+  同样失败，避免豁免表掩盖后续漂移。
+
+规则本体位于 `src/lib/observability/trace-coverage.ts`（纯函数），IO/CLI 位于
+`scripts/lib/trace-coverage-check.js` / `scripts/check-trace-coverage.js`，由 `pnpm check:all` 与 CI
+`Lint & Type Check` job 执行。专项测试 58 条覆盖 trace-id 契约、错误入口、proxy 契约、边界扫描、豁免
+过期与真实仓库快照：`src/lib/trace-id.test.ts`（11）、`src/lib/api-log.test.ts`（5）、
+`src/lib/trace.test.ts`（3）、`src/lib/observability/trace-coverage.test.ts`（18）、
+`src/lib/observability/trace-coverage-check.test.ts`（6），另有 `src/proxy.test.ts`（15，含 7 条既有 CSP
+守卫回归与 8 条 trace 注入/回写用例）。
+
+**局限**：门禁只判断错误日志是否走了带 trace 的通道，不判断日志文案质量，也不校验上游调用方是否回传
+我们的 trace-id；跨服务串联依赖接入方复用响应头中的 `x-request-id`。

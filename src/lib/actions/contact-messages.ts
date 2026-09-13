@@ -16,6 +16,7 @@ import {
 } from "@/lib/repositories/contact-messages";
 import { safelyRequireRole } from "@/lib/auth/guards";
 import { ROUTES } from "@/lib/constants";
+import { logActionError } from "@/lib/api-log";
 
 export type ContactMessageRecord = {
   id: string;
@@ -48,8 +49,8 @@ function contactMessageErrorCode(error: unknown): "invalid_input" | "invalid_tra
   return "unexpected";
 }
 
-function logContactMessageFailure(operation: string, error: unknown): void {
-  console.error(`[${operation}] failed code=${contactMessageErrorCode(error)}`);
+async function logContactMessageFailure(operation: string, error: unknown): Promise<void> {
+  await logActionError(`[${operation}] failed code=${contactMessageErrorCode(error)}`, error);
 }
 
 /**
@@ -67,7 +68,7 @@ export async function listContactMessages(
   try {
     return ok((await listRecentContactMessages(limit)).map((row) => toRecord(row)));
   } catch (error) {
-    console.error("[listContactMessages] 查询失败:", error);
+    await logActionError("[listContactMessages] 查询失败", error);
     return fail("databaseError");
   }
 }
@@ -92,7 +93,7 @@ export async function listContactMessagesPage(
     const { rows, total } = await fetchContactMessagesPage(filter);
     return ok({ rows: rows.map((row) => toRecord(row)), total });
   } catch (error) {
-    logContactMessageFailure("listContactMessagesPage", error);
+    await logContactMessageFailure("listContactMessagesPage", error);
     return fail(
       error instanceof Error && error.message.startsWith("invalid_")
         ? "invalidInput"
@@ -118,7 +119,7 @@ export async function updateMessageStatus(
     revalidatePath(ROUTES.adminMessages);
     return ok();
   } catch (error) {
-    logContactMessageFailure("updateMessageStatus", error);
+    await logContactMessageFailure("updateMessageStatus", error);
     return fail(
       error instanceof Error && error.message.startsWith("invalid_transition")
         ? "invalidTransition"

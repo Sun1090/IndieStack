@@ -4,14 +4,21 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { safelyRequireRoleMock, listRecentContactMessagesMock, setMessageStatusMock, revalidatePathMock, listPageMock } =
-  vi.hoisted(() => ({
-    safelyRequireRoleMock: vi.fn(),
-    listRecentContactMessagesMock: vi.fn(),
-    setMessageStatusMock: vi.fn(),
-    revalidatePathMock: vi.fn(),
-    listPageMock: vi.fn(),
-  }));
+const {
+  safelyRequireRoleMock,
+  listRecentContactMessagesMock,
+  setMessageStatusMock,
+  revalidatePathMock,
+  listPageMock,
+  logActionErrorMock,
+} = vi.hoisted(() => ({
+  safelyRequireRoleMock: vi.fn(),
+  listRecentContactMessagesMock: vi.fn(),
+  setMessageStatusMock: vi.fn(),
+  revalidatePathMock: vi.fn(),
+  listPageMock: vi.fn(),
+  logActionErrorMock: vi.fn<(scope: string, error: unknown) => Promise<void>>(async () => {}),
+}));
 
 vi.mock("@/lib/auth/guards", () => ({ safelyRequireRole: safelyRequireRoleMock }));
 vi.mock("@/lib/repositories/contact-messages", () => ({
@@ -20,6 +27,7 @@ vi.mock("@/lib/repositories/contact-messages", () => ({
   listContactMessagesPage: listPageMock,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
+vi.mock("@/lib/api-log", () => ({ logActionError: logActionErrorMock }));
 
 import { listContactMessages, updateMessageStatus, listContactMessagesPage } from "./contact-messages";
 
@@ -138,13 +146,17 @@ describe("listContactMessagesPage()", () => {
 
   it("日志仅记录分类码，不写入异常原文", async () => {
     safelyRequireRoleMock.mockResolvedValue(authed());
-    listPageMock.mockRejectedValue(new Error("invalid_status:evil\nforged-log"));
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const raw = new Error("invalid_status:evil\nforged-log");
+    listPageMock.mockRejectedValue(raw);
 
     await listContactMessagesPage({});
 
-    expect(errorSpy).toHaveBeenCalledWith("[listContactMessagesPage] failed code=invalid_input");
-    errorSpy.mockRestore();
+    expect(logActionErrorMock).toHaveBeenCalledTimes(1);
+    // scope 只包含分类码，异常原文只作为第二个参数交给日志边界（由 Sentry 结构化处理）
+    expect(logActionErrorMock.mock.calls[0][0]).toBe(
+      "[listContactMessagesPage] failed code=invalid_input",
+    );
+    expect(logActionErrorMock.mock.calls[0][1]).toBe(raw);
   });
 });
 
@@ -193,12 +205,15 @@ describe("updateMessageStatus()", () => {
 
   it("更新失败日志仅记录分类码", async () => {
     safelyRequireRoleMock.mockResolvedValue(authed());
-    setMessageStatusMock.mockRejectedValue(new Error("invalid_transition:resolved->new\nforged-log"));
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const raw = new Error("invalid_transition:resolved->new\nforged-log");
+    setMessageStatusMock.mockRejectedValue(raw);
 
     await updateMessageStatus("m1", "new");
 
-    expect(errorSpy).toHaveBeenCalledWith("[updateMessageStatus] failed code=invalid_transition");
-    errorSpy.mockRestore();
+    expect(logActionErrorMock).toHaveBeenCalledTimes(1);
+    expect(logActionErrorMock.mock.calls[0][0]).toBe(
+      "[updateMessageStatus] failed code=invalid_transition",
+    );
+    expect(logActionErrorMock.mock.calls[0][1]).toBe(raw);
   });
 });

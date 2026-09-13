@@ -34,6 +34,7 @@
 | `pnpm check:workflows` | Audit CI workflow hygiene: pinned actions, job timeouts, `needs` targets, PR concurrency, real script names, and the ci.yml parallel/cache contract |
 | `pnpm check:codeql` | Audit CodeQL scan strength and alert triage policy: action major, languages, query suite, SARIF category, permissions, timeout, branch/schedule coverage, path filters, and runbook facts |
 | `pnpm check:secrets-scan` | Audit gitleaks scan strength and leak response policy: action major, full-history fetch depth, trigger coverage, token wiring, write permissions, allowlist entries, and runbook facts |
+| `pnpm check:trace-coverage` | Audit that every route handler and server action logs errors through the trace-aware `logApiError` / `logActionError` funnels, and that the `x-request-id` contract in `src/lib/trace-id.ts` and `src/proxy.ts` has not drifted |
 | `pnpm check:release-tag` | Verify a `vX.Y.Z` tag matches `package.json`, the CHANGELOG has a dated release section, and `release.yml` publishes reviewed notes only after all gates |
 | `pnpm check:mock-docs` | Audit that the Mock docs match the Mock client tables and E2E endpoints |
 | `pnpm check:test-matrix` | Audit that the contributor test matrix documents every change area and real script |

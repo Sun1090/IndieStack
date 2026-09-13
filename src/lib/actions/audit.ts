@@ -7,6 +7,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
+import { logActionError } from "@/lib/api-log";
 
 const REDACTED_VALUE = "[REDACTED]";
 
@@ -82,7 +83,7 @@ export async function logAuthEvent(
       metadata: redactAuthAuditMetadata(metadata),
     });
   } catch (error) {
-    console.error("[logAuthEvent] 审计写入失败:", error);
+    await logActionError("[logAuthEvent] 审计写入失败", error);
   }
   return { ok: true };
 }

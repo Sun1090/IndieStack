@@ -12,6 +12,7 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import type { Database } from "@/lib/supabase/database.types";
 import { cleanupManagedStorageUrl } from "@/lib/storage";
+import { logActionError } from "@/lib/api-log";
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(1, "projectNameRequired").max(100),
@@ -76,7 +77,7 @@ export async function createProject(
     if (error.code === "23505") {
       return fail("projectSlugExists");
     }
-    console.error("[createProject] 创建项目失败:", error);
+    await logActionError("[createProject] 创建项目失败", error);
     return fail("databaseError");
   }
 
@@ -121,7 +122,7 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
   const { error } = await supabase.from("projects").delete().eq("id", projectId);
 
   if (error) {
-    console.error("[deleteProject] 删除项目失败:", error);
+    await logActionError("[deleteProject] 删除项目失败", error);
     return fail("databaseError");
   }
 
@@ -190,7 +191,7 @@ export async function updateProject(
   const { error } = await supabase.from("projects").update(patch).eq("id", projectId);
 
   if (error) {
-    console.error("[updateProject] 更新项目失败:", error);
+    await logActionError("[updateProject] 更新项目失败", error);
     return fail("databaseError");
   }
 
