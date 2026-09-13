@@ -6,6 +6,10 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **邮件 worker 运行记录保留期**：新增 `027_email_worker_runs_retention.sql`，`cleanup_old_email_worker_runs()`
+  按 90 天保留期清理 `email_worker_runs`（与 `notifications` / `webhook_events` 对齐），并通过带
+  守卫的 `pg_cron` 任务每周日 04:15 执行（未安装 `pg_cron` 的环境自动跳过）；`security definer` +
+  空 `search_path`，只按 `created_at` 时间窗批量删除。保留策略矩阵更新到 [docs/db/retention.md](docs/db/retention.md)。
 - **Push 重试链路 E2E 覆盖**：新增 mock-only 的 `https://push-e2e.test` 保留端点传输层
   （`src/lib/mock/push-transport.ts`）与 `/api/e2e/push-queue` 种子/查询/重置端点，
   只替换 `web-push` 的底层 `https.request`，适配器的配置校验、载荷构造与错误映射保持真实；

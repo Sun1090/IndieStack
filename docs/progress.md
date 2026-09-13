@@ -701,3 +701,50 @@
   - 回滚：`git revert 24b9461` 回到 16.3.4 / 4.14.3 / 1.44.0，并重新安装依赖（lockfile 一并回退）。
 - 下一步：继续下一批可本地执行的工作（优先真实缺口与未验证项）。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H08_RETENTION_EMAIL_WORKER（邮件 worker 运行记录保留期，本地完成）
+
+- 状态：DONE（本地实现 + 门禁通过；受权限边界未 push / PR / merge / deploy）
+- 里程碑 / 发布目标：H08 数据保留续，记录在 `[Unreleased]`（不单独升版本）
+- 分支 / PR：`feat/visual-regression-baseline` / PR none（LOCAL_ONLY，未推送、未创建 PR）
+- 本地提交：见本条目下方“提交”字段（本条提交）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（本周期未 fetch 前进，未执行 rebase）
+- 目标：`email_worker_runs` 此前无任何保留期，`/api/cron/digest` 每轮落一行会导致长期无界增长；
+  补齐与 `notifications` / `webhook_events` 对齐的 90 天保留策略。
+- 已完成：
+  - 新增迁移 `027_email_worker_runs_retention.sql`：`cleanup_old_email_worker_runs()`（SECURITY DEFINER、
+    `search_path=''`）按 90 天窗口删除 `email_worker_runs`；守卫式 `pg_cron` 调度
+    `15 4 * * 0`（仅当 `pg_cron` 扩展存在时注册，本地/最小化环境安全跳过）。
+  - `supabase/migration-manifest.json` 重新定基线（27 个迁移，仅追加）。
+  - `src/lib/supabase/database.types.ts` 补 `cleanup_old_email_worker_runs` 函数类型。
+  - `docs/db/retention.md` 重写为完整保留矩阵（notifications / webhook_events / email_worker_runs /
+    push_delivery_attempts 各状态），补设计约束、运维检查与变更痕迹。
+  - `CHANGELOG.md` `[Unreleased]` 新增真实条目。
+- 变更文件：`supabase/migrations/027_email_worker_runs_retention.sql`、
+  `supabase/migration-manifest.json`、`src/lib/supabase/database.types.ts`、`docs/db/retention.md`、
+  `CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm check:migrations` → ✅ 27 个不可变迁移与 SHA-256 基线一致。
+  - `pnpm check:rls` → ✅ 27 迁移、19 表、23 策略。
+  - `pnpm check:supabase-security` → ✅ 27 迁移。
+  - `pnpm exec supabase migration up` → 本地应用 027 成功。
+  - 本地 psql 演练：函数存在且 `prosecdef=t` / `proconfig={"search_path=\"\""}`；`pg_cron` 未安装 →
+    调度分支按守卫跳过；插入 91/89/0 天三行后执行 `select public.cleanup_old_email_worker_runs();`
+    → 删除 1 行，保留 89 天与当前行，演练行随后清理为 0。
+  - `pnpm check:all` → 通过（111 文件 / 1110 测试）。
+  - `pnpm lint` / `pnpm type-check` → 通过。
+  - `pnpm verify:build` → 通过（production build）。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产 `pg_cron` 调度是否实际注册未验证（依赖 Supabase Dashboard 扩展状态与生产权限）。
+  - 生产库上 90 天窗口的真实删除量未测量（属运维观察项）。
+- 风险与回滚：
+  - 风险：`pg_cron` 缺失时不会有自动清理，`email_worker_runs` 会继续增长（与迁移前状态一致，非回退；
+    已在文档中标注为需 Dashboard 确认项）。
+  - 风险：清理为不可逆删除；窗口固定 90 天且只按 `created_at`，不读取业务字段。
+  - 回滚：`git revert <本提交>` 删除该迁移；如需撤销已应用状态，另行追加迁移 `drop function
+    public.cleanup_old_email_worker_runs()` 并 `cron.unschedule('cleanup-old-email-worker-runs')`
+    （迁移仅追加，不改写历史）。
+- 下一步：实现 028 SECURITY DEFINER 授权加固（撤销 PUBLIC/anon/authenticated 对清理类函数的 EXECUTE），
+  并扩展 `pnpm check:supabase-security` 使其对默认 PUBLIC EXECUTE 失败封闭。
+- 最后更新：2026-09-13

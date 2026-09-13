@@ -131,6 +131,11 @@
       "version": "026",
       "fileName": "026_push_delivery_attempts.sql",
       "sha256": "52c8dd0ce974e755268395dea53d4ea383ddfaad745d9f8f84830548aa09db10"
+    },
+    {
+      "version": "027",
+      "fileName": "027_email_worker_runs_retention.sql",
+      "sha256": "6f8d77ee9713489f159a2d6962d925593e78dac140c88a6253cb069f1b7e4acb"
     }
   ]
 }

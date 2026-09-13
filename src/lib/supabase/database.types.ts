@@ -771,6 +771,7 @@ export type Database = {
       }
     }
     Functions: {
+      cleanup_old_email_worker_runs: { Args: never; Returns: undefined }
       cleanup_old_notifications: { Args: never; Returns: undefined }
       cleanup_old_webhook_events: { Args: never; Returns: undefined }
       get_profile_email: { Args: { p_id: string }; Returns: string }
