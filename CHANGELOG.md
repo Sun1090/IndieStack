@@ -42,6 +42,11 @@ All notable changes to IndieStack will be documented in this file.
   白名单除外），IO 层另外确认覆盖路径在磁盘上仍然存在，抽取为空时失败封闭，14 条单测随 `pnpm check:all`
   与 CI 执行。
 
+- **迁移回滚 Runbook 与一致性门禁**：新增 `docs/operations/migration-rollback-runbook.md`，统一迁移触发出动、
+  前向修复优先决策、各类 schema 变更的逆向风险、操作与回滚后验证、权限审批及演练记录，并明确数据库不自动回滚。
+  新增 `pnpm check:migration-runbook`，校验八个必备章节、关键凭据/回滚事实、最新迁移标记与
+  `supabase/migration-manifest.json` 一致、文档引用的迁移文件真实存在、必备和引用的 `pnpm` 脚本真实可执行，
+  抽取为空时失败封闭；20 条单测接入 `pnpm check:all` 与 CI。
 
 ### Planned
 

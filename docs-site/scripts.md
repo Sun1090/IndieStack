@@ -61,6 +61,7 @@
 | `pnpm check:migrations` | Enforce immutable migration checksums + filename/ordering rules |
 | `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only) |
 | `pnpm check:migration-history` | Compare local Supabase migration history (needs `supabase start`) |
+| `pnpm check:migration-runbook` | Audit that the migration rollback runbook matches the migration manifest |
  
  ## Helper Scripts
  

@@ -303,6 +303,27 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 `pnpm check:migration-history` 是本地数据库历史门禁：读取 `supabase migration list --local --output-format json`，对未应用到数据库的迁移（`HISTORY_MIGRATION_PENDING`）和只存在于数据库的版本（`HISTORY_VERSION_MISSING_LOCAL`）报错。它只读本地 Supabase，需要先 `supabase start`，因此**不纳入** `check:all`/CI 的离线聚合；linked/production 历史校验属于发布步骤，需显式凭据与审批，见发布 Runbook。
 
+## 迁移回滚 Runbook（I10）
+
+`pnpm check:migration-runbook` 把数据库迁移的回滚决策从版本发布文档里的散落描述，收敛为一份可执行且可校验的
+统一 runbook：[docs/operations/migration-rollback-runbook.md](operations/migration-rollback-runbook.md)。规则实现位于
+`src/lib/db/migration-runbook.ts`（纯函数，单测覆盖），IO/CLI 位于 `scripts/lib/migration-runbook-check.js`，由
+`scripts/check-migration-runbook.js` 经 Node 原生 type stripping 调用，`pnpm check:all` 与 CI 的
+`Lint & Type Check` job 均会执行。
+
+门禁要求 runbook 同时满足四类事实：
+
+1. 必须包含触发条件、决策树、前向修复优先、迁移类型与回滚配方、操作步骤、回滚后验证、权限与审批、演练记录
+   八个章节，并明确写出 `SUPABASE_ACCESS_TOKEN`、`SUPABASE_PROJECT_REF` 与「不自动回滚数据库」；
+2. 必须用 `<!-- migration-runbook:latest=... -->` 登记当前最新迁移，且与
+   `supabase/migration-manifest.json` 的最高版本一致；文档里提到的每个 `NNN_name.sql` 都必须真实存在；
+3. 必须给出 `pnpm check:migrations`、`pnpm check:migration-history`、`pnpm update:migrations-manifest`
+   三条操作命令，且文档内引用的每个 `pnpm <script>` 都必须真实存在（常用 pnpm 内置命令除外）；
+4. runbook 或迁移清单为空时失败封闭，避免正则失效或清单缺失被误判为通过。
+
+该门禁验证的是 runbook 与仓库事实一致，**不替代真实恢复演练**。生产数据库逆向操作与备份恢复仍需 DBA、发布负责人
+和可用快照；自动化只负责阻止文档悄悄过期。
+
 ## 依赖与 secrets 扫描门禁（H10）
 
 `pnpm check:security` 是仓库级安全配置门禁：读取 git 索引并拒绝被跟踪的 `.env*`（`.env.example` 除外）和私钥类文件；检查已有环境文件权限不得宽于 `0600`；拒绝 `.env.development` 中的服务端密钥；扫描带真实 `"use client"` 指令的源码，拦截 `process.env.X` / `process.env["X"]` 形式的服务端变量泄漏（包含 `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`）；要求所有 workflow 显式声明 permissions 且禁止 `write-all`。

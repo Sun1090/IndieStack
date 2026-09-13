@@ -61,6 +61,7 @@
 | `pnpm check:migrations` | 校验迁移不可变校验和与命名/顺序规则 |
 | `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加） |
 | `pnpm check:migration-history` | 比对本地 Supabase 迁移历史（需 `supabase start`） |
+| `pnpm check:migration-runbook` | 校验迁移回滚 runbook 与迁移清单保持一致 |
  
  ## 辅助脚本
  

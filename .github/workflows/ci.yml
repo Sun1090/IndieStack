@@ -59,6 +59,9 @@ jobs:
       - name: Check migration ordering and drift hazards
         run: pnpm check:migrations
 
+      - name: Check migration rollback runbook
+        run: pnpm check:migration-runbook
+
       - name: Check Supabase security boundaries
         run: pnpm check:supabase-security
 
