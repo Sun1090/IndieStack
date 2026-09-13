@@ -2353,3 +2353,37 @@
   - 回滚：`git revert ceaf29c` 即恢复单 job E2E；纯 CI / 测试配置改动，无数据库或运行时接口影响。
 - 下一步：J03 CI 并行与缓存优化。
 - 最后更新：2026-09-13
+
+## J03 CI 并行与缓存优化（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 93 项）
+- 里程碑与发布目标：M4 J 段（J01–J10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`f78e0d5`（ci(workflows): parallelize coverage and cache playwright browsers）
+- 目标：让 CI 从「一条串行链」变成「廉价门禁先失败、昂贵作业并行」，并把工作流卫生（action 固定版本、作业超时、`needs` 指向、PR 并发取消、脚本名真实存在、ci.yml 并行/缓存拓扑）固化为可执行门禁，避免墙钟时间与 runner 配额被无声浪费
+- 已完成：
+  - `.github/workflows/ci.yml` 把覆盖率测试从 `Lint & Type Check` 拆到独立的 `Unit Tests` job（无 `needs`，与静态门禁并行）；`Build` 与 `E2E (Playwright)` 的 `needs` 仍只指向 `Lint & Type Check`，因此构建与 E2E 不再为一次覆盖率运行多等一两分钟
+  - `E2E (Playwright)` 新增 `actions/cache@v6` 缓存 `~/.cache/ms-playwright`，键为 `playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}` + `restore-keys`；Playwright 版本随锁文件变化即自动失效，`playwright install --with-deps` 仍保留以补齐系统依赖
+  - 四个触发 `pull_request` 的工作流（`ci.yml` / `codeql.yml` / `secrets-scan.yml` / `security-config.yml`）新增 `concurrency` + `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`：同一分支连续推送立刻取消被取代的运行，而 main/develop 的 push 与 schedule 事件不取消，扫描结果始终保留
+  - 新增纯函数 `src/lib/ci/workflow-policy.ts`：作业必须有 `runs-on` / `timeout-minutes`；`uses:` 必须固定在 semver 标签或 40 位 SHA（`@main` / `@latest` / 裸 `@head` 失败）；`needs` 必须指向同一工作流内真实存在的作业；触发 PR 的工作流必须声明非 `false` 的 `cancel-in-progress`；`pull_request_target` 直接禁止；工作流里出现的 `pnpm <a:b>` 必须真实存在于 `package.json`；`ci.yml` 的并行/缓存拓扑必须与 `CI_TOPOLOGY` 契约一致（静态门禁与单元测试均无前置依赖、昂贵作业 `needs` 恰好是静态门禁、覆盖率不得留在静态门禁、e2e 必须按锁文件哈希缓存浏览器）
+  - 命令识别按行扫描（`jobRuns()` 同时支持 `- run: pnpm x` 与 `run: |` 块标量），避免 `\s` 吞掉换行后把下游作业的 `run:` 误判进当前作业；抽取结果为空时失败封闭，解析规则失效不会被当成「零问题」
+  - 新增 `scripts/lib/workflow-policy-check.js` + `scripts/check-workflows.js`（Node `--experimental-strip-types`），注册为 `pnpm check:workflows`，接入 `scripts/check-all.sh` 与 CI `Lint & Type Check` job
+  - 新增 28 条单测：覆盖触发/作业解析、pinning 判定、缺 `runs-on`/`timeout-minutes`、未知 `needs`、缺 `concurrency`、`cancel-in-progress: false`、`pull_request_target`、不存在的 `pnpm <a:b>`、拓扑漂移（缺作业 / 串行化 `needs` / 覆盖率留在静态门禁 / 单元测试缺覆盖率 / 昂贵作业缺失或 `needs` 错误 / 5 种浏览器缓存偏差）、块标量 `run` 识别与跨作业隔离，以及读取真实仓库工作流的端到端断言
+  - 文档与接线：双语 `docs-site/scripts.md` 增行、双语 `docs-site/testing.md` 的 `ci-tooling` 行补 `pnpm check:workflows`、`src/lib/testing/test-matrix.ts` 同步；`docs/testing.md` 的「CI 门禁」章节重写并新增「并行与缓存拓扑（J03）」；`.github/RELEASE_CHECKLIST.md` 的 CI job 清单补 `Unit Tests`；`CHANGELOG.md` `[Unreleased] / Added` 记录；roadmap 第 93 项与头部进度标注完成
+- 变更文件：`.github/workflows/ci.yml`、`.github/workflows/codeql.yml`、`.github/workflows/secrets-scan.yml`、`.github/workflows/security-config.yml`、`.github/RELEASE_CHECKLIST.md`、`src/lib/ci/workflow-policy.ts`、`src/lib/ci/workflow-policy.test.ts`、`scripts/lib/workflow-policy-check.js`、`scripts/check-workflows.js`、`package.json`、`scripts/check-all.sh`、`src/lib/testing/test-matrix.ts`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs-site/testing.md`、`docs-site/zh-CN/testing.md`、`docs/testing.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `f78e0d5`）：
+  - `pnpm check:workflows` → ✅ 8 个工作流 / 12 个作业 / 35 个 action 引用
+  - `pnpm exec vitest run src/lib/ci/workflow-policy.test.ts` → ✅ 28 passed
+  - `pnpm check:gates` → ✅ 25 个门禁（本地 22 / CI 23 / 豁免 3），8 个工作流
+  - `pnpm check:docs`、`pnpm check:changelog`、`pnpm check:release-docs`、`pnpm check:test-matrix`、`pnpm check:locales` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警（`auditCiTopology` 曾触发 complexity 16/15，已拆分为 `auditEntryJobs` / `auditExpensiveJobs` / `auditBrowserCache`）
+  - `pnpm check:all` → ✅ 147 文件 / 1547 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过（bundle 2853.1 kB / 基线 2733.8 kB）
+- 阻塞：无（真实 GitHub Actions 执行仍需推送权限；本地已验证 workflow 配置、拓扑契约与真实仓库快照）
+- 风险与回滚：
+  - 风险：解析是纯文本缩进分析，没有引入 YAML 依赖；若工作流改用不支持的缩进风格（例如 4 空格缩进作业头），抽取会失败封闭并阻断 CI，而不是静默漏检。
+  - 风险：`cancel-in-progress` 只对 `pull_request` 生效；若未来把某些 PR 工作流改成 `push` 触发，需要重新评审是否也取消（当前刻意保留 push/schedule 的历史结果）。
+  - 风险：Playwright 浏览器缓存键只含锁文件哈希；Playwright 版本升级但锁文件未变（例如手动改 `package.json` 未跑 install）时会命中陈旧缓存，`install --with-deps` 仍会补齐缺失浏览器，但缓存收益会下降。
+  - 回滚：`git revert f78e0d5` 即恢复单 job 覆盖率、移除浏览器缓存与 `concurrency`，并移除 `pnpm check:workflows` 门禁；纯 CI / 校验改动，无数据库或运行时接口影响。
+- 下一步：J04 CodeQL 告警零回归。
+- 最后更新：2026-09-13
