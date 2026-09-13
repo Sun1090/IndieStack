@@ -36,7 +36,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         {/* G06：<768px 侧边栏整体隐藏，移动端抽屉保证导航可达 */}
         <div className="flex min-w-0 flex-1 flex-col">
           <MobileDashboardNav />
-          <main id="main-content" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {children}
           </main>
         </div>

@@ -40,6 +40,8 @@
   "close": "关闭",
   "menu": "菜单",
   "dashboardMenu": "仪表盘菜单",
+  "collapseSidebar": "收起侧边栏",
+  "expandSidebar": "展开侧边栏",
   "open": "打开",
   "enabled": "已启用",
   "disabled": "已禁用",

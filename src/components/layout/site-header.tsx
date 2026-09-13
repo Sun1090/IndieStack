@@ -5,10 +5,13 @@
  * - 响应式设计：桌面端显示完整导航链接，移动端显示汉堡菜单
  * - 根据用户登录状态显示登录/注册按钮或用户下拉菜单
  * - 集成了主题切换和语言切换功能
+ *
+ * a11y（G07）：移动端菜单是键盘可达的——Esc 关闭并把焦点还给汉堡按钮，
+ * 避免关闭后焦点丢失在已卸载的节点上。
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUser } from "@/hooks/use-user";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -37,6 +40,7 @@ export function SiteHeader() {
   const router = useRouter();
   const { user, loading } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const t = useTranslations("nav");
   const tc = useTranslations("common");
 
@@ -49,6 +53,18 @@ export function SiteHeader() {
     { href: ROUTES.blog, label: t("blog") },
     { href: ROUTES.docs, label: t("documentation") },
   ];
+
+  // Esc 关闭移动端菜单并把焦点还给触发按钮（G07）
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setMobileMenuOpen(false);
+      mobileMenuButtonRef.current?.focus();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileMenuOpen]);
 
   /** 退出登录处理 */
   const handleSignOut = async () => {
@@ -164,6 +180,7 @@ export function SiteHeader() {
 
           {/* 移动端菜单切换按钮 */}
           <Button
+            ref={mobileMenuButtonRef}
             variant="ghost"
             size="icon"
             className="lg:hidden"

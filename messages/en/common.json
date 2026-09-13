@@ -40,6 +40,8 @@
   "close": "Close",
   "menu": "Menu",
   "dashboardMenu": "Dashboard menu",
+  "collapseSidebar": "Collapse sidebar",
+  "expandSidebar": "Expand sidebar",
   "open": "Open",
   "enabled": "Enabled",
   "disabled": "Disabled",

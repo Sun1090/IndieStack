@@ -73,4 +73,33 @@ describe("DashboardSidebar", () => {
       buildDashboardNavLinks((key) => key).length,
     );
   });
+
+  it("折叠按钮暴露可访问名称、展开状态与受控区域（G07）", async () => {
+    const user = userEvent.setup();
+    render(<DashboardSidebar />);
+
+    const collapse = screen.getByRole("button", { name: "collapseSidebar" });
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(collapse).toHaveAttribute("aria-controls", "dashboard-sidebar-nav");
+    expect(document.getElementById("dashboard-sidebar-nav")).not.toBeNull();
+
+    await user.click(collapse);
+
+    expect(screen.getByRole("button", { name: "expandSidebar" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("折叠后图标链接仍保留可访问名称（G07）", async () => {
+    const user = userEvent.setup();
+    render(<DashboardSidebar />);
+
+    await user.click(screen.getByRole("button", { name: "collapseSidebar" }));
+
+    // 文字已隐藏，名称来自 aria-label，屏幕阅读器仍能逐项朗读
+    for (const link of buildDashboardNavLinks((key) => key)) {
+      expect(screen.getByRole("link", { name: link.label })).toHaveAttribute("href", link.href);
+    }
+  });
 });

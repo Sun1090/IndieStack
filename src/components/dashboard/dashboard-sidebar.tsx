@@ -6,6 +6,10 @@
  * 管理员角色额外显示管理后台入口
  * 响应式设计：桌面显示完整文字 + 图标，折叠时仅显示图标
  * 使用 useTranslations 实现国际化
+ *
+ * a11y（G07）：折叠按钮暴露可访问名称（收起/展开侧边栏）与 aria-expanded，
+ * 并通过 aria-controls 指向导航区域；折叠后文字被隐藏的链接改用 aria-label
+ * 保留可访问名称（title 只作为鼠标提示的补充，不作为唯一名称来源）。
  */
 
 import Link from "next/link";
@@ -51,13 +55,16 @@ export function DashboardSidebar() {
             variant="ghost"
             size="icon"
             className={cn("h-8 w-8", collapsed && "mx-auto")}
+            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            aria-expanded={!collapsed}
+            aria-controls="dashboard-sidebar-nav"
             onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </Button>
         </div>
 
-        <nav className="flex flex-col gap-1">
+        <nav id="dashboard-sidebar-nav" className="flex flex-col gap-1">
           {sidebarLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;
@@ -75,6 +82,7 @@ export function DashboardSidebar() {
                   collapsed && "justify-center px-2",
                 )}
                 title={collapsed ? link.label : undefined}
+                aria-label={collapsed ? link.label : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 {!collapsed && <span>{link.label}</span>}
@@ -123,6 +131,7 @@ export function DashboardSidebar() {
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
               title={t("admin")}
+              aria-label={t("admin")}
             >
               <ADMIN_NAV_LINK.icon className="h-4 w-4 shrink-0" />
             </Link>
