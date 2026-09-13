@@ -2320,3 +2320,36 @@
   - 回滚：`git revert ee63de3` 即移除 runbook、门禁、单测与接线；纯文档/校验改动，无数据库或运行时影响。
 - 下一步：J02 E2E shard/串行策略复审。
 - 最后更新：2026-09-13
+
+## J02 E2E Shard / 串行策略复审（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 92 项）
+- 里程碑与发布目标：M4 J 段（J01–J10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`ceaf29c`（ci(e2e): shard playwright runs without sharing mock state）
+- 目标：在不破坏共享 Mock 状态隔离的前提下缩短 E2E CI 时间，并用配置回归测试把「shard 隔离、单 worker、视觉不重复」策略固定下来
+- 已完成：
+  - 先量化现状：`pnpm exec playwright test --list` 为 86 条 / 12 个文件；`--shard=1/2` 为 46 条 / 8 个文件，`--shard=2/2` 为 40 条 / 4 个文件
+  - `.github/workflows/ci.yml` 的 `E2E (Playwright)` 改为 `shard: [1, 2]` matrix + `fail-fast: false`；每个 shard 是独立 job，各自启动独立 dev server，内部仍为单 worker，避免同进程并发修改 Mock 状态
+  - E2E step 使用 `pnpm test:e2e --shard=${{ matrix.shard }}/2`；Playwright report artifact 改为 `playwright-report-shard-${{ matrix.shard }}`，两个 shard 不再互相覆盖证据
+  - 4 条视觉基线只在 `matrix.shard == 1` 执行一次，避免重复跑和不必要的视觉噪声
+  - 修正 shard 暴露的上传 E2E hydration 时序抖动：新增 `chooseAvatar()`，对「setInputFiles + 等待按钮启用」整组动作重试，避免冷编译时首次 change 事件被未 hydration 的 React 丢弃
+  - 新增 `src/lib/testing/e2e-shard-policy.test.ts`（3 条）：锁定默认单 worker / `PW_FULLY_PARALLEL` opt-in、shard matrix、精确运行命令、视觉仅 shard 1、artifact 命名与稳定 job 名
+  - `docs/testing.md` 增加 shard 策略、状态隔离边界、46/40 分流与配置回归测试说明；`CHANGELOG.md` `[Unreleased] / Added` 记录；roadmap 第 92 项与头部进度标注完成
+- 变更文件：`.github/workflows/ci.yml`、`playwright.config.ts`、`e2e/uploads.spec.ts`、`src/lib/testing/e2e-shard-policy.test.ts`、`docs/testing.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `ceaf29c`）：
+  - `pnpm test:e2e --shard=1/2` → ✅ 46 passed（1.0m；仅观察到 Next dev 的 ECONNRESET 噪声，无测试失败）
+  - `pnpm test:e2e --shard=2/2` → ✅ 40 passed（46.2s；修正 hydration 抖动后复跑通过）
+  - `pnpm exec vitest run src/lib/testing/e2e-shard-policy.test.ts` → ✅ 3 passed
+  - `pnpm check:gates` → ✅ 24 个门禁（本地 21 / CI 22 / 豁免 3），8 个工作流
+  - `pnpm check:docs`、`pnpm check:changelog`、`pnpm check:release-docs`、`pnpm check:test-matrix` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:all` → ✅ 146 文件 / 1519 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过（bundle 2853.1 kB / 基线 2733.8 kB）
+- 阻塞：无（真实 GitHub Actions 执行仍需推送权限；本地已验证同一 workflow 配置与两个 shard）
+- 风险与回滚：
+  - 风险：CI 并行度提高后，若未来 Mock 状态从 dev server 内存迁回跨进程共享存储，shard 隔离假设需要重新评审；当前两个 shard 各自持有 server 内状态。
+  - 风险：`chooseAvatar()` 只重试文件选择动作，不掩盖上传接口的真实失败；按钮持续无法启用或上传响应错误仍会在超时后失败。
+  - 回滚：`git revert ceaf29c` 即恢复单 job E2E；纯 CI / 测试配置改动，无数据库或运行时接口影响。
+- 下一步：J03 CI 并行与缓存优化。
+- 最后更新：2026-09-13
