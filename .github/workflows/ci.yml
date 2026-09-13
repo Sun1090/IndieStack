@@ -65,6 +65,9 @@ jobs:
       - name: Check CHANGELOG structure
         run: pnpm check:changelog
 
+      - name: Check ADR governance
+        run: pnpm check:adr
+
       - name: Check Tailwind v4 native theme usage
         run: pnpm check:tailwind
 

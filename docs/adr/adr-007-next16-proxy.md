@@ -3,6 +3,9 @@
 日期: 2026-08-23
 状态: 已接受
 
+## 背景
+Next.js 16 将 Turbopack 设为默认构建引擎，并把 `middleware.ts` 文件约定更名为 `proxy.ts`；项目需要在不长期保留兼容层的前提下完成升级。
+
 ## 决策
 升级 Next.js 16（Turbopack 默认构建引擎），middleware.ts 经官方 codemod 更名 proxy.ts。
 

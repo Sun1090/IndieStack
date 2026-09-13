@@ -27,12 +27,17 @@
 
 | 编号 | 决策 | 状态 |
 |------|------|------|
-| [ADR-001](adr-001-data-channel.md) | 写操作统一走 Server Actions | 已接受 |
+| [ADR-001](adr-001-data-channel.md) | 写操作统一走 Server Actions | 已接受（2026-09-12 补充上传进度例外） |
 | [ADR-002](adr-002-cookie-i18n.md) | i18n 采用 Cookie 方案而非 URL 前缀 | 已接受 |
 | [ADR-003](adr-003-tanstack-query.md) | 客户端数据层引入 TanStack Query | 已接受 |
 | [ADR-004](adr-004-no-catalog.md) | 暂不引入 pnpm catalog | 已接受 |
-| [ADR-005](adr-005-tailwind-v4.md) | Tailwind v4 采用 @config 桥接迁移 | 已接受 |
-| [ADR-006](adr-006-action-result.md) | Server Actions 统一 ActionResult | 已接受 |
-| [ADR-007](adr-007-next16-proxy.md) | Next 16 升级与 proxy 更名 | 已接受 |
-| [ADR-008](adr-008-repository.md) | Repository 数据访问层 | 已接受 |
-| [ADR-009](adr-009-react-table-v9-bridge.md) | React Table v9 迁移 | 已完成原生重写 |
+| [ADR-005](adr-005-tailwind-v4.md) | Tailwind CSS v3 → v4 迁移策略 | 已废弃（被 ADR-013 取代） |
+| [ADR-006](adr-006-action-result.md) | Server Actions 统一 ActionResult 判别联合 | 已接受 |
+| [ADR-007](adr-007-next16-proxy.md) | Next.js 16 升级与 middleware→proxy 更名 | 已接受 |
+| [ADR-008](adr-008-repository.md) | 引入 Repository 数据访问层 | 已接受（渐进落地） |
+| [ADR-009](adr-009-react-table-v9-bridge.md) | React Table v9 经 useLegacyTable 桥迁移 | 已废弃（被 ADR-014 取代） |
+| [ADR-010](adr-010-object-storage.md) | 对象存储抽象与阿里云 OSS 接入 | 已接受 |
+| [ADR-011](adr-011-appark-apm.md) | Appark APM 轻量接入 | 已接受 |
+| [ADR-012](adr-012-passkey.md) | Passkey（WebAuthn）试点 | 已接受 |
+| [ADR-013](adr-013-tailwind-v4-native-theme.md) | Tailwind v4 原生主题迁移（移除 @config 桥接） | 已接受 |
+| [ADR-014](adr-014-react-table-v9-native.md) | React Table v9 原生 API 迁移 | 已接受 |

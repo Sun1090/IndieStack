@@ -1,6 +1,6 @@
 # ADR-012: Passkey（WebAuthn）试点
 
-- 状态：accepted
+- 状态：已接受
 - 日期：2026-09-05
 - 关联：v0.5.0 roadmap D01；迁移 019；`src/lib/auth/passkey.ts`；`src/lib/auth/passkey-session.ts`
 

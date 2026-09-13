@@ -1,7 +1,9 @@
 # ADR-005: Tailwind CSS v3 → v4 迁移策略
 
 日期: 2026-08-23
-状态: 已接受
+状态: 已废弃（被 ADR-013 取代）
+
+> 状态更新（2026-09-05）：@config 桥接已由 ADR-013 的 Tailwind v4 原生主题机制取代，本 ADR 仅保留迁移历史。
 
 ## 背景
 v4 改为 CSS-first 配置，官方提供 @tailwindcss/upgrade codemod。

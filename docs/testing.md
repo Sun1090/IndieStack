@@ -124,6 +124,18 @@ F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped s
 
 `pnpm check:changelog` 在结构层面校验 `CHANGELOG.md`（I05）：`[Unreleased]` 必须排第一且非空、版本标题形如 `## [x.y.z] — YYYY-MM-DD`、版本按降序排列且不重复、每个版本至少一个 `### 章节` 且章节内至少一个顶层条目、条目不得为空或超长。规则实现位于 `src/lib/changelog/parse-changelog.ts`（纯函数，单测覆盖），由 `scripts/check-changelog.js` 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只覆盖文档结构，不校验文案质量或发布事实。
 
+### ADR 治理门禁（I04）
+
+`pnpm check:adr` 校验 `docs/adr/` 的决策记录不会在新增或迭代时漂移：文件名必须为
+`adr-NNN-kebab-title.md`，编号连续且不重复；正文首行编号与文件名一致；`状态` 只允许
+“提议 / 已接受（附注）/ 已废弃（被 ADR-NNN 取代）”；`日期` 必须为合法且非未来的
+`YYYY-MM-DD`；每篇至少包含“背景 / 决策 / 影响（或后果）”章节。README 索引必须与目录双向一致，
+标题和状态逐字匹配且按编号升序；被取代的 ADR 必须指向存在、并在正文中显式引用它的后继 ADR。
+
+规则实现位于 `src/lib/adr/adr-rules.ts`（纯函数），IO/CLI 位于 `scripts/lib/adr-check.js`，
+由 `scripts/check-adr.js` 经 Node 原生 type stripping 调用；`pnpm check:all` 与 CI 的
+Lint & Type Check job 均会执行。门禁只验证治理结构和引用完整性，不判断技术决策本身是否正确。
+
 ## Tailwind v4 原生主题门禁（G01）
 
 `pnpm check:tailwind` 把 ADR-013 的「不再有 JS 配置」从一次性迁移变成可持续约束。规则分两层：

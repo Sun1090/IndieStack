@@ -4,6 +4,13 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **ADR 决策记录治理**：补齐 README 索引中缺失的 ADR-010–013，将 ADR-005 标记为被
+  ADR-013 取代，并用新增 ADR-014 正式记录 React Table v9 原生 API 迁移；新增
+  `pnpm check:adr` 校验 ADR 编号、状态、日期、必要章节、索引双向一致及取代链引用，
+  防止后续新增决策时索引与状态再次漂移。
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

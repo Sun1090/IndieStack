@@ -1,6 +1,6 @@
 # ADR-013: Tailwind v4 原生主题迁移（移除 @config 桥接）
 
-- 状态：accepted
+- 状态：已接受
 - 日期：2026-09-05
 - 关联：v0.4.0 roadmap E01 遗留项（v3→v4 迁移批次）；`docs/adr/adr-005-tailwind-v4.md`
 
@@ -8,7 +8,7 @@
 
 v0.3.0 升级 Tailwind 4 时保留了 `@config "../../tailwind.config.ts"` 桥接
 （content/darkMode/colors/container/tailwindcss-animate 插件），v0.5.0 E01
-要求验证 v4 原生机制可行。
+要求验证 v4 原生机制可行。本 ADR 取代 ADR-005 的 @config 桥接决策。
 
 ## 决策
 

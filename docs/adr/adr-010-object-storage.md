@@ -1,6 +1,6 @@
 # ADR-010: 对象存储抽象与阿里云 OSS 接入
 
-- 状态：accepted
+- 状态：已接受
 - 日期：2026-09-05
 - 关联：v0.5.0 roadmap B01/B02/B03；v0.6.0 roadmap G08；`docs/adr/adr-008-repository.md`（数据访问收口约定）
 

@@ -1,6 +1,6 @@
 # ADR-011: Appark APM 轻量接入
 
-- 状态：accepted
+- 状态：已接受
 - 日期：2026-09-05
 - 关联：v0.5.0 roadmap C01；`docs/adr/adr-008-repository.md`
 
