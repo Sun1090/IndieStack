@@ -45,6 +45,7 @@
 | `email.backlog` | `count` | 无 | 每轮 digest 开始 |
 | `cron.digest.completed` | `ms` | `pulled`, `sent`, `groups`, `failed` | 每轮 digest 成功结束（含空队列） |
 | `cron.digest.failed` | `count` | `error_type` | 每轮 digest 未处理异常 |
+| `cron.auth.rejected` | `count` | `worker`, `reason` | 任一 cron worker 返回 401（`secret_unconfigured` / `missing_credentials` / `invalid_credentials`） |
 | `storage.upload.completed` | `ms` | `provider`, `outcome` | 每次对象写入结束 |
 | `provider.fallback` | `count` | `provider`, `reason`, `missing` | OSS 配置不完整并回退 Supabase |
 | `push.send.completed` | `count` | `provider`, `status_code` | 每次 Web Push 传输成功 |
@@ -58,6 +59,24 @@
 | `cron.push-retry.failed` | `count` | `error_type` | 每轮 push-retry 未处理异常 |
 
 指标会丢弃名称为敏感维度的字段（如 `token`、`secret`、`email`、`userId`），并截断过长值；业务代码不得把 URL、邮箱正文或凭据放进 attributes。
+
+## Cron 调度契约
+
+`vercel.json` 的 `crons` 与 worker 注册表（`src/lib/observability/cron-contract.ts`）必须逐字一致，
+由 `pnpm check:cron-contract` 强制：登记了却没调度、调度了却没登记、表达式写错或漂移都会失败。
+
+| 路径 | 调度（UTC） | 语义 | 失败告警 |
+|---|---|---|---|
+| `/api/cron/digest` | `0 * * * *` | 每小时整点拉取待发邮件，按用户本地时间错峰发送摘要 | `cron.digest.failed`、`email.backlog` |
+| `/api/cron/push-retry` | `*/15 * * * *` | 每 15 分钟重试待投递 Push 并清理保留期外的终态行 | `cron.push-retry.failed`、`push.backlog` |
+
+平台级调度不走 worker 契约（无队列、无 worker 指标），在注册表里显式豁免：
+`/api/health`（`0 2 * * *` 保活）与 `/api/ops/supabase-restore`（`0 4 * * *` 兜底恢复）。
+
+调度表达式必须部署前核对：`0 25 * * *` 之类的非法表达式会被平台接受但永不触发，
+因此 `pnpm check:cron-contract` 会先校验 5 字段语法再比对注册表。
+`CRON_SECRET` 缺失时平台调用会得到 401 并产出 `cron.auth.rejected{reason="secret_unconfigured"}`，
+这是「调度在跑但鉴权没配对」的唯一信号。
 
 ## 建议指标告警与去重
 
@@ -74,11 +93,15 @@
 | Push 失效端点激增 | `push.endpoint.revoked > 10`，1 小时窗口 | 检查浏览器订阅生命周期与 push service 状态码 |
 | Push 死信激增 | `push.delivery.dead > 20`，1 小时窗口 | 按 `reason` 区分瞬时上游故障与永久配置问题 |
 | Push 队列清理失败 | `push.queue.prune_failed > 0`，15 分钟窗口 | 检查 Supabase 删除权限、连接与表锁；投递不受影响但队列会继续增长 |
+| Cron 鉴权持续被拒 | `cron.auth.rejected{reason="secret_unconfigured"} > 0` 立即；`reason` 为 `missing_credentials` / `invalid_credentials` 连续 3 轮 | 先补/轮换部署环境的 `CRON_SECRET`，再确认调度器是否携带 `Authorization: Bearer` |
 
 去重规则：
 
 - `cron.digest.completed`、`email.backlog`、`cron.digest.failed`、`push.backlog` 和
   `cron.push-retry.completed|failed` 每轮最多一条；`push.queue.pruned` 每轮按 `status` 最多两条，
   不要按删除行数放大告警。
+- `cron.auth.rejected` 按 `worker + reason` 聚合，且设置 15 分钟抑制窗口：该计数在鉴权失败时
+  由未通过鉴权的调用方触发，不排除外部扫描流量，**不要**按原始条数直接报警（会变成噪声），
+  只用于区分「鉴权配置坏了」与「调度没跑」。
 - `provider.fallback` 在单个进程内按缺失变量签名去重。Serverless 冷启动可能跨实例重复，日志平台应再按 `name + attributes.reason + attributes.missing` 聚合，并设置至少 30 分钟恢复窗口。
 - 所有比率告警都设置最小样本量，避免低流量误报；阈值变更须在发布记录中说明并观察一个完整业务周期。

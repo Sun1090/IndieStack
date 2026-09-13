@@ -444,3 +444,27 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 **局限**：门禁只判断错误日志是否走了带 trace 的通道，不判断日志文案质量，也不校验上游调用方是否回传
 我们的 trace-id；跨服务串联依赖接入方复用响应头中的 `x-request-id`。
+
+## Cron 调度与指标契约门禁（E03）
+
+`pnpm check:cron-contract` 把 cron worker 的「会不会真的被调用」和「失败时有没有指标」变成可执行契约。
+此前 `/api/cron/digest` 的路由、业务测试和文档都存在，但 `vercel.json` 从未登记调度，生产环境每小时摘要邮件实际上永远不会启动；
+普通单测只覆盖请求进入后的行为，因而完全看不到这类静默失效。
+
+门禁以 `src/lib/observability/cron-contract.ts` 的注册表为单一事实源，校验：
+
+- `vercel.json` 中每个 cron worker 的路径与五字段调度表达式必须逐字匹配注册表，表达式非法、重复或只存在于文档都会失败；
+- worker 路由文件必须真实存在，并导出注册表中声明的全部 HTTP 方法；`src/app/api/cron` 下新增但未登记的路由也会失败；
+- 每轮运行指标与鉴权拒绝指标必须出现在路由源码中，同时必须登记在 `docs/operations/sentry-alerts.md`；指标改名但不改告警文档会失败；
+- 非 worker 的 `/api/health` 与 `/api/ops/supabase-restore` 使用带理由的显式豁免，避免把平台保活任务误当成 worker；
+- 注册表、路由集合、调度表或指标文档为空时失败封闭。
+
+两条 cron 路由统一使用 `checkCronAuth()`：`CRON_SECRET` 未配置、缺失凭据与无效凭据会以稳定原因上报
+`cron.auth.rejected`，但不会记录请求头或密钥内容。摘要 worker 的 `cron.digest.completed` 现在覆盖完整运行时长，
+500 路径会写入 `email_worker_runs.error` 并上报 `cron.digest.failed`；失败运行记录自身的写入失败只记日志，不覆盖原始错误。
+
+规则本体位于 `src/lib/observability/cron-contract.ts`，IO/CLI 位于 `scripts/lib/cron-contract-check.js` /
+`scripts/check-cron-contract.js`，由 `pnpm check:all` 与 CI 的 `Lint & Type Check` job 执行。专项测试覆盖
+表达式校验、路由发现、方法/指标/文档漂移、豁免过期、鉴权拒绝原因与失败运行记录。
+
+**局限**：门禁证明仓库内的调度与指标接线一致，不证明 Vercel 平台已实际部署该配置，也不替代线上 cron 执行历史与告警投递验收。

@@ -17,6 +17,7 @@ echo "==> check:workflows";  pnpm --silent check:workflows
 echo "==> check:codeql";     pnpm --silent check:codeql
 echo "==> check:secrets-scan"; pnpm --silent check:secrets-scan
 echo "==> check:trace-coverage"; pnpm --silent check:trace-coverage
+echo "==> check:cron-contract"; pnpm --silent check:cron-contract
 echo "==> check:release-tag"; pnpm --silent check:release-tag
 echo "==> check:adr";         pnpm --silent check:adr
 echo "==> check:mock-docs";      pnpm --silent check:mock-docs

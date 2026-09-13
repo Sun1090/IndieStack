@@ -1,6 +1,7 @@
 /**
  * 通知邮件 Worker（cron）
- * 外部 cron 定期调用；拉取待发邮件通知，按用户偏好与时区过滤后统一发送。
+ * 由 Vercel Cron 每小时整点调度（见 `vercel.json` 与注册表
+ * `src/lib/observability/cron-contract.ts`）；拉取待发邮件通知，按用户偏好与时区过滤后统一发送。
  *
  * POST /api/cron/digest
  * Header: x-cron-secret = ***.CRON_SECRET
@@ -13,7 +14,8 @@ import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { logApiError } from "@/lib/api-log";
 import { shouldSendEmail } from "@/lib/notification-prefs";
-import { isCronAuthorized } from "@/lib/cron-auth";
+import { checkCronAuth } from "@/lib/cron-auth";
+import { recordCronRejected } from "@/lib/cron-metrics";
 import { isDigestHour } from "@/lib/email-digest";
 import { renderEmailHtml } from "@/lib/email-template";
 import { sendResendEmail } from "@/lib/email-send";
@@ -72,6 +74,26 @@ async function recordEmailFailures(items: Notification[], error: unknown): Promi
   }
 }
 
+/**
+ * 失败轮次也要落表：否则 `email_worker_runs` 只记录成功与空队列，
+ * 「worker 一直在失败」在 admin 看板上表现为「根本没有运行记录」。落表失败不覆盖原始错误。
+ */
+async function recordFailedRun(startedAt: number, error: unknown): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  try {
+    await recordWorkerRun({
+      pulled: 0,
+      sent: 0,
+      groups: 0,
+      failed: 0,
+      durationMs: Date.now() - startedAt,
+      error: message.slice(0, 500),
+    });
+  } catch (recordError) {
+    await logApiError("[Cron Digest] 失败轮次写入运行记录失败", recordError);
+  }
+}
+
 async function runDigest(
   siteUrl: string,
   notifications: Notification[],
@@ -126,7 +148,10 @@ async function runDigest(
 }
 
 export async function POST(request: NextRequest) {
-  if (!isCronAuthorized(request.headers, process.env.CRON_SECRET)) {
+  // E03：拒绝原因进指标，否则 CRON_SECRET 漏配（平台每轮调用都 401）在指标上完全静默
+  const auth = checkCronAuth(request.headers, process.env.CRON_SECRET);
+  if (auth !== "authorized") {
+    recordCronRejected("digest", auth);
     return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -139,6 +164,8 @@ export async function POST(request: NextRequest) {
     request.headers.get("authorization") === `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}`;
   // 经 Date.now 取当前时间，便于测试以 Date.now spy 固定错峰门控的时钟
   const now = new Date(Date.now());
+  // 整轮耗时：包含积压查询与拉取，口径与 push-retry worker 一致
+  const startedAt = Date.now();
 
   try {
     // C03 积压告警：待发通知超阈值时 Sentry 上报（logApiError → captureException，
@@ -163,7 +190,6 @@ export async function POST(request: NextRequest) {
       return jsonNoStore({ sent: 0, groups: 0, failed: 0 });
     }
 
-    const startedAt = Date.now();
     const result = await runDigest(siteUrl, notifications, now, forceDigestHour);
     const durationMs = Date.now() - startedAt;
     // C02 运行记录：落表失败不影响发送结果返回
@@ -194,6 +220,7 @@ export async function POST(request: NextRequest) {
     recordMetric("cron.digest.failed", 1, {
       attributes: { error_type: error instanceof Error ? error.name : "unknown" },
     });
+    await recordFailedRun(startedAt, error);
     await logApiError("[Cron Digest] 执行失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }

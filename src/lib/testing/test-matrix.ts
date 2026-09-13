@@ -57,7 +57,7 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     zh: "Route Handlers",
     en: "Route handlers",
     paths: ["src/app/api"],
-    commands: ["test", "test:e2e", "check:trace-coverage"],
+    commands: ["test", "test:e2e", "check:trace-coverage", "check:cron-contract"],
   },
   {
     id: "auth-mfa",

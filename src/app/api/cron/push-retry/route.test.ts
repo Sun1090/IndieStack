@@ -85,12 +85,54 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
+/** 解析 console.log 里的结构化指标行（非指标输出会被忽略）。 */
+function metricEvents(log: { mock: { calls: unknown[][] } }) {
+  return log.mock.calls
+    .map((call) => JSON.parse(String(call[0])) as { type?: string; name?: string })
+    .filter((event) => event.type === "metric");
+}
+
 describe("/api/cron/push-retry", () => {
-  it("缺少或错误 secret 返回 401", async () => {
+  it("缺少或错误 secret 返回 401，并上报可区分的拒绝指标（E03）", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect((await GET(new NextRequest("http://localhost/api/cron/push-retry"))).status).toBe(401);
     expect((await POST(req("wrong"))).status).toBe(401);
     expect(runPushRetryMock).not.toHaveBeenCalled();
     expect(pruneMock).not.toHaveBeenCalled();
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "cron.auth.rejected",
+        value: 1,
+        attributes: { worker: "push-retry", reason: "missing_credentials" },
+      }),
+      expect.objectContaining({
+        name: "cron.auth.rejected",
+        value: 1,
+        attributes: { worker: "push-retry", reason: "invalid_credentials" },
+      }),
+    ]);
+    expect(JSON.stringify(log.mock.calls)).not.toContain("wrong");
+  });
+
+  it("CRON_SECRET 未配置时归因到部署漏配（而非调用方错误）", async () => {
+    delete process.env.CRON_SECRET;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(
+      (
+        await GET(
+          new NextRequest("http://localhost/api/cron/push-retry", {
+            headers: { authorization: "Bearer whatever" },
+          }),
+        )
+      ).status,
+    ).toBe(401);
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "cron.auth.rejected",
+        attributes: { worker: "push-retry", reason: "secret_unconfigured" },
+      }),
+    ]);
   });
 
   it("接受 Bearer CRON_SECRET（Vercel Cron 语义）", async () => {

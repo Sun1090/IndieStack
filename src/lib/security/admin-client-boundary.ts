@@ -99,7 +99,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
-    trust: { kind: "cron-secret", evidence: ["isCronAuthorized"] },
+    trust: { kind: "cron-secret", evidence: ["checkCronAuth"] },
     rationale: "Digest worker reads recipient profiles only after the cron secret guard passes.",
   },
   {

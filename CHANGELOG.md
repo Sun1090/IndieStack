@@ -6,6 +6,11 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Cron 调度与指标契约（E03）**：修复 `/api/cron/digest` 在生产从未被 `vercel.json` 调度、导致摘要邮件链路静默停摆的问题；
+  两条 cron worker 现在统一校验 `CRON_SECRET` 并上报带稳定原因的 `cron.auth.rejected`，摘要 worker 的完成指标覆盖完整运行时长，
+  500 路径会记录 `email_worker_runs.error` 并上报失败指标。新增 `pnpm check:cron-contract`，以注册表双向校验 Vercel 调度、
+  路由方法、每轮指标与运维文档，平台级保活任务需显式登记豁免。
+
 - **请求链路追踪关联 ID（E02）**：`x-request-id` 现在由 `src/proxy.ts` 统一解析上游值或生成新 ID，注入下游请求头并回写到响应头（放行与重定向分支各一次）；上游 ID 只接受不超过 128 字符、仅含 `[A-Za-z0-9._:-]` 的可打印 token，换行/制表/空格与超长值一律拒绝并重新生成，避免日志注入。新增 `logActionError` 与已有的 `logApiError` 共用同一实现，所有 Server Action 的裸 `console.*` 与`logger.error` 迁移到带 trace 的入口。配套 `pnpm check:trace-coverage` 门禁把约定固化为可执行规则：扫描 Route Handler 与 Server Action 禁止裸日志、校验错误入口与 `src/lib/trace-id.ts`、`src/proxy.ts` 契约，边界集合为空或豁免登记过期即失败。
 
 - **Appark 生产采样配置（E01）**：新增 `NEXT_PUBLIC_APPARK_SAMPLE_RATE`，以事件级概率采样控制

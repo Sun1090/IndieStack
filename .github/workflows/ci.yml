@@ -120,6 +120,9 @@ jobs:
       - name: Check request trace coverage
         run: pnpm check:trace-coverage
 
+      - name: Check cron schedule and metric contract
+        run: pnpm check:cron-contract
+
       - name: Check release tag policy
         run: pnpm check:release-tag
 

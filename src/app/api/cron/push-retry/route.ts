@@ -16,7 +16,8 @@
 import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { logApiError } from "@/lib/api-log";
-import { isCronAuthorized } from "@/lib/cron-auth";
+import { checkCronAuth } from "@/lib/cron-auth";
+import { recordCronRejected } from "@/lib/cron-metrics";
 import { recordMetric } from "@/lib/metrics";
 import { isMockEnabled } from "@/lib/mock/config";
 import { createMockPushTransport } from "@/lib/mock/push-transport";
@@ -79,7 +80,10 @@ function createRuntimePushProvider(): PushProvider {
 }
 
 async function handle(request: NextRequest) {
-  if (!isCronAuthorized(request.headers, process.env.CRON_SECRET)) {
+  // E03：拒绝原因进指标，否则 CRON_SECRET 漏配（平台每轮调用都 401）在指标上完全静默
+  const auth = checkCronAuth(request.headers, process.env.CRON_SECRET);
+  if (auth !== "authorized") {
+    recordCronRejected("push-retry", auth);
     return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 

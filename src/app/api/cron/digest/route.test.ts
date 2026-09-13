@@ -1,6 +1,6 @@
 /**
  * /api/cron/digest 路由测试
- * 覆盖：鉴权、空队列、发送与回执、发送失败兜底
+ * 覆盖：鉴权（含 E03 拒绝指标）、空队列、发送与回执、发送失败兜底、整轮失败落表
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
@@ -69,10 +69,25 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** 解析 console.log 里的结构化指标行（非指标输出会被忽略）。 */
+function metricEvents(log: { mock: { calls: unknown[][] } }) {
+  return log.mock.calls
+    .map((call) => JSON.parse(String(call[0])) as { type?: string; name?: string })
+    .filter((event) => event.type === "metric");
+}
+
 describe("POST /api/cron/digest", () => {
-  it("缺少正确 secret 返回 401", async () => {
+  it("缺少正确 secret 返回 401，并上报拒绝指标（E03）", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const res = await POST(new NextRequest("http://localhost/api/cron/digest"));
     expect(res.status).toBe(401);
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "cron.auth.rejected",
+        value: 1,
+        attributes: { worker: "digest", reason: "missing_credentials" },
+      }),
+    ]);
   });
 
   it("空队列返回 sent=0", async () => {
@@ -176,6 +191,47 @@ describe("POST /api/cron/digest", () => {
     expect(logApiErrorMock).toHaveBeenCalledWith(
       expect.stringContaining("队列积压 501"),
       expect.objectContaining({ message: "email_backlog_threshold_exceeded" }),
+    );
+  });
+
+  it("整轮失败时上报 failed 指标并落一条带 error 的运行记录（E03）", async () => {
+    listUnsentEmailNotificationsMock.mockRejectedValue(new Error("supabase down"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: "Internal server error" });
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.failed",
+        value: 1,
+        attributes: { error_type: "Error" },
+      }),
+    );
+    expect(metricEvents(log).map((event) => event.name)).not.toContain("cron.digest.completed");
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "supabase down", durationMs: expect.any(Number) }),
+    );
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      "[Cron Digest] 执行失败",
+      expect.objectContaining({ message: "supabase down" }),
+    );
+  });
+
+  it("失败轮次的运行记录写入失败时不让原始错误被吞掉（E03）", async () => {
+    listUnsentEmailNotificationsMock.mockRejectedValue(new Error("supabase down"));
+    recordWorkerRunMock.mockRejectedValueOnce(new Error("insert denied"));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      "[Cron Digest] 失败轮次写入运行记录失败",
+      expect.objectContaining({ message: "insert denied" }),
+    );
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      "[Cron Digest] 执行失败",
+      expect.objectContaining({ message: "supabase down" }),
     );
   });
 
