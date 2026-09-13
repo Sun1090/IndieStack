@@ -748,3 +748,79 @@
 - 下一步：实现 028 SECURITY DEFINER 授权加固（撤销 PUBLIC/anon/authenticated 对清理类函数的 EXECUTE），
   并扩展 `pnpm check:supabase-security` 使其对默认 PUBLIC EXECUTE 失败封闭。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H09_SECURITY_DEFINER_GRANTS（SECURITY DEFINER 执行权限收口，本地完成）
+
+- 状态：DONE（本地实现 + 门禁通过；受权限边界未 push / PR / merge / deploy）
+- 里程碑 / 发布目标：H09 安全加固续，记录在 `[Unreleased]`（不单独升版本）
+- 分支 / PR：`feat/visual-regression-baseline` / PR none（LOCAL_ONLY，未推送、未创建 PR）
+- 本地提交：`5db7c0b`（fix(db): revoke client execute on server-only security definer functions）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（本周期未 fetch 前进，未执行 rebase）
+- 目标：PostgreSQL 默认把新函数的 `EXECUTE` 授予 `PUBLIC`，Supabase 的默认权限再显式授予
+  `anon` / `authenticated` / `service_role`，因此**每个 `SECURITY DEFINER` 函数默认可被匿名用户
+  通过 PostgREST `rpc()` 调用并绕过 RLS**。此前 `pnpm check:supabase-security` 只校验
+  `search_path`，无法发现该越权面。
+- 已完成：
+  - 新增迁移 `028_revoke_security_definer_execute.sql`：收回
+    `cleanup_old_notifications()` / `cleanup_old_webhook_events()` /
+    `cleanup_old_email_worker_runs()` / `log_audit_action(text,text,text,jsonb)` 对
+    `public, anon, authenticated` 的 `EXECUTE`，显式回授 `service_role`（属主与 pg_cron 路径天然保留）。
+    刻意**不**动 RLS 策略内引用的辅助函数（`is_team_*` / `get_*`）：策略以查询角色求值，
+    撤权会让策略直接抛 `permission denied`。
+  - 新增可测规则模块 `src/lib/security/security-definer-grants.ts`：解析迁移中的
+    `SECURITY DEFINER` 函数（`create or replace` 以最后一次定义为准）、`create policy` 引用与
+    `create [or replace] trigger ... execute function` 绑定；对既非策略引用也非触发器的函数
+    要求显式 `revoke ... from public, anon, authenticated`，并对后续 `grant execute` 给客户端角色
+    报错。自动豁免策略引用与触发器函数。
+  - 门禁重构：`scripts/check-supabase-security.js` 变为 CJS 入口，审计实现迁到
+    `scripts/lib/supabase-security-check.js`（ESM + 原生 type stripping，与 `check:migrations`
+    同一模式），拆分为 `checkRealtimePublication` / `checkTableRls` / `checkStoragePolicies` /
+    `checkClientServiceRole` 以满足复杂度门禁。
+  - 测试：`src/lib/security/security-definer-grants.test.ts` 14 条（提取签名与标志、最后定义胜出、
+    策略/触发器豁免、部分撤权仍失败、无关函数误匹配、缺 `search_path`、回授客户端角色、
+    仓库真实迁移零发现、`runSupabaseSecurityCheck()` 对真实仓库返回 0）。
+  - 文档：`docs/db/security-audit.md` 新增“SECURITY DEFINER 执行权限”章节（风险矩阵、豁免清单、
+    运行时证据、局限）；`docs/db/retention.md` 补撤权说明与运维核查 SQL；`CHANGELOG.md`
+    `[Unreleased] → ### Security`。
+- 变更文件：`supabase/migrations/028_revoke_security_definer_execute.sql`、
+  `supabase/migration-manifest.json`（28 文件）、`scripts/check-supabase-security.js`、
+  `scripts/lib/supabase-security-check.js`、`src/lib/security/security-definer-grants.ts`、
+  `src/lib/security/security-definer-grants.test.ts`、`docs/db/security-audit.md`、
+  `docs/db/retention.md`、`CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm exec supabase migration up` → 本地应用 `028_revoke_security_definer_execute.sql` 成功。
+  - ACL 证据（psql `pg_proc.proacl`）→ 四个函数仅剩 `postgres=X/postgres,service_role=X/postgres`。
+  - `has_function_privilege` 矩阵 → anon/authenticated 全部 `f`，service_role 全部 `t`；
+    RLS 辅助函数（`is_team_*` / `get_*`）的 authenticated 授权保持 `t`（未被破坏）。
+  - 真实 PostgREST `rpc` 路径（本地 `http://127.0.0.1:54321`）：
+    临时 `grant execute ... to anon` 复现加固前状态 → `cleanup_old_notifications` 返回 **HTTP 204**
+    （删除被执行）；恢复 028 状态后 → **HTTP 401 `42501 permission denied`**；
+    `cleanup_old_email_worker_runs` / `log_audit_action` 同为 401；`service_role` 调用 → 204。
+  - `pnpm smoke:supabase-identity -- --url http://127.0.0.1:54321 ...` → **20/20 通过**
+    （`/tmp/indiestack-identity-028.json`），确认撤权未破坏任何合法 authenticated 路径。
+  - `pnpm check:migrations` → ✅ 28 个不可变迁移与 SHA-256 基线一致。
+  - `pnpm check:supabase-security` → ✅ 28 迁移、19 张 public 表；对缺撤权的函数失败封闭。
+  - `pnpm check:migration-history` → ✅ 28 个本地迁移已应用。
+  - `pnpm check:all` → 通过（112 文件 / 1124 测试，较上一批 +14 条）。
+  - `pnpm lint`（复杂度门禁经拆分后通过）/ `pnpm type-check` → 通过。
+  - `pnpm verify:build` → 通过（production build）。
+  - `pnpm test:e2e` → **62/62 通过**（43.6s）。
+  - `pnpm check:changelog` → 通过（8 已发布 + 1 Unreleased，含新 `### Security`）。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产 Supabase 项目上的默认权限与本地是否完全一致未验证（需生产只读凭证）；门禁对迁移文本
+    失败封闭，但生产库的 `proacl` 未探测。
+  - `anon` 对 RLS 辅助函数（`is_team_*` / `get_*`）仍持有 `EXECUTE`；它们不写数据且受租户参数约束，
+    收窄到 `authenticated` 属于后续可选加固，未在本批次冒险调整（避免破坏匿名查询路径）。
+  - 真实 `pg_cron` 调度下的清理函数执行未在生产验证（本地未安装 `pg_cron`）。
+- 风险与回滚：
+  - 风险：若未来新增 RLS 策略引用某个已撤权函数，客户端查询会报 `permission denied`；门禁不会直接
+    捕获这种"后加策略引用已撤权函数"的情况，但 `pnpm smoke:supabase-identity` 会在运行时暴露。
+  - 风险：门禁豁免触发器函数（返回 `trigger`，PG 拒绝直接调用）；若将来把某个清理函数绑为触发器，
+    规则会自动豁免——评审时需人工确认。
+  - 回滚：`git revert 5db7c0b`（撤销迁移、门禁改造与文档）。如需在已应用的库上恢复，
+    追加迁移 `grant execute on function public.<fn>(...) to anon, authenticated;`；迁移仅追加，
+    不改写历史。
+- 下一步：继续下一批可本地执行的真实缺口（roadmap 中 H02 上传元数据迁移、I 域 CI/可观测性、
+  J 域文档与发布收口等）。
+- 最后更新：2026-09-13
