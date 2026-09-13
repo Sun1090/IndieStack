@@ -2290,3 +2290,33 @@
   - 回滚：`git revert e6975e8` 即移除矩阵模块、门禁与两份页面；纯文档 / 校验改动，无数据库、迁移或运行时影响。
 - 下一步：I10 迁移回滚 runbook。
 - 最后更新：2026-09-13
+
+## I10 迁移回滚 Runbook（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 90 项）
+- 里程碑与发布目标：M4 I 段（I01–I10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`ee63de3`（feat(db): add a gated migration rollback runbook）
+- 目标：把数据库迁移回滚的触发条件、逆向风险、前向修复策略和验证步骤收敛为统一 runbook，并用门禁阻止「最新迁移」和操作命令随仓库演进而过期
+- 已完成：
+  - 新增 `docs/operations/migration-rollback-runbook.md`：覆盖触发条件、决策树、前向修复优先、迁移类型与回滚配方、操作步骤、回滚后验证、权限与审批、演练记录；明确「不自动回滚数据库」、快照/双人审批前提，以及与 `rollback-runbook-v0.10.0.md` 的职责边界
+  - 新增纯函数 `src/lib/db/migration-runbook.ts`：校验八个必备章节、`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_REF` / 「不自动回滚数据库」三项事实、机器可读最新迁移标记、文档引用的迁移文件、三条必备操作命令，以及文档内所有 `pnpm <script>` 是否真实注册；清单或文档为空时失败封闭
+  - 新增 `scripts/lib/migration-runbook-check.js` + `scripts/check-migration-runbook.js`，注册为 `pnpm check:migration-runbook`
+  - 新增 20 条单测，覆盖真实仓库快照、缺章节/事实/标记、陈旧标记、未知迁移、缺必备命令、未知脚本、pnpm 内置命令白名单、辅助函数与失败格式化
+  - 接线：`scripts/check-all.sh` 与 CI `Lint & Type Check` job 均执行；双语 `docs-site/scripts.md` 增加命令说明；`docs/testing.md` 增加门禁章节；`CHANGELOG.md` `[Unreleased] / Added` 记录；roadmap 第 90 项与头部进度标注完成
+- 变更文件：`src/lib/db/migration-runbook.ts`、`src/lib/db/migration-runbook.test.ts`、`scripts/lib/migration-runbook-check.js`、`scripts/check-migration-runbook.js`、`docs/operations/migration-rollback-runbook.md`、`package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs/testing.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `ee63de3`）：
+  - `pnpm check:migration-runbook` → ✅ 31 条迁移，最新 `031_upload_objects.sql`
+  - `pnpm vitest run src/lib/db/migration-runbook.test.ts` → ✅ 20 passed
+  - `pnpm check:gates` → ✅ 24 个门禁（本地 21 / CI 22 / 豁免 3），8 个工作流
+  - `pnpm check:docs`、`pnpm check:changelog`、`pnpm check:release-docs` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:all` → ✅ 145 文件 / 1516 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过（bundle 2853.1 kB / 基线 2733.8 kB）
+- 阻塞：无
+- 风险与回滚：
+  - 风险：门禁只证明 runbook 与仓库事实一致，不证明备份可用或恢复演练成功；真实回滚仍需快照、DBA 与发布负责人。文档已把该限制写成明确前置条件。
+  - 风险：新增迁移后若忘记更新 `<!-- migration-runbook:latest=... -->`，`check:migration-runbook` 会阻断；必须与 `update:migrations-manifest` 同步维护。
+  - 回滚：`git revert ee63de3` 即移除 runbook、门禁、单测与接线；纯文档/校验改动，无数据库或运行时影响。
+- 下一步：J02 E2E shard/串行策略复审。
+- 最后更新：2026-09-13
