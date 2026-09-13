@@ -94,7 +94,7 @@
 62. G02 design token 收口
 63. G03 shared form field 统一
 64. G04 loading/empty/error 状态统一
-65. G05 暗色模式回归
+65. G05 暗色模式回归（完成：`src/lib/theme/theme.ts` 收口存储键 `ui-theme` 与解析规则，根布局注入带 CSP nonce 的首屏阻塞脚本，暗色/浅色/系统三种偏好在 hydration 前即写入 `<html>` class 与 `color-scheme`，`localStorage`/`matchMedia` 分别兜底隐私模式与老浏览器；修掉 Provider 写 `ui-theme`、切换处读 `theme` 导致的持久化失效，system 模式改为监听系统变化实时跟随。新增 13 条单测与 `e2e/theme.spec.ts` 6 条 E2E，其中 4 条阻断 `/_next/static/**` 后用真实浏览器证明主题不依赖 React）
 66. G06 移动端断点回归
 67. G07 键盘与 screen reader 交互
 68. G08 上传组件进度与取消（完成：头像/封面改为同源 XHR Route Handler，`xhr.upload.onprogress` 显示真实百分比并支持 `abort()`；Action 与 Route 共用上传 service，保留鉴权、类型/大小/文件头校验、存储回滚与旧对象清理；补 service/client/request/Route/组件单测及头像 E2E 进度/取消闭环）

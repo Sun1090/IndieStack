@@ -1496,3 +1496,67 @@
 - 已写入 `CHANGELOG.md` 的 `[Unreleased] / ### Planned` 作为对外承诺。
 
 - 最后更新：2026-09-13
+
+## v0.9.0 后续 / G05_DARK_MODE_REGRESSION（暗色模式首屏与持久化回归，本地完成）
+
+- 状态：DONE（本地提交完成，未 push / 未 PR）
+- 里程碑与发布目标：M2「UI 系统收口」G05，归入 v0.10.0（功能批次 → minor）
+- 分支：`feat/visual-regression-baseline`（LOCAL_ONLY，base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`）
+- 本地提交：`000c35d fix(theme): apply the saved theme before first paint`（本文件为随后 docs 提交）
+- 目标：让已保存/系统偏好主题在 hydration 之前生效，并修掉主题持久化完全失效的问题
+
+### 已完成
+
+- 复现（先红后绿）：`e2e/theme.spec.ts` 6 条用例在修复前 **5 failed / 1 passed**。
+- 缺陷 1「首屏闪烁」：根布局没有阻塞脚本，主题只在 `ThemeProvider` 的 `useEffect` 里写入 `<html>`，
+  服务端 HTML 出的是无 class 的浅色 → 深色用户先看到一帧浅色再跳成深色。
+  修复：`src/app/layout.tsx` 在 `<head>` 注入带 CSP nonce（`NONCE_HEADER`）的内联脚本，
+  读 `localStorage` → 回退 `prefers-color-scheme`，同步写 `light`/`dark` class 与 `color-scheme`；
+  `localStorage` 与 `matchMedia` 各自 try/catch 兜底（隐私模式/老浏览器退化为系统偏好）。
+- 缺陷 2「持久化失效」：`src/app/providers.tsx` 传 `storageKey="ui-theme"`，而 E2E 与文档约定的键是 `theme`，
+  写入与读取位置不一致 → 刷新后主题丢失。修复：键名与解析规则收口到 `src/lib/theme/theme.ts`
+  （`THEME_STORAGE_KEY` / `resolveTheme` / `buildThemeScript`），Provider、根布局、E2E 共用同一份定义，
+  禁止再出现字面量漂移。
+- 顺带收敛：`ThemeProvider` 在 system 模式下监听 `prefers-color-scheme` 实时跟随；设置主题写存储失败时
+  仍切换当前会话；解析后的主题同时写 `color-scheme`，使原生控件/滚动条跟随。
+- 回归加固：`e2e/smoke.spec.ts` 的主题切换用例原先能“靠 hydration 后 class 从无到有”假通过，
+  现在必须由真实点击驱动（并用重试吸收 dev server 冷编译导致的 hydration 延迟）。
+
+### 变更文件
+
+- `src/lib/theme/theme.ts`（新增）、`src/lib/theme/theme.test.ts`（新增）、
+  `src/lib/theme/theme.dom.test.ts`（新增）
+- `src/app/layout.tsx`、`src/app/providers.tsx`、`src/components/providers/theme-provider.tsx`
+- `e2e/theme.spec.ts`（新增，6 条）、`e2e/smoke.spec.ts`
+- `CHANGELOG.md`（`[Unreleased] / ### Fixed`）、`docs/roadmap-0.6.0.md`（G05 完成说明）
+
+### 验证命令与结果
+
+- `pnpm exec vitest run src/lib/theme/theme.test.ts src/lib/theme/theme.dom.test.ts src/components/layout/theme-toggle.test.tsx`
+  → ✅ 3 文件 15 测试通过
+- `pnpm exec playwright test e2e/theme.spec.ts` → ✅ **6 passed**（首屏 4 条阻断 `/_next/static/**`，
+  证明主题不依赖 React；切换 2 条覆盖持久化与 `color-scheme`）
+- `pnpm lint` → ✅ `eslint .` 无告警
+- `pnpm type-check` → ✅ `tsc --noEmit` 无错误
+- `pnpm test` → ✅ **121 文件 1241 测试**（G05 前 119 文件 1228 测试）
+- `pnpm test:e2e` → ✅ **69 passed (40.2s)**（G05 前 63 passed）
+- `pnpm check:all` → ✅ 全部校验通过（含 31 迁移 / 39 条有效 RLS 策略 / changelog / a11y / lint / 单测）
+- `pnpm verify:build` → ✅ `pnpm verify` + `next build` 全绿
+
+### 阻塞
+
+- 无本地阻塞。
+
+### 风险与回滚
+
+- 风险：内联脚本必须在 `<head>` 且同步执行，后续若有人把它挪到 `next/script` 的 `afterInteractive`，
+  闪烁会回归——`e2e/theme.spec.ts` 的首屏断言会立刻失败（阻断 `/_next/static/**` 仍要求 class 正确）。
+- 风险：CSP 由 `strict-dynamic` 生效，内联脚本依赖 `nonce`；若中间件被绕过（无 `x-nonce`），
+  该脚本会被浏览器拦截。首屏 E2E 在真实 Chromium 中执行同一路径，可覆盖此回归。
+- 回滚：`git revert 000c35d` 即可回到「无首屏脚本 + `ui-theme` 键」状态；无数据/迁移影响。
+
+### 下一步
+
+- G06 移动端断点回归（375/768/1280 断点导航与卡片布局 + Playwright 断点断言）。
+
+- 最后更新：2026-09-13

@@ -11,6 +11,16 @@ All notable changes to IndieStack will be documented in this file.
   键盘 / screen reader 回归。该批任务会同步补组件单测与 Playwright 断点 / a11y 断言，退出标准见
   [docs/roadmap-0.6.0.md](docs/roadmap-0.6.0.md) 的 M2 里程碑。
 
+### Fixed
+
+- **深色模式首帧闪烁与主题持久化失效（G05）**：根布局新增带 CSP nonce 的内联阻塞脚本，在 CSS 解析前
+  读取 `ui-theme` 并写好 `<html>` 的 `light`/`dark` class 与 `color-scheme`，深色用户不再先看到一帧浅色；
+  `localStorage` / `matchMedia` 各自兜底，隐私模式或老浏览器下退化为系统偏好而不是中断。
+  同时修掉存储键不一致（Provider 写 `ui-theme`、其它地方读 `theme`）导致刷新后主题丢失的问题：
+  键名与解析规则收口到 `src/lib/theme/theme.ts`，Provider、切换按钮与 E2E 共用同一份定义，
+  system 模式改为监听 `prefers-color-scheme` 实时跟随。新增 13 条单测（含 jsdom 内联脚本行为）与
+  `e2e/theme.spec.ts` 6 条 E2E（含阻断客户端 bundle 的首屏断言）。
+
 ## [0.9.0] — 2026-09-13
 
 > 主题：**安全与权限边界收口 + 测试与发布门禁加固**
