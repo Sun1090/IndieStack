@@ -146,6 +146,11 @@
       "version": "029",
       "fileName": "029_audit_logs_write_lockdown.sql",
       "sha256": "bad2267ce9354ff7519504f1cf0a219d7f73e012bdef10c23a0f92392afcf56e"
+    },
+    {
+      "version": "030",
+      "fileName": "030_webhook_event_idempotency.sql",
+      "sha256": "47cbb985e38f158efd73610ab880870c1a1c3743e1a67a96b1778a1146182b70"
     }
   ]
 }

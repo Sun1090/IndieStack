@@ -636,3 +636,76 @@ describe("Mock push delivery queue", () => {
     ]);
   });
 });
+
+describe("Mock webhook 幂等占位（H06）", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  /** 调用 mock 的 claim_webhook_event，返回占位结论 */
+  async function claim(eventId: string, provider = "stripe") {
+    const client = createMockSupabaseClient();
+    const result = (await client.rpc("claim_webhook_event", {
+      p_provider: provider,
+      p_event_id: eventId,
+      p_event_type: "customer.subscription.created",
+    })) as { data: { outcome: string; attempts: number }[]; error: unknown };
+    return result.data[0];
+  }
+
+  it("首次投递 claimed，重复投递 duplicate 且不新增行", async () => {
+    await expect(claim("evt_mock_1")).resolves.toEqual({ outcome: "claimed", attempts: 1 });
+    await expect(claim("evt_mock_1")).resolves.toEqual({ outcome: "duplicate", attempts: 1 });
+
+    const client = createMockSupabaseClient();
+    const { data } = await client.from("webhook_events").select("*").eq("event_id", "evt_mock_1");
+    expect(asRows(data)).toHaveLength(1);
+    expect(asRows(data)[0]).toMatchObject({ status: "received", attempts: 1 });
+  });
+
+  it("不同 provider 的同名 event_id 互不影响", async () => {
+    await expect(claim("evt_shared", "stripe")).resolves.toEqual({ outcome: "claimed", attempts: 1 });
+    await expect(claim("evt_shared", "lemonsqueezy")).resolves.toEqual({
+      outcome: "claimed",
+      attempts: 1,
+    });
+  });
+
+  it("status=failed 允许重新占位并累加 attempts", async () => {
+    const client = createMockSupabaseClient();
+    await claim("evt_retry");
+    await client
+      .from("webhook_events")
+      .update({ status: "failed", error_message: "boom" })
+      .eq("event_id", "evt_retry");
+
+    await expect(claim("evt_retry")).resolves.toEqual({ outcome: "claimed", attempts: 2 });
+  });
+
+  it("received 超过 15 分钟租约可重新占位", async () => {
+    const client = createMockSupabaseClient();
+    await claim("evt_lease");
+    await client
+      .from("webhook_events")
+      .update({ last_attempt_at: new Date(Date.now() - 16 * 60 * 1000).toISOString() })
+      .eq("event_id", "evt_lease");
+
+    await expect(claim("evt_lease")).resolves.toEqual({ outcome: "claimed", attempts: 2 });
+  });
+
+  it("已处理完成的事件永远是 duplicate", async () => {
+    const client = createMockSupabaseClient();
+    await claim("evt_done");
+    await client
+      .from("webhook_events")
+      .update({ status: "processed", last_attempt_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() })
+      .eq("event_id", "evt_done");
+
+    await expect(claim("evt_done")).resolves.toEqual({ outcome: "duplicate", attempts: 1 });
+  });
+
+  it("未知 RPC 仍返回空数据（不影响既有调用）", async () => {
+    const client = createMockSupabaseClient();
+    await expect(client.rpc("unknown_rpc")).resolves.toEqual({ data: null, error: null });
+  });
+});

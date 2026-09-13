@@ -703,31 +703,37 @@ export type Database = {
       }
       webhook_events: {
         Row: {
+          attempts: number
           created_at: string
           error_message: string | null
           event_id: string
           event_type: string
           id: string
+          last_attempt_at: string
           payload: Json
           provider: string
           status: string
         }
         Insert: {
+          attempts?: number
           created_at?: string
           error_message?: string | null
           event_id: string
           event_type: string
           id?: string
+          last_attempt_at?: string
           payload?: Json
           provider?: string
           status?: string
         }
         Update: {
+          attempts?: number
           created_at?: string
           error_message?: string | null
           event_id?: string
           event_type?: string
           id?: string
+          last_attempt_at?: string
           payload?: Json
           provider?: string
           status?: string
@@ -771,6 +777,13 @@ export type Database = {
       }
     }
     Functions: {
+      claim_webhook_event: {
+        Args: { p_event_id: string; p_event_type: string; p_provider: string }
+        Returns: {
+          attempts: number
+          outcome: string
+        }[]
+      }
       cleanup_old_email_worker_runs: { Args: never; Returns: undefined }
       cleanup_old_notifications: { Args: never; Returns: undefined }
       cleanup_old_webhook_events: { Args: never; Returns: undefined }

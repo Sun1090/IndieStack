@@ -321,6 +321,57 @@ function getMockWebhookEvents(store: MockStore = MOCK_GLOBAL): Record<string, un
   return fresh;
 }
 
+/**
+ * 镜像 030 迁移的 claim_webhook_event：原子占位 + 15 分钟占位租约。
+ * 首次投递 claimed；重复投递 duplicate；上次失败或占位超时可重新占位并累加 attempts。
+ * E2E 与本地 mock 开发模式据此获得与真实数据库相同的幂等契约。
+ */
+const MOCK_WEBHOOK_LEASE_MS = 15 * 60 * 1000;
+
+function claimMockWebhookEvent(
+  args: Record<string, unknown> | undefined,
+  store: MockStore = MOCK_GLOBAL,
+): { data: { outcome: string; attempts: number }[]; error: null } {
+  const events = getMockWebhookEvents(store);
+  const provider = String(args?.p_provider ?? "");
+  const eventId = String(args?.p_event_id ?? "");
+  const now = Date.now();
+  const attemptsOf = (row: Record<string, unknown>) => Number(row.attempts) || 1;
+
+  const existing = events.find(
+    (row) => row.provider === provider && row.event_id === eventId,
+  );
+  if (!existing) {
+    events.unshift({
+      id: crypto.randomUUID(),
+      provider,
+      event_id: eventId,
+      event_type: String(args?.p_event_type ?? ""),
+      status: "received",
+      attempts: 1,
+      error_message: null,
+      payload: {},
+      created_at: new Date(now).toISOString(),
+      last_attempt_at: new Date(now).toISOString(),
+    });
+    return { data: [{ outcome: "claimed", attempts: 1 }], error: null };
+  }
+
+  const attempts = attemptsOf(existing);
+  const lastAttempt = Date.parse(
+    String(existing.last_attempt_at ?? existing.created_at ?? ""),
+  );
+  const leaseExpired = Number.isFinite(lastAttempt) && lastAttempt < now - MOCK_WEBHOOK_LEASE_MS;
+  const reclaimable = existing.status === "failed" || (existing.status === "received" && leaseExpired);
+  if (!reclaimable) return { data: [{ outcome: "duplicate", attempts }], error: null };
+
+  existing.status = "received";
+  existing.attempts = attempts + 1;
+  existing.error_message = null;
+  existing.last_attempt_at = new Date(now).toISOString();
+  return { data: [{ outcome: "claimed", attempts: attempts + 1 }], error: null };
+}
+
 function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>(store, "MarketingSubscriptions");
   if (cached) {
@@ -1404,9 +1455,12 @@ export class MockSupabaseClient {
     return Promise.resolve(channel.unsubscribe());
   }
 
-  rpc() {
-    return {
-      then: (resolve: Function) => resolve({ data: null, error: null }),
-    };
+  /** RPC 桩：仅实现 claim_webhook_event（H06），其余调用返回空数据保持既有行为 */
+  async rpc(
+    fn?: string,
+    args?: Record<string, unknown>,
+  ): Promise<{ data: unknown; error: unknown }> {
+    if (fn === "claim_webhook_event") return claimMockWebhookEvent(args, this.store);
+    return { data: null, error: null };
   }
 }

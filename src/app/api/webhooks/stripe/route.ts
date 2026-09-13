@@ -15,7 +15,11 @@ import { notifyUser } from "@/lib/email-notify";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeServer } from "@/lib/stripe";
 import { mapStatus, mapPlan } from "@/lib/stripe/webhook-mappers";
-import { upsertWebhookEvent } from "@/lib/repositories/webhook-events";
+import {
+  claimWebhookEvent,
+  finalizeWebhookEvent,
+  type WebhookClaim,
+} from "@/lib/repositories/webhook-events";
 import type { Stripe } from "stripe";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -89,6 +93,49 @@ async function markSubscriptionCanceled(providerId: string): Promise<void> {
   if (error) throw error;
 }
 
+/** webhook_events.provider 取值；同一 provider 内 event_id 唯一 */
+const WEBHOOK_PROVIDER = "stripe";
+
+/**
+ * 执行事件副作用，返回落库状态。
+ * 未知事件类型落 skipped + Sentry 上报（同 type 自动分组，需人工评估是否适配）。
+ */
+async function applyEvent(event: Stripe.Event): Promise<"processed" | "skipped"> {
+  switch (event.type) {
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+      await upsertSubscription(event.data.object as Stripe.Subscription);
+      return "processed";
+
+    case "customer.subscription.deleted":
+      await markSubscriptionCanceled((event.data.object as Stripe.Subscription).id);
+      return "processed";
+
+    case "invoice.payment_succeeded": {
+      // 订阅状态由 customer.subscription.* 事件维护，此处通知团队 owner 即可
+      const invoice = event.data.object as Stripe.Invoice;
+      logger.info(
+        `[Stripe Webhook] 付款成功: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
+      );
+      await notifyTeamOwner(invoice);
+      return "skipped";
+    }
+
+    case "invoice.payment_failed": {
+      const invoice = event.data.object as Stripe.Invoice;
+      await logApiError(
+        `[Stripe Webhook] 付款失败: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
+        new Error("payment_failed"),
+      );
+      return "skipped";
+    }
+
+    default:
+      await logApiError(`[Stripe Webhook] 未处理事件: ${event.type}`, new Error("unhandled_event_type"));
+      return "skipped";
+  }
+}
+
 /**
  * POST /api/webhooks/stripe - Handle Stripe webhook events
  */
@@ -115,58 +162,69 @@ export async function POST(request: Request) {
     return jsonNoStore({ error: "Invalid signature" }, { status: 400 });
   }
 
+  // 幂等占位：Stripe 至少投递一次且会对非 2xx 重试，重复投递必须跳过全部副作用
+  const claim = await claimStripeEvent(event);
+  if ("response" in claim) return claim.response;
+
+  let status: "processed" | "skipped";
   try {
-    let status: "processed" | "skipped" = "processed";
-    switch (event.type) {
-      case "customer.subscription.created":
-      case "customer.subscription.updated": {
-        await upsertSubscription(event.data.object as Stripe.Subscription);
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        await markSubscriptionCanceled((event.data.object as Stripe.Subscription).id);
-        break;
-      }
-
-      case "invoice.payment_succeeded": {
-        // 订阅状态由 customer.subscription.* 事件维护，此处通知团队 owner 即可
-        const invoice = event.data.object as Stripe.Invoice;
-        logger.info(
-          `[Stripe Webhook] 付款成功: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
-        );
-        await notifyTeamOwner(invoice);
-        status = "skipped";
-        break;
-      }
-
-      case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
-        await logApiError(
-          `[Stripe Webhook] 付款失败: invoice ${invoice.id}, subscription ${invoice.parent?.subscription_details?.subscription ?? "none"}`,
-          new Error("payment_failed"),
-        );
-        status = "skipped";
-        break;
-      }
-
-      default:
-        // 未知事件类型：落表 skipped + Sentry 上报（同 type 自动分组，需人工评估是否适配）
-        await logApiError(`[Stripe Webhook] 未处理事件: ${event.type}`, new Error("unhandled_event_type"));
-        status = "skipped";
-    }
-
-    await recordWebhookEvent(event.id, event.type, status);
-    return jsonNoStore({ received: true });
+    status = await applyEvent(event);
   } catch (error) {
     await logApiError("[Stripe Webhook] 处理失败", error);
-    await recordWebhookEvent(
-      event.id,
-      event.type,
-      "failed",
-      error instanceof Error ? error.message : String(error),
-    );
+    await markEventFailed(event.id, error instanceof Error ? error.message : String(error));
     return jsonNoStore({ error: "Webhook handler failed" }, { status: 500 });
+  }
+
+  // 副作用已执行：这里的任何失败都**不能**回 500 或标记 failed。
+  // status='failed' 会让 Stripe 的下一次重试重新占位并重放副作用（重复订阅写入、重复通知）；
+  // 保持 received 最多让 15 分钟租约到期后的一次重试重放，代价远小于必然重放。
+  try {
+    await finalizeWebhookEvent({ provider: WEBHOOK_PROVIDER, event_id: event.id, status });
+  } catch (error) {
+    await logApiError("[Stripe Webhook] 事件状态落定失败（副作用已执行，不回 500）", error);
+  }
+  return jsonNoStore({ received: true });
+}
+
+/**
+ * 尝试占位；占位成功返回 claim，失败（数据库异常 / 重复投递）直接返回应回的响应。
+ * 重复投递回 200 是刻意的：Stripe 收到 2xx 才会停止重试，非 2xx 会继续重放副作用。
+ */
+async function claimStripeEvent(
+  event: Stripe.Event,
+): Promise<WebhookClaim | { response: Response }> {
+  let claim: WebhookClaim;
+  try {
+    claim = await claimWebhookEvent({
+      provider: WEBHOOK_PROVIDER,
+      event_id: event.id,
+      event_type: event.type,
+    });
+  } catch (error) {
+    // 占位失败意味着无法证明副作用幂等，回 500 让 Stripe 重试
+    await logApiError("[Stripe Webhook] 幂等占位失败", error);
+    return { response: jsonNoStore({ error: "Webhook handler failed" }, { status: 500 }) };
+  }
+
+  if (claim.outcome === "claimed") return claim;
+
+  logger.info(
+    `[Stripe Webhook] 跳过重复投递: ${event.type} ${event.id}（第 ${claim.attempts} 次投递）`,
+  );
+  return { response: jsonNoStore({ received: true, duplicate: true }) };
+}
+
+/** 标记处理失败（status='failed' 允许 Stripe 重试重新占位）；自身失败不影响响应 */
+async function markEventFailed(eventId: string, errorMessage: string): Promise<void> {
+  try {
+    await finalizeWebhookEvent({
+      provider: WEBHOOK_PROVIDER,
+      event_id: eventId,
+      status: "failed",
+      error_message: errorMessage,
+    });
+  } catch (logError) {
+    await logApiError("[Stripe Webhook] 事件失败状态写入失败", logError);
   }
 }
 
@@ -204,25 +262,5 @@ async function notifyTeamOwner(invoice: Stripe.Invoice): Promise<void> {
     });
   } catch (error) {
     await logApiError("[Stripe Webhook] 付款通知写入失败", error);
-  }
-}
-
-/** 将事件处理结果写入 webhook_events 日志表（失败不影响主流程） */
-async function recordWebhookEvent(
-  eventId: string,
-  eventType: string,
-  status: "processed" | "skipped" | "failed",
-  errorMessage?: string,
-): Promise<void> {
-  try {
-    await upsertWebhookEvent({
-      provider: "stripe",
-      event_id: eventId,
-      event_type: eventType,
-      status,
-      error_message: errorMessage ?? null,
-    });
-  } catch (logError) {
-    await logApiError("[Stripe Webhook] 事件日志写入失败", logError);
   }
 }

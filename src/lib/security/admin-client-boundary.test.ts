@@ -236,6 +236,6 @@ export function handler() { return createAdminClient(); }
     const facts = collectAdminClientFacts(sourceFiles);
     expect(inspectAdminClientBoundary(sourceFiles)).toEqual([]);
     expect(facts).toHaveLength(ADMIN_CLIENT_INVENTORY.length);
-    expect(facts.reduce((total, fact) => total + fact.calls.length, 0)).toBe(80);
+    expect(facts.reduce((total, fact) => total + fact.calls.length, 0)).toBe(81);
   });
 });

@@ -10,6 +10,7 @@
  *
  * GET /api/e2e/seed-notifications
  *   Authorization: Bearer <E2E_BEARER_TOKEN>
+ *   query: includeSent=true 时不过滤 email_sent/is_read（用于断言实时单发后已回执的通知）
  *   → 读取 mock 用户通知（供失败回执与死信 E2E 断言）
  *
  * DELETE /api/e2e/seed-notifications
@@ -90,14 +91,19 @@ export async function GET(request: NextRequest) {
   if (unauth) return unauth;
 
   const admin = createAdminClient();
-  const deadLetterOnly = request.nextUrl.searchParams.get("deadLetter") === "true";
+  const params = request.nextUrl.searchParams;
+  const deadLetterOnly = params.get("deadLetter") === "true";
+  // 默认只返回“待发”队列（email_sent/is_read 均为 false），与邮件 worker 的拉取口径一致；
+  // includeSent=true 放开该过滤，供断言「已成功实时单发」的通知（此时 email_sent 已被回执为 true）。
+  const includeSent = params.get("includeSent") === "true";
   let query = admin
     .from("notifications")
     .select("*")
     .eq("user_id", MOCK_USER_ID)
-    .eq("email_sent", false)
-    .eq("is_read", false)
     .order("created_at", { ascending: true });
+  if (!includeSent) {
+    query = query.eq("email_sent", false).eq("is_read", false);
+  }
   if (deadLetterOnly) {
     query = query.or("metadata->>email_attempts.gte.3");
   }

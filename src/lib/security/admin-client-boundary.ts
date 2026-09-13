@@ -440,13 +440,20 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
   {
     file: "src/lib/repositories/webhook-events.ts",
     surface: "data-access",
-    calls: ["countWebhookEvents", "listRecentWebhookEvents", "upsertWebhookEvent"],
+    calls: [
+      "claimWebhookEvent",
+      "countWebhookEvents",
+      "finalizeWebhookEvent",
+      "listRecentWebhookEvents",
+    ],
     tables: ["webhook_events"],
-    rpc: [],
+    // claim_webhook_event 是幂等占位 RPC：SECURITY DEFINER + 只授 service_role（迁移 030）
+    rpc: ["claim_webhook_event"],
     storageBuckets: [],
     authAdmin: [],
     trust: { kind: "server-internal", evidence: [] },
-    rationale: "Webhook idempotency records are written and read only by trusted server paths.",
+    rationale:
+      "Webhook idempotency records are claimed and read only by trusted server paths; the claim RPC is service_role-only.",
   },
   {
     file: "src/lib/repositories/worker-runs.ts",
