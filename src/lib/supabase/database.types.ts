@@ -638,6 +638,45 @@ export type Database = {
         }
         Relationships: []
       }
+      upload_objects: {
+        Row: {
+          bucket: string
+          byte_size: number
+          checksum: string
+          content_type: string
+          created_at: string
+          id: string
+          object_key: string
+          owner_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          bucket: string
+          byte_size: number
+          checksum: string
+          content_type: string
+          created_at?: string
+          id?: string
+          object_key: string
+          owner_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          bucket?: string
+          byte_size?: number
+          checksum?: string
+          content_type?: string
+          created_at?: string
+          id?: string
+          object_key?: string
+          owner_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_sessions: {
         Row: {
           created_at: string

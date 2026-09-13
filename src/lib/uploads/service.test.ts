@@ -1,19 +1,33 @@
 /** 上传领域服务单测：共享安全校验、取消与回滚边界。 */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { UploadObjectRecord } from "@/lib/repositories/upload-objects";
 
-const { putMock, removeMock } = vi.hoisted(() => ({
-  putMock: vi.fn(async () => "https://cdn.example/uploads/k.png"),
-  removeMock: vi.fn(async () => true),
-}));
+const { putMock, removeMock, cleanupUrlMock, extractKeyMock, recordMock, markDeletedMock } =
+  vi.hoisted(() => ({
+    putMock: vi.fn(async () => "https://cdn.example/uploads/k.png"),
+    removeMock: vi.fn(async () => true),
+    cleanupUrlMock: vi.fn(async () => true),
+    extractKeyMock: vi.fn(
+      (_url: string | null | undefined, _prefix: string, _tenantId: string): string | null => null,
+    ),
+    recordMock: vi.fn(async (_record: UploadObjectRecord) => undefined),
+    markDeletedMock: vi.fn(async () => undefined),
+  }));
 
 vi.mock("@/lib/storage", () => ({
   ALLOWED_IMAGE_TYPES: { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" },
   AVATAR_MAX_BYTES: 2 * 1024 * 1024,
   buildObjectKey: () => "avatars/u1/key.png",
-  cleanupManagedStorageUrl: vi.fn(async () => true),
+  cleanupManagedStorageUrl: cleanupUrlMock,
   cleanupStorageObject: removeMock,
-  extractManagedObjectKey: vi.fn(() => null),
+  extractManagedObjectKey: extractKeyMock,
   getStorageDriver: () => ({ put: putMock }),
+}));
+
+// H02：服务层在 put 之后必须落 upload_objects 元数据，这里拦截数据访问层
+vi.mock("@/lib/repositories/upload-objects", () => ({
+  recordUploadObject: recordMock,
+  markUploadObjectDeleted: markDeletedMock,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -135,6 +149,72 @@ describe("uploadAvatarFile", () => {
       error: "uploadFailed",
     });
   });
+
+  it("成功上传先落元数据再回写 profiles，并记录 bucket/所有者/大小/哈希", async () => {
+    const profileUpdate = vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) }));
+    const supabase = {
+      auth: { getUser: vi.fn(async () => ({ data: { user: USER } })) },
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: { avatar_url: null } })) })),
+        })),
+        update: profileUpdate,
+      })),
+    } as never;
+
+    await expect(uploadAvatarFile(supabase, png())).resolves.toEqual({
+      ok: true,
+      data: { url: "https://cdn.example/uploads/k.png" },
+    });
+
+    expect(recordMock).toHaveBeenCalledTimes(1);
+    const record = recordMock.mock.calls[0][0];
+    expect(record).toMatchObject({
+      bucket: "avatars",
+      objectKey: "avatars/u1/key.png",
+      ownerId: "u1",
+      contentType: "image/png",
+      byteSize: expect.any(Number),
+      checksum: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(record.byteSize).toBeGreaterThan(0);
+    // 顺序必须是 put → 元数据 → 业务表：反了会在回写成功后留下没有元数据的 URL
+    expect(putMock.mock.invocationCallOrder[0]).toBeLessThan(
+      recordMock.mock.invocationCallOrder[0],
+    );
+    expect(recordMock.mock.invocationCallOrder[0]).toBeLessThan(
+      profileUpdate.mock.invocationCallOrder[0],
+    );
+    expect(markDeletedMock).not.toHaveBeenCalled();
+  });
+
+  it("元数据写入失败时删除已上传对象并返回 uploadFailed", async () => {
+    recordMock.mockRejectedValueOnce(new Error("db down"));
+    await expect(uploadAvatarFile(supabaseForAvatar(), png())).resolves.toEqual({
+      ok: false,
+      error: "uploadFailed",
+    });
+    expect(removeMock).toHaveBeenCalledWith("avatars/u1/key.png", expect.any(Object));
+    // 对象已删除 → 元数据标记为 deleted（此时行通常不存在，是 no-op）
+    expect(markDeletedMock).toHaveBeenCalledWith("avatars", "avatars/u1/key.png");
+  });
+
+  it("替换头像成功后把旧对象标记为 deleted", async () => {
+    extractKeyMock.mockReturnValueOnce("avatars/u1/old.png");
+    await expect(uploadAvatarFile(supabaseForAvatar(), png())).resolves.toEqual({
+      ok: true,
+      data: { url: "https://cdn.example/uploads/k.png" },
+    });
+    expect(cleanupUrlMock).toHaveBeenCalled();
+    expect(markDeletedMock).toHaveBeenCalledWith("avatars", "avatars/u1/old.png");
+  });
+
+  it("旧对象删除失败时不标记 deleted（对象可能仍在 bucket 里）", async () => {
+    extractKeyMock.mockReturnValueOnce("avatars/u1/old.png");
+    cleanupUrlMock.mockResolvedValueOnce(false);
+    await uploadAvatarFile(supabaseForAvatar(), png());
+    expect(markDeletedMock).not.toHaveBeenCalledWith("avatars", "avatars/u1/old.png");
+  });
 });
 
 describe("uploadProjectCoverFile", () => {
@@ -179,5 +259,17 @@ describe("uploadProjectCoverFile", () => {
       ok: true,
       data: { url: "https://cdn.example/uploads/k.png" },
     });
+  });
+
+  it("封面成功上传同样落元数据，owner 是上传者而不是 projectId", async () => {
+    await uploadProjectCoverFile(coverClient({ team_id: "t1", logo_url: null }, "admin"), "p1", png());
+    expect(recordMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bucket: "avatars",
+        objectKey: "avatars/u1/key.png",
+        ownerId: "u1",
+        contentType: "image/png",
+      }),
+    );
   });
 });

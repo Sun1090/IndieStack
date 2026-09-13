@@ -709,3 +709,75 @@ describe("Mock webhook 幂等占位（H06）", () => {
     await expect(client.rpc("unknown_rpc")).resolves.toEqual({ data: null, error: null });
   });
 });
+
+describe("Mock 上传对象元数据（H02）", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  const RECORD = {
+    bucket: "avatars",
+    object_key: "avatars/u1/a.png",
+    owner_id: "u1",
+    byte_size: 12,
+    content_type: "image/png",
+    checksum: "a".repeat(64),
+  };
+
+  it("默认是空表，不预置任何行", async () => {
+    const client = createMockSupabaseClient();
+    const { data } = await client.from("upload_objects").select("*");
+    expect(asRows(data)).toHaveLength(0);
+  });
+
+  it("upsert 按 (bucket, object_key) 复合键去重，第二次写入只更新同一行", async () => {
+    const client = createMockSupabaseClient();
+    await client.from("upload_objects").upsert(RECORD, { onConflict: "bucket,object_key" });
+    await client
+      .from("upload_objects")
+      .upsert({ ...RECORD, status: "deleted" }, { onConflict: "bucket,object_key" });
+
+    const { data } = await client.from("upload_objects").select("*");
+    const rows = asRows(data);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "deleted", object_key: "avatars/u1/a.png" });
+  });
+
+  it("不同 bucket 的同名 key 是两行（复合键不是单列去重）", async () => {
+    const client = createMockSupabaseClient();
+    await client.from("upload_objects").upsert(RECORD, { onConflict: "bucket,object_key" });
+    await client
+      .from("upload_objects")
+      .upsert({ ...RECORD, bucket: "covers" }, { onConflict: "bucket,object_key" });
+
+    const { data } = await client.from("upload_objects").select("*");
+    expect(asRows(data)).toHaveLength(2);
+  });
+
+  it("插入时补齐真实库的 status 默认值 active", async () => {
+    const client = createMockSupabaseClient();
+    await client.from("upload_objects").insert(RECORD);
+    const { data } = await client.from("upload_objects").select("*");
+    expect(asRows(data)[0]).toMatchObject({ status: "active" });
+  });
+
+  it("单列 onConflict 行为不变（user_id 去重）", async () => {
+    const client = createMockSupabaseClient();
+    await client
+      .from("push_subscriptions")
+      .upsert(
+        { user_id: "u1", endpoint: "https://push", p256dh: "p", auth: "a" },
+        { onConflict: "user_id,endpoint" },
+      );
+    await client
+      .from("push_subscriptions")
+      .upsert(
+        { user_id: "u1", endpoint: "https://push", p256dh: "p2", auth: "a2" },
+        { onConflict: "user_id,endpoint" },
+      );
+
+    const { data } = await client.from("push_subscriptions").select("*").eq("user_id", "u1");
+    expect(asRows(data)).toHaveLength(1);
+    expect(asRows(data)[0]).toMatchObject({ p256dh: "p2" });
+  });
+});

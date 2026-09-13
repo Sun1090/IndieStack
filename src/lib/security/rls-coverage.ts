@@ -53,6 +53,8 @@ export const SERVER_ONLY_TABLES: Record<string, string> = {
   "public.email_worker_runs": "邮件 digest worker 的运行记录，只由 cron 路由写入与读取",
   "public.mfa_recovery_codes": "MFA 恢复码哈希，只允许服务端校验与轮换，客户端读写都会泄露第二因子",
   "public.push_delivery_attempts": "Push 投递重试队列，只由 push-retry worker 处理",
+  "public.upload_objects":
+    "上传对象元数据（迁移 031），只由上传服务的 service_role 写入，客户端读写都会绕过上传白名单",
   "public.webhook_events": "支付 webhook 事件日志，只由 webhook 路由写入与后台读取",
 };
 

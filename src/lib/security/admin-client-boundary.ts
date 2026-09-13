@@ -427,6 +427,18 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
       "Push subscription endpoints are needed server-side for delivery; user-visible access remains RLS-scoped.",
   },
   {
+    file: "src/lib/repositories/upload-objects.ts",
+    surface: "data-access",
+    calls: ["markUploadObjectDeleted", "recordUploadObject"],
+    tables: ["upload_objects"],
+    rpc: [],
+    storageBuckets: [],
+    authAdmin: [],
+    trust: { kind: "server-internal", evidence: [] },
+    rationale:
+      "Upload metadata rows are written only after the upload service validated the caller, session and file; the table stays RLS deny-all (migration 031).",
+  },
+  {
     file: "src/lib/repositories/webauthn.ts",
     surface: "data-access",
     calls: ["createCredential", "findCredentialById", "updateCredentialCounter"],

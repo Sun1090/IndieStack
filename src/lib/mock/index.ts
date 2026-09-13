@@ -100,6 +100,7 @@ let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null 
 let _mockWebhookEvents: Record<string, unknown>[] | null = null;
 let _mockPushDeliveryAttempts: Record<string, unknown>[] | null = null;
 let _mockPushSubscriptions: Record<string, unknown>[] | null = null;
+let _mockUploadObjects: Record<string, unknown>[] | null = null;
 type MockMfaChallenge = {
   id: string;
   factor_id: string;
@@ -137,6 +138,7 @@ export function resetMockCache() {
   _mockWebhookEvents = null;
   _mockPushDeliveryAttempts = null;
   _mockPushSubscriptions = null;
+  _mockUploadObjects = null;
   _mockMfaFactors = null;
   _mockMfaChallenges = null;
   mockCacheClear();
@@ -409,6 +411,19 @@ function getMockPushSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string
   return fresh;
 }
 
+/** 上传对象元数据表（迁移 031）；默认空表，每次上传由服务端写入一行 */
+function getMockUploadObjects(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
+  const cached = mockCacheGet<Record<string, unknown>[]>(store, "UploadObjects");
+  if (cached) {
+    _mockUploadObjects = cached;
+    return cached;
+  }
+  const fresh: Record<string, unknown>[] = [];
+  _mockUploadObjects = fresh;
+  mockCacheSet(store, "UploadObjects", fresh);
+  return fresh;
+}
+
 function getMockMfaChallenges(store: MockStore = MOCK_GLOBAL): MockMfaChallenge[] {
   const cached = mockCacheGet<MockMfaChallenge[]>(store, "MfaChallenges");
   if (cached) {
@@ -660,21 +675,27 @@ class MockQueryBuilder {
   /**
    * upsert：依据 onConflict 指定列查重，存在则更新、不存在则插入。
    * mock 层实现：先按 conflict 字段过滤列表，命中的行用 writeValue 更新；
-   * 否则按 insert 路径追加。options.onConflict 仅字符串形式支持（如 "user_id"）。
+   * 否则按 insert 路径追加。options.onConflict 支持 PostgREST 的逗号分隔复合列
+   * （如 "bucket,object_key"），单列（如 "user_id"）行为不变。
    */
   upsert(values: Record<string, unknown>, options?: { onConflict?: string }) {
     const list = this.getWriteList();
-    const conflictCol = options?.onConflict ?? "id";
+    const conflictCols = (options?.onConflict ?? "id")
+      .split(",")
+      .map((column) => column.trim())
+      .filter(Boolean);
     if (list) {
       const matched = list.filter((r) => {
         const row = r as Record<string, unknown>;
-        return row[conflictCol] !== undefined && row[conflictCol] === values[conflictCol];
+        return conflictCols.every(
+          (column) => row[column] !== undefined && row[column] === values[column],
+        );
       });
       if (matched.length > 0) {
         this.writeMode = "update";
         this.writeValue = values;
         // 强制按 conflict 列过滤，避免前面挂的 eq/in 干扰
-        this.filters = { [conflictCol]: values[conflictCol] };
+        this.filters = Object.fromEntries(conflictCols.map((column) => [column, values[column]]));
         return this;
       }
     }
@@ -787,6 +808,11 @@ class MockQueryBuilder {
       this.applyDelete();
       return [];
     }
+    return this.readTable();
+  }
+
+  /** 只读查询：按表名返回 mock 数据集（写模式由 getData 处理） */
+  private readTable(): unknown {
     switch (this.table) {
       case "profiles":
         return this.applyFiltersAndPagination(getMockProfiles());
@@ -829,6 +855,8 @@ class MockQueryBuilder {
         return this.applyFiltersAndPagination(getMockPushDeliveryAttempts(this.store));
       case "push_subscriptions":
         return this.applyFiltersAndPagination(getMockPushSubscriptions(this.store));
+      case "upload_objects":
+        return this.applyFiltersAndPagination(getMockUploadObjects(this.store));
       default:
         return [];
     }
@@ -852,6 +880,8 @@ class MockQueryBuilder {
       if (!row.created_at) row.created_at = now;
       if (row.updated_at === undefined) row.updated_at = now;
       if (this.table === "api_keys" && row.is_active === undefined) row.is_active = true;
+      // upload_objects.status 在真实库默认 'active'；mock 需补齐，否则孤儿巡检按状态过滤会漏行
+      if (this.table === "upload_objects" && row.status === undefined) row.status = "active";
       // notifications 在真实库有 is_read/email_sent 列默认值 false；mock 需补齐，
       // 否则按 email_sent/is_read 过滤（如 e2e seed-notifications GET）会漏掉新写入的行。
       if (this.table === "notifications") {
@@ -979,6 +1009,8 @@ class MockQueryBuilder {
         return getMockPushDeliveryAttempts(this.store);
       case "push_subscriptions":
         return getMockPushSubscriptions(this.store);
+      case "upload_objects":
+        return getMockUploadObjects(this.store);
       default:
         return null;
     }

@@ -15,6 +15,12 @@ import {
   extractManagedObjectKey,
   getStorageDriver,
 } from "@/lib/storage";
+import { imageChecksum } from "@/lib/uploads/checksum";
+import {
+  markUploadObjectDeleted,
+  recordUploadObject,
+  type UploadObjectRecord,
+} from "@/lib/repositories/upload-objects";
 import { logger } from "@/lib/logger";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
@@ -83,8 +89,85 @@ async function readValidatedImage(
   return { ok: true, body, image };
 }
 
+/** 受管 bucket：H05 的 storage 门禁保证应用只引用已登记、已建行迁移的 bucket。 */
+const MANAGED_BUCKET = "avatars";
+
+/** 元数据标记失败只记日志：对象已经删掉，这里失败不该让调用方再回滚一次。 */
+async function markDeletedQuietly(objectKey: string, operation: string, resourceId: string) {
+  try {
+    await markUploadObjectDeleted(MANAGED_BUCKET, objectKey);
+  } catch (error) {
+    logger.error(
+      "upload metadata delete mark failed",
+      { operation, resourceId, key: objectKey },
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
+}
+
+/** 对象确认从 provider 删除后才标记元数据，避免把仍然存在的对象误报成已清理。 */
 async function cleanupAfterFailure(key: string, operation: string, resourceId: string) {
-  await cleanupStorageObject(key, { operation, resourceId });
+  const removed = await cleanupStorageObject(key, { operation, resourceId });
+  if (removed) await markDeletedQuietly(key, operation, resourceId);
+  return removed;
+}
+
+/**
+ * 落上传元数据（H02）。返回 false 表示这次上传没有可追溯的记录，
+ * 调用方必须删除对象并让请求失败——否则 bucket 里会留下没有元数据的孤儿对象。
+ */
+async function recordUploadQuietly(
+  record: UploadObjectRecord,
+  operation: string,
+  resourceId: string,
+): Promise<boolean> {
+  try {
+    await recordUploadObject(record);
+    return true;
+  } catch (error) {
+    logger.error(
+      "upload metadata write failed",
+      { operation, resourceId, key: record.objectKey },
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    return false;
+  }
+}
+
+/** put → 元数据 → 失败即回滚的公共前置阶段（H02）。 */
+async function stageUploadObject(params: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+  ownerId: string;
+  operation: string;
+  resourceId: string;
+  signal?: AbortSignal;
+}): Promise<{ error: string } | { url: string }> {
+  const { key, body, contentType, ownerId, operation, resourceId, signal } = params;
+  const url = await getStorageDriver().put(key, body, contentType);
+  if (isAborted(signal)) {
+    await cleanupAfterFailure(key, `${operation}-cancel`, resourceId);
+    return { error: "uploadCancelled" };
+  }
+
+  const recorded = await recordUploadQuietly(
+    {
+      bucket: MANAGED_BUCKET,
+      objectKey: key,
+      ownerId,
+      byteSize: body.byteLength,
+      contentType,
+      checksum: imageChecksum(body),
+    },
+    operation,
+    resourceId,
+  );
+  if (!recorded) {
+    await cleanupAfterFailure(key, `${operation}-metadata-rollback`, resourceId);
+    return { error: "uploadFailed" };
+  }
+  return { url };
 }
 
 /** 上传头像并回写 profiles.avatar_url；成功时返回公共 URL。 */
@@ -102,14 +185,18 @@ export async function uploadAvatarFile(
   if (!validated.ok) return fail(validated.error);
 
   const { body, image } = validated;
-  let key: string | null = null;
+  const key = buildObjectKey("avatars", user.id, image.type);
   try {
-    key = buildObjectKey("avatars", user.id, image.type);
-    const url = await getStorageDriver().put(key, body, image.type);
-    if (isAborted(options.signal)) {
-      await cleanupAfterFailure(key, "avatar-upload-cancel", user.id);
-      return fail("uploadCancelled");
-    }
+    const staged = await stageUploadObject({
+      key,
+      body,
+      contentType: image.type,
+      ownerId: user.id,
+      operation: "avatar-upload",
+      resourceId: user.id,
+      signal: options.signal,
+    });
+    if ("error" in staged) return fail(staged.error);
 
     const { data: previousProfile } = (await supabase
       .from("profiles")
@@ -123,7 +210,7 @@ export async function uploadAvatarFile(
 
     const { error } = await supabase
       .from("profiles")
-      .update({ avatar_url: url, updated_at: new Date().toISOString() })
+      .update({ avatar_url: staged.url, updated_at: new Date().toISOString() })
       .eq("id", user.id);
     if (error) {
       logger.error(
@@ -137,19 +224,25 @@ export async function uploadAvatarFile(
 
     const oldKey = extractManagedObjectKey(previousProfile?.avatar_url, "avatars", user.id);
     if (oldKey && oldKey !== key) {
-      await cleanupManagedStorageUrl(previousProfile?.avatar_url, "avatars", user.id, {
-        operation: "avatar-replace",
-        resourceId: user.id,
-      });
+      const removed = await cleanupManagedStorageUrl(
+        previousProfile?.avatar_url,
+        "avatars",
+        user.id,
+        {
+          operation: "avatar-replace",
+          resourceId: user.id,
+        },
+      );
+      if (removed) await markDeletedQuietly(oldKey, "avatar-replace", user.id);
     }
-    return ok({ url });
+    return ok({ url: staged.url });
   } catch (error) {
     logger.error(
       "avatar upload failed",
       { operation: "avatar-upload", resourceId: user.id, key },
       error instanceof Error ? error : new Error(String(error)),
     );
-    if (key) await cleanupAfterFailure(key, "avatar-upload-rollback", user.id);
+    await cleanupAfterFailure(key, "avatar-upload-rollback", user.id);
     return fail("uploadFailed");
   }
 }
@@ -189,18 +282,22 @@ export async function uploadProjectCoverFile(
   if (!validated.ok) return fail(validated.error);
 
   const { body, image } = validated;
-  let key: string | null = null;
+  const key = buildObjectKey("covers", projectId, image.type);
   try {
-    key = buildObjectKey("covers", projectId, image.type);
-    const url = await getStorageDriver().put(key, body, image.type);
-    if (isAborted(options.signal)) {
-      await cleanupAfterFailure(key, "project-cover-upload-cancel", projectId);
-      return fail("uploadCancelled");
-    }
+    const staged = await stageUploadObject({
+      key,
+      body,
+      contentType: image.type,
+      ownerId: user.id,
+      operation: "project-cover-upload",
+      resourceId: projectId,
+      signal: options.signal,
+    });
+    if ("error" in staged) return fail(staged.error);
 
     const { error } = await supabase
       .from("projects")
-      .update({ logo_url: url, updated_at: new Date().toISOString() })
+      .update({ logo_url: staged.url, updated_at: new Date().toISOString() })
       .eq("id", projectId);
     if (error) {
       logger.error(
@@ -214,19 +311,20 @@ export async function uploadProjectCoverFile(
 
     const oldKey = extractManagedObjectKey(project.logo_url, "covers", projectId);
     if (oldKey && oldKey !== key) {
-      await cleanupManagedStorageUrl(project.logo_url, "covers", projectId, {
+      const removed = await cleanupManagedStorageUrl(project.logo_url, "covers", projectId, {
         operation: "project-cover-replace",
         resourceId: projectId,
       });
+      if (removed) await markDeletedQuietly(oldKey, "project-cover-replace", projectId);
     }
-    return ok({ url });
+    return ok({ url: staged.url });
   } catch (error) {
     logger.error(
       "project cover upload failed",
       { operation: "project-cover-upload", resourceId: projectId, key },
       error instanceof Error ? error : new Error(String(error)),
     );
-    if (key) await cleanupAfterFailure(key, "project-cover-upload-rollback", projectId);
+    await cleanupAfterFailure(key, "project-cover-upload-rollback", projectId);
     return fail("uploadFailed");
   }
 }
