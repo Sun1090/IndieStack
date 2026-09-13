@@ -2387,3 +2387,39 @@
   - 回滚：`git revert f78e0d5` 即恢复单 job 覆盖率、移除浏览器缓存与 `concurrency`，并移除 `pnpm check:workflows` 门禁；纯 CI / 校验改动，无数据库或运行时接口影响。
 - 下一步：J04 CodeQL 告警零回归。
 - 最后更新：2026-09-13
+
+## J04 CodeQL 告警零回归（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 94 项）
+- 里程碑与发布目标：M4 J 段（J01–J10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`9061189`（ci(codeql): gate scan strength and alert triage policy）
+- 目标：把「CodeQL 告警零回归」从「扫描还开着」细化为可执行契约——扫描强度、触发覆盖、路径范围与告警处置流程四类事实都要能被门禁验证，配置或 runbook 漂移即失败
+- 已完成：
+  - 新增纯函数模块 `src/lib/security/codeql-alert-policy.ts`（`parseCodeqlWorkflow` / `actionMajorMatches` / `isWeeklyCron` / `pathCovers` / `auditCodeqlAlertPolicy` / `formatCodeqlIssues` + `CODEQL_CONTRACT`），复用 `src/lib/ci/workflow-policy.ts` 的作业与触发解析，抽取为空时失败封闭
+  - 扫描强度断言：`init` 与 `analyze` 必须同时存在、固定在 `github/codeql-action@v4`（允许 `@v4.x.y`，跨 major 或换仓库失败）且两者 major 一致；语言必须覆盖 `javascript-typescript`；查询套件必须保持 `security-extended`；SARIF `category` 必须保持 `/language:javascript-typescript`；analyze 作业必须保留 `security-events: write` 与 `timeout-minutes`；禁止 `upload: false`
+  - 触发覆盖断言：`push` 必须覆盖 `main`/`develop`，`pull_request` 必须覆盖 `main`，`schedule` 必须有且**每周一次**（cron 的日期与月份字段必须是 `*`，星期字段必须是契约星期，退化成每日或换星期都失败）
+  - 路径范围断言：`paths` / `paths-ignore` 只从 `push` / `pull_request` 触发块读取（GitHub 只在该位置支持这两个键，写在作业里既不生效也不该被当成合规）；`paths-ignore` 默认不允许任何条目，`paths` 白名单不得漏掉 `src` / `scripts` / `e2e` / `supabase`
+  - 处置流程断言：新增 `docs/operations/codeql-alert-triage.md` 作为告警处置单一事实来源（适用范围、严重度与阻断阈值、分诊流程、Dismissal 规则、零回归的判定、外部依赖六章；阻断阈值 `security-severity >= 7.0`、5 个工作日内完成分诊、只允许 `false positive` / `won't fix` / `used in tests` 三种理由），门禁要求 runbook 存在、非空、章节齐全，且套件名、阈值、SLA 与 dismissal 理由与 `CODEQL_CONTRACT` 同源
+  - 新增 `scripts/lib/codeql-policy-check.js`（IO 层：读 `.github/workflows/codeql.yml` 与 runbook，组装快照）+ `scripts/check-codeql.js`（CLI，Node `--experimental-strip-types`），注册为 `pnpm check:codeql`，接入 `scripts/check-all.sh` 与 CI `Lint & Type Check` job
+  - 修掉实现阶段发现的三个真实缺陷（由测试与真实快照共同暴露）：① cron 正则用 `[^"'\s]+` 取值，含空格的真实表达式 `"0 6 * * 1"` 永远匹配不到，导致 schedule 断言静默走「缺每周扫描」分支；② `actionMajorMatches` 只比对仓库路径，`@v3` 会被判为合规，major 固定形同虚设；③ `paths` / `paths-ignore` 原先从分析作业正文读取，触发器上的排除规则会被漏检
+  - 新增 44 条单测：解析（触发/分支/cron/引用/语言/套件/category/权限/超时/空内容）、`isWeeklyCron`（每周通过、每日失败、星期不符、限定日期或月份、字段不足）、`pathCovers`、`actionMajorMatches`（v4、v4.1.2、v3、v41、换仓库、空串）、18 类规则码反例、契约可注入（换星期）、`formatCodeqlIssues`，以及读取真实工作流与 runbook 断言零问题
+  - 文档与接线：双语 `docs-site/scripts.md` 增行、双语 `docs-site/testing.md` 的 `ci-tooling` 行补 `pnpm check:codeql`（行宽保持 255 / 250）、`src/lib/testing/test-matrix.ts` 同步；`docs/testing.md` 新增「CodeQL 扫描强度与告警处置（J04）」章节（含本地无法复现的外部依赖说明）；`CHANGELOG.md` `[Unreleased] / Added` 记录；roadmap 第 94 项与头部进度标注完成
+- 变更文件：`.github/workflows/ci.yml`、`scripts/check-all.sh`、`scripts/check-codeql.js`、`scripts/lib/codeql-policy-check.js`、`src/lib/security/codeql-alert-policy.ts`、`src/lib/security/codeql-alert-policy.test.ts`、`src/lib/testing/test-matrix.ts`、`package.json`、`docs/operations/codeql-alert-triage.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs-site/testing.md`、`docs-site/zh-CN/testing.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `9061189`）：
+  - `pnpm check:codeql` → ✅ CodeQL 策略校验通过（`github/codeql-action@v4` / `javascript-typescript` / `security-extended` / 严重度 ≥ 7 阻断 / 分诊 SLA 5 个工作日，21 条契约断言）
+  - `pnpm exec vitest run src/lib/security/codeql-alert-policy.test.ts` → ✅ 44 passed
+  - `pnpm check:gates` → ✅ 26 个门禁（本地 23 / CI 24 / 豁免 3），8 个工作流
+  - `pnpm check:workflows` → ✅ 8 个工作流 / 12 个作业 / 35 个 action 引用
+  - `pnpm check:docs`、`pnpm check:changelog`、`pnpm check:release-docs`、`pnpm check:test-matrix`、`pnpm check:locales` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:all` → ✅ 148 文件 / 1591 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过（bundle 2853.1 kB / 基线 2733.8 kB）
+- 阻塞：无（真实告警列表、与 `origin/main` 基线分支的差异、dismissal 记录都在 GitHub 侧，需要 `security-events: read` 权限，属外部依赖；本门禁只防止扫描强度与处置策略静默漂移）
+- 风险与回滚：
+  - 风险：解析仍是纯文本缩进分析（未引入 YAML 依赖）。工作流改用不支持的缩进风格时抽取会失败封闭并阻断 CI，而不是静默放过。
+  - 风险：`paths` 只读取触发器块；若未来 GitHub 改变该键的合法位置，需要同步调整 `triggerPaths()`，否则会出现漏检。
+  - 风险：runbook 事实校验是「子串出现即可」，无法验证语义正确性；真正的零回归结论仍需在有 GitHub 权限的环境（发布负责人或 CI）里确认。
+  - 回滚：`git revert 9061189` 即移除门禁、runbook 与文档接线；纯校验/文档改动，无数据库或运行时接口影响。
+- 下一步：J05 Secrets Scan 零回归。
+- 最后更新：2026-09-13
