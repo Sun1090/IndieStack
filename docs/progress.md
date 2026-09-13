@@ -2004,3 +2004,52 @@
   migration/rollback 检查、全量验证、release commit、exit report）；push / tag / PR / merge / deploy 受本地权限边界约束，
   仅输出到可执行边界。
 - 最后更新：2026-09-13
+
+## v0.10.0 发布记录（RELEASE_FREEZE 完成，本地；未 push / tag / PR / merge / deploy）
+
+- 状态：发布已准备到当前权限允许的最后一步（本地 release commit 完成）；发布本身未执行
+- 版本号：**0.10.0**（minor —— 新增 design token 注册表、共享表单/状态原语与四道写法门禁，无破坏性变更）
+- 里程碑：M2「UI 系统收口」（roadmap `docs/roadmap-0.6.0.md` G01–G07）
+- 包含任务：G01 Tailwind v4 原生主题收口、G02 design token 收口与门禁、G03 shared form field 统一、
+  G04 loading/empty/error 状态统一、G05 暗色模式回归、G06 移动端断点回归、G07 键盘与 screen reader 交互
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`f5c7451`（G04 功能）→ `ad705e6`（G04 进度）→ `0632dc5`（v0.10.0 release freeze）
+- 合并方式：未合并（待授权后按 rebase 策略合并）
+- tag / release：**未创建**。项目 runbook 明确「仅在指标稳定后创建 tag」，本地无 deploy/smoke 证据，
+  故按 runbook 停在「ready to tag」；现存 tag 仅 `v0.6.0`
+- 部署：未部署（无部署权限）
+- smoke：`docs/operations/production-smoke-v0.10.0.md` 状态为「未执行」（需生产 URL 与部署权限）
+- 迁移：**本版本无新增迁移**，最新仍为 `031_upload_objects.sql`；`pnpm check:migrations` 通过（31 个不可变迁移与
+  SHA-256 清单一致），迁移号与 v0.9.0 相同
+- 发布产物：
+  - `docs/operations/release-runbook-v0.10.0.md`（含 v0.10.0 发布差异：无迁移、深色首屏脚本与 CSP、
+    响应式断点语义、旧模块删除、观察窗口新增项）
+  - `docs/operations/rollback-runbook-v0.10.0.md`（保持向前 schema、不手工改 CSS token、整包回滚策略）
+  - `docs/operations/production-smoke-v0.10.0.md`（干净「未执行」基线，新增深色首屏 / 移动导航 / 状态色行）
+  - `docs/operations/release-gap-audit-v0.10.0.md`（exit report：里程碑退出标准核对 + 20 项缺口表 + 恢复步骤）
+  - `docs-site/v0.10.0.md`、`docs-site/zh-CN/v0.10.0.md` 并注册到中英导航
+  - `.github/RELEASE_CHECKLIST.md`、`README.md`、`README.zh-CN.md` 指向 v0.10.0 产物
+  - `package.json` / `.env.example` `NEXT_PUBLIC_APP_VERSION` → 0.10.0；CHANGELOG 新增 `[0.10.0]` 章节
+- 验证命令与结果（全部在 release commit `0632dc5` 上复现）：
+  - `pnpm check:release-docs` → ✅ `v0.10.0, 7 artifacts`
+  - `pnpm check:changelog` → ✅ `10 个已发布版本，1 个 Unreleased 章节`
+  - `pnpm check:docs` → ✅ docs-site scripts 与 package.json 同步
+  - `pnpm check:locales` → ✅ en/zh-CN 各 980 key
+  - `pnpm check:migrations` → ✅ 31 个不可变迁移与 SHA-256 清单一致
+  - `pnpm check:all` → ✅ 全部校验通过
+  - `pnpm verify:build` → ✅ lint / type-check / 138 文件 1381 测试 / Next.js 16.3.5 生产构建
+  - `pnpm test:e2e` → ✅ **86 passed (3.4m)**
+  - Docker Linux visual baseline → ✅ **4 passed**（home / features / pricing / login，无像素漂移）
+  - `pnpm audit --audit-level high` → ✅ No known vulnerabilities found
+  - `pnpm --filter indiestack-docs build` → ✅ vitepress 1.6.4 build complete
+- 阻塞（外部权限，非本地可解）：
+  - push / tag / PR / merge / deploy / production smoke 均需显式授权；当前权限边界为本地
+  - 生产 smoke 另需生产 URL、专用测试账号/租户、Stripe test-mode 签名生成器
+- 风险与回滚：
+  - 风险：深浅色状态色与动画 token 现由 `globals.css` 独占，后续改色必须改 `:root`/`.dark` 变量而非调用处工具类，
+    否则 `pnpm check:tokens` 会失败；新增 `animate-spin` 需加入白名单并说明理由。
+  - 风险：`PageLoading` 依赖 next-intl 在 Server Component 中可用；若后续改为客户端组件需回归所有 `loading.tsx`。
+  - 回滚：本版本无数据库迁移，回滚只需把 deployment 切回上一个已验证版本并保持向前 schema；
+    完整步骤见 `docs/operations/rollback-runbook-v0.10.0.md`。
+- 下一里程碑：roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（I04、I06–I10、J02–J10）。
+- 最后更新：2026-09-13
