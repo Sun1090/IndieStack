@@ -973,3 +973,78 @@
   H02 上传元数据迁移、H03 RLS 全表回归、H04 service-role 最小权限审计、H06 webhook 幂等约束、
   J02 E2E shard 策略、J03 CI 缓存、J07 tag/release 自动化等）。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H03_RLS_FULL_TABLE_REGRESSION（RLS 全表回归门禁补齐漏检，本地完成）
+
+- 状态：DONE（本地）
+- 里程碑与发布目标：v0.8.0 后续补强（安全门禁），进入下一里程碑（v0.9.0）候选清单；本项不改版本号。
+- 分支/PR：`feat/visual-regression-baseline`（本地分支，无 PR）；base `origin/main@15b05ebe`（本轮未 fetch/rebase）。
+- 本地提交：`d1ab460`（fix(security): close rls coverage gate blind spot）、本进度条目的 docs 提交。
+- 目标：roadmap H03「RLS 全表回归」——原有 `pnpm check:rls` 存在**真实漏检**，
+  需要让门禁按数据库最终态校验每一张表与每一条策略。
+- 已完成：
+  - **缺陷复现**：`scripts/check-rls.js` 用 `/CREATE\s+POLICY\s+"?([\w-]+)"?[\s\S]*?on\s+([\w.]+)[^;]*;/gi`
+    捕获策略名，`[\w-]+` 只允许**单个单词**。本仓库策略几乎全部命名为带空格的句子
+    （`"Users can view own profile"`），名字被截断成 `Users`，于是**同一张表上的多条策略在
+    最终态 `Map` 里互相覆盖**。旧门禁只收敛出 **24** 条策略，而本地 `pg_policies` 实际是
+    **35** 条 public 策略——漏掉的 11 条从未被校验 `USING` / `WITH CHECK`。
+  - 新增纯函数模块 `src/lib/security/rls-coverage.ts`：自带的语句切分跳过字符串字面量、
+    `--` 注释、`/* */` 块与 `$tag$` 美元引用块；按迁移版本顺序收敛表/RLS/策略最终态；
+    规则为 `TABLE_MISSING_RLS`（含后迁移 `disable row level security`）、`TABLE_UNCLASSIFIED`、
+    `SERVER_ONLY_TABLE_HAS_POLICY`、`POLICY_MISSING_USING`（select/delete）、
+    `POLICY_MISSING_WITH_CHECK`（insert/update/all，PostgreSQL 缺省为 `true`）。
+  - 新增 **server-only 白名单** `SERVER_ONLY_TABLES`：`email_worker_runs`、`mfa_recovery_codes`、
+    `push_delivery_attempts`、`webhook_events`——RLS 开启且必须**零策略**（仅 `service_role`
+    走 `BYPASSRLS`）。任何新表若既无策略又未登记，直接 `TABLE_UNCLASSIFIED` 失败封闭，
+    强制做一次显式分类决定。
+  - `PolicyStatement` 增加 `using` 字段（在 `with check` 之前读取切片，避免谓词里出现
+    `using` 时误判）；`src/lib/security/client-write-policies.ts` 新增可复用的
+    `splitSqlStatements()`。
+  - `scripts/check-rls.js` 改为 type-stripping 包装器 → `scripts/lib/rls-coverage-check.js`；
+    `scripts/lib/supabase-security-check.js` 的 `checkTableRls()` 删除自带正则，改为委托
+    `inspectRlsCoverage()`（只取表级失败码），两个门禁共用一套最终态模型，避免再次漂移。
+  - `tsconfig.json` 打开 `allowImportingTsExtensions`（`noEmit` 已开启），使 `src` 侧模块可被
+    Node 原生 type stripping 直接执行（此前只有 `scripts/lib/*.js` 能带 `.ts` 后缀导入）。
+  - 文档：`docs/db/security-audit.md` 新增「RLS 全表回归（2026-09-13 加固）」章节（规则表、
+    白名单、与线上目录的交叉验证 SQL、失败封闭证据、已知边界）；
+    `CHANGELOG.md` `[Unreleased] → ### Fixed` 追加条目。
+- 变更文件：`src/lib/security/rls-coverage.ts`、`src/lib/security/rls-coverage.test.ts`、
+  `src/lib/security/client-write-policies.ts`、`scripts/check-rls.js`、
+  `scripts/lib/rls-coverage-check.js`、`scripts/lib/supabase-security-check.js`、
+  `tsconfig.json`、`docs/db/security-audit.md`、`CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm check:rls` → ✅ 29 个迁移、19 张 public 表、**35** 条生效策略（旧实现为 24 条）。
+  - **与线上目录交叉验证**：把静态收敛结果与
+    `select 'public.'||tablename, policyname, cmd, array_to_string(roles,',') from pg_policies
+    where schemaname='public'` 做集合比较 → **35/35 完全一致，双向零差集**（不多算、不漏算）。
+  - **失败封闭验证**（临时 `099_probe_rls.sql`，验证后立即删除）：
+    `create table public.probe_widgets (...)` 不开 RLS → `TABLE_MISSING_RLS`，退出码 1；
+    在 `public.teams` 上追加 `"Probe can write"`（UPDATE，只有 `USING`）+
+    `"Probe can read"`（SELECT）→ 新门禁报 `POLICY_MISSING_WITH_CHECK`，
+    而**同一份文本在旧正则下"无问题"**（两条名字都截断成 `Probe`，后者覆盖前者）——
+    这正是漏检路径的端到端复现。
+  - `pnpm vitest run src/lib/security/rls-coverage.test.ts` → **14/14 通过**
+    （含"名字同首词不塌陷"的回归用例：UPDATE 缺 `WITH CHECK` 必须被报出）。
+  - `pnpm check:supabase-security` → ✅ 29 迁移、19 张表、39 条生效策略（含 storage）。
+  - `pnpm lint` / `pnpm type-check` → 通过。
+  - `pnpm check:all` → 通过（**114 文件 / 1153 测试**，较上一批 +14 条）。
+  - `pnpm verify:build` → 通过（production build，确认 `allowImportingTsExtensions` 不破坏构建）。
+  - `pnpm test:e2e` → **62/62 通过**（40.5s）。
+  - `pnpm check:docs` / `pnpm check:changelog` → 通过。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产库的 `pg_policies` 未探测（需生产只读凭证）；交叉验证只在本地 Supabase 完成。
+  - `USING` / `WITH CHECK` 的**谓词语义**（是否真正按 `auth.uid()` / 团队边界约束）不在静态
+    门禁能力内，仍需运行时身份矩阵（20/20）与代码评审；已在文档中标注边界。
+  - 不解析 `alter policy` 与动态 SQL；`storage` schema 的策略不在本门禁范围（由
+    `check:supabase-security` 的 storage 规则覆盖）。
+- 风险与回滚：
+  - 风险：新增的 `TABLE_UNCLASSIFIED` 会让**未来任何新表**在未分类时直接红，属于有意的失败封闭；
+    正确做法是补策略或显式登记进 `SERVER_ONLY_TABLES` 并写明理由。
+  - 风险：`tsconfig.json` 新开关只放宽导入书写形式（`noEmit` 前提下），不改变产物。
+  - 回滚：`git revert d1ab460`（恢复旧正则门禁、移除新模块与 tsconfig 开关）；
+    无迁移、无 schema 变更，不需要数据库侧回滚。
+- 下一步：继续 roadmap 中可本地执行的缺口（H02 上传元数据迁移、H04 service-role 最小权限审计、
+  H05 storage policy 复审、H06 webhook 幂等约束、I04 ADR 状态、I06/I07/I08/I09/I10 文档与
+  runbook、J02 E2E shard 策略、J03 CI 缓存、J07 tag/release 自动化等）。
+- 最后更新：2026-09-13
