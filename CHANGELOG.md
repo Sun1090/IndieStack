@@ -44,6 +44,14 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Security
 
+- **service_role 最小权限清单门禁**：新增 `src/lib/security/admin-client-boundary.ts`，用 TypeScript AST
+  清点**每一个** `createAdminClient()` 调用点——29 个模块、80 个调用点——并为每个模块登记
+  surface、授权模型与必须保留的源码证据字面量。`pnpm check:supabase-security`（含 `pnpm check:all`）
+  现对未分类模块、过期清单条目、调用点漂移、未登记的表/RPC/bucket/`auth.admin` 方法、
+  `use client` 模块引用与证据字面量缺失全部失败封闭。此前新路由只要 import 一次 admin client
+  即可绕过评审直接读写任意表。同时 `/api/health` 不再持有 service_role：未鉴权的公开端点改用
+  anon key 证明 PostgREST 可达（readiness 仍要求三个凭据齐全）。详见
+  [docs/db/security-audit.md](docs/db/security-audit.md)。
 - **审计日志写入面收口**：新增 `029_audit_logs_write_lockdown.sql`，删除
   `audit_logs` 上遗留的宽松 INSERT 策略
   `"Audit logs insertable by authenticated users"`（`with check (auth.role() = 'authenticated')`），

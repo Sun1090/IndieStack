@@ -7,12 +7,14 @@
 - `SECURITY DEFINER` 函数是否收回了客户端 `EXECUTE`（见下一节）；
 - 应用使用的 Supabase Storage bucket 是否有版本化的 `storage.objects` policy；
 - `service_role` 管理客户端是否泄漏到 `use client` 模块；
+- 每个 `createAdminClient()` 调用点是否都已分类并保留授权证据（见 service_role 最小权限清单）；
 - 每张 `public` 表是否都已**分类**（见下一节 RLS 全表回归）。
 
 ## 静态审计状态（2026-09-13）
 
 `pnpm check:supabase-security` 通过：29 个迁移、19 张 public 表、39 条生效 RLS policy、
-Storage policy、`SECURITY DEFINER` 执行权限、客户端写入策略与 service-role 客户端边界均通过。迁移
+Storage policy、`SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与
+29 个已分类的 service-role 调用点（80 个调用点）均通过。迁移
 `024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
 约束的 INSERT/UPDATE/DELETE policy 纳入版本控制。
 
@@ -168,6 +170,96 @@ from pg_policies where schemaname = 'public' order by 1, 2;
 
 **已知边界**：只解析迁移文本，不覆盖 `alter policy`、动态 SQL 与 Dashboard 手工策略；
 `USING` / `WITH CHECK` 的**谓词是否真正约束租户**仍由运行时身份矩阵与代码评审保证。
+
+## service_role 最小权限清单（2026-09-13 加固）
+
+RLS 只约束 `anon` / `authenticated`；`service_role` 带 `BYPASSRLS`，因此**每一个
+`createAdminClient()` 调用点都是一次显式的信任边界决策**。此前没有任何门禁证明这个集合
+稳定：新路由只要 `import` 一次 admin client，就能悄悄读写真表，静态检查不会报警。
+
+现在由 `src/lib/security/admin-client-boundary.ts` 做 AST 级清点，并接入
+`pnpm check:supabase-security`（因此也在 `pnpm check:all` 内）：
+
+```bash
+pnpm check:supabase-security
+# ✅ Supabase security audit passed: 29 migrations, 19 public tables,
+#    server-only service role checks, 39 effective RLS policies,
+#    29 classified service-role call sites
+```
+
+### 清点结果
+
+**29 个模块 / 80 个调用点**，按 surface 与信任依据分布：
+
+| surface | 模块数 | 信任依据（trust kind） | 说明 |
+|---|---:|---|---|
+| `data-access` | 12 | `server-internal` | 仓储层，授权由调用方保证 |
+| `e2e-mock-route` | 6 | `mock-bearer` | 仅 mock 模式，需 bearer token |
+| `server-action` | 3 | `role` / `session` | Server Action 入口 |
+| `request-handler` | 2 | `role` / `session` | Route Handler 入口 |
+| `trusted-worker` | 1 | `cron-secret` | cron digest worker |
+| `webhook-handler` | 1 | `webhook-signature` | Stripe 签名校验后处理 |
+| `server-component` | 1 | `role` | 管理后台聚合页 |
+| `auth-bridge` | 1 | `caller-validated` | 调用方校验 WebAuthn 断言 |
+| `server-internal` | 1 | `server-internal` | 服务端通知辅助函数 |
+| `storage-adapter` | 1 | `server-internal` | 固定 `avatars` bucket |
+| **合计** | **29** | 14 个模块带字面量授权证据 | **80 个调用点** |
+
+被 service_role 触达的表面：14 张表、1 个 bucket（`avatars`）、0 个 RPC，
+以及 5 个 `auth.admin` 方法（`deleteUser` / `generateLink` / `getUserById` /
+`listFactors` / `deleteFactor`）。`auth.admin` 与跨用户写入是这条清单里权限最高的操作，
+都应保持"入口即校验"。
+
+### 规则与失败模式
+
+| 规则码 | 触发条件 |
+|---|---|
+| `ADMIN_CLIENT_UNCLASSIFIED` | 模块调用了 `createAdminClient()` 但不在清单里 |
+| `ADMIN_CLIENT_STALE_INVENTORY` | 清单收录的模块已不再调用 service_role |
+| `ADMIN_CLIENT_CALL_SITE_DRIFT` | 已分类模块新增/减少调用点 |
+| `ADMIN_CLIENT_TABLE_NOT_ALLOWED` | 触达未登记的表 |
+| `ADMIN_CLIENT_RPC_NOT_ALLOWED` | 触达未登记的 RPC |
+| `ADMIN_CLIENT_STORAGE_BUCKET_NOT_ALLOWED` | 触达未登记的 storage bucket |
+| `ADMIN_CLIENT_AUTH_ADMIN_NOT_ALLOWED` | 调用未登记的 `auth.admin` 方法 |
+| `ADMIN_CLIENT_CLIENT_MODULE` | 含 `"use client"` 的模块引用 admin client |
+| `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING` | `trust.evidence` 里的字面量不再出现在源码中 |
+
+**失败封闭验证**（临时探针，验证后已清理，退出码均为 1）：
+
+- 新增 `src/app/api/__gate-probe/route.ts` 调用 `createAdminClient()` →
+  `ADMIN_CLIENT_UNCLASSIFIED`；
+- 在 `cron/digest` 已分类模块内追加 `admin.from("secret_table")` →
+  `ADMIN_CLIENT_TABLE_NOT_ALLOWED`（只报未登记的那一项，已登记的不误报）。
+
+### 信任证据模型
+
+清单条目记录 `surface`（模块在系统中的位置）、`trust.kind`（授权模型）与
+`trust.evidence`（**必须保持存在的源码字面量**，例如 `isCronAuthorized`、
+`constructEvent` + `STRIPE_WEBHOOK_SECRET`、`safelyRequireRole`、`timingSafeEqual`）。
+证据缺失即 `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING`，这样"把 guard 删掉"这种改动
+不会因为清单文本没变而被静默放过。
+
+`mock-bearer` 类入口要求 `isMockEnabled` 与 `E2E_BEARER_TOKEN` **同时**存在，
+避免只留 mock 开关就暴露了跨用户读写。
+
+### 已知边界
+
+- `surface` / `rationale` 是**审计文档**，不参与判定；门禁只校验调用点、操作集合与证据字面量。
+- 证据是字面量存在性检查，**不评估谓词语义**：`if (!isCronAuthorized)`（取反）也能通过。
+  真正约束由代码评审与运行时身份矩阵保证。
+- 操作按**模块**而非变量收集：模块内只要有 `createAdminClient()`，其余 `.from(...)`
+  也要求登记。这是刻意的保守选择，宁可多要一次评审。
+- `Buffer.from()` / `Array.from()` 等内建 `.from()` 已加入豁免表；未知接收者仍保守计入。
+- 只解析提交到仓库的 TypeScript；运行期拼接的表名、动态 SQL 与 Dashboard 侧配置不在范围内。
+
+### 配套收口：健康检查不再持有 service_role
+
+`/api/health` 是**未鉴权**的公开端点，此前用 `createAdminClient()` 做可达性探测。
+现在改用 `anon` key（`auth: { autoRefreshToken: false, persistSession: false }`）
+证明 PostgREST 可达，公开端点不再接触 `BYPASSRLS` 凭据。
+
+readiness 仍要求三个 Supabase 凭据齐全并新增了回归用例：探测走 anon，但 webhook /
+cron / 跨用户写入依赖 `service_role`，缺它属于部署配置错误，必须报 503 且**不发起探测**。
 
 ## 运行时身份矩阵（2026-09-12）
 
