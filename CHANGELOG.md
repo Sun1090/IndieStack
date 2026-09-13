@@ -6,6 +6,12 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **发布标签与 Release Notes 自动化门禁（J07）**：新增 `pnpm check:release-tag`，要求
+  `vX.Y.Z` 标签与 `package.json` 版本一致、`CHANGELOG.md` 存在带合法日期的同版本已发布章节，并在显式
+  指定输出文件时从该章节生成 Release Notes；同时审计 `release.yml` 必须全历史 checkout、冻结锁文件安装、
+  在创建 Release 前运行 `pnpm check:all` 与带 `--tag "$GITHUB_REF_NAME"` 的标签校验，并以
+  `gh release create --notes-file` 发布审核过的 CHANGELOG 内容，禁止 `--generate-notes` 绕过仓库内发布说明。
+
 - **ADR 决策记录治理**：补齐 README 索引中缺失的 ADR-010–013，将 ADR-005 标记为被
   ADR-013 取代，并用新增 ADR-014 正式记录 React Table v9 原生 API 迁移；新增
   `pnpm check:adr` 校验 ADR 编号、状态、日期、必要章节、索引双向一致及取代链引用，

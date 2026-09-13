@@ -162,6 +162,18 @@ describe("auditGateWiring() 接线判定", () => {
     ).toEqual([]);
   });
 
+  it("CI 运行聚合入口不会误覆盖刻意排除在聚合外的门禁", () => {
+    const result = codes(
+      input({
+        scripts: { "check:bundle": "node scripts/check-bundle.js" },
+        checkAll: "",
+        workflows: [{ path: "w.yml", content: "name: CI\n      - run: pnpm check:all\n" }],
+        exceptions: { "check:bundle": { local: "需要构建产物", ci: "由独立构建 job 覆盖" } },
+      }),
+    );
+    expect(result).toEqual([]);
+  });
+
   it("词边界不把 check:migrations 当成 check:migration-history", () => {
     const report = auditGateWiring(
       input({

@@ -1,6 +1,7 @@
 # Release 检查模板（打 v* 标签前逐项勾选）
 
-> 由 `.github/workflows/release.yml` 在推送 `v*` 标签后自动创建 GitHub Release（notes 自动生成）。
+> 由 `.github/workflows/release.yml` 在推送 `v*` 标签后校验标签与 `package.json` 一致，并从 CHANGELOG
+> 对应章节生成 GitHub Release Notes。
 > 本模板保证打标签前人工侧已就绪。
 
 ## 版本号

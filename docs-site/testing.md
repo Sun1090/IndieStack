@@ -20,7 +20,7 @@ change area; `pnpm check:all` (same as `pnpm verify:all`) runs the full local ag
 | `i18n`              | `messages`, `src/i18n`                                 | `pnpm check:locales` · `pnpm check:i18n`                                                                                                                                     |
 | `providers`         | `src/lib/providers`, `docs-site/provider-diagnostics.md` | `pnpm check:provider-docs` · `pnpm provider:doctor`                                                                                                                        |
 | `mock`              | `src/lib/mock`, `src/app/api/e2e`                      | `pnpm check:mock-docs` · `pnpm test:e2e`                                                                                                                                     |
-| `ci-tooling`        | `.github/workflows`, `scripts`, `package.json`         | `pnpm check:gates` · `pnpm check:workflows` · `pnpm check:codeql` · `pnpm check:secrets-scan` · `pnpm lint` · `pnpm type-check` · `pnpm test` · `pnpm check:all`             |
+| `ci-tooling`        | `.github/workflows`, `scripts`, `package.json`         | `pnpm check:gates` · `pnpm check:workflows` · `pnpm check:codeql` · `pnpm check:secrets-scan` · `pnpm check:release-tag` · `pnpm lint` · `pnpm type-check` · `pnpm test` · `pnpm check:all` |
 | `docs`              | `docs`, `docs-site`                                    | `pnpm check:docs` · `pnpm check:adr` · `pnpm check:changelog` · `pnpm check:release-docs`                                                                                    |
 
 ## Notes

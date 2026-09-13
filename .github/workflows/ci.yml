@@ -117,6 +117,9 @@ jobs:
       - name: Check secrets scan policy
         run: pnpm check:secrets-scan
 
+      - name: Check release tag policy
+        run: pnpm check:release-tag
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

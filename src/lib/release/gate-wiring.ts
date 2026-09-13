@@ -196,7 +196,7 @@ function auditGateTargets(
     const exemption = exceptions[gate];
     const wiredLocally = containsPnpmScript(checkAll, gate);
     const wiredInCi =
-      aggregateInCi ||
+      (aggregateInCi && wiredLocally) ||
       workflows.some((workflow) => wiredInScriptList(workflow.content, gate, scripts[gate] ?? ""));
     if (wiredLocally) localGates.push(gate);
     if (wiredInCi) ciGates.push(gate);

@@ -182,6 +182,24 @@ push/PR 触发以下关卡：`Lint & Type Check`（含 i18n/RLS/工作流等静�
 **局限**：真实历史扫描结果与 GitHub 告警状态由 gitleaks 在 runner / GitHub 侧产生，需要推送与环境权限；
 本地门禁只防止扫描强度、allowlist 和处置策略静默漂移。
 
+### 发布标签与 Release Notes 自动化（J07）
+
+`.github/workflows/release.yml` 是 `v*` 标签进入 GitHub Release 的唯一入口。`pnpm check:release-tag` 把它
+固化为可执行契约，避免「标签推了但 CHANGELOG 没写」或绕过人工审核的自动 notes：
+
+- 标签必须是 `v<package.json version>`，且版本严格为 `x.y.z`；标签与包版本不一致直接失败；
+- `CHANGELOG.md` 必须存在同版本的已发布章节，章节必须有合法 `YYYY-MM-DD` 日期和非空正文；
+- 校验通过时用 `--notes-output` 将对应 CHANGELOG 正文写成 Release Notes 文件；工作流再用
+  `gh release create --notes-file` 发布。`--generate-notes` 被明确禁止；
+- workflow 必须由 `v*` 标签触发、保留 `contents: write`、`fetch-depth: 0` 与 `timeout-minutes`，并在创建
+  Release 前执行 `pnpm install --frozen-lockfile`、`pnpm check:all` 和显式带 `--tag "$GITHUB_REF_NAME"`
+  的 `pnpm check:release-tag`；
+- 规则本体位于 `src/lib/release/release-tag-policy.ts`，IO/CLI 位于
+  `scripts/lib/release-tag-check.js` / `scripts/check-release-tag.js`，由 `pnpm check:all` 与 CI 执行。
+
+**局限**：本地门禁验证的是标签、版本、CHANGELOG 与 workflow 的静态一致性，不会创建 tag，也不替代
+GitHub 侧 Release 创建结果、发布审批和生产 smoke；这些仍由发布负责人按 release runbook 完成。
+
 ## Mock fixture 隔离策略（F02/F03）
 
 默认 E2E 不使用 file-backed fixture。Playwright 的浏览器测试与 Next.js dev server 可能跨 worker、跨模块 chunk 运行；把可变 fixture 写入仓库文件会带来并发覆盖、残留状态、工作区污染和 CI artifact 泄露风险，也无法保证多个 server worker 看到同一份原子状态。

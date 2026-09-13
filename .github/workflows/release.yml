@@ -1,7 +1,7 @@
 name: Release
 
 ## 推送 v* 标签时自动创建 GitHub Release
-## Release Notes 由上一个标签以来的提交自动生成
+## Release Notes 从已验证的 CHANGELOG 章节生成；标签必须与 package.json 版本一致
 
 on:
   push:
@@ -21,13 +21,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate release notes and create release
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run release gates
+        run: pnpm check:all
+
+      - name: Render verified release notes
+        run: pnpm check:release-tag --tag "$GITHUB_REF_NAME" --notes-output release-notes.md
+
+      - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF}^" 2>/dev/null || echo "")
-          ARGS=("--title" "${GITHUB_REF#refs/tags/}" "--generate-notes")
-          if [ -n "$PREV_TAG" ]; then
-            ARGS+=("--notes-start-tag" "$PREV_TAG")
-          fi
-          gh release create "${GITHUB_REF#refs/tags/}" "${ARGS[@]}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md
