@@ -6,6 +6,18 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Storage bucket 策略审计跟随代码，而不是写死的 `avatars`**：新增
+  `src/lib/security/storage-policies.ts`，从 `src/**` 发现所有被引用的 bucket、从迁移最终态
+  （`create policy` / `drop policy` 归约）推导生效的 `storage.objects` 策略，再做交叉验证：
+  未登记 bucket（`STORAGE_BUCKET_UNDECLARED`）、没有建行迁移（`STORAGE_BUCKET_UNVERSIONED`）、
+  没有生效策略（`STORAGE_BUCKET_UNPOLICED`）、写策略未同时钉住 `bucket_id` 与 `auth.uid()`
+  目录（`STORAGE_WRITE_POLICY_UNSCOPED`）、读策略没有 `bucket_id` 过滤
+  （`STORAGE_READ_POLICY_UNSCOPED`）、私有 bucket 出现客户端读策略
+  （`STORAGE_PRIVATE_BUCKET_PUBLIC_READ`）、公共读 bucket 缺少客户端 SELECT
+  （`STORAGE_PUBLIC_BUCKET_UNREADABLE`）全部失败封闭。新增 20 条单测与
+  [docs/db/storage-policy-audit.md](docs/db/storage-policy-audit.md)（含真实数据库目录核对与 6 行身份矩阵）。
+
+
 - **邮件 worker 运行记录保留期**：新增 `027_email_worker_runs_retention.sql`，`cleanup_old_email_worker_runs()`
   按 90 天保留期清理 `email_worker_runs`（与 `notifications` / `webhook_events` 对齐），并通过带
   守卫的 `pg_cron` 任务每周日 04:15 执行（未安装 `pg_cron` 的环境自动跳过）；`security definer` +

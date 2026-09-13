@@ -1231,3 +1231,86 @@
   I09 贡献者测试矩阵、I10 迁移回滚 runbook、J02 E2E shard 策略、J03 CI 缓存、
   J07 tag/release 自动化等）。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H05_STORAGE_POLICY_INVENTORY（对象存储 bucket 清点门禁，本地完成）
+
+- 状态：DONE（本地）
+- 里程碑与发布目标：v0.8.0 后续补强（安全门禁）；H05 完成后 M1「安全与测试基建」仅剩 H02 上传元数据迁移。
+- 分支/PR：`feat/visual-regression-baseline`（本地分支，无 PR）；base `origin/main@15b05ebe`（本轮未 fetch/rebase）。
+- 本地提交：`90f0071`（feat(security): audit storage buckets from code instead of a hardcoded name）、
+  `docs(security): document the storage bucket policy audit`、本进度条目的 docs 提交。
+- 目标：roadmap H05「storage policy 复审」。旧门禁把 bucket 名写死成字面量
+  `avatars`，只在 `src/lib/storage/index.ts` 里找 `storage.from("avatars")`，再按 4 个
+  **policy 名字符串**做正则匹配。两个盲区：
+  (a) 任何第二个 bucket（写在别的模块、别的写法）都不会被检查、也没有对应迁移或策略就上线；
+  (b) 只要旧 policy 名字还留在迁移语料里，重命名/重写策略依然能通过。
+- 已完成：
+  - 新增 `src/lib/security/storage-policies.ts`：按**代码**发现 bucket，再与迁移里的
+    bucket 行、生效策略集交叉核对。
+    - `discoverStorageBuckets(appSources)`：正则 `\.storage\s*\.\s*from\s*\(\s*["'`]([a-z0-9][a-z0-9_-]*)["'`]\s*\)`
+      （大小写不敏感，兼容 admin/supabase 等任意接收者，去重排序）。
+    - `collectVersionedBuckets(migrations)`：逐语句（`splitSqlStatements`）解析
+      `insert into storage.buckets ... values ('<id>', …)`。
+    - `collectStoragePolicies(migrations)`：复用 `extractEffectivePolicies`，因此后续
+      migration 的 `drop policy` 会正确移除覆盖。
+    - `STORAGE_BUCKET_INVENTORY`（当前仅 `avatars`：`read:"public"`、
+      `tenantScopedWrites:true` + 理由），每条都是一次人工复审决策。
+    - 7 条失败封闭规则：`STORAGE_BUCKET_UNDECLARED`、`STORAGE_BUCKET_UNVERSIONED`、
+      `STORAGE_BUCKET_UNPOLICED`、`STORAGE_WRITE_POLICY_UNSCOPED`（需同时含
+      `bucket_id` + `storage.foldername` + `auth.uid()`）、`STORAGE_READ_POLICY_UNSCOPED`、
+      `STORAGE_PRIVATE_BUCKET_PUBLIC_READ`、`STORAGE_PUBLIC_BUCKET_UNREADABLE`；
+      另有非阻断 warning：inventory 条目已无任何代码引用（可能是过期决策）。
+    - 入口 `inspectStoragePolicies({migrations, appSources, inventory?}) → {issues, warnings}`。
+      因 `scripts/lib/supabase-security-check.js` 在 Node type-stripping 下运行，跨目录导入
+      必须显式写 `.ts` 扩展名。
+  - `scripts/lib/supabase-security-check.js`：删除写死的 `STORAGE_POLICY_RULES` /
+    `checkStoragePolicies`；新增 `readAppSources(srcDir, root)`（非测试 `src/**` 的
+    `.ts/.tsx`，仓库相对路径，排序）并被 `checkAdminClientBoundary` 复用；
+    接入 `inspectStoragePolicies(...)`，issue 统一输出 `[CODE] message`，warning 照旧打印。
+  - 测试：`src/lib/security/storage-policies.test.ts` 新增 20 条，含一条**仓库全量回归**
+    （`fs.readdirSync(dir, {recursive:true})` + `entry.parentPath` 读真实迁移与真实
+    `src/**`，断言零 issue、零 warning），保证门禁与仓库现状绑定。
+- 变更文件：`src/lib/security/storage-policies.ts`（新增）+ 测试（新增）、
+  `scripts/lib/supabase-security-check.js`、`docs/db/storage-policy-audit.md`（新增）、
+  `docs/db/security-audit.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm vitest run src/lib/security/storage-policies.test.ts` → **20/20 通过**。
+  - **失败封闭实证**：临时新建 `src/lib/security/__storage-probe.ts` 写入
+    `admin.storage.from("project-attachments")` → 门禁 exit 1，且恰好报出
+    `STORAGE_BUCKET_UNDECLARED` + `STORAGE_BUCKET_UNVERSIONED` + `STORAGE_BUCKET_UNPOLICED`
+    三条；删除探针后门禁恢复绿色。（教训：正则不能在文档注释里写出真实 bucket 名，
+    否则注释本身会被计入发现结果。）
+  - **本地 Supabase 运行时交叉核对**（`docker exec -i supabase_db_indiestack psql -U postgres -d postgres`）：
+    `select id,name,public from storage.buckets` → 仅 `avatars|avatars|t` 一行；
+    `pg_policies` 查 `storage.objects` → 4 条（SELECT/INSERT/UPDATE/DELETE），谓词与
+    迁移 `024` 一致（写策略均为 `(bucket_id='avatars') AND ((storage.foldername(name))[1] = (SELECT (auth.uid())::text))`）。
+  - **身份矩阵**（逐条 `psql -c` 单跑并读 printed error / `exit=$?`，多语句脚本只会报告最后一条状态）：
+    anon INSERT 被拒；authenticated 写他人目录被拒；authenticated 写自己目录 `INSERT 0 1`；
+    写未登记 bucket 被拒；authenticated UPDATE 他人行 `UPDATE 0`；anon SELECT 允许（`count = 0`）。
+    注：`storage.objects` 的直接 `DELETE` 被 Supabase `storage.protect_delete()` 触发器拦截，
+    因此行级范围用 UPDATE 取证。
+  - `pnpm check:supabase-security` → ✅ **30 迁移、19 张公开表、server-only service role 检查、
+    39 条生效 RLS 策略、29 个已分类 service-role 调用点**。
+  - `pnpm lint` → 通过；`pnpm type-check` → 通过；`pnpm check:docs` → 通过；`pnpm check:changelog` → 通过。
+  - `pnpm check:all` → 通过（**117 文件 / 1211 测试**，上一批基线 116 文件 / 1191 测试）。
+  - `pnpm build` → 通过（production build 正常完成）。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产库的 `storage.buckets` / `pg_policies` 未探测（需生产只读凭证）；运行时交叉核对仅在本地
+    Supabase 完成。
+  - 未做真实浏览器端的 Storage-API 上传链路验证（本次仅静态门禁 + psql 授权矩阵）。
+  - `readAppSources` 只覆盖 `src/**`；若未来有 bucket 引用出现在 `src/` 之外（例如
+    `scripts/`、`supabase/functions/`），需扩大扫描范围——当前仓库无此情况。
+- 风险与回滚：
+  - 风险：门禁靠**约定**而非运行时强制——新增 bucket 必须同时改 `src` 引用与
+    `STORAGE_BUCKET_INVENTORY`，否则 `STORAGE_BUCKET_UNDECLARED` 会让 CI 红。
+    这是有意的失败封闭设计；若某次紧急发版需要临时 bypass，只能改 inventory 并留下复审记录。
+  - 风险：写策略只校验"含 `bucket_id` + `storage.foldername` + `auth.uid()`"这三个标记，
+    更复杂但仍正确的谓词（例如按 team 共享目录）会被误报，需要用 inventory 的模型显式表达。
+  - 回滚：`git revert 90f0071`（纯静态门禁 + 文档，无 schema 变更、无数据迁移）；
+    回滚后旧的字面量 `avatars` 门禁恢复，安全覆盖面退回到 H05 之前。
+- 下一步：继续本地可执行缺口——H02 上传元数据迁移（与 `src/lib/uploads/service.ts` 当前直接写
+  `profiles.avatar_url` / `projects.cover_url` 的行为需要协同设计）、I04 ADR 状态、I06 v0.8.0
+  release checklist、I07 mock 开发指南、I08 provider 诊断指南、I09 贡献者测试矩阵、
+  I10 迁移回滚 runbook、J02 E2E shard、J03 CI 缓存、J07 tag/release 自动化。
+- 最后更新：2026-09-13

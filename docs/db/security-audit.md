@@ -5,7 +5,8 @@
 - 所有 `public` 表是否在迁移中启用 RLS；
 - `SECURITY DEFINER` 函数是否固定 `search_path`；
 - `SECURITY DEFINER` 函数是否收回了客户端 `EXECUTE`（见下一节）；
-- 应用使用的 Supabase Storage bucket 是否有版本化的 `storage.objects` policy；
+- 应用引用的每个 Storage bucket 是否已登记（`STORAGE_BUCKET_INVENTORY`）、是否有建行迁移，
+  以及客户端读写策略是否按 `bucket_id` + `auth.uid()` 目录收敛（见 [storage-policy-audit.md](storage-policy-audit.md)）；
 - `service_role` 管理客户端是否泄漏到 `use client` 模块；
 - 每个 `createAdminClient()` 调用点是否都已分类并保留授权证据（见 service_role 最小权限清单）；
 - 每张 `public` 表是否都已**分类**（见下一节 RLS 全表回归）。
@@ -13,10 +14,12 @@
 ## 静态审计状态（2026-09-13）
 
 `pnpm check:supabase-security` 通过：30 个迁移、19 张 public 表、39 条生效 RLS policy、
-Storage policy、`SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与
+Storage bucket 策略（应用引用的每个 bucket 都已登记、由迁移建行，且有按租户收敛的生效策略）、
+`SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与
 29 个已分类的 service-role 调用点（81 个调用点）均通过。迁移
 `024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
-约束的 INSERT/UPDATE/DELETE policy 纳入版本控制。
+约束的 INSERT/UPDATE/DELETE policy 纳入版本控制；bucket 清单、规则与运行时核对见
+[docs/db/storage-policy-audit.md](storage-policy-audit.md)。
 
 ## SECURITY DEFINER 执行权限（2026-09-13 加固）
 
@@ -299,7 +302,9 @@ JSON；发布记录需要附上本次输出或 CI artifact。
 
 如果选择 private bucket，必须同步修改 `src/lib/storage/index.ts` 的 `getPublicUrl()`
 为 signed URL，并更新上述矩阵与 smoke test；当前实现明确选择公共读以保持现有图片 URL
-兼容性。
+兼容性。任何新增 bucket 都要先在 `STORAGE_BUCKET_INVENTORY` 登记读取模型，否则
+`pnpm check:supabase-security` 直接失败封闭（清单与规则见
+[docs/db/storage-policy-audit.md](storage-policy-audit.md)）。
 
 ## 迁移与回滚说明
 

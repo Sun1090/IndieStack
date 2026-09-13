@@ -105,10 +105,10 @@
 
 71. H01 Web Push migration
 72. H02 upload metadata migration
-73. H03 RLS 全表回归
-74. H04 service-role 最小权限审计
-75. H05 storage policy 审计
-76. H06 webhook 幂等约束
+73. H03 RLS 全表回归（完成：`pnpm check:rls` 修掉策略名按单词截断导致同表多策略互相覆盖的漏检，改为带引号的最终态归约 + 全表分类（有生效策略或显式登记 server-only），新表未分类直接失败封闭；新增 `src/lib/security/rls-coverage.ts` 与单测）
+74. H04 service-role 最小权限审计（完成：新增 `src/lib/security/admin-client-boundary.ts`，用 TypeScript AST 清点每个 `createAdminClient()` 调用点并记录触达表/RPC/bucket/`auth.admin` 方法与授权证据；未登记调用点、越权表、未登记 bucket 均失败封闭，接入 `pnpm check:supabase-security`）
+75. H05 storage policy 审计（完成：新增 `src/lib/security/storage-policies.ts`，bucket 集合从 `src/**` 的 `storage.from(...)` 发现、policy 集合从迁移最终态归约，交叉验证登记表/建行迁移/生效策略/`bucket_id`+`auth.uid()` 写收敛/公共读契约，7 类规则码全部失败封闭；20 条单测 + `docs/db/storage-policy-audit.md`（含真实数据库目录核对与 6 行身份矩阵））
+76. H06 webhook 幂等约束（完成：`030_webhook_event_idempotency.sql` 新增 `claim_webhook_event()` 原子占位（`security definer` + 空 `search_path`，仅 `service_role`）与 15 分钟占位租约，唯一键由 `event_id` 收窄为 `(provider, event_id)`；Stripe 路由改成先占位、再处理、后落状态，重复投递回 200 且零副作用，副作用失败标记 `failed` 让重试可重新占位；E2E 从断言日志行数改为断言副作用本身不重放）
 77. H07 审计日志索引复审
 78. H08 数据保留与删除策略
 79. H09 migration drift 检查（完成：`pnpm check:migrations` 离线校验迁移命名/编号连续/空文件/BOM/CRLF/结尾换行，并把每个迁移的 SHA-256 与提交的 `supabase/migration-manifest.json` 基线比对；`pnpm update:migrations-manifest` 只允许追加新增迁移，改写已基线化文件会被拒绝，避免用重跑基线掩盖历史篡改。新增 `pnpm check:migration-history` 只读比对本地 Supabase 迁移历史，对未应用迁移和数据库独有版本报错。纯函数 `src/lib/migrations/migration-drift.ts` 由 43 条单测覆盖，CLI 走 Node 原生 type stripping；静态门禁接入 `pnpm check:all` 与 CI，历史门禁因依赖 `supabase start` 不进离线聚合）
