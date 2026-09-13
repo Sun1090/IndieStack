@@ -1131,3 +1131,103 @@
   I08 provider 诊断指南、I09 贡献者测试矩阵、I10 迁移回滚 runbook、J02 E2E shard 策略、
   J03 CI 缓存、J07 tag/release 自动化等）。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H06_WEBHOOK_IDEMPOTENCY（Stripe webhook 幂等占位，本地完成）
+
+- 状态：DONE（本地）
+- 里程碑与发布目标：v0.8.0 后续补强（安全与数据一致性），归入 M1「安全与测试基建」；
+  进入下一里程碑（v0.9.0）候选清单；本项不改版本号。
+- 分支/PR：`feat/visual-regression-baseline`（本地分支，**无 PR**）；base `origin/main@15b05ebe`
+  （本轮未 fetch/rebase）。权限边界 LOCAL_ONLY：未 push / 未建 PR / 未 merge / 未 deploy。
+- 本地提交：`d2c8f06`（fix(mock): fill notification column defaults）、
+  `d85b7ef`（fix(webhooks): claim webhook events before running side effects）、
+  `90f8f5b`（docs(webhooks): document the webhook idempotency contract）、
+  本进度条目的 docs 提交。
+- 目标：roadmap H06「webhook 幂等约束」。`webhook_events` 此前只是"最后写一行日志"的记录表：
+  处理器**先执行全部副作用**（写订阅状态、发"付款成功"通知）再 upsert，而 Stripe 是
+  at-least-once 投递且对非 2xx 主动重试，因此同一 `event.id` 反复投递会**重复执行副作用**；
+  F05 的"重复 event id 幂等"用例只断言日志行数，结构上发现不了重放。
+- 已完成：
+  - `supabase/migrations/030_webhook_event_idempotency.sql`：新增 `attempts integer not null
+    default 1` 与 `last_attempt_at timestamptz not null default now()`；把 `event_id` 单列唯一
+    收窄为 `(provider, event_id)` 复合唯一（`webhook_events_provider_event_id_key`）；
+    新增 `claim_webhook_event(p_provider, p_event_id, p_event_type)`，`security definer` +
+    `set search_path = ''`，`insert … on conflict do nothing` 命中即 `claimed/1`，否则
+    `select … for update` 加行锁后判定：`status='failed'` 或（`received` 且
+    `last_attempt_at < now() - 15 minutes`）→ 重新占位并 `attempts+1`，其余 → `duplicate`；
+    末尾 `revoke all … from public, anon, authenticated` + `grant execute … to service_role`。
+  - `src/lib/repositories/webhook-events.ts`：`claimWebhookEvent()` 走
+    `createAdminClient().rpc("claim_webhook_event", …)`，**失败封闭**——RPC 报错或返回
+    未知/缺失结论一律抛错，绝不降级成 `duplicate`（否则数据库故障会被伪装成"已处理"，
+    Stripe 收 200 停止重试而静默丢失状态同步）；新增 `finalizeWebhookEvent()`；
+    **删除** `upsertWebhookEvent()`（先写日志的旧模型）；`listRecentWebhookEvents` 增选 `attempts`。
+  - `src/app/api/webhooks/stripe/route.ts`：签名校验后**先占位**。`duplicate` ⇒ 200
+    `{received:true, duplicate:true}` 且零副作用；占位失败 ⇒ 500；`applyEvent()` 归一为
+    `"processed" | "skipped"`；副作用失败 ⇒ `markEventFailed()`（`status='failed'`）+ 500
+    让 Stripe 重试可重新占位；副作用**成功之后**的 `finalizeWebhookEvent` 放在独立
+    try/catch，失败只记日志、响应保持 200（此时回 500 会让下次重试必然重放副作用）。
+  - `src/lib/mock/index.ts`：`claimMockWebhookEvent()` 镜像 030 的状态机（含 15 分钟租约与
+    `attempts` 累加），`MockSupabaseClient.rpc` 改为真正的 `async` 方法（非 async 且返回
+    `then` 会触发 TS1320）。**另修** `persistInsert()` 未补 `notifications` 列默认值
+    （`is_read=false` / `email_sent=false`）导致按这两列过滤时漏行的 mock 与真实库不一致问题；
+    `src/app/api/e2e/seed-notifications/route.ts` 的 GET 新增 `includeSent=true`
+    （默认行为不变，仅放开待发队列过滤，供断言"已实时单发"的通知）。
+  - 测试：新增 `src/app/api/webhooks/stripe/route.test.ts`（10 条）、
+    `src/lib/repositories/webhook-events.test.ts`（15 条）、mock 状态机与列默认值用例（6 + 1 条）、
+    E2E「重复投递不重放副作用（付款通知只写一次）」（0 → 1 → 1 计数 + `status=skipped`/`attempts=1`）。
+  - 门禁清点同步：`src/lib/security/admin-client-boundary.ts` 的 `webhook-events.ts` 条目更新为
+    `calls: [claimWebhookEvent, countWebhookEvents, finalizeWebhookEvent, listRecentWebhookEvents]`、
+    `rpc: [claim_webhook_event]`，调用点总数 80 → **81**；
+    `pnpm db:types` 与 `pnpm update:migrations-manifest` 重生成（030 sha256
+    `47cbb985e38f158efd73610ab880870c1a1c3743e1a67a96b1778a1146182b70`）。
+  - 文档：新增 `docs/db/webhook-idempotency.md`（必要性、旧/新行为对照、协议与状态机、
+    运维自查 SQL、回滚步骤）；`docs/db/security-audit.md` 计数 29→30 迁移、80→81 调用点、
+    RPC 暴露面 0→1 并补 `SECURITY DEFINER` 行；`CHANGELOG.md` 记录 Changed + Fixed。
+- 变更文件：`supabase/migrations/030_webhook_event_idempotency.sql`（新增）、
+  `supabase/migration-manifest.json`、`src/lib/supabase/database.types.ts`、
+  `src/lib/repositories/webhook-events.ts` + 测试、`src/app/api/webhooks/stripe/route.ts` + 测试（新增）、
+  `src/lib/mock/index.ts` + `src/lib/mock.test.ts`、`src/app/api/e2e/seed-notifications/route.ts`、
+  `e2e/webhook-events.spec.ts`、`src/lib/security/admin-client-boundary.ts` + 测试、
+  `docs/db/webhook-idempotency.md`（新增）、`docs/db/security-audit.md`、`CHANGELOG.md`、
+  `docs/progress.md`。
+- 验证命令与结果：
+  - **本地 Supabase 真库验证**（`docker exec -i supabase_db_indiestack psql -U postgres -d postgres`）：
+    030 应用成功（共 30 个迁移）；顺序投递 1 次 `claimed`、重投 `duplicate`；
+    **8 路并发**同一 event_id → 恰好 1 个 `claimed` + 7 个 `duplicate`；
+    权限矩阵 `anon=f`、`authenticated=f`、`service_role=t`。
+  - `pnpm lint` → 通过（复杂度 ≤ 15）。
+  - `pnpm type-check` → 通过。
+  - `pnpm test` → **116 文件 / 1191 测试**全部通过（上一批基线 115 文件 / 1168 测试）。
+  - `pnpm test:e2e` → **63/63 通过**（41.0s，上一批基线 62/62）。
+  - `pnpm check:supabase-security` → ✅ **30 迁移、19 表、39 条生效策略、29 个已分类
+    service-role 调用点（81 个调用点）**。
+  - `pnpm check:migrations` → ✅ 30 个迁移与 manifest 一致；`pnpm check:migration-history` → ✅ 对齐。
+  - `pnpm check:all` → 通过（locales 972/972、i18n 837、agents、rls 30/19/35、
+    migrations、supabase-security、security 708 文件 / 416 源文件 / 8 workflow、
+    release-docs v0.8.0 7 件、changelog 8 released + 1 Unreleased、docs、a11y、type-check、lint、test）。
+  - `pnpm build` → 通过（production build，动态 dashboard 路由与静态 sitemap/robots 正常产出）。
+  - `pnpm check:docs` / `pnpm check:changelog` → 通过。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产库的 `proacl` / `has_function_privilege` 未探测（需生产只读凭证）；权限矩阵仅在本地 Supabase 验证。
+  - Stripe **真实重试链路**（Stripe 侧按非 2xx 自动重投）未验证：本地用签名重放模拟同一 `event.id`。
+  - 进程崩溃后 `received` 行超过 15 分钟被回收的路径只做了 SQL/mock 单测，未做长时间真实挂起演练。
+  - `finalizeWebhookEvent` 失败的"响应仍 200 + 只记日志"分支只做单测，未在生产观测 `status` 停留
+    `received` 超过租约后由 Stripe 重试救回的实际轨迹。
+- 风险与回滚：
+  - 风险：`duplicate` 一律回 200 会让 Stripe 停止重试；若某次投递**副作用失败但状态被错误写成
+    非 `failed`**，该事件将永久停留在重复结论。当前靠 `failed` 标记 + 15 分钟租约兜底，
+    但要求 `markEventFailed()` 自身成功（它失败时仅记日志）。
+  - 风险：`claim_webhook_event` 是 `SECURITY DEFINER`，权限一旦误授予 `anon`/`authenticated`
+    即可伪造占位或置 `failed` 触发重放；`check:supabase-security` 已按（固定 `search_path`
+    + 仅 `service_role`）纳入门禁。
+  - 回滚：见 `docs/db/webhook-idempotency.md` 的回滚步骤——**先回应用**（恢复先执行副作用、
+    后写日志的旧路径），**再回 DDL**（删函数、删 `(provider, event_id)` 唯一约束、可选删两列）；
+    回滚期间必须接受同一 `event.id` 重投会重放副作用。
+  - 代码层回滚：`git revert 90f8f5b d85b7ef`（`d2c8f06` 是独立的 mock 与真实库一致性修复，
+    不应随本项回滚）。
+- 下一步：继续 roadmap 中可本地执行的缺口（H02 上传元数据迁移、H05 storage policy 复审、
+  I04 ADR 状态、I06 release checklist v0.8.0、I07 本地 mock 开发指南、I08 provider 诊断指南、
+  I09 贡献者测试矩阵、I10 迁移回滚 runbook、J02 E2E shard 策略、J03 CI 缓存、
+  J07 tag/release 自动化等）。
+- 最后更新：2026-09-13
