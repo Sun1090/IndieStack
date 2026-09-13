@@ -6,6 +6,10 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Appark 生产采样配置（E01）**：新增 `NEXT_PUBLIC_APPARK_SAMPLE_RATE`，以事件级概率采样控制
+  APM 流量；取值 `[0, 1]`，缺省 `1` 保持全量，`0` 可静音，非法值在环境与 provider 诊断中告警并
+  回退到 `1`，避免配置笔误静默关闭可观测性。采样在入队前执行，业务与错误事件使用同一策略。
+
 - **发布标签与 Release Notes 自动化门禁（J07）**：新增 `pnpm check:release-tag`，要求
   `vX.Y.Z` 标签与 `package.json` 版本一致、`CHANGELOG.md` 存在带合法日期的同版本已发布章节，并在显式
   指定输出文件时从该章节生成 Release Notes；同时审计 `release.yml` 必须全历史 checkout、冻结锁文件安装、

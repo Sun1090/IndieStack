@@ -3,7 +3,15 @@
  * 覆盖：启用门控、事件入队/flush 清空、非 2xx 保留批次、网络异常吞错、队列上限
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resetApparkForTest, isApparkEnabled, trackEvent, trackError, flushEvents, initAppark } from "./appark";
+import {
+  resetApparkForTest,
+  isApparkEnabled,
+  getApparkSampleRate,
+  trackEvent,
+  trackError,
+  flushEvents,
+  initAppark,
+} from "./appark";
 
 const fetchMockResolved: { ok: boolean; status?: number } = { ok: true };
 
@@ -19,6 +27,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.NEXT_PUBLIC_APPARK_API_KEY;
   delete process.env.NEXT_PUBLIC_APPARK_ENDPOINT;
+  delete process.env.NEXT_PUBLIC_APPARK_SAMPLE_RATE;
   delete process.env.NEXT_PUBLIC_APP_VERSION;
 });
 
@@ -36,6 +45,47 @@ describe("initAppark()", () => {
       initAppark();
       initAppark();
     }).not.toThrow();
+  });
+});
+
+describe("Appark 采样配置", () => {
+  it("未配置时默认采样 100%", () => {
+    expect(getApparkSampleRate()).toBe(1);
+  });
+
+  it("读取 0 到 1 之间的有效采样率", () => {
+    process.env.NEXT_PUBLIC_APPARK_SAMPLE_RATE = "0.25";
+    resetApparkForTest();
+    expect(getApparkSampleRate()).toBe(0.25);
+  });
+
+  it("非法采样率告警并回退到 100%", () => {
+    process.env.NEXT_PUBLIC_APPARK_SAMPLE_RATE = "oops";
+    resetApparkForTest();
+    expect(getApparkSampleRate()).toBe(1);
+  });
+
+  it("采样率为 0 时不入队也不发起网络请求", async () => {
+    process.env.NEXT_PUBLIC_APPARK_SAMPLE_RATE = "0";
+    resetApparkForTest();
+    trackEvent("checkout.session_created");
+    trackError("boom", new Error("oops"));
+    await flushEvents();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("小数采样率按概率决定事件是否入队", async () => {
+    process.env.NEXT_PUBLIC_APPARK_SAMPLE_RATE = "0.5";
+    resetApparkForTest();
+    const random = vi.spyOn(Math, "random");
+
+    random.mockReturnValueOnce(0.49).mockReturnValueOnce(0.5);
+    trackEvent("sampled");
+    trackEvent("dropped");
+    await flushEvents();
+
+    const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    expect(body.events.map((event: { event: string }) => event.event)).toEqual(["sampled"]);
   });
 });
 

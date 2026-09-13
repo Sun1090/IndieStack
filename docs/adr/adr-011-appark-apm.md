@@ -20,12 +20,16 @@ v0.5.0 C01 要求将其落为生产代码。厂商 SDK 的可用性与初始化�
 2. **默认旁路关闭**：`NEXT_PUBLIC_APPARK_API_KEY` 与 `NEXT_PUBLIC_APPARK_ENDPOINT`
    齐备才真正启用；未启用时 track* 只入内存队列、flush 直接清空，零网络开销。
    配置只给一半时在 env 诊断（`getEnvReport`）中告警。
-3. **初始化位置**：`src/instrumentation.ts`（nodejs runtime）调用 `initAppark()`，
+3. **生产采样**：`NEXT_PUBLIC_APPARK_SAMPLE_RATE` 控制事件级采样，取值范围
+   `[0, 1]`，缺省 `1`（保持全量），`0` 表示静音。每个 `trackEvent` / `trackError`
+   入队前按概率判断；非法或越界值在 env 与 provider 诊断中告警，并回退到 `1`，
+   不允许配置笔误静默降低或关闭可观测性。
+4. **初始化位置**：`src/instrumentation.ts`（nodejs runtime）调用 `initAppark()`，
    幂等；与 Sentry server config 并列，无顺序耦合。
-4. **埋点范围（首版）**：仅关键服务端流程——Stripe 结账会话创建
-   （`checkout.session_created`）与 cron digest 运行指标（`cron.digest`）；
+5. **埋点范围（首版）**：仅关键服务端流程——Stripe 结账会话创建
+    （`checkout.session_created`）与 cron digest 运行指标（`cron.digest`）；
    错误主通道仍走 Sentry（`trackError` 仅作补充通道）。
-5. **失败语义**：APM 属旁路——flush 非 2xx 保留批次待重试（受队列上限约束），
+6. **失败语义**：APM 属旁路——flush 非 2xx 保留批次待重试（受队列上限约束），
    网络异常吞错记日志，绝不影响业务主流程。
 
 ## 理由
@@ -38,6 +42,8 @@ v0.5.0 C01 要求将其落为生产代码。厂商 SDK 的可用性与初始化�
 
 - 事件 schema（`event/properties/timestamp/app_version`）成为约定，
   收集端需按此解析。
+- 采样发生在入队前，样本只包含通过采样的 `trackEvent` / `trackError`；采样率不是
+  收集端去重或配额替代品，生产调整前应以实际流量估算事件量。
 - 队列在进程内存中，serverless 环境下未 flush 的事件随实例回收丢失——
   首版接受（关键流程均在请求尾部主动 flush）。
 - 注册流程埋点未包含（auth 流程在 Supabase 侧），列为后续增强。

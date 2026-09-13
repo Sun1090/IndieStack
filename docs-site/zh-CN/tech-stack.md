@@ -58,7 +58,7 @@ CSS 变量定义在 `globals.css` 中，通过 `.dark` class 实现主题切换�
 | 技术   | 用途                      | 配置方式                                                |
 | ------ | ------------------------- | ------------------------------------------------------- |
 | Sentry | 错误追踪 + 性能监控       | Client/Edge/Server 三端配置，Source Maps 自动上传       |
-| Appark | 应用性能监控（APM，可选） | `src/lib/appark.ts`，API Key 与 endpoint 同时配置才启用 |
+| Appark | 应用性能监控（APM，可选） | `src/lib/appark.ts`，API Key 与 endpoint 同时配置才启用，`NEXT_PUBLIC_APPARK_SAMPLE_RATE` 控制事件采样率 |
 | Stripe | 支付处理                  | 订阅计费、Webhook 处理、价格方案管理                    |
 
 Sentry 通过 `instrumentation.ts` 自动加载，分别在 `sentry/client.config.ts`、`sentry/server.config.ts`、`sentry/edge.config.ts` 中配置。

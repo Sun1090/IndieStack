@@ -285,7 +285,7 @@ env 对象）产出 `ProviderReport`：
 
 1. 覆盖 9 个 provider：`supabase`（运行时三键 + 可选 `SUPABASE_DB_URL`）、`storage`
    （OSS 四键 → `oss`，全空 → `supabase` fallback，部分配置 → `misconfigured`，mock 模式 → `mock`）、
-   `email`（Resend）、`webpush`（VAPID 密钥对）、`appark`（密钥对）、`stripe`（五键）、
+   `email`（Resend）、`webpush`（VAPID 密钥对）、`appark`（密钥对 + 可选采样率）、`stripe`（五键）、
    `sentry`（DSN 与构建期键）、`supabase-restore`（`SUPABASE_ACCESS_TOKEN` + 可推导或显式的
    `SUPABASE_PROJECT_REF`）、`cron`（`CRON_SECRET`）；
 2. 状态机为 `ready` / `disabled` / `degraded` / `misconfigured` / `missing`，逐项给出缺失变量名，
@@ -296,7 +296,7 @@ env 对象）产出 `ProviderReport`：
 文档一致性门禁 `src/lib/providers/provider-docs.ts` 拿 `PROVIDER_REGISTRY` 做双向校验：注册表里
 每个 provider id 与每个环境变量都必须出现在两份文档里，文档源为空或抽不到 provider 时失败封闭。
 规则码为 `PROVIDER_DOC_SOURCE_EMPTY` / `PROVIDER_DOC_MISSING_PROVIDER` /
-`PROVIDER_DOC_MISSING_KEY`。规则实现 24 条单测（`diagnostics.test.ts` 18 + `provider-docs.test.ts` 6），
+`PROVIDER_DOC_MISSING_KEY`。规则实现 26 条单测（`diagnostics.test.ts` 20 + `provider-docs.test.ts` 6），
 IO/CLI 位于 `scripts/lib/provider-doctor.js` 与 `scripts/lib/provider-docs-check.js`，
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。文档门禁只证明「文档覆盖了注册表事实」，
 不判断文案质量，也不校验真实凭据是否有效。

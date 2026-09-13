@@ -6,10 +6,17 @@
  *   避免锁定供应商 SDK 与初始化顺序问题。
  * - 默认关闭：`NEXT_PUBLIC_APPARK_API_KEY` 与 `NEXT_PUBLIC_APPARK_ENDPOINT`
  *   齐备才启用；未启用时 track* 只入内存队列（有上限），flush 直接丢弃，零网络开销。
+ * - 采样：`NEXT_PUBLIC_APPARK_SAMPLE_RATE` 控制事件级采样，默认 1（100%）；
+ *   0 可静音，非法值告警后回退到 1，避免配置笔误静默关闭可观测性。
  * - 失败不抛：APM 属旁路，flush 失败保留事件待下次 flush（队列满丢最旧），
  *   不影响业务主流程。
  */
 import { logger } from "@/lib/logger";
+import {
+  APPARK_SAMPLE_RATE_KEY,
+  parseApparkSampleRate,
+  shouldSampleApparkEvent,
+} from "@/lib/appark-config";
 // 版本单一来源与 health 路由一致：package.json version，NEXT_PUBLIC_APP_VERSION 可覆盖
 import { version as pkgVersion } from "../../package.json";
 
@@ -25,6 +32,7 @@ const QUEUE_LIMIT = 200;
 
 let queue: ApparkEvent[] = [];
 let initialized = false;
+let cachedSampleRate: number | null = null;
 
 function endpoint(): string | undefined {
   return process.env.NEXT_PUBLIC_APPARK_ENDPOINT;
@@ -34,12 +42,30 @@ export function isApparkEnabled(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_APPARK_API_KEY && endpoint());
 }
 
+/** 获取进程内缓存的采样率；非法配置告警一次并回退到 100%。 */
+export function getApparkSampleRate(): number {
+  if (cachedSampleRate !== null) return cachedSampleRate;
+
+  const parsed = parseApparkSampleRate(process.env[APPARK_SAMPLE_RATE_KEY]);
+  cachedSampleRate = parsed.rate;
+  if (!parsed.valid) {
+    logger.warn(
+      `[Appark] ${APPARK_SAMPLE_RATE_KEY} 必须是 0 到 1 之间的数字，当前回退到 ${parsed.rate}`,
+    );
+  }
+  return cachedSampleRate;
+}
+
 /** 初始化：幂等；仅在 nodejs runtime 由 instrumentation 调用 */
 export function initAppark(): void {
   if (initialized) return;
   initialized = true;
   if (isApparkEnabled()) {
-    logger.info(`[Appark] APM 已启用（endpoint: ${endpoint()}）`);
+    const sampleRate = getApparkSampleRate();
+    logger.info(`[Appark] APM 已启用（endpoint: ${endpoint()}，sampleRate: ${sampleRate}）`);
+    if (sampleRate === 0) {
+      logger.warn("[Appark] 采样率为 0，事件将被静音且不会产生网络请求");
+    }
   } else if (process.env.NEXT_PUBLIC_APPARK_API_KEY || endpoint()) {
     logger.warn("[Appark] API_KEY 与 ENDPOINT 需同时配置才启用，当前为旁路关闭状态");
   }
@@ -54,6 +80,8 @@ function enqueue(event: ApparkEvent): void {
 
 /** 记录业务事件（注册/结账/cron 运行等关键流程） */
 export function trackEvent(name: string, properties: Record<string, unknown> = {}): void {
+  if (!shouldSampleApparkEvent(getApparkSampleRate())) return;
+
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? pkgVersion;
   enqueue({ event: name, properties, timestamp: new Date().toISOString(), app_version: appVersion });
 }
@@ -102,4 +130,5 @@ export async function flushEvents(): Promise<void> {
 export function resetApparkForTest(): void {
   queue = [];
   initialized = false;
+  cachedSampleRate = null;
 }

@@ -38,6 +38,7 @@ NEXT_PUBLIC_MOCK_ENABLED=true
 | `SENTRY_AUTH_TOKEN` | Sentry auth token | Sentry Dashboard → Auth Tokens |
 | `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key (optional; pair with the endpoint) | Appark Dashboard |
 | `NEXT_PUBLIC_APPARK_ENDPOINT` | Appark event collector endpoint | Appark Dashboard |
+| `NEXT_PUBLIC_APPARK_SAMPLE_RATE` | Event sampling rate from 0 to 1 (default `1`; `0` mutes) | Project configuration |
 
 ```bash
 # Sentry error tracking
@@ -46,9 +47,10 @@ SENTRY_ORG=your-org
 SENTRY_PROJECT=your-project
 SENTRY_AUTH_TOKEN=your-auth-token
 
-# Appark application monitoring (optional; both values required)
+# Appark application monitoring (optional; both credentials required)
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
+NEXT_PUBLIC_APPARK_SAMPLE_RATE=0.25
 ```
 
 ### File Storage (Alibaba Cloud OSS)
@@ -303,6 +305,7 @@ GITHUB_TOKEN=your-github-token
 # ===== APM (optional) =====
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
+NEXT_PUBLIC_APPARK_SAMPLE_RATE=0.25
 
 # ===== Web Push =====
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-key

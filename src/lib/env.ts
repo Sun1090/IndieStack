@@ -4,6 +4,7 @@
  * 不做 fail-fast：Mock 模式与降级路径依赖"缺省可用"语义（见 lib/mock/config.ts）。
  */
 import { logger } from "@/lib/logger";
+import { APPARK_SAMPLE_RATE_KEY, parseApparkSampleRate } from "@/lib/appark-config";
 
 export interface EnvReport {
   ok: boolean;
@@ -80,6 +81,10 @@ function collect(): EnvReport {
     problems.push(
       "NEXT_PUBLIC_APPARK_API_KEY 与 NEXT_PUBLIC_APPARK_ENDPOINT 应同时提供（APM 当前旁路关闭）",
     );
+  }
+  const apparkSampleRate = parseApparkSampleRate(process.env[APPARK_SAMPLE_RATE_KEY]);
+  if (!apparkSampleRate.valid) {
+    problems.push(`${APPARK_SAMPLE_RATE_KEY} 必须是 0 到 1 之间的数字（当前回退到 1）`);
   }
 
   return { ok: problems.length === 0, problems };

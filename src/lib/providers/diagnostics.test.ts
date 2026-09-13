@@ -162,8 +162,41 @@ describe("provider diagnostics", () => {
       ...BASE_SUPABASE,
       NEXT_PUBLIC_APPARK_API_KEY: "key",
       NEXT_PUBLIC_APPARK_ENDPOINT: "https://collector.example.com/events",
+      NEXT_PUBLIC_APPARK_SAMPLE_RATE: "0.25",
     });
-    expect(provider(ready, "appark").status).toBe("ready");
+    expect(provider(ready, "appark")).toMatchObject({
+      status: "ready",
+      configured: true,
+      notes: [expect.stringContaining("0.25")],
+    });
+  });
+
+  it("rejects an invalid Appark sampling rate instead of silently changing volume", () => {
+    const report = diagnoseProviders({
+      NODE_ENV: "production",
+      ...BASE_SUPABASE,
+      NEXT_PUBLIC_APPARK_API_KEY: "key",
+      NEXT_PUBLIC_APPARK_ENDPOINT: "https://collector.example.com/events",
+      NEXT_PUBLIC_APPARK_SAMPLE_RATE: "2",
+    });
+    expect(provider(report, "appark")).toMatchObject({
+      status: "misconfigured",
+      configured: true,
+      notes: [expect.stringContaining("NEXT_PUBLIC_APPARK_SAMPLE_RATE")],
+    });
+    expect(report.ok).toBe(false);
+  });
+
+  it("treats a sampling-only Appark configuration as partial", () => {
+    const report = diagnoseProviders({
+      NODE_ENV: "production",
+      ...BASE_SUPABASE,
+      NEXT_PUBLIC_APPARK_SAMPLE_RATE: "0.5",
+    });
+    expect(provider(report, "appark")).toMatchObject({
+      status: "misconfigured",
+      missing: ["NEXT_PUBLIC_APPARK_API_KEY", "NEXT_PUBLIC_APPARK_ENDPOINT"],
+    });
   });
 
   it("requires all Stripe keys before calling billing ready", () => {

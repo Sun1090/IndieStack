@@ -57,7 +57,7 @@ When `NEXT_PUBLIC_MOCK_ENABLED=true`, all Supabase queries use `@faker-js/faker`
 | Technology | Usage | Configuration |
 |-----------|-------|--------------|
 | Sentry | Error tracking + performance | Client/Edge/Server configs, auto source map upload |
-| Appark | APM (planned) | Not wired; module removed |
+| Appark | APM (optional) | `src/lib/appark.ts`; API key and endpoint enable delivery, `NEXT_PUBLIC_APPARK_SAMPLE_RATE` controls event sampling |
 | Stripe | Payment processing | Subscription billing, Webhook handling, price plan management |
 
 ## Deployment

@@ -40,7 +40,7 @@ means the operator tried to enable OSS but will silently get Supabase Storage in
 | `storage` | OSS when complete, otherwise Supabase Storage | `OSS_BUCKET`, `OSS_REGION`, `OSS_ACCESS_KEY_ID`, `OSS_ACCESS_KEY_SECRET` | No OSS keys means the Supabase fallback; a partial set is `misconfigured` and still falls back to Supabase |
 | `email` | Resend HTTP API | `RESEND_API_KEY`, `RESEND_FROM`, `RESEND_API_URL` | No API key disables email; an override such as `RESEND_FROM` without `RESEND_API_KEY` is `misconfigured` |
 | `webpush` | Browser Web Push with VAPID | `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_APP_URL` | Both VAPID keys are required to enable delivery; one key makes the provider `misconfigured`. `NEXT_PUBLIC_APP_URL` is the VAPID contact subject and defaults to a mailto address |
-| `appark` | Appark APM | `NEXT_PUBLIC_APPARK_API_KEY`, `NEXT_PUBLIC_APPARK_ENDPOINT` | Both values are required to enable APM; a partial pair is `misconfigured` and the runtime stays bypassed |
+| `appark` | Appark APM | `NEXT_PUBLIC_APPARK_API_KEY`, `NEXT_PUBLIC_APPARK_ENDPOINT`, `NEXT_PUBLIC_APPARK_SAMPLE_RATE` | The two credentials are required to enable APM; the optional sample rate must be a number from 0 to 1 and defaults to 1. A partial credential pair or invalid rate is `misconfigured`; the runtime bypasses incomplete credentials and falls back to 1 for an invalid rate |
 | `stripe` | Stripe Checkout, portal, webhook verification, and prices | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_PRO_PRICE_ID`, `STRIPE_ENTERPRISE_PRICE_ID` | Billing is off when all keys are absent; any partial set is `misconfigured` because checkout or webhook delivery can fail |
 | `sentry` | Sentry runtime errors and source-map upload | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Runtime capture with missing build keys is `degraded`; build credentials without a DSN are `misconfigured` |
 | `supabase-restore` | Management API route for free-tier auto-restore | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` | Both are required when enabled. `SUPABASE_PROJECT_REF` may be inferred from a standard `<ref>.supabase.co` URL; a token without an inferable ref, or a ref without a token, is `misconfigured` |
@@ -109,7 +109,7 @@ in `missing` — never the variable values.
 | `storage: misconfigured` | Add the remaining OSS keys, or remove all OSS keys to use the documented Supabase fallback. |
 | `email: misconfigured` | Remove the Resend override or add `RESEND_API_KEY`. |
 | `webpush: misconfigured` | Add the missing VAPID key; both keys must come from the same key pair. |
-| `appark: misconfigured` | Add the missing Appark key or remove both Appark variables to keep APM off. |
+| `appark: misconfigured` | Add the missing Appark key or remove both Appark credentials to keep APM off. If the sample rate is invalid, set `NEXT_PUBLIC_APPARK_SAMPLE_RATE` to a number from 0 to 1 (default 1). |
 | `stripe: misconfigured` | Complete all five Stripe values before enabling billing. |
 | `sentry: degraded` | Add `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` if source maps should upload; otherwise runtime capture still works. |
 | `supabase-restore: misconfigured` | Add both `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF`, or remove both to disable auto-restore. |

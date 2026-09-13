@@ -133,7 +133,7 @@ graph LR
 | 国际化   | next-intl                        | ^4.13.2                                                          |
 | 错误监控 | Sentry                           | @sentry/nextjs ^9.5.0                                            |
 | 文件存储 | Supabase Storage / 阿里云 OSS    | `StorageDriver`，OSS 配置不完整时安全回退                        |
-| 性能监控 | Appark APM（可选）               | `src/lib/appark.ts` 轻量封装，API Key 与 endpoint 同时配置才启用 |
+| 性能监控 | Appark APM（可选）               | `src/lib/appark.ts` 轻量封装，API Key 与 endpoint 同时配置才启用；`NEXT_PUBLIC_APPARK_SAMPLE_RATE` 控制事件采样 |
 | 测试     | Vitest + @faker-js/faker         | Vitest ^4.1.10                                                   |
 | 包管理   | pnpm                             | —                                                                |
 | 部署     | Docker / Vercel                  | —                                                                |

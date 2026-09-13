@@ -7,6 +7,8 @@
  * "present / absent"; only variable names are ever reported.
  */
 
+import { APPARK_SAMPLE_RATE_KEY, parseApparkSampleRate } from "../appark-config.ts";
+
 export type EnvRecord = Record<string, string | undefined>;
 
 export type ProviderStatus = "ready" | "disabled" | "degraded" | "misconfigured" | "missing";
@@ -75,6 +77,8 @@ export const WEB_PUSH_KEYS = [
 
 export const APPARK_KEYS = ["NEXT_PUBLIC_APPARK_API_KEY", "NEXT_PUBLIC_APPARK_ENDPOINT"] as const;
 
+export const APPARK_OPTIONAL_KEYS = [APPARK_SAMPLE_RATE_KEY] as const;
+
 export const STRIPE_KEYS = [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
@@ -112,7 +116,7 @@ export const PROVIDER_REGISTRY: readonly ProviderDefinition[] = [
     keys: EMAIL_KEYS,
   },
   { id: "webpush", label: "Web Push", keys: WEB_PUSH_KEYS },
-  { id: "appark", label: "Appark APM", keys: APPARK_KEYS },
+  { id: "appark", label: "Appark APM", keys: [...APPARK_KEYS, ...APPARK_OPTIONAL_KEYS] },
   { id: "stripe", label: "Stripe payments", keys: STRIPE_KEYS },
   { id: "sentry", label: "Sentry error monitoring", keys: SENTRY_KEYS },
   {
@@ -287,6 +291,42 @@ function pairedDiagnostic(
   });
 }
 
+function apparkDiagnostic(env: EnvRecord): ProviderDiagnostic {
+  const missing = missingKeys(env, APPARK_KEYS);
+  const anyConfigured = hasAny(env, [...APPARK_KEYS, ...APPARK_OPTIONAL_KEYS]);
+  const sampleRate = parseApparkSampleRate(env[APPARK_SAMPLE_RATE_KEY]);
+
+  if (!sampleRate.valid) {
+    return diagnostic("appark", {
+      status: "misconfigured",
+      configured: missing.length === 0,
+      missing,
+      notes: [`${APPARK_SAMPLE_RATE_KEY} must be a number from 0 to 1; runtime falls back to 1.`],
+    });
+  }
+
+  if (missing.length === 0) {
+    return diagnostic("appark", {
+      status: "ready",
+      configured: true,
+      notes: [`Appark APM is enabled with a ${sampleRate.rate} event sampling rate.`],
+    });
+  }
+
+  if (anyConfigured) {
+    return diagnostic("appark", {
+      status: "misconfigured",
+      missing,
+      notes: ["Appark is partially configured and will stay bypassed."],
+    });
+  }
+
+  return diagnostic("appark", {
+    status: "disabled",
+    notes: ["Provider is not configured; this feature is off."],
+  });
+}
+
 function requiredKeyDiagnostic(
   id: ProviderDefinition["id"],
   env: EnvRecord,
@@ -416,13 +456,7 @@ export function diagnoseProviders(env: EnvRecord = process.env): ProviderReport 
       "VAPID keys are present; browser push delivery can be enabled.",
       "Only one VAPID key is present; push remains off until both keys are configured.",
     ),
-    pairedDiagnostic(
-      "appark",
-      env,
-      APPARK_KEYS,
-      "Appark APM is enabled.",
-      "Appark is partially configured and will stay bypassed.",
-    ),
+    apparkDiagnostic(env),
     stripeDiagnostic(env),
     sentryDiagnostic(env),
     supabaseRestoreDiagnostic(env),

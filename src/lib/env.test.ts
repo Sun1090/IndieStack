@@ -64,6 +64,34 @@ describe("env 校验", () => {
     expect(report.problems.some((p) => p.includes("APPARK"))).toBe(true);
   });
 
+  it("Appark 采样率非法时告警（E01）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://x.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "k");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "s");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example.com");
+    vi.stubEnv("NEXT_PUBLIC_APPARK_SAMPLE_RATE", "1.5");
+    const { getEnvReport } = await load();
+    expect(
+      getEnvReport().problems.some((problem) =>
+        problem.includes("NEXT_PUBLIC_APPARK_SAMPLE_RATE"),
+      ),
+    ).toBe(true);
+  });
+
+  it("Appark 采样率合法时不产生额外告警（E01）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://x.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "k");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "s");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example.com");
+    vi.stubEnv("NEXT_PUBLIC_APPARK_SAMPLE_RATE", "0.25");
+    const { getEnvReport } = await load();
+    expect(
+      getEnvReport().problems.some((problem) =>
+        problem.includes("NEXT_PUBLIC_APPARK_SAMPLE_RATE"),
+      ),
+    ).toBe(false);
+  });
+
   it("warnOnEnvProblems 输出问题日志", async () => {
     const { getEnvReport, warnOnEnvProblems } = await load();
     // 无核心变量时应有告警输出

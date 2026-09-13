@@ -38,6 +38,7 @@ NEXT_PUBLIC_MOCK_ENABLED=true
 | `SENTRY_AUTH_TOKEN`          | Sentry 认证 Token                                | Sentry Dashboard → Auth Tokens |
 | `NEXT_PUBLIC_APPARK_API_KEY` | Appark APM API Key（可选，与 endpoint 同时配置） | Appark Dashboard               |
 | `NEXT_PUBLIC_APPARK_ENDPOINT` | Appark 事件收集端点                              | Appark Dashboard               |
+| `NEXT_PUBLIC_APPARK_SAMPLE_RATE` | 事件采样率，取值 0 到 1（默认 `1`，`0` 表示静音） | 项目配置                       |
 
 ```bash
 # Sentry 错误追踪
@@ -46,9 +47,10 @@ SENTRY_ORG=your-org
 SENTRY_PROJECT=your-project
 SENTRY_AUTH_TOKEN=your-auth-token
 
-# Appark 应用监控（可选）
+# Appark 应用监控（可选；两项凭据必须同时配置）
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
+NEXT_PUBLIC_APPARK_SAMPLE_RATE=0.25
 ```
 
 ### 文件存储（阿里云 OSS）
@@ -300,6 +302,7 @@ GITHUB_TOKEN=your-github-token
 # ===== APM（可选） =====
 NEXT_PUBLIC_APPARK_API_KEY=your-api-key
 NEXT_PUBLIC_APPARK_ENDPOINT=https://your-collector.example.com/v1/events
+NEXT_PUBLIC_APPARK_SAMPLE_RATE=0.25
 
 # ===== Web Push =====
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-public-key

@@ -233,6 +233,8 @@ pnpm sentry:sourcemaps
 
 - `NEXT_PUBLIC_APPARK_API_KEY` 与 `NEXT_PUBLIC_APPARK_ENDPOINT` **同时**配置才启用；
   只配其一会在 env 诊断中告警并保持旁路关闭。
+- `NEXT_PUBLIC_APPARK_SAMPLE_RATE` 控制事件级采样，范围 `[0, 1]`，缺省 `1`；
+  `0` 表示静音，非法值会在 env / provider 诊断中告警并回退到 `1`。
 - 事件批量 POST 到 endpoint（`Authorization: Bearer <key>`），
   schema：`{ events: [{ event, properties, timestamp, app_version }] }`。
 - 详见 `docs/adr/adr-011-appark-apm.md`。
@@ -243,6 +245,7 @@ pnpm sentry:sourcemaps
 | ----------------------------- | ------------------------------------- |
 | `NEXT_PUBLIC_APPARK_API_KEY`  | Appark API Key                        |
 | `NEXT_PUBLIC_APPARK_ENDPOINT` | 事件收集端点                          |
+| `NEXT_PUBLIC_APPARK_SAMPLE_RATE` | 事件采样率（0–1，默认 1）          |
 | `NEXT_PUBLIC_APP_VERSION`     | 应用版本（覆盖 package.json version） |
 
 ## 环境变量总览
@@ -267,5 +270,6 @@ pnpm sentry:sourcemaps
 | `OSS_ACCESS_KEY_SECRET`              | OSS                   | 否   | AccessKey Secret                  |
 | `NEXT_PUBLIC_APPARK_API_KEY`         | Appark（ADR-011）     | 否   | APM Key（与 ENDPOINT 同配）       |
 | `NEXT_PUBLIC_APPARK_ENDPOINT`        | Appark                | 否   | 事件收集端点                      |
+| `NEXT_PUBLIC_APPARK_SAMPLE_RATE`     | Appark（E01）         | 否   | 事件采样率（0–1，默认 1）         |
 
 > *Supabase 变量在 Mock 模式下非必需
