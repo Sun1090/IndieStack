@@ -1398,3 +1398,101 @@
   按语义化版本评估下一版本号（新增功能 + 安全加固 → minor）、写 CHANGELOG 与发布说明、确认迁移/回滚方案、
   跑全量 `pnpm verify:build` 与 release 文档门禁，并把 tag/PR 准备到 LOCAL_ONLY 允许的最后一步（本地提交 + exit report）。
 - 最后更新：2026-09-13
+
+## v0.9.0 / RELEASE_FREEZE（M1「安全与测试基建」收口，本地完成）
+
+- 状态：DONE（本地范围）／发布已准备到 LOCAL_ONLY 允许的最后一步
+- 里程碑与发布目标：M1「安全与测试基建」（C、F、H 任务域）退出条件达成 → v0.9.0 RELEASE_FREEZE
+- 分支/PR：`feat/visual-regression-baseline`（本地）；**无 PR**（未获创建 PR 授权）
+- 本地提交：`b26a953`（发布准备）；本里程碑代码提交见 `5db7c0b`、`af956aa`、`ca0770b`、`d1ab460`、
+  `ec8a7dc`、`b3b1549`、`d85b7ef`、`90f8f5b`、`a908662`、`90f0071`、`406c8fb`、`ee94266`、`dea198d`
+- 版本号：0.8.0 → **0.9.0**（minor：新增功能 + 安全加固 + 5 个追加式迁移）
+- 目标：把 v0.8.0 之后发现的权限、上传登记与幂等缺口收口，并把发布从「打 tag」变成可审计、
+  可暂停、可回滚的操作；产出版本号、CHANGELOG、发布/回滚/smoke runbook、双语 README 与 docs-site 版本页。
+
+### 包含任务
+
+| 任务 | 内容                                     | 提交                          |
+| ---- | ---------------------------------------- | ----------------------------- |
+| H02  | 上传对象元数据迁移（031）                | `ee94266` + `dea198d`         |
+| H05  | Storage bucket 策略审计跟随代码          | `90f0071` + `406c8fb`         |
+| H06  | Stripe webhook 幂等占位（030）           | `d85b7ef` + `90f8f5b`/`a908662` |
+| H03  | RLS 全表回归门禁修复（35 条策略漏检）    | `d1ab460`                     |
+| H04  | service_role 调用点清单门禁              | `ec8a7dc` + `b3b1549`         |
+| H07  | 审计日志索引复审 + 精确计数收口          | `ca0770b`                     |
+| H09  | 审计日志写入面收口（029）                | `af956aa`                     |
+| H09  | SECURITY DEFINER 执行权限收口（028）     | `5db7c0b`                     |
+| H08  | 邮件 worker 运行记录保留期（027）        | `9331c1d`                     |
+| —    | Push 重试链路 mock-only E2E 覆盖         | `5c76873` + `67fdab8`         |
+| —    | 发布产物（CHANGELOG/runbook/README/docs） | `b26a953`                     |
+
+### 发布产物
+
+- `package.json` 0.9.0、`.env.example` `NEXT_PUBLIC_APP_VERSION=0.9.0`
+- `CHANGELOG.md`：`[Unreleased]` 转为 `## [0.9.0] — 2026-09-13`（主题：安全与权限边界收口 +
+  测试与发布门禁加固；Added 4 / Changed 3 / Fixed 2 / Security 3），并新开 `[Unreleased] / ### Planned`
+  指向下一里程碑（G01–G07 UI 系统收口）
+- `docs/operations/release-runbook-v0.9.0.md`（73 行，含 027–031 部署顺序与新增观察项）
+- `docs/operations/rollback-runbook-v0.9.0.md`（101 行，含 030/031 顺序陷阱与「不可先用回滚恢复权限」）
+- `docs/operations/production-smoke-v0.9.0.md`（60 行，干净「未执行」基线，新增迁移基线/上传元数据/
+  客户端 rpc 越权/匿名审计写入/webhook 幂等与重试共 6 行）
+- `docs/operations/release-gap-audit-v0.9.0.md`（75 行缺口表与可复现验证）
+- `README.md`、`README.zh-CN.md`、`.github/RELEASE_CHECKLIST.md` 指向 v0.9.0 产物
+- `docs-site/v0.9.0.md`、`docs-site/zh-CN/v0.9.0.md` 并注册进两侧「Releases / 版本动态」侧边栏
+
+### 验证命令与结果
+
+- `pnpm check:release-docs` → ✅ release documentation checks passed (v0.9.0, 7 artifacts)
+- `pnpm check:changelog` → ✅ 9 个已发布版本，1 个 Unreleased 章节
+- `pnpm check:docs` → ✅ docs-site scripts 文档与 package.json 同步
+- `pnpm check:migrations` → ✅ 31 个不可变迁移与 SHA-256 清单一致
+- `pnpm check:migration-history` → ✅ migration history is aligned: 31 local migrations applied
+- `pnpm check:all` → ✅ 全部校验通过（locales / i18n / agents / rls / migrations / supabase-security /
+  security / release-docs / changelog / docs / a11y / type-check / lint / **119 文件 1228 测试**）
+- `pnpm verify:build` → ✅ （`pnpm verify` + `next build` 全绿，路由表正常产出）
+- `pnpm test:coverage` → ✅ statements 96.12% / **branches 90.72%** / functions 95.91% / lines 97.21%
+  （branches 门禁 90% 以上）
+- `pnpm test:e2e` → ✅ **63 passed (42.3s)**（含 `e2e/push-retry.spec.ts` 10 条 mock-only 用例）
+- `pnpm audit --audit-level high` → ✅ No known vulnerabilities found
+- `pnpm --filter indiestack-docs build` → ✅ build complete in 3.52s
+
+### 发布状态
+
+- 版本号：**v0.9.0**
+- base SHA：`15b05ebe8e93725e16698e8b66fc9c43e3733965`（`origin/main`，本会话 fetch 后未变）
+- 发布 PR：**无**（LOCAL_ONLY，未获创建/更新 PR 授权）
+- 合并方式：未合并（授权后按 rebase 策略合并）
+- tag / release：**未创建**（本地仅存在历史 tag `v0.6.0`；v0.7.0/v0.8.0 同样未打）
+- 部署：**未部署**（未获 deploy 授权）
+- smoke：**未执行**，`docs/operations/production-smoke-v0.9.0.md` 保持「未执行」基线
+- 迁移：027–031 已在**本地** Supabase 全部应用并通过历史门禁；生产未应用
+
+### 未验证项（需外部权限）
+
+- 生产 smoke（v0.8.0 与 v0.9.0 两份矩阵均未执行）：需部署授权 + `PRODUCTION_URL`。
+- 生产迁移 027–031 与生产 `pg_policies` / `proacl` / `has_table_privilege` / `storage.buckets` /
+  `upload_objects` 回读：需生产只读凭证。
+- 真实浏览器 Push 投递、真实 `CRON_SECRET` 触发 `/api/cron/push-retry`：需生产 secrets + HTTPS。
+- Stripe test-mode 签名生成器与隔离租户，用于生产 webhook 幂等/重试行。
+- 反向孤儿巡检（bucket 列表 → 元数据差集）尚无 worker，仅落数据与巡检 SQL。
+- `pnpm test:visual` 未在本批次重跑（基线文件未受本次改动影响）。
+
+### 风险与回滚
+
+- 风险：030 与 031 改变了应用与 schema 的耦合方式，**迁移与代码的先后顺序不能反**。发布必须
+  「先迁移、再部署」；回滚必须「先回滚代码、再决定 schema」。
+- 风险：028/029 的权限收窄会让仍在使用客户端密钥越权路径的调用方收到 `permission denied`——
+  这是预期结果，不应回滚权限，而应把调用方改到 service_role 路径。
+- 风险：上传路径多一次数据库往返，且元数据写失败会让上传失败（有意的失败封闭取舍）。
+- 回滚：见 `docs/operations/rollback-runbook-v0.9.0.md`。代码层面 `git revert b26a953` 即可撤销发布
+  产物；应用层面按 runbook 回退 deployment；数据库默认保持向前 schema，只在 DBA 与发布负责人共同
+  批准后做破坏性操作（`drop table public.upload_objects`），且禁止用回滚恢复已收回的权限。
+
+### 下一里程碑
+
+- M2「上传与通知」剩余 UI 任务域：**G01–G07 UI 系统收口**（Tailwind v4 试点页迁移、design token
+  收口、shared form field 统一、loading/empty/error 状态统一、暗色模式回归、移动端断点回归、
+  键盘与 screen reader 交互），随后按路线图推进 I04/I06–I10 与 J02–J10。
+- 已写入 `CHANGELOG.md` 的 `[Unreleased] / ### Planned` 作为对外承诺。
+
+- 最后更新：2026-09-13
