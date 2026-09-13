@@ -104,7 +104,7 @@
 ### H. 数据库与安全（H01–H10）
 
 71. H01 Web Push migration
-72. H02 upload metadata migration
+72. H02 upload metadata migration（完成：新增 `031_upload_objects.sql` 的 `public.upload_objects`（bucket/object_key/owner/byte_size/content_type/sha256/status，`(bucket,object_key)` 唯一，RLS 打开且零策略 + 收回 anon/authenticated 写权限，server-only）；上传服务改为 put → 落元数据 → 回写业务表，元数据失败即删对象回滚、旧对象确认删除后才标记 deleted；新增 `src/lib/repositories/upload-objects.ts` 与 `src/lib/uploads/checksum.ts`，mock 支持复合 onConflict，登记 service-role 清单与 server-only 表分类；唯一键 / CHECK / 触发器 / 级联删除与 3 角色身份矩阵（anon/authenticated 读 0 行、写被拒，service_role 可读写）均在本地 psql 验证，文档见 `docs/db/upload-metadata.md`）
 73. H03 RLS 全表回归（完成：`pnpm check:rls` 修掉策略名按单词截断导致同表多策略互相覆盖的漏检，改为带引号的最终态归约 + 全表分类（有生效策略或显式登记 server-only），新表未分类直接失败封闭；新增 `src/lib/security/rls-coverage.ts` 与单测）
 74. H04 service-role 最小权限审计（完成：新增 `src/lib/security/admin-client-boundary.ts`，用 TypeScript AST 清点每个 `createAdminClient()` 调用点并记录触达表/RPC/bucket/`auth.admin` 方法与授权证据；未登记调用点、越权表、未登记 bucket 均失败封闭，接入 `pnpm check:supabase-security`）
 75. H05 storage policy 审计（完成：新增 `src/lib/security/storage-policies.ts`，bucket 集合从 `src/**` 的 `storage.from(...)` 发现、policy 集合从迁移最终态归约，交叉验证登记表/建行迁移/生效策略/`bucket_id`+`auth.uid()` 写收敛/公共读契约，7 类规则码全部失败封闭；20 条单测 + `docs/db/storage-policy-audit.md`（含真实数据库目录核对与 6 行身份矩阵））

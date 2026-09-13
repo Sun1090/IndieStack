@@ -6,6 +6,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **上传对象元数据表（孤儿对象可枚举）**：新增 `031_upload_objects.sql` 的
+  `public.upload_objects`，记录每次 `put` 的 bucket / object key / 所有者 / 字节数 / MIME /
+  sha256 / 状态，`(bucket, object_key)` 唯一，替换或回滚时把旧行标记 `deleted`，使
+  `status = 'active'` 直接等于「数据库认为应该存在的对象」，可与 bucket 实际列表做双向差集找孤儿。
+  上传服务改为 `put → 落元数据 → 回写业务表`，元数据写失败即删除对象并返回 `uploadFailed`
+  （不再产生没有登记的公开对象），旧对象删除失败则不标记 `deleted`（避免漏报）。
+  该表 RLS 打开且零策略、额外收回 `anon` / `authenticated` 写权限，只有 service_role 可读写；
+  新增 `src/lib/repositories/upload-objects.ts`、`src/lib/uploads/checksum.ts`，mock 支持复合
+  `onConflict`，并登记进 service-role 清单与 server-only 表分类。数据模型、写入协议、运行时
+  身份矩阵与巡检 SQL 见 [docs/db/upload-metadata.md](docs/db/upload-metadata.md)。
+
 - **Storage bucket 策略审计跟随代码，而不是写死的 `avatars`**：新增
   `src/lib/security/storage-policies.ts`，从 `src/**` 发现所有被引用的 bucket、从迁移最终态
   （`create policy` / `drop policy` 归约）推导生效的 `storage.objects` 策略，再做交叉验证：

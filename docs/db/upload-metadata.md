@@ -1,0 +1,176 @@
+# 上传对象元数据（H02）
+
+> v0.8.x H02 建立。迁移：[`031_upload_objects.sql`](../../supabase/migrations/031_upload_objects.sql)，
+> 仓储：[`src/lib/repositories/upload-objects.ts`](../../src/lib/repositories/upload-objects.ts) +
+> [`src/lib/uploads/service.ts`](../../src/lib/uploads/service.ts)，
+> 哈希：[`src/lib/uploads/checksum.ts`](../../src/lib/uploads/checksum.ts)。
+
+## 为什么需要
+
+在 H02 之前，`avatars` bucket 里的每个对象只以「公共 URL 字符串」的形式存在于业务表
+（`profiles.avatar_url` / `projects.logo_url`）。对象本身除了 bucket 列表之外没有任何登记，
+留下三个治理盲区：
+
+| 盲区 | 具体后果 |
+| --- | --- |
+| 没有对象属性记录 | 无法回答「这个公开对象是谁传的、多大、什么类型、内容是否被换过」 |
+| 孤儿对象不可枚举 | 回写业务表失败、进程在 `put` 之后被杀、替换头像，都会留下**永久可公开读取**且无人引用的对象 |
+| 保留期 / 配额 / 审计无数据源 | 只能遍历 bucket 列表，成本高且无法按上传者聚合 |
+
+因此引入 `public.upload_objects`：**每次成功 `put` 落一行**，`status = 'active'` 的行集合就是
+「数据库认为应该存在的对象」，可与 bucket 实际列表比对找出孤儿。
+
+## 数据模型
+
+| 列 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | `uuid` | 主键，`gen_random_uuid()` |
+| `bucket` | `text not null` | 对象所属 bucket（当前只有 `avatars`，见 H05 storage 门禁） |
+| `object_key` | `text not null` | provider 侧完整对象键，形如 `avatars/<userId>/<时间戳>-<随机串>.<ext>` |
+| `owner_id` | `uuid not null` | 上传者，`references auth.users(id) on delete cascade`（账号删除带走元数据） |
+| `byte_size` | `bigint not null` | `check (byte_size > 0)` |
+| `content_type` | `text not null` | 校验后的 MIME（不是浏览器声明值，见服务层文件头校验） |
+| `checksum` | `text not null` | `sha256(对象字节)` 十六进制，`check (checksum ~ '^[0-9a-f]{64}$')` |
+| `status` | `text not null default 'active'` | `check (status in ('active','deleted'))`；`deleted` = 已从 provider 删除或已被替换 |
+| `created_at` / `updated_at` | `timestamptz not null default now()` | `updated_at` 由 `handle_updated_at` 触发器维护 |
+
+约束与索引：
+
+- `unique (bucket, object_key)` —— 同一对象只保留一行，重复写入走 upsert 刷新而不是追加；
+- `idx_upload_objects_owner_status (owner_id, status)` —— 按用户清理；
+- `idx_upload_objects_bucket_status (bucket, status)` —— 孤儿巡检时按 bucket 拉 `active` 集合。
+
+`(bucket, object_key)` 是复合唯一键，仓储层 upsert 使用
+`{ onConflict: "bucket,object_key" }`；mock（`src/lib/mock/index.ts`）同步支持逗号分隔的复合
+`onConflict`，单列行为不变。
+
+## 访问边界（server-only）
+
+本表是**故意**的 deny-all：
+
+- `alter table ... enable row level security`，但**不建任何策略**；
+- `revoke insert, update, delete, truncate ... from anon, authenticated`；
+- 只有 `service_role`（`BYPASSRLS`）能读写，入口是
+  `src/lib/repositories/upload-objects.ts` 的 `createAdminClient()`。
+
+与 `email_worker_runs` / `mfa_recovery_codes` / `push_delivery_attempts` / `webhook_events` 同类，
+已在 `src/lib/security/rls-coverage.ts` 的 `SERVER_ONLY_TABLES` 登记，并由
+`src/lib/security/admin-client-boundary.ts` 记录为 `data-access` 调用点（表 `upload_objects`，
+理由：授权已在上传服务内完成，表本身保持 deny-all）。
+
+### 运行时身份矩阵（本地 Supabase，2026-09-13）
+
+先由 `postgres` 造一行探针数据，再逐个角色在事务里切换（`set local role` +
+`set local request.jwt.claims`），每条语句单独执行：
+
+```sql
+begin; set local role anon;          select count(*) from public.upload_objects; rollback;
+begin; set local role authenticated; select count(*) from public.upload_objects; rollback;
+begin; set local role service_role;  select count(*) from public.upload_objects; rollback;
+```
+
+实测结果：
+
+| 角色 | `select` | `insert` / `update` / `delete` |
+| --- | --- | --- |
+| `anon` | **0 行** | `ERROR: permission denied for table upload_objects` |
+| `authenticated` | **0 行** | `ERROR: permission denied for table upload_objects` |
+| `service_role` | **1 行** | 允许（表属主 + `BYPASSRLS`） |
+
+目录侧同一时间点的核对：
+
+```sql
+-- relrowsecurity = t，policies = 0，columns = 10
+select c.relrowsecurity,
+       (select count(*) from pg_policies p
+         where p.schemaname = 'public' and p.tablename = 'upload_objects') as policies
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relname = 'upload_objects';
+
+-- anon / authenticated 只剩 REFERENCES, SELECT, TRIGGER；insert/update/delete 已收回
+select grantee, privilege_type from information_schema.role_table_grants
+where table_schema = 'public' and table_name = 'upload_objects' order by 1, 2;
+```
+
+约束同样做了运行时验证：写入非法 `checksum` 触发
+`upload_objects_checksum_check`，重复 `(bucket, object_key)` 触发
+`upload_objects_bucket_key_unique`，`update` 后 `updated_at > created_at`（触发器生效），
+删除 `auth.users` 行后对应元数据行级联消失（在回滚事务内验证）。
+
+## 写入协议
+
+服务层（`src/lib/uploads/service.ts`）对头像与项目封面共用同一段前置阶段：
+
+```
+put(objectKey)                      → provider 私钥写入
+  ├─ 请求已取消（signal.aborted）    → 删除刚写入的对象，返回 uploadCancelled
+  └─ recordUploadObject(...)        → 写 upload_objects（active）
+       ├─ 写失败                     → 删除刚写入的对象，返回 uploadFailed（不留无元数据的对象）
+       └─ 成功                       → 回写业务表（profiles.avatar_url / projects.logo_url）
+            ├─ 业务写失败            → 删除对象 + 标记 metadata deleted，返回 uploadFailed
+            └─ 成功                  → 替换场景：删除旧对象，**确认删除成功才**把旧行标记 deleted
+```
+
+失败路径的取舍：
+
+- **元数据写失败即回滚对象**。宁可让一次上传失败，也不要在 bucket 里留下没有登记的行——
+  否则孤儿巡检永远发现不了它（没有 `active` 行可对比）。
+- **旧对象删除失败不标记 deleted**。对象可能仍在 bucket 里；标成 `deleted` 会让巡检把它
+  当成已清理而漏报（`cleanupStorageObject` 返回 `false` 时跳过标记）。
+- **标记 deleted 失败只记日志**（`markDeletedQuietly`）。对象已经删掉，这时再抛错会让调用方
+  触发一次多余的回滚。
+
+## 孤儿巡检
+
+`active` 集合与 bucket 实际列表的差集就是两类问题对象：
+
+```sql
+-- 数据库认为应存在、但 bucket 里已经没有（业务表仍可能指向失效 URL）
+select object_key from public.upload_objects where status = 'active';
+
+-- 反向：bucket 里有对象、但没有 active 元数据 → 孤儿（用 provider 侧列表对照上面结果）
+select object_key from public.upload_objects
+where status = 'active' and bucket = 'avatars';
+```
+
+反向比对需要 provider 侧对象列表（Supabase Storage `list()` 或 S3 ListObjectsV2），
+当前**尚未**接入定时任务——表先落数据，巡检/清理 worker 属于后续里程碑。手动巡检建议：
+
+1. 拉取某个 bucket 的完整对象列表（包含 `covers/` 前缀）；
+2. 与 `select object_key from public.upload_objects where bucket = '<bucket>' and status = 'active'` 做双向差集；
+3. 仅删除「bucket 有、元数据无」且创建时间超过观察窗口的对象，避免误删正在上传的对象。
+
+## 已知边界
+
+- **当前只有一个 bucket**。应用把头像与项目封面都写在 `avatars` bucket 里，靠键前缀区分
+  （`avatars/<userId>/...` vs `covers/<projectId>/...`），所以 `upload_objects.bucket` 对两者都是
+  `avatars`。按用途统计要按 `object_key` 前缀分组，不能按 `bucket`。
+- **`owner_id` 是上传者，不一定是业务实体所有者**。项目封面允许团队 owner/admin 上传，
+  因此想按团队清理需要 join `projects`。
+- **巡检是「数据库 → bucket」单向可信**。如果有人绕过应用直接往 bucket 写对象，元数据里不会有行；
+  这正是反向差集要解决的问题，但需要在巡检侧实现。
+- **没有审计/保留期绑定**。审计日志与保留期联动（`docs/db/retention.md`）尚未覆盖本表。
+
+## 回滚
+
+元数据表是**旁路记录**：删掉它不会丢用户可见数据（`profiles.avatar_url` / `projects.logo_url`
+仍在业务表里）。回滚顺序必须是先代码后 DDL：
+
+1. `git revert <H02 commit>` —— 恢复服务层与仓储，上传不再写元数据；
+2. 再执行 `drop table if exists public.upload_objects;`（连同触发器一起删除）；
+3. `notify pgrst, 'reload schema';` 让 PostgREST 立刻丢弃缓存；
+4. 从 `supabase/migration-manifest.json` 与迁移目录移除本迁移，或保留历史但接受
+   `pnpm check:migration-history` 对「本地已应用、仓库无迁移」的报错（生产环境建议保留迁移文件，
+   只在前滚迁移里 `drop table`）。
+
+不要只 drop 表而保留代码：服务层会在每次上传时写不存在的表，直接把上传功能打挂。
+
+## 验证命令
+
+```bash
+pnpm vitest run src/lib/uploads src/lib/repositories/upload-objects.test.ts src/lib/mock.test.ts
+pnpm check:rls                     # public.upload_objects 必须被分类（server-only）
+pnpm check:supabase-security       # 迁移数 / public 表数 / service-role 调用点
+pnpm exec supabase migration up --local   # 应用 031
+pnpm update:migrations-manifest    # 追加新迁移的 SHA-256 基线
+```

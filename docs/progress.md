@@ -1314,3 +1314,87 @@
   release checklist、I07 mock 开发指南、I08 provider 诊断指南、I09 贡献者测试矩阵、
   I10 迁移回滚 runbook、J02 E2E shard、J03 CI 缓存、J07 tag/release 自动化。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H02_UPLOAD_METADATA（上传元数据迁移，本地完成）
+
+- 状态：DONE（本地）
+- 里程碑与发布目标：v0.8.0 后续补强（安全与测试基建）；**H02 完成后 M1「安全与测试基建」的可本地执行项全部完成**，进入 RELEASE_FREEZE 评估（见条目末尾「下一步」）。
+- 分支 / PR：`feat/visual-regression-baseline`（本地分支，无 PR）；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；**未 push / 未 merge / 未 deploy**。
+- 本地提交：`ee94266 feat(uploads): record upload object metadata for orphan detection`（代码 + 迁移 + 测试）、本进度条目的 docs 提交。
+- 目标：把只以 URL 字符串存在的上传对象变成可审计、可枚举的登记行，堵住「回写失败/进程被杀/替换头像留下永久公开孤儿对象」的治理盲区。
+- 已完成：
+  - 迁移 `031_upload_objects.sql` 新增 `public.upload_objects`：`bucket` / `object_key` / `owner_id`
+    （`references auth.users(id) on delete cascade`）/ `byte_size`（`> 0`）/ `content_type` /
+    `checksum`（`^[0-9a-f]{64}$`）/ `status`（`active|deleted`）/ 时间戳；
+    `unique (bucket, object_key)`，`(owner_id,status)` 与 `(bucket,status)` 两条索引，
+    `handle_updated_at` 触发器。RLS 打开且**零策略**，并 `revoke insert, update, delete, truncate
+    ... from anon, authenticated`（即使将来误加策略，表级写权限仍缺失）。
+  - 访问边界：新增 `src/lib/repositories/upload-objects.ts`（`createAdminClient()`，
+    `recordUploadObject` 走 `upsert(..., { onConflict: "bucket,object_key" })` 并复位 `status='active'`，
+    `markUploadObjectDeleted` 标记删除、行不存在是 no-op）；同时登记进
+    `src/lib/security/admin-client-boundary.ts`（`data-access`，表 `upload_objects`）与
+    `src/lib/security/rls-coverage.ts` 的 `SERVER_ONLY_TABLES`，门禁保持失败封闭。
+  - 上传协议（`src/lib/uploads/service.ts`）：抽出 `stageUploadObject()` 统一「put → 落元数据 → 失败即回滚」，
+    头像与项目封面共用；元数据写失败 → 删对象 + `uploadFailed`；业务表回写失败 → 删对象 + 标记 deleted；
+    替换旧对象仅在 `cleanupStorageObject` 返回 `true` 时把旧行标记 `deleted`，删除失败不标记（避免漏报）；
+    `markDeletedQuietly()` 让"删除后再标记失败"只记日志，不触发多余回滚。
+    保留 `manager bucket` 的既有事实：封面与头像同在 `avatars` bucket，靠 `covers/<projectId>/…`
+    与 `avatars/<userId>/…` 前缀区分。
+  - 新增 `src/lib/uploads/checksum.ts`（`node:crypto` sha256 十六进制）与 mock 支持
+    （`_mockUploadObjects` 缓存、`upload_objects` 读写分支、`status` 默认 `active`，
+    并把 `upsert()` 的 `onConflict` 扩展为支持逗号分隔复合列，单列行为不变）。
+  - 测试：`src/lib/repositories/upload-objects.test.ts`（4）、`src/lib/uploads/checksum.test.ts`（3）、
+    `src/lib/uploads/service.test.ts`（17，新增"元数据写入失败回滚对象"「顺序 put→元数据→业务表」
+    「旧对象删除失败不标记 deleted」等）、`src/lib/mock.test.ts`（41，新增 5 条复合键/跨 bucket/默认值）。
+  - 回归修正：`src/lib/security/admin-client-boundary.test.ts` 的调用点预算由 81 上调到 83
+    （新增 2 个调用点），并加注释说明该数字必须与清单、文档同步更新。
+  - 文档：新增 `docs/db/upload-metadata.md`（盲区 → 数据模型 → 访问边界 → 写入协议 → 孤儿巡检 SQL →
+    已知边界 → 回滚 → 验证命令）；`docs/db/security-audit.md` 计数更新（31 迁移 / 20 张 public 表 /
+    30 个模块 83 个调用点 / 15 张表 / server-only 白名单加入 `upload_objects`）并加互链；
+    `CHANGELOG.md` Unreleased/Added、`docs/roadmap-0.6.0.md` H02 标记完成。
+- 变更文件：`supabase/migrations/031_upload_objects.sql`（新增）、`supabase/migration-manifest.json`、
+  `src/lib/supabase/database.types.ts`、`src/lib/uploads/checksum.ts`（新增）+ 测试、
+  `src/lib/repositories/upload-objects.ts`（新增）+ 测试、`src/lib/uploads/service.ts` + 测试、
+  `src/lib/mock/index.ts` + 测试、`src/lib/security/admin-client-boundary.ts` + 测试、
+  `src/lib/security/rls-coverage.ts`、`docs/db/upload-metadata.md`（新增）、
+  `docs/db/security-audit.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm exec supabase migration up --local` → 031 应用成功（本地共 31 个迁移）；
+    `pnpm db:types`、`pnpm update:migrations-manifest` → 生成物与迁移一致。
+  - **本地 psql 运行时核对**（`docker exec -i supabase_db_indiestack psql -U postgres -d postgres`）：
+    `relrowsecurity = t`、`pg_policies` 计数 `0`、列数 `10`；`role_table_grants` 显示 anon /
+    authenticated 只剩 `REFERENCES, SELECT, TRIGGER`（insert/update/delete 已收回），service_role 全权限。
+  - **身份矩阵**（逐条 `psql -c` 单跑，`set local role` + `set local request.jwt.claims` + `rollback`）：
+    anon SELECT **0 行**、authenticated SELECT **0 行**、service_role SELECT **1 行**；
+    anon / authenticated 的 INSERT、UPDATE、DELETE 六条路径全部
+    `ERROR: permission denied for table upload_objects`。探针行与探针用户已删除（`upload_objects` 0 行、`auth.users` 仍为 3 行）。
+  - **约束与级联**（同上 psql）：非法 checksum → `upload_objects_checksum_check`；
+    重复 `(bucket, object_key)` → `upload_objects_bucket_key_unique`；
+    UPDATE 后 `updated_at > created_at`（触发器生效）；删除 `auth.users` 行后元数据行级联消失（回滚事务内验证）。
+  - `pnpm check:rls` → ✅ **31 迁移、20 张 public 表、35 条生效策略，全部已分类**。
+  - `pnpm check:supabase-security` → ✅ **31 迁移、20 张 public 表、39 条生效 RLS 策略、
+    30 个已分类 service-role 调用点**（清单实际 30 模块 / 83 调用点）。
+  - `pnpm lint` → 通过（先修掉 `getData` 31 > 30、两个上传函数 16 > 15 的复杂度超限：
+    mock 抽出 `readTable()`，服务层抽出 `stageUploadObject()`；`src/lib/mock/index.ts`
+    的存量豁免仍然必要，其余 8 个函数仍 > 15）。
+  - `pnpm type-check` → 通过；`pnpm check:all` → 通过（**119 文件 / 1228 测试**，上一批基线 117 文件 / 1211 测试）；
+    `pnpm build` → 通过（production build 正常完成）。
+- 阻塞：无技术阻塞；能力边界为 LOCAL_ONLY（无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产库的 `upload_objects` 未探测（需生产只读凭证）；运行时身份矩阵仅在本地 Supabase 完成。
+  - 真实浏览器端的 Storage-API 上传链路未重跑（本次为静态门禁 + psql 授权矩阵 + 服务层单测）。
+  - 反向孤儿巡检（bucket 列表 → 元数据差集）尚未实现为定时任务/worker，本批次只落数据；
+    没有真实 provider 列表权限，无法在本地做端到端孤儿清理验证。
+  - `owner_id` 级联删除只在回滚事务内验证，未在生产删除流程上跑过。
+- 风险与回滚：
+  - 风险：新增一次元数据写会让上传路径多一次数据库往返；元数据故障现在会**让上传失败**
+    （有意的失败封闭取舍——宁可上传失败也不留无登记的公开对象）。
+  - 风险：表是旁路记录，`status='deleted'` 只代表"应用认为已删除"；绕过应用直写 bucket 的对象
+    不会出现在表里，需要巡检侧做反向差集。
+  - 回滚：先 `git revert ee94266` 恢复服务层与仓储（停止写元数据），再 `drop table if exists public.upload_objects;`
+    + `notify pgrst, 'reload schema';`。**顺序不能反**——先删表会导致每次上传写不存在的表。
+    详细步骤见 `docs/db/upload-metadata.md` 的「回滚」。
+- 下一步：H02 收尾即触发 **RELEASE_FREEZE**：M1「安全与测试基建」的 H02–H10 可本地执行项已全部完成，
+  按语义化版本评估下一版本号（新增功能 + 安全加固 → minor）、写 CHANGELOG 与发布说明、确认迁移/回滚方案、
+  跑全量 `pnpm verify:build` 与 release 文档门禁，并把 tag/PR 准备到 LOCAL_ONLY 允许的最后一步（本地提交 + exit report）。
+- 最后更新：2026-09-13

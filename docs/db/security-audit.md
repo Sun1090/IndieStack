@@ -13,13 +13,17 @@
 
 ## 静态审计状态（2026-09-13）
 
-`pnpm check:supabase-security` 通过：30 个迁移、19 张 public 表、39 条生效 RLS policy、
+`pnpm check:supabase-security` 通过：31 个迁移、20 张 public 表、39 条生效 RLS policy、
 Storage bucket 策略（应用引用的每个 bucket 都已登记、由迁移建行，且有按租户收敛的生效策略）、
 `SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与
-29 个已分类的 service-role 调用点（81 个调用点）均通过。迁移
+30 个已分类的 service-role 调用点（83 个调用点）均通过。迁移
 `024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
 约束的 INSERT/UPDATE/DELETE policy 纳入版本控制；bucket 清单、规则与运行时核对见
 [docs/db/storage-policy-audit.md](storage-policy-audit.md)。
+
+`031_upload_objects.sql` 新增的 `public.upload_objects` 是另一类 server-only 表：RLS 打开且
+零策略，并额外收回了 `anon` / `authenticated` 的表级写权限，只有 service_role 能读写。
+数据模型、写入协议与运行时身份矩阵见 [docs/db/upload-metadata.md](upload-metadata.md)。
 
 ## SECURITY DEFINER 执行权限（2026-09-13 加固）
 
@@ -148,11 +152,12 @@ from unnest(array['anon','authenticated','service_role']) r;
 | `insert` / `update` / `all` 策略缺 `with check` | `POLICY_MISSING_WITH_CHECK` | PostgreSQL 会把缺省的 `WITH CHECK` 当作 `true` |
 
 server-only 白名单（RLS 开启、**零**策略，仅 `service_role` 经 `BYPASSRLS` 访问）：
-`email_worker_runs`、`mfa_recovery_codes`、`push_delivery_attempts`、`webhook_events`。
+`email_worker_runs`、`mfa_recovery_codes`、`push_delivery_attempts`、`upload_objects`、
+`webhook_events`。
 
 ```bash
 pnpm check:rls
-# ✅ RLS 全表回归通过：30 个迁移、19 张 public 表、35 条生效策略均带 USING / WITH CHECK，且每张表都已分类
+# ✅ RLS 全表回归通过：31 个迁移、20 张 public 表、35 条生效策略均带 USING / WITH CHECK，且每张表都已分类
 ```
 
 **与线上目录的交叉验证**（本地 Supabase）：
@@ -186,18 +191,18 @@ RLS 只约束 `anon` / `authenticated`；`service_role` 带 `BYPASSRLS`，因此
 
 ```bash
 pnpm check:supabase-security
-# ✅ Supabase security audit passed: 30 migrations, 19 public tables,
+# ✅ Supabase security audit passed: 31 migrations, 20 public tables,
 #    server-only service role checks, 39 effective RLS policies,
-#    29 classified service-role call sites
+#    30 classified service-role call sites
 ```
 
 ### 清点结果
 
-**29 个模块 / 81 个调用点**，按 surface 与信任依据分布：
+**30 个模块 / 83 个调用点**，按 surface 与信任依据分布：
 
 | surface | 模块数 | 信任依据（trust kind） | 说明 |
 |---|---:|---|---|
-| `data-access` | 12 | `server-internal` | 仓储层，授权由调用方保证 |
+| `data-access` | 13 | `server-internal` | 仓储层，授权由调用方保证 |
 | `e2e-mock-route` | 6 | `mock-bearer` | 仅 mock 模式，需 bearer token |
 | `server-action` | 3 | `role` / `session` | Server Action 入口 |
 | `request-handler` | 2 | `role` / `session` | Route Handler 入口 |
@@ -207,9 +212,9 @@ pnpm check:supabase-security
 | `auth-bridge` | 1 | `caller-validated` | 调用方校验 WebAuthn 断言 |
 | `server-internal` | 1 | `server-internal` | 服务端通知辅助函数 |
 | `storage-adapter` | 1 | `server-internal` | 固定 `avatars` bucket |
-| **合计** | **29** | 14 个模块带字面量授权证据 | **81 个调用点** |
+| **合计** | **30** | 15 个模块带字面量授权证据 | **83 个调用点** |
 
-被 service_role 触达的表面：14 张表、1 个 bucket（`avatars`）、1 个 RPC
+被 service_role 触达的表面：15 张表、1 个 bucket（`avatars`）、1 个 RPC
 （`claim_webhook_event`，见 [webhook-idempotency.md](./webhook-idempotency.md)），
 以及 5 个 `auth.admin` 方法（`deleteUser` / `generateLink` / `getUserById` /
 `listFactors` / `deleteFactor`）。`auth.admin` 与跨用户写入是这条清单里权限最高的操作，
