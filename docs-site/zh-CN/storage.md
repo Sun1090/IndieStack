@@ -21,6 +21,11 @@ OSS_ACCESS_KEY_SECRET=your-access-key-secret
 四项都存在时启用 OSS；完全未配置或只配置部分变量时使用 Supabase Storage。部分配置会输出
 环境诊断告警和去重的 `provider.fallback` 指标，诊断信息不会包含任何凭据值。
 
+`provider.fallback`（`provider`、`reason`、`missing`）对同一份「缺失变量签名」在每个进程内最多上报
+一次，因此一次配置失误不会放大成流量级噪声。签名是缺失变量名按字母排序后的列表，不随配置书写
+顺序变化；缺失集合变化会重新上报，配置补齐后状态重置，而四项全空的 OSS 配置属于默认驱动、不是
+回退，永远不产生该指标。
+
 ## 上传流程
 
 头像和项目封面共用同一条服务端上传链路：
@@ -77,7 +82,8 @@ OSS 驱动沿用公共读桶模型，通过 `ali-oss` 实现 `put`、`signedUrl`
 请求指标的 `outcome` 取值是 `success` / `failure` / `cancelled`；用户主动取消上传不能被算成存储故障。
 provider 指标失败率超过 5%、或请求指标失败率超过 10%，都值得排查。
 
-两个指标名与维度取值都来自 `src/lib/observability/storage-metrics.ts`，调用点不要手写字面量。
+两个指标名与维度取值都来自 `src/lib/observability/storage-metrics.ts`；回退指标与去重闸门来自
+`src/lib/observability/provider-metrics.ts`。调用点不要手写字面量。
 
 清理失败只记录结构化日志，不反向破坏已经成功的数据库写入，因为数据库仍是事实来源。
 
@@ -93,6 +99,8 @@ provider 指标失败率超过 5%、或请求指标失败率超过 10%，都值�
 
 ```bash
 pnpm test -- src/lib/storage/index.test.ts src/lib/uploads
+pnpm test -- src/lib/observability/storage-metrics.test.ts
+pnpm test -- src/lib/observability/provider-metrics.test.ts
 pnpm test -- src/app/api/uploads
 pnpm test:e2e -- e2e/uploads.spec.ts
 ```

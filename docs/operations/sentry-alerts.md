@@ -41,14 +41,14 @@
 
 | 指标 | 单位 | 维度 | 采集时机 |
 |---|---|---|---|
-| `email.send.completed` | `ms` | `provider`, `outcome`, `status` | 每次 Resend 调用结束 |
+| `email.send.completed` | `ms` | `provider`, `outcome`, `status`, `reason` | 每次 Resend 调用结束；provider 未配置时不发起请求，立即以 `reason=not-configured` 结束 |
 | `email.backlog` | `count` | 无 | 每轮 digest 开始 |
 | `cron.digest.completed` | `ms` | `pulled`, `sent`, `groups`, `failed` | 每轮 digest 成功结束（含空队列） |
 | `cron.digest.failed` | `count` | `error_type` | 每轮 digest 未处理异常 |
 | `cron.auth.rejected` | `count` | `worker`, `reason` | 任一 cron worker 返回 401（`secret_unconfigured` / `missing_credentials` / `invalid_credentials`） |
 | `storage.upload.completed` | `ms` | `provider`, `outcome` | 每次对象写入结束 |
 | `upload.request.completed` | `ms` | `operation`, `outcome` | 每次上传请求结束（成功 / 失败 / 取消） |
-| `provider.fallback` | `count` | `provider`, `reason`, `missing` | OSS 配置不完整并回退 Supabase |
+| `provider.fallback` | `count` | `provider`, `reason`, `missing` | OSS 配置只填了一部分并回退 Supabase（`missing` 是按字母排序的缺失变量名，如 `OSS_BUCKET,OSS_REGION`） |
 | `push.send.completed` | `count` | `provider`, `status_code` | 每次 Web Push 传输成功 |
 | `push.send.failed` | `count` | `provider`, `reason` | Web Push 未配置或适配器不可用 |
 | `push.endpoint.revoked` | `count` | `reason`, `channel` | 404/410 或订阅记录缺失导致端点撤销 |
@@ -90,6 +90,7 @@
 | Digest 连续失败 | `cron.digest.failed > 0`，5 分钟窗口 | 立即排查 cron 鉴权、Supabase 与邮件 provider |
 | 邮件积压 | `email.backlog > 500`，连续 3 轮或 15 分钟 | 检查 worker、provider 限流与死信增长 |
 | 邮件失败率 | `email.send.completed{outcome=failure}` 占比 > 2%，10 分钟且样本 ≥20 | 检查 Resend 状态与响应码 |
+| 邮件 provider 未配置 | `email.send.completed{reason="not-configured"} > 0`，15 分钟窗口 | 补部署环境的 `RESEND_API_KEY`；该类样本不带 `status`，说明请求根本没发出去 |
 | provider 写入失败率 | `storage.upload.completed{outcome=failure}` 占比 > 5%，15 分钟且样本 ≥20 | 检查 Storage 权限、配额与 provider 状态 |
 | 上传请求失败率 | `upload.request.completed{outcome=failure}` 占比 > 10%，30 分钟且样本 ≥20 | 用户可见失败：先按 `operation` 维度拆分，再查结构化错误日志区分鉴权/校验拒绝与存储故障（`cancelled` 不计入分子与分母） |
 | 配置回退 | `provider.fallback > 0`，15 分钟窗口 | 补齐 OSS 配置或明确保持 Supabase |
@@ -109,5 +110,10 @@
 - `cron.auth.rejected` 按 `worker + reason` 聚合，且设置 15 分钟抑制窗口：该计数在鉴权失败时
   由未通过鉴权的调用方触发，不排除外部扫描流量，**不要**按原始条数直接报警（会变成噪声），
   只用于区分「鉴权配置坏了」与「调度没跑」。
-- `provider.fallback` 在单个进程内按缺失变量签名去重。Serverless 冷启动可能跨实例重复，日志平台应再按 `name + attributes.reason + attributes.missing` 聚合，并设置至少 30 分钟恢复窗口。
+- `provider.fallback` 在单个进程内按缺失变量签名去重（签名是排序后的缺失变量名列表，因此不随配置书写顺序变化）：同一签名只上报一次，
+  缺失集合变化（例如从缺三项变成缺两项）重新上报，配置补齐后重置，之后再次降级仍会上报。
+  Serverless 冷启动可能跨实例重复，日志平台应再按 `name + attributes.reason + attributes.missing` 聚合，并设置至少 30 分钟恢复窗口。
+  注意「OSS 四项全空」是默认驱动而非降级，永远不会出现在这条指标里——只有「想用 OSS 却配了一半」才告警。
+- `email.send.completed{reason="not-configured"}` 属于配置缺陷而不是上游故障：它会按每封邮件尝试计数（摘要轮次里可能一次几十条），
+  只用于「provider 没配上」的即时可见性，告警规则按 `provider + reason` 聚合，不要用它与上游失败率共用同一抑制策略。
 - 所有比率告警都设置最小样本量，避免低流量误报；阈值变更须在发布记录中说明并观察一个完整业务周期。

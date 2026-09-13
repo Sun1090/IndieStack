@@ -23,6 +23,13 @@ If all four OSS values are present, the OSS driver is selected. If none or only 
 the app uses Supabase Storage. A partial configuration emits an environment warning and a
 deduplicated `provider.fallback` metric; credentials are never included in diagnostics.
 
+`provider.fallback` (`provider`, `reason`, `missing`) fires at most once per process for a given
+missing-variable signature, so a single misconfiguration cannot become traffic-level noise. The
+signature is the alphabetically sorted list of missing variable names, which means it does not
+depend on how the configuration is written; changing the missing set re-emits, restoring a complete
+configuration resets the state, and an entirely unset OSS configuration is the default driver rather
+than a fallback and never alerts.
+
 ## Upload Flow
 
 Avatar and project-cover uploads use the same server-side pipeline:
@@ -87,8 +94,9 @@ Two metrics cover uploads, and they answer different questions:
 upload must not count as a storage failure. Values above 5% `failure` on the provider metric, or
 above 10% on the request metric, indicate a problem worth investigating.
 
-Both metric names and their attribute values come from `src/lib/observability/storage-metrics.ts`.
-Do not hand-write the literals at call sites.
+Both metric names and their attribute values come from `src/lib/observability/storage-metrics.ts`;
+the fallback metric and its deduplication gate come from
+`src/lib/observability/provider-metrics.ts`. Do not hand-write the literals at call sites.
 
 Cleanup failures are logged without failing a database write that already succeeded, because the
 database remains the source of truth.
@@ -107,6 +115,7 @@ database remains the source of truth.
 ```bash
 pnpm test -- src/lib/storage/index.test.ts src/lib/uploads
 pnpm test -- src/lib/observability/storage-metrics.test.ts
+pnpm test -- src/lib/observability/provider-metrics.test.ts
 pnpm test -- src/app/api/uploads
 pnpm test:e2e -- e2e/uploads.spec.ts
 ```

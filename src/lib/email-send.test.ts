@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { sendResendEmail, DEFAULT_RESEND_ENDPOINT, DEFAULT_EMAIL_FROM } from "./email-send";
+import { metricEvents } from "@/lib/testing/metric-events";
 
 type FetchResponseMock = { ok: boolean; status: number; text: () => Promise<string> };
 const fetchMockResolved: FetchResponseMock = {
@@ -107,6 +108,41 @@ describe("sendResendEmail(): Resend provider contract", () => {
     delete process.env.RESEND_API_KEY;
     await expect(sendResendEmail(INPUT)).rejects.toThrow("RESEND_API_KEY missing");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("RESEND_API_KEY 缺失也上报失败样本，否则失败率告警永远没有分母（E06）", async () => {
+    delete process.env.RESEND_API_KEY;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(sendResendEmail(INPUT)).rejects.toThrow("RESEND_API_KEY missing");
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "email.send.completed",
+        unit: "ms",
+        attributes: {
+          provider: "resend",
+          outcome: "failure",
+          reason: "not-configured",
+        },
+      }),
+    ]);
+    log.mockRestore();
+  });
+
+  it("发送成功样本带 status 且不带降级 reason（E06）", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(sendResendEmail(INPUT)).resolves.toBeUndefined();
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "email.send.completed",
+        unit: "ms",
+        attributes: { provider: "resend", outcome: "success", status: 200 },
+      }),
+    ]);
+    log.mockRestore();
   });
 
   it("2xx：静默 resolve，不读取也不依赖响应体", async () => {

@@ -8,8 +8,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStorageConfigReport } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { recordMetric } from "@/lib/metrics";
 import { storageUploadTimer } from "@/lib/observability/storage-metrics";
+import {
+  createProviderFallbackGate,
+  OSS_INCOMPLETE_REASON,
+  recordProviderFallback,
+  providerFallbackSignature,
+} from "@/lib/observability/provider-metrics";
 import OSS from "ali-oss";
 
 /** 允许的图片类型 → 存储扩展名（content-type 白名单，拒绝任意扩展名拼接） */
@@ -130,21 +135,27 @@ function ossDriver(): StorageDriver {
   };
 }
 
-let lastIncompleteFallback: string | null = null;
+/**
+ * 进程内回退去重闸门。导出以便测试重置与未来的配置热重载复用，
+ * 语义见 `src/lib/observability/provider-metrics.ts`。
+ */
+export const storageFallbackGate = createProviderFallbackGate();
 
 /** 按环境选择驱动；OSS 配置不完整时回退 Supabase（诊断信息见 warnOnEnvProblems 类日志） */
 export function getStorageDriver(): StorageDriver {
   const report = getStorageConfigReport();
-  if (report.reason === "oss-incomplete") {
-    const signature = report.missingOssVariables.join(",");
-    if (signature !== lastIncompleteFallback) {
-      lastIncompleteFallback = signature;
-      recordMetric("provider.fallback", 1, {
-        attributes: { provider: "supabase", reason: "oss-incomplete", missing: signature },
-      });
-    }
-  } else {
-    lastIncompleteFallback = null;
+  // 只有「配了一半」才算回退；四项全空是默认驱动，不该产生告警。
+  const signature =
+    report.reason === "oss-incomplete"
+      ? providerFallbackSignature(report.missingOssVariables)
+      : null;
+  if (storageFallbackGate.shouldReport(signature)) {
+    recordProviderFallback({
+      // provider 取实际提供服务的驱动：回退目标变化时指标不会说谎。
+      provider: report.provider,
+      reason: OSS_INCOMPLETE_REASON,
+      missing: report.missingOssVariables,
+    });
   }
   return report.provider === "oss" ? ossDriver() : supabaseDriver();
 }

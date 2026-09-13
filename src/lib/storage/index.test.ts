@@ -33,7 +33,10 @@ import {
   SIGNED_URL_MAX_SECONDS,
   cleanupStorageObject,
   cleanupManagedStorageUrl,
+  storageFallbackGate,
 } from "./index";
+import { getStorageConfigReport } from "@/lib/env";
+import { OSS_INCOMPLETE_REASON } from "@/lib/observability/provider-metrics";
 
 const OSS_ENV = {
   OSS_BUCKET: "bucket",
@@ -263,6 +266,71 @@ describe("上传成功率指标（E05）", () => {
         attributes: { provider: "oss", outcome: "failure" },
       }),
     ]);
+  });
+});
+
+describe("provider fallback 指标（E06）", () => {
+  let log: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // 去重闸门是进程级状态：每个用例从「未观察过任何降级」开始。
+    setOssEnv({});
+    storageFallbackGate.reset();
+    log = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => log.mockRestore());
+
+  it("配置不完整时上报一次，维度含实际驱动与排序后的缺失变量名", () => {
+    setOssEnv({ OSS_BUCKET: "bucket" });
+    // env 报告的 reason 与指标 reason 必须同源，避免两处字面量各自漂移。
+    expect(getStorageConfigReport().reason).toBe(OSS_INCOMPLETE_REASON);
+
+    getStorageDriver();
+    getStorageDriver();
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "provider.fallback",
+        value: 1,
+        unit: "count",
+        attributes: {
+          provider: "supabase",
+          reason: "oss-incomplete",
+          missing: "OSS_ACCESS_KEY_ID,OSS_ACCESS_KEY_SECRET,OSS_REGION",
+        },
+      }),
+    ]);
+  });
+
+  it("缺失集合变化时重新上报（部分补齐后仍然可见）", () => {
+    setOssEnv({ OSS_BUCKET: "bucket" });
+    getStorageDriver();
+    setOssEnv({ OSS_BUCKET: "bucket", OSS_REGION: "region" });
+    getStorageDriver();
+
+    expect(metricEvents(log).map((event) => event.attributes?.missing)).toEqual([
+      "OSS_ACCESS_KEY_ID,OSS_ACCESS_KEY_SECRET,OSS_REGION",
+      "OSS_ACCESS_KEY_ID,OSS_ACCESS_KEY_SECRET",
+    ]);
+  });
+
+  it("配置补齐后重置去重状态，之后再次降级仍会上报", () => {
+    setOssEnv({ OSS_BUCKET: "bucket" });
+    getStorageDriver();
+    setOssEnv(OSS_ENV);
+    expect(getStorageDriver().provider).toBe("oss");
+    setOssEnv({ OSS_BUCKET: "bucket" });
+    getStorageDriver();
+
+    expect(metricEvents(log)).toHaveLength(2);
+  });
+
+  it("四项全空属于默认驱动，不产生回退告警", () => {
+    getStorageDriver();
+
+    expect(getStorageConfigReport().reason).toBe("oss-not-configured");
+    expect(metricEvents(log)).toEqual([]);
   });
 });
 

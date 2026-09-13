@@ -6,6 +6,12 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Provider 降级指标契约（E06）**：新增 `src/lib/observability/provider-metrics.ts` 固化 `provider.fallback` 的指标名、
+  原因取值与「缺失变量签名」去重闸门，`getStorageDriver()` 只引用常量，并改为上报**实际提供服务的驱动**而不是写死的
+  `supabase`。补齐一处真实计量盲区：`RESEND_API_KEY` 缺失时发送层在启动计时器之前就抛错，`email.send.completed`
+  连一条样本都不产生，于是「provider 没配上、邮件一封都发不出去」在失败率告警里完全不可见，只能等积压涨到阈值；
+  现在该路径立即以 `{outcome="failure", reason="not-configured"}` 结束计时器，运维可据此即时告警。同时明确
+  「OSS 四项全空」是默认驱动而非回退，不产生告警；`missing` 维度改为按字母排序的缺失变量名列表，去重不再依赖配置书写顺序。
 - **上传成功率指标分层与契约化（E05）**：新增 `src/lib/observability/storage-metrics.ts` 固化
   `storage.upload.completed` 与 `upload.request.completed` 两个指标名、provider/operation 集合与
   `success` / `failure` / `cancelled` 取值，驱动与领域服务只引用常量，不再在各调用点手写字面量。
