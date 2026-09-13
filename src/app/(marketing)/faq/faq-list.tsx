@@ -47,7 +47,7 @@ export function FaqList({ categories }: { categories: FaqCategory[] }) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={search_placeholder()}
           aria-label={search_placeholder()}
-          className="h-10 w-full rounded-lg border bg-background pl-9 pr-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+          className="h-10 w-full rounded-lg border bg-background pl-9 pr-4 text-sm outline-hidden focus:ring-2 focus:ring-ring"
         />
       </div>
 

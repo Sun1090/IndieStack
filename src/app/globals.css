@@ -50,6 +50,20 @@
     from { height: var(--radix-accordion-content-height); }
     to { height: 0; }
   }
+
+  /* G01：自持动画改用 v4 原生 theme token，替代「裸 @keyframes + @layer utilities 自定义类」，
+     工具类名回到 animate-<token>，宽度等非动画声明由使用方用普通工具类表达。 */
+  --animate-progress-indeterminate: progress-indeterminate 1.5s ease-in-out infinite;
+  --animate-navprogress: navprogress 0.8s ease-in-out infinite;
+
+  @keyframes progress-indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+  @keyframes navprogress {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
 }
 
 /* 容器工具类（替代 config 的 container: center + padding 2rem + 2xl 1400px） */
@@ -149,37 +163,4 @@
       "rlig" 1,
       "calt" 1;
   }
-}
-
-@layer utilities {
-  .step {
-    counter-increment: step;
-  }
-
-  .step:before {
-    @apply absolute inline-flex h-9 w-9 items-center justify-center rounded-full border-4 border-background bg-muted text-center -indent-px font-mono text-base font-medium;
-    @apply ml-[-50px] mt-[-4px];
-    content: counter(step);
-  }
-
-  /* Progress 不确定进度动画 */
-  @keyframes progress-indeterminate {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(400%);
-    }
-  }
-
-  .animate-progress-indeterminate {
-    animation: progress-indeterminate 1.5s ease-in-out infinite;
-    width: 30%;
-  }
-}
-
-/* 路由切换进度条动画 */
-@keyframes navprogress {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(400%); }
 }

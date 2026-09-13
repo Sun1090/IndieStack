@@ -169,7 +169,7 @@ export default async function HomePage() {
 
         {/* CTA 区域：行动号召 */}
         <section className="container py-16 md:py-20">
-          <div className="mx-auto max-w-3xl rounded-2xl bg-gradient-to-b from-muted/50 to-muted p-8 text-center md:p-12">
+          <div className="mx-auto max-w-3xl rounded-2xl bg-linear-to-b from-muted/50 to-muted p-8 text-center md:p-12">
             <h2 className="text-3xl font-bold tracking-tight">{t("ctaSection.title")}</h2>
             <p className="mt-2 text-muted-foreground">{t("ctaSection.description")}</p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">

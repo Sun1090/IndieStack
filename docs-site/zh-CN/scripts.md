@@ -29,6 +29,7 @@
  | `pnpm check` | 同时运行类型检查和代码检查 |
 | `pnpm check:security` | 校验 secrets/环境策略与安全扫描配置 |
 | `pnpm check:changelog` | 校验 CHANGELOG.md 结构（版本、章节、条目） |
+| `pnpm check:tailwind` | 校验 Tailwind v4 原生主题用法（无 JS 配置、`@theme` token、已更名工具类） |
  
  ## 测试
  

@@ -65,6 +65,9 @@ jobs:
       - name: Check CHANGELOG structure
         run: pnpm check:changelog
 
+      - name: Check Tailwind v4 native theme usage
+        run: pnpm check:tailwind
+
       # test:coverage 在 CI 同步 enforce 覆盖率门禁（branches 90%），
       # 并产出 coverage/ 供下方 artifact 上传（消除空路径告警）
       - name: Run tests with coverage

@@ -124,6 +124,17 @@ F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped s
 
 `pnpm check:changelog` 在结构层面校验 `CHANGELOG.md`（I05）：`[Unreleased]` 必须排第一且非空、版本标题形如 `## [x.y.z] — YYYY-MM-DD`、版本按降序排列且不重复、每个版本至少一个 `### 章节` 且章节内至少一个顶层条目、条目不得为空或超长。规则实现位于 `src/lib/changelog/parse-changelog.ts`（纯函数，单测覆盖），由 `scripts/check-changelog.js` 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只覆盖文档结构，不校验文案质量或发布事实。
 
+## Tailwind v4 原生主题门禁（G01）
+
+`pnpm check:tailwind` 把 ADR-013 的「不再有 JS 配置」从一次性迁移变成可持续约束。规则分两层：
+
+1. **仓库结构层**：仓库根不得再出现 `tailwind.config.*`；任何 CSS 不得出现 `@config` 指令（注释里提到不算）；`package.json` 不得重新引入 `tailwindcss-animate`；必须存在 `@theme` 块；每个 `@keyframes` 必须被至少一个 `--animate-*` token 整词认领（`spin-slow` 不会被 `--animate-spin` 认领）。
+2. **应用层写法**（`src/**` 去掉 `src/components/ui/**`）：禁用任意值动画 `animate-[...]`（必须先在 `@theme` 登记 token），以及 v4 已更名或改语义的 v3 工具类：`bg-gradient-to-*` → `bg-linear-to-*`、`outline-none` → `outline-hidden`（v4 的 `outline-none` 会连 forced-colors 下的可见轮廓一起移除）、`flex-shrink*` / `flex-grow*` → `shrink-*` / `grow-*`、`overflow-ellipsis` → `text-ellipsis`、`decoration-slice|clone` → `box-decoration-slice|clone`。
+
+`src/components/ui/**` 是 shadcn 上游基元的落点，写法跟随上游版本更新，因此只统计成一条非阻断 warning（收口进度可见，但不会为了改类名手改上游文件）。`shadow` / `rounded` / `blur` 这类「裸名」**不在**禁用列表：本项目 `@theme inline` 把 radius 刻度显式映射回 shadcn 语义，实测 `.rounded` 与 `.rounded-sm` 都解析为 4px，改名只会制造无收益 diff。
+
+规则实现位于 `src/lib/tailwind/native-theme.ts`（纯函数，24 条单测覆盖），IO/CLI 位于 `scripts/lib/tailwind-native-check.js`（支持传入临时仓库根做反例测试），由 `scripts/check-tailwind.js` 经 Node 原生 type stripping 调用；`pnpm check:all` 与 CI Lint & Type Check job 均会执行。该门禁只证明类名与主题写法合规，不替代视觉回归（`pnpm test:visual`）对像素结果的验证。
+
 ## 迁移漂移门禁（H09）
 
 `pnpm check:migrations` 是离线门禁：校验 `supabase/migrations/` 的文件命名、编号连续性与无重复、空文件、UTF-8 BOM、CRLF 行尾、结尾换行，并把每个文件的 SHA-256 与提交在 `supabase/migration-manifest.json` 的基线比对。规则实现位于 `src/lib/migrations/migration-drift.ts`（纯函数，单测覆盖），由 `scripts/check-migrations.js` 经 Node 原生 type stripping 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。
