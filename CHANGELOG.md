@@ -6,31 +6,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Planned
 
-- **UI 系统收口（G01–G07）**：下一里程碑把界面层从“逐页手写”收敛为可复用系统——Tailwind v4 试点页迁移、
-  design token 收口、shared form field 统一、loading/empty/error 状态统一，并补齐暗色模式、移动端断点与
-  键盘 / screen reader 回归。该批任务会同步补组件单测与 Playwright 断点 / a11y 断言，退出标准见
-  [docs/roadmap-0.6.0.md](docs/roadmap-0.6.0.md) 的 M2 里程碑。
+- 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、
+  release checklist 与迁移回滚 runbook、本地 mock / provider 诊断 / 贡献者测试矩阵，以及 E2E shard 策略复审、
+  CI 并行与缓存、CodeQL / Secrets 零回归、production smoke、tag/release 自动化与退出报告。
 
-### Fixed
+## [0.10.0] — 2026-09-13
 
-- **深色模式首帧闪烁与主题持久化失效（G05）**：根布局新增带 CSP nonce 的内联阻塞脚本，在 CSS 解析前
-  读取 `ui-theme` 并写好 `<html>` 的 `light`/`dark` class 与 `color-scheme`，深色用户不再先看到一帧浅色；
-  `localStorage` / `matchMedia` 各自兜底，隐私模式或老浏览器下退化为系统偏好而不是中断。
-  同时修掉存储键不一致（Provider 写 `ui-theme`、其它地方读 `theme`）导致刷新后主题丢失的问题：
-  键名与解析规则收口到 `src/lib/theme/theme.ts`，Provider、切换按钮与 E2E 共用同一份定义，
-  system 模式改为监听 `prefers-color-scheme` 实时跟随。新增 13 条单测（含 jsdom 内联脚本行为）与
-  `e2e/theme.spec.ts` 6 条 E2E（含阻断客户端 bundle 的首屏断言）。
-- **移动端断点回归：导航不可达与横向溢出（G06）**：新增 `e2e/responsive.spec.ts`（375 / 768 / 1280 三个断点）
-  后暴露两个真实缺陷。其一，`@utility container` 恒为 2rem 内边距，在 375px 视口下把页头右侧操作区挤出视口
-  （`scrollWidth` 428 > 375），首页 / 功能页 / 定价页 / 仪表盘全部横向滚动；改为手机 1rem、≥640px 恢复 2rem。
-  其二，仪表盘侧边栏是 `hidden md:block`，手机上整个导航消失，用户只能手改地址栏才能到达分析、团队、设置等页面；
-  现在新增 `MobileDashboardNav`（ui/sheet 左抽屉，跳转后自动关闭）保证导航可达，页头断点由 md 提升到 lg 并让
-  汉堡菜单带上 `aria-label` / `aria-expanded` / `aria-controls`，触屏设备不再渲染无用的快捷键入口。
-  导航链接与角色、未读状态抽出 `dashboard-nav-links` / `use-is-admin` / `use-unread-notifications` 供桌面侧边栏与
-  移动抽屉共用，避免两侧漂移；新增 18 条单测与 11 条 E2E，Linux 容器内 4 项视觉基线保持无变化。
-- **键盘与 screen reader 交互回归：跳过导航不生效、Esc 不关闭菜单、折叠侧边栏无可访问名称（G07）**：新增 `e2e/keyboard.spec.ts`（6 条，全部基于角色与可访问名称断言）后暴露四处真实缺口。其一，`#main-content` 不可聚焦，键盘用户激活「跳到主要内容」后焦点仍停在链接上，屏幕阅读器不会切换上下文；现在四处 `<main>` 补 `tabindex="-1"`，激活后焦点确实落进主内容。其二，移动端页头菜单只能再点按钮关闭，Esc 无反应且焦点丢失；现在 Esc 关闭并把焦点交还汉堡按钮。其三，仪表盘折叠按钮没有可访问名称也不暴露状态，折叠后图标链接只剩 `title`；现在按钮带 `aria-label` / `aria-expanded` / `aria-controls`，折叠后的链接改用 `aria-label` 保留名称。其四，`?` 快捷键只挡了 input/textarea/select，在 contenteditable 与 `role="textbox"`（命令面板输入框）里输入 `?` 会误弹帮助，且 `⌘?` / `Ctrl+?` / `Alt+?` 未排除，现已一并拦截。新增 13 条单测与 6 条键盘 E2E，Linux 容器内 4 项视觉基线保持无变化。
+> 主题：**UI 系统收口**——把界面层从「逐页手写」收敛为可复用系统，并补齐暗色模式、移动端断点与
+> 键盘 / screen reader 回归。
 
-- **Tailwind v3 遗留写法收口到 v4 原生机制（G01）**：自持的两段动画（进度条不确定态、路由切换进度条）从「裸 `@keyframes` + `@layer utilities` 手写类」迁到 `@theme` 的 `--animate-progress-indeterminate` / `--animate-navprogress` token（keyframes 内联进同一块），使用处回到 `animate-<token>` 工具类，宽度用普通工具类 `w-[30%]` 表达；删除仓库内已无引用的 `.step` / `.step:before` 死代码与尾部裸 `@keyframes navprogress`。同时把试点页与共享表单里的 v3 语义类名升级：`bg-gradient-to-b`→`bg-linear-to-b`、`outline-none`→`outline-hidden`（focus-visible 场景，含 forced-colors 处理）。为防回潮新增 `pnpm check:tailwind` 构建门禁（7 类规则码：`@config`/JS 配置/`tailwindcss-animate` 依赖/`@theme` 缺失/未被 token 认领的 `@keyframes`/任意值动画/v3 重命名工具类，24 条单测），接入 `pnpm check:all` 与 CI；构建产物 CSS 已复核 `.animate-navprogress`、`.animate-progress-indeterminate`、`.bg-linear-to-b`、`.outline-hidden` 正常落盘。
+### Added
+
 - **状态色散落原生调色板、图表 token 无 @theme 映射（G02）**：新增 `src/lib/design/tokens.ts` 作为 design token 单一事实来源，登记 39 个 token（`--success` / `--warning` / `--info` 三组语义色各带 foreground）。此前状态提示直接写 Tailwind 原生调色板（`bg-green-500`、`text-amber-600`、`bg-red-500`…），同一语义在不同文件里色阶不一致，深色模式下也没有统一回退；现在 11 个业务文件统一走 `bg-success` / `text-warning` / `bg-destructive` / `bg-info`，`:root` 与 `.dark` 各补一份色值。同时补上 `--color-chart-1..5` 的 `@theme` 映射——`--chart-*` 此前只有原始变量，`text-chart-N` / `fill-chart-N` 实际并不存在。为防回潮新增 `pnpm check:tokens`（8 类规则码：根块或主题块缺失、token 缺根值或缺深色覆盖、`@theme` 映射缺失/悬空/未登记、白名单外使用原生状态调色板；28 条单测），接入 `pnpm check:all` 与 CI；Linux 容器内 4 项视觉基线保持无变化。
 
 - **共享表单字段各写一套，label / aria 接线易漂移（G03）**：新增 `src/components/shared/form-field.tsx`，把
@@ -40,6 +26,7 @@ All notable changes to IndieStack will be documented in this file.
   `native-select.tsx`（补齐此前漂移掉的 `disabled:` 外观）。`globals.css` 为 `[aria-invalid="true"]` 提供统一
   可见红边；新增 `pnpm check:fields` 门禁，禁止业务层直接写 `<select>`、复制控件类名长串或直接导入
   `ui/label`（3 类规则码、8 条门禁单测 + 17 条原语单测），接入 `pnpm check:all` 与 CI。
+
 - **加载 / 空 / 错误状态各写一套，骨架屏丢 aria、加载文案硬编码（G04）**：新增 `src/components/shared/error-state.tsx`
   统一「图标 + 标题 + 说明 + 操作」的错误展示，4 个错误边界（`error` / `dashboard/error` / `global-error` /
   `not-found`）与查询失败卡片一并收敛到它，`code` 渲染页面唯一 `h1`，默认 `role="alert"`、只读提示可传
@@ -50,6 +37,31 @@ All notable changes to IndieStack will be documented in this file.
   同时删除零引用的重复加载组件 `page-loader.tsx` / `loading-state.tsx`。顺带修掉 `faq-list` 硬编码英文——
   搜索占位符与无结果文案改为 props（双语各补 2 个 key）。新增 `pnpm check:states` 门禁（4 类规则码、
   13 条门禁单测 + 14 条原语单测），接入 `pnpm check:all` 与 CI。
+
+### Changed
+
+- **Tailwind v3 遗留写法收口到 v4 原生机制（G01）**：自持的两段动画（进度条不确定态、路由切换进度条）从「裸 `@keyframes` + `@layer utilities` 手写类」迁到 `@theme` 的 `--animate-progress-indeterminate` / `--animate-navprogress` token（keyframes 内联进同一块），使用处回到 `animate-<token>` 工具类，宽度用普通工具类 `w-[30%]` 表达；删除仓库内已无引用的 `.step` / `.step:before` 死代码与尾部裸 `@keyframes navprogress`。同时把试点页与共享表单里的 v3 语义类名升级：`bg-gradient-to-b`→`bg-linear-to-b`、`outline-none`→`outline-hidden`（focus-visible 场景，含 forced-colors 处理）。为防回潮新增 `pnpm check:tailwind` 构建门禁（7 类规则码：`@config`/JS 配置/`tailwindcss-animate` 依赖/`@theme` 缺失/未被 token 认领的 `@keyframes`/任意值动画/v3 重命名工具类，24 条单测），接入 `pnpm check:all` 与 CI；构建产物 CSS 已复核 `.animate-navprogress`、`.animate-progress-indeterminate`、`.bg-linear-to-b`、`.outline-hidden` 正常落盘。
+
+### Fixed
+
+- **深色模式首帧闪烁与主题持久化失效（G05）**：根布局新增带 CSP nonce 的内联阻塞脚本，在 CSS 解析前
+  读取 `ui-theme` 并写好 `<html>` 的 `light`/`dark` class 与 `color-scheme`，深色用户不再先看到一帧浅色；
+  `localStorage` / `matchMedia` 各自兜底，隐私模式或老浏览器下退化为系统偏好而不是中断。
+  同时修掉存储键不一致（Provider 写 `ui-theme`、其它地方读 `theme`）导致刷新后主题丢失的问题：
+  键名与解析规则收口到 `src/lib/theme/theme.ts`，Provider、切换按钮与 E2E 共用同一份定义，
+  system 模式改为监听 `prefers-color-scheme` 实时跟随。新增 13 条单测（含 jsdom 内联脚本行为）与
+  `e2e/theme.spec.ts` 6 条 E2E（含阻断客户端 bundle 的首屏断言）。
+
+- **移动端断点回归：导航不可达与横向溢出（G06）**：新增 `e2e/responsive.spec.ts`（375 / 768 / 1280 三个断点）
+  后暴露两个真实缺陷。其一，`@utility container` 恒为 2rem 内边距，在 375px 视口下把页头右侧操作区挤出视口
+  （`scrollWidth` 428 > 375），首页 / 功能页 / 定价页 / 仪表盘全部横向滚动；改为手机 1rem、≥640px 恢复 2rem。
+  其二，仪表盘侧边栏是 `hidden md:block`，手机上整个导航消失，用户只能手改地址栏才能到达分析、团队、设置等页面；
+  现在新增 `MobileDashboardNav`（ui/sheet 左抽屉，跳转后自动关闭）保证导航可达，页头断点由 md 提升到 lg 并让
+  汉堡菜单带上 `aria-label` / `aria-expanded` / `aria-controls`，触屏设备不再渲染无用的快捷键入口。
+  导航链接与角色、未读状态抽出 `dashboard-nav-links` / `use-is-admin` / `use-unread-notifications` 供桌面侧边栏与
+  移动抽屉共用，避免两侧漂移；新增 18 条单测与 11 条 E2E，Linux 容器内 4 项视觉基线保持无变化。
+
+- **键盘与 screen reader 交互回归：跳过导航不生效、Esc 不关闭菜单、折叠侧边栏无可访问名称（G07）**：新增 `e2e/keyboard.spec.ts`（6 条，全部基于角色与可访问名称断言）后暴露四处真实缺口。其一，`#main-content` 不可聚焦，键盘用户激活「跳到主要内容」后焦点仍停在链接上，屏幕阅读器不会切换上下文；现在四处 `<main>` 补 `tabindex="-1"`，激活后焦点确实落进主内容。其二，移动端页头菜单只能再点按钮关闭，Esc 无反应且焦点丢失；现在 Esc 关闭并把焦点交还汉堡按钮。其三，仪表盘折叠按钮没有可访问名称也不暴露状态，折叠后图标链接只剩 `title`；现在按钮带 `aria-label` / `aria-expanded` / `aria-controls`，折叠后的链接改用 `aria-label` 保留名称。其四，`?` 快捷键只挡了 input/textarea/select，在 contenteditable 与 `role="textbox"`（命令面板输入框）里输入 `?` 会误弹帮助，且 `⌘?` / `Ctrl+?` / `Alt+?` 未排除，现已一并拦截。新增 13 条单测与 6 条键盘 E2E，Linux 容器内 4 项视觉基线保持无变化。
 
 ## [0.9.0] — 2026-09-13
 

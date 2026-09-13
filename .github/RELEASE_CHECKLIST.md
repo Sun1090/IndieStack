@@ -26,13 +26,13 @@
 ## 打标签
 
 ```bash
-git tag v0.9.0 && git push origin v0.9.0
+git tag v0.10.0 && git push origin v0.10.0
 ```
 
 ## 证据与回滚
 
 - [ ] `pnpm check:release-docs` 通过，且发布记录附命令输出
-- [ ] [v0.9.0 发布 Runbook](../docs/operations/release-runbook-v0.9.0.md) 的 commit、迁移、观察窗口字段已填写
-- [ ] [生产 Smoke Test](../docs/operations/production-smoke-v0.9.0.md) 每项均有时间、状态和证据
-- [ ] [回滚 Runbook](../docs/operations/rollback-runbook-v0.9.0.md) 已由操作者和审查者复核；数据库回滚决策已明确
+- [ ] [v0.10.0 发布 Runbook](../docs/operations/release-runbook-v0.10.0.md) 的 commit、迁移、观察窗口字段已填写
+- [ ] [生产 Smoke Test](../docs/operations/production-smoke-v0.10.0.md) 每项均有时间、状态和证据
+- [ ] [回滚 Runbook](../docs/operations/rollback-runbook-v0.10.0.md) 已由操作者和审查者复核；数据库回滚决策已明确
 - [ ] 回滚演练结果单独记录；空白模板或勾选项不视为演练证据
