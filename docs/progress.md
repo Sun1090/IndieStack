@@ -2519,3 +2519,43 @@
   - 回滚：`git revert 6abed1d` 即移除采样模块、运行时采样、诊断与文档；不涉及数据库迁移或外部接口破坏
 - 下一步：E02 request/route trace 关联 ID（先审计 `src/proxy.ts`、`src/lib/trace.ts`、`src/lib/api-log.ts` 的路由/action 覆盖，补齐真实缺口）
 - 最后更新：2026-09-13
+
+## E02 请求链路追踪关联 ID（DONE）
+
+- 状态：DONE（roadmap `docs/roadmap-0.6.0.md` 第 42 项，E 段可观测性与运维）
+- 里程碑与发布目标：M4 J 段之后继续 E 段；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`b3d5b65`（feat(observability): enforce request trace coverage）
+- 目标：把「每个请求都有可关联的 trace-id，且错误日志真的带上它」从约定推进为可执行契约，并阻止后续新增 Route Handler / Server Action 时静默退化成裸日志
+- 已完成：
+  - 新增纯模块 `src/lib/trace-id.ts`（不依赖 `next/headers`，因此可被 Edge middleware 与 Node 门禁脚本共用）：导出 `TRACE_HEADER = "x-request-id"`、`MAX_TRACE_ID_LENGTH = 128`、`normalizeTraceId`、`createTraceId`、`resolveTraceId`；上游 ID 只接受 ≤128 字符且仅含 `[A-Za-z0-9._:_-]` 的 token（覆盖 UUID / ULID / OTel 形态），首尾空白归一化，空白串、超长、换行/制表/空格等一律判非法并改为生成新 ID，避免日志注入
+  - `createTraceId()` 优先 WebCrypto `randomUUID`，`crypto` 缺失时退化为 UUID 形状的随机十六进制串，保证 Edge 与 Node 两种运行时都可用
+  - `src/lib/trace.ts` 改为从纯模块重导出契约，仅保留 `getTraceId()`（读 `headers()`，非请求上下文返回 null）
+  - `src/proxy.ts` 改用 `resolveTraceId()` 解析上游 ID 或生成新值，注入下游请求头，并在放行响应与两条重定向分支各回写一次响应头；不再直接调用 `crypto.randomUUID()`，也不再散落字面量 `"x-request-id"`
+  - `src/lib/api-log.ts` 新增 `logActionError()`，与既有 `logApiError()` 共用同一 `logErrorWithTrace()` 实现（同一 trace 附加逻辑、同一错误归一化），避免「路由带 trace、action 不带」的漂移
+  - 16 个 Server Action 文件（`admin` / `api-keys` / `audit` / `contact` / `contact-messages` / `mfa` / `notifications` / `passkey` / `profile` / `projects` / `push-subscriptions` / `recovery-codes` / `sessions` / `settings` / `team` / `webhooks`）的裸 `console.error` / `console.warn` 全部迁移：错误走 `logActionError`，非错误级别走 `logger.warn`；`notifications.ts` 原本手写的 `trace=${traceId ?? "-"}` 字符串拼接由统一的 trace 附加实现取代
+  - 新增可执行覆盖门禁 `src/lib/observability/trace-coverage.ts`（纯函数）：扫描 `src/app/api` 子树下的 `route.ts` 与 `src/lib/actions/*.ts`，禁止裸 `console.*` 与直接 `logger.error`，要求 `src/lib/api-log.ts` 同时导出两个入口并读取 `getTraceId`，要求 `src/lib/trace-id.ts` 保留五个契约导出，要求 `src/proxy.ts` 经 `resolveTraceId` 解析、注入请求头并从 `@/lib/trace-id` 取 header 名、至少两处响应头回写（放行 + 重定向），且不得直接 `crypto.randomUUID()`；扫描集合为空失败封闭，豁免登记必须命中真实文件、写明理由且仍确实需要豁免（过期豁免即失败）
+  - 新增 IO/CLI 层 `scripts/lib/trace-coverage-check.js`（按 glob 收集边界文件，排除 `*.test.ts`，读取三个契约文件，Node 原生 type stripping 运行，使用显式相对 `.ts` 导入以避开 `@/` 别名）与入口 `scripts/check-trace-coverage.js`；`package.json` 注册 `pnpm check:trace-coverage`，`scripts/check-all.sh` 与 CI `Lint & Type Check` job 同步执行
+  - 贡献者测试矩阵 `src/lib/testing/test-matrix.ts` 在 `server-actions` 与 `api-routes` 两个领域补入新门禁，双语 `docs-site/testing.md`、`docs-site/zh-CN/testing.md` 行同步
+  - 文档与接线：`docs/testing.md` 新增「请求链路追踪覆盖门禁（E02）」章节（规则、规则本体/IO 位置、测试分布、局限）、双语 `docs-site/scripts.md` 增门禁条目、`CHANGELOG.md [Unreleased] / Added` 记录、roadmap 头部进度与第 42 项标注完成
+  - 新增/扩充测试 58 条：`src/lib/trace-id.test.ts`（11：UUID/ULID/OTel 形态、trim、空白串/换行/超长拒绝、生成与 crypto 缺失回退、resolve 优先级）、`src/lib/api-log.test.ts`（5：有/无 traceId、非 Error 归一化、两个入口共用实现）、`src/lib/trace.test.ts`（3：读取 header、缺失返回 null、非请求上下文返回 null）、`src/lib/observability/trace-coverage.test.ts`（18：基线通过、裸 console、`logger.error`、允许 `logger.info`/`warn`、traced 计数、空集合失败封闭、豁免跳过/幽灵文件/空理由/过期、funnel 缺导出、缺 `getTraceId`、各必需导出、proxy 缺 `resolveTraceId`、缺响应回写、import 模块错误、格式化器）、`src/lib/observability/trace-coverage-check.test.ts`（6：真实仓库快照、glob 边界收集、排除测试文件与非 route 文件、裸 console 退出码 1、契约文件缺失失败封闭、traced 计数）
+  - 修正既有测试的类型化 mock：`src/lib/actions/contact-messages.test.ts` 的 `logActionError` mock 声明为 `vi.fn<(scope: string, error: unknown) => Promise<void>>`，`src/lib/actions/sessions.test.ts` 同步补 mock，避免 `.mock.calls[0][0]` 在 `tsc` 下退化为零长度元组
+- 变更文件：`src/lib/trace-id.ts`、`src/lib/trace-id.test.ts`、`src/lib/trace.ts`、`src/lib/trace.test.ts`、`src/lib/api-log.ts`、`src/lib/api-log.test.ts`、`src/proxy.ts`、`src/proxy.test.ts`、`src/lib/observability/trace-coverage.ts`、`src/lib/observability/trace-coverage.test.ts`、`src/lib/observability/trace-coverage-check.test.ts`、`scripts/lib/trace-coverage-check.js`、`scripts/check-trace-coverage.js`、`src/lib/actions/*.ts`（16 个生产文件 + 2 个测试）、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`package.json`、`src/lib/testing/test-matrix.ts`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs-site/testing.md`、`docs-site/zh-CN/testing.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `b3d5b65`）：
+  - `pnpm exec vitest run src/lib/trace-id.test.ts src/lib/api-log.test.ts src/lib/trace.test.ts src/lib/observability/trace-coverage.test.ts src/lib/observability/trace-coverage-check.test.ts src/proxy.test.ts` → ✅ 6 文件 / 58 测试通过
+  - `pnpm check:trace-coverage` → ✅ 45 个服务端边界 / 26 个使用带 trace 的错误入口 / 0 个豁免
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警（含新增 JS IO 层与类型化 mock 修正）
+  - `pnpm check:gates` → ✅ 29 个门禁（本地 26 / CI 27 / 豁免 3），8 个工作流
+  - `pnpm check:workflows` → ✅ 8 个工作流 / 12 个作业 / 37 个 action 引用
+  - `pnpm check:test-matrix` → ✅ 11 个领域 / 90 条门禁 × 2 份文档
+  - `pnpm check:docs`、`pnpm check:changelog`、`pnpm check:release-docs`、`pnpm check:adr`、`pnpm check:mock-docs`、`pnpm check:provider-docs`、`pnpm check:release-tag`、`pnpm check:codeql`、`pnpm check:secrets-scan` → ✅ 全部通过
+  - `pnpm check:all` → ✅ 156 文件 / 1751 测试通过，全部门禁绿色
+  - `pnpm verify:build` → ✅ `pnpm check` + `pnpm test` + `pnpm check:bundle` + Next.js 生产构建全部通过（proxy 改动经生产构建校验）
+- 阻塞：无
+- 风险与回滚：
+  - 风险：`normalizeTraceId` 采用白名单字符集，含空格或非 ASCII 的上游 trace-id 会被判非法并替换为新 ID；跨系统串联依赖上游使用标准无分隔符 token
+  - 风险：门禁只校验「错误日志是否走带 trace 的通道」，不校验文案质量，也不校验上游是否回传我们的 trace-id；跨服务追依赖接入方复用响应头
+  - 风险：豁免表当前为空；若未来新增确需裸日志的边界文件，必须在 `TRACE_EXEMPT_BOUNDARY_FILES` 登记真实理由，否则门禁失败
+  - 回滚：`git revert b3d5b65` 即恢复裸 console 与字面量 header 名、移除门禁与文档接线；不涉及数据库迁移或外部接口破坏（`x-request-id` 响应头本身保留）
+- 下一步：E03 cron worker 指标结构化（先审计现有 cron 路由与日志出口，再决定指标契约与门禁范围）
+- 最后更新：2026-09-13
