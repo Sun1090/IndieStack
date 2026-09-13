@@ -15,10 +15,36 @@ beforeEach(() => {
 });
 
 describe("listAuditLogsPage()", () => {
-  it("成功返回行与总数", async () => {
+  it("默认不请求精确计数，total 为 null", async () => {
     const rows = [{ id: 1, action: "login" }];
-    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ data: rows, count: 5 })));
-    await expect(listAuditLogsPage(2, 10)).resolves.toEqual({ rows, total: 5 });
+    const chain = chainMock({ data: rows, count: 5 });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+
+    await expect(listAuditLogsPage(2, 10)).resolves.toEqual({ rows, total: null });
+    // count: "exact" 会让 PostgREST 追加全表 count(*)，audit_logs 永久保留 → 默认不下发
+    expect(chain.select).toHaveBeenCalledWith("*", {});
+    expect(chain.range).toHaveBeenCalledWith(10, 19);
+  });
+
+  it("withExactTotal 显式打开时才请求 count: exact", async () => {
+    const rows = [{ id: 1, action: "login" }];
+    const chain = chainMock({ data: rows, count: 5 });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+
+    await expect(listAuditLogsPage(2, 10, { withExactTotal: true })).resolves.toEqual({
+      rows,
+      total: 5,
+    });
+    expect(chain.select).toHaveBeenCalledWith("*", { count: "exact" });
+  });
+
+  it("withExactTotal 且服务端未回传 count 时退回 0", async () => {
+    const chain = chainMock({ data: [], count: null });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(listAuditLogsPage(1, 10, { withExactTotal: true })).resolves.toEqual({
+      rows: [],
+      total: 0,
+    });
   });
 
   it("数据库错误抛错", async () => {

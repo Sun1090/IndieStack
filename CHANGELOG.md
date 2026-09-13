@@ -22,6 +22,13 @@ All notable changes to IndieStack will be documented in this file.
 - **依赖补丁刷新**：`next` / `eslint-config-next` / `@next/bundle-analyzer` 16.3.4 → 16.3.5，
   `next-intl` 4.14.3 → 4.14.4，`lucide-react` 1.44.0 → 1.45.0；`eslint` 10 与 `typescript` 7
   两个 major 升级需要专项迁移，本次不动（`pnpm dep:health` 继续跟踪）。
+- **审计日志分页不再请求精确总数**：`listAuditLogsPage()` 默认不再下发 PostgREST
+  `count: "exact"`，改为可选 `{ withExactTotal: true }`，默认返回 `total: null`。
+  `audit_logs` 永久保留、只追加，全表 `count(*)` 是这条查询里唯一随表增长的开销：
+  本地 20 万行 `EXPLAIN ANALYZE` 实测 `select count(*)` 走 Parallel Seq Scan 12.99ms / 6956 buffers，
+  而生产分页路径 `order by created_at desc limit 50` 走 `idx_audit_logs_created_at` 仅 0.082ms / 53 buffers。
+  当前无调用方读取 `total`（管理页显示 `filteredLogs.length`），如需总量应改用 `count: "planned"`。
+  复审数据见 [docs/db/index-review.md](docs/db/index-review.md)。
 
 ### Security
 
