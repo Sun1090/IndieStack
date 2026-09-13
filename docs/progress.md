@@ -2143,3 +2143,39 @@
   - 回滚：`git revert 5fdf682` 移除门禁、CI 两步与清单校验；纯校验与文档改动，无数据库 / 迁移 / 运行时影响。
 - 下一步：I07 本地 mock 开发指南收口（`docs-site/mock.md` 与 `docs/architecture/13-mock-system.md` 对齐并补齐可复现步骤）。
 - 最后更新：2026-09-13
+
+
+## I07 本地 mock 开发指南（DONE）
+
+- 状态：DONE（M3「文档与发布体验」roadmap `docs/roadmap-0.6.0.md` 第 87 项）
+- 里程碑与发布目标：M3 I 段（I01–I10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`0405e2b`（feat(mock): document the mock runtime and gate the docs against drift）
+- 目标：把本地 mock 运行时的真实启用条件、状态隔离模型、受支持表、mock-only E2E 端点与已知限制写实，并用可回归门禁阻止文档和实现再次分叉
+- 已完成：
+  - 新增纯函数规则模块 `src/lib/mock/mock-docs.ts`，双向校验 18 张 mock 表与 9 个 mock-only E2E 端点是否被三份文档完整记录；文档引用了不存在的表 / 端点、表 / 端点未记录、文档源为空均失败封闭
+  - 门禁额外要求每份文档包含 7 个必要事实（`NEXT_PUBLIC_MOCK_ENABLED`、`NEXT_PUBLIC_SUPABASE_URL`、`NODE_ENV`、`src/proxy.ts`、`resetMockCache`、`/api/e2e/mock-reset`、`createMockRequestStore`），并禁止 3 条旧错说法回流（进程缓存被误写为 per-request、代理保护被误写为全部失效）
+  - 新增 28 条单测 `src/lib/mock/mock-docs.test.ts`，覆盖表清单 / 端点抽取、空输入失败封闭、每条禁用说法、格式化与真实仓库快照
+  - 新增 IO / CLI：`scripts/lib/mock-docs-check.js`、`scripts/check-mock-docs.js`，注册为 `pnpm check:mock-docs`，接入 `scripts/check-all.sh` 与 CI `Lint & Type Check` job
+  - 重写 `docs-site/mock.md`（英文 240 行）、`docs-site/zh-CN/mock.md`（中文 233 行）、`docs/architecture/13-mock-system.md`（中文 + mermaid）：18 张表、`NEXT_PUBLIC_MOCK_ENABLED=true` 或（非 production 且缺少 `NEXT_PUBLIC_SUPABASE_URL`）的启用规则、`globalThis.__indiestackMockCache__` 进程级缓存、`resetMockCache()`、`createMockRequestStore()` 请求隔离、`src/proxy.ts` 仍生成 CSP nonce / `x-request-id` 并调用 `updateSession()`、9 个 mock-only E2E 端点、Playwright 环境表与限制表
+  - 删除仓库零引用的 Apifox 章节；文档同步 `docs/testing.md`「Mock 文档一致性门禁（I07）」、双语 scripts 表、`CHANGELOG.md` `[Unreleased]`、roadmap 第 87 项
+- 变更文件：`src/lib/mock/mock-docs.ts`、`src/lib/mock/mock-docs.test.ts`、`scripts/lib/mock-docs-check.js`、
+  `scripts/check-mock-docs.js`、`package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`docs-site/mock.md`、
+  `docs-site/zh-CN/mock.md`、`docs/architecture/13-mock-system.md`、`docs/testing.md`、`docs-site/scripts.md`、
+  `docs-site/zh-CN/scripts.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `0405e2b`）：
+  - `pnpm vitest run src/lib/mock/mock-docs.test.ts` → ✅ 28 passed
+  - `pnpm check:mock-docs` → ✅ `Mock 文档一致性通过：18 张表 / 9 个 E2E 端点 × 3 份文档`
+  - `pnpm check:gates` → ✅ `21 个门禁（本地 18 / CI 19 / 豁免 3），8 个工作流`
+  - `pnpm check:docs`、`pnpm check:changelog` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:all` → ✅ 141 文件 / 1458 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过
+- 阻塞：无
+- 风险与回滚：
+  - 风险：新增表或 mock-only 路由后若不同时更新三份文档，CI 会直接失败；这是刻意的防漂移设计。
+  - 风险：`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md` 及两份 mock 文档不满足仓库级 Prettier 格式（既有表格约定），
+    本次未对这些文件运行 Prettier；新增 / 修改的 TS 文件已通过 Prettier。
+  - 回滚：`git revert 0405e2b` 即移除门禁与新文档；纯文档 / 校验脚本改动，无数据库、迁移或运行时影响。
+- 下一步：I08 provider 配置诊断指南。
+- 最后更新：2026-09-13
