@@ -3,6 +3,7 @@
  * 覆盖：驱动选择（OSS 配置门控）、对象键构造（白名单扩展名/防穿越）、Supabase 驱动上传
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { metricEvents } from "@/lib/testing/metric-events";
 
 const { createAdminClientMock } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
@@ -180,6 +181,88 @@ describe("getStorageDriver()", () => {
     await driver.remove("k");
     expect(ossStoreMock.signatureUrl).toHaveBeenCalledWith("k", { expires: 300 });
     expect(ossStoreMock.delete).toHaveBeenCalledWith("k");
+  });
+});
+
+describe("上传成功率指标（E05）", () => {
+  let log: ReturnType<typeof vi.spyOn>;
+
+  function capture() {
+    log = vi.spyOn(console, "log").mockImplementation(() => {});
+  }
+
+  afterEach(() => log?.mockRestore());
+
+  it("Supabase 上传成功上报 provider=supabase/outcome=success", async () => {
+    createAdminClientMock.mockReturnValue({
+      storage: {
+        from: vi.fn(() => ({
+          upload: vi.fn(async () => ({ error: null })),
+          getPublicUrl: vi.fn(() => ({ data: { publicUrl: "https://cdn.example/k.png" } })),
+        })),
+      },
+    });
+    capture();
+
+    await getStorageDriver().put("avatars/u1/k.png", Buffer.from("x"), "image/png");
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "storage.upload.completed",
+        unit: "ms",
+        attributes: { provider: "supabase", outcome: "success" },
+      }),
+    ]);
+  });
+
+  it("Supabase 上传失败也上报同一指标，outcome=failure 后才抛出", async () => {
+    createAdminClientMock.mockReturnValue({
+      storage: {
+        from: vi.fn(() => ({ upload: vi.fn(async () => ({ error: { message: "bucket" } })) })),
+      },
+    });
+    capture();
+
+    await expect(getStorageDriver().put("k.png", Buffer.from("x"), "image/png")).rejects.toThrow(
+      "bucket",
+    );
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "storage.upload.completed",
+        attributes: { provider: "supabase", outcome: "failure" },
+      }),
+    ]);
+  });
+
+  it("OSS 上传成功上报 provider=oss/outcome=success", async () => {
+    setOssEnv(OSS_ENV);
+    capture();
+
+    await getStorageDriver().put("covers/p1/k.png", Buffer.from("x"), "image/png");
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "storage.upload.completed",
+        unit: "ms",
+        attributes: { provider: "oss", outcome: "success" },
+      }),
+    ]);
+  });
+
+  it("OSS 上传失败上报 outcome=failure，指标先于异常抛出", async () => {
+    setOssEnv(OSS_ENV);
+    ossStoreMock.put.mockRejectedValueOnce(new Error("oss down"));
+    capture();
+
+    await expect(
+      getStorageDriver().put("covers/p1/k.png", Buffer.from("x"), "image/png"),
+    ).rejects.toThrow("oss down");
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "storage.upload.completed",
+        attributes: { provider: "oss", outcome: "failure" },
+      }),
+    ]);
   });
 });
 

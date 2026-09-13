@@ -8,7 +8,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStorageConfigReport } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { recordMetric, startMetricTimer } from "@/lib/metrics";
+import { recordMetric } from "@/lib/metrics";
+import { storageUploadTimer } from "@/lib/observability/storage-metrics";
 import OSS from "ali-oss";
 
 /** 允许的图片类型 → 存储扩展名（content-type 白名单，拒绝任意扩展名拼接） */
@@ -65,7 +66,7 @@ function supabaseDriver(): StorageDriver {
     provider: "supabase",
     capabilities: { put: true, publicUrl: true, signedUrl: true, remove: true },
     async put(key, body, contentType) {
-      const timer = startMetricTimer("storage.upload.completed", { provider: "supabase" });
+      const timer = storageUploadTimer("supabase");
       try {
         const admin = createAdminClient();
         // 桶名约定：avatars（公共读）。上线前需在 Supabase Dashboard/迁移中创建。
@@ -75,10 +76,10 @@ function supabaseDriver(): StorageDriver {
         });
         if (error) throw new Error(`storage upload: ${error.message}`);
         const { data } = admin.storage.from("avatars").getPublicUrl(key);
-        timer.end({ outcome: "success" });
+        timer.end("success");
         return data.publicUrl;
       } catch (error) {
-        timer.end({ outcome: "failure" });
+        timer.end("failure");
         throw error;
       }
     },
@@ -109,13 +110,13 @@ function ossDriver(): StorageDriver {
     provider: "oss",
     capabilities: { put: true, publicUrl: true, signedUrl: true, remove: true },
     async put(key, body, contentType) {
-      const timer = startMetricTimer("storage.upload.completed", { provider: "oss" });
+      const timer = storageUploadTimer("oss");
       try {
         const result = await store.put(key, body, { mime: contentType });
-        timer.end({ outcome: "success" });
+        timer.end("success");
         return (result as { url: string }).url;
       } catch (error) {
-        timer.end({ outcome: "failure" });
+        timer.end("failure");
         throw error;
       }
     },

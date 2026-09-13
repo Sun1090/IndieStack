@@ -22,6 +22,7 @@ import {
   type UploadObjectRecord,
 } from "@/lib/repositories/upload-objects";
 import { logger } from "@/lib/logger";
+import { uploadRequestTimer, type UploadOutcome } from "@/lib/observability/storage-metrics";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 
@@ -31,6 +32,35 @@ export type UploadResult = ActionResult<{ url: string }>;
 export interface UploadFileOptions {
   /** Route Handler 的 request.signal；Action 不传。 */
   signal?: AbortSignal;
+}
+
+/**
+ * 终态口径（E05）：成功、失败、用户取消三者分开。取消不应计入失败率分子，
+ * 否则用户放弃上传会伪装成存储故障并触发误告警。
+ */
+export function uploadOutcomeFor(result: UploadResult): UploadOutcome {
+  if (result.ok) return "success";
+  return result.error === "uploadCancelled" ? "cancelled" : "failure";
+}
+
+/**
+ * 包住一次上传请求并上报终态指标。计时覆盖 provider 写入、元数据回写与回滚，
+ * 因此「provider 成功但元数据失败、对象已回滚」这类用户可见失败不会漏计。
+ */
+async function withUploadOutcome(
+  operation: "avatar-upload" | "project-cover-upload",
+  run: () => Promise<UploadResult>,
+): Promise<UploadResult> {
+  const timer = uploadRequestTimer(operation);
+  try {
+    const result = await run();
+    timer.end(uploadOutcomeFor(result));
+    return result;
+  } catch (error) {
+    // 领域函数自身已把已知异常收敛为 ActionResult；这里只兜住意外抛出。
+    timer.end("failure");
+    throw error;
+  }
 }
 
 /** 允许上传的类型必须来自白名单自有属性，避免 `toString` 等原型键绕过。 */
@@ -171,7 +201,7 @@ async function stageUploadObject(params: {
 }
 
 /** 上传头像并回写 profiles.avatar_url；成功时返回公共 URL。 */
-export async function uploadAvatarFile(
+async function uploadAvatarFileImpl(
   supabase: UploadClient,
   file: FormDataEntryValue | null,
   options: UploadFileOptions = {},
@@ -248,7 +278,7 @@ export async function uploadAvatarFile(
 }
 
 /** 上传项目封面并回写 projects.logo_url；仅所属团队 owner/admin 可操作。 */
-export async function uploadProjectCoverFile(
+async function uploadProjectCoverFileImpl(
   supabase: UploadClient,
   projectId: string,
   file: FormDataEntryValue | null,
@@ -327,4 +357,25 @@ export async function uploadProjectCoverFile(
     await cleanupAfterFailure(key, "project-cover-upload-rollback", projectId);
     return fail("uploadFailed");
   }
+}
+
+/** 对外入口：头像上传 + 终态指标（E05）。 */
+export async function uploadAvatarFile(
+  supabase: UploadClient,
+  file: FormDataEntryValue | null,
+  options: UploadFileOptions = {},
+): Promise<UploadResult> {
+  return withUploadOutcome("avatar-upload", () => uploadAvatarFileImpl(supabase, file, options));
+}
+
+/** 对外入口：项目封面上传 + 终态指标（E05）。 */
+export async function uploadProjectCoverFile(
+  supabase: UploadClient,
+  projectId: string,
+  file: FormDataEntryValue | null,
+  options: UploadFileOptions = {},
+): Promise<UploadResult> {
+  return withUploadOutcome("project-cover-upload", () =>
+    uploadProjectCoverFileImpl(supabase, projectId, file, options),
+  );
 }

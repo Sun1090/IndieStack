@@ -3,6 +3,7 @@
  * 覆盖：鉴权（含 E03 拒绝指标）、空队列、发送与回执、发送失败兜底、整轮失败落表
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { metricEvents } from "@/lib/testing/metric-events";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
@@ -70,11 +71,6 @@ afterEach(() => {
 });
 
 /** 解析 console.log 里的结构化指标行（非指标输出会被忽略）。 */
-function metricEvents(log: { mock: { calls: unknown[][] } }) {
-  return log.mock.calls
-    .map((call) => JSON.parse(String(call[0])) as { type?: string; name?: string })
-    .filter((event) => event.type === "metric");
-}
 
 describe("POST /api/cron/digest", () => {
   it("缺少正确 secret 返回 401，并上报拒绝指标（E03）", async () => {

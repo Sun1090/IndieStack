@@ -73,7 +73,23 @@ The OSS driver uses the same public-read bucket model and implements `put`, `sig
 `remove` through `ali-oss`. Signed URL expiry must be an integer between 1 second and 7 days for
 both providers.
 
-OSS and Supabase uploads emit `storage.upload.completed` with `provider` and `outcome` attributes.
+## Upload Metrics
+
+Two metrics cover uploads, and they answer different questions:
+
+- `storage.upload.completed` (`provider`, `outcome`) fires once per provider object write. Use it to
+  check OSS or Supabase health.
+- `upload.request.completed` (`operation`, `outcome`) fires once per upload request and spans the
+  whole chain: provider write, metadata write-back, and rollback. This is the metric that reflects
+  what the user actually got.
+
+`outcome` is `success`, `failure`, or `cancelled` for the request metric; a user cancelling an
+upload must not count as a storage failure. Values above 5% `failure` on the provider metric, or
+above 10% on the request metric, indicate a problem worth investigating.
+
+Both metric names and their attribute values come from `src/lib/observability/storage-metrics.ts`.
+Do not hand-write the literals at call sites.
+
 Cleanup failures are logged without failing a database write that already succeeded, because the
 database remains the source of truth.
 
@@ -90,6 +106,7 @@ database remains the source of truth.
 
 ```bash
 pnpm test -- src/lib/storage/index.test.ts src/lib/uploads
+pnpm test -- src/lib/observability/storage-metrics.test.ts
 pnpm test -- src/app/api/uploads
 pnpm test:e2e -- e2e/uploads.spec.ts
 ```

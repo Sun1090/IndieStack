@@ -6,6 +6,15 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **上传成功率指标分层与契约化（E05）**：新增 `src/lib/observability/storage-metrics.ts` 固化
+  `storage.upload.completed` 与 `upload.request.completed` 两个指标名、provider/operation 集合与
+  `success` / `failure` / `cancelled` 取值，驱动与领域服务只引用常量，不再在各调用点手写字面量。
+  补齐此前的计量盲区：`storage.upload.completed` 只覆盖 provider 对象写入，provider 写入成功但
+  元数据回写失败并回滚的用户可见失败在指标里仍是 `success`；现在 `upload.request.completed`
+  以 `operation` + `outcome` 覆盖 provider 写入、元数据回写与回滚整条链路，用户取消单列 `cancelled`
+  不计入失败率。配套补齐驱动层与领域层测试（4 个 provider/结果组合 + 5 个请求终态），把
+  digest / push-retry 路由测试里重复的 `metricEvents` 提取为共享测试工具。
+
 - **Cron 调度与指标契约（E03）**：修复 `/api/cron/digest` 在生产从未被 `vercel.json` 调度、导致摘要邮件链路静默停摆的问题；
   两条 cron worker 现在统一校验 `CRON_SECRET` 并上报带稳定原因的 `cron.auth.rejected`，摘要 worker 的完成指标覆盖完整运行时长，
   500 路径会记录 `email_worker_runs.error` 并上报失败指标。新增 `pnpm check:cron-contract`，以注册表双向校验 Vercel 调度、

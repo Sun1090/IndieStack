@@ -1,6 +1,7 @@
 /** 上传领域服务单测：共享安全校验、取消与回滚边界。 */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UploadObjectRecord } from "@/lib/repositories/upload-objects";
+import { metricEvents } from "@/lib/testing/metric-events";
 
 const { putMock, removeMock, cleanupUrlMock, extractKeyMock, recordMock, markDeletedMock } =
   vi.hoisted(() => ({
@@ -214,6 +215,111 @@ describe("uploadAvatarFile", () => {
     cleanupUrlMock.mockResolvedValueOnce(false);
     await uploadAvatarFile(supabaseForAvatar(), png());
     expect(markDeletedMock).not.toHaveBeenCalledWith("avatars", "avatars/u1/old.png");
+  });
+});
+
+describe("上传请求终态指标（E05）", () => {
+  let log: ReturnType<typeof vi.spyOn>;
+
+  function capture() {
+    log = vi.spyOn(console, "log").mockImplementation(() => {});
+  }
+
+  afterEach(() => log?.mockRestore());
+
+  it("成功上传上报 outcome=success 与 operation", async () => {
+    capture();
+
+    await uploadAvatarFile(supabaseForAvatar(), png());
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "upload.request.completed",
+        unit: "ms",
+        attributes: { operation: "avatar-upload", outcome: "success" },
+      }),
+    ]);
+  });
+
+  it("元数据回写失败的不可见失败计入 outcome=failure（provider 层此时仍是 success）", async () => {
+    capture();
+
+    await expect(uploadAvatarFile(supabaseForAvatar(true), png())).resolves.toEqual({
+      ok: false,
+      error: "uploadFailed",
+    });
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "upload.request.completed",
+        attributes: { operation: "avatar-upload", outcome: "failure" },
+      }),
+    ]);
+  });
+
+  it("用户取消单列为 outcome=cancelled，不污染失败率分子", async () => {
+    capture();
+
+    await uploadAvatarFile(supabaseForAvatar(), png(), {
+      signal: AbortSignal.abort(),
+    });
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "upload.request.completed",
+        attributes: { operation: "avatar-upload", outcome: "cancelled" },
+      }),
+    ]);
+  });
+
+  it("校验与鉴权拒绝也会上报，口径是「请求终态」而非「存储健康度」", async () => {
+    capture();
+    const supabase = { auth: { getUser: vi.fn(async () => ({ data: { user: null } })) } } as never;
+
+    await uploadAvatarFile(supabase, png());
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "upload.request.completed",
+        attributes: { operation: "avatar-upload", outcome: "failure" },
+      }),
+    ]);
+  });
+
+  it("项目封面上传与头像使用不同 operation 维度", async () => {
+    const supabase = {
+      auth: { getUser: vi.fn(async () => ({ data: { user: USER } })) },
+      from: vi.fn((table: string) =>
+        table === "projects"
+          ? {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: { team_id: "t1", logo_url: null } })),
+                })),
+              })),
+              update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+            }
+          : {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: { role: "admin" } })),
+                  })),
+                })),
+              })),
+            },
+      ),
+    } as never;
+    capture();
+
+    await uploadProjectCoverFile(supabase, "p1", png());
+
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "upload.request.completed",
+        attributes: { operation: "project-cover-upload", outcome: "success" },
+      }),
+    ]);
   });
 });
 

@@ -65,7 +65,20 @@ OSS_ACCESS_KEY_SECRET=your-access-key-secret
 OSS 驱动沿用公共读桶模型，通过 `ali-oss` 实现 `put`、`signedUrl` 和 `remove`。两个 provider
 的签名 URL 有效期都必须是 1 秒到 7 天之间的整数。
 
-OSS 和 Supabase 上传都会输出带 `provider`、`outcome` 属性的 `storage.upload.completed` 指标。
+## 上传指标
+
+两个指标分别回答不同的问题：
+
+- `storage.upload.completed`（维度 `provider`、`outcome`）：每次 provider 对象写入结束上报一次，
+  用于判断 OSS 或 Supabase 自身健康度。
+- `upload.request.completed`（维度 `operation`、`outcome`）：每次上传请求结束上报一次，覆盖
+  provider 写入、元数据回写与失败回滚整条链路，是反映用户实际结果的指标。
+
+请求指标的 `outcome` 取值是 `success` / `failure` / `cancelled`；用户主动取消上传不能被算成存储故障。
+provider 指标失败率超过 5%、或请求指标失败率超过 10%，都值得排查。
+
+两个指标名与维度取值都来自 `src/lib/observability/storage-metrics.ts`，调用点不要手写字面量。
+
 清理失败只记录结构化日志，不反向破坏已经成功的数据库写入，因为数据库仍是事实来源。
 
 ## 限制与恢复

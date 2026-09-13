@@ -3,6 +3,7 @@
  * 覆盖：鉴权、空队列、成功计数、保留策略清理、执行失败 500、GET/POST 等价
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { metricEvents } from "@/lib/testing/metric-events";
 import { NextRequest } from "next/server";
 import { GET, POST } from "./route";
 
@@ -86,11 +87,6 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 /** 解析 console.log 里的结构化指标行（非指标输出会被忽略）。 */
-function metricEvents(log: { mock: { calls: unknown[][] } }) {
-  return log.mock.calls
-    .map((call) => JSON.parse(String(call[0])) as { type?: string; name?: string })
-    .filter((event) => event.type === "metric");
-}
 
 describe("/api/cron/push-retry", () => {
   it("缺少或错误 secret 返回 401，并上报可区分的拒绝指标（E03）", async () => {

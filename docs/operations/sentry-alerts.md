@@ -47,6 +47,7 @@
 | `cron.digest.failed` | `count` | `error_type` | 每轮 digest 未处理异常 |
 | `cron.auth.rejected` | `count` | `worker`, `reason` | 任一 cron worker 返回 401（`secret_unconfigured` / `missing_credentials` / `invalid_credentials`） |
 | `storage.upload.completed` | `ms` | `provider`, `outcome` | 每次对象写入结束 |
+| `upload.request.completed` | `ms` | `operation`, `outcome` | 每次上传请求结束（成功 / 失败 / 取消） |
 | `provider.fallback` | `count` | `provider`, `reason`, `missing` | OSS 配置不完整并回退 Supabase |
 | `push.send.completed` | `count` | `provider`, `status_code` | 每次 Web Push 传输成功 |
 | `push.send.failed` | `count` | `provider`, `reason` | Web Push 未配置或适配器不可用 |
@@ -57,6 +58,10 @@
 | `push.queue.prune_failed` | `count` | `error_type` | 每轮 push-retry 保留策略清理失败 |
 | `cron.push-retry.completed` | `ms` | `pulled`, `sent`, `retried`, `dead`, `revoked` | 每轮 push-retry 成功结束 |
 | `cron.push-retry.failed` | `count` | `error_type` | 每轮 push-retry 未处理异常 |
+
+两层上传指标分工明确：`storage.upload.completed` 只覆盖 provider 的对象写入，反映 OSS/Supabase 自身健康度；
+`upload.request.completed` 覆盖整条链路（provider 写入 → 元数据回写 → 失败回滚），因此「写入成功但元数据回写失败并已回滚」
+这类用户可见失败只出现在后者。两者的指标名与维度取值都来自 `src/lib/observability/storage-metrics.ts`，不要在调用点手写字面量。
 
 指标会丢弃名称为敏感维度的字段（如 `token`、`secret`、`email`、`userId`），并截断过长值；业务代码不得把 URL、邮箱正文或凭据放进 attributes。
 
@@ -85,7 +90,8 @@
 | Digest 连续失败 | `cron.digest.failed > 0`，5 分钟窗口 | 立即排查 cron 鉴权、Supabase 与邮件 provider |
 | 邮件积压 | `email.backlog > 500`，连续 3 轮或 15 分钟 | 检查 worker、provider 限流与死信增长 |
 | 邮件失败率 | `email.send.completed{outcome=failure}` 占比 > 2%，10 分钟且样本 ≥20 | 检查 Resend 状态与响应码 |
-| 上传失败率 | `storage.upload.completed{outcome=failure}` 占比 > 5%，15 分钟且样本 ≥20 | 检查 Storage 权限、配额与 provider 状态 |
+| provider 写入失败率 | `storage.upload.completed{outcome=failure}` 占比 > 5%，15 分钟且样本 ≥20 | 检查 Storage 权限、配额与 provider 状态 |
+| 上传请求失败率 | `upload.request.completed{outcome=failure}` 占比 > 10%，30 分钟且样本 ≥20 | 用户可见失败：先按 `operation` 维度拆分，再查结构化错误日志区分鉴权/校验拒绝与存储故障（`cancelled` 不计入分子与分母） |
 | 配置回退 | `provider.fallback > 0`，15 分钟窗口 | 补齐 OSS 配置或明确保持 Supabase |
 | Push 不可用 | `push.send.failed > 0`，15 分钟窗口 | 检查 VAPID 与适配器发布状态 |
 | Push 重试 worker 失败 | `cron.push-retry.failed > 0`，5 分钟窗口 | 立即排查 `CRON_SECRET`、Supabase 与 VAPID 配置 |
