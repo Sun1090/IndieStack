@@ -11,6 +11,11 @@ All notable changes to IndieStack will be documented in this file.
   `pnpm check:adr` 校验 ADR 编号、状态、日期、必要章节、索引双向一致及取代链引用，
   防止后续新增决策时索引与状态再次漂移。
 
+- **门禁接线审计**：新增 `pnpm check:gates`，要求每个 `check:*` 门禁都必须在 `scripts/check-all.sh`
+  与某个 GitHub workflow 中执行，或在豁免表中登记仍成立的理由；同时校验 `check-all.sh` 不引用已删除的
+  脚本、`.github/RELEASE_CHECKLIST.md` 逐字引用的 workflow / job 名真实存在、打标签版本与 `package.json`
+  一致。审计发现并修复了 `check:agents` / `check:docs` 只在本地聚合执行、CI 从未覆盖的缺口。
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

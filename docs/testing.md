@@ -136,6 +136,24 @@ F03 评估结论：运行时 file-backed fixture 暂不引入；request-scoped s
 由 `scripts/check-adr.js` 经 Node 原生 type stripping 调用；`pnpm check:all` 与 CI 的
 Lint & Type Check job 均会执行。门禁只验证治理结构和引用完整性，不判断技术决策本身是否正确。
 
+### 门禁接线审计（I06 / J01）
+
+`pnpm check:gates` 解决的是「写了门禁脚本，但门禁从不执行」这类静默失效：`package.json` 里
+每个 `check:*` 脚本都必须出现在 `scripts/check-all.sh`（本地聚合）或某个 GitHub workflow（CI）里，
+否则必须登记豁免理由。规则包括：
+
+1. 门禁缺本地聚合 → `GATE_UNWIRED_LOCAL`；缺 CI 执行 → `GATE_UNWIRED_CI`；
+2. `check-all.sh` 调用了 `package.json` 里不存在的脚本 → `AGGREGATE_UNKNOWN_SCRIPT`；
+3. 豁免表登记了不存在的门禁、没有理由、或理由已过期（其实已经接线）→ `EXCEPTION_STALE` / `EXCEPTION_EMPTY`；
+4. `.github/RELEASE_CHECKLIST.md` 逐字引用的 workflow / job 名必须真实存在 → `CHECKLIST_WORKFLOW_UNKNOWN`；
+5. 检查清单「打标签」章节的 `git tag vX.Y.Z` 必须与 `package.json` 版本一致 → `CHECKLIST_TAG_VERSION`。
+
+当前豁免只有三条，且都写明替代覆盖方式：`check:migration-history`（需要本地 Supabase）、
+`check:bundle`（需要完整生产构建）、`check:perf`（本地需要 `.next` 产物，CI 由 Build job 执行）。
+规则实现位于 `src/lib/release/gate-wiring.ts`（纯函数，28 条单测），IO/CLI 位于
+`scripts/lib/gate-wiring-check.js`，由 `scripts/check-gates.js` 经 Node 原生 type stripping 调用；
+`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明门禁被接线，不证明门禁本身的强度。
+
 ## Tailwind v4 原生主题门禁（G01）
 
 `pnpm check:tailwind` 把 ADR-013 的「不再有 JS 配置」从一次性迁移变成可持续约束。规则分两层：

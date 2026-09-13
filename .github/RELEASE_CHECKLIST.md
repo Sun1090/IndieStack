@@ -18,7 +18,7 @@
 ## 门禁
 
 - [ ] 本地 `pnpm verify:build` 全绿（lint / type-check / test / build）
-- [ ] CI 工作流全绿（Lint&Type / Build / Docs / E2E / CodeQL / Secrets Scan）
+- [ ] CI 工作流全绿：`CI`（`Lint & Type Check` / `Build` / `Build Docs Site` / `E2E (Playwright)`）、`CodeQL`、`Secrets Scan`、`Security and configuration checks`
 - [ ] 覆盖率门禁未降低（statements/functions/lines ≥ 90%、branches ≥ 90%）
 - [ ] `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version "$EXPECTED_APP_VERSION" --output production-smoke.json` 通过，或 `Production Smoke` workflow 成功并保留 30 天 artifact
 - [ ] RLS 回归脚本通过；`pnpm audit` 无高危

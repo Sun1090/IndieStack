@@ -47,6 +47,12 @@ jobs:
       - name: Check i18n translation usage
         run: pnpm check:i18n
 
+      - name: Check shared agent index
+        run: pnpm check:agents
+
+      - name: Check docs-site script sync
+        run: pnpm check:docs
+
       - name: Check RLS migrations
         run: pnpm check:rls
 
@@ -67,6 +73,9 @@ jobs:
 
       - name: Check ADR governance
         run: pnpm check:adr
+
+      - name: Check gate wiring
+        run: pnpm check:gates
 
       - name: Check Tailwind v4 native theme usage
         run: pnpm check:tailwind

@@ -121,7 +121,7 @@
 83. I03 docs-site Web Push 章节同步
 84. I04 ADR 更新与决策状态（完成：ADR-005/009 标记被 ADR-013/014 取代，ADR-010–013 状态统一，README 索引补齐至 14 篇；新增 `pnpm check:adr` 校验编号/状态/必要章节/索引/取代关系，21 条单测接入 `check:all` 与 CI）
 85. I05 CHANGELOG 自动校验（完成：新增 `pnpm check:changelog`（`scripts/check-changelog.js` + `scripts/lib/changelog-check.js` + 纯函数 `src/lib/changelog/parse-changelog.ts`），校验 `[Unreleased]` 置顶且非空、版本标题 `## [x.y.z] — YYYY-MM-DD` 与日期合法性、版本降序与重复、每版本至少一个 `### 章节`、章节至少一个顶层条目、条目非空且不超过 2000 字符；行尾空白为 warning 不阻断。门禁接入 `pnpm check:all` 与 CI Lint & Type Check job，38 条单测覆盖解析与 CLI 退出码）
-86. I06 release checklist v0.6.0
+86. I06 release checklist v0.6.0（完成：`.github/RELEASE_CHECKLIST.md` 由 `pnpm check:release-docs` 按 `package.json` 当前版本校验产物与命令；新增 `pnpm check:gates` 把清单逐字引用的 workflow / job 名与打标签版本纳入回归——原「Lint&Type / Build / Docs / E2E / CodeQL / Secrets Scan」是自由文案，现已改写为可校验的真实名称`CI`（`Lint & Type Check` / `Build` / `Build Docs Site` / `E2E (Playwright)`）、`CodeQL`、`Secrets Scan`、`Security and configuration checks`）
 87. I07 本地 mock 开发指南
 88. I08 provider 配置诊断指南
 89. I09 贡献者测试矩阵
@@ -129,7 +129,7 @@
 
 ### J. 质量与发布（J01–J10）
 
-91. J01 lint/type-check/test/build 全链路门禁
+91. J01 lint/type-check/test/build 全链路门禁（完成：`pnpm verify:build` = `check` + `test` + `check:bundle` + `build`，`.husky/pre-push` 强制同一口径；CI 四个 job（`Lint & Type Check` / `Build` / `Build Docs Site` / `E2E (Playwright)`）覆盖全部组件。新增 `pnpm check:gates` 审计「门禁是否真的会跑」：每个 `check:*` 必须在 `check-all.sh` 与某个 workflow 中执行，或在豁免表登记仍成立的理由；借此发现并修复 `check:agents` / `check:docs` 只在本地聚合执行、CI 从未覆盖的缺口，28 条单测）
 92. J02 E2E shard/串行策略复审
 93. J03 CI 并行与缓存优化
 94. J04 CodeQL 告警零回归
