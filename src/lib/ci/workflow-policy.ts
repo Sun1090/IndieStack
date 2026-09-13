@@ -151,6 +151,74 @@ export function parseTriggers(lines: readonly string[]): string[] {
   return triggers;
 }
 
+/** 取 action 引用的版本部分（`owner/repo[/sub]@ref` → `ref`）；没有 `@` 时返回空串。 */
+export function actionRefVersion(ref: string): string {
+  const parts = ref.split("@");
+  return parts.length === 2 ? parts[1].trim() : "";
+}
+
+/** 判断版本是否固定在期望 major（`v4` 或更细的 `v4.1.2`）。 */
+export function isVersionAtMajor(version: string, major: string): boolean {
+  return version === major || version.startsWith(`${major}.`);
+}
+
+/** 从作业正文里取某个 step 的 `uses:` 引用；同一个 action 出现多次时取最后一个。 */
+export function parseStepRef(body: string, actionPath: string): string {
+  const pattern = new RegExp(`uses:\\s*(${actionPath}@\\S+)`, "g");
+  return [...body.matchAll(pattern)].at(-1)?.[1] ?? "";
+}
+
+/** 取 `on:` 块下某个触发器的子块正文（含缩进）；找不到时返回空字符串。 */
+export function parseTriggerBlock(lines: readonly string[], trigger: string): string {
+  const start = lines.findIndex((line) => /^on:(\s|$)/.test(line));
+  if (start === -1) return "";
+  let inTrigger = false;
+  const body: string[] = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim().length > 0 && /^\S/.test(line)) break;
+    if (inTrigger) {
+      if (/^ {2}\S/.test(line)) break;
+      body.push(line);
+      continue;
+    }
+    const header = /^ {2}([A-Za-z_][A-Za-z0-9_-]*):/.exec(line);
+    if (header && header[1] === trigger) {
+      inTrigger = true;
+      const inline = line.slice(header[0].length).trim();
+      if (inline.length > 0) return inline;
+    }
+  }
+  return body.join("\n");
+}
+
+/** 解析形如 `key: [a, b]` 或 `key:` + `- a` 的列表值；找不到时返回空数组。 */
+export function parseKeyedList(block: string, key: string): string[] {
+  const lines = block.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = new RegExp(`^\\s*${key}:\\s*(.*)$`).exec(lines[index]);
+    if (!match) continue;
+    const inline = match[1].trim();
+    if (inline.startsWith("[")) return splitList(inline.replace(/^\[|\]$/g, ""));
+    if (inline.length > 0 && inline !== "|") return [stripQuotes(inline)];
+    const items: string[] = [];
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const item = /^\s*-\s*(\S+)\s*$/.exec(lines[cursor]);
+      if (!item) break;
+      items.push(stripQuotes(item[1]));
+    }
+    return items;
+  }
+  return [];
+}
+
+/** 读取触发器子块里的 `branches:`（支持内联数组与块列表）。 */
+export function parseTriggerBranches(lines: readonly string[], trigger: string): string[] {
+  const block = parseTriggerBlock(lines, trigger);
+  if (block.length === 0) return [];
+  return parseKeyedList(block, "branches");
+}
+
 function parseNeeds(bodyLines: readonly string[]): string[] {
   const needs: string[] = [];
   for (let index = 0; index < bodyLines.length; index += 1) {

@@ -116,6 +116,7 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
       "check:gates",
       "check:workflows",
       "check:codeql",
+      "check:secrets-scan",
       "lint",
       "type-check",
       "test",

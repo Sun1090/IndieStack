@@ -52,6 +52,7 @@
     "check:gates": "node scripts/check-gates.js",
     "check:workflows": "node scripts/check-workflows.js",
     "check:codeql": "node scripts/check-codeql.js",
+    "check:secrets-scan": "node scripts/check-secrets-scan.js",
     "check:mock-docs": "node scripts/check-mock-docs.js",
     "check:test-matrix": "node scripts/check-test-matrix.js",
     "check:migration-runbook": "node scripts/check-migration-runbook.js",

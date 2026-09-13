@@ -72,6 +72,17 @@ All notable changes to IndieStack will be documented in this file.
   门禁同时校验 runbook 章节与这些数字同源，文档漂移即失败。44 条单测（含读取真实工作流与 runbook 断言零问题）
   接入 `pnpm check:all` 与 CI。真实告警列表与基线对比仍需 GitHub `security-events: read` 权限，属外部依赖。
 
+- **Secrets Scan 强度与泄漏处置门禁（J05）**：新增 `pnpm check:secrets-scan`，把「密钥零回归」的前置条件
+  固化为可执行契约：`gitleaks/gitleaks-action` 固定在 `v3`、`checkout` 必须是 `fetch-depth: 0` 全历史扫描、
+  扫描作业有超时、`GITHUB_TOKEN` 正确接线且权限只有 `contents: read`，`push` 覆盖 `main` / `develop`、
+  `pull_request` 触发保留，自定义配置只能指向 `.gitleaks.toml`。`.gitleaks.toml` 存在时，
+  `[allowlist]` / `[[allowlists]]` 的每条 `paths` / `regexes` / `stopwords` / `commits` 都必须登记在契约中
+  （默认空），防止用宽松排除规则让扫描结果悄悄变空。配套新增
+  `docs/operations/secrets-leak-response-runbook.md` 作为泄漏响应单一事实来源（首次响应 10 分钟、
+  24 小时内完成轮换、只允许 `false positive` / `used in tests` 两类 allowlist 理由），门禁同时校验
+  runbook 章节与这些事实同源。规则由 `src/lib/security/secrets-scan-policy.ts` 的纯函数与 48 条单测覆盖，
+  接入 `pnpm check:all` 与 CI。
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

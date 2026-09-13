@@ -160,6 +160,28 @@ push/PR 触发以下关卡：`Lint & Type Check`（含 i18n/RLS/工作流等静�
 **局限**：真实告警列表、与基线分支的差异、dismissal 记录都在 GitHub 侧，需要 `security-events: read`
 权限（见 runbook 的「外部依赖」），本地无法复现；本门禁只防止扫描强度与处置策略静默漂移。
 
+### Secrets Scan 扫描强度与泄漏处置（J05）
+
+`Secrets Scan` 工作流决定密钥是否能在进入历史前被发现，因此扫描强度、allowlist 与响应流程都进了门禁：
+
+- `pnpm check:secrets-scan` 校验 `.github/workflows/secrets-scan.yml`：`gitleaks/gitleaks-action` 固定在
+  `v3`，`checkout` 必须使用 `fetch-depth: 0`（只扫最新提交会漏掉历史泄漏），作业有 `timeout-minutes`，
+  `GITHUB_TOKEN` 确实接线且只声明 `contents: read`，任何 `: write` 权限都失败；
+- `push` 必须覆盖 `main` / `develop`，`pull_request` 触发保留；自定义 gitleaks 配置只能指向
+  `.gitleaks.toml`，配置路径漂移即失败；
+- 当 `.gitleaks.toml` 存在时，`[allowlist]` / `[[allowlists]]` 下的每条 `paths` / `regexes` / `stopwords` /
+  `commits` 都必须登记在 `SECRETS_SCAN_CONTRACT.allowedAllowlistEntries`（默认空）；用宽泛目录或正则
+  静默扩大排除范围会直接阻断 CI；
+- 同一门禁还校验泄漏响应 runbook
+  [operations/secrets-leak-response-runbook.md](./operations/secrets-leak-response-runbook.md) 存在、章节完整，
+  且首次响应 `10 分钟`、凭据轮换 `24 小时`、全历史 `fetch-depth: 0`、允许的 `false positive` /
+  `used in tests` allowlist 理由与契约同源——改工作流或契约不改 runbook 即失败；
+- 规则本体是纯函数（`src/lib/security/secrets-scan-policy.ts`），由
+  `src/lib/security/secrets-scan-policy.test.ts` 覆盖，并用真实仓库工作流与 runbook 断言零问题。
+
+**局限**：真实历史扫描结果与 GitHub 告警状态由 gitleaks 在 runner / GitHub 侧产生，需要推送与环境权限；
+本地门禁只防止扫描强度、allowlist 和处置策略静默漂移。
+
 ## Mock fixture 隔离策略（F02/F03）
 
 默认 E2E 不使用 file-backed fixture。Playwright 的浏览器测试与 Next.js dev server 可能跨 worker、跨模块 chunk 运行；把可变 fixture 写入仓库文件会带来并发覆盖、残留状态、工作区污染和 CI artifact 泄露风险，也无法保证多个 server worker 看到同一份原子状态。

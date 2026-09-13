@@ -21,7 +21,17 @@
  * 真实告警数量对比需要 GitHub 安全 API，属外部依赖，不在本门禁范围内。
  */
 
-import { parseJobs, parseTriggers, type ParsedWorkflowJob } from "../ci/workflow-policy.ts";
+import {
+  actionRefVersion,
+  isVersionAtMajor,
+  parseJobs,
+  parseKeyedList,
+  parseStepRef,
+  parseTriggerBlock,
+  parseTriggerBranches,
+  parseTriggers,
+  type ParsedWorkflowJob,
+} from "../ci/workflow-policy.ts";
 
 export interface TextFile {
   path: string;
@@ -161,68 +171,8 @@ function splitInlineList(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-/**
- * 取 `on:` 块下某个触发器的子块正文（含缩进），用于读 `branches:` 这类二级配置。
- * 找不到时返回空字符串，由调用方按「缺覆盖」处理。
- */
-function triggerBlock(lines: readonly string[], trigger: string): string {
-  const start = lines.findIndex((line) => /^on:(\s|$)/.test(line));
-  if (start === -1) return "";
-  let inTrigger = false;
-  const body: string[] = [];
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line.trim().length > 0 && /^\S/.test(line)) break;
-    if (inTrigger) {
-      if (/^ {2}\S/.test(line)) break;
-      body.push(line);
-      continue;
-    }
-    const header = /^ {2}([A-Za-z_][A-Za-z0-9_-]*):/.exec(line);
-    if (header && header[1] === trigger) {
-      inTrigger = true;
-      const inline = line.slice(header[0].length).trim();
-      if (inline.length > 0) return inline;
-    }
-  }
-  return body.join("\n");
-}
-
-/** 读取触发器子块里的 `branches:`（支持内联数组与块列表）。 */
-function triggerBranches(lines: readonly string[], trigger: string): string[] {
-  const block = triggerBlock(lines, trigger);
-  if (block.length === 0) return [];
-  return parseListBlock(block, "branches");
-}
-
-/** 解析形如 `branches: [main, develop]` 或 `branches:` + `- main` 的列表值。 */
-function parseListBlock(block: string, key: string): string[] {
-  const lines = block.split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = new RegExp(`^\\s*${key}:\\s*(.*)$`).exec(lines[index]);
-    if (!match) continue;
-    const inline = match[1].trim();
-    if (inline.startsWith("[")) return splitInlineList(inline.replace(/^\[|\]$/g, ""));
-    if (inline.length > 0 && inline !== "|") return [stripQuotes(inline)];
-    const items: string[] = [];
-    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
-      const item = /^\s*-\s*(\S+)\s*$/.exec(lines[cursor]);
-      if (!item) break;
-      items.push(stripQuotes(item[1]));
-    }
-    return items;
-  }
-  return [];
-}
-
 function parseCrons(content: string): string[] {
   return [...content.matchAll(CRON_LINE)].map((match) => match[1]);
-}
-
-/** 从作业正文里取某个 step 的 `uses:` 引用；同一个 action 出现多次时取最后一个。 */
-function stepRef(body: string, actionPath: string): string {
-  const pattern = new RegExp(`uses:\\s*(${actionPath}@\\S+)`, "g");
-  return [...body.matchAll(pattern)].at(-1)?.[1] ?? "";
 }
 
 function parseWithValue(body: string, key: string): string {
@@ -245,9 +195,9 @@ function withList(body: string, key: string): string[] {
 function triggerPaths(lines: readonly string[], key: string): string[] {
   const found: string[] = [];
   for (const trigger of ["push", "pull_request"]) {
-    const block = triggerBlock(lines, trigger);
+    const block = parseTriggerBlock(lines, trigger);
     if (block.length === 0) continue;
-    found.push(...parseListBlock(block, key));
+    found.push(...parseKeyedList(block, key));
   }
   return found;
 }
@@ -264,12 +214,12 @@ export function parseCodeqlWorkflow(
   const body = analyzeJob?.body ?? "";
   return {
     triggers: parseTriggers(lines),
-    pushBranches: triggerBranches(lines, "push"),
-    pullRequestBranches: triggerBranches(lines, "pull_request"),
+    pushBranches: parseTriggerBranches(lines, "push"),
+    pullRequestBranches: parseTriggerBranches(lines, "pull_request"),
     crons: parseCrons(normalized),
     analyzeJob,
-    initRef: stepRef(body, `${contract.actionRepo}/init`),
-    analyzeRef: stepRef(body, `${contract.actionRepo}/analyze`),
+    initRef: parseStepRef(body, `${contract.actionRepo}/init`),
+    analyzeRef: parseStepRef(body, `${contract.actionRepo}/analyze`),
     languages: withList(body, "languages"),
     querySuite: parseWithValue(body, "queries"),
     category: parseWithValue(body, "category"),
@@ -282,13 +232,8 @@ export function parseCodeqlWorkflow(
 
 /** 检查 action 引用是否固定到契约 major（如 `github/codeql-action/init@v4`）。 */
 export function actionMajorMatches(ref: string, contract: CodeqlContract): boolean {
-  const prefix = `${contract.actionRepo}/`;
-  if (!ref.startsWith(prefix)) return false;
-  const [path, version] = ref.split("@");
-  if (!path.startsWith(prefix) || version === undefined) return false;
-  if (version === contract.actionMajor) return true;
-  // 允许更细的补丁固定（`@v4.1.2`），但禁止跨 major（`@v3` / `@v5`）。
-  return version.startsWith(`${contract.actionMajor}.`);
+  if (!ref.startsWith(`${contract.actionRepo}/`)) return false;
+  return isVersionAtMajor(actionRefVersion(ref), contract.actionMajor);
 }
 
 function workflowIssue(

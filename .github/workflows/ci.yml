@@ -114,6 +114,9 @@ jobs:
       - name: Check CodeQL alert policy
         run: pnpm check:codeql
 
+      - name: Check secrets scan policy
+        run: pnpm check:secrets-scan
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
