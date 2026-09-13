@@ -141,6 +141,25 @@ push/PR 触发以下关卡：`Lint & Type Check`（含 i18n/RLS/工作流等静�
 `pull_request_target` 禁止使用，工作流里出现的 `pnpm <a:b>` 脚本必须真实存在于 `package.json`，
 且上述并行/缓存拓扑必须与契约一致。
 
+### CodeQL 扫描强度与告警处置（J04）
+
+`CodeQL` 工作流决定「告警零回归」是否成立，因此它的配置与处置流程都进了门禁：
+
+- `pnpm check:codeql` 校验 `.github/workflows/codeql.yml` 的扫描强度：`init` / `analyze` 必须同时存在且固定在
+  `github/codeql-action@v4`、语言覆盖 `javascript-typescript`、查询套件保持 `security-extended`、
+  SARIF `category` 不漂移、`security-events: write` 与 `timeout-minutes` 都在、`push` 覆盖 `main`/`develop`、
+  `pull_request` 覆盖 `main`、`schedule` 仍是每周一一次（退化成每日会失败）；
+- `paths` / `paths-ignore` 只从 `push` / `pull_request` 触发块读取：`paths-ignore` 默认不允许排除任何路径
+  （契约登记之外一律失败），`paths` 白名单不得漏掉 `src` / `scripts` / `e2e` / `supabase`；
+- 同一门禁还校验告警处置 runbook [operations/codeql-alert-triage.md](./operations/codeql-alert-triage.md) 存在、
+  章节完整，且套件名、阻断严重度阈值（`security-severity >= 7.0`）、分诊 SLA（5 个工作日）与三个允许的
+  dismissal 理由（`false positive` / `won't fix` / `used in tests`）与契约同源——改工作流不改文档即失败；
+- 规则本体是纯函数（`src/lib/security/codeql-alert-policy.ts`），由
+  `src/lib/security/codeql-alert-policy.test.ts` 覆盖，并用真实仓库文件断言零问题。
+
+**局限**：真实告警列表、与基线分支的差异、dismissal 记录都在 GitHub 侧，需要 `security-events: read`
+权限（见 runbook 的「外部依赖」），本地无法复现；本门禁只防止扫描强度与处置策略静默漂移。
+
 ## Mock fixture 隔离策略（F02/F03）
 
 默认 E2E 不使用 file-backed fixture。Playwright 的浏览器测试与 Next.js dev server 可能跨 worker、跨模块 chunk 运行；把可变 fixture 写入仓库文件会带来并发覆盖、残留状态、工作区污染和 CI artifact 泄露风险，也无法保证多个 server worker 看到同一份原子状态。

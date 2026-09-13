@@ -61,6 +61,17 @@ All notable changes to IndieStack will be documented in this file.
   触发 PR 的工作流必须声明非 `false` 的 `cancel-in-progress`，`pull_request_target` 直接禁止，
   工作流引用的 `pnpm <a:b>` 脚本必须真实存在，并锁定 ci.yml 的并行/缓存拓扑（28 条单测）。
 
+- **CodeQL 扫描强度与告警处置门禁（J04）**：新增 `pnpm check:codeql`，把「告警零回归」的**前置条件**从
+  「CodeQL 还开着」细化为可执行契约：`init` / `analyze` 必须同时存在且固定在 `github/codeql-action@v4`、
+  语言覆盖 `javascript-typescript`、查询套件保持 `security-extended`、SARIF `category` 不漂移、
+  `security-events: write` 与 `timeout-minutes` 都在、`push` 覆盖 `main`/`develop`、`pull_request` 覆盖 `main`、
+  `schedule` 仍是每周一次（退化为每日失败）；`paths` / `paths-ignore` 只认 `push` / `pull_request` 触发块，
+  默认不允许排除任何路径，`paths` 白名单不得漏掉 `src` / `scripts` / `e2e` / `supabase`。配套新增
+  `docs/operations/codeql-alert-triage.md` 作为告警处置单一事实来源（严重度阻断阈值 `security-severity >= 7.0`、
+  5 个工作日内完成分诊、只允许 `false positive` / `won't fix` / `used in tests` 三种 dismissal 理由），
+  门禁同时校验 runbook 章节与这些数字同源，文档漂移即失败。44 条单测（含读取真实工作流与 runbook 断言零问题）
+  接入 `pnpm check:all` 与 CI。真实告警列表与基线对比仍需 GitHub `security-events: read` 权限，属外部依赖。
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

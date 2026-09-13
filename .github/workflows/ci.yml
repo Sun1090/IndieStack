@@ -111,6 +111,9 @@ jobs:
       - name: Check CI workflow topology
         run: pnpm check:workflows
 
+      - name: Check CodeQL alert policy
+        run: pnpm check:codeql
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

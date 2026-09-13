@@ -32,6 +32,7 @@
 | `pnpm check:adr` | 校验 ADR 编号、状态、索引、必要章节与取代关系 |
 | `pnpm check:gates` | 校验每个 `check:*` 门禁都已接入 check-all.sh 与 CI，或登记豁免理由 |
 | `pnpm check:workflows` | 校验 CI 工作流卫生：action 固定版本、作业超时、`needs` 目标、PR 并发取消、脚本名真实存在，以及 ci.yml 并行/缓存契约 |
+| `pnpm check:codeql` | 校验 CodeQL 扫描强度与告警处置策略：action major、语言、查询套件、SARIF category、权限、超时、分支/定时覆盖、路径过滤与 runbook 事实一致性 |
 | `pnpm check:mock-docs` | 校验 Mock 文档的表名清单与 E2E 端点同实现保持一致 |
 | `pnpm check:test-matrix` | 校验贡献者测试矩阵登记了全部改动领域与真实存在的脚本 |
 | `pnpm check:provider-docs` | 校验两份 provider 诊断指南都记录了全部 provider 与环境变量 |

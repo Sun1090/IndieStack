@@ -112,7 +112,15 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     zh: "CI 与脚本",
     en: "CI & tooling",
     paths: [".github/workflows", "scripts", "package.json"],
-    commands: ["check:gates", "check:workflows", "lint", "type-check", "test", "check:all"],
+    commands: [
+      "check:gates",
+      "check:workflows",
+      "check:codeql",
+      "lint",
+      "type-check",
+      "test",
+      "check:all",
+    ],
   },
   {
     id: "docs",
