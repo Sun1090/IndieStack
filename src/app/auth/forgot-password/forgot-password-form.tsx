@@ -10,7 +10,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 import { Mail, CheckCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -50,10 +50,10 @@ export function ForgotPasswordForm() {
   if (sent) {
     return (
       <div className="flex flex-col items-center gap-4 text-center">
-        <CheckCircle2 className="h-12 w-12 text-success" />
+        <CheckCircle2 className="text-success h-12 w-12" />
         <div>
           <p className="font-medium">{t("forgotPassword.success")}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-1 text-sm">
             {t("forgotPassword.sentTo")} <strong>{email}</strong>
           </p>
         </div>
@@ -64,21 +64,21 @@ export function ForgotPasswordForm() {
   return (
     <form onSubmit={handleSubmit}>
       <div className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="email">{tc("email")}</Label>
-          <Input
-            id="email"
-            type="email"
-            placeholder={tc("email")}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoCapitalize="none"
-            autoComplete="email"
-            autoCorrect="off"
-            disabled={loading}
-            required
-          />
-        </div>
+        <FormField htmlFor="email" label={tc("email")} className="grid gap-2">
+          <FormFieldControl>
+            <Input
+              type="email"
+              placeholder={tc("email")}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoCapitalize="none"
+              autoComplete="email"
+              autoCorrect="off"
+              disabled={loading}
+              required
+            />
+          </FormFieldControl>
+        </FormField>
         <Button disabled={loading} type="submit" className="w-full">
           {loading ? t("forgotPassword.loading") : t("forgotPassword.submit")}
           <Mail className="ml-2 h-4 w-4" />

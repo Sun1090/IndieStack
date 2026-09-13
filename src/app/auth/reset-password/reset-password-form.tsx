@@ -14,7 +14,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 import { ROUTES } from "@/lib/constants";
 import { Lock, Eye, EyeOff } from "lucide-react";
@@ -107,7 +107,7 @@ export function ResetPasswordForm() {
 
   if (status === "checking") {
     return (
-      <p className="py-8 text-center text-sm text-muted-foreground">
+      <p className="text-muted-foreground py-8 text-center text-sm">
         {t("resetPassword.checking")}
       </p>
     );
@@ -116,7 +116,7 @@ export function ResetPasswordForm() {
   if (status === "invalid") {
     return (
       <div className="space-y-4 py-4 text-center">
-        <p className="text-sm text-muted-foreground">{t("resetPassword.invalidSession")}</p>
+        <p className="text-muted-foreground text-sm">{t("resetPassword.invalidSession")}</p>
         <Button asChild variant="outline" className="w-full">
           <Link href={ROUTES.forgotPassword}>{t("resetPassword.backToForgot")}</Link>
         </Button>
@@ -127,45 +127,56 @@ export function ResetPasswordForm() {
   return (
     <form onSubmit={handleSubmit}>
       <div className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="password">{t("resetPassword.passwordLabel")}</Label>
+        <FormField
+          htmlFor="password"
+          label={t("resetPassword.passwordLabel")}
+          className="grid gap-2"
+        >
           <div className="relative">
+            <FormFieldControl>
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={t("resetPassword.passwordPlaceholder")}
+                autoComplete="new-password"
+                disabled={loading}
+                minLength={8}
+                required
+              />
+            </FormFieldControl>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-pressed={showPassword}
+              aria-label={
+                showPassword ? t("resetPassword.hidePassword") : t("resetPassword.showPassword")
+              }
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          <PasswordStrength password={password} />
+        </FormField>
+        <FormField
+          htmlFor="confirmPassword"
+          label={t("resetPassword.confirmLabel")}
+          className="grid gap-2"
+        >
+          <FormFieldControl>
             <Input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={t("resetPassword.passwordPlaceholder")}
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder={t("resetPassword.confirmPlaceholder")}
               autoComplete="new-password"
               disabled={loading}
               minLength={8}
               required
             />
-            <PasswordStrength password={password} />
-            <button
-              type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onClick={() => setShowPassword(!showPassword)}
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="confirmPassword">{t("resetPassword.confirmLabel")}</Label>
-          <Input
-            id="confirmPassword"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder={t("resetPassword.confirmPlaceholder")}
-            autoComplete="new-password"
-            disabled={loading}
-            minLength={8}
-            required
-          />
-        </div>
+          </FormFieldControl>
+        </FormField>
         <Button disabled={loading} type="submit" className="w-full">
           {loading ? t("resetPassword.loading") : t("resetPassword.submit")}
           <Lock className="ml-2 h-4 w-4" />

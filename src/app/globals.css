@@ -186,6 +186,11 @@
     @apply border-border;
   }
 
+  /* G03：共享字段原语给控件写入 aria-invalid，这里统一可见反馈，避免每个表单各写一套红边。 */
+  [aria-invalid="true"] {
+    border-color: hsl(var(--destructive));
+  }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings:

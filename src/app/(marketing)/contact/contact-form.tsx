@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { submitContactMessage } from "@/lib/actions/contact";
@@ -48,56 +48,56 @@ export function ContactForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-2">
-        <Label htmlFor="name">{t("form.nameLabel")}</Label>
-        <Input
-          id="name"
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("form.namePlaceholder")}
-          required
-          disabled={loading}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="contact-email">{t("form.emailLabel")}</Label>
-        <Input
-          id="contact-email"
-          name="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder={t("form.emailPlaceholder")}
-          required
-          disabled={loading}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="subject">{t("form.subjectLabel")}</Label>
-        <Input
-          id="subject"
-          name="subject"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder={t("form.subjectPlaceholder")}
-          required
-          disabled={loading}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="message">{t("form.messageLabel")}</Label>
-        <Textarea
-          id="message"
-          name="message"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder={t("form.messagePlaceholder")}
-          rows={5}
-          required
-          disabled={loading}
-        />
-      </div>
+      <FormField htmlFor="name" label={t("form.nameLabel")} className="grid gap-2">
+        <FormFieldControl>
+          <Input
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("form.namePlaceholder")}
+            required
+            disabled={loading}
+          />
+        </FormFieldControl>
+      </FormField>
+      <FormField htmlFor="contact-email" label={t("form.emailLabel")} className="grid gap-2">
+        <FormFieldControl>
+          <Input
+            name="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t("form.emailPlaceholder")}
+            required
+            disabled={loading}
+          />
+        </FormFieldControl>
+      </FormField>
+      <FormField htmlFor="subject" label={t("form.subjectLabel")} className="grid gap-2">
+        <FormFieldControl>
+          <Input
+            name="subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder={t("form.subjectPlaceholder")}
+            required
+            disabled={loading}
+          />
+        </FormFieldControl>
+      </FormField>
+      <FormField htmlFor="message" label={t("form.messageLabel")} className="grid gap-2">
+        <FormFieldControl>
+          <Textarea
+            name="message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder={t("form.messagePlaceholder")}
+            rows={5}
+            required
+            disabled={loading}
+          />
+        </FormFieldControl>
+      </FormField>
       <Button type="submit" disabled={loading} className="w-full">
         {loading ? t("form.sending") : t("form.submit")}
         <Send className="ml-2 h-4 w-4" />

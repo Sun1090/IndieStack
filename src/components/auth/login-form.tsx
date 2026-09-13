@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { GithubIcon } from "@/components/shared/github-icon";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 import { KeyRound, Mail } from "lucide-react";
 import { startAuthentication } from "@simplewebauthn/browser";
@@ -89,9 +89,7 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
     if (verifiedFactors.length > 0) {
       const factorId = verifiedFactors[0].id;
       toast({ title: t("login.submit"), description: t("login.mfaRedirect") });
-      router.push(
-        `/auth/mfa?factor=${factorId}&redirect=${encodeURIComponent(redirect)}`,
-      );
+      router.push(`/auth/mfa?factor=${factorId}&redirect=${encodeURIComponent(redirect)}`);
       setLoading(false);
       return;
     }
@@ -169,9 +167,11 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ response }),
       });
-      const result = (await verifyResponse.json().catch(() => null)) as
-        | { verified?: boolean; mfaRequired?: boolean; factorId?: string }
-        | null;
+      const result = (await verifyResponse.json().catch(() => null)) as {
+        verified?: boolean;
+        mfaRequired?: boolean;
+        factorId?: string;
+      } | null;
       if (!verifyResponse.ok || !result?.verified) throw new Error("passkey_verify_failed");
 
       void logAuthEvent("auth.passkey_login", { method: "passkey" });
@@ -201,41 +201,41 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
     <div className="grid gap-6">
       <form onSubmit={handleEmailLogin}>
         <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="email">{tc("email")}</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder={tc("email")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoCapitalize="none"
-              autoComplete="email"
-              autoCorrect="off"
-              disabled={busy}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="password">{tc("password")}</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              disabled={busy}
-              required
-            />
+          <FormField htmlFor="email" label={tc("email")} className="grid gap-2">
+            <FormFieldControl>
+              <Input
+                type="email"
+                placeholder={tc("email")}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoCapitalize="none"
+                autoComplete="email"
+                autoCorrect="off"
+                disabled={busy}
+                required
+              />
+            </FormFieldControl>
+          </FormField>
+          <FormField htmlFor="password" label={tc("password")} className="grid gap-2">
+            <FormFieldControl>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                disabled={busy}
+                required
+              />
+            </FormFieldControl>
             <div className="flex justify-end">
               <Link
                 href={ROUTES.forgotPassword}
-                className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+                className="text-muted-foreground hover:text-primary text-xs underline-offset-4 hover:underline"
               >
                 {t("login.forgotPassword")}
               </Link>
             </div>
-          </div>
+          </FormField>
           <Button disabled={busy} type="submit" className="w-full">
             {loading ? t("login.loading") : t("login.submit")}
             <Mail className="ml-2 h-4 w-4" />
@@ -273,7 +273,7 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
           <span className="w-full border-t" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">{t("login.divider")}</span>
+          <span className="bg-background text-muted-foreground px-2">{t("login.divider")}</span>
         </div>
       </div>
 

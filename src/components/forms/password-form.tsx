@@ -11,7 +11,7 @@ import { useTranslations } from "next-intl";
 import { updatePassword } from "@/lib/actions/settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 import { PasswordStrength } from "@/components/shared/password-strength";
 
@@ -44,32 +44,26 @@ export function PasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="currentPassword">{t("currentLabel")}</Label>
-        <Input
-          id="currentPassword"
-          name="currentPassword"
-          type="password"
-          autoComplete="current-password"
-          required
-        />
-      </div>
+      <FormField htmlFor="currentPassword" label={t("currentLabel")}>
+        <FormFieldControl>
+          <Input name="currentPassword" type="password" autoComplete="current-password" required />
+        </FormFieldControl>
+      </FormField>
 
-      <div className="space-y-2">
-        <Label htmlFor="newPassword">{t("newLabel")}</Label>
-        <Input
-          id="newPassword"
-          name="newPassword"
-          type="password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          autoComplete="new-password"
-          minLength={8}
-          required
-        />
+      <FormField htmlFor="newPassword" label={t("newLabel")} description={t("hint")}>
+        <FormFieldControl>
+          <Input
+            name="newPassword"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+        </FormFieldControl>
         <PasswordStrength password={newPassword} />
-        <p className="text-xs text-muted-foreground">{t("hint")}</p>
-      </div>
+      </FormField>
 
       <Button type="submit" disabled={loading}>
         {loading ? t("saving") : t("submit")}

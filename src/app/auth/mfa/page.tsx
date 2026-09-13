@@ -21,7 +21,7 @@ import { logAuthEvent } from "@/lib/actions/audit";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 
 function MfaForm() {
@@ -41,7 +41,7 @@ function MfaForm() {
   if (!searchParams.get("factor")) {
     return (
       <div className="space-y-6 text-center">
-        <p className="text-sm text-muted-foreground">{t("missingFactor")}</p>
+        <p className="text-muted-foreground text-sm">{t("missingFactor")}</p>
         <Button asChild className="w-full">
           <Link href={ROUTES.login}>{t("backToLogin")}</Link>
         </Button>
@@ -106,22 +106,24 @@ function MfaForm() {
 
   return recoveryMode ? (
     <form onSubmit={handleRedeem} className="space-y-6">
-      <p className="text-sm text-muted-foreground">{t("recoveryDesc")}</p>
-      <div className="space-y-2">
-        <Label htmlFor="recovery-code" className="sr-only">
-          {t("recoveryTitle")}
-        </Label>
-        <Input
-          id="recovery-code"
-          autoFocus
-          value={recoveryCode}
-          onChange={(e) => setRecoveryCode(e.target.value)}
-          className="text-center font-mono text-xl tracking-[0.3em]"
-          placeholder={t("recoveryPlaceholder")}
-          required
-        />
-      </div>
-      <Button type="submit" disabled={loading || recoveryCode.trim().length === 0} className="w-full">
+      <p className="text-muted-foreground text-sm">{t("recoveryDesc")}</p>
+      <FormField htmlFor="recovery-code" label={t("recoveryTitle")} labelClassName="sr-only">
+        <FormFieldControl>
+          <Input
+            autoFocus
+            value={recoveryCode}
+            onChange={(e) => setRecoveryCode(e.target.value)}
+            className="text-center font-mono text-xl tracking-[0.3em]"
+            placeholder={t("recoveryPlaceholder")}
+            required
+          />
+        </FormFieldControl>
+      </FormField>
+      <Button
+        type="submit"
+        disabled={loading || recoveryCode.trim().length === 0}
+        className="w-full"
+      >
         {loading ? "..." : t("recoverySubmit")}
       </Button>
       <Button
@@ -135,23 +137,21 @@ function MfaForm() {
     </form>
   ) : (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="mfa-code" className="sr-only">
-          {t("codeLabel")}
-        </Label>
-        <Input
-          id="mfa-code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          autoFocus
-          maxLength={6}
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-          className="text-center font-mono text-2xl tracking-[0.5em]"
-          placeholder="000000"
-          required
-        />
-      </div>
+      <FormField htmlFor="mfa-code" label={t("codeLabel")} labelClassName="sr-only">
+        <FormFieldControl>
+          <Input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            className="text-center font-mono text-2xl tracking-[0.5em]"
+            placeholder="000000"
+            required
+          />
+        </FormFieldControl>
+      </FormField>
       <Button type="submit" disabled={loading || code.length !== 6} className="w-full">
         {loading ? "..." : t("submit")}
       </Button>
@@ -172,15 +172,15 @@ export default function MfaPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <Suspense fallback={null}>
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>{t("title")}</CardTitle>
-          <CardDescription>{t("desc")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <MfaForm />
-        </CardContent>
-      </Card>
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>{t("title")}</CardTitle>
+            <CardDescription>{t("desc")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MfaForm />
+          </CardContent>
+        </Card>
       </Suspense>
     </div>
   );

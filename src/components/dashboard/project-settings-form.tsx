@@ -8,7 +8,7 @@ import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 import { updateProject } from "@/lib/actions/projects";
 
@@ -51,31 +51,37 @@ export function ProjectSettingsForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="project-name">{t("detail.nameLabel")}</Label>
-        <Input id="project-name" name="name" defaultValue={name} required minLength={1} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="project-desc">{t("detail.descLabel")}</Label>
-        <Input id="project-desc" name="description" defaultValue={description} />
-      </div>
+      <FormField htmlFor="project-name" label={t("detail.nameLabel")}>
+        <FormFieldControl>
+          <Input name="name" defaultValue={name} required minLength={1} />
+        </FormFieldControl>
+      </FormField>
+      <FormField htmlFor="project-desc" label={t("detail.descLabel")}>
+        <FormFieldControl>
+          <Input name="description" defaultValue={description} />
+        </FormFieldControl>
+      </FormField>
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="cfg-branch">{t("detail.branchLabel")}</Label>
-          <Input id="cfg-branch" name="branch" defaultValue={config.branch ?? ""} placeholder="main" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="cfg-domain">{t("detail.domainLabel")}</Label>
-          <Input id="cfg-domain" name="domain" defaultValue={config.domain ?? ""} placeholder="app.example.com" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="cfg-framework">{t("detail.frameworkLabel")}</Label>
-          <Input id="cfg-framework" name="framework" defaultValue={config.framework ?? ""} placeholder="Next.js" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="cfg-region">{t("detail.regionLabel")}</Label>
-          <Input id="cfg-region" name="region" defaultValue={config.region ?? ""} placeholder="hkg1" />
-        </div>
+        <FormField htmlFor="cfg-branch" label={t("detail.branchLabel")}>
+          <FormFieldControl>
+            <Input name="branch" defaultValue={config.branch ?? ""} placeholder="main" />
+          </FormFieldControl>
+        </FormField>
+        <FormField htmlFor="cfg-domain" label={t("detail.domainLabel")}>
+          <FormFieldControl>
+            <Input name="domain" defaultValue={config.domain ?? ""} placeholder="app.example.com" />
+          </FormFieldControl>
+        </FormField>
+        <FormField htmlFor="cfg-framework" label={t("detail.frameworkLabel")}>
+          <FormFieldControl>
+            <Input name="framework" defaultValue={config.framework ?? ""} placeholder="Next.js" />
+          </FormFieldControl>
+        </FormField>
+        <FormField htmlFor="cfg-region" label={t("detail.regionLabel")}>
+          <FormFieldControl>
+            <Input name="region" defaultValue={config.region ?? ""} placeholder="hkg1" />
+          </FormFieldControl>
+        </FormField>
       </div>
 
       <Button type="submit" disabled={pending}>

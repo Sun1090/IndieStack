@@ -12,7 +12,7 @@ import { createTeam } from "@/lib/actions/team";
 import { createTeamSchema } from "@/lib/validations/team";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { toast } from "@/hooks/use-toast";
@@ -86,26 +86,26 @@ export function CreateTeamPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">{t("team.create.nameLabel")}</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder={t("team.create.namePlaceholder")}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="slug">{t("team.create.slugLabel")}</Label>
-              <Input
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder={t("team.create.slugPlaceholder")}
-                required
-              />
-            </div>
+            <FormField htmlFor="name" label={t("team.create.nameLabel")}>
+              <FormFieldControl>
+                <Input
+                  value={name}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  placeholder={t("team.create.namePlaceholder")}
+                  required
+                />
+              </FormFieldControl>
+            </FormField>
+            <FormField htmlFor="slug" label={t("team.create.slugLabel")}>
+              <FormFieldControl>
+                <Input
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder={t("team.create.slugPlaceholder")}
+                  required
+                />
+              </FormFieldControl>
+            </FormField>
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? tc("loading") : t("team.create.submit")}
             </Button>

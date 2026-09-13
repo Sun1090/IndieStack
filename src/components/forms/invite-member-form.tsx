@@ -11,7 +11,8 @@ import { inviteMember } from "@/lib/actions/team";
 import { ROUTES } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
+import { NativeSelect } from "@/components/shared/native-select";
 import { toast } from "@/hooks/use-toast";
 
 export function InviteMemberForm() {
@@ -42,30 +43,29 @@ export function InviteMemberForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="email">{t("emailLabel")}</Label>
-        <Input
-          id="email"
-          type="email"
-          placeholder={t("emailPlaceholder")}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-      </div>
+      <FormField htmlFor="email" label={t("emailLabel")}>
+        <FormFieldControl>
+          <Input
+            type="email"
+            placeholder={t("emailPlaceholder")}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </FormFieldControl>
+      </FormField>
 
-      <div className="space-y-2">
-        <Label htmlFor="role">{t("roleLabel")}</Label>
-        <select
-          id="role"
-          value={role}
-          onChange={(e) => setRole(e.target.value as "member" | "admin")}
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <option value="member">{t("roleMember")}</option>
-          <option value="admin">{t("roleAdmin")}</option>
-        </select>
-      </div>
+      <FormField htmlFor="role" label={t("roleLabel")}>
+        <FormFieldControl>
+          <NativeSelect
+            value={role}
+            onChange={(e) => setRole(e.target.value as "member" | "admin")}
+          >
+            <option value="member">{t("roleMember")}</option>
+            <option value="admin">{t("roleAdmin")}</option>
+          </NativeSelect>
+        </FormFieldControl>
+      </FormField>
 
       <Button type="submit" disabled={loading} className="w-full">
         {loading ? t("saving") : t("submit")}

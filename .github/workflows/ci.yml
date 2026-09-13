@@ -71,6 +71,9 @@ jobs:
       - name: Check design token consistency
         run: pnpm check:tokens
 
+      - name: Check shared form field usage
+        run: pnpm check:fields
+
       # test:coverage 在 CI 同步 enforce 覆盖率门禁（branches 90%），
       # 并产出 coverage/ 供下方 artifact 上传（消除空路径告警）
       - name: Run tests with coverage

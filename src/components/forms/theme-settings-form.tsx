@@ -8,7 +8,7 @@
 import { useTranslations } from "next-intl";
 import { useTheme } from "@/components/providers/theme-provider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl, FormFieldLabel } from "@/components/shared/form-field";
 
 const THEME_OPTIONS = [
   { value: "light", labelKey: "settings.sections.appearance.themeLight" },
@@ -29,19 +29,16 @@ export function ThemeSettingsForm() {
         className="grid gap-3 sm:grid-cols-3"
       >
         {THEME_OPTIONS.map((option) => (
-          <div key={option.value}>
-            <RadioGroupItem
-              value={option.value}
-              id={`theme-${option.value}`}
-              className="peer sr-only"
-            />
-            <Label
-              htmlFor={`theme-${option.value}`}
-              className="flex cursor-pointer items-center justify-center rounded-lg border border-input px-4 py-3 text-sm font-medium transition-colors peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5"
-            >
+          // 卡片式单选项：FormField 只负责接线，`peer` 选中态排布由下面的 label 自己接管，
+          // 因此显式传空 className 去掉默认的 space-y-2。
+          <FormField key={option.value} htmlFor={`theme-${option.value}`} className="">
+            <FormFieldControl>
+              <RadioGroupItem value={option.value} className="peer sr-only" />
+            </FormFieldControl>
+            <FormFieldLabel className="border-input peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 flex cursor-pointer items-center justify-center rounded-lg border px-4 py-3 text-sm font-medium transition-colors">
               {t(option.labelKey)}
-            </Label>
-          </div>
+            </FormFieldLabel>
+          </FormField>
         ))}
       </RadioGroup>
     </div>

@@ -9,8 +9,8 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { updateNotificationSettings } from "@/lib/actions/settings";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 
 interface NotificationSettingsFormProps {
@@ -64,19 +64,23 @@ export function NotificationSettingsForm({ settings }: NotificationSettingsFormP
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
         {toggles.map((toggle) => (
-          <div key={toggle.id} className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor={toggle.id}>{toggle.label}</Label>
-              <p className="text-sm text-muted-foreground">{toggle.desc}</p>
-            </div>
-            <Switch
-              id={toggle.id}
-              checked={localSettings[toggle.id]}
-              onCheckedChange={(checked: boolean) =>
-                setLocalSettings((prev) => ({ ...prev, [toggle.id]: checked }))
-              }
-            />
-          </div>
+          <FormField
+            key={toggle.id}
+            htmlFor={toggle.id}
+            label={toggle.label}
+            description={toggle.desc}
+            variant="inline"
+            className="flex items-center justify-between rounded-lg border p-4"
+          >
+            <FormFieldControl>
+              <Switch
+                checked={localSettings[toggle.id]}
+                onCheckedChange={(checked: boolean) =>
+                  setLocalSettings((prev) => ({ ...prev, [toggle.id]: checked }))
+                }
+              />
+            </FormFieldControl>
+          </FormField>
         ))}
       </div>
 

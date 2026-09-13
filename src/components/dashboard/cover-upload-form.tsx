@@ -9,7 +9,7 @@ import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { UploadProgress } from "@/components/shared/upload-progress";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { toast } from "@/hooks/use-toast";
@@ -53,30 +53,36 @@ export function CoverUploadForm({ projectId }: { projectId: string }) {
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-2">
-      <Label htmlFor="cover">{t("coverLabel")}</Label>
-      <p className="text-muted-foreground text-sm">{t("coverDesc")}</p>
-      <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
-        <Input
-          id="cover"
-          name="cover"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          className="w-full max-w-xs"
-          disabled={uploading}
-          onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-        />
-        <Button type="submit" disabled={uploading || !selectedFile}>
-          {uploading ? t("coverUploading") : t("uploadCover")}
-        </Button>
-      </div>
-      {uploading ? (
-        <UploadProgress
-          value={progress}
-          label={t("uploadProgress", { progress })}
-          cancelLabel={tc("cancel")}
-          onCancel={cancel}
-        />
-      ) : null}
+      <FormField
+        htmlFor="cover"
+        label={t("coverLabel")}
+        description={t("coverDesc")}
+        descriptionPosition="before"
+      >
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+          <FormFieldControl>
+            <Input
+              name="cover"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="w-full max-w-xs"
+              disabled={uploading}
+              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+            />
+          </FormFieldControl>
+          <Button type="submit" disabled={uploading || !selectedFile}>
+            {uploading ? t("coverUploading") : t("uploadCover")}
+          </Button>
+        </div>
+        {uploading ? (
+          <UploadProgress
+            value={progress}
+            label={t("uploadProgress", { progress })}
+            cancelLabel={tc("cancel")}
+            onCancel={cancel}
+          />
+        ) : null}
+      </FormField>
     </form>
   );
 }

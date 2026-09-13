@@ -9,7 +9,7 @@ import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { UploadProgress } from "@/components/shared/upload-progress";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { toast } from "@/hooks/use-toast";
@@ -52,30 +52,36 @@ export function AvatarUploadForm() {
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-2">
-      <Label htmlFor="avatar">{t("avatarLabel")}</Label>
-      <p className="text-muted-foreground text-sm">{t("avatarDesc")}</p>
-      <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
-        <Input
-          id="avatar"
-          name="avatar"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          className="w-full max-w-xs"
-          disabled={uploading}
-          onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-        />
-        <Button type="submit" disabled={uploading || !selectedFile}>
-          {uploading ? t("saving") : t("uploadAvatar")}
-        </Button>
-      </div>
-      {uploading ? (
-        <UploadProgress
-          value={progress}
-          label={t("uploadProgress", { progress })}
-          cancelLabel={tc("cancel")}
-          onCancel={cancel}
-        />
-      ) : null}
+      <FormField
+        htmlFor="avatar"
+        label={t("avatarLabel")}
+        description={t("avatarDesc")}
+        descriptionPosition="before"
+      >
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+          <FormFieldControl>
+            <Input
+              name="avatar"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="w-full max-w-xs"
+              disabled={uploading}
+              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+            />
+          </FormFieldControl>
+          <Button type="submit" disabled={uploading || !selectedFile}>
+            {uploading ? t("saving") : t("uploadAvatar")}
+          </Button>
+        </div>
+        {uploading ? (
+          <UploadProgress
+            value={progress}
+            label={t("uploadProgress", { progress })}
+            cancelLabel={tc("cancel")}
+            onCancel={cancel}
+          />
+        ) : null}
+      </FormField>
     </form>
   );
 }

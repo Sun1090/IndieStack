@@ -33,6 +33,14 @@ All notable changes to IndieStack will be documented in this file.
 - **Tailwind v3 遗留写法收口到 v4 原生机制（G01）**：自持的两段动画（进度条不确定态、路由切换进度条）从「裸 `@keyframes` + `@layer utilities` 手写类」迁到 `@theme` 的 `--animate-progress-indeterminate` / `--animate-navprogress` token（keyframes 内联进同一块），使用处回到 `animate-<token>` 工具类，宽度用普通工具类 `w-[30%]` 表达；删除仓库内已无引用的 `.step` / `.step:before` 死代码与尾部裸 `@keyframes navprogress`。同时把试点页与共享表单里的 v3 语义类名升级：`bg-gradient-to-b`→`bg-linear-to-b`、`outline-none`→`outline-hidden`（focus-visible 场景，含 forced-colors 处理）。为防回潮新增 `pnpm check:tailwind` 构建门禁（7 类规则码：`@config`/JS 配置/`tailwindcss-animate` 依赖/`@theme` 缺失/未被 token 认领的 `@keyframes`/任意值动画/v3 重命名工具类，24 条单测），接入 `pnpm check:all` 与 CI；构建产物 CSS 已复核 `.animate-navprogress`、`.animate-progress-indeterminate`、`.bg-linear-to-b`、`.outline-hidden` 正常落盘。
 - **状态色散落原生调色板、图表 token 无 @theme 映射（G02）**：新增 `src/lib/design/tokens.ts` 作为 design token 单一事实来源，登记 39 个 token（`--success` / `--warning` / `--info` 三组语义色各带 foreground）。此前状态提示直接写 Tailwind 原生调色板（`bg-green-500`、`text-amber-600`、`bg-red-500`…），同一语义在不同文件里色阶不一致，深色模式下也没有统一回退；现在 11 个业务文件统一走 `bg-success` / `text-warning` / `bg-destructive` / `bg-info`，`:root` 与 `.dark` 各补一份色值。同时补上 `--color-chart-1..5` 的 `@theme` 映射——`--chart-*` 此前只有原始变量，`text-chart-N` / `fill-chart-N` 实际并不存在。为防回潮新增 `pnpm check:tokens`（8 类规则码：根块或主题块缺失、token 缺根值或缺深色覆盖、`@theme` 映射缺失/悬空/未登记、白名单外使用原生状态调色板；28 条单测），接入 `pnpm check:all` 与 CI；Linux 容器内 4 项视觉基线保持无变化。
 
+- **共享表单字段各写一套，label / aria 接线易漂移（G03）**：新增 `src/components/shared/form-field.tsx`，把
+  「标签 / 控件 / 描述 / 错误」的 DOM 与 ARIA 接线收口到一个 context：`FormFieldControl` 自动注入 `id`、
+  合并 `aria-describedby`、在错误时写 `aria-invalid="true"`，描述与错误各有稳定 id，错误文本以 `role="alert"`
+  播报；13 个表单页/组件迁移到 `FormField` / `FormFieldControl`，`invite-member-form` 等原生下拉统一下沉到
+  `native-select.tsx`（补齐此前漂移掉的 `disabled:` 外观）。`globals.css` 为 `[aria-invalid="true"]` 提供统一
+  可见红边；新增 `pnpm check:fields` 门禁，禁止业务层直接写 `<select>`、复制控件类名长串或直接导入
+  `ui/label`（3 类规则码、8 条门禁单测 + 17 条原语单测），接入 `pnpm check:all` 与 CI。
+
 ## [0.9.0] — 2026-09-13
 
 > 主题：**安全与权限边界收口 + 测试与发布门禁加固**
@@ -60,7 +68,6 @@ All notable changes to IndieStack will be documented in this file.
   （`STORAGE_PRIVATE_BUCKET_PUBLIC_READ`）、公共读 bucket 缺少客户端 SELECT
   （`STORAGE_PUBLIC_BUCKET_UNREADABLE`）全部失败封闭。新增 20 条单测与
   [docs/db/storage-policy-audit.md](docs/db/storage-policy-audit.md)（含真实数据库目录核对与 6 行身份矩阵）。
-
 
 - **邮件 worker 运行记录保留期**：新增 `027_email_worker_runs_retention.sql`，`cleanup_old_email_worker_runs()`
   按 90 天保留期清理 `email_worker_runs`（与 `notifications` / `webhook_events` 对齐），并通过带

@@ -12,7 +12,7 @@ import { useTranslations } from "next-intl";
 import { createProject } from "@/lib/actions/projects";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
@@ -76,36 +76,36 @@ export function CreateProjectPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">{t("projects.create.nameLabel")}</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder={t("projects.create.namePlaceholder")}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="slug">{t("projects.create.slugLabel")}</Label>
-              <Input
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder={t("projects.create.slugPlaceholder")}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">{t("projects.create.descriptionLabel")}</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={t("projects.create.descriptionPlaceholder")}
-                rows={4}
-              />
-            </div>
+            <FormField htmlFor="name" label={t("projects.create.nameLabel")}>
+              <FormFieldControl>
+                <Input
+                  value={name}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  placeholder={t("projects.create.namePlaceholder")}
+                  required
+                />
+              </FormFieldControl>
+            </FormField>
+            <FormField htmlFor="slug" label={t("projects.create.slugLabel")}>
+              <FormFieldControl>
+                <Input
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder={t("projects.create.slugPlaceholder")}
+                  required
+                />
+              </FormFieldControl>
+            </FormField>
+            <FormField htmlFor="description" label={t("projects.create.descriptionLabel")}>
+              <FormFieldControl>
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder={t("projects.create.descriptionPlaceholder")}
+                  rows={4}
+                />
+              </FormFieldControl>
+            </FormField>
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? tc("loading") : t("projects.create.submit")}
             </Button>

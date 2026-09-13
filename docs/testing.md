@@ -160,6 +160,25 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 `pnpm check:all` 与 CI Lint & Type Check job 均会执行。该门禁只证明 token 层自洽，不校验像素结果，
 视觉回归仍由 `pnpm test:visual` 负责。
 
+## 共享表单字段门禁（G03）
+
+`pnpm check:fields` 把「字段四件套只有一套接线」变成可持续约束。`FormField` 通过 context 同时提供
+`htmlFor` / `id` / `aria-describedby` / `aria-invalid`，`FormFieldControl` 再把它们注入子控件；描述与错误
+文本有稳定 id，错误以 `role="alert"` 播报。原生下拉统一下沉到 `NativeSelect`，控件外观类名不再抄进业务表单。
+
+门禁规则实现位于 `src/lib/ui/form-field-rules.ts`（纯函数），扫描 `src/app` 与 `src/components` 下的非测试
+`.tsx`，三类规则码分别是：
+
+1. `RAW_SELECT`：业务文件不得直接写原生 `<select>`，使用 `NativeSelect` 才能共享 disabled / focus 态；
+2. `RAW_CONTROL_CLASSES`：业务文件不得复制 `border-input bg-background px-3 py-2 text-sm` 这类控件类名长串；
+3. `DIRECT_LABEL_IMPORT`：业务文件不得直接 `import "@/components/ui/label"`，标签统一经 `FormField` /
+   `FormFieldLabel`，由字段上下文注入 `htmlFor`，避免 label 与控件 id 对不上。
+
+`src/components/ui/**` 是上游 shadcn 基元，不参与扫描；`native-select.tsx` 与 `form-field.tsx` 只豁免各自职责
+对应的规则，其他规则仍会被检查。IO/CLI 位于 `scripts/lib/form-field-check.js`，由 `scripts/check-fields.js`
+经 Node 原生 type stripping 调用，`pnpm check:all` 与 CI 均会执行。该门禁只证明静态写法合规，运行时 ARIA
+行为由 `form-field.test.tsx` / `native-select.test.tsx` 覆盖，不能替代浏览器级键盘与 a11y 回归。
+
 ## 迁移漂移门禁（H09）
 
 `pnpm check:migrations` 是离线门禁：校验 `supabase/migrations/` 的文件命名、编号连续性与无重复、空文件、UTF-8 BOM、CRLF 行尾、结尾换行，并把每个文件的 SHA-256 与提交在 `supabase/migration-manifest.json` 的基线比对。规则实现位于 `src/lib/migrations/migration-drift.ts`（纯函数，单测覆盖），由 `scripts/check-migrations.js` 经 Node 原生 type stripping 包装成 CLI，`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。

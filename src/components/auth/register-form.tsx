@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, FormFieldControl } from "@/components/shared/form-field";
 import { toast } from "@/hooks/use-toast";
 import { Mail } from "lucide-react";
 import { ROUTES } from "@/lib/constants";
@@ -64,36 +64,41 @@ export function RegisterForm() {
   return (
     <form onSubmit={handleEmailRegister}>
       <div className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="email">{tc("email")}</Label>
-          <Input
-            id="email"
-            type="email"
-            placeholder={tc("email")}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoCapitalize="none"
-            autoComplete="email"
-            autoCorrect="off"
-            disabled={loading}
-            required
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="password">{tc("password")}</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            disabled={loading}
-            minLength={8}
-            required
-          />
+        <FormField htmlFor="email" label={tc("email")} className="grid gap-2">
+          <FormFieldControl>
+            <Input
+              type="email"
+              placeholder={tc("email")}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoCapitalize="none"
+              autoComplete="email"
+              autoCorrect="off"
+              disabled={loading}
+              required
+            />
+          </FormFieldControl>
+        </FormField>
+        <FormField
+          htmlFor="password"
+          label={tc("password")}
+          description={t("register.desc")}
+          descriptionClassName="text-xs"
+          className="grid gap-2"
+        >
+          <FormFieldControl>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={loading}
+              minLength={8}
+              required
+            />
+          </FormFieldControl>
           <PasswordStrength password={password} />
-          <p className="text-xs text-muted-foreground">{t("register.desc")}</p>
-        </div>
+        </FormField>
         <Button disabled={loading} type="submit" className="w-full">
           {loading ? t("register.loading") : t("register.submit")}
           <Mail className="ml-2 h-4 w-4" />

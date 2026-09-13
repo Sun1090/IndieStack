@@ -31,6 +31,7 @@
 | `pnpm check:changelog` | 校验 CHANGELOG.md 结构（版本、章节、条目） |
 | `pnpm check:tailwind` | 校验 Tailwind v4 原生主题用法（无 JS 配置、`@theme` token、已更名工具类） |
 | `pnpm check:tokens` | 校验设计 token 注册表与 `globals.css` 一致，并禁止用原生调色板表达状态语义 |
+| `pnpm check:fields` | 校验共享 `FormField` / `NativeSelect` 用法，禁止原生 select、复制控件类名和直接引入 label |
  
  ## 测试
  
