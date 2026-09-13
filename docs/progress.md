@@ -2237,3 +2237,56 @@
   - 回滚：`git revert 1c80cd0` 即移除诊断模块、CLI、门禁与两份指南；纯校验 / 文档改动，无数据库、迁移或运行时影响。
 - 下一步：I09 贡献者测试矩阵。
 - 最后更新：2026-09-13
+
+
+## I09 贡献者测试矩阵（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 89 项）
+- 里程碑与发布目标：M4 I 段（I01–I10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`e6975e8`（feat(docs): add a gated contributor test matrix）
+- 目标：把「改了这块要跑哪些门禁」从散文变成按改动领域的最小验证集，并让文档里的命令不可能悄悄失效
+- 已完成：
+  - 新增单一事实源 `src/lib/testing/test-matrix.ts`：`TEST_MATRIX` 登记 11 个改动领域（`ui`、`server-actions`、
+    `api-routes`、`auth-mfa`、`database`、`rls-security`、`i18n`、`providers`、`mock`、`ci-tooling`、`docs`），
+    每个领域带中英名称、覆盖路径与必须运行的 `package.json` 脚本
+  - 新增纯函数审计 `auditTestMatrix()`：只认首列表头为「领域 / Area」且第二行是分隔线的表格，
+    数据行首列为行内代码领域 id；规则码 `MATRIX_SOURCE_EMPTY` / `MATRIX_MISSING_AREA` / `MATRIX_UNKNOWN_AREA` /
+    `MATRIX_MISSING_COMMAND` / `MATRIX_MISSING_PATH` / `MATRIX_UNKNOWN_COMMAND`，其中命令必须写在**该领域自己的行内**，
+    全文引用的每个 `pnpm <script>` 必须真实存在（内置命令白名单 `PNPM_BUILTINS` 除外），抽取为空时失败封闭
+  - 新增双语矩阵页 `docs-site/testing.md`（英文）与 `docs-site/zh-CN/testing.md`（中文）：改动领域表、
+    领域重叠说明、需要本地 Supabase / Linux 容器的例外，以及「为什么这页有门禁」
+  - 新增 `scripts/lib/test-matrix-check.js` + `scripts/check-test-matrix.js`（Node 原生 type stripping），
+    IO 层额外确认每个登记路径在磁盘上仍然存在，注册为 `pnpm check:test-matrix`
+  - 新增 14 条单测 `src/lib/testing/test-matrix.test.ts`：覆盖真实仓库快照（两份文档 + `package.json`）、
+    空文档 / 无可解析表格失败封闭、缺领域、未知领域、命令未落在本行、覆盖路径消失、未知命令、内置命令白名单、
+    行与命令抽取、错误格式化，以及每个登记路径确实存在于磁盘
+  - 接线：`scripts/check-all.sh` 与 CI `Lint & Type Check` job 均执行 `check:test-matrix`；
+    双语 `docs-site/scripts.md` 新增一行；`docs-site/.vitepress/config.mts` 双语 nav + sidebar 增加
+    Contributor Test Matrix 入口（`docs-site` vitepress 构建通过）；`CONTRIBUTING.md` 第 4 步改为先查矩阵再全量验证；
+    `docs/testing.md` 增加「贡献者测试矩阵（I09）」小节；`CHANGELOG.md` `[Unreleased] / Added` 记录；
+    roadmap 第 89 项与头部进度标注完成
+- 变更文件：`src/lib/testing/test-matrix.ts`、`src/lib/testing/test-matrix.test.ts`、
+  `scripts/lib/test-matrix-check.js`、`scripts/check-test-matrix.js`、`package.json`、`scripts/check-all.sh`、
+  `.github/workflows/ci.yml`、`docs-site/testing.md`、`docs-site/zh-CN/testing.md`、`docs-site/scripts.md`、
+  `docs-site/zh-CN/scripts.md`、`docs-site/.vitepress/config.mts`、`CONTRIBUTING.md`、`docs/testing.md`、
+  `CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `e6975e8`）：
+  - `pnpm check:test-matrix` → ✅ `11 个领域 / 78 条门禁 × 2 份文档`
+  - `pnpm vitest run src/lib/testing/test-matrix.test.ts` → ✅ 14 passed
+  - `pnpm check:gates` → ✅ `23 个门禁（本地 20 / CI 21 / 豁免 3），8 个工作流`
+  - `pnpm check:docs`、`pnpm check:changelog` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:all` → ✅ 144 文件 / 1496 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过
+  - `pnpm test:coverage` → ✅ statements 96.41 / branches 90.80 / functions 96.82 / lines 97.50（新增 `lib/testing` 98.59/94.11/100/98.48）
+  - `cd docs-site && pnpm build` → ✅ vitepress 1.6.4 构建通过（新增双语页面与 nav/sidebar 无死链）
+- 阻塞：无
+- 风险与回滚：
+  - 风险：矩阵把「最小门禁集」写死进代码，领域新增或门禁改名时 `check:test-matrix` 会失败；这是刻意的防漂移设计。
+  - 风险：`MATRIX_MISSING_PATH` 只校验路径字符串出现与磁盘存在，不校验路径与命令的语义匹配度；跨领域改动仍需靠人判断取并集。
+  - 风险：`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md` 不满足仓库级 Prettier 格式（既有表格约定），
+    本次未对这些文件运行 Prettier；新增 / 修改的 TS 与 JS 文件已通过 Prettier。
+  - 回滚：`git revert e6975e8` 即移除矩阵模块、门禁与两份页面；纯文档 / 校验改动，无数据库、迁移或运行时影响。
+- 下一步：I10 迁移回滚 runbook。
+- 最后更新：2026-09-13
