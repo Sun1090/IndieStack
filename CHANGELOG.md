@@ -23,6 +23,16 @@ All notable changes to IndieStack will be documented in this file.
   `next-intl` 4.14.3 → 4.14.4，`lucide-react` 1.44.0 → 1.45.0；`eslint` 10 与 `typescript` 7
   两个 major 升级需要专项迁移，本次不动（`pnpm dep:health` 继续跟踪）。
 
+### Security
+
+- **SECURITY DEFINER 执行权限收口**：新增 `028_revoke_security_definer_execute.sql`，收回
+  `cleanup_old_notifications()` / `cleanup_old_webhook_events()` / `cleanup_old_email_worker_runs()`
+  与 `log_audit_action()` 对 `PUBLIC` / `anon` / `authenticated` 的 `EXECUTE`。此前 PostgreSQL 默认
+  把函数 `EXECUTE` 授予 `PUBLIC`（Supabase 默认权限再显式授予 `anon` / `authenticated`），
+  匿名用户可直接 `rpc('cleanup_old_notifications')` 强制删除保留期内的数据，或
+  `rpc('log_audit_action')` 伪造审计日志；`pnpm check:supabase-security` 同步升级为对未撤权的
+  `SECURITY DEFINER` 函数失败封闭（自动豁免 RLS 策略引用与触发器函数）。
+
 ## [0.8.0] — 2026-09-13
 
 > 主题：**Web Push 持久化重试与死信队列**

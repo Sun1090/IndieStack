@@ -4,14 +4,60 @@
 
 - 所有 `public` 表是否在迁移中启用 RLS；
 - `SECURITY DEFINER` 函数是否固定 `search_path`；
+- `SECURITY DEFINER` 函数是否收回了客户端 `EXECUTE`（见下一节）；
 - 应用使用的 Supabase Storage bucket 是否有版本化的 `storage.objects` policy；
 - `service_role` 管理客户端是否泄漏到 `use client` 模块。
 
-## 静态审计状态（2026-09-12）
+## 静态审计状态（2026-09-13）
 
-`pnpm check:supabase-security` 通过：25 个迁移、18 张 public 表、Storage policy 和
-service-role 客户端边界均通过。迁移 `024_storage_avatars_policies.sql` 已将 `avatars`
-bucket（公共读）及按 `auth.uid()` 前缀约束的 INSERT/UPDATE/DELETE policy 纳入版本控制。
+`pnpm check:supabase-security` 通过：28 个迁移、19 张 public 表、Storage policy、
+`SECURITY DEFINER` 执行权限与 service-role 客户端边界均通过。迁移
+`024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
+约束的 INSERT/UPDATE/DELETE policy 纳入版本控制。
+
+## SECURITY DEFINER 执行权限（2026-09-13 加固）
+
+PostgreSQL 默认把新函数的 `EXECUTE` 授予 `PUBLIC`，Supabase 的默认权限再额外授予
+`anon` / `authenticated` / `service_role`。因此**每个 `SECURITY DEFINER` 函数默认都能被
+匿名用户通过 PostgREST `rpc()` 直接调用**，绕过 RLS。
+
+实际受影响并已在 `028_revoke_security_definer_execute.sql` 收口：
+
+| 函数 | 加固前风险 | 加固后 |
+|---|---|---|
+| `cleanup_old_notifications()` | anon 可强制删除 90 天内通知（数据破坏） | 仅 `service_role` + 属主 |
+| `cleanup_old_webhook_events()` | anon 可强制删除 webhook 事件 | 仅 `service_role` + 属主 |
+| `cleanup_old_email_worker_runs()` | anon 可强制删除 digest 运行记录 | 仅 `service_role` + 属主 |
+| `log_audit_action(...)` | anon 可伪造审计日志行（审计完整性） | 仅 `service_role` + 属主 |
+
+**未收口且必须保留客户端 `EXECUTE` 的函数**：`is_team_member` / `is_team_admin` /
+`is_team_owner` / `get_profile_role` / `get_profile_email` / `get_project_team_id` /
+`get_project_created_by` / `get_team_owner_id` / `get_team_member_count` / `get_team_plan`。
+这些函数在 RLS 策略表达式内被引用，而策略以查询角色求值——撤销后策略会直接抛
+`permission denied`。触发器函数（`handle_new_user` / `handle_new_team` /
+`handle_project_created` / `handle_updated_at`）返回 `trigger`，PostgreSQL 拒绝直接调用，
+因此无需撤权。门禁对这两类函数自动豁免，其余 `SECURITY DEFINER` 函数必须有显式
+`revoke ... from public, anon, authenticated`，否则 `pnpm check:supabase-security` 失败封闭。
+
+运行时证据（本地 Supabase，`http://127.0.0.1:54321`，真实 PostgREST `rpc` 路径）：
+
+```bash
+# 加固前（模拟 028 之前的默认授权）
+grant execute on function public.cleanup_old_notifications() to anon;
+curl -X POST .../rest/v1/rpc/cleanup_old_notifications -H "Authorization: Bearer $ANON" -d '{}'
+# → HTTP 204（删除被执行）
+
+# 加固后
+revoke all on function public.cleanup_old_notifications() from public, anon, authenticated;
+curl -X POST .../rest/v1/rpc/cleanup_old_notifications -H "Authorization: Bearer $ANON" -d '{}'
+# → HTTP 401 {"code":"42501","message":"permission denied for function cleanup_old_notifications"}
+
+# service_role 仍可用（应用侧与运维路径不受影响）
+# → HTTP 204
+```
+
+同一批次的身份矩阵回归保持 `20/20 通过`（`/tmp/indiestack-identity-028.json`），确认撤权
+没有破坏任何合法的 authenticated 路径。
 
 ## 运行时身份矩阵（2026-09-12）
 

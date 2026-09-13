@@ -25,6 +25,12 @@
 - **`pending` 永不清理**：待重试行代表尚未投递的用户通知，删除即静默丢消息。
 - **SQL 侧清理是批量删除**：`security definer` + 空 `search_path`，只按 `created_at` 时间窗删除，
   不读取业务字段；pg_cron 任务名固定，重放迁移是幂等更新而不是新增任务。
+- **清理函数只对服务端开放**：迁移 `028` 收回了 `cleanup_old_notifications()` /
+  `cleanup_old_webhook_events()` / `cleanup_old_email_worker_runs()` 与 `log_audit_action()`
+  对 `PUBLIC` / `anon` / `authenticated` 的 `EXECUTE`（PostgreSQL 默认授予 PUBLIC），
+  只保留 `service_role` 与函数属主。pg_cron 任务以属主身份执行，不受影响；匿名用户此前可直接
+  `rpc('cleanup_old_notifications')` 强制删除数据。细节与运行时证据见
+  [security-audit.md](./security-audit.md)。
 - 清理周期与业务表索引匹配：`email_worker_runs(created_at desc)`、`webhook_events(created_at)`、
   `notifications(created_at)`、`push_delivery_attempts(status, sent_at / last_attempt_at)`。
 
@@ -34,6 +40,17 @@
 -- 确认调度存在（应看到 cleanup-old-notifications / cleanup-old-webhook-events /
 -- cleanup-old-email-worker-runs 三个任务）
 select jobname, schedule, active from cron.job order by jobname;
+
+-- 确认清理函数没有对匿名/登录用户开放（应全部为 f，service_role 为 t）
+select p.proname,
+       has_function_privilege('anon', p.oid, 'EXECUTE') as anon,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated,
+       has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname in ('cleanup_old_notifications', 'cleanup_old_webhook_events',
+                    'cleanup_old_email_worker_runs', 'log_audit_action');
 
 -- 手动触发一次（演练，只影响早于保留期的行）
 select public.cleanup_old_notifications();
@@ -58,4 +75,6 @@ pnpm vitest run src/lib/repositories/push-delivery-attempts.test.ts \
 - `003_projects_notifications_indexes.sql`：`cleanup_old_notifications()`
 - `014_retention_cleanup.sql`：`cleanup_old_webhook_events()` + pg_cron 调度
 - `026_push_delivery_attempts.sql`：队列表与状态/时间索引（保留期由应用侧 worker 执行）
+- `027_email_worker_runs_retention.sql`：`cleanup_old_email_worker_runs()` + pg_cron 调度
+- `028_revoke_security_definer_execute.sql`：收回清理/审计写函数的客户端 `EXECUTE`
 - `027_email_worker_runs_retention.sql`：`cleanup_old_email_worker_runs()` + pg_cron 调度

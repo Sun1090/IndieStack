@@ -136,6 +136,11 @@
       "version": "027",
       "fileName": "027_email_worker_runs_retention.sql",
       "sha256": "6f8d77ee9713489f159a2d6962d925593e78dac140c88a6253cb069f1b7e4acb"
+    },
+    {
+      "version": "028",
+      "fileName": "028_revoke_security_definer_execute.sql",
+      "sha256": "38983f1751d5cb7afffc0958001a5f333351177c548d2417a0fa0b0a9f55bcf6"
     }
   ]
 }
