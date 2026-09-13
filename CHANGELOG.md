@@ -25,6 +25,15 @@ All notable changes to IndieStack will be documented in this file.
   `src/proxy.ts` 接入点、旧错说法不得回流，抽取为空时失败封闭），21 条门禁单测随 `pnpm check:all`
   与 CI 执行。
 
+- **Provider 配置诊断与文档一致性门禁**：新增 `src/lib/providers/diagnostics.ts`（纯函数，9 个
+  provider / 28 个环境变量的 `ProviderReport`、`formatProviderReport`）与 `pnpm provider:doctor`
+  （`--json` / `--help`，发现阻塞问题退出码 1），逐项报告 `ready` / `disabled` / `degraded` /
+  `misconfigured` / `missing`，只输出 provider id 与变量名、**从不输出凭据值**。配套
+  `docs-site/provider-diagnostics.md` 与中文版写实启用条件、fallback 与排障映射，并用新增
+  `pnpm check:provider-docs` 按运行时注册表双向校验（provider id 与环境变量缺一即失败、文档源为空
+  时失败封闭），24 条单测随 `pnpm check:all` 与 CI 执行。
+
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

@@ -180,6 +180,33 @@ E2E 端点新增，`docs-site/mock.md`、`docs-site/zh-CN/mock.md` 与
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明文档与代码的事实一致，
 不判断文案质量，也不替代人工复核。
 
+## Provider 配置诊断（I08）
+
+`pnpm check:provider-docs` 解决的是「provider 配置指南与运行时注册表脱节」：新增一个 provider
+或环境变量后，`docs-site/provider-diagnostics.md` 与 `docs-site/zh-CN/provider-diagnostics.md`
+会悄悄过期，运维照文档配下去仍然起不来。
+
+诊断能力本身是一个纯函数模块 `src/lib/providers/diagnostics.ts`，读取 `process.env`（或注入的
+env 对象）产出 `ProviderReport`：
+
+1. 覆盖 9 个 provider：`supabase`（运行时三键 + 可选 `SUPABASE_DB_URL`）、`storage`
+   （OSS 四键 → `oss`，全空 → `supabase` fallback，部分配置 → `misconfigured`，mock 模式 → `mock`）、
+   `email`（Resend）、`webpush`（VAPID 密钥对）、`appark`（密钥对）、`stripe`（五键）、
+   `sentry`（DSN 与构建期键）、`supabase-restore`（`SUPABASE_ACCESS_TOKEN` + 可推导或显式的
+   `SUPABASE_PROJECT_REF`）、`cron`（`CRON_SECRET`）；
+2. 状态机为 `ready` / `disabled` / `degraded` / `misconfigured` / `missing`，逐项给出缺失变量名，
+   **从不输出任何凭据值**，只输出 provider id 与变量名；
+3. `formatProviderReport()` 渲染人类可读文本，`scripts/lib/provider-doctor.js` 提供 `--json` /
+   `--help`，发现阻塞问题时以退出码 1 结束。
+
+文档一致性门禁 `src/lib/providers/provider-docs.ts` 拿 `PROVIDER_REGISTRY` 做双向校验：注册表里
+每个 provider id 与每个环境变量都必须出现在两份文档里，文档源为空或抽不到 provider 时失败封闭。
+规则码为 `PROVIDER_DOC_SOURCE_EMPTY` / `PROVIDER_DOC_MISSING_PROVIDER` /
+`PROVIDER_DOC_MISSING_KEY`。规则实现 24 条单测（`diagnostics.test.ts` 18 + `provider-docs.test.ts` 6），
+IO/CLI 位于 `scripts/lib/provider-doctor.js` 与 `scripts/lib/provider-docs-check.js`，
+`pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。文档门禁只证明「文档覆盖了注册表事实」，
+不判断文案质量，也不校验真实凭据是否有效。
+
 ## Tailwind v4 原生主题门禁（G01）
 
 `pnpm check:tailwind` 把 ADR-013 的「不再有 JS 配置」从一次性迁移变成可持续约束。规则分两层：
