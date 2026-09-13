@@ -1,80 +1,22 @@
 #!/usr/bin/env node
 /**
- * Supabase RLS 迁移静态检查（按迁移顺序模拟最终数据库状态）
- * 规则：最终态下，所有 UPDATE / INSERT / ALL 策略必须带 WITH CHECK，
- *       SELECT / DELETE 策略必须带 USING。
+ * RLS 全表回归门禁入口。
+ *
+ * 规则实现与单测共用 `src/lib/security/rls-coverage.ts`，这里只负责用 Node 原生
+ * type stripping 运行 ESM（.ts import 需要该 flag），保持 package script 在 Node 22/26 都可用。
  */
-const fs = require("fs");
-const path = require("path");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
-const dir = path.join(__dirname, "..", "supabase", "migrations");
-const files = fs
-  .readdirSync(dir)
-  .filter((f) => f.endsWith(".sql"))
-  .sort();
+const cli = path.join(__dirname, "lib", "rls-coverage-check.js");
+const result = spawnSync(
+  process.execPath,
+  ["--no-warnings", "--experimental-strip-types", cli, ...process.argv.slice(2)],
+  { stdio: "inherit" },
+);
 
-/** 最终数据库状态：记录 public 表、RLS 开关和策略。 */
-const tables = new Set();
-const rlsEnabled = new Set();
-/** 最终策略状态: key = `${table}|${name}` → { cmd, sql } */
-const policies = new Map();
-
-for (const file of files) {
-  const sql = fs.readFileSync(path.join(dir, file), "utf8");
-
-  for (const table of sql.matchAll(
-    /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([\w-]+)/gi,
-  )) {
-    tables.add(table[1]);
-  }
-
-  for (const table of sql.matchAll(
-    /alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([\w-]+)[^;]*?enable\s+row\s+level\s+security/gi,
-  )) {
-    rlsEnabled.add(table[1]);
-  }
-
-  // 处理 drop（含 if exists），从最终状态移除
-  for (const m of sql.matchAll(
-    /drop\s+policy\s+(?:if\s+exists\s+)?"?([\w-]+)"?\s+on\s+([\w.]+)/gi,
-  )) {
-    policies.delete(`${m[2].replace(/^public\./, "")}|${m[1]}`);
-  }
-
-  // 记录 create
-  for (const p of sql.matchAll(/CREATE\s+POLICY\s+"?([\w-]+)"?[\s\S]*?on\s+([\w.]+)[^;]*;/gi)) {
-    const name = p[1];
-    const table = p[2].replace(/^public\./, "");
-    const stmt = p[0];
-    const cmd =
-      (stmt.match(/\bFOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\b/i) ?? [])[1]?.toUpperCase() ?? "ALL";
-    policies.set(`${table}|${name}`, { cmd, stmt });
-  }
-}
-
-const issues = [];
-for (const table of tables) {
-  if (!rlsEnabled.has(table)) {
-    issues.push(`表 ${table} 已创建但最终态未启用 RLS`);
-  }
-}
-
-for (const [key, { cmd, stmt }] of policies) {
-  const [table, name] = key.split("|");
-  if ((cmd === "UPDATE" || cmd === "INSERT" || cmd === "ALL") && !/\bWITH\s+CHECK\b/i.test(stmt)) {
-    issues.push(`表 ${table} 策略 "${name}" (${cmd}) 最终态缺少 WITH CHECK`);
-  }
-  if ((cmd === "SELECT" || cmd === "DELETE") && !/\bUSING\b/i.test(stmt)) {
-    issues.push(`表 ${table} 策略 "${name}" (${cmd}) 最终态缺少 USING`);
-  }
-}
-
-if (issues.length) {
-  console.error(`❌ RLS 检查发现 ${issues.length} 个问题:`);
-  issues.forEach((i) => console.error("  - " + i));
+if (result.error) {
+  console.error(`❌ 无法运行 RLS 全表回归：${result.error.message}`);
   process.exit(1);
 }
-
-console.log(
-  `✅ RLS 迁移检查通过：${files.length} 个迁移，${tables.size} 张 public 表均启用 RLS，${policies.size} 条最终策略均符合规范`,
-);
+process.exit(result.status ?? 1);

@@ -6,7 +6,8 @@
 - `SECURITY DEFINER` 函数是否固定 `search_path`；
 - `SECURITY DEFINER` 函数是否收回了客户端 `EXECUTE`（见下一节）；
 - 应用使用的 Supabase Storage bucket 是否有版本化的 `storage.objects` policy；
-- `service_role` 管理客户端是否泄漏到 `use client` 模块。
+- `service_role` 管理客户端是否泄漏到 `use client` 模块；
+- 每张 `public` 表是否都已**分类**（见下一节 RLS 全表回归）。
 
 ## 静态审计状态（2026-09-13）
 
@@ -120,6 +121,53 @@ from unnest(array['anon','authenticated','service_role']) r;
 **已知边界**：该门禁是静态文本规则，只覆盖 `public` 表上显式书写的策略语句。它不解析
 `alter policy`、动态 SQL 或 Supabase Dashboard 里手工改的策略；线上真实授权仍应以
 `pg_policies` / `has_table_privilege` 查询为准。
+
+## RLS 全表回归（2026-09-13 加固）
+
+`pnpm check:rls` 原先用一条正则把迁移收敛成"最终策略表"，但策略名捕获写成了
+`"?([\w-]+)"?`——只吃**一个单词**。本仓库 35 条策略几乎全部命名为带空格的句子
+（`"Users can view own profile"`），于是名字被截断成 `Users`，同一张表上的多条策略在
+`Map` 里互相覆盖：门禁只报了 **24** 条策略，实际生效 **35** 条，且漏掉的 11 条从未被校验
+`USING` / `WITH CHECK`。
+
+现在的 `pnpm check:rls` 由 `src/lib/security/rls-coverage.ts`（纯函数 + 14 条单测）驱动，
+与 `scripts/check-supabase-security.js` 共用同一套最终态模型：
+
+| 规则 | 失败码 | 说明 |
+|---|---|---|
+| 建表后从未开 RLS | `TABLE_MISSING_RLS` | 后迁移里 `disable row level security` 也会命中 |
+| RLS 已开但既无策略、也未登记为 server-only | `TABLE_UNCLASSIFIED` | 新表必须显式分类，避免"沉默 deny-all"或"顺手放宽" |
+| server-only 表上出现任何生效策略 | `SERVER_ONLY_TABLE_HAS_POLICY` | 被登记为 deny-all 的表一旦出现策略就是一次有意的放宽 |
+| `select` / `delete` 策略缺 `using` | `POLICY_MISSING_USING` | 缺 `USING` 等于匹配所有行 |
+| `insert` / `update` / `all` 策略缺 `with check` | `POLICY_MISSING_WITH_CHECK` | PostgreSQL 会把缺省的 `WITH CHECK` 当作 `true` |
+
+server-only 白名单（RLS 开启、**零**策略，仅 `service_role` 经 `BYPASSRLS` 访问）：
+`email_worker_runs`、`mfa_recovery_codes`、`push_delivery_attempts`、`webhook_events`。
+
+```bash
+pnpm check:rls
+# ✅ RLS 全表回归通过：29 个迁移、19 张 public 表、35 条生效策略均带 USING / WITH CHECK，且每张表都已分类
+```
+
+**与线上目录的交叉验证**（本地 Supabase）：
+
+```sql
+select 'public.'||tablename, policyname, cmd, array_to_string(roles, ',')
+from pg_policies where schemaname = 'public' order by 1, 2;
+```
+
+静态收敛结果与 `pg_policies` **逐条完全一致（35/35，双向零差集）**，说明"最终态"模型没有
+多算或漏算策略。
+
+**失败封闭验证**：临时插入 `099_probe_rls.sql` 后——
+
+- `create table public.probe_widgets (...)`（不开 RLS）→ `TABLE_MISSING_RLS`，门禁退出码 1；
+- 在 `public.teams` 上追加 `"Probe can write"`（UPDATE，只有 `USING`）与
+  `"Probe can read"`（SELECT）→ 新门禁报 `POLICY_MISSING_WITH_CHECK`；
+  **同一份迁移文本在旧正则下"无问题"**（两条名字都截断成 `Probe`，后者覆盖前者）。
+
+**已知边界**：只解析迁移文本，不覆盖 `alter policy`、动态 SQL 与 Dashboard 手工策略；
+`USING` / `WITH CHECK` 的**谓词是否真正约束租户**仍由运行时身份矩阵与代码评审保证。
 
 ## 运行时身份矩阵（2026-09-12）
 

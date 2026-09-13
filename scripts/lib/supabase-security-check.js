@@ -14,6 +14,7 @@ import {
   extractEffectivePolicies,
   inspectClientWritePolicies,
 } from "../../src/lib/security/client-write-policies.ts";
+import { inspectRlsCoverage } from "../../src/lib/security/rls-coverage.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -54,20 +55,22 @@ function checkRealtimePublication(srcDir, sql) {
   ];
 }
 
-/** Every application table must enable RLS in a versioned migration. */
-function checkTableRls(sql) {
-  const issues = [];
-  const tables = [...sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_][\w]*)/gi)].map(
-    (match) => match[1],
-  );
-  for (const table of new Set(tables)) {
-    const enabled = new RegExp(
-      `alter\\s+table[\\s\\S]*?public\\.${table}[\\s\\S]*?enable\\s+row\\s+level\\s+security`,
-      "i",
-    ).test(sql);
-    if (!enabled) issues.push(`public.${table}: RLS is not enabled in migrations`);
-  }
-  return issues;
+/**
+ * Table-level RLS coverage.
+ *
+ * Delegated to `src/lib/security/rls-coverage.ts` so both gates share one final-state model;
+ * clause-level policy checks stay in `check:rls` while this audit only needs the table verdicts.
+ */
+const RLS_TABLE_ISSUE_CODES = new Set([
+  "TABLE_MISSING_RLS",
+  "TABLE_UNCLASSIFIED",
+  "SERVER_ONLY_TABLE_HAS_POLICY",
+]);
+
+function checkTableRls(sources) {
+  return inspectRlsCoverage(sources)
+    .filter((issue) => RLS_TABLE_ISSUE_CODES.has(issue.code))
+    .map((issue) => `[${issue.code}] ${issue.message}`);
 }
 
 const STORAGE_POLICY_RULES = [
@@ -153,7 +156,7 @@ export function runSupabaseSecurityCheck(options = {}) {
     ...checkRealtimePublication(srcDir, sql),
     ...definerIssues.map((issue) => `[${issue.code}] ${issue.fileName}: ${issue.message}`),
     ...writeIssues.map((issue) => `[${issue.code}] ${issue.fileName}: ${issue.message}`),
-    ...checkTableRls(sql),
+    ...checkTableRls(sources),
     ...storage.issues,
     ...checkClientServiceRole(srcDir, root),
   ];

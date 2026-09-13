@@ -39,6 +39,8 @@ export interface PolicyStatement {
   command: PolicyCommand;
   /** Roles named after `to`; `public` when the clause is omitted (policy applies to everyone). */
   roles: string[];
+  /** Expression of the `using (...)` clause, or null when the policy omits it. */
+  using: string | null;
   withCheck: string | null;
   fileName: string;
 }
@@ -139,6 +141,40 @@ function statementEnd(source: string, start: number): number {
   return source.length;
 }
 
+/**
+ * Split a migration into complete statements.
+ *
+ * `statementEnd` already skips string literals, `--` comments, dollar-quoted blocks and
+ * nested parentheses, so `;` inside a `$do$ ... $do$` body cannot truncate a statement.
+ */
+export function splitSqlStatements(content: string): string[] {
+  const statements: string[] = [];
+  let index = 0;
+
+  while (index < content.length) {
+    const char = content[index];
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+    if (char === "-" && content[index + 1] === "-") {
+      index = skipLineComment(content, index);
+      continue;
+    }
+    if (char === "/" && content[index + 1] === "*") {
+      const close = content.indexOf("*/", index + 2);
+      index = close === -1 ? content.length : close + 2;
+      continue;
+    }
+    const end = statementEnd(content, index);
+    const statement = content.slice(index, end).trim();
+    if (statement) statements.push(statement);
+    index = end + 1;
+  }
+
+  return statements;
+}
+
 /** Read the parenthesised group that opens at `openIndex`, returning its inner text. */
 function readParenGroup(text: string, openIndex: number): string | null {
   if (text[openIndex] !== "(") return null;
@@ -168,6 +204,13 @@ const WITH_CHECK = /\bwith\s+check\b/gi;
 const USING = /\busing\b/gi;
 const FOR_COMMAND = /\bfor\s+(select|insert|update|delete|all)\b/i;
 
+/** `using` must be read before `with check` so a predicate mentioning `using` cannot match. */
+function readUsingClause(statement: string): string | null {
+  WITH_CHECK.lastIndex = 0;
+  const withCheckIndex = WITH_CHECK.exec(statement)?.index ?? statement.length;
+  return readClause(statement.slice(0, withCheckIndex), USING);
+}
+
 function policyColumns(match: RegExpExecArray): { name: string; table: string } {
   return {
     name: match[1] ?? match[2] ?? match[3] ?? "",
@@ -196,6 +239,7 @@ function parseCreatePolicy(statement: string, fileName: string): PolicyStatement
     table,
     command,
     roles: roles.length > 0 ? roles : ["public"],
+    using: readUsingClause(statement),
     withCheck: readClause(statement, WITH_CHECK),
     fileName,
   };

@@ -30,6 +30,18 @@ All notable changes to IndieStack will be documented in this file.
   当前无调用方读取 `total`（管理页显示 `filteredLogs.length`），如需总量应改用 `count: "planned"`。
   复审数据见 [docs/db/index-review.md](docs/db/index-review.md)。
 
+### Fixed
+
+- **RLS 全表回归门禁不再漏检策略**：`pnpm check:rls` 原先把策略名按"单个单词"截断
+  （`"?([\w-]+)"?`），本仓库 35 条策略几乎全是带空格的句子
+  （`"Users can view own profile"`），于是同表多条策略在最终态里互相覆盖、只报出 24 条，
+  漏掉的 11 条 `USING` / `WITH CHECK` 从未被校验。现改为由纯函数
+  `src/lib/security/rls-coverage.ts`（14 条单测）与 `check:supabase-security` 共用的最终态模型，
+  并新增"每张表必须分类"规则：新表要么带策略，要么登记进 server-only 白名单
+  （`email_worker_runs` / `mfa_recovery_codes` / `push_delivery_attempts` / `webhook_events`），
+  否则 `TABLE_UNCLASSIFIED` 失败封闭。静态收敛结果与本地 `pg_policies` 逐条一致（35/35，双向零差集）。
+  详见 [docs/db/security-audit.md](docs/db/security-audit.md)。
+
 ### Security
 
 - **审计日志写入面收口**：新增 `029_audit_logs_write_lockdown.sql`，删除
