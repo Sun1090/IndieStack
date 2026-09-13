@@ -909,3 +909,67 @@
 - 下一步：继续下一批可本地执行的真实缺口（roadmap I/J 域的 CI/可观测性与发布文档收口、
   H02 上传元数据迁移、H07 审计日志索引复核等）。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H07_AUDIT_LOG_INDEX_REVIEW（审计日志索引复审与精确计数收口，本地完成）
+
+- 状态：DONE（本地）
+- 里程碑与发布目标：v0.8.0 后续补强，进入下一里程碑（v0.9.0）候选清单；本项不改版本号。
+- 分支/PR：`feat/visual-regression-baseline`（本地分支，无 PR）；base `origin/main@15b05ebe`（本轮未 fetch/rebase）。
+- 本地提交：`ca0770b`（perf(db): stop requesting exact audit log counts）、
+  本进度条目的 docs 提交。
+- 目标：roadmap H07「审计日志索引复审」——用真实 `EXPLAIN ANALYZE` 确认 `audit_logs`
+  的实际查询面是否缺索引，并处理唯一随表无限增长的开销。
+- 已完成：
+  - 全仓 grep 确认 `public.audit_logs` 只有**一条**服务端读路径：
+    `listAuditLogsPage()` → `order by created_at desc limit N offset M`；
+    管理页的关键词/动作过滤全部在客户端完成，**不下推** `user_id` / `action` / `entity` 条件。
+    写入面只有 `appendAuditLog()`（service_role）。
+  - 本地 Supabase 合成 **200,000 行**（约 18 个月、200 种 action、3 类实体、500 用户），
+    全程在事务内 `insert → analyze → explain → rollback`，不污染本地库；表体积 39 MB。
+  - 测量结论：
+    - Q1 `order by created_at desc limit 50`（**唯一生产路径**）→ Index Scan
+      `idx_audit_logs_created_at`，**0.082 ms / 53 buffers**；
+    - Q2 同查询 `offset 5000` → 3.607 ms / 9,897 buffers（OFFSET 分页固有代价，无调用方用深页）；
+    - Q3 `select count(*)`（原 `count: "exact"` 下发）→ **Parallel Seq Scan，12.987 ms / 6,956 buffers**；
+    - Q4b `where user_id = ? order by created_at desc limit 50`（现有单列索引）→
+      Bitmap Index Scan + top-N Sort，0.999 ms；Q4c 加 `(user_id, created_at desc)` 后 0.131 ms（~7.6×）；
+    - Q5 `where action = ?` → Bitmap Index Scan `idx_audit_logs_action`，1.770 ms；
+    - Q6 `where entity_type = ? and entity_id = ?` → Index Scan `idx_audit_logs_entity`，0.039 ms。
+  - 处置 1：**生产分页已命中索引，不新增索引。**
+  - 处置 2：**移除默认的精确计数**。`listAuditLogsPage(page, pageSize, options)` 新增
+    `AuditLogPageOptions { withExactTotal?: boolean }`，默认 `false` → 不下发 `count: "exact"`、
+    返回 `total: null`；`Paginated<T>.total` 类型改为 `number | null`。原调用方
+    `listAllAuditLogs()` / `listActions` 不读 `total`（管理页显示 `filteredLogs.length`），
+    行为无变化。JSDoc 记录了 20 万行实测数字与「优先用 `count: "planned"`」的替代方案。
+  - 处置 3：**暂不加 `(user_id, created_at desc)` 复合索引**，并在
+    `docs/db/index-review.md` 写明**触发条件**：一旦把「按用户过滤审计日志」下推到服务端即补迁移。
+  - 文档：`docs/db/index-review.md` 重写为含 H07 章节（测量方法、结果表、四条结论）并保留 2026-08-23 首轮表；
+    `CHANGELOG.md` `[Unreleased] → ### Changed` 追加条目。
+- 变更文件：`src/lib/repositories/audit-logs.ts`、`src/lib/repositories/audit-logs.test.ts`、
+  `docs/db/index-review.md`、`CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - `pnpm vitest run src/lib/repositories/audit-logs.test.ts` → **8/8 通过**
+    （默认不下发 count 且 `select("*", {})`、`range(10,19)` 断言；`withExactTotal: true` → `{count:"exact"}` 且 `total: 5`；
+    count 为 null 时退回 0；错误路径抛错）。
+  - `pnpm lint` → 通过；`pnpm type-check` → 通过。
+  - `pnpm check:all` → 通过（**113 文件 / 1139 测试**，较上一批 +2 条）。
+  - `pnpm verify:build` → 通过（production build）。
+  - `pnpm check:changelog` → 通过（8 已发布 + 1 Unreleased）。
+  - `pnpm check:docs` → 通过。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产库的真实表体积与计划未测量（需生产只读凭证）；本批复测全部在本地 Supabase 完成。
+  - 200k 行是合成数据，`action` 基数（200 种）与真实分布可能不同；结论对「Q1 走索引」不敏感，
+    对 Q3「全表计数随行数线性变慢」同样成立。
+  - `count: "planned"` 替代方案未接入代码（当前无调用方需要总量，仅在 JSDoc 记录）。
+- 风险与回滚：
+  - 风险：若将来有调用方依赖 `total`，`number` → `number | null` 是编译期可见的破坏性变更，
+    调用方必须显式传 `withExactTotal: true`；类型系统会拦住漏改。
+  - 风险：默认不带 count 的响应更小、更快，无行为回归（管理页原本就不显示 `total`）。
+  - 回滚：`git revert ca0770b`（恢复始终下发 `count: "exact"` 的旧行为）；无迁移、无 schema 变更，
+    不需要数据库侧回滚。
+- 下一步：继续 roadmap 中可本地执行的缺口（I04 ADR 状态、I06 release checklist v0.8.0、
+  I07 本地 mock 开发指南、I08 provider 诊断指南、I09 贡献者测试矩阵、I10 迁移回滚 runbook、
+  H02 上传元数据迁移、H03 RLS 全表回归、H04 service-role 最小权限审计、H06 webhook 幂等约束、
+  J02 E2E shard 策略、J03 CI 缓存、J07 tag/release 自动化等）。
+- 最后更新：2026-09-13
