@@ -2487,3 +2487,35 @@
   - 回滚：`git revert 9e760db` 即移除标签策略、notes 生成、workflow 门禁与文档接线；纯校验 / CI / 文档改动，无数据库或运行时接口影响
 - 下一步：J06 production smoke 与 J08 发布后回滚演练的本地可执行部分；真正生产执行仍受部署、生产 URL 与隔离账号权限约束
 - 最后更新：2026-09-13
+
+## E01 Appark 生产采样配置（DONE）
+
+- 状态：DONE（roadmap `docs/roadmap-0.6.0.md` 第 41 项，E 段「可观测性与运维」）
+- 里程碑与发布目标：E 段可观测性与运维（E01–E10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`6abed1d`（feat(apm): add production event sampling for appark）
+- 目标：把 Appark APM 从「全量上报」推进到可生产调节的采样策略，允许在不改代码的情况下降低事件流量（成本/噪声）或临时静音，同时保证配置笔误不会静默关闭可观测性
+- 已完成：
+  - 新增纯函数模块 `src/lib/appark-config.ts`：`APPARK_SAMPLE_RATE_KEY`、`DEFAULT_APPARK_SAMPLE_RATE = 1`、`parseApparkSampleRate`（返回 `{ rate, configured, valid }`）与 `shouldSampleApparkEvent(rate, random)`；未设置 / 空白视为未配置并取默认 1，非有限数或超出 `[0, 1]` 判定为非法并 fail open 回退 1
+  - 运行时接入 `src/lib/appark.ts`：新增进程内采样率缓存 `getApparkSampleRate()`（非法值只告警一次并回退 1），`trackEvent()` 与 `trackError()` 共用的入队路径在入队前按概率采样，采样率 0 时不入队也不产生网络请求；`initAppark()` 输出生效采样率并在 0 时告警；`resetApparkForTest()` 同步清缓存
+  - 环境诊断接入 `src/lib/env.ts`：非法采样率进入 `EnvReport.problems`，文案说明回退到 1
+  - Provider 诊断接入 `src/lib/providers/diagnostics.ts`：新增 `APPARK_OPTIONAL_KEYS` 并把采样率纳入 Appark provider 注册表，新增 `apparkDiagnostic()` 取代通用 `pairedDiagnostic`，区分 ready（凭据齐备 + 采样率有效，note 带生效采样率）、misconfigured（采样率非法，或仅部分配置凭据）、disabled（全部缺失）
+  - 复用与兼容：解析逻辑抽为纯模块供运行时与诊断共用，避免两套语义漂移；`src/lib/providers/diagnostics.ts` 使用显式相对 `.ts` 导入，以便 `scripts/check-provider-docs.js`（Node `--experimental-strip-types`）在没有 `@/` 别名解析时也能加载
+  - 新增测试：`src/lib/appark-config.test.ts`（未设置/空白、边界 0 与 1、小数、非法值、0/1 不调用 RNG、概率边界）；`src/lib/appark.test.ts` 增补默认 1、合法 0.25、非法回退、采样率 0 不入队且零网络、mock `Math.random` 的小数采样；`src/lib/env.test.ts` 增补非法告警与合法无告警；`src/lib/providers/diagnostics.test.ts` 增补 ready 采样率 note、非法采样率 misconfigured、仅采样率配置的 partial
+  - 文档与配置：`.env.example` 增 `NEXT_PUBLIC_APPARK_SAMPLE_RATE=1` 及注释；`docs/adr/adr-011-appark-apm.md` 增补采样决策（决策 3）并顺延编号与新增后果；`docs/architecture/11-integrations.md`、`docs/architecture/01-overview.md` 同步；双语 `docs-site/configuration.md`、`docs-site/provider-diagnostics.md`、双语 `docs-site/tech-stack.md`（把「Appark planned / 未接线」更正为实际可选支持）同步；`docs/testing.md` 更新 Appark provider 描述与测试条数（26 = 20 diagnostics + 6 provider-docs）；`CHANGELOG.md [Unreleased] / Added` 记录；roadmap 头部进度与第 41 项标注完成
+- 变更文件：`src/lib/appark-config.ts`、`src/lib/appark-config.test.ts`、`src/lib/appark.ts`、`src/lib/appark.test.ts`、`src/lib/env.ts`、`src/lib/env.test.ts`、`src/lib/providers/diagnostics.ts`、`src/lib/providers/diagnostics.test.ts`、`.env.example`、`CHANGELOG.md`、`docs/adr/adr-011-appark-apm.md`、`docs/architecture/01-overview.md`、`docs/architecture/11-integrations.md`、`docs/testing.md`、`docs/roadmap-0.6.0.md`、`docs-site/configuration.md`、`docs-site/zh-CN/configuration.md`、`docs-site/provider-diagnostics.md`、`docs-site/zh-CN/provider-diagnostics.md`、`docs-site/tech-stack.md`、`docs-site/zh-CN/tech-stack.md`
+- 验证命令与结果（提交 `6abed1d`）：
+  - `pnpm exec vitest run src/lib/appark-config.test.ts src/lib/appark.test.ts src/lib/env.test.ts src/lib/providers/diagnostics.test.ts src/lib/providers/provider-docs.test.ts` → ✅ 5 文件 / 58 测试通过
+  - `pnpm exec vitest run src/lib/providers/diagnostics.test.ts` → ✅ 20 passed；`provider-docs.test.ts` → ✅ 6 passed（文档口径 26 条一致）
+  - `pnpm check:provider-docs` → ✅ 9 个 provider / 29 个环境变量 × 2 份文档
+  - `pnpm check:docs`、`pnpm check:adr`、`pnpm check:changelog`、`pnpm check:test-matrix` → ✅
+  - `pnpm type-check`、`pnpm lint` → ✅ 无告警
+  - `pnpm check:all` → ✅ 151 文件 / 1700 测试通过，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 生产构建通过（含 Appark 运行时改动的静态生成与 SSG 校验）
+- 阻塞：真实生产采样率取值属于运营/生产配置，需要生产环境变量权限；本地只验证采样语义、诊断与门禁，未改动任何真实生产配置
+- 风险与回滚：
+  - 风险：采样在事件入队前执行，采样率 0 时事件完全丢弃且不落队列；如需事后补采只能依赖其他来源，属预期行为
+  - 风险：解析语义为 fail open（非法值回退 1）；若未来希望非法值 fail closed，必须同步修改 `appark-config.ts`、env 与 provider 诊断文案及测试
+  - 回滚：`git revert 6abed1d` 即移除采样模块、运行时采样、诊断与文档；不涉及数据库迁移或外部接口破坏
+- 下一步：E02 request/route trace 关联 ID（先审计 `src/proxy.ts`、`src/lib/trace.ts`、`src/lib/api-log.ts` 的路由/action 覆盖，补齐真实缺口）
+- 最后更新：2026-09-13
