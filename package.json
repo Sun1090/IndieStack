@@ -50,6 +50,7 @@
     "check:changelog": "node scripts/check-changelog.js",
     "check:adr": "node scripts/check-adr.js",
     "check:gates": "node scripts/check-gates.js",
+    "check:workflows": "node scripts/check-workflows.js",
     "check:mock-docs": "node scripts/check-mock-docs.js",
     "check:test-matrix": "node scripts/check-test-matrix.js",
     "check:migration-runbook": "node scripts/check-migration-runbook.js",

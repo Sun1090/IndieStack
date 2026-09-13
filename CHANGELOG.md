@@ -50,6 +50,16 @@ All notable changes to IndieStack will be documented in this file.
 - **E2E 安全并行化（J02）**：把 86 条 Playwright E2E 分配到两个独立 CI shard；每个 shard 有自己的 dev server，
   内部仍保持单 worker，因此加速不破坏共享 Mock 状态隔离；4 条视觉基线只在 shard 1 执行一次。Playwright 默认仍为单 worker，只有显式
   `PW_FULLY_PARALLEL=true` 才启用隔离实验；新增配置回归测试防止 shard、artifact 命名或默认串行策略漂移。
+- **CI 并行与缓存优化（J03）**：CI 从「一条串行链」改为「廉价门禁先失败、昂贵作业并行」——覆盖率测试从
+  静态门禁 job 拆到独立 `Unit Tests` job，与静态门禁并行执行，`Build` / `E2E (Playwright)` 的 `needs` 仍然
+  只指向最快的 `Lint & Type Check`，因此不再为一次覆盖率运行多等一两分钟。E2E 用 `actions/cache` 缓存
+  `~/.cache/ms-playwright`（键含 `hashFiles('pnpm-lock.yaml')`，Playwright 版本变化即失效，
+  `install --with-deps` 仍补齐系统依赖）；触发 PR 的工作流新增 `concurrency` +
+  `cancel-in-progress`，同分支连续推送会立刻取消被取代的运行，而 main/develop push 与 schedule 不取消。
+  新增 `pnpm check:workflows` 把工作流卫生固化为门禁：作业必须有 `runs-on` / `timeout-minutes`，
+  `uses:` 必须固定在 semver 标签或 40 位 SHA（`@main` / `@latest` 失败），`needs` 必须指向真实作业，
+  触发 PR 的工作流必须声明非 `false` 的 `cancel-in-progress`，`pull_request_target` 直接禁止，
+  工作流引用的 `pnpm <a:b>` 脚本必须真实存在，并锁定 ci.yml 的并行/缓存拓扑（28 条单测）。
 
 ### Planned
 

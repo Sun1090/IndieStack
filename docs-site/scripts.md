@@ -31,6 +31,7 @@
 | `pnpm check:changelog` | Validate CHANGELOG.md structure (versions, sections, entries) |
 | `pnpm check:adr` | Validate ADR numbering, status, index, sections, and supersession links |
 | `pnpm check:gates` | Audit that every `check:*` gate is wired into `check-all.sh` and CI, or exempt with a reason |
+| `pnpm check:workflows` | Audit CI workflow hygiene: pinned actions, job timeouts, `needs` targets, PR concurrency, real script names, and the ci.yml parallel/cache contract |
 | `pnpm check:mock-docs` | Audit that the Mock docs match the Mock client tables and E2E endpoints |
 | `pnpm check:test-matrix` | Audit that the contributor test matrix documents every change area and real script |
 | `pnpm check:provider-docs` | Audit that both provider diagnostics guides document every provider and environment key |

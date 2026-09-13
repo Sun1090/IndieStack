@@ -5,6 +5,13 @@ name: CI
 permissions:
   contents: read
 
+# 同一 PR 的重复推送只保留最新一次运行：被取代的运行立刻取消，既不继续占用 runner，
+# 也不会在过时代码上给出误导性的状态。main/develop push 与 schedule 不取消，
+# 因此 cancel-in-progress 只在 pull_request 事件为 true。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     branches: [main, develop]
@@ -101,8 +108,33 @@ jobs:
       - name: Check shared state usage
         run: pnpm check:states
 
+      - name: Check CI workflow topology
+        run: pnpm check:workflows
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       # test:coverage 在 CI 同步 enforce 覆盖率门禁（branches 90%），
-      # 并产出 coverage/ 供下方 artifact 上传（消除空路径告警）
+      # 并产出 coverage/ 供下方 artifact 上传（消除空路径告警）。
+      # 独立成 job：覆盖率与静态门禁并行，构建与 E2E 只等静态门禁，
+      # 不必再为一次覆盖率运行多等一两分钟。
       - name: Run tests with coverage
         run: pnpm test:coverage
 
@@ -199,6 +231,16 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # 浏览器二进制按锁文件哈希缓存（Playwright 版本变化即失效）；
+      # --with-deps 仍会补齐系统依赖，只省去每次重新下载浏览器。
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium

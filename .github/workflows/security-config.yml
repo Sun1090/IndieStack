@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# PR 上同一分支的旧运行在推送新提交后立刻取消；push / schedule 事件不取消，
+# 保证 main/develop 的扫描结果始终保留。
+concurrency:
+  group: security-config-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   security-config:
     runs-on: ubuntu-latest

@@ -117,8 +117,29 @@ pnpm smoke:supabase-identity -- --output /tmp/indiestack-identity-matrix.json
 
 ## CI 门禁
 
-push/PR 触发八道关卡：Lint & Type Check（含 i18n/RLS 校验）· Build · E2E · Build Docs · CodeQL · gitleaks。
-任何一道失败即阻塞合并。
+push/PR 触发以下关卡：`Lint & Type Check`（含 i18n/RLS/工作流等静态门禁）· `Unit Tests`（覆盖率门禁）·
+`Build` · `Build Docs Site` · `E2E (Playwright)`（`[1, 2]` shard）· `CodeQL` · `Secrets Scan` ·
+`Security and configuration checks`。任何一道失败即阻塞合并。
+
+### 并行与缓存拓扑（J03）
+
+`ci.yml` 按「廉价门禁先失败、昂贵作业并行」分层，改动这层结构等于改动 CI 的墙钟时间与失败代价：
+
+- `Lint & Type Check` 与 `Unit Tests` 都**没有前置依赖**，因此 lint/type-check/`check:*` 与
+  `pnpm test:coverage` 同时开跑；覆盖率不再排在静态门禁后面；
+- `Build` 与 `E2E (Playwright)` 的 `needs` **只**指向 `Lint & Type Check`：静态门禁一绿就开始构建与 E2E，
+  不会为一次覆盖率运行再多等一两分钟；
+- `E2E` 用 `actions/cache` 缓存 `~/.cache/ms-playwright`，键为
+  `playwright-<runner.os>-<hashFiles('pnpm-lock.yaml')>`：Playwright 版本随锁文件变化即自动失效，
+  `playwright install --with-deps` 仍会补齐系统依赖，缓存只省去重复下载浏览器；
+- 触发 `pull_request` 的工作流声明 `concurrency` + `cancel-in-progress`，同一分支连续推送时旧运行立即取消；
+  main/develop 的 push 与 schedule 事件不取消，扫描结果始终保留。
+
+这些约束由 `pnpm check:workflows` 与 `src/lib/ci/workflow-policy.test.ts` 双重回归：每个作业必须有
+`runs-on` / `timeout-minutes`，每个 `uses:` 必须固定在 semver 标签或 40 位 SHA（`@main` / `@latest` 直接失败），
+`needs` 必须指向真实作业，触发 PR 的工作流必须声明非 `false` 的 `cancel-in-progress`，
+`pull_request_target` 禁止使用，工作流里出现的 `pnpm <a:b>` 脚本必须真实存在于 `package.json`，
+且上述并行/缓存拓扑必须与契约一致。
 
 ## Mock fixture 隔离策略（F02/F03）
 
