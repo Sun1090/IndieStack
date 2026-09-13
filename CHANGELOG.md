@@ -20,6 +20,14 @@ All notable changes to IndieStack will be documented in this file.
   键名与解析规则收口到 `src/lib/theme/theme.ts`，Provider、切换按钮与 E2E 共用同一份定义，
   system 模式改为监听 `prefers-color-scheme` 实时跟随。新增 13 条单测（含 jsdom 内联脚本行为）与
   `e2e/theme.spec.ts` 6 条 E2E（含阻断客户端 bundle 的首屏断言）。
+- **移动端断点回归：导航不可达与横向溢出（G06）**：新增 `e2e/responsive.spec.ts`（375 / 768 / 1280 三个断点）
+  后暴露两个真实缺陷。其一，`@utility container` 恒为 2rem 内边距，在 375px 视口下把页头右侧操作区挤出视口
+  （`scrollWidth` 428 > 375），首页 / 功能页 / 定价页 / 仪表盘全部横向滚动；改为手机 1rem、≥640px 恢复 2rem。
+  其二，仪表盘侧边栏是 `hidden md:block`，手机上整个导航消失，用户只能手改地址栏才能到达分析、团队、设置等页面；
+  现在新增 `MobileDashboardNav`（ui/sheet 左抽屉，跳转后自动关闭）保证导航可达，页头断点由 md 提升到 lg 并让
+  汉堡菜单带上 `aria-label` / `aria-expanded` / `aria-controls`，触屏设备不再渲染无用的快捷键入口。
+  导航链接与角色、未读状态抽出 `dashboard-nav-links` / `use-is-admin` / `use-unread-notifications` 供桌面侧边栏与
+  移动抽屉共用，避免两侧漂移；新增 18 条单测与 11 条 E2E，Linux 容器内 4 项视觉基线保持无变化。
 
 ## [0.9.0] — 2026-09-13
 

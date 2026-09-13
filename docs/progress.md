@@ -1560,3 +1560,84 @@
 - G06 移动端断点回归（375/768/1280 断点导航与卡片布局 + Playwright 断点断言）。
 
 - 最后更新：2026-09-13
+
+## v0.9.0 后续 / G06_MOBILE_BREAKPOINT_REGRESSION（移动端断点回归，本地完成）
+
+- 状态：DONE（本地验证完成；未 push / 未开 PR / 未 merge / 未 deploy）
+- 里程碑与发布目标：M2「UI 系统收口」（[docs/roadmap-0.6.0.md](roadmap-0.6.0.md) G01–G10），
+  退出后进入下一里程碑 release freeze；当前版本仍是 `0.9.0`，本任务不升版本。
+- 分支 / PR：`feat/visual-regression-baseline`（LOCAL_ONLY，无 PR）；base
+  `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`
+- 本地提交：`d042310`（fix）
+- 目标：用真实浏览器的断点断言证明三类视口（375 / 768 / 1280）下公共页与仪表盘都可导航、无横向溢出。
+
+### 已完成
+
+- 新增 `e2e/responsive.spec.ts`（11 条）作为回归入口：视口元信息、375px 汉堡菜单可展开并跳转、
+  `/` `/features` `/pricing` `/dashboard` 无横向溢出、375px 仪表盘移动导航可达、
+  768px 汉堡菜单 + 侧边栏可见、1280px 完整导航与侧边栏宽度。溢出断言会打印实际越界元素，
+  失败信息可直接定位组件，而不是只报 `scrollWidth` 数字。
+- 缺陷 1（横向溢出）：`@utility container` 恒为 `padding-inline: 2rem`，在 375px 视口里占掉 17% 宽度，
+  页头右侧操作区被推出视口（`scrollWidth=428 > innerWidth=375`，越界元素为页头
+  `div.flex.items-center.gap-3`）。改为默认 1rem、`@media (width >= 40rem)` 恢复 2rem；
+  1280px 桌面渲染不变（视觉基线验证）。
+- 缺陷 2（导航不可达）：`DashboardSidebar` 是 `hidden md:block`，手机上整个导航消失，
+  用户只能手改地址栏才能到达分析 / 团队 / 设置等页面。新增 `MobileDashboardNav`
+  （`ui/sheet` 左抽屉，`md:hidden`，带未读 badge 与管理员入口，路径变化后自动关闭）。
+- 页头断点 md→lg：768px 下导航链接会挤压页头，改为窄屏统一用汉堡菜单，并补齐
+  `aria-label`（common.menu）/ `aria-expanded` / `aria-controls="site-mobile-menu"`；
+  触屏没有物理键盘，快捷键入口只在 `md` 以上渲染。
+- 去重（防止两侧漂移）：导航链接收口到 `src/components/dashboard/dashboard-nav-links.ts`
+  （`buildDashboardNavLinks` / `ADMIN_NAV_LINK` / `isNotificationsLink`），角色与未读状态抽成
+  `use-is-admin` / `use-unread-notifications` 两个 hook，桌面侧边栏与移动抽屉共用同一份定义
+  与同一个 `QUERY_KEYS.unreadCount`（react-query 自动去重，不会因两个入口翻倍轮询）。
+- 新增 i18n 键 `common.menu` / `common.dashboardMenu`（en/zh-CN 同步）。
+- 顺带修掉两处 lint 硬门禁违规：`use-is-admin` 与移动抽屉原先在 effect 体内同步 `setState`
+  （`react-hooks/set-state-in-effect`），前者改为把结果与 userId 绑定存储后由返回值判定，
+  后者改用 render 期间同步 state 的官方模式。
+
+### 变更文件
+
+- `e2e/responsive.spec.ts`（新增，11 条）
+- `src/components/dashboard/mobile-dashboard-nav.tsx`（新增）、`mobile-dashboard-nav.test.tsx`（新增，8 条）
+- `src/components/dashboard/dashboard-nav-links.ts`（新增）、`dashboard-nav-links.test.ts`（新增，6 条）
+- `src/components/dashboard/dashboard-sidebar.test.tsx`（新增，4 条）
+- `src/hooks/use-is-admin.ts`（新增）、`src/hooks/use-unread-notifications.ts`（新增）
+- `src/components/dashboard/dashboard-sidebar.tsx`、`src/components/layout/site-header.tsx`
+- `src/app/dashboard/layout.tsx`、`src/app/globals.css`
+- `messages/en/common.json`、`messages/zh-CN/common.json`
+- `CHANGELOG.md`（`[Unreleased] / ### Fixed`）、`docs/roadmap-0.6.0.md`（G06 完成说明）
+
+### 验证命令与结果
+
+- `pnpm exec playwright test e2e/responsive.spec.ts` → ✅ **11 passed (10.8s)**
+- `pnpm test` → ✅ **124 文件 1259 测试**（G06 前 121 文件 1241 测试）
+- `pnpm test:e2e` → ✅ **80 passed (46.7s)**（G06 前 69 passed；页头断点改动未破坏既有 smoke / a11y 用例）
+- `pnpm lint` → ✅ `eslint .` 无告警
+- `pnpm type-check` → ✅ `tsc --noEmit` 无错误
+- `pnpm check:all` → ✅ 全部校验通过（en/zh-CN 各 974 key 一致、31 迁移、39 条 RLS 策略、a11y 静态审计、changelog）
+- `pnpm verify:build` → ✅ `pnpm verify` + `next build` 全绿
+- `pnpm test:visual`（`mcr.microsoft.com/playwright:v1.63.0-noble` 容器内，按
+  [docs/testing.md](testing.md) 的 Linux 基线流程）→ ✅ **4 passed**，1440×900 桌面全页截图无像素变化
+
+### 阻塞
+
+- 无本地阻塞。
+
+### 风险与回滚
+
+- 风险：`@utility container` 的 1rem 内边距只在 <640px 生效，若后续有人把它改回固定 2rem，
+  375px 溢出会立刻回归——`e2e/responsive.spec.ts` 的三条溢出断言会失败并打印越界元素。
+- 风险：导航定义现在只有一份，`dashboard-nav-links.test.ts` 锁定了顺序与 `ROUTES` 引用；
+  新增页面时若只改 mock 或只改一侧，单测会先失败。
+- 风险：页头断点从 md 提升到 lg 后，768–1023px 区间用户改用汉堡菜单（多一次点击，但避免了页头挤压）。
+  这是有意取舍，已由 768px 用例固定。
+- 回滚：`git revert d042310` 即回到「container 恒 2rem + 侧边栏 md 起显示 + 无移动抽屉」状态；
+  无数据 / 迁移影响。
+
+### 下一步
+
+- G07 键盘与 screen reader 交互（侧边栏折叠按钮缺 `aria-label` / `aria-expanded`、图标链接折叠后
+  的可访问名称、Esc 关闭移动菜单与快捷键对话框的焦点回归）。
+
+- 最后更新：2026-09-13

@@ -95,7 +95,7 @@
 63. G03 shared form field 统一
 64. G04 loading/empty/error 状态统一
 65. G05 暗色模式回归（完成：`src/lib/theme/theme.ts` 收口存储键 `ui-theme` 与解析规则，根布局注入带 CSP nonce 的首屏阻塞脚本，暗色/浅色/系统三种偏好在 hydration 前即写入 `<html>` class 与 `color-scheme`，`localStorage`/`matchMedia` 分别兜底隐私模式与老浏览器；修掉 Provider 写 `ui-theme`、切换处读 `theme` 导致的持久化失效，system 模式改为监听系统变化实时跟随。新增 13 条单测与 `e2e/theme.spec.ts` 6 条 E2E，其中 4 条阻断 `/_next/static/**` 后用真实浏览器证明主题不依赖 React）
-66. G06 移动端断点回归
+66. G06 移动端断点回归（完成：新增 `e2e/responsive.spec.ts` 覆盖 375/768/1280 三个断点，暴露并修复 375px 横向溢出（`@utility container` 手机 1rem / ≥640px 2rem）与 `hidden md:block` 侧边栏导致手机端导航不可达；页头断点 md→lg 并让汉堡菜单带 `aria-label`/`aria-expanded`/`aria-controls`，触屏隐藏快捷键入口；新增 `MobileDashboardNav`（ui/sheet 抽屉，跳转自动关闭），导航链接与角色/未读状态收口到 `dashboard-nav-links`、`use-is-admin`、`use-unread-notifications` 供桌面与移动共用。新增 18 条单测 + 11 条 E2E，Linux 容器视觉基线 4 项无变化）
 67. G07 键盘与 screen reader 交互
 68. G08 上传组件进度与取消（完成：头像/封面改为同源 XHR Route Handler，`xhr.upload.onprogress` 显示真实百分比并支持 `abort()`；Action 与 Route 共用上传 service，保留鉴权、类型/大小/文件头校验、存储回滚与旧对象清理；补 service/client/request/Route/组件单测及头像 E2E 进度/取消闭环）
 69. G09 通知中心实时刷新（完成：通知页客户端订阅 `public.notifications` 的 `INSERT` Postgres Changes，并按 `user_id=eq.<当前用户>` 过滤；120ms 合并 `router.refresh()`，连接中/已连接/离线状态有可访问文本并安全降级。`025_notifications_realtime.sql` 幂等加入 Realtime publication，RLS 继续限制订阅数据。新增组件单测、真实本地迁移重建和 Playwright E2E，覆盖错误用户过滤与无需 reload 的新通知展示）
