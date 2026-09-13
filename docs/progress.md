@@ -1810,3 +1810,115 @@
 - G02 design token 收口（M2 里程碑下一项）。
 
 - 最后更新：2026-09-13
+
+## v0.9.0 后续 / G02_DESIGN_TOKENS（design token 收口与门禁，本地完成）
+
+- 状态：DONE（本地验证完成；未 push / 未开 PR / 未 merge / 未 deploy）
+- 里程碑与发布目标：M2「UI 系统收口」（[docs/roadmap-0.6.0.md](roadmap-0.6.0.md) G01–G10），
+  退出后进入下一里程碑 release freeze；当前版本仍是 `0.9.0`，本任务不升版本。
+- 分支 / PR：`feat/visual-regression-baseline`（LOCAL_ONLY，无 PR）；base
+  `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`
+- 本地提交：`ce5dbcb`（feat）
+- 目标：把散落在业务代码里的颜色写法收口成单一事实来源——`:root` / `.dark` 原始变量、`@theme inline`
+  映射、以及使用方工具类三者必须一一对应，并用门禁把这条规则锁死，避免原生调色板再次回潮。
+
+### 已完成
+
+- 新增 design token 单一事实来源 `src/lib/design/tokens.ts`（纯规则，~400 行）：
+  - `DESIGN_TOKENS` 登记 **39 个 token**，按 `surface` / `status` / `chart` / `sidebar` / `radius` 分组，
+    每项带 `name` / `group` / `utility` / 可选 `utilityName` / `dark`（是否需要深色覆盖）。
+  - `THEME_COLOR_TOKENS` 描述 `@theme inline` 里每个颜色 token 对应的原始变量与来源；
+    `STATUS_PALETTE_FAMILIES` 列出 8 个禁止直接使用的状态调色板族
+    （red / green / emerald / amber / yellow / orange / blue / sky）。
+  - 8 类规则码：`TOKEN_ROOT_BLOCK_MISSING`、`TOKEN_THEME_BLOCK_MISSING`、`TOKEN_MISSING_ROOT`、
+    `TOKEN_MISSING_DARK`、`THEME_MAPPING_MISSING`、`THEME_MAPPING_DANGLING`、`THEME_MAPPING_UNREGISTERED`、
+    `RAW_STATUS_PALETTE`。
+  - 解析辅助（含注释剥离与花括号配对）：`braceMatch` / `extractRuleBody` / `extractDeclarations` /
+    `extractVarReferences` / `escapeRegExp`；报告出口 `auditDesignTokens` / `formatDesignTokenIssues`。
+  - `auditDesignTokens` 按职责拆成 `auditRegistryTokens` / `auditThemeMappings` / `auditPaletteUsage`，
+    规避 ESLint `complexity: max 15`。
+- `src/app/globals.css` 补齐缺口：
+  - `@theme inline` 新增 `--color-success/-foreground`、`--color-warning/-foreground`、`--color-info/-foreground`，
+    以及 **`--color-chart-1..5` 映射**（此前只有 `:root`/`.dark` 的 `--chart-*` 原始变量，
+    `text-chart-N` / `fill-chart-N` 这类工具类实际并不存在）。
+  - `:root` 新增 `--success` / `--success-foreground` / `--warning` / `--warning-foreground` /
+    `--info` / `--info-foreground`；`.dark` 同步补一份对应色值（浅色 142/38/217 色相，深色提亮）。
+- 使用方迁移（11 个文件，原生调色板 → 语义 token）：
+  - `src/app/dashboard/page.tsx`：`bg-green-500`→`bg-success`、`bg-yellow-500`→`bg-warning`、
+    `bg-red-500`→`bg-destructive`、`bg-blue-500`→`bg-info`。
+  - `src/components/shared/password-strength.tsx`：强度 1→`bg-destructive`、2→`bg-warning`、3→`bg-info`、4→`bg-success`。
+  - `src/components/dashboard/notifications-live.tsx`：`bg-emerald-500`→`bg-success`、`bg-amber-500`→`bg-warning`。
+  - `src/components/layout/offline-banner.tsx`：`bg-amber-500 … text-white` → `bg-warning … text-warning-foreground`。
+  - `src/components/dashboard/two-factor-section.tsx`：`text-emerald-500`→`text-success`、
+    `text-amber-500` / `text-amber-600`→`text-warning`。
+  - `src/components/dashboard/stats-card.tsx`：`text-green-600`→`text-success`、`text-red-600`→`text-destructive`。
+  - `src/app/dashboard/analytics/analytics-page.tsx`：`bg-red-500` / `bg-green-500` → `bg-destructive` / `bg-success`，
+    `text-red-600`→`text-destructive`。
+  - `src/app/auth/forgot-password/forgot-password-form.tsx`、`src/app/(marketing)/pricing/pricing-cards.tsx`、
+    `src/app/page.tsx`、`src/app/dashboard/billing/page.tsx`：green / emerald → `text-success`。
+- 新增门禁 `pnpm check:tokens`：
+  - `scripts/lib/design-token-check.js` 提供 `buildSnapshot(repoRoot)` / `runDesignTokenCheck(repoRoot)`
+    （接受仓库根参数，供临时目录反例单测使用）；`scripts/check-tokens.js` 用 Node
+    `--experimental-strip-types` 运行 ESM 规则模块。
+  - 扫描范围 `src/{app,components,hooks,lib}`，排除 `src/components/ui/**`（上游 shadcn 领地）、测试文件与
+    规则文件自身；白名单 `STATUS_PALETTE_ALLOWLIST` 只放 3 处有真实语义的用法
+    （`initial-avatar.tsx`、`(marketing)/changelog/page.tsx`、`dashboard/admin/page.tsx`）。
+  - 当前结果：39 个已登记 token（38 个深色覆盖、38 条 `@theme` 映射），273 个应用层文件无原生状态调色板。
+- 单测：`src/lib/design/tokens.test.ts` **20 条**（解析辅助 + 8 类规则码各自的正反例）、
+  `src/lib/design/design-token-check.test.ts` **8 条**（CLI 通过路径 + 临时目录反例，含缺失映射 / 深色覆盖 /
+  白名单外调色板），另在 `password-strength.test.tsx` 补 4 条 `it.each`（强度 → 语义类名一一对应）、
+  在 `notifications-live.test.tsx` 补 1 条状态点语义类名断言。本批共 28 条新单测。
+- 门禁接线：`package.json` 新增 `check:tokens`；`scripts/check-all.sh` 紧随 `check:tailwind` 执行；
+  CI workflow `lint-and-type-check` job 新增 "Check design token consistency" 步骤。
+- 文档：`docs/testing.md` 新增「设计 token 门禁（G02）」小节（含 chart 为何仍用 `hsl(var(--chart-N))` 的说明——
+  `@theme inline` 会把值内联、不产出运行时可读的 `--color-*` 自定义属性，SVG `<stop stopColor>` 拿不到）；
+  `docs-site/scripts.md` 与 `docs-site/zh-CN/scripts.md` 各补一行 `pnpm check:tokens`。
+
+### 变更文件
+
+- `src/lib/design/tokens.ts`、`tokens.test.ts`、`design-token-check.test.ts`（新增）
+- `scripts/check-tokens.js`、`scripts/lib/design-token-check.js`（新增）
+- `src/app/globals.css`
+- `src/app/page.tsx`、`src/app/dashboard/page.tsx`、`src/app/dashboard/billing/page.tsx`、
+  `src/app/dashboard/analytics/analytics-page.tsx`、`src/app/(marketing)/pricing/pricing-cards.tsx`、
+  `src/app/auth/forgot-password/forgot-password-form.tsx`
+- `src/components/shared/password-strength.tsx`、`password-strength.test.tsx`
+- `src/components/dashboard/notifications-live.tsx`、`notifications-live.test.tsx`、
+  `src/components/dashboard/stats-card.tsx`、`src/components/dashboard/two-factor-section.tsx`
+- `src/components/layout/offline-banner.tsx`
+- `package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`
+- `docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`
+- `CHANGELOG.md`（`[Unreleased] / ### Fixed`）、`docs/roadmap-0.6.0.md`（G02 完成说明）
+
+### 验证命令与结果
+
+- `pnpm check:tokens` → ✅ 39 个已登记 token（38 个深色覆盖、38 条 `@theme` 映射），273 个应用层文件无原生状态调色板
+- `pnpm lint` → ✅ `eslint .` 无告警（`complexity` 拆分后复跑）
+- `pnpm type-check` → ✅ `tsc --noEmit` 无错误
+- `pnpm test` → ✅ **130 文件 1329 测试**
+- `pnpm build` → ✅ 成功（路由表正常输出）
+- `pnpm check:all` → ✅ 全部校验通过（含新增 `check:tokens`）
+- `pnpm test:e2e` → ✅ **86 passed (1.7m)**
+- `pnpm test:visual`（`mcr.microsoft.com/playwright:v1.63.0-noble` 容器内，按
+  [docs/testing.md](testing.md) 的 Linux 基线流程）→ ✅ **4 passed**，1440×900 桌面全页截图无像素变化
+  （语义 token 的色值刻意取成与迁移前原生调色板等值，因此无需重生成基线）
+
+### 阻塞
+
+- 无本地阻塞。
+
+### 风险与回滚
+
+- 风险：`--success` / `--warning` / `--info` 是自持 token，若后续有人只改 `.dark` 漏改 `:root`（或反之），
+  `check:tokens` 的 `TOKEN_MISSING_ROOT` / `TOKEN_MISSING_DARK` 会失败。
+- 风险：新语义色与迁移前的原生调色板等值，属于「等价替换」；若产品后续调整品牌色，应改 `:root`/`.dark`
+  原始变量而不是使用方工具类，视觉基线届时需要重生成。
+- 风险：白名单 `STATUS_PALETTE_ALLOWLIST` 是显式豁免，新增条目需要在 code review 时确认确有语义理由。
+- 回滚：`git revert ce5dbcb` 即回到「状态色散落原生调色板 + 无 `check:tokens`」状态；纯样式与门禁改动，
+  无数据 / 迁移影响。
+
+### 下一步
+
+- G03 shared form field 统一（M2 里程碑下一项）。
+
+- 最后更新：2026-09-13

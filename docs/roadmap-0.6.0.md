@@ -91,7 +91,7 @@
 ### G. UI 系统与 Tailwind（G01–G10）
 
 61. G01 Tailwind v4 试点页迁移（完成：自持动画收口到 `@theme` 的 `--animate-progress-indeterminate` / `--animate-navprogress` token（`@keyframes` 内联进同一块），删除无引用的 `@layer utilities` 死代码（`.step`/`.step:before`）与裸 `@keyframes navprogress`；试点页 `bg-gradient-to-b`→`bg-linear-to-b`，`outline-none`→`outline-hidden` 扫过 4 个文件；新增 `pnpm check:tailwind` 构建门禁（`src/lib/tailwind/native-theme.ts` 纯规则 + `scripts/lib/tailwind-native-check.js`，7 类规则码含 `@config`/JS 配置/`tailwindcss-animate`/无 token 的 `@keyframes`/任意值动画/v3 重命名工具类，24 条单测），接入 `pnpm check:all` 与 CI；构建产物 CSS 复核 animation/`bg-linear-to-b`/`outline-hidden`/`w-[30%]` 均落盘，Linux 容器视觉基线 4 项无变化）
-62. G02 design token 收口
+62. G02 design token 收口（完成：新增 `src/lib/design/tokens.ts` 单一事实来源——`DESIGN_TOKENS` 登记 39 个 token（含 `--success/--warning/--info` 三组语义色与 `--chart-1..5`），`@theme inline` 补齐 success/warning/info 与 chart 映射，深色块补 38 条覆盖；11 个业务文件从 Tailwind 原生调色板（`bg-green-500`/`text-amber-600`/`bg-red-500`…）迁到语义 token，暗色模式首次获得统一回退。新增 `pnpm check:tokens` 门禁（8 类规则码：根块/主题块缺失、token 缺根值或缺深色覆盖、映射缺失/悬空/未登记、原生状态调色板白名单外使用，`scripts/lib/design-token-check.js` 支持临时仓库根反例测试，共 28 条单测），接入 `pnpm check:all` 与 CI；`password-strength` / `notifications-live` 补语义类名单测；Linux 容器视觉基线 4 项无变化）
 63. G03 shared form field 统一
 64. G04 loading/empty/error 状态统一
 65. G05 暗色模式回归（完成：`src/lib/theme/theme.ts` 收口存储键 `ui-theme` 与解析规则，根布局注入带 CSP nonce 的首屏阻塞脚本，暗色/浅色/系统三种偏好在 hydration 前即写入 `<html>` class 与 `color-scheme`，`localStorage`/`matchMedia` 分别兜底隐私模式与老浏览器；修掉 Provider 写 `ui-theme`、切换处读 `theme` 导致的持久化失效，system 模式改为监听系统变化实时跟随。新增 13 条单测与 `e2e/theme.spec.ts` 6 条 E2E，其中 4 条阻断 `/_next/static/**` 后用真实浏览器证明主题不依赖 React）
