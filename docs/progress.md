@@ -824,3 +824,88 @@
 - 下一步：继续下一批可本地执行的真实缺口（roadmap 中 H02 上传元数据迁移、I 域 CI/可观测性、
   J 域文档与发布收口等）。
 - 最后更新：2026-09-13
+
+## v0.8.0 后续 / H09_AUDIT_LOG_WRITE_LOCKDOWN（审计日志写入面收口，本地完成）
+
+- 状态：DONE
+- 里程碑与发布目标：v0.8.0 已发布后的安全加固续（H09/H07 相邻域），变更归入 `[Unreleased]`
+- 分支/PR：`feat/visual-regression-baseline`（LOCAL_ONLY，未 push、未开 PR）
+- 本地提交：`af956aa`（fix(db): block client writes to audit logs）
+- Base：`origin/main`@`15b05ebe8e93725e16698e8b66fc9c43e3733965`（本周期未 fetch 前进，未执行 rebase）
+- 目标：`002_rbac_audit.sql` 遗留的策略
+  `"Audit logs insertable by authenticated users"` 只判断 `auth.role() = 'authenticated'`，
+  对写入行内容零约束。Supabase 把 `public` 表暴露到 PostgREST，因此**任意登录用户可直写
+  `audit_logs` 伪造审计记录，并把 `user_id` 指向任意已存在用户**，污染审计与事后取证。
+  目标是关掉该伪造面且不破坏服务端写入路径，并把判定固化进门禁。
+- 已完成：
+  - **改前复现（本地 Supabase 真实 PostgREST）**：用登录态 JWT 以
+    `Prefer: return=minimal` POST `/rest/v1/audit_logs`，伪造一条
+    `{"user_id":"<victim>","action":"team.delete","entity_id":"victim-team"}` → **HTTP 201**，
+    行落入表中（复现后已 `delete` 清理）。同批次对照：`anon` 插入 → HTTP 401（FK 与 SELECT 策略
+    曾掩盖现象，改用 `return=minimal` 并指向真实用户后复现）。
+  - 新增迁移 `029_audit_logs_write_lockdown.sql`：`drop policy if exists` 删除该 INSERT 策略，
+    并 `revoke insert, update, delete, truncate on public.audit_logs from anon, authenticated`
+    作为纵深防御。`SELECT` 不动，仍由 `"Audit logs viewable by super_admin"` 限定给 super_admin。
+  - 新增可测规则模块 `src/lib/security/client-write-policies.ts`：按版本顺序应用
+    `create policy` / `drop policy` 得到**生效策略集合**（`drop` 会移除早先定义，等价数据库终态），
+    然后两类判定——(1) `SERVER_ONLY_WRITE_TABLES`（现为 `public.audit_logs`）上任何对
+    `public` / `anon` / `authenticated` 生效的 INSERT/UPDATE/DELETE/ALL 策略失败封闭；
+    (2) `FOR INSERT` 策略缺失 `WITH CHECK`（PostgreSQL 默认按 `true`）或 `WITH CHECK (true)`
+    失败封闭。语句切分跳过字符串字面量、`--` 注释、`$tag$` 块与嵌套括号，避免被迁移中的
+    `$do$ ... $do$` 块截断。
+  - 门禁接入 `scripts/lib/supabase-security-check.js`：新增 `inspectClientWritePolicies()` 与
+    `extractEffectivePolicies()`，失败时输出定向 hint，成功行追加生效策略计数。
+  - 测试：`src/lib/security/client-write-policies.test.ts` 13 条（引号名/schema 限定/命令/角色解析、
+    省略 `to`/`for` 的默认值、`$do$` 块不截断、`drop policy` 移除早先定义且不误伤同表其它策略、
+    旧 `audit_logs` INSERT 策略被判定为伪造面、UPDATE/DELETE 同样命中、super_admin SELECT 放行、
+    修复后零发现、缺 `WITH CHECK`、恒真 `WITH CHECK`、ownership 约束放行、仅 `service_role` 放行）。
+  - 文档：`docs/db/security-audit.md` 新增“客户端写入策略”章节（两类判定的规则说明、加固前后对照表、
+    真实 REST 证据、`has_table_privilege` 矩阵、静态分析已知边界）；
+    `CHANGELOG.md` `[Unreleased] → ### Security` 追加条目。
+- 变更文件：`supabase/migrations/029_audit_logs_write_lockdown.sql`、
+  `supabase/migration-manifest.json`（29 文件）、`src/lib/security/client-write-policies.ts`、
+  `src/lib/security/client-write-policies.test.ts`、`scripts/lib/supabase-security-check.js`、
+  `docs/db/security-audit.md`、`CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - 门禁先于修复运行 → **失败封闭**：
+    `[SERVER_ONLY_TABLE_CLIENT_WRITE_POLICY] 002_rbac_audit.sql: public.audit_logs: policy
+    "Audit logs insertable by authenticated users" grants INSERT to public but the table is
+    server-only`，证明新规则确实能发现该真实缺陷。
+  - `pnpm update:migrations-manifest` → 29 文件；`pnpm check:migrations` → ✅ 29 个不可变迁移与
+    SHA-256 基线一致。
+  - `pnpm exec supabase migration up` → 本地应用 `029_audit_logs_write_lockdown.sql` 成功。
+  - 真实 PostgREST 复测（本地 `http://127.0.0.1:54321`）：
+    authenticated 伪造 INSERT → **HTTP 403 `42501 permission denied for table audit_logs`**；
+    anon INSERT → **HTTP 401**；authenticated UPDATE → **HTTP 403**；
+    service_role INSERT → **HTTP 201**（服务端写入路径不变）；
+    service_role `rpc/log_audit_action` → **HTTP 200**；service_role SELECT → HTTP 200。
+  - 权限矩阵（`has_table_privilege` / `pg_policies`）：`audit_logs` 只剩 `Audit logs viewable by
+    super_admin` 一条 SELECT 策略；anon/authenticated 的 insert/update/delete/truncate 全为 `f`
+    （select 仍 `t`）；service_role 全为 `t`。
+  - `pnpm smoke:supabase-identity -- --url http://127.0.0.1:54321 ...` → **20/20 通过**
+    （`/tmp/indiestack-identity-029.json`），确认收口未破坏任何合法 authenticated 路径。
+  - `pnpm check:supabase-security` → ✅ 29 迁移、19 张 public 表、39 条生效策略。
+  - `pnpm check:rls` → ✅ 29 迁移 / 19 张表 / 23 条最终策略均符合规范。
+  - `pnpm check:migration-history` → ✅ 29 个本地迁移已应用。
+  - `pnpm check:all` → 通过（**113 文件 / 1137 测试**，较上一批 +13 条）。
+  - `pnpm lint`（`statementEnd` 复杂度 19 → 拆出 `skipStringLiteral`/`skipLineComment`/
+    `dollarTagAt` 后通过）/ `pnpm type-check` → 通过。
+  - `pnpm verify:build` → 通过（production build）。
+  - `pnpm test:e2e` → **62/62 通过**（52.0s）。
+  - `pnpm check:changelog` → 通过（8 已发布 + 1 Unreleased，含追加的 `### Security` 条目）。
+- 阻塞：无技术阻塞；发布侧为权限边界（LOCAL_ONLY，无 push / PR / merge / deploy 授权）。
+- 未验证项：
+  - 生产 Supabase 项目的 `pg_policies` / `has_table_privilege` 未探测（需生产只读凭证）；
+    迁移文本已由门禁失败封闭，但线上是否仍有手工改动的策略无法从这里确认。
+  - 从未被登录态覆盖过的直连路径（例如自带 PostgREST 之外的工具）未验证；本批次只覆盖 REST。
+  - 静态规则不解析 `alter policy`、动态 SQL 与 Dashboard 手工改动，已在文档中显式标注边界。
+- 风险与回滚：
+  - 风险：若后续有客户端页面需要直读审计日志，仍应走服务端（`listAuditLogsPage()` 已是 service_role）；
+    把审计表重新开放给客户端写会再次引入伪造面，门禁会拦下。
+  - 风险：`revoke ... truncate` 只影响 `anon` / `authenticated`；`service_role` 与属主不受影响。
+  - 回滚：`git revert af956aa`（撤销迁移、规则模块、门禁接入与文档）。已应用的库上若需恢复旧行为，
+    追加迁移 `grant insert on public.audit_logs to authenticated` 并重建策略（会重新引入缺陷，不建议）；
+    迁移只追加，不改写历史。
+- 下一步：继续下一批可本地执行的真实缺口（roadmap I/J 域的 CI/可观测性与发布文档收口、
+  H02 上传元数据迁移、H07 审计日志索引复核等）。
+- 最后更新：2026-09-13
