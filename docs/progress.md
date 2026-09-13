@@ -2097,3 +2097,49 @@
   - 回滚：`git revert 41dedbb` 即移除门禁并恢复旧索引 / 状态写法；纯文档与校验脚本改动，无数据库、迁移或运行时影响。
 - 下一步：I06 release checklist v0.6.0 语义收口（现有 `check:release-docs` / `.github/RELEASE_CHECKLIST.md` 已覆盖 v0.10.0）。
 - 最后更新：2026-09-13
+
+## I06 / J01 发布检查清单与门禁接线审计（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 86 项与第 91 项）
+- 里程碑与发布目标：M4 I / J 段；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`5fdf682`（feat(ci): audit that every gate is actually wired into ci and the local aggregate）
+- 目标：消除「写了门禁脚本但门禁从不执行」的静默失效，并让发布检查清单里引用的 workflow / job 名与版本号可回归
+- 已完成：
+  - 审计发现真实缺口：`check:agents` 与 `check:docs` 只在 `scripts/check-all.sh` 执行，CI 从未覆盖
+  - 新增纯函数规则 `src/lib/release/gate-wiring.ts`（28 条单测，语句/函数/行 100%、分支 98.52%）：
+    门禁缺本地聚合 `GATE_UNWIRED_LOCAL`、缺 CI 执行 `GATE_UNWIRED_CI`、`check-all.sh` 引用不存在的脚本
+    `AGGREGATE_UNKNOWN_SCRIPT`、豁免表登记不存在的门禁 / 理由过期 `EXCEPTION_STALE`、豁免无理由
+    `EXCEPTION_EMPTY`、检查清单引用未知 workflow 或 job 名 `CHECKLIST_WORKFLOW_UNKNOWN`、打标签版本与
+    `package.json` 不一致或缺失 `CHECKLIST_TAG_VERSION`；`pnpm` 前缀命令带词边界匹配，`pnpm check:migrations`
+    不会误判为 `check:migration-history`
+  - 新增 `scripts/lib/gate-wiring-check.js` + `scripts/check-gates.js`，注册为 `pnpm check:gates`，
+    接入 `scripts/check-all.sh` 与 CI `Lint & Type Check` job
+  - CI 补齐 `Check shared agent index`（`pnpm check:agents`）与 `Check docs-site script sync`（`pnpm check:docs`）两步
+  - `.github/RELEASE_CHECKLIST.md` 的 CI 行由自由文案改为逐字引用真实名称：`CI`
+    （`Lint & Type Check` / `Build` / `Build Docs Site` / `E2E (Playwright)`）、`CodeQL`、`Secrets Scan`、
+    `Security and configuration checks`；打标签版本（v0.10.0）纳入门禁核对
+  - 豁免表只有三条且写明替代覆盖方式：`check:migration-history`（需本地 Supabase）、`check:bundle`（需完整生产构建）、
+    `check:perf`（本地需 `.next` 产物，CI 由 Build job 执行）
+  - 文档同步：`docs/testing.md` 新增「门禁接线审计（I06 / J01）」、`docs-site/scripts.md` 与中文版新增 `check:gates` 行、
+    `CHANGELOG.md` `[Unreleased] / Added` 记录该门禁、roadmap 第 86 / 91 项标注完成
+- 变更文件：`src/lib/release/gate-wiring.ts`、`src/lib/release/gate-wiring.test.ts`、
+  `scripts/lib/gate-wiring-check.js`、`scripts/check-gates.js`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、
+  `.github/RELEASE_CHECKLIST.md`、`package.json`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、
+  `docs/roadmap-0.6.0.md`、`CHANGELOG.md`
+- 验证命令与结果（提交 `5fdf682`）：
+  - `node scripts/check-gates.js` → ✅ `门禁接线审计通过：20 个门禁（本地 17 / CI 18 / 豁免 3），8 个工作流`
+  - `pnpm exec vitest run src/lib/release/gate-wiring.test.ts` → ✅ 28 passed
+  - `pnpm check:docs` → ✅ docs-site scripts 与 package.json 同步
+  - `pnpm check:release-docs` → ✅ v0.10.0, 7 artifacts
+  - `pnpm check:all` → ✅ 全部校验通过（140 文件 1430 测试）
+  - `pnpm verify:build` → ✅ lint / type-check / test / Next.js 16.3.5 生产构建通过
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+- 阻塞：无
+- 风险与回滚：
+  - 风险：新增 CI 步骤会让学生 job 略增耗时（两步都是毫秒级文件校验，不触发额外构建）。
+  - 风险：豁免表是「失败封闭」的显式清单，未来若把 `check:bundle` 接进 CI 而不删豁免理由，`check:gates` 会报
+    `EXCEPTION_STALE`；这是刻意的，修复即同时更新代码与理由。
+  - 回滚：`git revert 5fdf682` 移除门禁、CI 两步与清单校验；纯校验与文档改动，无数据库 / 迁移 / 运行时影响。
+- 下一步：I07 本地 mock 开发指南收口（`docs-site/mock.md` 与 `docs/architecture/13-mock-system.md` 对齐并补齐可复现步骤）。
+- 最后更新：2026-09-13
