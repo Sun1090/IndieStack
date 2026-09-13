@@ -2593,3 +2593,32 @@
   - 回滚：`git revert 742b9a4` 会移除契约门禁、鉴权原因指标与失败运行记录，并恢复 digest 未被调度的 `vercel.json`；摘要 worker 路由本身不删除
 - 下一步：E04 邮件队列积压指标（先核对现有 `email.backlog` 埋点、告警阈值与测试覆盖，再补齐真实缺口）
 - 最后更新：2026-09-13
+
+## E04 邮件队列积压指标（DONE）
+
+- 状态：DONE（roadmap `docs/roadmap-0.6.0.md` 第 44 项，E 段可观测性与运维）
+- 里程碑与发布目标：M4 J 段之后继续 E 段；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`c57dfd1`（fix(observability): align email backlog filters and empty-run metrics）
+- 目标：核对「邮件队列积压可观测」这一承诺在代码里是否真的成立；补齐真实缺口而不是重复埋点
+- 已完成：
+  - 审计结论：`email.backlog` 埋点、`EMAIL_BACKLOG_ALERT_THRESHOLD = 500` 阈值与 Sentry 告警/去重规则此前已经存在（C02/C03 引入），E04 不是从零新建指标，而是修正两处真实口径缺陷
+  - **口径漂移缺陷**：`countUnsentEmailNotifications`（积压计数）与 `listUnsentEmailNotifications`（worker 拉取）各自维护一份内容相同的类型字面量数组；任何一次只改单侧的编辑都会造成「计数很大但永远拉不到」的假积压。现抽出 `EMAIL_NOTIFICATION_TYPES`（`as const satisfies readonly NotificationType[]`）作为单一事实源，拉取侧签名收敛为 `readonly NotificationType[]` 并在调用驱动前展开；计数侧直接复用同一常量
+  - **空轮次耗时缺陷**：空队列分支此前写死 `durationMs: 0`，导致 `email_worker_runs.duration_ms` 与 `cron.digest.completed` 在无邮件可发时产生无意义的零值样本，无法区分「worker 没跑」与「跑得很快」。现改为 `Date.now() - startedAt`，与正常分支同一口径
+  - 新增 3 条测试：仓库层按调用参数锁定拉取与计数使用同一类型集合与同一死信 `.or` 过滤（2 条）；路由层覆盖「每轮都上报 `email.backlog`」且「恰好等于阈值 500 不告警、501 才告警」的边界（1 条，另有 1 条既有空队列用例改为断言真实 `durationMs=125`）
+  - 文档同步：`docs/design/email-templates.md` 运行可观测章节补 `email.backlog` 语义（每轮上报、计数不受 limit 截断、阈值严格大于才告警、类型集合单一事实源、空轮次耗时）；`CHANGELOG.md` `[Unreleased]` 新增 `### Fixed` 章节；roadmap 头部进度与第 44 项标注完成
+- 变更文件：`src/lib/repositories/notifications.ts`、`src/lib/repositories/notifications.test.ts`、`src/app/api/cron/digest/route.ts`、`src/app/api/cron/digest/route.test.ts`、`docs/design/email-templates.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `c57dfd1`）：
+  - `pnpm vitest run src/app/api/cron/digest/route.test.ts src/lib/repositories/notifications.test.ts` → ✅ 2 文件 / 41 测试通过
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:changelog` → ✅ 10 个已发布版本 + 1 个 Unreleased 章节结构合法（含新增 `### Fixed`）
+  - `pnpm check:docs` → ✅ docs-site scripts 文档与 `package.json` 同步
+  - `pnpm check:all` → ✅ 159 文件 / 1794 测试通过，全部门禁绿色
+  - `pnpm verify:build` → ✅ 类型、lint、测试、bundle（2853.1 kB / 基线 2733.8 kB）与 Next.js 16.3.5 生产构建全部通过
+- 阻塞：无
+- 风险与回滚：
+  - 风险：`EMAIL_NOTIFICATION_TYPES` 与数据库 `notifications.type` 枚举之间没有门禁校验；新增通知类型时必须同时决定它是否进邮件队列，否则会静默不进队列（与旧行为一致，非本次引入）
+  - 风险：阈值 500 是硬编码常量，容量变化需人工调整 `EMAIL_BACKLOG_ALERT_THRESHOLD`
+  - 回滚：`git revert c57dfd1` 会恢复两份重复的类型数组与空轮次的 0 耗时，并移除新增测试与文档；不涉及数据库迁移、外部接口或告警规则变更
+- 下一步：E05 OSS 上传成功率指标（先审计 `storage.upload.completed` 等既有埋点的真实覆盖，再决定是补缺口还是只补测试与文档）
+- 最后更新：2026-09-13
