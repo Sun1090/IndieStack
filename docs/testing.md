@@ -60,6 +60,11 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
 - 默认单 worker 串行执行，避免多个 spec 通过同一个 dev server 互相清理/覆盖可变 Mock 状态；仅隔离实验可设置 `PW_FULLY_PARALLEL=true`
+- CI 使用 **Playwright shard 隔离并行**：`E2E (Playwright)` job 的 `[1, 2]` matrix 各自启动独立 dev server，
+  在 job 内继续单 worker；因此跨 shard 不共享 Mock 状态，86 条 E2E 由两个 job 分担（46 / 40），而不是在
+  同一条进程里提高 worker 数。视觉基线只有 4 条且必须单 worker，不做 shard，只在 shard 1 运行一次。
+- 上述策略由 `src/lib/testing/e2e-shard-policy.test.ts` 读取 workflow/config 做回归；如果移除 shard、把
+  `PW_FULLY_PARALLEL` 改成默认开启，或让两个 job 上传同名 artifact，Vitest 会失败。
 - 新页面至少加一条"可渲染"断言到 `e2e/smoke.spec.ts`
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围

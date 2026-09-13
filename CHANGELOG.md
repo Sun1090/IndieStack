@@ -47,6 +47,9 @@ All notable changes to IndieStack will be documented in this file.
   新增 `pnpm check:migration-runbook`，校验八个必备章节、关键凭据/回滚事实、最新迁移标记与
   `supabase/migration-manifest.json` 一致、文档引用的迁移文件真实存在、必备和引用的 `pnpm` 脚本真实可执行，
   抽取为空时失败封闭；20 条单测接入 `pnpm check:all` 与 CI。
+- **E2E 安全并行化（J02）**：把 86 条 Playwright E2E 分配到两个独立 CI shard；每个 shard 有自己的 dev server，
+  内部仍保持单 worker，因此加速不破坏共享 Mock 状态隔离；4 条视觉基线只在 shard 1 执行一次。Playwright 默认仍为单 worker，只有显式
+  `PW_FULLY_PARALLEL=true` 才启用隔离实验；新增配置回归测试防止 shard、artifact 命名或默认串行策略漂移。
 
 ### Planned
 

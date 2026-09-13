@@ -180,6 +180,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [lint-and-type-check]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     steps:
       - uses: actions/checkout@v7
@@ -199,17 +203,18 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run E2E tests
-        run: pnpm test:e2e
+      - name: Run E2E tests (shard ${{ matrix.shard }}/2)
+        run: pnpm test:e2e --shard=${{ matrix.shard }}/2
 
       - name: Run visual regression baselines
+        if: matrix.shard == 1
         run: pnpm test:visual
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           # test-results/ holds the actual/diff PNGs written by failed
           # toHaveScreenshot assertions (visual regression evidence).
           path: |

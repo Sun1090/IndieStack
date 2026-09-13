@@ -6,7 +6,7 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
-> **进度（2026-09-12）**：I01–I03 已完成（docs-site 邮件投递 0b94d8e、存储与 OSS 配置 e3a2ac1、Web Push f2e0070 三章 + 中英 configuration 同步）；I05 已完成；H09/H10 已完成（迁移漂移门禁、依赖高危与 secrets/scanner 配置漂移门禁）；C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）；I04/I06–I10 已完成（ADR 治理、release checklist 与门禁接线审计、mock 指南、provider 诊断指南、贡献者测试矩阵、迁移回滚 runbook）。其余任务按 M1→M2→M3→M4 推进。
+> **进度（2026-09-12）**：I01–I03 已完成（docs-site 邮件投递 0b94d8e、存储与 OSS 配置 e3a2ac1、Web Push f2e0070 三章 + 中英 configuration 同步）；I05 已完成；H09/H10 已完成（迁移漂移门禁、依赖高危与 secrets/scanner 配置漂移门禁）；C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）；I04/I06–I10 已完成（ADR 治理、release checklist 与门禁接线审计、mock 指南、provider 诊断指南、贡献者测试矩阵、迁移回滚 runbook）；J02 已完成（E2E shard 策略）。其余任务按 M1→M2→M3→M4 推进。
 
 ## 任务池（100 项）
 
@@ -130,7 +130,7 @@
 ### J. 质量与发布（J01–J10）
 
 91. J01 lint/type-check/test/build 全链路门禁（完成：`pnpm verify:build` = `check` + `test` + `check:bundle` + `build`，`.husky/pre-push` 强制同一口径；CI 四个 job（`Lint & Type Check` / `Build` / `Build Docs Site` / `E2E (Playwright)`）覆盖全部组件。新增 `pnpm check:gates` 审计「门禁是否真的会跑」：每个 `check:*` 必须在 `check-all.sh` 与某个 workflow 中执行，或在豁免表登记仍成立的理由；借此发现并修复 `check:agents` / `check:docs` 只在本地聚合执行、CI 从未覆盖的缺口，28 条单测）
-92. J02 E2E shard/串行策略复审
+92. J02 E2E shard/串行策略复审（完成：CI `E2E (Playwright)` 改为 `[1, 2]` shard matrix，每个 shard 使用独立 dev server 且内部保持单 worker，避免共享 Mock 状态被并发修改；E2E 86 条按 46/40 分流并上传独立 artifact，4 条视觉基线仅在 shard 1 执行，新增配置回归测试锁定 shard、默认串行与 artifact 命名）
 93. J03 CI 并行与缓存优化
 94. J04 CodeQL 告警零回归
 95. J05 Secrets Scan 零回归

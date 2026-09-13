@@ -6,6 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 // 可变 Mock 状态由同一个 dev server 持有；不同 spec 并行时会互相清理/覆盖。
 // 默认保持单 worker，PW_FULLY_PARALLEL=true 才启用隔离实验的并行基线。
+// CI 的加速方式是 Playwright shard：每个 shard 是独立 job、独立 dev server，内部仍单 worker；
+// 这不会让同一 Mock 状态被多个 worker 并发修改，同时保留 F04 的 fullyParallel 实验开关。
 const fullyParallel = process.env.PW_FULLY_PARALLEL === "true";
 
 export default defineConfig({

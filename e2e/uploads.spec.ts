@@ -13,14 +13,21 @@
  * /api/e2e/mock-upload（仅 mock + Bearer），与 Route Handler 共享同一进程内存。
  */
 
-import { test, expect, request as pwRequest, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  request as pwRequest,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
 
 const E2E_BEARER = "e2e-bearer-token";
 const APP_URL = "http://localhost:3100";
 const MOCK_EMAIL = "dev@indiestack.local";
 const MAX_BYTES = 2 * 1024 * 1024;
 
-const FILE_TYPE_UNSUPPORTED = /Only PNG, JPEG or WebP images are supported\.|仅支持 PNG、JPEG 或 WebP 图片。/;
+const FILE_TYPE_UNSUPPORTED =
+  /Only PNG, JPEG or WebP images are supported\.|仅支持 PNG、JPEG 或 WebP 图片。/;
 const FILE_TOO_LARGE = /File exceeds the 2MB size limit\.|文件超过 2MB 大小限制。/;
 const UPLOAD_FAILED = /Upload failed\. Please try again later\.|上传失败，请稍后重试。/;
 const PROFILE_UPDATED = /Profile updated!|资料已更新/;
@@ -64,6 +71,23 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
     return page.locator('li[data-state="open"]').filter({ hasText: text }).first();
   }
 
+  /**
+   * 冷编译时 React 可能尚未 hydration，首次 setInputFiles 的 change 事件会被丢弃，
+   * 导致提交按钮一直禁用。重试“选择文件 + 等待按钮启用”整组动作，避免 shard 运行
+   * 顺序变化时出现时序性失败。
+   */
+  async function chooseAvatar(
+    page: Page,
+    file: { name: string; mimeType: string; buffer: Buffer },
+  ) {
+    const input = page.locator("#avatar");
+    const uploadButton = page.getByRole("button", { name: /upload avatar|上传头像/i });
+    await expect(async () => {
+      await input.setInputFiles(file);
+      await expect(uploadButton).toBeEnabled();
+    }).toPass({ timeout: 20_000 });
+  }
+
   test("未选择文件时上传按钮禁用", async ({ page }) => {
     await loginAndOpenEdit(page);
     await expect(page.getByRole("button", { name: /upload avatar|上传头像/i })).toBeDisabled();
@@ -71,7 +95,7 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
 
   test("非白名单类型（PDF）提示 fileTypeUnsupported", async ({ page }) => {
     await loginAndOpenEdit(page);
-    await page.locator("#avatar").setInputFiles({
+    await chooseAvatar(page, {
       name: "avatar.pdf",
       mimeType: "application/pdf",
       buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"),
@@ -82,7 +106,7 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
 
   test("超过 2MB 的 PNG 提示 fileTooLarge", async ({ page }) => {
     await loginAndOpenEdit(page);
-    await page.locator("#avatar").setInputFiles({
+    await chooseAvatar(page, {
       name: "avatar.png",
       mimeType: "image/png",
       buffer: Buffer.alloc(MAX_BYTES + 1, 0x89),
@@ -103,7 +127,7 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
     expect(((await inject.json()) as { failNext: number }).failNext).toBe(1);
 
     // 合法小图 → 首次上传失败
-    await page.locator("#avatar").setInputFiles({
+    await chooseAvatar(page, {
       name: "avatar.png",
       mimeType: "image/png",
       buffer: validPng(),
@@ -141,7 +165,7 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
       await route.abort("failed").catch(() => undefined);
     });
 
-    await page.locator("#avatar").setInputFiles({
+    await chooseAvatar(page, {
       name: "avatar.png",
       mimeType: "image/png",
       buffer: validPng(1024),
