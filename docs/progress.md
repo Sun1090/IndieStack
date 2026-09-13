@@ -1641,3 +1641,80 @@
   的可访问名称、Esc 关闭移动菜单与快捷键对话框的焦点回归）。
 
 - 最后更新：2026-09-13
+
+## v0.9.0 后续 / G07_KEYBOARD_A11Y（键盘与 screen reader 交互，本地完成）
+
+- 状态：DONE（本地验证完成；未 push / 未开 PR / 未 merge / 未 deploy）
+- 里程碑与发布目标：M2「UI 系统收口」（[docs/roadmap-0.6.0.md](roadmap-0.6.0.md) G01–G10），
+  退出后进入下一里程碑 release freeze；当前版本仍是 `0.9.0`，本任务不升版本。
+- 分支 / PR：`feat/visual-regression-baseline`（LOCAL_ONLY，无 PR）；base
+  `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`
+- 本地提交：`2ac6933`（fix）
+- 目标：用真实键盘操作的 E2E 证明公共外壳（跳过导航、页头移动菜单、仪表盘侧边栏、快捷键对话框）
+  在没有鼠标的情况下可用，且可访问名称与状态对屏幕阅读器可见。
+
+### 已完成
+
+- 新增 `e2e/keyboard.spec.ts`（6 条），全部基于角色与可访问名称断言（`getByRole` / `aria-expanded` /
+  `toHaveFocus`），而不是 CSS 类名或文本快照。覆盖：跳过导航后焦点落入主内容、页头移动菜单
+  Esc 关闭并归还焦点、仪表盘折叠按钮的状态暴露、折叠后图标链接仍有可访问名称、
+  输入框内 `?` 不误触发帮助、快捷键对话框本身可开可关。
+- 缺陷 1（跳过导航无效）：`#main-content` 不是可聚焦元素，激活「跳到主要内容」后焦点仍停在链接上，
+  屏幕阅读器不会切换朗读上下文。四处 `<main>` 补 `tabIndex={-1}`
+  （`src/app/auth/layout.tsx`、`src/app/(marketing)/layout.tsx`、`src/app/page.tsx`、`src/app/dashboard/layout.tsx`），
+  现在激活后焦点确实落到主内容，下一次 Tab 直接进入正文。
+- 缺陷 2（Esc 关闭移动菜单）：`site-header.tsx` 里移动端菜单只能再点一次按钮关闭，Esc 无反应且焦点丢失。
+  新增 `useEffect` 监听 Esc 关闭菜单并把焦点交还汉堡按钮（`mobileMenuButtonRef`）。
+- 缺陷 3（侧边栏折叠无可访问名称/状态）：`dashboard-sidebar.tsx` 折叠按钮缺少 `aria-label` 与展开状态，
+  折叠后图标链接只剩 `title`（屏幕阅读器可能读不到）。现在按钮带
+  `aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}` / `aria-expanded={!collapsed}` /
+  `aria-controls="dashboard-sidebar-nav"`，`<nav id="dashboard-sidebar-nav">` 与之对应，
+  折叠链接与管理员入口补 `aria-label`，不再依赖 `title`。
+- 缺陷 4（`?` 快捷键误触发）：`shortcuts-dialog.tsx` 原先只挡 input/textarea/select，在 contenteditable
+  与 `role="textbox"`（命令面板输入框）里输入 `?` 会误弹帮助；同时带修饰键的组合（`⌘?` / `Ctrl+?` / `Alt+?`）
+  未排除。现在一并拦截：检测 `input`/`textarea`/`select`、`isContentEditable`、`closest('[role="textbox"]')`
+  与 modifier 组合后直接返回。
+- 新增 i18n 键 `common.collapseSidebar` / `common.expandSidebar`（en / zh-CN 同步）。
+
+### 变更文件
+
+- `e2e/keyboard.spec.ts`（新增，6 条）
+- `src/components/layout/shortcuts-dialog.tsx`、`shortcuts-dialog.test.tsx`（新增 7 条）
+- `src/components/layout/site-header.tsx`、`site-header.test.tsx`（新增 4 条）
+- `src/components/dashboard/dashboard-sidebar.tsx`、`dashboard-sidebar.test.tsx`（+2 条，共 6 条）
+- `src/app/auth/layout.tsx`、`src/app/(marketing)/layout.tsx`、`src/app/page.tsx`、`src/app/dashboard/layout.tsx`
+- `messages/en/common.json`、`messages/zh-CN/common.json`
+- `CHANGELOG.md`（`[Unreleased] / ### Fixed`）、`docs/roadmap-0.6.0.md`（G07 完成说明）
+
+### 验证命令与结果
+
+- `pnpm exec playwright test e2e/keyboard.spec.ts` → ✅ **6 passed**
+- `pnpm test` → ✅ **126 文件 1272 测试**（G07 前 124 文件 1259 测试）
+- `pnpm test:e2e` → ✅ **86 passed (59.0s)**（G07 前 80 passed；键盘改动未破坏既有 smoke / a11y 用例）
+- `pnpm lint` → ✅ `eslint .` 无告警
+- `pnpm type-check` → ✅ `tsc --noEmit` 无错误
+- `pnpm check:all` → ✅ 全部校验通过（en/zh-CN key 一致、迁移 / RLS / a11y 静态审计、changelog）
+- `pnpm verify:build` → ✅ `pnpm verify` + `next build` 全绿
+- `pnpm test:visual`（`mcr.microsoft.com/playwright:v1.63.0-noble` 容器内，按
+  [docs/testing.md](testing.md) 的 Linux 基线流程）→ ✅ **4 passed**，1440×900 桌面全页截图无像素变化
+
+### 阻塞
+
+- 无本地阻塞。
+
+### 风险与回滚
+
+- 风险：`tabIndex={-1}` 让四处 `<main>` 可获得程序化焦点；若后续有人去掉它，
+  `e2e/keyboard.spec.ts` 的跳过导航断言会立刻失败。
+- 风险：折叠侧边栏的可访问名称依赖 `common.collapseSidebar` / `common.expandSidebar` 两个键，
+  `check:i18n` 与组件单测同时锁住，缺键会先失败。
+- 风险：`?` 快捷键现在对 `role="textbox"` 与带修饰键组合一律让路；若未来新增非输入类
+  `role="textbox"` 元素，需要评估是否仍应拦截（当前保守放行是安全侧）。
+- 回滚：`git revert 2ac6933` 即回到「main 不可聚焦 + Esc 不关闭 + 折叠按钮无 aria + `?` 仅挡表单控件」状态；
+  无数据 / 迁移影响。
+
+### 下一步
+
+- G01 Tailwind v4 试点页迁移（M2 里程碑下一项）。
+
+- 最后更新：2026-09-13

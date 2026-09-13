@@ -28,6 +28,7 @@ All notable changes to IndieStack will be documented in this file.
   汉堡菜单带上 `aria-label` / `aria-expanded` / `aria-controls`，触屏设备不再渲染无用的快捷键入口。
   导航链接与角色、未读状态抽出 `dashboard-nav-links` / `use-is-admin` / `use-unread-notifications` 供桌面侧边栏与
   移动抽屉共用，避免两侧漂移；新增 18 条单测与 11 条 E2E，Linux 容器内 4 项视觉基线保持无变化。
+- **键盘与 screen reader 交互回归：跳过导航不生效、Esc 不关闭菜单、折叠侧边栏无可访问名称（G07）**：新增 `e2e/keyboard.spec.ts`（6 条，全部基于角色与可访问名称断言）后暴露四处真实缺口。其一，`#main-content` 不可聚焦，键盘用户激活「跳到主要内容」后焦点仍停在链接上，屏幕阅读器不会切换上下文；现在四处 `<main>` 补 `tabindex="-1"`，激活后焦点确实落进主内容。其二，移动端页头菜单只能再点按钮关闭，Esc 无反应且焦点丢失；现在 Esc 关闭并把焦点交还汉堡按钮。其三，仪表盘折叠按钮没有可访问名称也不暴露状态，折叠后图标链接只剩 `title`；现在按钮带 `aria-label` / `aria-expanded` / `aria-controls`，折叠后的链接改用 `aria-label` 保留名称。其四，`?` 快捷键只挡了 input/textarea/select，在 contenteditable 与 `role="textbox"`（命令面板输入框）里输入 `?` 会误弹帮助，且 `⌘?` / `Ctrl+?` / `Alt+?` 未排除，现已一并拦截。新增 13 条单测与 6 条键盘 E2E，Linux 容器内 4 项视觉基线保持无变化。
 
 ## [0.9.0] — 2026-09-13
 
