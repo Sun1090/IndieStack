@@ -801,6 +801,12 @@ class MockQueryBuilder {
       if (!row.created_at) row.created_at = now;
       if (row.updated_at === undefined) row.updated_at = now;
       if (this.table === "api_keys" && row.is_active === undefined) row.is_active = true;
+      // notifications 在真实库有 is_read/email_sent 列默认值 false；mock 需补齐，
+      // 否则按 email_sent/is_read 过滤（如 e2e seed-notifications GET）会漏掉新写入的行。
+      if (this.table === "notifications") {
+        if (row.is_read === undefined) row.is_read = false;
+        if (row.email_sent === undefined) row.email_sent = false;
+      }
       return row;
     });
     // 让 then()/single() 返回规范化后的行（含生成的 id/created_at）

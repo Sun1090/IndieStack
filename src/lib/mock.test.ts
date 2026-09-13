@@ -191,6 +191,29 @@ describe("Mock 写操作与真实 PostgREST 行为对齐", () => {
     expect((data as Record<string, unknown>).full_name).not.toBe("不应生效");
   });
 
+  it("notifications 插入补齐真实库列默认值（is_read/email_sent=false）", async () => {
+    const client = createMockSupabaseClient();
+    // 模拟 createNotification 的最小插入载荷（不带 is_read/email_sent）
+    const { data: inserted } = await client
+      .from("notifications")
+      .insert({ user_id: MOCK_USER_ID, type: "payment_succeeded", title: "付款成功" })
+      .select("id")
+      .single();
+    expect(inserted).not.toBeNull();
+
+    // 真实库默认值为 false，mock 必须一致，否则按 email_sent/is_read 过滤的查询会漏行
+    const { data: pending } = await client
+      .from("notifications")
+      .select("*")
+      .eq("user_id", MOCK_USER_ID)
+      .eq("email_sent", false)
+      .eq("is_read", false)
+      .eq("title", "付款成功");
+    const rows = asRows(pending);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ email_sent: false, is_read: false });
+  });
+
   it("delete 从列表中移除匹配行", async () => {
     const client = createMockSupabaseClient();
     const { data: before } = await client.from("team_members").select("*");
