@@ -4,6 +4,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Planned
+
+- **UI 系统收口（G01–G07）**：下一里程碑把界面层从“逐页手写”收敛为可复用系统——Tailwind v4 试点页迁移、
+  design token 收口、shared form field 统一、loading/empty/error 状态统一，并补齐暗色模式、移动端断点与
+  键盘 / screen reader 回归。该批任务会同步补组件单测与 Playwright 断点 / a11y 断言，退出标准见
+  [docs/roadmap-0.6.0.md](docs/roadmap-0.6.0.md) 的 M2 里程碑。
+
+## [0.9.0] — 2026-09-13
+
+> 主题：**安全与权限边界收口 + 测试与发布门禁加固**
+
 ### Added
 
 - **上传对象元数据表（孤儿对象可枚举）**：新增 `031_upload_objects.sql` 的

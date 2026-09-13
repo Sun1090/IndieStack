@@ -149,7 +149,7 @@ src/
 
 ## Release and operations
 
-Before a release, run `pnpm verify:build`, `pnpm test:e2e`, `pnpm audit --audit-level high`, and `pnpm check:release-docs`. Follow the [v0.8.0 release runbook](docs/operations/release-runbook-v0.8.0.md), record the [production smoke matrix](docs/operations/production-smoke-v0.8.0.md), and keep the [rollback runbook](docs/operations/rollback-runbook-v0.8.0.md) available to the operator.
+Before a release, run `pnpm verify:build`, `pnpm test:e2e`, `pnpm audit --audit-level high`, and `pnpm check:release-docs`. Follow the [v0.9.0 release runbook](docs/operations/release-runbook-v0.9.0.md), record the [production smoke matrix](docs/operations/production-smoke-v0.9.0.md), and keep the [rollback runbook](docs/operations/rollback-runbook-v0.9.0.md) available to the operator.
 
 ## Testing
 
