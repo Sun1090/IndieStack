@@ -2423,3 +2423,37 @@
   - 回滚：`git revert 9061189` 即移除门禁、runbook 与文档接线；纯校验/文档改动，无数据库或运行时接口影响。
 - 下一步：J05 Secrets Scan 零回归。
 - 最后更新：2026-09-13
+
+## J05 Secrets Scan 零回归（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 95 项）
+- 里程碑与发布目标：M4 J 段（J01–J10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`517b17a`（ci(secrets): gate gitleaks scan strength and allowlist）
+- 目标：把「密钥零回归」从「gitleaks 工作流还在、regex 还能匹配 fetch-depth」推进到可执行契约，重点阻止 allowlist 静默清空扫描结果，并把泄漏响应时限、轮换要求与允许理由纳入同源校验
+- 已完成：
+  - 新增纯函数 `src/lib/security/secrets-scan-policy.ts`：契约固定 `.github/workflows/secrets-scan.yml` 的 `gitleaks/gitleaks-action@v3`、`gitleaks` 作业、`fetch-depth: 0`、`timeout-minutes`、`contents: read`、`GITHUB_TOKEN` 接线、push `main`/`develop` 与 pull_request 触发，并禁止任何 `: write` 权限
+  - allowlist 审计：当 `.gitleaks.toml` 存在时，解析 `[allowlist]` / `[[allowlists]]` 下的 `paths` / `regexes` / `stopwords` / `commits`（含跨行数组），每条值都必须登记在 `allowedAllowlistEntries`（默认空）；解析为空不会跳过，配置缺失时才按可选文件处理
+  - 泄漏处置事实：新增 `docs/operations/secrets-leak-response-runbook.md`，包含适用范围、立即响应、影响范围判定、处置与验证、历史记录处理、Allowlist 规则、外部依赖七章，并明确首次响应 `10 分钟`、`24 小时` 内完成轮换、全历史 `fetch-depth: 0`、只允许 `false positive` / `used in tests` 两类 allowlist 理由；门禁同时校验章节与事实同源
+  - 复用与抽取：把 workflow 解析所需 helper 抽到 `src/lib/ci/workflow-policy.ts`（`actionRefVersion`、`isVersionAtMajor`、`parseStepRef`、`parseTriggerBlock`、`parseKeyedList`、`parseTriggerBranches`），CodeQL 策略模块改为复用，避免两套正则各自漂移
+  - 修复实现阶段发现的边界：write 权限正则从 `\s{0,6}` 改为 `[ \t]{0,6}`，避免跨行吞掉仍被误判；action major 使用共享 helper，`@v2` 不再因只比对仓库路径而通过
+  - 新增 48 条单测：解析触发/分支/action/fetch-depth/敏感 env/权限/config 引用，`actionRefMatches`（`@v3`、`@v3.2.1`、`@v2`、`@v31`、换仓库、空串）、`collectSensitiveEnv`、`configReference`、`parseGitleaksAllowlists`（单/多段、跨行、未知键、段外内容），全部 17 类规则码反例、契约注入、格式化输出，以及读取真实工作流与 runbook 断言零问题
+  - 新增 `scripts/lib/secrets-scan-policy-check.js`（IO：读 workflow / 可选 `.gitleaks.toml` / runbook）+ `scripts/check-secrets-scan.js`（Node `--experimental-strip-types` CLI），注册为 `pnpm check:secrets-scan`，接入 `scripts/check-all.sh` 与 CI `Lint & Type Check` job
+  - 文档与接线：双语 `docs-site/scripts.md` 增行、双语 `docs-site/testing.md` 的 `ci-tooling` 行补 `pnpm check:secrets-scan`（行宽保持 255 / 250）、`src/lib/testing/test-matrix.ts` 同步；`docs/testing.md` 新增「Secrets Scan 扫描强度与泄漏处置（J05）」章节；`CHANGELOG.md` `[Unreleased] / Added` 记录；roadmap 第 95 项与头部进度标注完成
+- 变更文件：`src/lib/ci/workflow-policy.ts`、`src/lib/security/codeql-alert-policy.ts`、`src/lib/security/secrets-scan-policy.ts`、`src/lib/security/secrets-scan-policy.test.ts`、`scripts/check-secrets-scan.js`、`scripts/lib/secrets-scan-policy-check.js`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`package.json`、`src/lib/testing/test-matrix.ts`、`docs/operations/secrets-leak-response-runbook.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs-site/testing.md`、`docs-site/zh-CN/testing.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `517b17a`）：
+  - `pnpm check:secrets-scan` → ✅ Secrets Scan 策略校验通过（`gitleaks/gitleaks-action@v3` / fetch-depth 0 / push main,develop / 首次响应 10 分钟 / 轮换 24 小时，20 条契约断言）
+  - `pnpm exec vitest run src/lib/security/secrets-scan-policy.test.ts src/lib/security/codeql-alert-policy.test.ts src/lib/ci/workflow-policy.test.ts` → ✅ 120 passed
+  - `pnpm check:gates` → ✅ 27 个门禁（本地 24 / CI 25 / 豁免 3），8 个工作流
+  - `pnpm check:workflows` → ✅ 8 个工作流 / 12 个作业 / 35 个 action 引用
+  - `pnpm check:docs`、`pnpm check:changelog`、`pnpm check:release-docs`、`pnpm check:test-matrix`、`pnpm check:locales` → ✅
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:all` → ✅ 149 文件 / 1639 测试，全部门禁绿色
+  - `pnpm verify:build` → ✅ Next.js 16.3.5 生产构建通过（bundle 2853.1 kB / 基线 2733.8 kB）
+- 阻塞：真实历史扫描结果与 GitHub 告警状态在 gitleaks runner / GitHub 侧，需要推送与 `security-events` 权限；本地门禁只防止扫描强度、allowlist 与处置策略静默漂移
+- 风险与回滚：
+  - 风险：workflow / TOML 解析仍是纯文本缩进分析，不引入 YAML / TOML 运行时依赖。格式超出支持范围时抽取为空会失败封闭，而不是静默放过。
+  - 风险：allowlist 当前允许值由契约逐条登记，新增合法测试 fixture 时需要同步修改契约与文档；这是刻意的摩擦，避免扩大排除范围无人复核。
+  - 回滚：`git revert 517b17a` 即移除门禁、runbook 与文档接线；纯校验、CI 与文档改动，无数据库、运行时接口或部署影响。
+- 下一步：J07 tag/release 自动化（J06 / J08 仍受生产环境与部署权限阻塞）。
+- 最后更新：2026-09-13
