@@ -2559,3 +2559,37 @@
   - 回滚：`git revert b3d5b65` 即恢复裸 console 与字面量 header 名、移除门禁与文档接线；不涉及数据库迁移或外部接口破坏（`x-request-id` 响应头本身保留）
 - 下一步：E03 cron worker 指标结构化（先审计现有 cron 路由与日志出口，再决定指标契约与门禁范围）
 - 最后更新：2026-09-13
+
+## E03 Cron Worker 调度与指标契约（DONE）
+
+- 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 43 项）
+- 里程碑与发布目标：M4 E 段（E01–E10）；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`742b9a4`（feat(observability): enforce cron schedule and metric contract）
+- 目标：让 cron worker 的「是否真的被调度」与「失败/拒绝时是否有指标」可被静态门禁验证，修复生产摘要邮件 worker 从未被调度的问题
+- 已完成：
+  - 审计发现 `/api/cron/digest` 有路由、测试和文档，但 `vercel.json` 从未登记该路径；生产环境每小时的摘要邮件 worker 实际不会执行。已补 `0 * * * *` 调度，并明确小时整点语义
+  - 新增 `src/lib/observability/cron-contract.ts`，把 `digest` 与 `push-retry` 的路径、路由文件、HTTP 方法、五字段调度表达式、每轮指标及语义登记为单一事实源；支持平台级 `/api/health`、`/api/ops/supabase-restore` 带理由豁免
+  - 新增 `pnpm check:cron-contract`：校验 Vercel 调度表达式合法且逐字一致、注册路由真实存在并导出声明方法、cron 目录无未登记路由、所有指标同时出现在路由源码与运维文档、每个 worker 的 401 分支上报鉴权拒绝指标、空集合/幽灵豁免失败封闭
+  - `checkCronAuth()` 区分 `secret_unconfigured`、`missing_credentials`、`invalid_credentials`，两条 cron 路由上报不含凭据内容的 `cron.auth.rejected{worker,reason}`；保留 `isCronAuthorized()` 兼容入口
+  - digest worker 的 `cron.digest.completed` 计时改为覆盖积压查询与拉取完整运行；500 路径上报 `cron.digest.failed` 并写入 `email_worker_runs.error`，运行记录自身写入失败只记日志，不覆盖原始异常
+  - 更新服务端 service-role 信任证据清单为 `checkCronAuth`，避免安全审计因鉴权入口重命名失败
+  - 接线：`scripts/check-all.sh`、CI `Lint & Type Check` job、贡献者测试矩阵与中英双语脚本/测试文档；`docs/operations/sentry-alerts.md` 增加调度契约、鉴权拒绝指标与去重规则；`CHANGELOG.md` 与 roadmap 同步
+  - 新增 59 条专项测试：合约规则 19、IO/CLI 12、鉴权与指标 11、digest/push-retry 路由 19
+- 变更文件：`src/lib/observability/cron-contract.ts`、`src/lib/observability/cron-contract.test.ts`、`src/lib/observability/cron-contract-check.test.ts`、`scripts/lib/cron-contract-check.js`、`scripts/check-cron-contract.js`、`src/lib/cron-auth.ts`、`src/lib/cron-auth.test.ts`、`src/lib/cron-metrics.ts`、`src/lib/cron-metrics.test.ts`、`src/app/api/cron/digest/route.ts`、`src/app/api/cron/digest/route.test.ts`、`src/app/api/cron/push-retry/route.ts`、`src/app/api/cron/push-retry/route.test.ts`、`src/lib/security/admin-client-boundary.ts`、`vercel.json`、`package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`src/lib/testing/test-matrix.ts`、`docs/operations/sentry-alerts.md`、`docs/design/email-templates.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`docs-site/testing.md`、`docs-site/zh-CN/testing.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `742b9a4`）：
+  - `pnpm vitest run src/lib/observability/cron-contract.test.ts src/lib/observability/cron-contract-check.test.ts src/lib/cron-auth.test.ts src/lib/cron-metrics.test.ts src/app/api/cron/digest/route.test.ts src/app/api/cron/push-retry/route.test.ts` → ✅ 6 文件 / 59 测试通过
+  - `pnpm check:cron-contract` → ✅ 2 个 worker（`/api/cron/digest`、`/api/cron/push-retry`）/ 9 个指标 / 调度表达式与 `vercel.json` 及运维文档一致 / 2 个平台级豁免
+  - `pnpm check:supabase-security` → ✅ 31 个迁移、20 张 public 表、39 条生效 RLS 策略、30 个已分类 service-role 调用点
+  - `pnpm check:gates` → ✅ 30 个门禁（本地 27 / CI 28 / 豁免 3），8 个工作流
+  - `pnpm check:workflows`、`pnpm check:test-matrix`、`pnpm check:docs`、`pnpm check:changelog`、`pnpm check:release-docs`、`pnpm check:adr`、`pnpm check:mock-docs`、`pnpm check:provider-docs`、`pnpm check:release-tag`、`pnpm check:codeql`、`pnpm check:secrets-scan`、`pnpm check:trace-coverage` → ✅ 全部通过
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警；复杂度超限与测试类型索引已修复后复跑通过
+  - `pnpm check:all` → ✅ 159 文件 / 1791 测试通过，全部门禁绿色
+  - `pnpm verify:build` → ✅ 类型、lint、测试、bundle 与 Next.js 16.3.5 生产构建全部通过（bundle 2853.1 kB / 基线 2733.8 kB）
+- 阻塞：无
+- 风险与回滚：
+  - 风险：门禁只证明仓库内调度与指标接线一致，不证明 Vercel 已部署该配置；上线后仍需以平台 cron 执行历史和 `email_worker_runs` 验证首次运行
+  - 风险：小时整点调度与实际发送错峰依赖应用内时区门控；修改 `CRON_WORKERS` 必须同步 `vercel.json` 与 `docs/operations/sentry-alerts.md`，否则门禁阻断
+  - 回滚：`git revert 742b9a4` 会移除契约门禁、鉴权原因指标与失败运行记录，并恢复 digest 未被调度的 `vercel.json`；摘要 worker 路由本身不删除
+- 下一步：E04 邮件队列积压指标（先核对现有 `email.backlog` 埋点、告警阈值与测试覆盖，再补齐真实缺口）
+- 最后更新：2026-09-13
