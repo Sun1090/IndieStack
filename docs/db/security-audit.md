@@ -10,8 +10,8 @@
 
 ## 静态审计状态（2026-09-13）
 
-`pnpm check:supabase-security` 通过：28 个迁移、19 张 public 表、Storage policy、
-`SECURITY DEFINER` 执行权限与 service-role 客户端边界均通过。迁移
+`pnpm check:supabase-security` 通过：29 个迁移、19 张 public 表、39 条生效 RLS policy、
+Storage policy、`SECURITY DEFINER` 执行权限、客户端写入策略与 service-role 客户端边界均通过。迁移
 `024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
 约束的 INSERT/UPDATE/DELETE policy 纳入版本控制。
 
@@ -58,6 +58,68 @@ curl -X POST .../rest/v1/rpc/cleanup_old_notifications -H "Authorization: Bearer
 
 同一批次的身份矩阵回归保持 `20/20 通过`（`/tmp/indiestack-identity-028.json`），确认撤权
 没有破坏任何合法的 authenticated 路径。
+
+## 客户端写入策略（2026-09-13 加固）
+
+Supabase 会把每个 `public` 表暴露到 PostgREST，因此 RLS policy 是登录会话与"直接写行"
+之间唯一的屏障。`src/lib/security/client-write-policies.ts` 对生效后的策略集合
+（按版本顺序应用 `create policy` / `drop policy`，等价于数据库最终状态）做两类判定：
+
+1. **server-only 表不得有客户端写策略。** 目前登记 `public.audit_logs`。`service_role`
+   具备 `BYPASSRLS`，写入完全不需要策略，所以这类表上任何 `anon` / `authenticated`
+   （或未写 `to` 而默认 `public`）的 INSERT/UPDATE/DELETE/ALL 策略都是伪造面，门禁失败封闭。
+2. **INSERT policy 的 `WITH CHECK` 不得缺失或恒真。** PostgreSQL 在 `FOR INSERT` 省略
+   `WITH CHECK` 时默认按 `true` 处理；`WITH CHECK (true)` 等价于"接受任意行"。
+
+`029_audit_logs_write_lockdown.sql` 修复的就是第 1 类：
+
+| 项 | 加固前 | 加固后 |
+|---|---|---|
+| `audit_logs` INSERT 策略 | `"Audit logs insertable by authenticated users"`，`with check (auth.role() = 'authenticated')` | 已删除 |
+| `anon` / `authenticated` 表级写权限 | INSERT/UPDATE/DELETE/TRUNCATE | 已收回（保留 SELECT，仍由 super_admin 策略限定） |
+| 伪造 `user_id` 指向他人 | 可行，`user_id` 无任何约束 | 不可行 |
+
+原策略只判断"调用者是登录用户"，对行内容零约束，所以任意登录用户都能伪造审计记录并把
+`user_id` 指向任意已存在用户，污染审计与事后取证。**`appendAuditLog()`
+（`src/lib/repositories/audit-logs.ts`）走 `createAdminClient()`，即 `service_role`，
+不受影响**；`log_audit_action()` 的客户端 `EXECUTE` 已在 028 收回，因此不存在被删策略打断的
+客户端调用方（改前已 grep 全仓 `src/` 确认无其它 `audit_logs` 写入点）。
+
+运行时证据（本地 Supabase，`http://127.0.0.1:54321`，真实 PostgREST 路径）：
+
+```bash
+# 加固前：登录用户伪造一条归属受害者的 team.delete
+curl -X POST .../rest/v1/audit_logs -H "Authorization: Bearer $AUTHENTICATED" \
+  -H "Prefer: return=minimal" \
+  -d '{"user_id":"<victim-uuid>","action":"team.delete","entity_id":"victim-team"}'
+# → HTTP 201，行落入 audit_logs（已复现后清理）
+
+# 加固后
+# → HTTP 403 {"code":"42501","message":"permission denied for table audit_logs"}
+# anon INSERT          → HTTP 401 permission denied
+# authenticated UPDATE → HTTP 403 permission denied
+# service_role INSERT  → HTTP 201（服务端写入路径不变）
+# service_role rpc log_audit_action → HTTP 200
+```
+
+```sql
+-- 加固后权限矩阵
+select r as role,
+       has_table_privilege(r,'public.audit_logs','insert')   as can_insert,
+       has_table_privilege(r,'public.audit_logs','update')   as can_update,
+       has_table_privilege(r,'public.audit_logs','delete')   as can_delete,
+       has_table_privilege(r,'public.audit_logs','truncate') as can_truncate
+from unnest(array['anon','authenticated','service_role']) r;
+-- anon          | f | f | f | f
+-- authenticated | f | f | f | f
+-- service_role  | t | t | t | t
+```
+
+同一批次身份矩阵回归保持 `20/20 通过`（`/tmp/indiestack-identity-029.json`）。
+
+**已知边界**：该门禁是静态文本规则，只覆盖 `public` 表上显式书写的策略语句。它不解析
+`alter policy`、动态 SQL 或 Supabase Dashboard 里手工改的策略；线上真实授权仍应以
+`pg_policies` / `has_table_privilege` 查询为准。
 
 ## 运行时身份矩阵（2026-09-12）
 

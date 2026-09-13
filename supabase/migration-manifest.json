@@ -141,6 +141,11 @@
       "version": "028",
       "fileName": "028_revoke_security_definer_execute.sql",
       "sha256": "38983f1751d5cb7afffc0958001a5f333351177c548d2417a0fa0b0a9f55bcf6"
+    },
+    {
+      "version": "029",
+      "fileName": "029_audit_logs_write_lockdown.sql",
+      "sha256": "bad2267ce9354ff7519504f1cf0a219d7f73e012bdef10c23a0f92392afcf56e"
     }
   ]
 }

@@ -1,14 +1,19 @@
 /**
- * Supabase security audit: migrations, storage policies, admin-client boundaries and
- * SECURITY DEFINER execution grants.
+ * Supabase security audit: migrations, storage policies, admin-client boundaries,
+ * SECURITY DEFINER execution grants and client-writable RLS policies.
  *
- * The pure SECURITY DEFINER grant rule lives in src/lib/security/security-definer-grants.ts and
- * is covered by Vitest; this module handles filesystem IO and process output.
+ * The pure rules live in src/lib/security/security-definer-grants.ts and
+ * src/lib/security/client-write-policies.ts; both are covered by Vitest. This module handles
+ * filesystem IO and process output.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectSecurityDefinerGrants } from "../../src/lib/security/security-definer-grants.ts";
+import {
+  extractEffectivePolicies,
+  inspectClientWritePolicies,
+} from "../../src/lib/security/client-write-policies.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -135,7 +140,9 @@ export function runSupabaseSecurityCheck(options = {}) {
   const sources = readMigrationSources(migrationDir);
   const sql = sources.map((source) => source.content).join("\n");
   const definerIssues = inspectSecurityDefinerGrants(sources);
+  const writeIssues = inspectClientWritePolicies(sources);
   const storage = checkStoragePolicies(srcDir, sql);
+  const effectivePolicyCount = extractEffectivePolicies(sources).length;
   const tableCount = new Set(
     [...sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_][\w]*)/gi)].map(
       (match) => match[1],
@@ -145,6 +152,7 @@ export function runSupabaseSecurityCheck(options = {}) {
   const issues = [
     ...checkRealtimePublication(srcDir, sql),
     ...definerIssues.map((issue) => `[${issue.code}] ${issue.fileName}: ${issue.message}`),
+    ...writeIssues.map((issue) => `[${issue.code}] ${issue.fileName}: ${issue.message}`),
     ...checkTableRls(sql),
     ...storage.issues,
     ...checkClientServiceRole(srcDir, root),
@@ -160,10 +168,16 @@ export function runSupabaseSecurityCheck(options = {}) {
     if (definerIssues.length > 0) {
       console.error("  hint: add a forward migration revoking EXECUTE from public, anon, authenticated");
     }
+    if (writeIssues.length > 0) {
+      console.error(
+        "  hint: add a forward migration dropping the client write policy (service_role bypasses RLS)",
+      );
+    }
     return 1;
   }
   console.log(
-    `✅ Supabase security audit passed: ${sources.length} migrations, ${tableCount} public tables, server-only service role checks`,
+    `✅ Supabase security audit passed: ${sources.length} migrations, ${tableCount} public tables, ` +
+      `server-only service role checks, ${effectivePolicyCount} effective RLS policies`,
   );
   return 0;
 }

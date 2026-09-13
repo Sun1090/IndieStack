@@ -25,6 +25,15 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Security
 
+- **审计日志写入面收口**：新增 `029_audit_logs_write_lockdown.sql`，删除
+  `audit_logs` 上遗留的宽松 INSERT 策略
+  `"Audit logs insertable by authenticated users"`（`with check (auth.role() = 'authenticated')`），
+  并收回 `anon` / `authenticated` 的表级 INSERT/UPDATE/DELETE/TRUNCATE 权限。该策略对写入行内容
+  零约束，任意登录用户可直接 `POST /rest/v1/audit_logs` 伪造审计记录并把 `user_id` 指向他人
+  （本地复现为 HTTP 201）。服务端写入路径（`appendAuditLog()` 走 `service_role`，具备
+  `BYPASSRLS`）与 `log_audit_action()` 均不受影响；`pnpm check:supabase-security` 新增
+  `src/lib/security/client-write-policies.ts` 规则，对 server-only 表上残留的客户端写策略、
+  以及缺失或恒真的 INSERT `WITH CHECK` 失败封闭。
 - **SECURITY DEFINER 执行权限收口**：新增 `028_revoke_security_definer_execute.sql`，收回
   `cleanup_old_notifications()` / `cleanup_old_webhook_events()` / `cleanup_old_email_worker_runs()`
   与 `log_audit_action()` 对 `PUBLIC` / `anon` / `authenticated` 的 `EXECUTE`。此前 PostgreSQL 默认
