@@ -1952,3 +1952,55 @@
   - 回滚：`git revert 21e5501` 可回到各表单自行接线状态，同时移除 `check:fields` 门禁；无数据库 / 迁移 / 外部数据影响。
 - 下一步：G04 loading / empty / error 状态统一（M2 里程碑），继续按检查 → 实现 → 测试 → 门禁 → commit → 更新进度循环推进。
 - 最后更新：2026-09-13
+
+## v0.9.0 后续 / G04_SHARED_STATES（DONE，本地完成）
+
+- 状态：DONE（本地提交完成；未 push / PR / merge / deploy）
+- 里程碑与发布目标：M2「UI 系统收口」（roadmap `docs/roadmap-0.6.0.md` G01–G10）；本项为 G04，也是 G 段最后一项，
+  完成后 M2（A / B / G 三段）全部收口，具备进入 RELEASE_FREEZE 的条件
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；本地提交 `f5c7451`；无 PR
+- 目标：把「加载 / 空 / 错误」三种状态各自收敛到唯一落脚点，统一 ARIA 语义与文案来源，并加防回退门禁
+- 已完成：
+  - 新增 `src/components/shared/error-state.tsx`：`ErrorState`（`code` / `icon` / `title` / `description` / `action` /
+    `size` / `role` / `className`），默认 `role="alert"`，不声明 `"use client"` 以便服务端错误页直接复用。
+  - `src/components/shared/page-loading.tsx` 重写：`PageLoading`（`cards` / `dashboard` / `stats` / `list` / `spinner` 五种骨架 +
+    `rows`）与 `LoadingIndicator` 成为加载态单一来源；容器 `aria-busy="true"`，骨架内嵌 `role="status"` 的 `sr-only` 文案，
+    文案走 next-intl `common.loading`（此前 3 个手写骨架没有 `aria-busy`，加载文案硬编码中文）。
+  - `query-error-state.tsx` 保留客户端边界（`onRetry`），展示下沉到 `ErrorState`，`className` 真正生效。
+  - 删除零引用的重复加载组件 `src/components/shared/page-loader.tsx` 与 `src/components/shared/loading-state.tsx`。
+  - 迁移：12 个 `loading.tsx` 中 3 个手写 `Skeleton` 收敛（仪表盘首页 60 行手写骨架 → `variant="dashboard"`，
+    admin → `stats`，admin/messages → `list`）；10 处裸 `<p>` 空态改用带图标的 `EmptyState`
+    （audit-logs / contact-messages / admin-users / webhook-events / analytics ×2 / dashboard overview /
+    settings devices / team / blog-list / faq-list）；4 个错误边界（`src/app/error.tsx`、`dashboard/error.tsx`、
+    `global-error.tsx`、`not-found.tsx`）统一走 `ErrorState`；`data-table` 内联 loading/empty、`reset-password`、
+    `auth/callback`、`site-header` 头像骨架（补 `role="status"`）一并迁移。
+  - 顺带修掉 `faq-list` 硬编码英文：search placeholder 与 no-results 改为 props，`faq/page.tsx` 传翻译值，
+    `messages/{en,zh-CN}/faq.json` 各补 2 个 key（en/zh 各 980 key）。
+  - 新增 `src/lib/ui/state-rules.ts`（纯函数审计，4 类规则码 `RAW_ROUTE_SKELETON` / `LEGACY_LOADER_MODULE` /
+    `RAW_SPINNER` / `BARE_PLACEHOLDER`）与 `scripts/lib/state-check.js` + `scripts/check-states.js` 门禁，
+    扫描 132 个应用层文件与 14 个 `loading.tsx`，排除 `src/components/ui/**` 与测试文件；接入 `package.json`、
+    `scripts/check-all.sh` 与 CI（`Check shared state usage`）。
+- 变更文件：见 commit `f5c7451`；含 2 个共享原语 + 1 个新组件 + 4 个原语测试文件（14 条）+ 门禁与 13 条门禁单测、
+  13 个页面/组件迁移、双语 faq 文案、`docs/testing.md` G04 小节、`docs/roadmap-0.6.0.md` G04 完成说明、
+  `CHANGELOG.md` Unreleased 条目、双语脚本文档行、`docs/architecture/09-frontend-components.md` 组件表更新。
+- 验证命令与结果：
+  - `pnpm check:states` → ✅ 132 个应用层文件、14 个 `loading.tsx` 统一走 `PageLoading` / `EmptyState` / `ErrorState`
+  - `pnpm lint` → ✅ `eslint .` 无告警
+  - `pnpm type-check` → ✅ `tsc --noEmit` 无错误
+  - `pnpm test` → ✅ **138 文件 1381 测试**
+  - `pnpm build` → ✅ Next.js 16.3.5 生产构建成功
+  - `pnpm check:all` → ✅ 全部校验通过（含新增 `check:states`）
+  - `pnpm test:e2e` → ✅ **86 passed (1.7m)**
+  - Docker Linux visual baseline → ✅ **4 passed**（home / features / pricing / login 无像素变化）
+- 阻塞：无本地阻塞。
+- 风险与回滚：
+  - 风险：`RAW_SPINNER` 白名单（`page-loading.tsx`、`confirm-dialog.tsx`）是显式豁免，新增 `animate-spin` 需要
+    code review 确认确有理由；`BARE_PLACEHOLDER` 只按「同一 className 字面量内同时出现 `text-center` 与固定纵向内边距」
+    判定，是写的审计而非语义分析。
+  - 风险：`PageLoading` 不再声明 `"use client"`，依赖 next-intl 在 Server Component 中可用；若后续改为客户端渲染需回归 `loading.tsx`。
+  - 回滚：`git revert f5c7451` 即回到「每页各写状态 markup + 两个零引用 loader 组件」的状态，同时移除 `check:states` 门禁；
+    纯展示层与门禁改动，无数据库 / 迁移 / 外部数据影响。
+- 下一步：M2 里程碑（A / B / G 三段）已全部收口，进入 v0.10.0 RELEASE_FREEZE（定版本号、CHANGELOG、发布说明、
+  migration/rollback 检查、全量验证、release commit、exit report）；push / tag / PR / merge / deploy 受本地权限边界约束，
+  仅输出到可执行边界。
+- 最后更新：2026-09-13
