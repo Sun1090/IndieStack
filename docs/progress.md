@@ -1922,3 +1922,33 @@
 - G03 shared form field 统一（M2 里程碑下一项）。
 
 - 最后更新：2026-09-13
+
+## v0.9.0 后续 / G03_SHARED_FORM_FIELD（DONE，本地完成）
+
+- 状态：DONE（本地提交完成；未 push / PR / merge / deploy）
+- 里程碑与发布目标：M2「UI 系统收口」（roadmap `docs/roadmap-0.6.0.md` G01–G10）；本项为 G03，版本目标随 v0.9.0 之后的下一 UI 收口版本统一发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；本地提交 `21e5501`；无 PR
+- 目标：统一「标签 / 控件 / 描述 / 错误」DOM 与 ARIA 接线，把原生 select 与控件类名收口到共享原语，并增加防回退门禁
+- 已完成：
+  - 新增 `src/components/shared/form-field.tsx`：`FormField` context 统一提供 `htmlFor`/`id`、`aria-describedby`、错误 `aria-invalid`，描述/错误稳定 id，错误 `role="alert"`；支持 `stack` / `inline`、描述前置或后置。
+  - 新增 `src/components/shared/native-select.tsx`：`NATIVE_SELECT_CLASSES` 单一来源，补齐 `disabled:` 与 focus-visible 外观。
+  - 迁移认证页、联系表单、资料/密码/通知/主题/邀请/头像/封面上传、项目与团队创建、项目设置等 15+ 处表单字段到共享原语；reset-password 密码可见性按钮补 `aria-label` / `aria-pressed`，MFA 保留 sr-only label。
+  - `globals.css` 为 `[aria-invalid="true"]` 提供统一可见红边。
+  - 新增 `src/lib/ui/form-field-rules.ts` 与 `scripts/check-fields.js` / `scripts/lib/form-field-check.js` 门禁：扫描 `src/app` + `src/components` 非测试 `.tsx`，排除 `src/components/ui/**`，检查 `RAW_SELECT` / `RAW_CONTROL_CLASSES` / `DIRECT_LABEL_IMPORT` 三类回退；接入 `package.json`、`scripts/check-all.sh` 与 CI。
+- 变更文件：见 commit `21e5501`；含共享原语与 25 条新增单测、15+ 表单迁移、门禁接线、`docs/testing.md` G03 小节、`docs/roadmap-0.6.0.md` G03 完成说明、`CHANGELOG.md` Unreleased 条目、双语脚本文档行。
+- 验证命令与结果：
+  - `pnpm check:fields` → ✅ 133 个应用层文件通过，无原生 select / 复制控件类名 / label 直引
+  - `pnpm lint` → ✅ `eslint .` 无告警
+  - `pnpm type-check` → ✅ `tsc --noEmit` 无错误
+  - `pnpm test` → ✅ **133 文件 1354 测试**
+  - `pnpm build` → ✅ Next.js 16.3.5 生产构建成功
+  - `pnpm check:all` → ✅ 全部校验通过（含新增 `check:fields`）
+  - `pnpm test:e2e` → ✅ **86 passed (2.8m)**
+  - Docker Linux visual baseline → ✅ **4 passed**（home / features / pricing / login 无像素变化）
+- 阻塞：无本地阻塞。
+- 风险与回滚：
+  - 风险：`FormFieldControl` 会以注入 id 覆盖子控件自带 id；这是「label 不可能指错」的刻意约束，新增调用方不应再同时写 id。
+  - 风险：门禁是静态写法审计，ARIA 运行时行为由原语组件测试覆盖；复杂第三方控件需确认 `cloneElement` 合并 props 是否符合预期。
+  - 回滚：`git revert 21e5501` 可回到各表单自行接线状态，同时移除 `check:fields` 门禁；无数据库 / 迁移 / 外部数据影响。
+- 下一步：G04 loading / empty / error 状态统一（M2 里程碑），继续按检查 → 实现 → 测试 → 门禁 → commit → 更新进度循环推进。
+- 最后更新：2026-09-13
