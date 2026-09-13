@@ -2622,3 +2622,34 @@
   - 回滚：`git revert c57dfd1` 会恢复两份重复的类型数组与空轮次的 0 耗时，并移除新增测试与文档；不涉及数据库迁移、外部接口或告警规则变更
 - 下一步：E05 OSS 上传成功率指标（先审计 `storage.upload.completed` 等既有埋点的真实覆盖，再决定是补缺口还是只补测试与文档）
 - 最后更新：2026-09-13
+
+## E05 OSS 上传成功率指标（DONE）
+
+- 状态：DONE（roadmap `docs/roadmap-0.6.0.md` 第 45 项，E 段可观测性与运维）
+- 里程碑与发布目标：M4 J 段之后继续 E 段；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`545b2e9`（feat(observability): split provider and request upload metrics）
+- 目标：让「上传成功率」这个告警口径真的对应可用数据；把 provider 健康度与用户可见上传结果分开计量
+- 已完成：
+  - 审计结论：`storage.upload.completed{provider,outcome}` 已在两个驱动中埋点，但它只覆盖 provider 的对象写入。`stageUploadObject` 之后的元数据回写失败会删除刚上传的对象并让请求返回 `uploadFailed`，此时 provider 指标已经记成 `success`，仪表盘与告警都看不到这次用户可见失败
+  - 新增 `src/lib/observability/storage-metrics.ts`：固化 `STORAGE_UPLOAD_METRIC`、`UPLOAD_REQUEST_METRIC`、`STORAGE_PROVIDERS`、`UPLOAD_OPERATIONS`、`STORAGE_UPLOAD_OUTCOMES`（success/failure）与 `UPLOAD_OUTCOMES`（success/failure/cancelled），并提供 `storageUploadTimer(provider).end(outcome)` 与 `uploadRequestTimer(operation).end(outcome)` 两个受类型约束的计时器
+  - `src/lib/storage/index.ts` 两个驱动的 put 改用 `storageUploadTimer`，删除重复的指标名字面量
+  - `src/lib/uploads/service.ts` 把两个导出函数拆成「对外包装 + 私有实现」：`withUploadOutcome()` 计时并上报终态，覆盖 provider 写入、元数据回写与失败回滚；`uploadOutcomeFor()` 把结果映射为 success / failure / cancelled，用户取消不计入失败率分子
+  - 复用整理：digest 与 push-retry 路由测试各自实现的 `metricEvents` 提取为 `src/lib/testing/metric-events.ts`，两份路由测试改为引用共享实现
+  - 实现过程中类型化计时器立刻暴露一处误用（驱动把 `{ outcome: "success" }` 对象传给期望字符串的 `end()`，会静默上报 `outcome: null` 维度），已修正为 `end("success")` / `end("failure")`，这正是本任务把指标契约收敛到模块的价值
+  - 新增 12 条测试：契约常量与取值集合 3、`storageUploadTimer` 成功/失败 2、`uploadRequestTimer` 单次上报 1、`uploadOutcomeFor` 映射 1、驱动层四个 provider/结果组合 4（`src/lib/storage/index.test.ts`）、领域层请求终态 5（`src/lib/uploads/service.test.ts`，含「元数据回写失败计入 failure 而 provider 层仍是 success」与「取消单列」）
+  - 文档同步：`docs/operations/sentry-alerts.md` 指标表新增 `upload.request.completed`、明确两层指标分工、把「上传失败率」细化为 provider 写入失败率并新增上传请求失败率告警行；`docs-site/storage.md` 与 `docs-site/zh-CN/storage.md` 增加指标章节与验证命令；`CHANGELOG.md` 与 roadmap 同步
+- 变更文件：`src/lib/observability/storage-metrics.ts`、`src/lib/observability/storage-metrics.test.ts`、`src/lib/testing/metric-events.ts`、`src/lib/storage/index.ts`、`src/lib/storage/index.test.ts`、`src/lib/uploads/service.ts`、`src/lib/uploads/service.test.ts`、`src/app/api/cron/digest/route.test.ts`、`src/app/api/cron/push-retry/route.test.ts`、`docs/operations/sentry-alerts.md`、`docs-site/storage.md`、`docs-site/zh-CN/storage.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `545b2e9`）：
+  - `pnpm vitest run src/lib/observability/storage-metrics.test.ts src/lib/storage/index.test.ts src/lib/uploads/service.test.ts src/app/api/cron/digest/route.test.ts src/app/api/cron/push-retry/route.test.ts` → ✅ 5 文件 / 全绿（新增 12 条）
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:changelog` → ✅ 结构合法
+  - `pnpm check:all` → ✅ 160 文件 / 1810 测试通过，全部门禁绿色
+  - `pnpm verify:build` → ✅ 类型、lint、测试、bundle（2853.1 kB / 基线 2733.8 kB）与生产构建全部通过
+- 阻塞：无
+- 风险与回滚：
+  - 风险：`upload.request.completed` 的 failure 同时包含鉴权与校验拒绝，失败率告警需结合 `operation` 维度与结构化错误日志区分「客户端传错文件」和「存储故障」；文档已写明该口径
+  - 风险：指标名是仪表盘与告警规则的隐式契约，改名会让线上规则静默失效；`storage-metrics.test.ts` 用精确字符串断言锁住两个名字
+  - 回滚：`git revert 545b2e9` 会移除请求终态指标与契约模块、恢复驱动内联指标名与两份重复的测试工具，不改数据库、外部接口或告警平台配置
+- 下一步：E06 provider fallback 指标（审计 `provider.fallback` 的去重语义、覆盖范围与「回退原因」维度是否足够，再补真实缺口）
+- 最后更新：2026-09-13
