@@ -35,17 +35,20 @@ export interface NewNotification {
 /** 邮件失败重试上限：达到后进入死信，不再被 worker 拉取 */
 export const EMAIL_MAX_ATTEMPTS = 3;
 
+/** 进入邮件队列的通知类型：拉取与积压计数共用，避免指标口径漂移。 */
+export const EMAIL_NOTIFICATION_TYPES = [
+  "team_invite",
+  "role_changed",
+  "payment_succeeded",
+  "security_alert",
+] as const satisfies readonly NotificationType[];
+
 /**
  * 待发邮件通知（未读 + 未标记已发送 + 限定类型），供邮件 worker 拉取。
  * 邮件失败重试计数（metadata.email_attempts）达到上限的死信不再进入队列（v0.5.0 A02）。
  */
 export async function listUnsentEmailNotifications(
-  types: NotificationType[] = [
-    "team_invite",
-    "role_changed",
-    "payment_succeeded",
-    "security_alert",
-  ],
+  types: readonly NotificationType[] = EMAIL_NOTIFICATION_TYPES,
   limit = 100,
 ): Promise<Notification[]> {
   const admin = createAdminClient();
@@ -54,7 +57,7 @@ export async function listUnsentEmailNotifications(
     .select("*")
     .eq("email_sent", false)
     .eq("is_read", false)
-    .in("type", types)
+    .in("type", [...types])
     .or(`metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`)
     .order("created_at", { ascending: true })
     .limit(limit);
@@ -73,7 +76,7 @@ export async function countUnsentEmailNotifications(): Promise<number> {
     .select("id", { count: "exact", head: true })
     .eq("email_sent", false)
     .eq("is_read", false)
-    .in("type", ["team_invite", "role_changed", "payment_succeeded", "security_alert"])
+    .in("type", [...EMAIL_NOTIFICATION_TYPES])
     .or(`metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`);
   if (error) throw new Error(error.message);
   return count ?? 0;

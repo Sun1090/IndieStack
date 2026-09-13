@@ -182,8 +182,9 @@ export async function POST(request: NextRequest) {
     const notifications = await listUnsentEmailNotifications();
     const pulled = notifications.length;
     if (pulled === 0) {
-      await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs: 0 });
-      recordMetric("cron.digest.completed", 0, {
+      const durationMs = Date.now() - startedAt;
+      await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs });
+      recordMetric("cron.digest.completed", durationMs, {
         unit: "ms",
         attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
       });

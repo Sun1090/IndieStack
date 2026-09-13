@@ -90,11 +90,40 @@ describe("POST /api/cron/digest", () => {
     ]);
   });
 
-  it("空队列返回 sent=0", async () => {
+  it("空队列返回 sent=0，并记录完整轮次耗时（E04）", async () => {
     listUnsentEmailNotificationsMock.mockResolvedValue([]);
+    const base = new Date("2026-01-01T00:00:00Z").getTime();
+    vi.mocked(Date.now).mockReturnValueOnce(base).mockReturnValueOnce(base).mockReturnValueOnce(base + 125);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
     const res = await POST(req());
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pulled: 0, durationMs: 125 }),
+    );
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.completed",
+        value: 125,
+        unit: "ms",
+        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
+      }),
+    );
+  });
+
+  it("每轮都上报 email.backlog，恰好阈值不触发异常告警（E04）", async () => {
+    countUnsentEmailNotificationsMock.mockResolvedValue(500);
+    listUnsentEmailNotificationsMock.mockResolvedValue([]);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+
+    expect(res.status).toBe(200);
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({ name: "email.backlog", value: 500, unit: "count", attributes: {} }),
+    );
+    expect(logApiErrorMock).not.toHaveBeenCalled();
   });
 
   it("按用户分组发送并标记已发送", async () => {
@@ -186,8 +215,12 @@ describe("POST /api/cron/digest", () => {
   it("队列积压超阈值时告警（C03）", async () => {
     countUnsentEmailNotificationsMock.mockResolvedValue(501);
     listUnsentEmailNotificationsMock.mockResolvedValue([]);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const res = await POST(req());
     expect(res.status).toBe(200);
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({ name: "email.backlog", value: 501, unit: "count", attributes: {} }),
+    );
     expect(logApiErrorMock).toHaveBeenCalledWith(
       expect.stringContaining("队列积压 501"),
       expect.objectContaining({ message: "email_backlog_threshold_exceeded" }),

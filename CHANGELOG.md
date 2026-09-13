@@ -100,6 +100,14 @@ All notable changes to IndieStack will be documented in this file.
   runbook 章节与这些事实同源。规则由 `src/lib/security/secrets-scan-policy.ts` 的纯函数与 48 条单测覆盖，
   接入 `pnpm check:all` 与 CI。
 
+### Fixed
+
+- **邮件队列口径与空轮次指标（E04）**：`countUnsentEmailNotifications` 与 `listUnsentEmailNotifications`
+  此前各自维护一份相同的类型字面量数组，任一处改动都会让「积压计数」与「实际拉取」口径漂移；现统一为
+  `EMAIL_NOTIFICATION_TYPES` 单一事实源，并新增仓库层测试按调用参数锁定两条查询使用同一集合、同一死信
+  `.or` 过滤。空队列分支的 `email_worker_runs.duration_ms` 与 `cron.digest.completed` 此前恒为 0，
+  现改为记录真实耗时；`email.backlog` 每轮上报的行为与「恰好等于阈值不告警」的边界也纳入测试。
+
 ### Planned
 
 - 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、

@@ -25,6 +25,7 @@ import {
   listNotificationsByIds,
   countUnsentEmailNotifications,
   EMAIL_MAX_ATTEMPTS,
+  EMAIL_NOTIFICATION_TYPES,
   NOTIFICATION_TYPES,
 } from "./notifications";
 
@@ -164,6 +165,13 @@ describe("listUnsentEmailNotifications()", () => {
     expect(chain.limit).toHaveBeenCalledWith(10);
   });
 
+  it("默认队列类型取自 EMAIL_NOTIFICATION_TYPES（E04 口径一致）", async () => {
+    const chain = chainMock({ data: [] });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await listUnsentEmailNotifications();
+    expect(chain.in).toHaveBeenCalledWith("type", [...EMAIL_NOTIFICATION_TYPES]);
+  });
+
   it("死信过滤：重试计数达到上限的不再进入队列", async () => {
     const chain = chainMock({ data: [] });
     const from = vi.fn(() => chain);
@@ -203,6 +211,16 @@ describe("countUnsentEmailNotifications()", () => {
   it("返回待发通知总数（同一过滤口径）", async () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ count: 7 })));
     await expect(countUnsentEmailNotifications()).resolves.toBe(7);
+  });
+
+  it("积压计数与拉取共用一个类型来源（E04 口径一致）", async () => {
+    const chain = chainMock({ count: 3 });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await expect(countUnsentEmailNotifications()).resolves.toBe(3);
+    expect(chain.in).toHaveBeenCalledWith("type", [...EMAIL_NOTIFICATION_TYPES]);
+    expect(chain.or).toHaveBeenCalledWith(
+      `metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`,
+    );
   });
 
   it("数据库错误抛错", async () => {

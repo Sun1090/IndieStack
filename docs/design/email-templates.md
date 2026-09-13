@@ -185,6 +185,18 @@
 - **积压告警**：每轮运行前统计待发通知总数（与拉取同一过滤口径，含死信排除），
   超过 `EMAIL_BACKLOG_ALERT_THRESHOLD`（500）时经 logApiError 上报 Sentry
   （同消息自动分组）；持续积压通常意味着 Resend 凭据失效或死信增多，需人工介入。
+- **积压指标（v0.6.0 E04）**：无论本轮是否拉到通知，每轮都上报一次
+  `email.backlog`（unit `count`，无 attributes），因此「队列长期非空」与「队列恒定为空」
+  在图表上是两条可分辨的曲线；恰好等于阈值（500）不告警，只有严格大于才上报，
+  判定边界由 `route.test.ts` 锁定。度量精度受限于本轮拉取上限（默认 100），
+  但计数走独立的 `count` 查询，不受 limit 截断。
+- **口径单一事实源（v0.6.0 E04）**：进入邮件队列的类型集合收敛为
+  `EMAIL_NOTIFICATION_TYPES`（`src/lib/repositories/notifications.ts`），
+  拉取（`listUnsentEmailNotifications`）与积压计数（`countUnsentEmailNotifications`）
+  共用同一常量，避免只改一处导致「计数很大但永远拉不到」的假积压。
+- **空轮次耗时（v0.6.0 E04）**：空队列分支与正常分支一样记录真实
+  `durationMs`（`Date.now() - startedAt`），不再写死 0，`cron.digest.completed`
+  的耗时样本因此不会出现无意义的零值尖峰，便于区分「worker 没跑」与「跑得很快」。
 
 ### 聚合与发送规则（实际行为）
 
