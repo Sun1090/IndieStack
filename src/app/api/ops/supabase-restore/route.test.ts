@@ -74,7 +74,10 @@ describe("GET /api/ops/supabase-restore", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.json()).resolves.toMatchObject({ ok: true, action: "noop", projectStatus: "ACTIVE_HEALTHY" });
-    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 0, expect.any(Object));
+    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 1, {
+      unit: "count",
+      attributes: { action: "noop", projectStatus: "ACTIVE_HEALTHY" },
+    });
   });
 
   it("生产环境缺少 Management 配置时返回 503", async () => {
@@ -87,6 +90,10 @@ describe("GET /api/ops/supabase-restore", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({ ok: false, action: "skipped" });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 1, {
+      unit: "count",
+      attributes: { action: "skipped", projectStatus: "unknown" },
+    });
   });
 
   it("非生产环境缺少配置时安全跳过", async () => {
@@ -94,6 +101,10 @@ describe("GET /api/ops/supabase-restore", () => {
     const response = await GET(request({ "x-cron-secret": "cron-secret" }));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ ok: true, action: "skipped" });
+    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 1, {
+      unit: "count",
+      attributes: { action: "skipped", projectStatus: "unknown" },
+    });
   });
 
   it("项目暂停时调用 Management API 恢复", async () => {
@@ -110,7 +121,10 @@ describe("GET /api/ops/supabase-restore", () => {
       `https://api.supabase.com/v1/projects/${REF}/restore`,
       expect.objectContaining({ method: "POST" }),
     );
-    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 1, expect.any(Object));
+    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 1, {
+      unit: "count",
+      attributes: { action: "restore", projectStatus: "INACTIVE" },
+    });
   });
 
   it("Management API 异常时返回 502 并上报", async () => {
@@ -120,6 +134,10 @@ describe("GET /api/ops/supabase-restore", () => {
     const response = await GET(request({ "x-cron-secret": "cron-secret" }));
     expect(response.status).toBe(502);
     expect(logApiErrorMock).toHaveBeenCalled();
+    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 1, {
+      unit: "count",
+      attributes: { action: "escalate", projectStatus: "unknown" },
+    });
   });
 
   it("不可恢复状态返回 503 等待人工介入", async () => {
@@ -129,5 +147,9 @@ describe("GET /api/ops/supabase-restore", () => {
     const response = await GET(request({ "x-cron-secret": "cron-secret" }));
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({ action: "escalate", projectStatus: "REMOVED" });
+    expect(recordMetricMock).toHaveBeenCalledWith("ops.supabase.restore", 1, {
+      unit: "count",
+      attributes: { action: "escalate", projectStatus: "REMOVED" },
+    });
   });
 });

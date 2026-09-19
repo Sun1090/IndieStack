@@ -6,6 +6,14 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Supabase 恢复告警契约与去重（E07）**：新增 `src/lib/observability/ops-metrics.ts` 固化 `ops.supabase.restore`
+  的指标名与 `noop`/`restore`/`wait`/`escalate`/`skipped` 动作取值，并新增「文档阈值 = 代码常量」的契约测试
+  （`alert-thresholds.test.ts` 校验 `email.backlog` / `push.backlog` 的 500 阈值与 `ops.supabase.restore` 的告警登记）。
+  修复一条真实告警盲区：该指标此前只在成功读到 Management API 状态后上报，且把 `action=restore` 映射为 `1`、其余
+  映射为 `0`，于是配置缺失与状态查询失败连样本都不产生，`escalate`/`skipped` 的样本值恒为 `0`，按「计数 > 0」
+  配置的告警永远不会触发。现在 `runRestoreCycle` 的所有终态都经由同一个 `complete()` 出口上报 `value=1` 的计数样本，
+  用 `action` 维度区分正常轮次与故障轮次；运维文档补齐指标表、三条按 `action` 分流的告警规则与按动作去重的说明。
+
 - **Provider 降级指标契约（E06）**：新增 `src/lib/observability/provider-metrics.ts` 固化 `provider.fallback` 的指标名、
   原因取值与「缺失变量签名」去重闸门，`getStorageDriver()` 只引用常量，并改为上报**实际提供服务的驱动**而不是写死的
   `supabase`。补齐一处真实计量盲区：`RESEND_API_KEY` 缺失时发送层在启动计时器之前就抛错，`email.send.completed`

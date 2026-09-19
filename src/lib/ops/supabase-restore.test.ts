@@ -164,13 +164,17 @@ describe("runRestoreCycle", () => {
 
   it("配置缺失时非生产跳过、生产显式失败", async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
-    const local = await expectResult(cycle(fetchImpl, { ref: null, token: undefined }).promise, 200, "skipped");
+    const localCycle = cycle(fetchImpl, { ref: null, token: undefined });
+    const local = await expectResult(localCycle.promise, 200, "skipped");
     expect(local.body.ok).toBe(true);
     expect(local.body.reason).toContain("SUPABASE_PROJECT_REF");
+    expect(localCycle.h.onMetric).toHaveBeenCalledWith("skipped", undefined);
 
-    const prod = await expectResult(cycle(fetchImpl, { token: undefined, isProduction: true }).promise, 503, "skipped");
+    const prodCycle = cycle(fetchImpl, { token: undefined, isProduction: true });
+    const prod = await expectResult(prodCycle.promise, 503, "skipped");
     expect(prod.body.ok).toBe(false);
     expect(prod.body.reason).toContain("SUPABASE_ACCESS_TOKEN");
+    expect(prodCycle.h.onMetric).toHaveBeenCalledWith("skipped", undefined);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -209,6 +213,7 @@ describe("runRestoreCycle", () => {
     const result = await expectResult(promise, 502, "escalate");
     expect(result.body.reason).toBe("restore-failed");
     expect(h.onError).toHaveBeenCalledTimes(1);
+    expect(h.onMetric).toHaveBeenCalledWith("escalate", "INACTIVE");
   });
 
   it("状态查询失败时返回 502 而不是误判为暂停", async () => {
@@ -216,7 +221,8 @@ describe("runRestoreCycle", () => {
     const { h, promise } = cycle(fetchImpl);
     const result = await expectResult(promise, 502, "escalate");
     expect(result.body.reason).toBe("status-lookup-failed");
-    expect(h.onMetric).not.toHaveBeenCalled();
+    // 兜底层失效同样要可见：即使读不到状态也要产出 escalate 样本
+    expect(h.onMetric).toHaveBeenCalledWith("escalate", undefined);
   });
 
   it("中间态只等待，不写操作", async () => {

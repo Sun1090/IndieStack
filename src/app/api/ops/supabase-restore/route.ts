@@ -17,7 +17,7 @@ import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { logApiError } from "@/lib/api-log";
 import { logger } from "@/lib/logger";
-import { recordMetric } from "@/lib/metrics";
+import { recordSupabaseRestoreCycle } from "@/lib/observability/ops-metrics";
 import { isCronAuthorized, resolveProjectRef, runRestoreCycle } from "@/lib/ops/supabase-restore";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +34,10 @@ export async function GET(request: NextRequest) {
       isProduction: process.env.VERCEL_ENV === "production",
     },
     {
+      // 每个终态（含 skipped / escalate）都产出 value=1 的计数样本，
+      // 让告警能分别对 restore / escalate / skipped 计数，而不是被值 0 静默吞掉。
       onMetric: (action, projectStatus) =>
-        recordMetric("ops.supabase.restore", action === "restore" ? 1 : 0, {
-          unit: "count",
-          attributes: { action, projectStatus: projectStatus ?? "unknown" },
-        }),
+        recordSupabaseRestoreCycle({ action, projectStatus }),
       onError: logApiError,
       onInfo: (message, data) => logger.info(message, data),
       onWarn: (message, data) => logger.warn(message, data),

@@ -15,6 +15,8 @@
  * 安全：Management API 令牌仅从服务端环境变量读取，脚本与路由都不打印令牌值。
  */
 
+import type { OpsSupabaseRestoreAction } from "@/lib/observability/ops-metrics";
+
 /** 项目处于中间态时只需等待，不触发恢复（与 scripts/supabase-auto-restore.js 保持一致） */
 export const TRANSIENT_PROJECT_STATES = [
   "RESTORING",
@@ -171,7 +173,7 @@ export async function triggerProjectRestore(options: ProjectStatusOptions): Prom
   }
 }
 
-export type RestoreCycleAction = RestoreAction | "skipped";
+export type RestoreCycleAction = OpsSupabaseRestoreAction;
 
 export type RestoreCycleResult = {
   /** 建议返回的 HTTP 状态码：200 正常（含无需操作），4xx/5xx 需要人工关注 */
@@ -212,6 +214,18 @@ export async function runRestoreCycle(
   const now = options.now ?? (() => new Date());
   const checkedAt = () => now().toISOString();
 
+  /**
+   * 所有终态统一从这里返回，确保配置缺失、状态查询失败、恢复失败等分支
+   * 都先产生一条恢复循环指标，而不是只在成功读到 Management API 状态时可见。
+   */
+  const complete = (
+    httpStatus: number,
+    body: RestoreCycleResult["body"],
+  ): RestoreCycleResult => {
+    hooks.onMetric(body.action, body.projectStatus);
+    return { httpStatus, body };
+  };
+
   if (!ref || !token) {
     const missing = [
       !ref && "SUPABASE_PROJECT_REF/NEXT_PUBLIC_SUPABASE_URL",
@@ -220,10 +234,12 @@ export async function runRestoreCycle(
       .filter(Boolean)
       .join(", ");
     hooks.onWarn("[Ops] Supabase auto-restore skipped: missing configuration", { missing });
-    return {
-      httpStatus: isProduction ? 503 : 200,
-      body: { ok: !isProduction, action: "skipped", reason: missing, checkedAt: checkedAt() },
-    };
+    return complete(isProduction ? 503 : 200, {
+      ok: !isProduction,
+      action: "skipped",
+      reason: missing,
+      checkedAt: checkedAt(),
+    });
   }
 
   const requestOptions = { ref, token, apiBase, fetchImpl };
@@ -232,27 +248,31 @@ export async function runRestoreCycle(
     status = await readProjectStatus(requestOptions);
   } catch (error) {
     await hooks.onError("[Ops] Supabase project status lookup failed", error);
-    return {
-      httpStatus: 502,
-      body: { ok: false, action: "escalate", reason: "status-lookup-failed", checkedAt: checkedAt() },
-    };
+    return complete(502, {
+      ok: false,
+      action: "escalate",
+      reason: "status-lookup-failed",
+      checkedAt: checkedAt(),
+    });
   }
 
   const action = restoreActionFor(classifyProjectStatus(status));
-  hooks.onMetric(action, status);
 
   if (action === "restore") {
     try {
       await triggerProjectRestore(requestOptions);
     } catch (error) {
       await hooks.onError("[Ops] Supabase restore failed", error);
-      return {
-        httpStatus: 502,
-        body: { ok: false, action: "escalate", projectStatus: status, reason: "restore-failed", checkedAt: checkedAt() },
-      };
+      return complete(502, {
+        ok: false,
+        action: "escalate",
+        projectStatus: status,
+        reason: "restore-failed",
+        checkedAt: checkedAt(),
+      });
     }
     hooks.onInfo("[Ops] Supabase restore triggered", { projectStatus: status });
-    return { httpStatus: 200, body: { ok: true, action, projectStatus: status, checkedAt: checkedAt() } };
+    return complete(200, { ok: true, action, projectStatus: status, checkedAt: checkedAt() });
   }
 
   if (action === "escalate") {
@@ -260,17 +280,14 @@ export async function runRestoreCycle(
       "[Ops] Supabase project needs manual intervention",
       new Error(`supabase_project_status_${status}`),
     );
-    return {
-      httpStatus: 503,
-      body: {
-        ok: false,
-        action,
-        projectStatus: status,
-        reason: `unexpected-status:${status}`,
-        checkedAt: checkedAt(),
-      },
-    };
+    return complete(503, {
+      ok: false,
+      action,
+      projectStatus: status,
+      reason: `unexpected-status:${status}`,
+      checkedAt: checkedAt(),
+    });
   }
 
-  return { httpStatus: 200, body: { ok: true, action, projectStatus: status, checkedAt: checkedAt() } };
+  return complete(200, { ok: true, action, projectStatus: status, checkedAt: checkedAt() });
 }

@@ -2686,3 +2686,35 @@
   - 回滚：`git revert aaa3f13` 会恢复内联指标字面量与模块级去重变量、移除邮件未配置样本；不改数据库、外部接口与告警平台配置
 - 下一步：E07 告警阈值与去重（核对该章节承诺与现有告警表/去重规则是否逐条成立，再补真实缺口）
 - 最后更新：2026-09-13
+
+## E07 告警阈值与去重（DONE）
+
+- 状态：DONE（roadmap `docs/roadmap-0.6.0.md` 第 47 项，E 段可观测性与运维）
+- 里程碑与发布目标：M4 J 段之后继续 E 段；不单独升版本，随下一个 minor 里程碑发布
+- 分支 / PR：`feat/visual-regression-baseline`；base `origin/main@15b05ebe8e93725e16698e8b66fc9c43e3733965`；无 PR
+- 本地提交：`<pending>`（fix(observability): make supabase restore cycles countable）+ `<pending>`（docs(progress): record e07 alert threshold contract）
+- 目标：核对「告警阈值与去重」这一章节的承诺是否逐条成立，把文档里的阈值与代码常量钉在一起，并补掉指标层面的告警盲区
+- 已完成：
+  - 审计结论（先验证再动手，避免重复劳动）：`docs/operations/sentry-alerts.md` 的「建议指标告警与去重」表已覆盖比率告警的最小样本量、积压告警的连续轮次/时间窗口与各类抑制规则；两个积压阈值常量（`EMAIL_BACKLOG_ALERT_THRESHOLD` / `PUSH_BACKLOG_ALERT_THRESHOLD`，均为 500）在路由测试里已有「恰好等于阈值不告警」的边界用例。这部分不需要新增代码
+  - 找到真实缺口：`ops.supabase.restore`（由 `/api/ops/supabase-restore` 上报）既没有登记在指标表与告警表里，上报语义本身也是坏的——`value = action === "restore" ? 1 : 0`，于是 `escalate`/`skipped` 的样本值恒为 0，按「计数 > 0」配置的告警永远不会触发；配置缺失分支与状态查询失败分支更是直接 `return`，连一条样本都不产生，兜底层失效在指标上完全不可见
+  - 新增 `src/lib/observability/ops-metrics.ts`：固化 `OPS_SUPABASE_RESTORE_METRIC`、`OPS_SUPABASE_RESTORE_ACTIONS`（`noop`/`restore`/`wait`/`escalate`/`skipped`）与 `OpsSupabaseRestoreAction` 类型；`recordSupabaseRestoreCycle()` 统一上报 `value=1` 的 `count` 样本，`attributes = { action, projectStatus }`，`projectStatus` 去空白后为空则归一化为 `unknown`
+  - `src/lib/ops/supabase-restore.ts`：`RestoreCycleAction` 改为引用 `OpsSupabaseRestoreAction`（避免两处动作集合漂移）；`runRestoreCycle` 内新增 `complete(httpStatus, body)` 出口，**所有**终态（配置缺失 `skipped`、状态查询失败 `escalate`、恢复失败 `escalate`、恢复成功 `restore`、不可恢复/未知 `escalate`、健康 `noop`、中间态 `wait`）都经它返回，先 `hooks.onMetric(body.action, body.projectStatus)` 再返回结果；删除原先只覆盖「读到状态」那条路径的重复内联上报
+  - 关键细节：把动作取值与上报语义都收敛到 `ops-metrics.ts` 后，`complete()` 成为唯一出口，新增分支不会再漏报；路由改成 `recordSupabaseRestoreCycle({ action, projectStatus })`，删除路由里手写的指标名字面量与 0/1 三元表达式
+  - 新增 `src/lib/observability/alert-thresholds.test.ts`：把「文档写的阈值」与「代码里的常量」钉在一起（读取 `docs/operations/sentry-alerts.md`，断言 `email.backlog > 500` / `push.backlog > 500` 与常量一致、两条积压告警都要求「连续 3 轮」窗口），并锁定恢复指标的告警登记（指标表须含 `count` 与 `action` 维度及全部动作取值；`restore`/`escalate`/`skipped` 各有独立告警条件；去重规则须写明每轮恰好一条 `value=1` 样本、按 `action` 分流）
+  - 新增/更新 18 条测试：`ops-metrics.test.ts` 3 条（契约常量、每个动作都上报 `value=1`、`projectStatus` 去空白与 `unknown` 归一化）；`alert-thresholds.test.ts` 6 条；`supabase-restore.test.ts` 改为断言「配置缺失 → `skipped`」「恢复失败 → `escalate`」「状态查询失败 → `escalate`（不再是一条样本都没有）」；路由测试把 6 处指标断言从 0/1 语义改为 `value=1 + attributes`，并为 `skipped` 与 `escalate` 补上可见性断言
+  - 文档同步：`docs/operations/sentry-alerts.md` 指标表新增 `ops.supabase.restore` 行（单位 `count`、维度 `action`/`projectStatus`）、新增「每轮计数而不是状态位」的口径说明、告警表新增「兜底恢复执行 / 兜底层需要人工介入 / 兜底恢复被跳过」三行、去重规则新增按 `action` 聚合并说明 `noop` 是常态不该告警；`CHANGELOG.md` 与 roadmap 同步
+- 变更文件：`src/lib/observability/ops-metrics.ts`、`src/lib/observability/ops-metrics.test.ts`、`src/lib/observability/alert-thresholds.test.ts`、`src/lib/ops/supabase-restore.ts`、`src/lib/ops/supabase-restore.test.ts`、`src/app/api/ops/supabase-restore/route.ts`、`src/app/api/ops/supabase-restore/route.test.ts`、`docs/operations/sentry-alerts.md`、`CHANGELOG.md`、`docs/roadmap-0.6.0.md`
+- 验证命令与结果（提交 `<pending>`）：
+  - `pnpm vitest run src/lib/observability/ops-metrics.test.ts src/lib/observability/alert-thresholds.test.ts src/lib/ops/supabase-restore.test.ts src/app/api/ops/supabase-restore/route.test.ts` → ✅ 4 文件 / 42 测试通过
+  - `pnpm lint`、`pnpm type-check` → ✅ 无告警
+  - `pnpm check:changelog` → ✅ 结构合法（10 个已发布版本 / 1 个 Unreleased）
+  - `pnpm check:all` → ✅ 163 文件 / 1834 测试通过（较 E06 新增 2 文件 / 10 测试），全部门禁绿色（30 个门禁：本地 27 / CI 28 / 豁免 3；trace 覆盖 45 边界 / 26 带 trace 入口 / 0 豁免；cron 契约 2 worker / 9 指标 / 2 平台级豁免）
+  - `pnpm verify:build` → ✅ 类型、lint、测试、bundle 与生产构建全部通过（保留上游 shadcn 基元的 25 处 v3 类名非阻断告警）
+- 阻塞：无
+- 风险与回滚：
+  - 风险：`ops.supabase.restore` 的 `value` 从「restore=1，其余=0」改为「所有动作恒为 1」，任何按 `value` 求和判断恢复次数的既有看板都会失真；运维文档已明确「只用 `action` 分流、禁止再按 0/1 判断故障」，需要在仪表盘上按新口径重建查询
+  - 风险：新增的 `skipped` 告警在生产缺配置时每天触发一次；这是**期望行为**（兜底层静默失效必须可见），但要求部署环境的 `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_REF` 已配置，否则会引入持续告警噪声
+  - 风险：`alert-thresholds.test.ts` 以文本方式解析运维文档，文档表格被重写（而非数值变更）时可能误报；这是有意的取舍——它只在阈值或关键措辞被改动时失败，属于「需要人工确认」的信号
+  - 回滚：`git revert <pending>` 会恢复 0/1 语义、移除配置缺失/状态查询失败的样本、删除两个新测试文件与运维文档条目；不改数据库、外部接口与告警平台配置，回滚后需同步撤回仪表盘查询改动
+- 下一步：E09 运维 runbook 与故障演练（E 段仅剩该项；先审计 `docs/operations/` 现有 runbook 与是否已有演练记录，再决定补哪一层）
+- 最后更新：2026-09-13

@@ -58,10 +58,13 @@
 | `push.queue.prune_failed` | `count` | `error_type` | 每轮 push-retry 保留策略清理失败 |
 | `cron.push-retry.completed` | `ms` | `pulled`, `sent`, `retried`, `dead`, `revoked` | 每轮 push-retry 成功结束 |
 | `cron.push-retry.failed` | `count` | `error_type` | 每轮 push-retry 未处理异常 |
+| `ops.supabase.restore` | `count` | `action`, `projectStatus` | 每轮兜底恢复检查结束；`action` ∈ `noop`/`restore`/`wait`/`escalate`/`skipped`，每个终态恰好一条 `value=1` 样本（`projectStatus` 未知时为 `unknown`） |
 
 两层上传指标分工明确：`storage.upload.completed` 只覆盖 provider 的对象写入，反映 OSS/Supabase 自身健康度；
 `upload.request.completed` 覆盖整条链路（provider 写入 → 元数据回写 → 失败回滚），因此「写入成功但元数据回写失败并已回滚」
 这类用户可见失败只出现在后者。两者的指标名与维度取值都来自 `src/lib/observability/storage-metrics.ts`，不要在调用点手写字面量。
+
+`ops.supabase.restore` 是**每轮计数**而不是状态位：早期实现把 `action=restore` 写成 1、其余写成 0，导致 `escalate`/`skipped` 的样本值恒为 0，按「计数 > 0」配置的告警永远不会触发；配置缺失与状态查询失败更是直接返回、一条样本都不产生。现在所有终态都经由 `src/lib/observability/ops-metrics.ts` 上报 `value=1`，用 `action` 维度区分正常轮次与故障轮次。
 
 指标会丢弃名称为敏感维度的字段（如 `token`、`secret`、`email`、`userId`），并截断过长值；业务代码不得把 URL、邮箱正文或凭据放进 attributes。
 
@@ -100,6 +103,9 @@
 | Push 失效端点激增 | `push.endpoint.revoked > 10`，1 小时窗口 | 检查浏览器订阅生命周期与 push service 状态码 |
 | Push 死信激增 | `push.delivery.dead > 20`，1 小时窗口 | 按 `reason` 区分瞬时上游故障与永久配置问题 |
 | Push 队列清理失败 | `push.queue.prune_failed > 0`，15 分钟窗口 | 检查 Supabase 删除权限、连接与表锁；投递不受影响但队列会继续增长 |
+| 兜底恢复执行 | `ops.supabase.restore{action="restore"} > 0`，立即 | 记录恢复时刻；再回溯保活为何失效（`/api/health`、GitHub Actions 探测是否中断） |
+| 兜底层需要人工介入 | `ops.supabase.restore{action="escalate"} > 0`，立即 | 状态查询失败 / 恢复调用失败 / 不可恢复状态；按 `projectStatus` 与结构化错误日志定位 |
+| 兜底恢复被跳过 | `ops.supabase.restore{action="skipped"} > 0`，立即 | 生产环境缺 `SUPABASE_ACCESS_TOKEN` 或 `SUPABASE_PROJECT_REF`/`NEXT_PUBLIC_SUPABASE_URL`，兜底层已静默失效 |
 | Cron 鉴权持续被拒 | `cron.auth.rejected{reason="secret_unconfigured"} > 0` 立即；`reason` 为 `missing_credentials` / `invalid_credentials` 连续 3 轮 | 先补/轮换部署环境的 `CRON_SECRET`，再确认调度器是否携带 `Authorization: Bearer` |
 
 去重规则：
@@ -114,6 +120,7 @@
   缺失集合变化（例如从缺三项变成缺两项）重新上报，配置补齐后重置，之后再次降级仍会上报。
   Serverless 冷启动可能跨实例重复，日志平台应再按 `name + attributes.reason + attributes.missing` 聚合，并设置至少 30 分钟恢复窗口。
   注意「OSS 四项全空」是默认驱动而非降级，永远不会出现在这条指标里——只有「想用 OSS 却配了一半」才告警。
+- `ops.supabase.restore` 每轮恰好一条样本，按 `action` 上报（`noop` 是常态，不要对它告警）；`value` 恒为 `1`，只用 `action` 分流，禁止再按 `value` 的 0/1 判断故障。该指标每轮最多一条、平台级 cron 每天一轮，本身不需要抑制窗口：只对 `restore`/`escalate`/`skipped` 三类稀疏动作告警，同一动作连续多天出现时按天聚合计数，避免把「一天恢复一次」当成持续事故。
 - `email.send.completed{reason="not-configured"}` 属于配置缺陷而不是上游故障：它会按每封邮件尝试计数（摘要轮次里可能一次几十条），
   只用于「provider 没配上」的即时可见性，告警规则按 `provider + reason` 聚合，不要用它与上游失败率共用同一抑制策略。
 - 所有比率告警都设置最小样本量，避免低流量误报；阈值变更须在发布记录中说明并观察一个完整业务周期。
