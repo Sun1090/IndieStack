@@ -1,3 +1,12 @@
+## 2026-09-19 — 修复分片 E2E 的分支保护上下文
+
+- 状态：DONE；分支 `feat/ops-observability-milestone`。
+- GitHub 将 matrix job 展开为 `E2E (Playwright) (1/2)`，无法满足分支保护要求的稳定 `E2E (Playwright)` context，导致所有 shard 成功后 PR 仍不可合并。
+- 将执行 job 明确命名为 `E2E shard ${{ matrix.shard }}`，新增依赖全部 shard 的 `E2E (Playwright)` 聚合门禁；任一 shard 失败或取消时聚合门禁失败。
+- 同步 `src/lib/testing/e2e-shard-policy.test.ts`，锁定稳定 context 与依赖关系。
+- 验证：`pnpm vitest run src/lib/testing/e2e-shard-policy.test.ts`（3 tests）、`pnpm check:workflows`（8 workflows / 13 jobs / 37 actions）、`git diff --check`，全部通过。
+- 风险 / 回滚：仅改变 CI context 聚合，不削弱 shard 测试；回滚可撤销本提交。
+
 # Project Progress
 
 ## 当前阶段

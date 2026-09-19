@@ -8,10 +8,15 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(REPO_ROOT, relativePath), "utf8");
 }
 
-function e2eJob(workflow: string): string {
-  const match = /^  e2e:\n([\s\S]*?)(?=^  [a-z][a-z0-9-]*:\n|$(?![\s\S]))/m.exec(workflow);
-  if (!match) throw new Error("ci.yml 中找不到 e2e job");
+function workflowJob(workflow: string, id: string): string {
+  const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`^  ${escapedId}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|$(?![\\s\\S]))`, "m").exec(workflow);
+  if (!match) throw new Error(`ci.yml 中找不到 ${id} job`);
   return match[0];
+}
+
+function e2eJob(workflow: string): string {
+  return workflowJob(workflow, "e2e");
 }
 
 describe("E2E shard policy", () => {
@@ -32,7 +37,11 @@ describe("E2E shard policy", () => {
     expect(job).toContain("name: playwright-report-shard-${{ matrix.shard }}");
   });
 
-  it("keeps the E2E job name stable for release checklist wiring", () => {
-    expect(job).toContain("name: E2E (Playwright)");
+  it("aggregates matrix shards into the stable branch-protection context", () => {
+    expect(job).toContain("name: E2E shard ${{ matrix.shard }}");
+    const gate = workflowJob(workflow, "e2e-gate");
+    expect(gate).toContain("name: E2E (Playwright)");
+    expect(gate).toContain("needs: [e2e]");
+    expect(gate).toContain('run: test "$E2E_RESULT" = "success"');
   });
 });

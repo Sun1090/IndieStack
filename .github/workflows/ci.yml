@@ -223,7 +223,7 @@ jobs:
         run: pnpm --filter indiestack-docs build
 
   e2e:
-    name: E2E (Playwright)
+    name: E2E shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [lint-and-type-check]
@@ -278,3 +278,17 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  # Branch protection requires one stable, non-matrix context. Matrix job names
+  # receive a shard suffix on GitHub, so aggregate both shards into this gate.
+  e2e-gate:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [e2e]
+    steps:
+      - name: Require every E2E shard to pass
+        env:
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: test "$E2E_RESULT" = "success"
