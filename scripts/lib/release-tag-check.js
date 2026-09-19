@@ -59,6 +59,20 @@ export function parseReleaseTagArgs(argv) {
   return options;
 }
 
+function resolveNotesOutput(repoRoot, notesOutput) {
+  const outputPath = path.resolve(repoRoot, notesOutput);
+  const relativeOutputPath = path.relative(repoRoot, outputPath);
+  if (
+    path.isAbsolute(notesOutput) ||
+    relativeOutputPath === "" ||
+    relativeOutputPath.startsWith(`..${path.sep}`) ||
+    relativeOutputPath === ".."
+  ) {
+    return null;
+  }
+  return outputPath;
+}
+
 function usage() {
   return [
     "Usage: pnpm check:release-tag [--tag vX.Y.Z] [--notes-output FILE]",
@@ -107,14 +121,8 @@ export function runReleaseTagCheck(argv = [], repoRoot = REPO_ROOT) {
   }
 
   if (options.notesOutput) {
-    const outputPath = path.resolve(repoRoot, options.notesOutput);
-    const relativeOutputPath = path.relative(repoRoot, outputPath);
-    if (
-      path.isAbsolute(options.notesOutput) ||
-      relativeOutputPath === "" ||
-      relativeOutputPath.startsWith(`..${path.sep}`) ||
-      relativeOutputPath === ".."
-    ) {
+    const outputPath = resolveNotesOutput(repoRoot, options.notesOutput);
+    if (!outputPath) {
       console.error("❌ Release Notes 输出必须是仓库内的相对文件路径");
       return 2;
     }
