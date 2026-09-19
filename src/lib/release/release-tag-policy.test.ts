@@ -353,6 +353,13 @@ describe("release tag CLI", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("release-notes.md"));
   });
 
+  it("rejects release notes paths outside the repository", () => {
+    const root = writeRepo();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(runReleaseTagCheck(["--notes-output", "../release-notes.md"], root)).toBe(2);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("仓库内"));
+  });
+
   it("returns 1 for a tag/version mismatch without writing notes", () => {
     const root = writeRepo();
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);

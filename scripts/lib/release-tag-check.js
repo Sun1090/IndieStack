@@ -108,8 +108,18 @@ export function runReleaseTagCheck(argv = [], repoRoot = REPO_ROOT) {
 
   if (options.notesOutput) {
     const outputPath = path.resolve(repoRoot, options.notesOutput);
+    const relativeOutputPath = path.relative(repoRoot, outputPath);
+    if (
+      path.isAbsolute(options.notesOutput) ||
+      relativeOutputPath === "" ||
+      relativeOutputPath.startsWith(`..${path.sep}`) ||
+      relativeOutputPath === ".."
+    ) {
+      console.error("❌ Release Notes 输出必须是仓库内的相对文件路径");
+      return 2;
+    }
     try {
-      fs.writeFileSync(outputPath, report.notes?.body ?? "", "utf8");
+      fs.writeFileSync(outputPath, report.notes?.body ?? "", { encoding: "utf8", flag: "w" });
     } catch (error) {
       console.error(`❌ 无法写入 Release Notes：${error.message}`);
       return 2;

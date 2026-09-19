@@ -115,7 +115,7 @@ const JOB_KEY = /^ {4}([a-z-]+):\s*(.*)$/;
 const USES_LINE = /^\s*(?:-\s*)?uses:\s*(\S+)\s*$/gm;
 // 只承认同一行内的 `pnpm <script>`：`\s` 会跨行，把 `- name: Setup pnpm` 后面那行
 // 的 `uses:` 当成脚本名校验，产生假阳性。
-const PNPM_SCRIPT = /pnpm[ \t]+(?:--?[a-zA-Z-]+[ \t]+)*([a-z][a-z0-9:._-]*)/g;
+const PNPM_COMMAND = /pnpm[ \t]+([^\r\n]+)/g;
 const PINNED_REF = /@(?:v\d+(?:\.\d+){0,2}|[0-9a-f]{40})$/;
 const FORBIDDEN_REFS = new Set(["main", "master", "latest", "head", "develop"]);
 
@@ -383,9 +383,10 @@ function auditScripts(
   scripts: Readonly<Record<string, string>>,
   issues: WorkflowIssue[],
 ): void {
-  for (const match of workflow.content.matchAll(PNPM_SCRIPT)) {
-    const script = match[1];
-    if (!script.includes(":")) continue;
+  for (const match of workflow.content.matchAll(PNPM_COMMAND)) {
+    const tokens = match[1].trim().split(/[ \t]+/);
+    const script = tokens.find((token) => !token.startsWith("-"));
+    if (!script?.includes(":")) continue;
     if (script in scripts) continue;
     issues.push({
       code: "SCRIPT_UNKNOWN",
