@@ -127,7 +127,7 @@ export function runReleaseTagCheck(argv = [], repoRoot = REPO_ROOT) {
       return 2;
     }
     try {
-      fs.writeFileSync(outputPath, report.notes?.body ?? "", { encoding: "utf8", flag: "w" });
+      fs.writeFileSync(outputPath, report.notes?.body ?? "", { encoding: "utf8", flag: "wx", mode: 0o600 });
     } catch (error) {
       console.error(`❌ 无法写入 Release Notes：${error.message}`);
       return 2;
