@@ -18,6 +18,12 @@ All notable changes to IndieStack will be documented in this file.
   24 条单测覆盖（含真实仓库反例：删掉 `projectNotFound` 文案、还原修复前的裸渲染调用点），
   接入 `pnpm check:all` 与 CI，并登记进贡献者测试矩阵的 `i18n` 领域。
 
+- **语言切换的中文渲染端到端验证（D06）**：`e2e/smoke.spec.ts` 原有的两条断言只覆盖「键盘能打开菜单」
+  与「切到 English 后写入 `app-locale` cookie」，而 English 本来就是默认语言——即使 zh-CN 消息完全
+  加载失败，页面也会安静地退回英文或键名，两条断言照样通过。新增一条把 `简体中文` 选到底：断言 cookie
+  值为 `zh-CN`、`<html lang>` 跟着变、首屏 Badge 渲染出 `生产就绪的 SaaS 启动模板` 且英文原文不再出现。
+  这是全仓库第一条真正验证「中文用户看到中文」的 E2E。
+
 ### Fixed
 
 - **四处调用点把内部错误码当文案渲染**：`contact-form`、`project-settings-form`、
