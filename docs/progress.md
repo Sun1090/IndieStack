@@ -1,3 +1,27 @@
+## 2026-09-22 — H08 账户数据擦除与保留期收口
+
+- 里程碑 / 版本：v0.6.0 任务池 H08（+H07 补记）；变更计入 CHANGELOG `[Unreleased]`，随 v0.10.0 之后发布，本次不涉及版本号或 tag。
+- 状态：DONE（本地实现、真实数据库演练、契约测试、UI 与 E2E 全部通过；生产侧 pg_cron 启用仍是外部运维项）。
+- 分支 / commit：`feat/db-retention-and-erasure`，基线 `origin/main` `d4971e8`；
+  `4b762ae` feat(db)（迁移 032 + `src/lib/privacy/data-policy.ts` 契约与 40 条测试 + retention 文档）、
+  `cf589ef` feat(app)（擦除仓库 / 删除编排 / action / 危险区域 UI / Mock 镜像 / 边界清单 / 5 条 E2E）、
+  `28f48a8` docs(docs)（CHANGELOG、roadmap、docs/testing、mock 文档三处、security-audit 清点数字）。
+- 完成内容：
+  - 查实并修复一条**隐私承诺与实现不一致**的缺陷：`messages/<locale>/privacy.json` 承诺删号后 30 天内删除或匿名化个人数据，而删除链路只有外键级联。`api_usage`（含 `ip_address`）与 `audit_logs` 是 `on delete set null`，删号后行仍带 PII；`contact_messages` 按裸邮箱存储、无外键，永远清不掉。设置页的「危险区域」此前只有 i18n 文案、没有实现（`settings.sections.danger.*` 是 6 个孤儿键）。
+  - 迁移 `032_data_retention_erasure.sql`：`erase_user_data(uuid)`（删 API 使用记录、按邮箱删除联系内容、匿名化审计行——置空 `user_id` 与指向本人的 `entity_id`、`metadata` 剔除 PII 键但保留 `action`/`entity_type`/`created_at` 行为事实，返回 `jsonb` 计数）；三条保留期 `cleanup_old_api_usage()` 90 天 / `prune_deleted_upload_objects()` 30 天 / `cleanup_resolved_contact_messages()` 365 天（`new`/`in_progress` 联系内容与 `active` 上传元数据永不清理）；两个局部索引；四个函数建函数即收回 `PUBLIC`/`anon`/`authenticated` 的 `EXECUTE`，只授 `service_role`（不再依赖 028 式的事后补刀）。
+  - 应用侧顺序固化为**先擦除、再删号**：`src/lib/account/deletion.ts` 擦除失败即中止（可重试、不留无法补救的状态），删号后的审计补记失败只记日志（不回滚既成事实）；`DELETE /api/user` 改为复用该编排，新增 `deleteAccountAction`（限频 + 会话归属 + 服务端独立校验确认短语 `delete`/「删除」），`DeleteAccountSection` 两步确认并消费此前悬空的 danger 文案。
+  - 契约层：`src/lib/privacy/data-policy.ts` 是保留天数 / cron 任务名 / 擦除数据面 / PII 键 / 确认短语的单一事实来源；`data-policy.test.ts`（40 条）把它与迁移 SQL 函数体与调度、撤权回授、`docs/db/retention.md` 表格行、双语界面提示、生成的 `database.types.ts` 双向钉死。
+  - Mock 与测试：`src/lib/mock/index.ts` 的 `rpc()` 镜像同一套擦除语义（大小写与空白不敏感的邮箱匹配、审计匿名化、幂等、缺 id 报错），避免 mock 比真实库更宽松；新增 22 条单测 + 5 条 Playwright 用例；`admin-client-boundary` 清单同步（31 模块 / 84 调用点），两处漂移门禁（runbook latest、调用点预算）按新事实更新。
+  - 查实一条**运维事实**：本地库与云端项目 `ntqggnztzvoavjbiillb` 的 `pg_extension` 都没有 `pg_cron`，`cron.job` 关系不存在，因此 `003`/`014`/`027`/`032` 的全部每周清理**从未真正执行过**——保留期此前只是文档承诺。已在 `docs/db/retention.md` 用专门小节写明「未安装即静默跳过、迁移照样成功、健康检查不报错」，并给出启用前后的 SQL 复核清单；`erase_user_data()` 由应用侧同步调用，不受该缺失影响。
+- 变更文件：35 个（迁移 / manifest / types / 契约模块 / 仓库 / 编排 / action / 路由 / UI / Mock / 4 份文档 / 双语 messages / E2E）。
+- 验证命令与结果：`pnpm verify:build` 通过（lint、type-check、check-locales、`pnpm test` 169 文件 / 1917 用例、check:bundle、`next build`）；`pnpm check:all` 全部通过（含 `check:migrations` 32 条、`check:rls`、`check:supabase-security` 31 个已分类调用点、`check:migration-runbook` 最新 `032_data_retention_erasure.sql`、`check:mock-docs`、`check:test-matrix`、`check:changelog`）；`npx supabase db push --local` 应用 032 成功；真实库场景演练（事务内造用户 + 三类数据 → `erase_user_data` → 断言 → `rollback`）：`{"apiUsage":1,"contactMessages":1,"auditLogsAnonymized":2}`，他人联系内容保留、审计行保留但 `user_id`/`entity_id`/PII 键全部消失、二次调用计数归零、`erase_user_data(null)` 报 `requires a user id`；权限矩阵 `anon=f / authenticated=f / service_role=t`；`pnpm exec playwright test e2e/account-deletion.spec.ts` 5/5 通过，整套 E2E 91 用例通过。
+- 事故记录（务必避免重复）：本次验证 032 时执行 `npx supabase db push` **未加 `--local`**，CLI 连接的是链接的云端项目并对非交互提示自动确认，导致 `025`–`032` 一次性应用到云端库。`025`–`031` 是仓库早已提交的迁移（云端此前停留在 024，属真实漂移），`032` 为纯新增（函数 + 局部索引 + 被守卫跳过的调度），因此无数据删除、无破坏性变更；事后 `pg_extension` 复核确认云端无 pg_cron、`production smoke` 复核仍为 5/6（唯一失败是既有的 `version=0.6.0` 期望 `0.10.0`，`/api/health` 三次直连均 200）。**结论：本机对 Supabase 的任何 push 必须显式 `--local`，云端 schema 变更属于需确认的共享系统操作。**
+- 阻塞：无代码/测试阻塞。v0.10.0 发布仍被外部权限阻塞（应用生产未部署当前 `main`，需要 Vercel 生产部署凭据）；pg_cron 启用需要 Supabase Dashboard 权限，本仓库无法代办。
+- 风险 / 回滚：`032` 已在本地与云端应用，纯新增、可前向修复（新增 `033_...` 停用函数或删索引），不需要也不应该删历史迁移；运行时代码只在删号路径上多了一次擦除，失败即中止（保守方向）；危险区域 UI 的删除入口对已登录用户可见，服务端仍要求会话 + 确认短语。回滚为撤销上述三个提交。
+- 下一项：D 域（D01 术语表、D02/D03 翻译完整性扫描含未翻译值检测、D04 next-intl missing-key 构建门禁、D08 RTL 评估）；以及 `check:migration-history` 无法覆盖的云端漂移——需要一个只读门禁比对仓库 manifest 与目标库已应用版本，作为发布前置检查。
+- 更新时间：2026-09-22T00:59:00+08:00。
+
+
 ## 2026-09-21 — PR #36 / 生产部署阻塞二次复核
 
 - 状态：BLOCKED（无代码/测试阻塞；发布仍被外部权限阻塞）。
