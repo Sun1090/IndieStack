@@ -44,7 +44,7 @@ export function StatsCard({
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
             {trend && (
               <span
-                className={cn("font-medium", trend.positive ? "text-success" : "text-destructive")}
+                className={cn("font-medium", trend.positive ? "text-success" : "text-destructive-text")}
               >
                 {trend.positive ? "+" : ""}
                 {trend.value}%

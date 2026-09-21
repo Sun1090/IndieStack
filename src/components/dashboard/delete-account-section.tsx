@@ -44,7 +44,7 @@ export function DeleteAccountSection() {
   return (
     <Card className="border-destructive">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-destructive">
+        <CardTitle className="flex items-center gap-2 text-destructive-text">
           <AlertTriangle className="h-5 w-5" />
           {t("title")}
         </CardTitle>
@@ -88,7 +88,7 @@ export function DeleteAccountSection() {
         )}
 
         {error && (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="text-sm text-destructive-text" role="alert">
             {error}
           </p>
         )}

@@ -136,7 +136,7 @@ export function TwoFactorSection() {
                 {t("disable")}
               </Button>
             </form>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive-text">{error}</p>}
             <RecoveryCodesSection />
           </>
         ) : step === "idle" ? (
@@ -145,7 +145,7 @@ export function TwoFactorSection() {
             <Button onClick={startEnroll} disabled={pending}>
               {t("start")}
             </Button>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive-text">{error}</p>}
           </>
         ) : (
           <div className="space-y-4">
@@ -184,7 +184,7 @@ export function TwoFactorSection() {
                 {tc("cancel")}
               </Button>
             </form>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive-text">{error}</p>}
           </div>
         )}
       </CardContent>
@@ -269,7 +269,7 @@ function RecoveryCodesSection() {
           </Button>
         </>
       )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-destructive-text">{error}</p>}
     </div>
   );
 }
