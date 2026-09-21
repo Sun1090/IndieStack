@@ -25,6 +25,7 @@
     "check:docs": "node scripts/check-docs-scripts.js",
     "check:a11y": "node scripts/check-a11y.js",
     "check:action-errors": "node scripts/check-action-errors.js",
+    "check:glossary": "node scripts/check-glossary.js",
     "dep:health": "node scripts/dep-health.js",
     "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
     "check:all": "bash scripts/check-all.sh",

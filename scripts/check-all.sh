@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 echo "==> check:locales"; pnpm --silent check:locales
 echo "==> check:i18n";   pnpm --silent check:i18n
 echo "==> check:action-errors"; pnpm --silent check:action-errors
+echo "==> check:glossary"; pnpm --silent check:glossary
 echo "==> check:agents"; pnpm --silent check:agents
 echo "==> check:rls";    pnpm --silent check:rls
 echo "==> check:migrations"; pnpm --silent check:migrations
