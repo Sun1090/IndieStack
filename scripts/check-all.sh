@@ -14,6 +14,7 @@ echo "==> check:release-docs"; pnpm --silent check:release-docs
 echo "==> check:changelog";    pnpm --silent check:changelog
 echo "==> check:gates";        pnpm --silent check:gates
 echo "==> check:workflows";  pnpm --silent check:workflows
+echo "==> check:production-smoke"; pnpm --silent check:production-smoke
 echo "==> check:codeql";     pnpm --silent check:codeql
 echo "==> check:secrets-scan"; pnpm --silent check:secrets-scan
 echo "==> check:trace-coverage"; pnpm --silent check:trace-coverage

@@ -18,6 +18,8 @@ on:
         required: true
         default: "10000"
         type: string
+  schedule:
+    - cron: "17 2 * * *"
 
 permissions:
   contents: read
@@ -56,6 +58,37 @@ jobs:
           pnpm smoke:production -- "${args[@]}"
 
       - name: Upload smoke evidence
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: production-smoke-evidence
+          path: production-smoke.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  smoke-main:
+    name: Daily production version drift check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check production version drift
+        run: node scripts/check-production-version.js --base-url https://indie-stack-theta.vercel.app
+
+      - name: Upload drift evidence
         uses: actions/upload-artifact@v7
         if: always()
         with:

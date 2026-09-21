@@ -22,6 +22,7 @@
 - [ ] CI 工作流全绿：`CI`（`Lint & Type Check` / `Unit Tests` / `Build` / `Build Docs Site` / `E2E (Playwright)`）、`CodeQL`、`Secrets Scan`、`Security and configuration checks`
 - [ ] 覆盖率门禁未降低（statements/functions/lines ≥ 90%、branches ≥ 90%）
 - [ ] `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version "$EXPECTED_APP_VERSION" --output production-smoke.json` 通过，或 `Production Smoke` workflow 成功并保留 30 天 artifact
+- [ ] `Production Smoke` workflow 的定时漂移检测 `smoke-main` 为通过（期望版本来自 `package.json`；失败表示生产部署落后，禁止发布）
 - [ ] RLS 回归脚本通过；`pnpm audit` 无高危
 
 ## 打标签

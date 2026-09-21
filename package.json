@@ -51,6 +51,7 @@
     "check:adr": "node scripts/check-adr.js",
     "check:gates": "node scripts/check-gates.js",
     "check:workflows": "node scripts/check-workflows.js",
+    "check:production-smoke": "node scripts/check-production-smoke.js",
     "check:codeql": "node scripts/check-codeql.js",
     "check:secrets-scan": "node scripts/check-secrets-scan.js",
     "check:trace-coverage": "node scripts/check-trace-coverage.js",
