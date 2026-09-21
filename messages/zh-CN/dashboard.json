@@ -181,7 +181,7 @@
         "signOutOthersDone": "其他设备已登出。",
         "currentSession": "当前会话：{email} · 上次登录 {time}",
         "devicesTitle": "登录设备",
-        "devicesDesc": "当前登录本账号的设备；吊销后该设备将被登出。",
+        "devicesDesc": "当前登录本账户的设备；吊销后该设备将被登出。",
         "devicesEmpty": "暂无其他设备记录。",
         "currentDevice": "当前设备",
         "lastSeen": "最后活跃",
@@ -216,7 +216,7 @@
       "role": "角色",
       "actions": "操作",
       "roles": {
-        "owner": "拥有者",
+        "owner": "所有者",
         "admin": "管理员",
         "member": "成员",
         "viewer": "查看者"
