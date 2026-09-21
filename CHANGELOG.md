@@ -204,6 +204,16 @@ All notable changes to IndieStack will be documented in this file.
   （含复现修复前真实值的反例：`"Security"`、`deleteProjectNotFound = "projectNotFound"`、数组里的英文），
   抽不到值 / 未登记 locale / 登记项过期同样失败。
 
+- **术语一致性门禁与中英术语表（D01）**：值审计能挡住「没翻」，挡不住「翻得不一致」——
+  同一个团队角色在成员列表里叫「拥有者」、在错误提示里叫「所有者」（都是 `owner`），两侧键对称、
+  两边都有汉字，值审计完全无感。新增 `pnpm check:glossary`：按「英文侧命中术语 → 中文侧不得用禁止变体」判定，
+  且只有当指定译法**缺席**时才算违规——一句话可以同时翻译两个不同概念
+  （`notification preferences and alerts` → 「通知偏好和提醒」，「提醒」译的是 `alerts`，不是漂移）。
+  术语表 14 项，逐项按当前文案实测过；`docs/architecture/10-i18n.md` 的表格与代码里的 `GLOSSARY`
+  必须**双向逐字相等**，文档不能比规则更宽或更旧。失败封闭：一条术语都没命中、术语条目从未被用到（僵尸规则）、
+  豁免不再命中同样失败。按英文原值逐条核对全库后，真正的漂移只有两处——`devicesDesc` 的「账号」与
+  团队角色的「拥有者」，已统一为「账户」「所有者」；门禁首轮 271 次 (键, 术语) 比对、0 违规、0 豁免。
+
 - **语言切换的中文渲染端到端验证（D06）**：`e2e/smoke.spec.ts` 原有的两条断言只覆盖「键盘能打开菜单」
   与「切到 English 后写入 `app-locale` cookie」，而 English 本来就是默认语言——即使 zh-CN 消息完全
   加载失败，页面也会安静地退回英文或键名，两条断言照样通过。新增一条把 `简体中文` 选到底：断言 cookie
