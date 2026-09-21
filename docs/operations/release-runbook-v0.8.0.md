@@ -54,7 +54,7 @@ pnpm check:migration-history     # 本地 Supabase 迁移历史（需先 `pnpm e
 
 1. **新增迁移**：本版本新增 `026_push_delivery_attempts.sql`（纯新增表，不改动既有列）。发布前必须让
    `pnpm check:migrations` 与 `pnpm check:migration-history` 通过；迁移只能追加，不可改写 025 及更早的基线。
-2. **新 cron 任务**：`vercel.json` 新增 `/api/cron/push-retry`（`*/15 * * * *`）。部署平台必须存在
+2. **新 cron 任务**：`vercel.json` 新增 `/api/cron/push-retry`（`0 22 * * *`，受 Vercel Hobby 每日一次限制约束）。部署平台必须存在
    `CRON_SECRET`，否则该路由与 digest/restore 一样返回 401；Vercel Cron 会自动附加
    `Authorization: Bearer`。缺少 `CRON_SECRET` 时推送重试不会执行，pending 行会在队列中累积。
 3. **VAPID 凭证**：与 v0.7.0 相同，必须设置 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`。

@@ -41,7 +41,7 @@ CRON_SECRET=replace-with-a-random-secret
 Worker 会折叠大量同类型通知并限制正文明细数量，避免邮件随队列无限膨胀；同时输出积压量和运行
 指标供运维监控。
 
-请使用外部调度器每小时调用一次，让所有支持的时区都能命中各自本地 08:00。仓库中的 Vercel cron
+请使用外部调度器每天 09:00 UTC 调用一次；Hobby plan 每天最多运行一次，无法逐小时触发。仓库中的 Vercel cron
 没有调度该 digest 路由。
 
 ## 偏好与重试

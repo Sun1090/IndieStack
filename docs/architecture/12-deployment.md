@@ -167,6 +167,16 @@ chore: 构建/工具
 | 单元测试 | `pnpm test` | CI |
 | 构建 | `pnpm build` | CI |
 
+
+## 生产 Smoke 与版本漂移检测
+
+`Production Smoke` workflow 提供两类无副作用证据：
+
+- `workflow_dispatch` 的手动 `smoke` 作业：发布负责人显式传入生产 URL、期望版本和超时，生成 `production-smoke.json` 并保留 30 天 artifact。
+- `schedule` 的定时 `smoke-main` 作业：每日 UTC 02:17 从 `package.json` 读取期望版本，探测固定生产 URL，发现生产部署落后于仓库版本时失败并保留同一证据文件。
+
+定时检查只检测 drift，不能替代发布前的完整手工证据；发布仍必须取得目标版本的 6/6 通过记录，并在 `.github/RELEASE_CHECKLIST.md` 与 `docs/operations/production-smoke-v<version>.md` 中填写时间和证据路径。
+
 ## 文档站部署
 
 ```mermaid

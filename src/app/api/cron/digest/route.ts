@@ -1,12 +1,12 @@
 /**
  * 通知邮件 Worker（cron）
- * 由 Vercel Cron 每小时整点调度（见 `vercel.json` 与注册表
+ * 由 Vercel Cron 每天 09:00 UTC 调度（见 `vercel.json` 与注册表；Hobby 每日最多一次
  * `src/lib/observability/cron-contract.ts`）；拉取待发邮件通知，按用户偏好与时区过滤后统一发送。
  *
  * POST /api/cron/digest
  * Header: x-cron-secret = ***.CRON_SECRET
  *
- * v0.5.0：按用户时区错峰——仅发送处于本地 08:00 的用户（建议 cron 每小时调度）；
+ * v0.5.0：按用户时区错峰——仅发送处于本地 08:00 的用户；当前 Hobby 每日 09:00 UTC 调度，时区命中由下一次可调度时间兜底；
  * 单用户发送失败累加重试计数，达到上限由拉取侧死信过滤，不阻断整轮。
  */
 

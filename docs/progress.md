@@ -1,3 +1,37 @@
+## 2026-09-21 — 修复 Vercel Hobby Cron 部署阻塞
+
+- 状态：DONE（已解除 PR #32 的 `Vercel – indie-stack` failure；生产应用部署仍阻塞在版本漂移）。
+- 失败原因：`vercel.json` 同时注册 `/api/cron/digest` 与 `/api/cron/push-retry`，Hobby 账号不允许任何路径每天运行超过一次，部署预览直接失败。
+- 修复：保留 digest 每天 09:00 UTC，将 push-retry 收敛为每天 22:00 UTC；新增 `isValidVercelHobbyCronSchedule` 与 `countCronRunsPerDay`，由 `pnpm check:cron-contract` 在部署前拒绝多次/天表达式。
+- 风险：push 重试延迟从 15 分钟提升到最多 24 小时；在 Hobby plan 不变的前提下，这是让应用部署可推进的必要折中。Pro plan 解锁后应恢复更高频重试并调整契约。
+- 验证：`pnpm vitest run src/lib/observability/cron-contract.test.ts src/lib/observability/cron-contract-check.test.ts`、`pnpm check:cron-contract`、`pnpm lint`、`pnpm type-check`、`pnpm test`、`pnpm build`、`pnpm check:release-docs`、`pnpm check:changelog`、`pnpm check:docs`、`pnpm check:adr`、`pnpm check:workflows`、`pnpm check:gates`、`pnpm check:production-smoke`、`pnpm audit --audit-level high`、`git diff --check` 均通过。
+## 2026-09-21 — Production Smoke 定时漂移检测
+
+- 状态：DONE（本地代码/门禁完成；v0.10.0 发布仍被生产部署版本阻塞）。
+- 当前 `main`：`0dc9c6b0626c3fa07495fa6f679c8e1c43fb7f79`；当前工作分支：`chore/release-v0.10-production-evidence`。
+- 新增 `pnpm check:production-smoke` 与 `scripts/check-production-version.js`，将 `.github/workflows/production-smoke.yml` 的手动/定时 smoke 契约固化到 CI、本地聚合和 Vitest。
+- Production Smoke workflow 新增 UTC 02:17 定时任务 `smoke-main`：从 `package.json` 读取期望版本，探测 `https://indie-stack-theta.vercel.app`，写入并上传 `production-smoke.json`（30 天）。
+- 2026-09-21T00:20:40Z 生产复核：5/6 通过；唯一失败仍为 `/api/health` 返回 `version=0.6.0`、期望 `0.10.0`，证据 `/tmp/indiestack-production-smoke-recheck-2026-09-21.json`。
+- 发布判断不变：不得创建或推送 `v0.10.0` tag，不得将 v0.10.0 smoke 标记为通过；必须先部署当前 `main` 到应用生产并重新取得 6/6 证据。
+- 验证：`pnpm check:production-smoke`、`pnpm check:workflows`、`pnpm check:gates` 通过。
+- 阻塞：生产部署权限/凭据不可用；定时漂移检测会持续暴露该状态直到部署修正。
+- 下一项：获得 Vercel 生产部署权限后部署 `0dc9c6b`，运行 `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version 0.10.0 --output production-smoke.json`；6/6 通过后再进入 release freeze。
+- 更新时间：2026-09-21T00:21:30Z（Asia/Shanghai）。
+
+## 2026-09-20 — v0.10.0 生产证据阻塞复核
+
+- 状态：BLOCKED（无代码/测试阻塞；发布被生产部署版本阻塞）。
+- 当前 `main`：`0dc9c6b0626c3fa07495fa6f679c8e1c43fb7f79`；本地与 `origin/main` 一致，无未提交变更。
+- GitHub Actions 复核：`CI`、`CodeQL`、`Secrets Scan`、`Security and configuration checks` 在 `0dc9c6b` 均成功。
+- 本地版本准备：`package.json` 为 `0.10.0`，v0.10.0 release checklist / runbook / smoke / rollback 文档已存在。
+- 生产 smoke：2026-09-20T07:15:18Z 对 `https://indie-stack-theta.vercel.app` 执行，5/6 通过；唯一失败为 `/api/health` 返回 `version=0.6.0`、期望 `0.10.0`。
+- 部署证据：GitHub deployments 显示 `0dc9c6b` 的最新生产 deployment 目标是 `indie-stack-docs-site`；应用生产 deployment 仍停留在 `b0ea6f7ed2eb4aea21f7982c974c496b01dc2d89`，因此失败是生产应用版本漂移。
+- 发布判断：不得创建或推送 `v0.10.0` tag，不得将 smoke 标记为通过。发布必须先部署当前 `main` 到应用生产，再取得 6/6 生产 smoke 证据。
+- 外部阻塞：当前机器无 `vercel` CLI，且没有已确认的本地 Vercel 部署凭据；GitHub secrets 仅见 Supabase 与 healthcheck 配置，不能据此部署应用生产。
+- 证据路径：`/tmp/indiestack-production-smoke-main-2026-09-20-current.json`。
+- 下一项：获得 Vercel 生产部署权限/凭据后部署 `0dc9c6b`，重新执行 `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version 0.10.0 --output production-smoke.json`，仅在 6/6 通过后再进入 tag/release。
+- 更新时间：2026-09-20T07:22:36Z（Asia/Shanghai）。
+
 ## 2026-09-19 — 修复分片 E2E 的分支保护上下文
 
 - 状态：DONE；分支 `feat/ops-observability-milestone`。

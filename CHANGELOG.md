@@ -6,6 +6,8 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Production Smoke 定时漂移检测**：`.github/workflows/production-smoke.yml` 新增 UTC 02:17 定时任务 `smoke-main`，从 `package.json` 读取期望版本并对生产 URL 执行无副作用 smoke，保留 `production-smoke.json` artifact 30 天；新增 `pnpm check:production-smoke` 与契约测试，防止手动发布 smoke 与定时版本漂移检查在执行命令、URL、触发时间和证据留存上漂移。
+
 - **Supabase 恢复告警契约与去重（E07）**：新增 `src/lib/observability/ops-metrics.ts` 固化 `ops.supabase.restore`
   的指标名与 `noop`/`restore`/`wait`/`escalate`/`skipped` 动作取值，并新增「文档阈值 = 代码常量」的契约测试
   （`alert-thresholds.test.ts` 校验 `email.backlog` / `push.backlog` 的 500 阈值与 `ops.supabase.restore` 的告警登记）。

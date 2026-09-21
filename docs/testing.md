@@ -24,6 +24,7 @@
 | `pnpm test:visual:update`            | 在 Linux 容器中更新视觉基线，不从 macOS 直接生成                                |
 | `pnpm smoke:supabase-identity`       | 本地/staging Supabase 真实身份矩阵（anon/authenticated/service_role + Storage） |
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
+| `pnpm check:production-smoke`       | 校验 Production Smoke workflow 的手动/定时入口、URL、cron 与证据留存契约            |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
 ## 贡献者测试矩阵（I09）
@@ -448,7 +449,7 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 ## Cron 调度与指标契约门禁（E03）
 
 `pnpm check:cron-contract` 把 cron worker 的「会不会真的被调用」和「失败时有没有指标」变成可执行契约。
-此前 `/api/cron/digest` 的路由、业务测试和文档都存在，但 `vercel.json` 从未登记调度，生产环境每小时摘要邮件实际上永远不会启动；
+此前 `/api/cron/digest` 的路由、业务测试和文档都存在，但 `vercel.json` 从未登记调度，生产环境每天 09:00 UTC 摘要邮件实际上永远不会启动；
 普通单测只覆盖请求进入后的行为，因而完全看不到这类静默失效。
 
 门禁以 `src/lib/observability/cron-contract.ts` 的注册表为单一事实源，校验：

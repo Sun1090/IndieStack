@@ -5,6 +5,8 @@ import {
   CRON_WORKERS,
   exportsMethod,
   isValidCronSchedule,
+  isValidVercelHobbyCronSchedule,
+  countCronRunsPerDay,
   type CronContractInput,
   type CronContractIssueCode,
   type CronWorkerContract,
@@ -15,9 +17,9 @@ const WORKER: CronWorkerContract = {
   path: "/api/cron/digest",
   routeFile: "src/app/api/cron/digest/route.ts",
   methods: ["POST"],
-  schedule: "0 * * * *",
+  schedule: "0 9 * * *",
   metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
-  cadence: "每小时整点",
+  cadence: "每天 09:00 UTC",
 };
 
 const ROUTE_SOURCE = `
@@ -37,7 +39,7 @@ const DOC = `
 | email.backlog | count | 无 |
 | cron.digest.completed | ms | pulled |
 | cron.digest.failed | count | error_type |
-| /api/cron/digest | \`0 * * * *\` | 每小时 |
+| /api/cron/digest | \`0 9 * * *\` | 每天 09:00 UTC |
 `;
 
 function baseInput(overrides: Partial<CronContractInput> = {}): CronContractInput {
@@ -60,8 +62,8 @@ describe("isValidCronSchedule", () => {
   it("接受仓库真实使用的 5 字段表达式", () => {
     for (const expression of [
       "* * * * *",
-      "0 * * * *",
-      "*/15 * * * *",
+      "0 9 * * *",
+      "0 22 * * *",
       "0 2 * * *",
       "0 4 * * *",
       "30 9-17 * * 1-5",
@@ -95,6 +97,44 @@ describe("isValidCronSchedule", () => {
     ]) {
       expect(isValidCronSchedule(expression), expression).toBe(false);
     }
+  });
+});
+
+describe("isValidVercelHobbyCronSchedule", () => {
+  it("接受每天一次的 Vercel Hobby cron 表达式", () => {
+    for (const expression of ["0 2 * * *", "0 4 * * *", "0 9 * * *", "0 22 * * *", "17 2 * * *"]) {
+      expect(isValidVercelHobbyCronSchedule(expression), expression).toBe(true);
+    }
+  });
+
+  it("拒绝同一天会多次运行的表达式", () => {
+    for (const expression of ["0 * * * *", "*/15 * * * *", "0,30 0 * * *", "0 0-2 * * *", "5/5 * * * *"]) {
+      expect(isValidVercelHobbyCronSchedule(expression), expression).toBe(false);
+    }
+  });
+
+  it("拒绝会跳过部分天导致漏跑的 cron 选择字段", () => {
+    for (const expression of ["0 0 * * 1", "0 0 * * 1-5", "0 0 1 * *", "0 0 * 1 *", "0 0 L * *"]) {
+      expect(isValidVercelHobbyCronSchedule(expression), expression).toBe(false);
+    }
+  });
+});
+
+describe("countCronRunsPerDay", () => {
+  it("报告分/时字段的每日触发次数", () => {
+    expect(countCronRunsPerDay("0 2 * * *")).toBe(1);
+    expect(countCronRunsPerDay("0 * * * *")).toBe(24);
+    expect(countCronRunsPerDay("*/15 * * * *")).toBe(96);
+    expect(countCronRunsPerDay("0,30 0 * * *")).toBe(2);
+  });
+
+  it("拒绝超过 Vercel Hobby 每日一次的调度表达式", () => {
+    const issues = auditCronContract(
+      baseInput({ workers: [{ ...WORKER, schedule: "0 * * * *" }], platformCrons: [{ path: WORKER.path, schedule: "0 * * * *" }] }),
+    ).issues;
+
+    expect(issues.map((issue) => issue.code)).toContain("CRON_SCHEDULE_PLATFORM_UNSUPPORTED");
+    expect(issues.some((issue) => issue.code === "CRON_SCHEDULE_PLATFORM_UNSUPPORTED" && issue.message.includes("24"))).toBe(true);
   });
 });
 
@@ -155,7 +195,7 @@ describe("auditCronContract", () => {
 
   it("vercel.json 与注册表表达式不一致时报漂移", () => {
     const issues = auditCronContract(
-      baseInput({ platformCrons: [{ path: WORKER.path, schedule: "*/5 * * * *" }] }),
+      baseInput({ platformCrons: [{ path: WORKER.path, schedule: "0 10 * * *" }] }),
     ).issues;
     expect(issues).toEqual([
       expect.objectContaining({ code: "CRON_SCHEDULE_DRIFT", subject: "digest" }),

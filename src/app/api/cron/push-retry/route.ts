@@ -5,7 +5,7 @@
  * Header: authorization: Bearer <CRON_SECRET>（Vercel Cron 自动附加）
  *         或 x-cron-secret: <CRON_SECRET>（手动运维调用）
  *
- * 由 Vercel Cron 每 15 分钟调度（见 `vercel.json`）。单轮拉取上限
+ * 由 Vercel Cron 每天 22:00 UTC 调度（见 `vercel.json`；Hobby 每日最多一次）。单轮拉取上限
  * `PUSH_RETRY_BATCH_SIZE`，成功/重试/死信回执均落在 `push_delivery_attempts`。
  * 订阅端点永久失效（404/410）时同时撤销本地订阅记录并上报失效端点指标。
  *

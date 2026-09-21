@@ -11,7 +11,7 @@
 | notifications（未读）                    | 永久（用户手动标已读后进入 90 天窗口）                  | 同上                                                        | 同上                    |
 | webhook_events（全部状态）               | 90 天                                                   | `cleanup_old_webhook_events()`（014 建）                    | 每周日 04:00            |
 | email_worker_runs（digest 运行记录）     | 90 天                                                   | `cleanup_old_email_worker_runs()`（027 建）                 | 每周日 04:15            |
-| push_delivery_attempts（`sent`）         | 7 天                                                    | `prunePushDeliveryAttempts()`（应用侧，worker 每轮调用）    | 每 15 分钟（cron 路由） |
+| push_delivery_attempts（`sent`）         | 7 天                                                    | `prunePushDeliveryAttempts()`（应用侧，worker 每轮调用）    | 每天一次（cron 路由） |
 | push_delivery_attempts（`dead`）         | 30 天                                                   | 同上                                                        | 同上                    |
 | push_delivery_attempts（`pending`）      | 永久（失败重试的上限由 `attempt_count` + 死信状态约束） | 永不被清理（清理只按 `sent`/`dead` 状态与时间窗删除）       | —                       |
 | audit_logs                               | 永久（合规需要，删改走变更流程）                        | 无自动清理                                                  | —                       |

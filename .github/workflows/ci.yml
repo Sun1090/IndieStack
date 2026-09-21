@@ -111,6 +111,9 @@ jobs:
       - name: Check CI workflow topology
         run: pnpm check:workflows
 
+      - name: Check production smoke workflow contract
+        run: pnpm check:production-smoke
+
       - name: Check CodeQL alert policy
         run: pnpm check:codeql
 

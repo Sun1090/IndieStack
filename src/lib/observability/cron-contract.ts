@@ -58,16 +58,16 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     path: "/api/cron/digest",
     routeFile: "src/app/api/cron/digest/route.ts",
     methods: ["POST"],
-    schedule: "0 * * * *",
+    schedule: "0 9 * * *",
     metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
-    cadence: "每小时整点拉取一次，按用户本地时间错峰发送摘要",
+    cadence: "每天 09:00 UTC 拉取一次，按用户本地时间错峰发送摘要",
   },
   {
     id: "push-retry",
     path: "/api/cron/push-retry",
     routeFile: "src/app/api/cron/push-retry/route.ts",
     methods: ["GET", "POST"],
-    schedule: "*/15 * * * *",
+    schedule: "0 22 * * *",
     metrics: [
       "push.backlog",
       "push.queue.pruned",
@@ -75,7 +75,7 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
       "cron.push-retry.completed",
       "cron.push-retry.failed",
     ],
-    cadence: "每 15 分钟重试一次待投递 Push 并执行保留策略清理",
+    cadence: "每天 22:00 UTC 重试一次待投递 Push 并执行保留策略清理",
   },
 ];
 
@@ -122,6 +122,7 @@ export type CronContractIssueCode =
   | "CRON_SCHEDULE_DUPLICATE"
   | "CRON_SCHEDULE_DRIFT"
   | "CRON_SCHEDULE_ORPHAN"
+  | "CRON_SCHEDULE_PLATFORM_UNSUPPORTED"
   | "CRON_METRIC_MISSING"
   | "CRON_METRIC_UNDOCUMENTED"
   | "CRON_REJECTION_UNOBSERVABLE"
@@ -182,6 +183,64 @@ function isValidFieldPart(part: string, min: number, max: number): boolean {
   if (endText === undefined) return stepText === undefined;
   if (!isIntegerInRange(endText, min, max)) return false;
   return Number(startText) <= Number(endText);
+}
+
+/**
+ * Vercel Hobby plan 的 Cron Jobs 限制：每个路径每天最多运行一次。
+ *
+ * 平台会接受更频繁的表达式，但部署预览/生产更新时拒绝部署并给出
+ * “would run more than once per day”；本地契约门禁必须提前失败。
+ */
+export function isValidVercelHobbyCronSchedule(expression: string): boolean {
+  const fields = expression.trim().split(/\s+/);
+  if (fields.length !== 5) return false;
+
+  const [minute, hour, day, month, week] = fields;
+
+  // Hobby 每日一次限制要求 day/month/week 全通配，否则枚举、范围或星期选择
+  // 会让“每天一次”漏跑；分/时也必须只产生一个确定时间。
+  if (day !== "*" || month !== "*" || week !== "*") return false;
+  return countCronRunsPerDay(expression) === 1;
+}
+
+/** 判断表达式在同一天是否会多次触发（供契约失败提示与测试共用）。 */
+export function countCronRunsPerDay(expression: string): number {
+  const fields = expression.trim().split(/\s+/);
+  if (fields.length !== 5) return 0;
+  const [minute, hour] = fields;
+
+  const countFieldRuns = (field: string, min: number, max: number): number | null => {
+    let total = 0;
+    for (const part of field.split(",")) {
+      const [rangeText, stepText] = part.split("/");
+      const step = stepText === undefined ? 1 : Number(stepText);
+      if (!Number.isInteger(step) || step < 1 || step > max) return null;
+
+      let start: number;
+      let end: number;
+      if (rangeText === "*") {
+        start = min;
+        end = max;
+      } else if (rangeText.includes("-")) {
+        const [startText, endText] = rangeText.split("-");
+        start = Number(startText);
+        end = Number(endText);
+      } else {
+        start = Number(rangeText);
+        end = Number(rangeText);
+      }
+
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < min || end > max || start > end) {
+        return null;
+      }
+      total += Math.floor((end - start) / step) + 1;
+    }
+    return total;
+  };
+
+  const minuteRuns = countFieldRuns(minute, 0, 59);
+  const hourRuns = countFieldRuns(hour, 0, 23);
+  return minuteRuns === null || hourRuns === null ? 0 : minuteRuns * hourRuns;
 }
 
 /**
@@ -263,6 +322,14 @@ function auditWorkerSchedule(
         "CRON_SCHEDULE_DRIFT",
         worker.id,
         `vercel.json 为 ${entry.schedule}，注册表为 ${worker.schedule}：调度频率漂移`,
+      );
+    }
+    if (!isValidVercelHobbyCronSchedule(entry.schedule)) {
+      push(
+        issues,
+        "CRON_SCHEDULE_PLATFORM_UNSUPPORTED",
+        worker.id,
+        `vercel.json 表达式 ${entry.schedule} 每天运行 ${countCronRunsPerDay(entry.schedule)} 次，超过 Vercel Hobby 每天一次的 Cron Jobs 限制`,
       );
     }
   }

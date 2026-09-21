@@ -39,7 +39,7 @@ const OPERATIONS_DOC = `
 | email.backlog | count | 无 |
 | cron.digest.completed | ms | pulled |
 | cron.digest.failed | count | error_type |
-| /api/cron/digest | \`0 * * * *\` | 每小时 |
+| /api/cron/digest | \`0 9 * * *\` | 每天 09:00 UTC |
 `;
 
 /** 写入一个最小但契约完整的临时仓库，便于验证 IO 层的收集与退出码。 */
@@ -144,7 +144,7 @@ describe("runCronContractCheck()", () => {
 
   it("vercel.json 表达式与注册表漂移时失败", () => {
     const root = writeFixtureRepository({
-      crons: [{ path: DIGEST.path, schedule: "*/5 * * * *" }],
+      crons: [{ path: DIGEST.path, schedule: "0 10 * * *" }],
     });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(runCronContractCheck(root, FIXTURE_OPTIONS)).toBe(1);

@@ -75,8 +75,8 @@
 
 | 路径 | 调度（UTC） | 语义 | 失败告警 |
 |---|---|---|---|
-| `/api/cron/digest` | `0 * * * *` | 每小时整点拉取待发邮件，按用户本地时间错峰发送摘要 | `cron.digest.failed`、`email.backlog` |
-| `/api/cron/push-retry` | `*/15 * * * *` | 每 15 分钟重试待投递 Push 并清理保留期外的终态行 | `cron.push-retry.failed`、`push.backlog` |
+| `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，按用户本地时间错峰发送摘要；Vercel Hobby 每天最多一次 | `cron.digest.failed`、`email.backlog` |
+| `/api/cron/push-retry` | `0 22 * * *` | 每天 22:00 UTC 重试待投递 Push 并清理保留期外的终态行；Vercel Hobby 每天最多一次 | `cron.push-retry.failed`、`push.backlog` |
 
 平台级调度不走 worker 契约（无队列、无 worker 指标），在注册表里显式豁免：
 `/api/health`（`0 2 * * *` 保活）与 `/api/ops/supabase-restore`（`0 4 * * *` 兜底恢复）。

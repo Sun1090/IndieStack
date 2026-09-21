@@ -106,7 +106,7 @@
 ## 应用通知邮件管线（v0.4.0 已落地）
 
 > 状态：发送通道**已接线**（Resend），入口为 `POST /api/cron/digest`
-> （`src/app/api/cron/digest/route.ts`），由 `vercel.json` 的 `0 * * * *` 每小时调度。
+> （`src/app/api/cron/digest/route.ts`），由 `vercel.json` 的 `0 9 * * *` 每天调度；Vercel Hobby Cron 每天最多一次。
 
 - 拉取：`listUnsentEmailNotifications()`（未读 + `email_sent=false` + 白名单类型，默认
   `team_invite/role_changed/payment_succeeded/security_alert`，时间正序，默认 100 条）
@@ -135,7 +135,7 @@
 
 ### 调度与时区（v0.5.0 A04 错峰）
 
-- 调度声明在 `vercel.json`（`{"path":"/api/cron/digest","schedule":"0 * * * *"}`，每小时整点），
+- 调度声明在 `vercel.json`（`{"path":"/api/cron/digest","schedule":"0 9 * * *"}`，每天 09:00 UTC；Hobby 每天最多一次），
   与 worker 注册表 `src/lib/observability/cron-contract.ts` 逐字一致，由
   `pnpm check:cron-contract` 强制；自建调度器按同样频率调用即可。
 - 错峰门控：worker 只发送当前处于**本地 08:00** 的用户
@@ -143,7 +143,7 @@
   为空或非法时回退 `Asia/Shanghai`/UTC+8，不让坏数据静默丢邮件）。
   因此中国用户在北京时间 08:00-09:00 之间的那次 cron 运行中收到摘要，
   其他时区用户各自错峰，单次 cron 最多处理 100 条。
-- Vercel Cron 使用 UTC，按小时配置即可（即当前的 `0 * * * *`）；自建 crontab 同理。
+- Vercel Cron 使用 UTC；当前 Hobby plan 每天最多运行一次，因此 digest 固定为 `0 9 * * *`。自建调度器按同样频率调用即可。
 - Vercel Cron 自动附加 `Authorization: Bearer <CRON_SECRET>`，手工触发仍可用
   `x-cron-secret`；两种方式都被接受，鉴权失败会产出
   `cron.auth.rejected{worker="digest",reason=...}`，便于区分「没调度」与「鉴权没配对」。
