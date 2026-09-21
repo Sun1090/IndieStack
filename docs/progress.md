@@ -36,6 +36,47 @@
 - 遗留观察（暂不改）：`e2e/smoke.spec.ts` 的语言切换用例是同形状的裸点击（click 触发 Radix 菜单 →
   断言 menuitem），目前没有任何失败证据；真要强化必须先读开合态再点，否则重试会把菜单关掉。
 
+## 2026-09-22 — 动态翻译键契约门禁 `check:dynamic-keys`（补 D04 盲区）+ mock 通知类型纠偏
+
+- 里程碑 / 版本：v0.11.0（未打 tag；生产仍 `0.10.0`，缺 Vercel build 配额）。
+- 状态：DONE（本地 33 门禁 / 186 文件全绿）。
+- 分支 / commit：`fix/notification-type-contract` → 门禁与 mock 纠偏一个 commit、文档一个。
+- 触发方式：上一条目（D10 续）新增的仪表盘 axe 用例首跑时，dev server 日志里冒出
+  `MISSING_MESSAGE dashboard.notifications.list.types.warning`。查下去发现不是偶发，而是**结构性盲区**。
+- 完成内容：
+  1. **根因**：`src/lib/mock/data.ts` 用自造的 `["info","success","warning","error"]` 生成通知 `type`，
+     而真实的 `NOTIFICATION_TYPES` 是另外 7 个；页面 `t(`notifications.list.types.${type}`)` 被 `try/catch`
+     兜住 → mock/开发/E2E 每次渲染都抛 MISSING_MESSAGE 再静默退回英文原串。`check:i18n` 按设计只扫静态
+     `t("字面量")`，所以这条链路此前**没有任何门禁或测试覆盖**。
+  2. **纠偏 + 分层**：`NOTIFICATION_TYPES` 抽到无依赖的 `@/lib/notifications/types`（原模块一导入就初始化
+     Supabase 客户端，mock 层与门禁脚本都不能引）；生成器改取权威集合；新增 `src/lib/mock/data.test.ts`
+     钉住「mock 生成的枚举值必须落在权威集合内」（通知类型、profile 角色与语言、团队成员角色）。
+  3. **新增 `pnpm check:dynamic-keys`**：`src/lib/i18n/dynamic-keys.ts` 纯函数 +
+     `scripts/lib/dynamic-keys-check.js` IO。规则：取值缺键 → `DYNAMIC_KEY_MISSING`；前缀下集合之外的键 →
+     `DYNAMIC_KEY_ORPHAN`；源码扫到但没登记契约 → `DYNAMIC_KEY_UNREGISTERED_TEMPLATE`；
+     零 locale / 零契约 / 空取值 → 失败封闭。9 条契约 × 2 locale、64 个取值、12 处动态模板全覆盖。
+     **取值集合必须来自代码常量**（抄消息文件会让门禁同义反复、永不失败），为此把
+     `SHORTCUT_ITEMS`、`STRENGTH_LABELS`、角色与语言枚举收进 `.ts`，并让 admin 页改用
+     `ASSIGNABLE_USER_ROLES`。同前缀的静态兄弟键由静态引用放行，否则契约一登记就全是误报。
+  4. **首跑抓到两处真问题**：账单页 `tc(`tierFeatures.${feature}`)` 从未被任何门禁覆盖（我此前手工
+     `grep 't(`'` 漏掉了 `tc(` 形式，门禁的正则没漏）；`pricing.features.storage10Gb` 是没有任何方案
+     引用的死键，en/zh-CN 同步删除（键数 1235 → 1234）。
+- 变更文件：20 个——门禁实现 3、测试 3（33 条）、新增 `.ts` 常量模块 3、改造调用点 4、消息 2、接线 6。
+- 验证命令与结果：
+  - `pnpm check:dynamic-keys` → `✅ 9 个契约 × 2 个 locale、64 个取值全覆盖；源码中 12 处动态键模板均已登记`；
+  - **变异测试三项全红**：删掉 `zh-CN` 的 `notifications.list.types.deployment` → `DYNAMIC_KEY_MISSING`；
+    从登记表注销 `shortcut-items` 契约 → `DYNAMIC_KEY_UNREGISTERED_TEMPLATE`；把 mock 枚举改回自造值 →
+    `data.test.ts` 报「mock 生成了不存在的通知类型 info」；三项还原后均回 0；
+  - 过程中发现自己写的失败封闭漏洞：`leafKeysByLocale` 为空时循环一次不跑会「全部通过」，
+    已补 `DYNAMIC_KEY_NO_LOCALES`；另一版「模板清单为空即失败」被否掉——临时仓库没有动态模板是合法的，
+    空转保护放在真实仓库测试的 `stats.templates > 5` 断言里才对；
+  - `pnpm check:all` → 33 门禁全绿、**186 文件 / 2119 用例**；`pnpm type-check` / `pnpm lint` 干净
+    （`auditDynamicKeys` 因复杂度 17 被 ESLint 拦下，拆成 `auditContract` / `auditTemplates`）。
+- 阻塞（不变，外部）：Vercel build 配额、隔离测试账号、Supabase Dashboard 权限（pg_cron）。
+- 风险 / 回滚：不改数据、不改运行时行为；新增的是构建期门禁。若未来动态键集合确有例外，
+  应在契约里显式声明而不是加豁免。回滚为撤销本分支提交。
+- 下一项：README 等处的用例总数漂移（仍写 106 文件 / 1034 用例，实测 186 / 2119）；
+  继续按「X 由门禁 Y 守住」逐条验真。
 ## 2026-09-22 — 把 axe 推进登录后区域：3 处 AA 对比度违规与 token 层修复（D10 续）
 
 - 里程碑 / 版本：v0.11.0（未打 tag；生产仍 `0.10.0`，缺 Vercel build 配额）。
