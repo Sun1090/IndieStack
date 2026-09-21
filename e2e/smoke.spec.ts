@@ -108,6 +108,24 @@ test.describe("语言切换", () => {
     const localeCookie = (await page.context().cookies()).find((c) => c.name === "app-locale");
     expect(localeCookie?.value).toBe("en");
   });
+
+  test("切换到简体中文后页面真的渲染中文文案", async ({ page }) => {
+    await page.goto("/");
+    const badge = page.getByText("Production-Ready IndieStack", { exact: true });
+    await expect(badge).toBeVisible();
+
+    await page.getByRole("button", { name: "切换语言 / Switch language" }).click();
+    await page.getByRole("menuitem", { name: /简体中文/ }).click();
+    await page.waitForLoadState("load");
+
+    const localeCookie = (await page.context().cookies()).find((c) => c.name === "app-locale");
+    expect(localeCookie?.value).toBe("zh-CN");
+    // 默认语言本来就是 en，只断言 cookie 无法证明消息加载成功：
+    // next-intl 取不到 zh-CN 消息时会把键名或英文原文渲染出来，页面依然「正常」。
+    await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+    await expect(page.getByText("生产就绪的 SaaS 启动模板", { exact: true })).toBeVisible();
+    await expect(badge).toHaveCount(0);
+  });
 });
 
 test.describe("主题切换", () => {
