@@ -60,6 +60,9 @@ jobs:
       - name: Check zh-CN terminology glossary
         run: pnpm check:glossary
 
+      - name: Check logical CSS direction
+        run: pnpm check:direction
+
       - name: Check shared agent index
         run: pnpm check:agents
 
