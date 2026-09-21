@@ -69,5 +69,7 @@
   "mfaEnrollFailed": "Failed to start 2FA setup",
   "mfaInvalidCode": "Invalid verification code",
   "sessionNotFound": "Session not found. It may already be revoked.",
-  "uploadCancelled": "Upload cancelled."
+  "uploadCancelled": "Upload cancelled.",
+  "confirmPhraseMismatch": "The confirmation text does not match.",
+  "accountDeleteFailed": "Account deletion failed. Your account was kept unchanged; please retry."
 }

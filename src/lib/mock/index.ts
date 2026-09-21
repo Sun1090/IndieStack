@@ -21,6 +21,11 @@ import {
   MOCK_USER_ID,
   MOCK_TEAM_ID,
 } from "./data";
+import {
+  ACCOUNT_ERASURE_ARG,
+  ACCOUNT_ERASURE_RPC,
+  AUDIT_PII_METADATA_KEYS,
+} from "@/lib/privacy/data-policy";
 
 // Mock 模式检测逻辑抽离至零依赖的 config 模块（供 Edge Middleware 引用），此处转发保持兼容
 export { isMockEnabled, shouldUseMock } from "./config";
@@ -374,8 +379,7 @@ function claimMockWebhookEvent(
   return { data: [{ outcome: "claimed", attempts: attempts + 1 }], error: null };
 }
 
-function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
-  const cached = mockCacheGet<Record<string, unknown>[]>(store, "MarketingSubscriptions");
+function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {  const cached = mockCacheGet<Record<string, unknown>[]>(store, "MarketingSubscriptions");
   if (cached) {
     _mockMarketingSubscriptions = cached;
     return cached;
@@ -458,6 +462,67 @@ export function getMockContactMessages() {
   _mockContactMessages = fresh;
   mockCacheSet("ContactMessages", fresh);
   return fresh;
+}
+
+/**
+ * 镜像 032 迁移的 erase_user_data：删除 api_usage、按邮箱删除 contact_messages、
+ * 匿名化该用户的 audit_logs（保留行为事实，切断 user_id / entity_id 指向并剔除 PII 键）。
+ * Mock 模式与真实数据库因此共享同一套「先擦除再删号」语义，E2E 可以断言擦了哪些行，
+ * 而不是对着一个静默返回空的桩自欺欺人。
+ */
+function eraseMockUserData(
+  args: Record<string, unknown> | undefined,
+): { data: unknown; error: unknown } {
+  const userId = String(args?.[ACCOUNT_ERASURE_ARG] ?? "");
+  if (!userId) return { data: null, error: { message: "erase_user_data requires a user id" } };
+
+  const apiUsage = getMockApiUsage();
+  let apiUsageDeleted = 0;
+  for (let index = apiUsage.length - 1; index >= 0; index -= 1) {
+    if (apiUsage[index]?.user_id === userId) {
+      apiUsage.splice(index, 1);
+      apiUsageDeleted += 1;
+    }
+  }
+
+  const email = getMockProfiles().find((row) => row.id === userId)?.email;
+  let contactMessagesDeleted = 0;
+  if (typeof email === "string" && email.length > 0) {
+    const messages = getMockContactMessages();
+    const expected = email.trim().toLowerCase();
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const row = messages[index];
+      if (typeof row?.email === "string" && row.email.trim().toLowerCase() === expected) {
+        messages.splice(index, 1);
+        contactMessagesDeleted += 1;
+      }
+    }
+  }
+
+  let auditLogsAnonymized = 0;
+  // 预置 mock 数据的字面量类型很窄（user_id / metadata 都是具体联合），
+  // 擦除要写 null 与删键，因此按可变记录处理。
+  const auditLogs = getMockAuditLogs() as unknown as Record<string, unknown>[];
+  for (const row of auditLogs) {
+    if (row?.user_id !== userId) continue;
+    row.user_id = null;
+    if (row.entity_id === userId) row.entity_id = null;
+    if (row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)) {
+      for (const key of AUDIT_PII_METADATA_KEYS) delete (row.metadata as Record<string, unknown>)[key];
+    } else {
+      row.metadata = {};
+    }
+    auditLogsAnonymized += 1;
+  }
+
+  return {
+    data: {
+      apiUsage: apiUsageDeleted,
+      contactMessages: contactMessagesDeleted,
+      auditLogsAnonymized,
+    },
+    error: null,
+  };
 }
 
 
@@ -1487,12 +1552,13 @@ export class MockSupabaseClient {
     return Promise.resolve(channel.unsubscribe());
   }
 
-  /** RPC 桩：仅实现 claim_webhook_event（H06），其余调用返回空数据保持既有行为 */
+  /** RPC 桩：仅实现 claim_webhook_event（H06）与 erase_user_data（H08），其余调用返回空数据保持既有行为 */
   async rpc(
     fn?: string,
     args?: Record<string, unknown>,
   ): Promise<{ data: unknown; error: unknown }> {
     if (fn === "claim_webhook_event") return claimMockWebhookEvent(args, this.store);
+    if (fn === ACCOUNT_ERASURE_RPC) return eraseMockUserData(args);
     return { data: null, error: null };
   }
 }

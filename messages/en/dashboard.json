@@ -168,7 +168,9 @@
         "deleteAccount": "Delete Account",
         "deleteDesc": "Permanently delete your account and all data. This action is irreversible.",
         "deleteConfirm": "Confirm Delete",
-        "confirmPhrase": "Type \"delete\" to confirm"
+        "confirmPhrase": "Type \"delete\" to confirm",
+        "eraseSummary": "Also removes the personal data foreign keys cannot reach: API usage records (including IP addresses) and contact submissions under your email; audit entries are anonymized instead of deleted.",
+        "deleting": "Deleting..."
       },
       "security": {
         "title": "Security",

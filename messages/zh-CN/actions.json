@@ -69,5 +69,7 @@
   "mfaEnrollFailed": "开启失败",
   "mfaInvalidCode": "验证码错误",
   "sessionNotFound": "未找到该会话，可能已被吊销。",
-  "uploadCancelled": "上传已取消。"
+  "uploadCancelled": "上传已取消。",
+  "confirmPhraseMismatch": "确认文本不匹配。",
+  "accountDeleteFailed": "账户删除失败。你的账户保持不变，请重试。"
 }

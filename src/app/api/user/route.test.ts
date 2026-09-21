@@ -46,10 +46,12 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({
-    auth: { admin: { deleteUser: async () => ({ error: mockState.deleteError }) } },
-  }),
+const { deleteAccountWithDataMock } = vi.hoisted(() => ({
+  deleteAccountWithDataMock: vi.fn(),
+}));
+
+vi.mock("@/lib/account/deletion", () => ({
+  deleteAccountWithData: deleteAccountWithDataMock,
 }));
 
 function req(path: string, init?: NextRequestInit) {
@@ -64,6 +66,10 @@ beforeEach(() => {
   mockState.updateResult = { data: { full_name: "Bob" }, error: null };
   mockState.lastUpdatePayload = null;
   mockState.deleteError = null;
+  deleteAccountWithDataMock.mockImplementation(async () => {
+    if (mockState.deleteError) throw new Error(mockState.deleteError.message);
+    return { erasure: { apiUsage: 0, contactMessages: 0, auditLogsAnonymized: 0 } };
+  });
 });
 
 describe("GET /api/user", () => {
@@ -123,6 +129,19 @@ describe("DELETE /api/user", () => {
     const res = await DELETE(req("/api/user", { method: "DELETE" }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
+  });
+
+  it("走「先擦除再删号」的编排，并且只作用于当前会话用户", async () => {
+    await DELETE(req("/api/user", { method: "DELETE" }));
+    expect(deleteAccountWithDataMock).toHaveBeenCalledTimes(1);
+    expect(deleteAccountWithDataMock).toHaveBeenCalledWith(mockState.user!.id);
+  });
+
+  it("未认证返回 401 且不动数据", async () => {
+    mockState.user = null;
+    const res = await DELETE(req("/api/user", { method: "DELETE" }));
+    expect(res.status).toBe(401);
+    expect(deleteAccountWithDataMock).not.toHaveBeenCalled();
   });
 
   it("删除失败返回 500", async () => {
