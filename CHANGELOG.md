@@ -214,6 +214,20 @@ All notable changes to IndieStack will be documented in this file.
   豁免不再命中同样失败。按英文原值逐条核对全库后，真正的漂移只有两处——`devicesDesc` 的「账号」与
   团队角色的「拥有者」，已统一为「账户」「所有者」；门禁首轮 271 次 (键, 术语) 比对、0 违规、0 豁免。
 
+- **应用层不再把自己钉死在物理方向上（D08）**：项目只有 `en` / `zh-CN` 两个 LTR 语言，
+  「支持 RTL」不是本期目标；但 `mr-2` 这类物理方向类会让未来的任何 RTL 语言从零改起，
+  而它的逻辑等价物 `me-2`（`margin-inline-end`）在 LTR 下**渲染结果完全一致**——零视觉代价。
+  应用层 74 处物理方向类（33 个文件）已迁为逻辑方向（`ml-/mr-`→`ms-/me-`、`pl-/pr-`→`ps-/pe-`、
+  `left-/right-`→`start-/end-`、`text-left/right`→`text-start/end`、
+  `rounded-tl/tr/bl/br/l/r`→`rounded-ss/se/es/ee/s/e`、`border-l/r`→`border-s/e`），
+  并新增 `pnpm check:direction` 要求应用层保持 **0 处**、扫不到文件即失败封闭
+  （`src/lib/styling/direction.ts` 纯函数：只看**字符串字面量内部**的类名 token，先剥注释，
+  所以「注释里讨论 ml-」不算违规；`space-x-*` 在 v4 本身就是 `margin-inline-start`，不在禁止之列）。
+  两处诚实的残留写进文档而不假装解决：`src/components/ui/**`（shadcn 基元，35 处 / 9 文件，
+  升级会被上游覆盖）与 `translate-x-*` / `origin-left`（**Tailwind v4 没有逻辑等价物**，
+  把它们列入禁止项只会逼人到处加 `dir` 判断）。长文本一半由 `e2e/responsive.spec.ts`
+  在 375/768/1280 断言无横向溢出守住，布局约定（`min-w-0` + `truncate`、长 token 用 `break-words`）写入 i18n 架构文档。
+
 - **语言切换的中文渲染端到端验证（D06）**：`e2e/smoke.spec.ts` 原有的两条断言只覆盖「键盘能打开菜单」
   与「切到 English 后写入 `app-locale` cookie」，而 English 本来就是默认语言——即使 zh-CN 消息完全
   加载失败，页面也会安静地退回英文或键名，两条断言照样通过。新增一条把 `简体中文` 选到底：断言 cookie
