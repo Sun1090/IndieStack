@@ -25,6 +25,17 @@ E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名
 > 3 处 `aria-label` 全部复用已有消息键（`admin.users.changeRole`、`projects.detail.backToProjects`、
 > `common.back`），不新增文案。教训：**一个永远不会失败的门禁比没有门禁更糟，因为它凭空制造信心。**
 
+> **进度（2026-09-22）· D10 续：把 axe 覆盖面推进登录后区域，当场抓到 3 处 AA 对比度违规**：
+> `e2e/a11y.spec.ts` 此前只扫 5 个公共页、从不进入仪表盘。扩到 9 个已认证页（14 条用例）后立刻暴露
+> `text-destructive` 作文字 3.76:1、`text-muted-foreground` 落在 `bg-muted` 上 4.39:1、
+> 白字压 `bg-destructive` 3.6:1（正文要求 4.5:1）。修复在 token 层：新增 `--destructive-text`
+> （浅 5.06:1 / 深 6.4:1，因为 `--destructive` 是「红底配浅色前景」语义，深色模式下当文字几乎不可读）、
+> 压深浅色 `--destructive` 与 `--muted-foreground`；9 处「destructive 作为可读文字」改用新 token，
+> 图标与背景保持 `destructive`（图形对象 3:1 已满足）。视觉基线按 `docs/testing.md` 的 Linux 容器流程
+> 重生成（只有 `pricing` 一张变化），容器内两次独立比对 4/4。**顺带在 dev server 日志里发现
+> mock 通知类型与真实 `NotificationType` 完全脱节**（`info/success/warning/error` vs 7 个真实类型），
+> 动态 `t(\`...types.${type}\`)` 是 `check:i18n` 的已知盲区，已登记为下一项。
+
 > **进度（2026-09-22）· D08 已完成（D 域 10/10）**：应用层 74 处物理方向类（33 个文件）迁为逻辑方向
 > （`mr-2`→`me-2` 等，应用不设置 `dir`，两个语言均按 `ltr` 计算，渲染结果一致；
 > 全新构建产物中本次新写的 25 个逻辑类逐一确认仍生成规则、0 处静默丢失），新增 `pnpm check:direction`
