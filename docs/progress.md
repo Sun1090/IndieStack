@@ -1,3 +1,43 @@
+## 2026-09-22 — 中英术语表与 `check:glossary`（D01 收口，D 域只剩 D08）
+
+- 里程碑 / 版本：v0.11.0（仍未打 tag；生产 500 事故未解，见上一条目的「阻塞」）。
+- 状态：DONE（本地 `check:all` / `verify:build` 全绿；PR 已开，等待 CI 合并）。
+- 分支 / commit：`feat/i18n-glossary`——实现与文档各一个 commit。
+- 完成内容：
+  1. **新增门禁 `pnpm check:glossary`**：值审计（上一条目）能挡住「没翻」，挡不住「翻得不一致」。
+     规则本体 `src/lib/i18n/glossary.ts`（纯函数）：按「英文侧命中该术语 → 中文侧不得出现禁止变体」判定，
+     **且只在指定译法缺席时才算违规**——一句话可以同时翻译两个概念
+     （`notification preferences and alerts` → 「通知偏好和提醒」，「提醒」译的是 `alerts`，不是漂移）；
+     中文合理地绕开该词也不报错，只统计。三条失败封闭：一条术语都没命中
+     （`GLOSSARY_NO_MATCHED_KEYS`）、术语条目从未被用到（`GLOSSARY_ENTRY_UNUSED`，僵尸规则）、
+     豁免不再命中（`GLOSSARY_STALE_EXEMPTION`）。IO 层 `scripts/lib/glossary-check.js` 把消息文件
+     扁平化为 `namespace.path`，**数组元素不参与比对**（`terms.sections[].content`、
+     `blog.posts[].content` 这类长文里术语会反复出现或被改写，逐条制裁只剩噪声）。
+  2. **术语表与文档双向锁死**：`docs/architecture/10-i18n.md` 新增「术语表」小节（14 个术语），
+     门禁要求它与代码里的 `GLOSSARY` **逐项双向相等**——文档不能比规则更宽、更旧或多出未登记条目。
+     解析只截取 `## 术语表` 小节：同一篇文档还有语言配置、门禁等多张表格，全文档扫表会把它们当术语行。
+  3. **实测出来的两处真漂移已修**：按英文原值逐条核对全库，`工程`/`组织`/`提醒`/`移除`/`配置`
+     都不是漂移（分别对应 "Engineering"、正文动词、"alerts"、"remove"、"configured"）；
+     真正不一致只有 `"account"` → 「账号」（`dashboard.settings.sections.security.devicesDesc`，全库其余 26 处用「账户」）
+     与 `owner` → 「拥有者」（`dashboard.team.list.roles.owner`，另两处 `owner` 文案都是「所有者」），已统一为「账户」「所有者」。
+- 变更文件：17 个——门禁实现 3（`src/lib/i18n/glossary.ts`、`scripts/lib/glossary-check.js`、
+  `scripts/check-glossary.js`）、测试 2（27 条）、消息 1（`messages/zh-CN/dashboard.json`）、
+  接线 4（`package.json`、`scripts/check-all.sh`、`.github/workflows/ci.yml`、`test-matrix.ts`）、
+  文档 7（`docs/architecture/10-i18n.md` 术语表、roadmap、CHANGELOG、双语 release notes、双语 testing.md）。
+- 验证命令与结果：
+  - `pnpm check:glossary` → `✅ 术语一致性检查通过：14 个术语，命中 271 次 (键, 术语)、可比对 271 次，262 次使用指定译法`；
+  - `pnpm vitest run src/lib/i18n/` → 6 文件 / **82** 条全过（本条新增 16 纯规则 + 11 真实仓库与临时目录）；
+  - `pnpm check:all` → ✅ 全部校验通过；`pnpm type-check` / `pnpm lint` 干净；
+  - `pnpm check:gates` / `check:test-matrix` / `check:docs` / `check:release-docs` / `check:changelog` 全绿；
+  - `pnpm verify:build`（含 `pnpm build`）→ 退出码 0。
+- 阻塞：与上一条目相同——生产全站 500 需要 Vercel Runtime Logs 与 env 变更记录（用户侧权限），
+  部署配额 `retry in 24 hours` 未解除，**tag v0.11.0 继续推迟**。
+- 风险 / 回滚：不改数据库、不改运行时行为，新增的是构建期门禁与两条中文文案用词。
+  术语表偏保守：只有 14 项、全部实测过，宁可少定也不误伤；新术语若从未被用到会被门禁当成僵尸规则拒绝。
+  回滚为撤销本分支提交。
+- 下一项：D08（RTL / 长文本布局评估）是 D 域最后一块；同时继续盯生产事故是否自行恢复。
+- 更新时间：2026-09-22。
+
 ## 2026-09-22 — i18n 值审计门禁：`check:locales` 从「比对键」升级为「审值」（D02 / D03 收口）
 
 - 里程碑 / 版本：v0.11.0（仍未打 tag，冻结继续）；上一条目记录 PR #44，本条只记录值审计门禁。
