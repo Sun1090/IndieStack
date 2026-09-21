@@ -1,3 +1,52 @@
+## 2026-09-22 — i18n 值审计门禁：`check:locales` 从「比对键」升级为「审值」（D02 / D03 收口）
+
+- 里程碑 / 版本：v0.11.0（仍未打 tag，冻结继续）；上一条目记录 PR #44，本条只记录值审计门禁。
+- 状态：DONE（本地全部验证通过；生产部署与 tag 仍被 Vercel 配额阻塞，见「阻塞」）。
+- 分支 / commit：
+  - `feat/storage-orphan-audit` → PR **#44** 已 rebase 合并（`a2a3676..ab7ee92`），本地/远端分支已删、
+    远端仅剩 `main`；
+  - `feat/i18n-value-gate`：本条工作，实现与文档各一个 commit。
+- 完成内容：
+  1. **D02 / D03 收口——`pnpm check:locales` 从「只比对键」升级为审「值」**：键对称挡住「忘了加键」，
+     但挡不住「加了键、值还是英文」。规则本体 `src/lib/i18n/translation-values.ts`（纯函数）：
+     `zh-CN` 文案里一个汉字都没有 → `I18N_VALUE_UNTRANSLATED`；值是裸驼峰（`projectNotFound`）→
+     `I18N_VALUE_KEY_LEAK`（**判定顺序**必须标识符在前，否则裸驼峰必然也无汉字、会被漏翻译规则吞掉而永不可达）；
+     源语言 `en` 不要求任何文字，`and` / `days` 不误伤。IO 层 `scripts/lib/locales-check.js`，
+     入口仍是 `pnpm check:locales`（改写为薄 wrapper，`check-all.sh` / CI / 测试矩阵零改动即继承新行为）。
+  2. **消息数组纳入审计**：`home.statLabels`、`terms.sections[].content`、`blog.posts[].title` 由
+     `t.raw()` 直接渲染，占文案一半，旧实现把数组当叶子丢弃＝只审一半。改为按下标展开路径
+     （`terms.sections.1.title`），键对称随之精确到叶子路径（少一篇文章＝少一个键）。
+     实测 **1235** 条叶子路径两侧对称（旧口径 984）、**2470** 条文案受审。
+  3. **例外登记支持单段通配并强制双向**：`UNTRANSLATED_VALUE_ALLOWLIST` 38 条登记放行 86 条值，
+     全部带理由（品牌名 / 邮箱与验证码占位符 / slug、版本号、分类枚举等结构字段）；
+     `*` 只匹配**一个**路径段，因此 `zh-CN:blog.posts.*.slug` 放行 slug 却仍审得到同数组的 `title`。
+     登记项不再命中任何值 → `I18N_STALE_ALLOWLIST`；抽不到值 → `I18N_NO_MESSAGE_VALUES`；
+     新增 locale 未登记 `LOCALE_SCRIPT_REQUIREMENTS` → `I18N_LOCALE_NOT_CLASSIFIED`（未分类≠没问题）。
+  4. **顺带修掉门禁自身的判定错误**：字面字符区间 `[豈-﫿]` 起点实为 U+8C48，整个谚文块
+     U+AC00–U+D7AF 落在里面，`한국어` 被判成「含中文」而**静默放行**——改为显式码点
+     `[㐀-䶿一-鿿豈-﫿]`，并留一条谚文反例测试钉住。真实数据当场暴露：`languages.ko`
+     原本被登记为例外却报「例外已失效」，就是这个区间写错导致的。
+- 变更文件：14 个——3 个实现（`src/lib/i18n/translation-values.ts`、`scripts/lib/locales-check.js`、
+  `scripts/check-locales.js` 改薄 wrapper）、2 个测试文件（31 条）、9 处文档
+  （`docs/architecture/10-i18n.md` 新增「翻译完整性门禁」章节、roadmap D02/D03 实况、CHANGELOG、
+  双语 release notes、双语 README、双语 `docs-site/scripts.md` 的命令说明）。
+- 验证命令与结果：
+  - `pnpm check:all` → ✅ 全部校验通过（33 个 `check:*`），177 文件 / **2013** 用例全过；
+  - `pnpm check:locales` → `✅ en/zh-CN 各 1235 个 key 完全一致（值审计 2470 条文案，86 条登记为无需翻译）`；
+  - `pnpm type-check` / `pnpm lint` 干净；`pnpm test:coverage` → branches **91.61%**（原 91.56%，未降），
+    新模块 `translation-values.ts` 本身 stmts 100% / branches 96% / funcs 100%。
+- 阻塞（不变，外部）：Vercel `indie-stack` 与 `indie-stack-docs-site` 自 2026-09-21T18:03Z 起
+  `Deployment rate limited`，生产仍是 `version=0.10.0`，**tag v0.11.0 继续推迟**；
+  另仍缺隔离测试账号（生产删号闭环）、Supabase Dashboard 权限（pg_cron）、
+  Vercel deployment 切换权限（回滚探针）。
+- 风险 / 回滚：不改数据库、不改运行时行为——新增的是构建期门禁与文档。
+  规则偏保守：宁可要求登记理由，也不会把漏翻译判成通过；抽取为空即失败。
+  回滚为撤销本分支提交。
+- 下一项：D01 术语表与翻译贡献规范（值审计已能挡住「没翻」，但没规定「该翻成什么」——
+  `account`/`workspace`、`team`/`organization` 这类术语目前无单一事实来源）；
+  配额恢复后立刻补生产部署证据并打 tag。
+- 更新时间：2026-09-22。
+
 ## 2026-09-22 — v0.11.0 冻结后连做两项：i18n 错误码收口 + 孤儿巡检与删号演练
 
 - 里程碑 / 版本：v0.11.0（未打 tag，冻结仍在进行）；本条覆盖 PR #43（已合并）与 PR #44（本次）。

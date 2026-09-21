@@ -134,7 +134,7 @@ src/
 | `pnpm type-check`                 | TypeScript 类型检查                                 |
 | `pnpm format`                     | Prettier 格式化                                     |
 | `pnpm check`                      | type-check + lint + i18n 对称性校验                 |
-| `pnpm check:locales`              | 校验 en/zh-CN 翻译 key 对称性                       |
+| `pnpm check:locales`              | 校验 en/zh-CN 键对称，并确认值真的翻译了             |
 | `pnpm db:migrate`                 | 推送数据库迁移                                      |
 | `pnpm db:types`                   | 从 DB 生成 TypeScript 类型                          |
 | `pnpm check:security`             | 校验 secrets/环境策略与安全扫描配置                 |
