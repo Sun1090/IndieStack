@@ -1,3 +1,50 @@
+## 2026-09-22 — v0.11.0 RELEASE_FREEZE（版本号、发布产物、tag 暂缓）
+
+- 里程碑 / 版本：v0.11.0（可观测性里程碑收口 + 数据生命周期闭环）；本条目是冻结记录，**不是发布完成记录**。
+- 状态：BLOCKED-PUBLISHED（冻结产物已完成并本地全绿；tag 与生产证据被外部配额阻塞）。
+- 分支 / commit：`release/v0.11.0`，基线 `origin/main` `7ee6442`（PR #41 已 rebase 合并、分支已删）；
+  `3eecc67` chore(release)。顺带删除无独立提交的空壳分支 `release/v0.10.0`（`git log main..` 为空后 `branch -D`）。
+- 完成内容：
+  - 版本号 `package.json` 0.10.0 → 0.11.0、`.env.example NEXT_PUBLIC_APP_VERSION` 同步。
+  - CHANGELOG：`[Unreleased]` 转正为 `## [0.11.0] — 2026-09-22`（Added + Fixed），删除已完成的旧
+    `### Planned`，`[Unreleased]` 改写为三条**仍然成立**的 Known Limitations（pg_cron 未安装所以保留期
+    一行都没删；031 之前未登记的 bucket 对象对孤儿清单不可见；删号链路没有自动回归）。
+  - 三份发布产物 `release-runbook-v0.11.0.md` / `rollback-runbook-v0.11.0.md` /
+    `production-smoke-v0.11.0.md`：本版本与 v0.10.0 的关键差异是**含迁移 032/033**，因此顺序写成
+    DB-first；回滚侧明确 032/033 皆为追加式（函数、部分索引、一次约束放宽），旧代码在新 schema 上照常
+    工作，所以只回滚应用、数据库保持向前；`production-smoke-v0.11.0.md` 把冒烟矩阵拆成
+    「自动化 6 项 / 只读凭证 / 隔离账号」三段，并把**账户删除端到端演练**列为打 tag 的前置条件。
+  - docs-site 中英发布说明 `v0.11.0.md` / `zh-CN/v0.11.0.md`，侧边栏 Releases 段补齐并按降序修正
+    （此前顺序是 0.6/0.7/0.10/0.9/0.8）。README 双语与 `.github/RELEASE_CHECKLIST.md` 指向 v0.11.0
+    产物，清单新增「迁移先于部署」和「隔离账号删号演练」两项勾选。
+- 变更文件：13 个（版本号 2、CHANGELOG、README 2、checklist、docs-site 3、operations 3）。
+- 验证命令与结果：`pnpm check:release-docs` → `✅ (v0.11.0, 7 artifacts)`；
+  `pnpm check:changelog` → 11 个已发布版本 + 1 个 Unreleased；`pnpm check:gates` → 31 个门禁全接线；
+  `pnpm test` → 170 文件 / 1929 用例全过；`pnpm verify:build` 退出码 0（lint / type-check / test /
+  bundle / build 全链路，含 `/dashboard/settings` 等动态路由静态生成）。
+- 阻塞（外部，无法在本仓库代办）：
+  1. **Vercel `indie-stack` 项目构建配额已耗尽**：`main` 新提交 `7ee6442` 的部署状态为
+     `Deployment rate limited — retry in 24 hours`（18:03Z），同一时点 `indie-stack-docs-site` 部署成功，
+     说明限流按项目计。生产 `/api/health` 仍是 `version=0.10.0`。
+     **因此不打 tag**：没有部署证据就发 Release 等于对外宣称发布了一个没跑起来的版本。
+     被限流的构建不会排队，配额恢复后需要再触发一次部署（下一次 `main` 推送或 dashboard 手动 redeploy）。
+  2. 每日 02:17 UTC 的 `smoke-main` 漂移检测在配额恢复后会**每天失败**——这是设计用途
+     （期望版本取自 `package.json`），禁止用回退版本号或放宽期望的方式让它变绿。
+  3. 隔离测试账号（删号演练）、Supabase Dashboard 权限（pg_cron）、Vercel deployment 切换权限（回滚探针）。
+- 顺带查实的一条运行期事实：冷启动后第一个 `/api/health` 探针返回
+  `status=degraded`、`ready=false`、`supabase=unreachable`（`uptime=0`），随后 5 次采样均 `200 + status=ok`。
+  这是 required 依赖在冷启窗口真连不上，`pnpm health:check` 的 3 次探测正好覆盖；已写入冒烟矩阵的
+  「执行前置」一节，避免下一次把第一帧 503 当成回滚触发条件。
+- 风险 / 回滚：本提交只改文档与版本号，不改运行时代码；版本号先于部署进入 `main` 会造成
+  「仓库 0.11.0 / 生产 0.10.0」的已知漂移，由定时漂移检测显式暴露。发布产物本身可整分支撤销。
+- 下一项：等配额期间继续做可本地完成的工作——先核 D 域（多语言/a11y）的真实缺口：
+  `e2e/` 下没有语言切换用例（D06 未做）、`check:locales` 只比对 key 对称性不看值，
+  已量到 23 个 zh-CN 值与 en 完全相同，其中 `dashboard.settings.sections.security.title = "Security"`
+  是真未翻译、`dashboard.projects.deleteProjectNotFound = "projectNotFound"` 是把错误键当文案且**零引用**；
+  据此再决定「未翻译值 + 品牌/占位符豁免表」门禁是否值得做。
+- 更新时间：2026-09-22T02:20:00+08:00。
+
+
 ## 2026-09-22 — A10 受管对象孤儿可发现性与删号清理
 
 - 里程碑 / 版本：v0.6.0 任务池 A10（承接 H08 的隐私链路）；计入 CHANGELOG `[Unreleased]`，不涉及版本号或 tag。
