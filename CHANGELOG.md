@@ -4,6 +4,36 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Server Action 错误码翻译门禁（D02 / D03）**：`action-result.ts` 的注释早就写明「失败时
+  `error` 是 i18n 错误键，客户端经 `ta(error)` 翻译」，但 `fail(error: string)` 是 `string`，
+  这条约定此前没有任何机制守得住。新增 `pnpm check:action-errors`：从产出侧提取错误码
+  （导入 `action-result` 的 `fail("code")` 与 `fail(expr ?? "code")` 兜底、导入 zod 的文件里
+  校验器的末位字符串实参），要求每个码在**每个** locale 的 `actions.json` 有键、且各 locale
+  文案不得逐字相同；消费侧禁止把 `result.error` / `authErrorKey(err)` 这类错误码原样放进
+  `title` / `description` 等展示属性。提取不到任何错误码即失败封闭，两条例外清单过期同样失败
+  （当前豁免表为空）。产出侧按 import 判定而非函数名，否则 `codeql-alert-policy.ts` 里记账用的
+  `fail("push")` 会被误当成用户可见错误码。规则由 `src/lib/i18n/action-errors.ts` 纯函数 +
+  24 条单测覆盖（含真实仓库反例：删掉 `projectNotFound` 文案、还原修复前的裸渲染调用点），
+  接入 `pnpm check:all` 与 CI，并登记进贡献者测试矩阵的 `i18n` 领域。
+
+### Fixed
+
+- **四处调用点把内部错误码当文案渲染**：`contact-form`、`project-settings-form`、
+  `project-delete-button`、`member-role-select` 直接把 `result.error` 放进 toast，用户在界面上
+  看到的是 `projectNotFound` 这类标识；MFA 页两处同样漏了 `ta()`，其中 challenge 失败还直接透出
+  Supabase 的英文原始 `message`。仓库其余 8 个 `authErrorKey` 调用点都是
+  `ta(authErrorKey(err))`，本次把漏网的对齐到同一写法，并补齐缺失的
+  `actions.projectNotFound`（双语）——否则光加 `ta()` 只会得到 `MISSING_MESSAGE`。
+  顺带删除零引用、值就是错误码字面量的 `dashboard.projects.deleteProjectNotFound`，
+  并把 zh-CN 设置页分区标题 `Security` 改为「安全」（同级 `danger` 分区早已翻成「危险区域」）。
+- **根错误边界的语言自相矛盾**：`src/app/global-error.tsx` 写死 `<html lang="en">` 却整页只有
+  中文文案，英文用户在这一页读不到任何可理解的内容，而组件注释声称「硬编码中文是项目默认语言」，
+  与 `src/i18n/routing.ts` 的 `defaultLocale = "en"` 相反。该边界会替换整个 `<html>`、拿不到
+  next-intl Provider，也就无法读取决定语言的 `app-locale` cookie，因此改为中英并列、
+  中文片段显式标注 `lang="zh-CN"`——这是这一层唯一不会选错人的写法。
+
 ### Known Limitations
 
 - **数据保留期仍未真正执行**：`003` / `014` / `027` / `032` 的每周清理都被
