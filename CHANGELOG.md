@@ -4,6 +4,23 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Known Limitations
+
+- **数据保留期仍未真正执行**：`003` / `014` / `027` / `032` 的每周清理都被
+  `if exists (select 1 from pg_extension where extname = 'pg_cron')` 守卫包裹，而本地与云端项目
+  均未安装 pg_cron，因此迁移成功、门禁全绿、`/api/health` 正常，但一行都不会删。
+  启用 pg_cron 需要 Supabase Dashboard 权限（外部运维动作），或把清理改由平台定时任务调用
+  service-role RPC；在此之前 `docs/db/retention.md` 的保留天数只能读作「承诺」而不是「已生效」。
+- **从未登记过的 bucket 对象对数据库不可见**：`find_orphan_upload_objects()` 的真相来源是
+  `upload_objects`，因此只能发现「有元数据行、无业务引用」的对象；031 之前直接写入 bucket、
+  从未落元数据的存量对象不在清单里，需要 provider 侧 `list()` 与数据库做集合差才能发现。
+- **账户删除的不可逆面尚无自动回归**：`e2e/account-deletion.spec.ts` 只覆盖确认短语与服务端拒绝，
+  不会真的删号（Mock 的 `deleteUser` 是空操作，真实提交会清空共享 Mock 状态）。
+  擦除语义由 Mock 镜像与 40 条契约测试保证，「先擦除、再删号」在生产数据上的验证仍依赖
+  隔离账号的一次性演练。
+
+## [0.11.0] — 2026-09-22
+
 ### Added
 
 - **受管对象孤儿可发现性与删号后的对象清理（A10）**：031 声称「`status='active'` 的行集合就是
@@ -164,12 +181,6 @@ All notable changes to IndieStack will be documented in this file.
   `EMAIL_NOTIFICATION_TYPES` 单一事实源，并新增仓库层测试按调用参数锁定两条查询使用同一集合、同一死信
   `.or` 过滤。空队列分支的 `email_worker_runs.duration_ms` 与 `cron.digest.completed` 此前恒为 0，
   现改为记录真实耗时；`email.backlog` 每轮上报的行为与「恰好等于阈值不告警」的边界也纳入测试。
-
-### Planned
-
-- 下一里程碑为 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（发布收口与质量基建）：ADR 决策状态更新、
-  release checklist 与迁移回滚 runbook、本地 mock / provider 诊断 / 贡献者测试矩阵，以及 E2E shard 策略复审、
-  CI 并行与缓存、CodeQL / Secrets 零回归、production smoke、tag/release 自动化与退出报告。
 
 ## [0.10.0] — 2026-09-13
 

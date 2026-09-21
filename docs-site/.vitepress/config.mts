@@ -193,11 +193,12 @@ function sidebar_zh() {
       {
         text: "版本动态",
         items: [
-          { text: "v0.6.0", link: "/zh-CN/v0.6.0" },
-          { text: "v0.7.0", link: "/zh-CN/v0.7.0" },
+          { text: "v0.11.0", link: "/zh-CN/v0.11.0" },
           { text: "v0.10.0", link: "/zh-CN/v0.10.0" },
           { text: "v0.9.0", link: "/zh-CN/v0.9.0" },
           { text: "v0.8.0", link: "/zh-CN/v0.8.0" },
+          { text: "v0.7.0", link: "/zh-CN/v0.7.0" },
+          { text: "v0.6.0", link: "/zh-CN/v0.6.0" },
           { text: "v0.5.0", link: "/zh-CN/v0.5.0" },
           { text: "v0.4.0", link: "/zh-CN/v0.4.0" },
         ],
@@ -246,11 +247,12 @@ function sidebar_en() {
       {
         text: "Releases",
         items: [
-          { text: "v0.6.0", link: "/v0.6.0" },
-          { text: "v0.7.0", link: "/v0.7.0" },
+          { text: "v0.11.0", link: "/v0.11.0" },
           { text: "v0.10.0", link: "/v0.10.0" },
           { text: "v0.9.0", link: "/v0.9.0" },
           { text: "v0.8.0", link: "/v0.8.0" },
+          { text: "v0.7.0", link: "/v0.7.0" },
+          { text: "v0.6.0", link: "/v0.6.0" },
           { text: "v0.5.0", link: "/v0.5.0" },
           { text: "v0.4.0", link: "/v0.4.0" },
         ],
