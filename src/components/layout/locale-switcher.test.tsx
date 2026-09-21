@@ -41,8 +41,11 @@ describe("LocaleSwitcher", () => {
     const user = userEvent.setup();
     render(<LocaleSwitcher />);
 
-    await user.click(screen.getByRole("button"));
-    await user.click(screen.getByRole("menuitem", { name: /English/ }));
+    const button = screen.getByRole("button", { name: /切换语言|Switch language/ });
+    button.focus();
+    await user.click(button);
+    await screen.findByRole("menu", { hidden: false });
+    await user.click(await screen.findByRole("menuitem", { name: /English/ }));
 
     expect(document.cookie).toContain("app-locale=en");
     expect(reloadMock).toHaveBeenCalledTimes(1);
