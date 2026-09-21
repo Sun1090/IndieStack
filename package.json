@@ -71,7 +71,8 @@
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
     "check:migration-history": "node scripts/check-migration-history.js",
-    "update:migrations-manifest": "node scripts/check-migrations.js --update"
+    "update:migrations-manifest": "node scripts/check-migrations.js --update",
+    "audit:storage-orphans": "node scripts/storage-orphans.js"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
