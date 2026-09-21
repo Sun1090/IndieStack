@@ -1,3 +1,15 @@
+## 2026-09-21 — v0.10.0 发布外部阻塞复核
+
+- 状态：BLOCKED（无仓库代码、测试或 CI 阻塞；必须由具备权限者提供 Vercel 生产部署凭据/账号权限）。
+- 当前 `main`：`149203df780f51b531e330ed70b88a8f8169ead5`（PR #33 已合并），工作树干净，远端无打开 PR。
+- 生产 smoke 复核（2026-09-21T03:00:04Z）：5/6 通过；唯一失败仍为 `/api/health` 返回 `version=0.6.0`、期望 `0.10.0`。
+- GitHub deployments 复核：应用生产仍为 `b0ea6f7ed2eb4aea21f7982c974c496b01dc2d89`；当前 `main` 未部署到 `Production – indie-stack`。
+- 本地部署能力复核：未安装 `vercel` CLI；环境没有 `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID`；仓库也没有可执行生产 promotion 的 workflow 或动作密钥。
+- 发布判断不变：不得创建或推送 `v0.10.0` tag，不得把 smoke 标记为通过。必须先把 `149203d` 部署到生产，再取得 6/6 smoke 证据。
+- 风险 / 回滚：本记录只追加进度，无运行时代码或配置变更，回滚仅需撤销该文档提交。
+- 下一项：获得 Vercel 生产权限后部署 `149203d`，执行 `pnpm smoke:production -- https://indie-stack-theta.vercel.app --expected-version 0.10.0 --output production-smoke.json`；6/6 后再进入 tag/release。
+- 更新时间：2026-09-21T11:01:00+08:00。
+
 ## 2026-09-21 — 修复 Health workflow 根 URL 误用
 
 - 状态：DONE（本地实现、测试与 workflow policy 完成；v0.10.0 仍受生产应用版本漂移阻塞）。
