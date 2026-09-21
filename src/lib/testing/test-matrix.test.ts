@@ -82,8 +82,11 @@ describe("contributor test matrix audit", () => {
   });
 
   it("requires each command inside its own area row", () => {
+    // 只在 i18n 行里挖掉 check:i18n，并把它放到表格之外：断言与领域实际登记了几条命令无关
     const rows = TEST_MATRIX.map((area) =>
-      area.id === "i18n" ? row({ ...area, commands: ["check:locales"] }) : row(area),
+      area.id === "i18n"
+        ? row({ ...area, commands: area.commands.filter((command) => command !== "check:i18n") })
+        : row(area),
     );
     const content = [
       "| Area | Covered paths | Required checks |",
