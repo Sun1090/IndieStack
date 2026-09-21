@@ -29,7 +29,7 @@ docs-site 版本页已对齐，`pnpm check:release-docs` 在 `package.json` 版�
 
 1. 本版本**新增数据库迁移** `026_push_delivery_attempts.sql`（纯新增表，无破坏性变更），最新迁移号由
    025 前进到 026；回滚按 `docs/operations/rollback-runbook-v0.8.0.md` 走应用层回退，表保留不删除。
-2. 新增 Vercel Cron 任务 `/api/cron/push-retry`（每 15 分钟，单轮 50 条），依赖已存在的 `CRON_SECRET`。
+2. 新增 Vercel Cron 任务 `/api/cron/push-retry`（每天 22:00 UTC，单轮 50 条；Hobby 每日最多一次），依赖已存在的 `CRON_SECRET`。
 3. Push 投递语义从 **best-effort** 变为 **at-least-once**：新增退避重试（60s → 120s，上限 1 小时）、
    重试上限 3（含首次）与死信状态；404/410 立即撤销端点。
 4. 新增终态保留策略：`sent` 保留 7 天、`dead` 保留 30 天、单状态每轮最多清理 1000 行；响应增加

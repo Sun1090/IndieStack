@@ -16,7 +16,7 @@
 | `NEXT_PUBLIC_APP_URL` | 必需（https） | digest CTA / 确认退订链接 / WebAuthn origin 均依赖 |
 | `CRON_SECRET` | 必需 | digest worker 鉴权 |
 | `RESEND_API_KEY` / `RESEND_FROM` | 必需 | 发送通道 |
-| 外部 cron | 必需 | digest 建议**每小时**（`0 * * * *` UTC），配合时区错峰 |
+| 外部 cron | 必需 | digest 建议**每天 09:00 UTC**（`0 9 * * *`；Hobby 每日最多一次） |
 | `OSS_BUCKET/REGION/ACCESS_KEY_ID/ACCESS_KEY_SECRET` | 可选 | 四项齐备启用 OSS，否则 Supabase Storage（需建 `avatars` 公共读桶） |
 | `NEXT_PUBLIC_APPARK_API_KEY` + `NEXT_PUBLIC_APPARK_ENDPOINT` | 可选 | 两项齐备启用 APM |
 | `NEXT_PUBLIC_FEATURE_PASSKEY` | 可选 | `true` 启用通行密钥（需 https） |

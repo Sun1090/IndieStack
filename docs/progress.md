@@ -1,3 +1,10 @@
+## 2026-09-21 — 修复 Vercel Hobby Cron 部署阻塞
+
+- 状态：DONE（已解除 PR #32 的 `Vercel – indie-stack` failure；生产应用部署仍阻塞在版本漂移）。
+- 失败原因：`vercel.json` 同时注册 `/api/cron/digest` 与 `/api/cron/push-retry`，Hobby 账号不允许任何路径每天运行超过一次，部署预览直接失败。
+- 修复：保留 digest 每天 09:00 UTC，将 push-retry 收敛为每天 22:00 UTC；新增 `isValidVercelHobbyCronSchedule` 与 `countCronRunsPerDay`，由 `pnpm check:cron-contract` 在部署前拒绝多次/天表达式。
+- 风险：push 重试延迟从 15 分钟提升到最多 24 小时；在 Hobby plan 不变的前提下，这是让应用部署可推进的必要折中。Pro plan 解锁后应恢复更高频重试并调整契约。
+- 验证：`pnpm vitest run src/lib/observability/cron-contract.test.ts src/lib/observability/cron-contract-check.test.ts`、`pnpm check:cron-contract`、`pnpm lint`、`pnpm type-check`、`pnpm test`、`pnpm build`、`pnpm check:release-docs`、`pnpm check:changelog`、`pnpm check:docs`、`pnpm check:adr`、`pnpm check:workflows`、`pnpm check:gates`、`pnpm check:production-smoke`、`pnpm audit --audit-level high`、`git diff --check` 均通过。
 ## 2026-09-21 — Production Smoke 定时漂移检测
 
 - 状态：DONE（本地代码/门禁完成；v0.10.0 发布仍被生产部署版本阻塞）。

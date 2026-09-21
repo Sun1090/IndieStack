@@ -70,7 +70,7 @@ Push 与邮件共用类型偏好矩阵，同时额外受 `pushNotifications` 控
   因此实际等待为首次失败后 60 秒、随后 2 分钟。
 - 每条投递最多尝试 3 次（含即时投递）。第 3 次仍失败时写入 `dead`，`failure_code=max-attempts`，
   worker 不再拉取。
-- 每轮最多处理 50 条到期记录。`/api/cron/push-retry` 在 `vercel.json` 中每 15 分钟调度一次，
+- 每轮最多处理 50 条到期记录。`/api/cron/push-retry` 在 `vercel.json` 中每天 22:00 UTC 调度一次；Vercel Hobby 每天最多一次，
   与 `/api/cron/digest` 一样要求 `CRON_SECRET`。
 - 订阅记录已删除、用户期间关闭 Push，或通知记录不存在时，不再调用推送服务，直接进入死信队列。
 - 死信保留供运维排查，可通过 `src/lib/repositories/push-delivery-attempts.ts` 的
