@@ -102,3 +102,16 @@ pnpm verify:build           # 复现构建门禁
 roadmap `docs/roadmap-0.6.0.md` 的 I / J 段（I04、I06–I10、J02–J10）：ADR 决策状态、release checklist、
 本地 mock / provider 诊断 / 贡献者测试矩阵 / 迁移回滚 runbook、E2E shard 策略、CI 并行与缓存、
 CodeQL 与 Secrets 零回归、production smoke、tag/release 自动化、退出报告。
+
+## E09 运维 runbook 与故障演练结论
+
+| 项目 | 仓库产物 | 可本地校验事实 | 真实演练状态 |
+|------|----------|----------------|--------------|
+| 部署/回滚路径 | `docs/operations/rollback-runbook-v0.10.0.md`、`docs/operations/release-runbook-v0.10.0.md` | `pnpm check:release-docs` 强制要求触发条件、health、不自动回滚数据库与前向修复迁移 | 需有 Vercel 生产权限者执行 |
+| 数据库回滚 | `docs/operations/migration-rollback-runbook.md` | `pnpm check:migration-runbook` 强制校验章节、最新迁移、引用迁移、注册脚本与失败封闭 | 需 DBA / 备份窗口 |
+| Secrets 泄漏 | `docs/operations/secrets-leak-response-runbook.md` | `pnpm check:secrets-scan` 校验章节与扫描强度 | 需真实凭据轮换 |
+| CodeQL 告警 | `docs/operations/codeql-alert-triage.md` | `pnpm check:codeql` 校验阻断阈值、处置理由与扫描契约 | 需 Security insights 权限 |
+| Production smoke / 版本漂移 | `docs/operations/production-smoke-v0.10.0.md` | `pnpm check:production-smoke` 校验手动、定时与 artifact 契约；`pnpm smoke:production` 对生产执行无副作用 6 项检查 | 当前仍 5/6，生产版本为 0.6.0 |
+| Provider / 告警 | `docs/operations/sentry-alerts.md`、`docs-site/provider-diagnostics.md` | `pnpm provider:doctor` 与 `pnpm check:provider-docs` 校验运行时注册表、环境变量与文档一致 | 需 provider 账号/测试密钥 |
+
+结论：E09 的“文档与本地契约”已完成；所有要求真实生产权限、凭据轮换、数据库维护窗口或外部账号的演练仍不得标记完成。发布前必须由对应 owner 在 incident 记录中补充实际命令、时间、deployment、artifact 与结论。
