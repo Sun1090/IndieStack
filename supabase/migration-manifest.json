@@ -156,6 +156,11 @@
       "version": "031",
       "fileName": "031_upload_objects.sql",
       "sha256": "2f79d1d07a61c71686273c8ad5308f8469d5cc6b526e3de3a1454b4604087b8f"
+    },
+    {
+      "version": "032",
+      "fileName": "032_data_retention_erasure.sql",
+      "sha256": "fe2803fc375f682d9e9b673fb53f1ef0b5b33639852ebe31ffbfd333473d459b"
     }
   ]
 }
