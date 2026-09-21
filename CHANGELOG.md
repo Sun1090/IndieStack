@@ -289,6 +289,20 @@ All notable changes to IndieStack will be documented in this file.
   4 项变异测试（规则恒假、去掉失败封闭、可访问名称恒真、img 规则失效）均使 28 条单测变红。
   3 处 `aria-label` 复用已有消息键（`admin.users.changeRole`、`projects.detail.backToProjects`、
   `common.back`），不新增文案。**教训：一个永远不会失败的门禁比没有门禁更糟，因为它凭空制造信心。**
+- **仪表盘从未被 axe 扫过，三处 AA 对比度长期不达标（D10）**：`e2e/a11y.spec.ts` 只访问 5 个公共页，
+  从不进入登录后区域——这也是 3 个未标注图标按钮能同时躲过静态门禁与运行时审计的原因。把覆盖面扩到
+  9 个已认证页（概览 / 项目 / 项目详情新建 / 团队新建 / 用户管理 / 团队 / 设置 / 通知 / API 密钥，
+  共 14 条 axe 用例）后，当场抓到 3 处真实 WCAG 1.4.3 违规：`text-destructive` 作为文字是 3.76:1、
+  `text-muted-foreground` 落在 `bg-muted` 上是 4.39:1、白字压 `bg-destructive` 只有 3.6:1，
+  全部低于正文要求的 4.5:1。修复走 token 而不是逐处调类名：新增 `--destructive-text`
+  （浅色 `0 72% 49%`＝#d72323，白底 5.06:1；深色 `0 90.6% 70.8%`＝#f87171，深色卡面 6.4:1），
+  因为 `--destructive` 的语义是「红底配浅色前景」，深色模式下它是 `0 62.8% 30.6%` 的暗红，
+  直接当文字几乎不可读；同时把浅色 `--destructive` 压到 `0 72% 49%`（白字 4.84:1）、
+  浅色 `--muted-foreground` 压到 `240 3.8% 44%`（在 `--muted` 上 4.78:1、在白底 5.25:1）。
+  9 处「destructive 作为可读文字」改用 `text-destructive-text`（表单错误、MFA 错误 ×4、删除账户、
+  移除成员、API 密钥、统计趋势、分析页、webhook 错误），图标与背景仍用 `destructive`（图形对象要求 3:1，
+  已满足）。视觉基线按 `docs/testing.md` 的 Linux 容器流程重生成：只有 `pricing` 一张变化
+  （次要文字略深），容器内两次独立比对均 4/4 通过。
 
 ## [0.10.0] — 2026-09-13
 

@@ -1,3 +1,44 @@
+## 2026-09-22 — 把 axe 推进登录后区域：3 处 AA 对比度违规与 token 层修复（D10 续）
+
+- 里程碑 / 版本：v0.11.0（未打 tag；生产仍 `0.10.0`，缺 Vercel build 配额）。
+- 状态：DONE（本地 32 门禁 / 183 文件全绿；Linux 容器视觉基线两次独立 4/4）。
+- 分支 / commit：`test/a11y-dashboard-coverage`（基于 PR #50 的 `fix/a11y-icon-button-gate`，
+  合并后 rebase 到 main）——覆盖 + token 修复一个 commit、基线一个、文档一个。
+- 完成内容：
+  1. **axe 覆盖面从 5 个公共页扩到 14 条用例**：新增 9 个已认证页（概览 / 项目列表 / 新建项目 /
+     创建团队 / 用户管理 / 团队 / 设置 / 通知 / API 密钥），刻意包含上一条目里那 3 个带图标按钮的页面，
+     复用 `audit-logs.spec.ts` 的 mock 登录流程（`dev@indiestack.local`，默认 super_admin）。
+     失败信息现在带 `violation.id` + 前 3 个 CSS target，不再是一坨 diff。
+  2. **首跑即抓到 3 处真实 WCAG 1.4.3 违规**：`/dashboard/team` 的 `text-destructive` 文字 3.76:1；
+     `/dashboard/settings` 的 `text-muted-foreground` 落在 `bg-muted` 上 4.39:1、
+     白字压 `bg-destructive` 3.6:1。正文要求 4.5:1，全部不达标。
+  3. **修在 token 层而不是逐处改类名**：新增 `--destructive-text`（浅色 `0 72% 49%`＝#d72323
+     白底 5.06:1；深色 `0 90.6% 70.8%`＝#f87171 深色卡面 6.4:1）。之所以不能直接复用 `--destructive`：
+     它的语义是「红底配浅色前景」，深色模式下是 `0 62.8% 30.6%` 的暗红，当文字几乎看不见。
+     同时把浅色 `--destructive` 压到 `0 72% 49%`（白字 4.84:1）、浅色 `--muted-foreground`
+     压到 `240 3.8% 44%`（在 `--muted` 上 4.78:1、白底 5.25:1）。9 处「destructive 作为可读文字」
+     改用 `text-destructive-text`；图标与背景保持 `destructive`（图形对象 3:1 已满足）。
+     对比度值全部用 WCAG 相对亮度公式实算，不靠肉眼。
+  4. **视觉基线按文档流程重生成**：`docs/testing.md` 记录的方式在
+     `mcr.microsoft.com/playwright:v1.63.0-noble` 容器内跑，先比对（`pricing` 1 failed / 3 passed，
+     说明只有次要文字色变化）、再 `--update-snapshots`、最后两次独立比对 4/4。
+     只有 `pricing-chromium-visual-linux.png` 一张发生变化，已肉眼核对无布局位移。
+- 变更文件：15 个——e2e 1、token 注册 1、globals.css 1、组件/页面 9、视觉基线 1、文档 5（含本条）。
+- 验证命令与结果：
+  - `pnpm exec playwright test e2e/a11y.spec.ts` → 修复前 **1 failed（团队列表 3.76:1）→ 修复后 14 passed**；
+  - 容器内 `playwright test --config=playwright.visual.config.ts` → 两次独立运行各 **4 passed**；
+  - `pnpm check:all` → 32 门禁全绿、**183 文件 / 2086 用例**；`pnpm check:tokens` →
+    `✅ 40 个已登记 token（39 个深色覆盖、39 条 @theme 映射）`；`pnpm type-check` / `pnpm lint` 干净。
+- 意外收获（已登记为下一项，未在本条修）：dev server 日志显示
+  `MISSING_MESSAGE dashboard.notifications.list.types.warning`——`src/lib/mock/data.ts:171` 生成的
+  通知类型 `info/success/warning/error` 与真实 `NotificationType`（7 个）完全脱节，
+  页面靠 `try/catch` 静默退回原始英文串。`check:i18n` 明确跳过动态 `t(\`...\`)`，所以这是设计性盲区。
+- 阻塞（不变，外部）：Vercel build 配额、隔离测试账号、Supabase Dashboard 权限（pg_cron）。
+- 风险 / 回滚：改的是共享语义色的明度，界面文字与红色按钮会略深一档（已核对基线）；
+  不改数据、不改行为契约。回滚为撤销本分支提交。
+- 下一项：mock 通知类型对齐 + 动态 i18n 键门禁；README 等处的用例总数漂移。
+- 更新时间：2026-09-22。
+
 ## 2026-09-22 — 复核 D10：静态 a11y 门禁永远不会失败，修复并标注 3 处真实违规
 
 - 里程碑 / 版本：v0.11.0（未打 tag；生产仍 `0.10.0`，缺 Vercel build 配额）。
