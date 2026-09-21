@@ -27,7 +27,7 @@
 | `id` | `uuid` | 主键，`gen_random_uuid()` |
 | `bucket` | `text not null` | 对象所属 bucket（当前只有 `avatars`，见 H05 storage 门禁） |
 | `object_key` | `text not null` | provider 侧完整对象键，形如 `avatars/<userId>/<时间戳>-<随机串>.<ext>` |
-| `owner_id` | `uuid not null` | 上传者，`references auth.users(id) on delete cascade`（账号删除带走元数据） |
+| `owner_id` | `uuid`（031 建表时 `not null`，033 改为可空） | 上传者；`references auth.users(id) on delete set null`（033）——元数据必须活过账户删除，否则失败的对象删除永远无法被发现 |
 | `byte_size` | `bigint not null` | `check (byte_size > 0)` |
 | `content_type` | `text not null` | 校验后的 MIME（不是浏览器声明值，见服务层文件头校验） |
 | `checksum` | `text not null` | `sha256(对象字节)` 十六进制，`check (checksum ~ '^[0-9a-f]{64}$')` |
@@ -38,7 +38,8 @@
 
 - `unique (bucket, object_key)` —— 同一对象只保留一行，重复写入走 upsert 刷新而不是追加；
 - `idx_upload_objects_owner_status (owner_id, status)` —— 按用户清理；
-- `idx_upload_objects_bucket_status (bucket, status)` —— 孤儿巡检时按 bucket 拉 `active` 集合。
+- `idx_upload_objects_bucket_status (bucket, status)` —— 孤儿巡检时按 bucket 拉 `active` 集合；
+- `idx_upload_objects_deleted_at (updated_at) where status = 'deleted'`（032）—— 30 天保留期清理。
 
 `(bucket, object_key)` 是复合唯一键，仓储层 upsert 使用
 `{ onConflict: "bucket,object_key" }`；mock（`src/lib/mock/index.ts`）同步支持逗号分隔的复合
@@ -95,7 +96,8 @@ where table_schema = 'public' and table_name = 'upload_objects' order by 1, 2;
 约束同样做了运行时验证：写入非法 `checksum` 触发
 `upload_objects_checksum_check`，重复 `(bucket, object_key)` 触发
 `upload_objects_bucket_key_unique`，`update` 后 `updated_at > created_at`（触发器生效），
-删除 `auth.users` 行后对应元数据行级联消失（在回滚事务内验证）。
+删除 `auth.users` 行后元数据行**保留**、`owner_id` 变为 `null`，且仍会出现在
+`find_orphan_upload_objects()` 的结果里（033 改动，在回滚事务内验证）。
 
 ## 写入协议
 
@@ -122,16 +124,31 @@ put(objectKey)                      → provider 私钥写入
 
 ## 孤儿巡检
 
-`active` 集合与 bucket 实际列表的差集就是两类问题对象：
+引用关系只存在于 `profiles.avatar_url` / `projects.logo_url` 这两个完整 URL 字符串里，
+所以「谁还指着这个对象」由 `033` 的 `upload_object_is_referenced(text)` 回答：
+判定是 `right(url, length(key) + 1) = '/' || key` 的**后缀相等**，不是 `LIKE`/子串包含——
+对象键里的 `_` 在 `LIKE` 里是单字符通配符（会把 `a_b.png` 匹配到 `axb.png`），
+而子串包含会把 `xavatars/u/f.png` 误当成 `avatars/u/f.png` 的引用。两条规则在本地库
+回滚事务演练与 `src/lib/mock.test.ts`（镜像同一判定的 mock 实现）中各有一条用例。
 
 ```sql
+-- 全库 active 但已无任何业务行引用（含账户删除后失去归属的行）→ 待补删清单
+select * from public.find_orphan_upload_objects();
+
+-- 删号前：这个人上传过什么、还能不能删（referenced=true 的必须保留，例如团队项目封面）
+select * from public.list_user_objects_for_erasure('<userId>');
+
 -- 数据库认为应存在、但 bucket 里已经没有（业务表仍可能指向失效 URL）
 select object_key from public.upload_objects where status = 'active';
-
--- 反向：bucket 里有对象、但没有 active 元数据 → 孤儿（用 provider 侧列表对照上面结果）
-select object_key from public.upload_objects
-where status = 'active' and bucket = 'avatars';
 ```
+
+两个函数都是 `security definer` + 空 `search_path`，`EXECUTE` 只对 `service_role`（它们跨行读
+所有人的资料 URL）。账户删除链路（`src/lib/uploads/erasure.ts`）会在删号前清理
+`referenced=false` 的对象；单个对象删除失败**不阻塞删号**，失败的行保持 `active`，
+因此会稳定出现在上面的孤儿清单里等待补删。
+
+**仍未覆盖的一半**：bucket 里存在、但数据库从来没有登记过行的对象（例如 031 之前上传的历史文件），
+只能靠 provider 侧列目录与 `status='active'` 集合做差集，仓库里没有自动化的 bucket 列举工具。
 
 反向比对需要 provider 侧对象列表（Supabase Storage `list()` 或 S3 ListObjectsV2），
 当前**尚未**接入定时任务——表先落数据，巡检/清理 worker 属于后续里程碑。手动巡检建议：
