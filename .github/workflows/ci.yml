@@ -54,6 +54,9 @@ jobs:
       - name: Check i18n translation usage
         run: pnpm check:i18n
 
+      - name: Check server action error code translations
+        run: pnpm check:action-errors
+
       - name: Check shared agent index
         run: pnpm check:agents
 
