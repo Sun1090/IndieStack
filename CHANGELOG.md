@@ -273,6 +273,23 @@ All notable changes to IndieStack will be documented in this file.
   `.or` 过滤。空队列分支的 `email_worker_runs.duration_ms` 与 `cron.digest.completed` 此前恒为 0，
   现改为记录真实耗时；`email.backlog` 每轮上报的行为与「恰好等于阈值不告警」的边界也纳入测试。
 
+### Fixed
+
+- **静态 a11y 门禁此前形同虚设（D10）**：`check:a11y` 的图标按钮规则**结构上不可能命中**——
+  外层 `if` 要求 children 里不存在任何 2 个以上字母的连续串，内层判定又要求组件名
+  （`MoreHorizontal`、`<svg`）存在，两者互斥；并且它和同类门禁不同，**不打印任何计数器**，
+  所以每轮「✅ 无未标注的图标按钮」在 CI 日志里完全看不出它什么都没做。运行时那道也救不了：
+  `e2e/a11y.spec.ts` 的 axe 只访问 5 个公共页，从不进入仪表盘，而这 3 处全在仪表盘里。真实后果是 3 个
+  `size="icon"` 且没有任何可访问名称的按钮长期在线（admin 用户表的改角色下拉触发器、
+  新建项目与新建团队的返回按钮），屏幕阅读器对用户只会念出「按钮」。规则本体重写为
+  `src/lib/ui/a11y-rules.ts`（纯函数）+ `scripts/lib/a11y-check.js`（IO）+ 薄 CJS 入口：
+  判定保守优先（剥掉自闭合图标与 `Link`/`span` 等透传容器后什么都不剩才算纯图标按钮，
+  所以 `{t("apiKeys.create")}` 这类插值算有文本、不误报），扫不到文件按 `A11Y_NO_FILES`
+  失败封闭，输出 `scannedFiles / buttons / iconOnlyButtons` 让空转一眼可见。
+  4 项变异测试（规则恒假、去掉失败封闭、可访问名称恒真、img 规则失效）均使 28 条单测变红。
+  3 处 `aria-label` 复用已有消息键（`admin.users.changeRole`、`projects.detail.backToProjects`、
+  `common.back`），不新增文案。**教训：一个永远不会失败的门禁比没有门禁更糟，因为它凭空制造信心。**
+
 ## [0.10.0] — 2026-09-13
 
 > 主题：**UI 系统收口**——把界面层从「逐页手写」收敛为可复用系统，并补齐暗色模式、移动端断点与

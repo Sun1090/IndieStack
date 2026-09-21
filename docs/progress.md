@@ -1,3 +1,52 @@
+## 2026-09-22 — 复核 D10：静态 a11y 门禁永远不会失败，修复并标注 3 处真实违规
+
+- 里程碑 / 版本：v0.11.0（未打 tag；生产仍 `0.10.0`，缺 Vercel build 配额）。
+- 状态：DONE（本地 32 门禁 / 183 文件全绿；CI 与合并见本条 PR）。
+- 分支 / commit：`fix/a11y-icon-button-gate` → `fix(a11y)`（门禁重写 + 3 处标注）+ 本条文档。
+- 触发方式：不是新需求，而是**对已有门禁做可达性复核**。上一轮 D08 收口后，我把 roadmap 里
+  「X 已由门禁 Y 守住」这类断言逐条对着代码验了一遍（不看注解）。
+- 完成内容：
+  1. **确认 `check:a11y` 的图标按钮规则结构上不可命中**：外层
+     `if (!/[A-Za-z\u4e00-\u9fa5]{2,}/.test(inner.replace(/className=.../,"")))` 要求 children 里
+     不存在任何 2+ 字母的连续串，而内层 `hasIconOnly` 又要求 `<(Github)?Icon|Loader2|[A-Z][a-zA-Z]+ className`
+     命中——组件名本身就是 2+ 字母串，两者互斥，规则恒不触发。更糟的是它**不像同类门禁那样打印计数器**，
+     所以「✅ 无未标注的图标按钮」在 CI 日志里与真的审过完全无法区分。
+     用两份独立实现交叉验证真实违规数（自写扫描器 + 子代理各扫一遍，结果一致为 **3 处**）：
+     `admin-users-page.tsx:203` 的改角色下拉触发器（`MoreHorizontal`）、
+     `create-project-page.tsx:64` 与 `create-team-page.tsx:74` 的返回按钮（`asChild` + `Link` 包 `ArrowLeft`）。
+     这些按钮对屏幕阅读器只剩「按钮」两个字。
+     **为什么两道门禁一起漏过**：静态那道恒不触发；运行时那道 `e2e/a11y.spec.ts` 的 axe 只访问
+     `/`、`/features`、`/pricing`、`/auth/login`、`/auth/register` 5 个公共页，**从不进入仪表盘**，
+     而这 3 处全在仪表盘里。axe 的 `button-name` 规则本来抓得到——覆盖面决定了它抓不到。
+     已登记为后续项（把已认证仪表盘页纳入 axe 覆盖）。
+  2. **规则本体重写为可单测的纯函数**：`src/lib/ui/a11y-rules.ts`（`isIconOnly` /
+     `hasAccessibleName` / `auditA11y`，3 条规则码 `ICON_BUTTON_UNLABELED`、`IMG_MISSING_ALT`、
+     `A11Y_NO_FILES`）+ `scripts/lib/a11y-check.js`（IO，排除 `src/components/ui/**` 与测试）+
+     薄 CJS 入口。判定**保守优先**：children 去掉自闭合图标、剥掉 `Link`/`a`/`span`/`div`/`p`
+     透传容器后什么都不剩才算纯图标按钮，因此 `{t("apiKeys.create")}` 算有文本不误报；
+     开标签属性允许引号与一层花括号，`cn("data-[state=open]:bg-accent", className)` 不会把标签截断在 `>` 上。
+     输出打印 `scannedFiles / buttons / iconOnlyButtons / images`，空转一眼可见。
+  3. **修掉 3 处违规**：`aria-label` 全部复用已有消息键（`admin.users.changeRole`、
+     `projects.detail.backToProjects`、`common.back`），不新增任何文案，也就不会引入翻译漂移面。
+- 变更文件：8 个——门禁实现 3、测试 2（28 条）、真实页面 3；文档 5（CHANGELOG 新增 `### Fixed`、
+  双语 release notes、roadmap「D10 复核」条目并修掉第 10 行「D 域仍待收口」的过期断言、本进度条目）。
+- 验证命令与结果：
+  - 重写后首轮即 `node scripts/check-a11y.js` → 精确报出这 3 处（退出码 1），与两份独立扫描器一致；
+    补标注后 → `✅ 133 个文件、128 个按钮（5 个纯图标按钮均已标注）、1 个 <img> 均带 alt`；
+    `iconOnlyButtons=5 > 0` 这条断言本身就是回归测试（旧实现这里是 0 且照样打印通过）。
+  - **变异测试 4 项全红**（脚本化改生产代码→跑 28 条单测→还原）：规则恒假、去掉 `A11Y_NO_FILES`
+    失败封闭、`hasAccessibleName` 恒真、img 规则失效，vitest 退出码均为 1，还原后为 0。
+  - `pnpm check:all` → 32 门禁全绿、**183 文件 / 2086 用例**全过；`pnpm type-check` / `pnpm lint` 干净。
+  - 上一轮 D08 的下游确认也已在 CI 落地：PR #49 合并前 CI shard 1 `pnpm test:visual` → **4 passed**
+    （Linux 基线），即逻辑方向迁移在真实基线上无视觉变化；GitHub 必需检查 7/7 全绿。
+- 阻塞（不变，外部）：Vercel `indie-stack` / `indie-stack-docs-site` 仍 `Deployment rate limited`，
+  生产 `0.10.0`，tag v0.11.0 继续推迟；缺隔离测试账号（生产删号闭环）、Supabase Dashboard 权限（pg_cron）。
+- 风险 / 回滚：不改数据、不改行为契约；`check:a11y` 从恒通过变为真实审计，若未来出现误报，
+  应放宽判定并在测试里钉住，而不是加豁免——豁免表本身就是下一次空转。
+- 下一项：文档数字漂移（README 仍写 106 文件 / 1034 用例，实测 183 / 2086；provider 28→29 变量；
+  `check:states` 132→133；roadmap J02 的「86 条 E2E」实测 83）；继续按「X 由门禁 Y 守住」逐条验真。
+- 更新时间：2026-09-22。
+
 ## 2026-09-22 — 应用层逻辑方向迁移 + `check:direction`（D08 收口，D 域完成）
 
 - 里程碑 / 版本：v0.11.0（仍未打 tag；生产健康、跑 `0.10.0`，缺的是 Vercel build 配额）。

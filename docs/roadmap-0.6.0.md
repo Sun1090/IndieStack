@@ -7,10 +7,23 @@
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
 > **进度（2026-09-13）**：I01–I03 已完成（docs-site 邮件投递 0b94d8e、存储与 OSS 配置 e3a2ac1、Web Push f2e0070 三章 + 中英 configuration 同步）；I05 已完成；H09/H10 已完成（迁移漂移门禁、依赖高危与 secrets/scanner 配置漂移门禁）；C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E01 已完成（Appark 事件采样配置与诊断回退）；E02 已完成（`x-request-id` 契约 + 带 trace 的错误入口 + 覆盖门禁）；E03 已完成（修复 digest 未调度，新增 cron 调度/指标契约门禁与鉴权拒绝指标）；E04 已完成（邮件队列拉取与积压计数共用 `EMAIL_NOTIFICATION_TYPES`，空轮次记录真实耗时，`email.backlog` 每轮上报与阈值边界纳入测试）；E05 已完成（`storage-metrics.ts` 固化 provider 写入与请求终态两个指标，补齐「provider 成功但元数据回写失败」的用户可见失败盲区，驱动与领域层测试覆盖四个 provider/结果组合与三个终态）；
-E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名」去重闸门，`getStorageDriver()` 上报实际驱动；补齐 `RESEND_API_KEY` 缺失时失败率告警零样本的盲区，未配置路径立即产出 `reason=not-configured` 样本）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）；I04/I06–I10 已完成（ADR 治理、release checklist 与门禁接线审计、mock 指南、provider 诊断指南、贡献者测试矩阵、迁移回滚 runbook）；J02 已完成（E2E shard 策略）；J03 已完成（CI 并行与缓存优化）；J04 已完成（CodeQL 告警零回归）；J05 已完成（Secrets Scan 零回归）；J07 已完成（标签/Release Notes 自动化门禁）。E07 已完成（`ops.supabase.restore` 全部终态上报 `value=1` 计数样本，修复恢复链路告警盲区，并把文档阈值与代码常量钉在一起）；其余任务按 M1→M2→M3→M4 推进；H07/H08 已完成（审计日志索引以真实 EXPLAIN 定案、账户数据擦除与保留期补齐）；D 域（多语言与 a11y）与 J06/J08/J09/J10（发布 smoke、回滚演练、退出报告、候选池评审）仍按下方任务池待收口。
+E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名」去重闸门，`getStorageDriver()` 上报实际驱动；补齐 `RESEND_API_KEY` 缺失时失败率告警零样本的盲区，未配置路径立即产出 `reason=not-configured` 样本）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）；I04/I06–I10 已完成（ADR 治理、release checklist 与门禁接线审计、mock 指南、provider 诊断指南、贡献者测试矩阵、迁移回滚 runbook）；J02 已完成（E2E shard 策略）；J03 已完成（CI 并行与缓存优化）；J04 已完成（CodeQL 告警零回归）；J05 已完成（Secrets Scan 零回归）；J07 已完成（标签/Release Notes 自动化门禁）。E07 已完成（`ops.supabase.restore` 全部终态上报 `value=1` 计数样本，修复恢复链路告警盲区，并把文档阈值与代码常量钉在一起）；其余任务按 M1→M2→M3→M4 推进；H07/H08 已完成（审计日志索引以真实 EXPLAIN 定案、账户数据擦除与保留期补齐）；J06/J08/J09/J10（发布 smoke、回滚演练、退出报告、候选池评审）仍按下方任务池待收口；D 域已于 2026-09-22 全部收口（见下方 D01/D02/D03/D08 条目——但 D10 的静态门禁当天被复核为**形同虚设**，同日修复，见「D10 复核」条目）。
 
 > **进度（2026-09-22）· D 域实况核对**（逐项看代码，不看注解）：D04 是真实门禁（`check:i18n` 扫描 854 个静态翻译调用，动态 `t(\`...\`)` 按设计跳过）；D05 已成立（`app-locale` cookie 由 `locale-switcher.tsx` 写入、`src/i18n/request.ts` 读取、`<html lang>` 跟随，`localePrefix: "never"` 所以不存在 URL 前缀分支）；D07 已成立（zod 消息都是 `actions` 键）；D09 = G07 的 `e2e/keyboard.spec.ts`；D10 = `check:a11y` 静态审计 + `e2e/a11y.spec.ts` 运行时 axe。D06 已完成（`e2e/smoke.spec.ts` 新增「切换到简体中文后页面真的渲染中文文案」一条：cookie=`zh-CN` + `<html lang>` + 首屏中文 Badge + 英文原文消失；此前只有「切到默认 en + 断言 cookie」两条，证明不了消息加载）。D08 见下方进度条目（D 域已完成）。
 > 本次先补价值最高的一块：`pnpm check:action-errors` 把 Server Action 错误码这一类**跨页文案**钉住（键存在 + 各 locale 不得逐字相同 + 禁止裸渲染），实测抓到 4 处裸渲染与 1 处 `authErrorKey` 漏 `ta()`。另测得 984 个 key 中 zh-CN 值与 en 逐字相同的只有 23 个，其中 21 个是品牌名与占位符（`GitHub`、`your@email.com`、`XXXX-XXXX`、`English`、`한국어`），真正的漏翻译只有 `settings.sections.security.title`，已修正；把「同值即漏翻译」推广到全部命名空间需要先建品牌/占位符白名单，属于 D02/D03 的剩余部分。
+
+> **进度（2026-09-22）· D10 复核：静态 a11y 门禁此前形同虚设，已修复**：对 `check:a11y` 做可达性复核时发现
+> 它的图标按钮规则**结构上不可能命中**——外层 `if` 要求 children 里不存在任何 2+ 字母的连续串，
+> 内层判定又要求组件名（`MoreHorizontal`、`<svg`）存在，两者互斥；而它和同类门禁不同，**不打印任何计数器**，
+> 所以每轮「✅ 无未标注的图标按钮」在 CI 日志里看不出它其实什么都没做。真实后果是 3 个 `size="icon"`
+> 且没有任何可访问名称的按钮长期在线（admin 用户表的改角色下拉触发器、新建项目与新建团队的返回按钮），
+> 屏幕阅读器只会念「按钮」。规则本体重写为 `src/lib/ui/a11y-rules.ts`（纯函数）+ `scripts/lib/a11y-check.js`（IO），
+> 判定保守优先（去掉自闭合图标、剥掉 `Link`/`span` 等透传容器后什么都不剩才算纯图标按钮，
+> 因此 `{t("apiKeys.create")}` 算有文本不报），扫不到文件按 `A11Y_NO_FILES` 失败封闭，
+> 输出带 `scannedFiles / buttons / iconOnlyButtons` 计数器；4 项变异测试（规则永假、去掉失败封闭、
+> 可访问名称恒真、img 规则失效）全部让 28 条单测变红，证明它真的会失败。
+> 3 处 `aria-label` 全部复用已有消息键（`admin.users.changeRole`、`projects.detail.backToProjects`、
+> `common.back`），不新增文案。教训：**一个永远不会失败的门禁比没有门禁更糟，因为它凭空制造信心。**
 
 > **进度（2026-09-22）· D08 已完成（D 域 10/10）**：应用层 74 处物理方向类（33 个文件）迁为逻辑方向
 > （`mr-2`→`me-2` 等，应用不设置 `dir`，两个语言均按 `ltr` 计算，渲染结果一致；
