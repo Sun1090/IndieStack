@@ -150,7 +150,7 @@ export default async function SettingsPage() {
                           <p className="truncate text-sm font-medium">
                             {device.user_agent ?? "—"}
                             {isCurrent && (
-                              <span className="bg-primary/10 text-primary ml-2 rounded px-1.5 py-0.5 text-xs">
+                              <span className="bg-primary/10 text-primary ms-2 rounded px-1.5 py-0.5 text-xs">
                                 {t("settings.sections.security.currentDevice")}
                               </span>
                             )}

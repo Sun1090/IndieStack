@@ -135,11 +135,11 @@ export function SortableHeader({ label, sortDirection, onToggle, className }: So
     <Button
       variant="ghost"
       size="sm"
-      className={cn("data-[state=open]:bg-accent -ml-3 h-8", className)}
+      className={cn("data-[state=open]:bg-accent -ms-3 h-8", className)}
       onClick={onToggle}
     >
       <span>{label}</span>
-      <ArrowUpDown className="text-muted-foreground/60 ml-2 h-3.5 w-3.5" />
+      <ArrowUpDown className="text-muted-foreground/60 ms-2 h-3.5 w-3.5" />
     </Button>
   );
 }
@@ -200,7 +200,7 @@ export function DataTable<TData extends Record<string, unknown>>({
         <div className="flex flex-1 items-center gap-2">
           {searchKey && (
             <div className="relative max-w-sm flex-1">
-              <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
+              <Search className="text-muted-foreground absolute top-2.5 start-2.5 h-4 w-4" />
               <Input
                 placeholder={searchPlaceholder ?? t("searchPlaceholder")}
                 value={globalFilter}
@@ -208,7 +208,7 @@ export function DataTable<TData extends Record<string, unknown>>({
                   setGlobalFilter(e.target.value);
                   table.setPageIndex(0);
                 }}
-                className="h-9 pl-8"
+                className="h-9 ps-8"
               />
             </div>
           )}
@@ -220,7 +220,7 @@ export function DataTable<TData extends Record<string, unknown>>({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9">
-                  <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />列
+                  <SlidersHorizontal className="me-2 h-3.5 w-3.5" />列
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">

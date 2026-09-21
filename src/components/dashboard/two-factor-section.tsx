@@ -109,7 +109,7 @@ export function TwoFactorSection() {
           )}
           {t("title")}
           {enabled && (
-            <Badge variant="success" className="ml-1">
+            <Badge variant="success" className="ms-1">
               {t("enabledBadge")}
             </Badge>
           )}

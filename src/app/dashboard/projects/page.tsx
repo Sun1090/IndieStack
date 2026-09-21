@@ -79,7 +79,7 @@ export default async function ProjectsPage({
       <PageHeader title={t("projects.list.title")} description={t("projects.list.desc")}>
         <Button asChild>
           <Link href={ROUTES.dashboardProjectsNew}>
-            <Plus className="mr-2 h-4 w-4" /> {t("projects.list.create")}
+            <Plus className="me-2 h-4 w-4" /> {t("projects.list.create")}
           </Link>
         </Button>
       </PageHeader>
@@ -116,7 +116,7 @@ export default async function ProjectsPage({
           action={
             <Button asChild>
               <Link href={ROUTES.dashboardProjectsNew}>
-                <Plus className="mr-2 h-4 w-4" /> {t("projects.list.create")}
+                <Plus className="me-2 h-4 w-4" /> {t("projects.list.create")}
               </Link>
             </Button>
           }
@@ -130,7 +130,7 @@ export default async function ProjectsPage({
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div>
-                      <CardTitle className="flex items-center gap-2 pr-8">
+                      <CardTitle className="flex items-center gap-2 pe-8">
                         <FolderKanban className="h-4 w-4 text-muted-foreground" />
                         {project.name}
                       </CardTitle>

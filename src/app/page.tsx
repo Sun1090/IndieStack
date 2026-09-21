@@ -67,7 +67,7 @@ export default async function HomePage() {
               <div className="flex flex-wrap justify-center gap-4">
                 <Button asChild size="lg">
                   <Link href={ROUTES.register}>
-                    {t("hero.cta")} <ArrowRight className="ml-2 h-4 w-4" />
+                    {t("hero.cta")} <ArrowRight className="ms-2 h-4 w-4" />
                   </Link>
                 </Button>
                 <Button variant="outline" size="lg" asChild>
@@ -135,7 +135,7 @@ export default async function HomePage() {
           <div className="flex justify-center pt-4">
             <Button variant="link" asChild>
               <Link href={ROUTES.features}>
-                {t("featuresSection.seeAll")} <ChevronRight className="ml-1 h-4 w-4" />
+                {t("featuresSection.seeAll")} <ChevronRight className="ms-1 h-4 w-4" />
               </Link>
             </Button>
           </div>

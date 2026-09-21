@@ -66,12 +66,12 @@ export default async function ChangelogPage() {
       {/* Timeline */}
       <div className="relative mx-auto mt-16 max-w-3xl">
         {/* Timeline line */}
-        <div className="absolute left-0 top-0 h-full w-px bg-border md:left-8" />
+        <div className="absolute start-0 top-0 h-full w-px bg-border md:start-8" />
 
         {releases.map((release) => (
-          <div key={release.version} className="relative pb-12 pl-8 last:pb-0 md:pl-20">
+          <div key={release.version} className="relative pb-12 ps-8 last:pb-0 md:ps-20">
             {/* Timeline dot */}
-            <div className="absolute left-[-4px] top-1 h-2.5 w-2.5 rounded-full border-2 border-primary bg-background md:left-[calc(2rem-4px)]" />
+            <div className="absolute start-[-4px] top-1 h-2.5 w-2.5 rounded-full border-2 border-primary bg-background md:start-[calc(2rem-4px)]" />
 
             {/* Version badge */}
             <div className="mb-3 flex items-center gap-3">
@@ -102,7 +102,7 @@ export default async function ChangelogPage() {
         <div className="mt-6 flex justify-center gap-4">
           <Button asChild size="lg">
             <Link href={ROUTES.register}>
-              {t("stayUpdated.cta")} <ChevronRight className="ml-1 h-4 w-4" />
+              {t("stayUpdated.cta")} <ChevronRight className="ms-1 h-4 w-4" />
             </Link>
           </Button>
         </div>

@@ -30,7 +30,7 @@ export function QueryErrorState({ onRetry, message, className }: QueryErrorState
       description={message ?? t("error")}
       action={
         <Button variant="outline" size="sm" onClick={onRetry}>
-          <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+          <RotateCcw className="me-2 h-4 w-4" aria-hidden="true" />
           {t("retry")}
         </Button>
       }

@@ -165,7 +165,7 @@ export function ApiKeysPage() {
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="me-2 h-4 w-4" />
               {t("apiKeys.create")}
             </Button>
           </DialogTrigger>
@@ -183,11 +183,11 @@ export function ApiKeysPage() {
                   <Button className="w-full" onClick={() => copyToClipboard(createdKeyValue)}>
                     {copied ? (
                       <>
-                        <Check className="mr-2 h-4 w-4" /> {t("apiKeys.copied")}
+                        <Check className="me-2 h-4 w-4" /> {t("apiKeys.copied")}
                       </>
                     ) : (
                       <>
-                        <Copy className="mr-2 h-4 w-4" /> {t("apiKeys.copy")}
+                        <Copy className="me-2 h-4 w-4" /> {t("apiKeys.copy")}
                       </>
                     )}
                   </Button>
@@ -271,7 +271,7 @@ export function ApiKeysPage() {
               description={t("apiKeys.emptyDesc")}
               action={
                 <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="me-2 h-4 w-4" />
                   {t("apiKeys.create")}
                 </Button>
               }
@@ -324,7 +324,7 @@ export function ApiKeysPage() {
                           disabled={regenerateMutation.isPending}
                           onClick={() => regenerateMutation.mutate(key.id)}
                         >
-                          <RefreshCcw className="mr-2 h-4 w-4" />
+                          <RefreshCcw className="me-2 h-4 w-4" />
                           {t("apiKeys.regenerate")}
                         </Button>
                         <Button
@@ -334,7 +334,7 @@ export function ApiKeysPage() {
                           disabled={revokingId === key.id}
                           onClick={() => revokeKey(key.id)}
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
+                          <Trash2 className="me-2 h-4 w-4" />
                           {revokingId === key.id ? t("apiKeys.revoking") : t("apiKeys.revoke")}
                         </Button>
                       </>

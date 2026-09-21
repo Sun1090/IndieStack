@@ -48,14 +48,14 @@ export function FaqList({
     <>
       {/* 搜索框 */}
       <div className="relative mx-auto mt-8 max-w-md">
-        <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+        <Search className="text-muted-foreground absolute top-1/2 start-3 h-4 w-4 -translate-y-1/2" />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={searchPlaceholder}
           aria-label={searchPlaceholder}
-          className="bg-background focus:ring-ring h-10 w-full rounded-lg border pr-4 pl-9 text-sm outline-hidden focus:ring-2"
+          className="bg-background focus:ring-ring h-10 w-full rounded-lg border pe-4 ps-9 text-sm outline-hidden focus:ring-2"
         />
       </div>
 

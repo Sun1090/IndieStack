@@ -81,7 +81,7 @@ export function ForgotPasswordForm() {
         </FormField>
         <Button disabled={loading} type="submit" className="w-full">
           {loading ? t("forgotPassword.loading") : t("forgotPassword.submit")}
-          <Mail className="ml-2 h-4 w-4" />
+          <Mail className="ms-2 h-4 w-4" />
         </Button>
       </div>
     </form>

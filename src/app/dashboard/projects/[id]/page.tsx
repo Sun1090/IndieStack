@@ -95,7 +95,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       <PageHeader title={row.name} description={row.description || t("projects.detail.metaDesc")}>
         <Button variant="outline" asChild>
           <Link href={ROUTES.dashboardProjects}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t("projects.detail.backToProjects")}
+            <ArrowLeft className="me-2 h-4 w-4" /> {t("projects.detail.backToProjects")}
           </Link>
         </Button>
       </PageHeader>

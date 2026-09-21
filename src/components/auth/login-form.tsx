@@ -238,7 +238,7 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
           </FormField>
           <Button disabled={busy} type="submit" className="w-full">
             {loading ? t("login.loading") : t("login.submit")}
-            <Mail className="ml-2 h-4 w-4" />
+            <Mail className="ms-2 h-4 w-4" />
           </Button>
           {needsConfirm && (
             <Button
@@ -263,7 +263,7 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
           disabled={busy}
           aria-busy={passkeyLoading}
         >
-          <KeyRound className="mr-2 h-4 w-4" />
+          <KeyRound className="me-2 h-4 w-4" />
           {passkeyLoading ? t("login.passkeyLoading") : t("login.passkey")}
         </Button>
       )}
@@ -279,10 +279,10 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
 
       <div className="grid gap-3">
         <Button variant="outline" onClick={handleGitHubLogin} disabled={busy}>
-          <GithubIcon className="mr-2 h-4 w-4" /> {t("login.oauthGithub")}
+          <GithubIcon className="me-2 h-4 w-4" /> {t("login.oauthGithub")}
         </Button>
         <Button variant="outline" onClick={handleGoogleLogin} disabled={busy}>
-          <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+          <svg className="me-2 h-4 w-4" viewBox="0 0 24 24">
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
               fill="#4285F4"

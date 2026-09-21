@@ -101,7 +101,7 @@ export function ContactForm() {
       </FormField>
       <Button type="submit" disabled={loading} className="w-full">
         {loading ? t("form.sending") : t("form.submit")}
-        <Send className="ml-2 h-4 w-4" />
+        <Send className="ms-2 h-4 w-4" />
       </Button>
     </form>
   );

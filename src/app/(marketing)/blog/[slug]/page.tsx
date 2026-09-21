@@ -77,7 +77,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         <div className="mb-8">
           <Button variant="ghost" asChild className="mb-4">
             <Link href={ROUTES.blog}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t("backToBlog")}
+              <ArrowLeft className="me-2 h-4 w-4" /> {t("backToBlog")}
             </Link>
           </Button>
           <div className="flex items-center gap-2">
@@ -128,7 +128,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             <div />
           )}
           {next && (
-            <Link href={`/blog/${next.slug}`} className="group rounded-lg border p-4 text-right transition-colors hover:border-primary/50">
+            <Link href={`/blog/${next.slug}`} className="group rounded-lg border p-4 text-end transition-colors hover:border-primary/50">
               <p className="text-xs text-muted-foreground">{t("nextPost")} →</p>
               <p className="mt-1 font-medium group-hover:text-primary">{next.title}</p>
             </Link>
@@ -151,13 +151,13 @@ function renderContent(content: string) {
     if (listItems.length > 0) {
       if (listType === "ol") {
         elements.push(
-          <ol key={`ol-${codeKey++}`} className="my-4 list-decimal space-y-1 pl-6">
+          <ol key={`ol-${codeKey++}`} className="my-4 list-decimal space-y-1 ps-6">
             {listItems}
           </ol>,
         );
       } else {
         elements.push(
-          <ul key={`ul-${codeKey++}`} className="my-4 list-disc space-y-1 pl-6">
+          <ul key={`ul-${codeKey++}`} className="my-4 list-disc space-y-1 ps-6">
             {listItems}
           </ul>,
         );

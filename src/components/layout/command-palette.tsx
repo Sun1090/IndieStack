@@ -110,7 +110,7 @@ export function CommandPalette() {
                 const Icon = ("icon" in item ? item.icon : null) as React.ComponentType<{ className?: string }>;
                 return (
                   <CommandItem key={`recent-${href}`} value={`recent-${href}`} onSelect={() => run(href)}>
-                    {Icon && <Icon className="mr-2 h-4 w-4" />}
+                    {Icon && <Icon className="me-2 h-4 w-4" />}
                     {t(("labelKey" in item ? item.labelKey : "") as never)}
                   </CommandItem>
                 );
@@ -129,7 +129,7 @@ export function CommandPalette() {
                 value={`${item.labelKey} ${item.href}`}
                 onSelect={() => run(item.href)}
               >
-                <item.icon className="mr-2 h-4 w-4" />
+                <item.icon className="me-2 h-4 w-4" />
                 {t(item.labelKey)}
               </CommandItem>
             ),

@@ -39,7 +39,7 @@ export function DashboardSidebar() {
   return (
     <aside
       className={cn(
-        "relative hidden border-r bg-background transition-all duration-200 md:block",
+        "relative hidden border-e bg-background transition-all duration-200 md:block",
         collapsed ? "w-16" : "w-64",
       )}
     >
@@ -89,7 +89,7 @@ export function DashboardSidebar() {
                 {isNotificationsLink(link.href) && unreadCount > 0 && !collapsed && (
                   <span
                     className={cn(
-                      "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold",
+                      "ms-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold",
                       isActive ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground",
                     )}
                   >

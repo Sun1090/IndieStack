@@ -148,7 +148,7 @@ export function ResetPasswordForm() {
             </FormFieldControl>
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 end-3 -translate-y-1/2"
               onClick={() => setShowPassword(!showPassword)}
               aria-pressed={showPassword}
               aria-label={
@@ -180,7 +180,7 @@ export function ResetPasswordForm() {
         </FormField>
         <Button disabled={loading} type="submit" className="w-full">
           {loading ? t("resetPassword.loading") : t("resetPassword.submit")}
-          <Lock className="ml-2 h-4 w-4" />
+          <Lock className="ms-2 h-4 w-4" />
         </Button>
       </div>
     </form>

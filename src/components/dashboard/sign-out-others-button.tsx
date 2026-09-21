@@ -36,7 +36,7 @@ export function SignOutOthersButton() {
       {confirming ? (
         <div className="flex gap-2">
           <Button size="sm" onClick={handleSignOutOthers} disabled={pending}>
-            <MonitorSmartphone className="mr-2 h-4 w-4" />
+            <MonitorSmartphone className="me-2 h-4 w-4" />
             {tc("confirm")}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>
