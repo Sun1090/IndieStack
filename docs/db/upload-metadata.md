@@ -129,7 +129,15 @@ put(objectKey)                      → provider 私钥写入
 判定是 `right(url, length(key) + 1) = '/' || key` 的**后缀相等**，不是 `LIKE`/子串包含——
 对象键里的 `_` 在 `LIKE` 里是单字符通配符（会把 `a_b.png` 匹配到 `axb.png`），
 而子串包含会把 `xavatars/u/f.png` 误当成 `avatars/u/f.png` 的引用。两条规则在本地库
-回滚事务演练与 `src/lib/mock.test.ts`（镜像同一判定的 mock 实现）中各有一条用例。
+回滚事务演练（`docs/operations/drills/account-erasure.sql`）与 `src/lib/mock.test.ts`
+（镜像同一判定的 mock 实现）中各有一条用例。
+
+**这条判定的精确度上限要说清楚**：函数只拿到对象键、拿不到 bucket，所以它比较的是
+「URL 是否以 `/<key>` 结尾」。演练实测 `upload_object_is_referenced('drill.png')` 对着
+`.../avatars/<uid>/drill.png` 会返回 `true`——那是另一个对象（键为 `<uid>/drill.png`），
+只是末段同名。偏差方向是**保守**的：同名不同目录的真孤儿会被当成仍被引用而保留，
+最多留下磁盘占用，不会误删还在被人看的对象。要收紧就得把签名改成按行比较
+`(bucket, object_key)`，那是另一次迁移。
 
 ```sql
 -- 全库 active 但已无任何业务行引用（含账户删除后失去归属的行）→ 待补删清单
@@ -148,7 +156,21 @@ select object_key from public.upload_objects where status = 'active';
 因此会稳定出现在上面的孤儿清单里等待补删。
 
 **仍未覆盖的一半**：bucket 里存在、但数据库从来没有登记过行的对象（例如 031 之前上传的历史文件），
-只能靠 provider 侧列目录与 `status='active'` 集合做差集，仓库里没有自动化的 bucket 列举工具。
+只能靠 provider 侧列目录与 `status='active'` 集合做差集；`pnpm audit:storage-orphans` 只读数据库这一侧，
+不做那半边比对。
+
+数据库这一侧的巡检已经封装成命令（只读，不删任何对象）：
+
+```bash
+SUPABASE_URL=https://<ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=... pnpm audit:storage-orphans -- --json --output /tmp/orphans.json
+# 或显式传参：pnpm audit:storage-orphans -- --url ... --service-role-key ... --fail-on-findings
+```
+
+报告把 **owner_id 为空** 的行单列出来——那意味着上传者账户已经删除而对象还公开可读，
+是隐私问题而不只是容量问题，所以它排在总字节数之前。退出码：0 无孤儿、1 执行失败
+（缺凭据 / RPC 报错 / 响应形状不认识）、2 有孤儿且带了 `--fail-on-findings`。
+解析严格而不是断言：`byte_size` 缺列或类型漂移会让巡检失败，而不是把「读不懂」报成「没有孤儿」。
 
 反向比对需要 provider 侧对象列表（Supabase Storage `list()` 或 S3 ListObjectsV2），
 当前**尚未**接入定时任务——表先落数据，巡检/清理 worker 属于后续里程碑。手动巡检建议：

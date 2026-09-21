@@ -28,10 +28,10 @@
 | ----------------------------- | ------------------------------------------------------------------------------ | ----------- |
 | 迁移基线核对                  | `supabase migration list --linked` 显示 001–033 全部 applied；`db push --linked --dry-run` 为空 | ⏳ 待执行 |
 | RLS / 权限目录核对            | `pnpm check:supabase-security` 与 `pnpm smoke:supabase-identity` 对生产回读一致 | ⏳ 需生产只读凭证 |
-| 服务端函数只对 `service_role` 开放 | 032/033 的 7 个函数（`erase_user_data`、3 个保留期函数、2 个对象清单函数、孤儿清单函数）`anon`/`authenticated` = false、`service_role` = true | ⏳ 待执行 |
+| 服务端函数只对 `service_role` 开放 | 032/033 的 7 个函数（`erase_user_data`、3 个保留期函数、2 个对象清单函数、孤儿清单函数）`anon`/`authenticated` = false、`service_role` = true | ✅ 权限矩阵已按**真实调用**核验（本地库 `set role anon` / `set role authenticated` 逐个调用 7 个函数，14/14 `permission denied`；`service_role` 正常返回）。⏳ 云端仍只有 `has_function_privilege` 目录核对，未做匿名 `rpc` 实调 |
 | 匿名 `audit_logs` 写入已关闭  | 直接 `POST /rest/v1/audit_logs` 不再返回 201                                   | ⏳ 未执行   |
 | pg_cron 状态                  | `select 1 from pg_extension where extname='pg_cron'` 的结果与文档「保留期未生效」的措辞一致；若已启用，`cron.job` 里必须有登记的清理任务 | ⏳ 待执行 |
-| 孤儿对象清单可读              | `find_orphan_upload_objects()` 返回行数与 `upload_objects` 中 `status='active'` 且无业务表引用的行数一致 | ⏳ 需只读 SQL |
+| 孤儿对象清单可读 | `find_orphan_upload_objects()` 返回集合与 `upload_objects` 中 `status='active'` 且无业务引用的行一致 | ✅ 通过：`pnpm audit:storage-orphans` 对本地栈零孤儿时报 0 条；插入 2 条 `owner_id is null` 的 active 行后报「2 条 / 9.5 MiB，其中 2 条上传者账户已删除」、最老 12 天、按 bucket 分组；`--json` 可机读、`--fail-on-findings` 退出码 2；验证后已删除这 2 行，表回到 0 行 |
 
 ## 需要隔离账号（本版本重点）
 
@@ -41,7 +41,7 @@
 | ----------------------------- | ------------------------------------------------------------------------------ | ----------- |
 | 确认短语服务端校验            | 不发送/发送错误确认短语时返回 `confirmPhraseMismatch`，**数据库与 bucket 零变化** | ⏳ 待执行   |
 | 频率限制                      | 反复调用 `deleteAccountAction` 触发 429，不进入擦除逻辑                        | ⏳ 待执行   |
-| **账户删除端到端演练**（隔离账号） | 用一次性测试账户完成真实删除，逐面核对：`api_usage` 行消失；本人邮箱（大小写/空格变体）的 `contact_messages` 消失；`audit_logs` 行**仍在**但 `user_id`/`entity_id`/PII metadata 键被清空；其独占头像对象从 bucket 消失；被团队引用的封面**保留**；会话失效并跳转首页 | ⏳ 待执行 |
+| **账户删除端到端演练**（隔离账号） | 用一次性测试账户完成真实删除，逐面核对：`api_usage` 行消失；本人邮箱（大小写/空格变体）的 `contact_messages` 消失；`audit_logs` 行**仍在**但 `user_id`/`entity_id`/PII metadata 键被清空；其独占头像对象从 bucket 消失；被团队引用的封面**保留**；会话失效并跳转首页 | ⏳ **生产**上未执行（需可牺牲账号 + 真实 `auth.admin.deleteUser`）。✅ 数据层等价演练已通过并入库：`docs/operations/drills/account-erasure.sql` 在本地 `001`–`033` 库上 20/20 断言成立（含「擦除后、删号前 profiles 仍在」这条顺序证据与 `deleted` 行不再进清单），结果记录见 `docs/db/retention.md` 的演练记录 |
 | 审计留痕不含身份              | 演练后新增的 `account.deleted` 行 `user_id` 与 `entity_id` 均为 `null`，metadata 只有不受影响的计数（**不得出现 object key**，key 内含 user id） | ⏳ 待执行 |
 | 擦除失败不删号                | 让 `erase_user_data` 返回错误（如临时收回 EXECUTE）后调用删除：请求失败、账户仍在、可重试 | ⏳ 待执行 |
 | 登录与登出闭环                | 测试账号可完成登录→dashboard→登出                                              | ⏳ 需专用测试账号 |
