@@ -1,3 +1,14 @@
+## 2026-09-21 — E09 文档 PR 发布
+
+- 状态：PUBLISHED / BLOCKED（仓库侧 CI 全部通过；仅 Vercel Hobby preview rate limit 阻止合并）。
+- 分支 / commit：`feat/ops-e09-runbook-contract` / `9ea6120678f7f5766be480caad0018a51af3341a`。
+- PR：#37 [docs(ops): document E09 runbook drill boundaries](https://github.com/Sun1090/IndieStack/pull/37)，`MERGEABLE`；失败状态仅为 `Vercel – indie-stack`，错误为 `Deployment rate limited — retry in 24 hours.`。
+- GitHub CI：Lint & Type Check、Unit Tests、Build、Build Docs Site、E2E shard 1/2、E2E aggregate、CodeQL、Detect Secrets 与 security-config 全部通过。
+- 本地验证：`pnpm verify:build` 通过；`git diff --check` 通过。变更仅 `docs/operations/release-gap-audit-v0.10.0.md` 与 `docs/progress.md`。
+- 发布判断：v0.10.0 仍不得发布。生产 smoke 于 2026-09-21T03:50:46Z 复核仍 5/6，`/api/health` 版本 `0.6.0`、期望 `0.10.0`。
+- 下一项：等待 Vercel Hobby 配额恢复或提升计划；由具备生产权限者部署 `main` 并重新取得 6/6 smoke。
+- 更新时间：2026-09-21T11:56:00+08:00。
+
 ## 2026-09-21 — E09 运维 runbook 收口
 
 - 状态：DONE（本地文档与已有契约覆盖完成；真实演练仍由外部权限决定，不标记为已演练）。
