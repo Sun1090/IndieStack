@@ -1,6 +1,6 @@
 ## 2026-09-22 — 中英术语表与 `check:glossary`（D01 收口，D 域只剩 D08）
 
-- 里程碑 / 版本：v0.11.0（仍未打 tag；生产 500 事故未解，见上一条目的「阻塞」）。
+- 里程碑 / 版本：v0.11.0（仍未打 tag；生产健康，仍跑 `0.10.0`，缺的是部署配额，见「阻塞」）。
 - 状态：DONE（本地 `check:all` / `verify:build` 全绿；PR 已开，等待 CI 合并）。
 - 分支 / commit：`feat/i18n-glossary`——实现与文档各一个 commit。
 - 完成内容：
@@ -30,19 +30,19 @@
   - `pnpm check:all` → ✅ 全部校验通过；`pnpm type-check` / `pnpm lint` 干净；
   - `pnpm check:gates` / `check:test-matrix` / `check:docs` / `check:release-docs` / `check:changelog` 全绿；
   - `pnpm verify:build`（含 `pnpm build`）→ 退出码 0。
-- 阻塞：与上一条目相同——生产全站 500 需要 Vercel Runtime Logs 与 env 变更记录（用户侧权限），
-  部署配额 `retry in 24 hours` 未解除，**tag v0.11.0 继续推迟**。
+- 阻塞：与上一条目相同——Vercel build 配额未解除（`retry in 24 hours`），
+  生产仍是 `0.10.0`，**tag v0.11.0 继续推迟**。
 - 风险 / 回滚：不改数据库、不改运行时行为，新增的是构建期门禁与两条中文文案用词。
   术语表偏保守：只有 14 项、全部实测过，宁可少定也不误伤；新术语若从未被用到会被门禁当成僵尸规则拒绝。
   回滚为撤销本分支提交。
-- 下一项：D08（RTL / 长文本布局评估）是 D 域最后一块；同时继续盯生产事故是否自行恢复。
+- 下一项：D08（RTL / 长文本布局评估）是 D 域最后一块；配额恢复后补生产部署证据并打 tag。
 - 更新时间：2026-09-22。
 
 ## 2026-09-22 — i18n 值审计门禁：`check:locales` 从「比对键」升级为「审值」（D02 / D03 收口）
 
 - 里程碑 / 版本：v0.11.0（仍未打 tag，冻结继续）；上一条目记录 PR #44，本条只记录值审计门禁。
 - 状态：DONE（本地全部验证通过；PR **#45** 已 rebase 合并 `ab7ee92..a3be130`，分支已删）。
-  **但 2026-09-21T19:50Z 起生产全站动态路由 500，见「阻塞」第一条。**
+  （本条此前记为「生产全站 500 事故」，那是误判，见下方「阻塞」的更正。）
 - 分支 / commit：
   - `feat/storage-orphan-audit` → PR **#44** 已 rebase 合并（`a2a3676..ab7ee92`），本地/远端分支已删、
     远端仅剩 `main`；
@@ -77,16 +77,20 @@
   - `pnpm type-check` / `pnpm lint` 干净；`pnpm test:coverage` → branches **91.61%**（原 91.56%，未降），
     新模块 `translation-values.ts` 本身 stmts 100% / branches 96% / funcs 100%。
 - 阻塞：
-  - **生产事故（最高优先）**：`indie-stack.vercel.app` 全部动态路由 500
-    （`FUNCTION_INVOCATION_FAILED`），首次观测 2026-09-21T19:50Z，持续中。
-    已排除：本次合并上线了坏代码（`main` HEAD 的 Vercel 状态是 `Deployment rate limited`，
-    根本没有产生部署）、Supabase 不可达（GoTrue `/auth/v1/health` 200、PostgREST 401 正常拒绝 anon）、
-    账号级封禁（静态资源与 docs 项目均 200）、构建产物问题（同一代码 `NODE_ENV=production`
-    本地起服 3 条路由全 200）。根因需要 Vercel 的 Runtime Logs 与 19:30–19:50Z 的 env 变更记录，
-    本机 `VERCEL_TOKEN` / `SENTRY_AUTH_TOKEN` 均为占位值，无凭据。
-    过程与所需权限见 `docs/operations/incident-2026-09-21-production-500.md`。
-    连带影响：`health-check.yml` 的每日保活此刻是失效的（它依赖调用生产 `/api/health`），
-    `smoke-main` 会持续红。**tag v0.11.0 继续推迟。**
+  - **误报更正（原「生产事故」条目，已删除其文档）**：我按项目名猜了域名
+    `indie-stack.vercel.app` 去探测，它对所有动态路由恒返回 `FUNCTION_INVOCATION_FAILED`，
+    于是我登记了一场并不存在的事故。真正生产是
+    **`https://indie-stack-theta.vercel.app`**（唯一事实来源：`production-smoke.yml` 的
+    `default:` 与 `docs/operations/production-smoke-*.md` 的「目标环境」），
+    复核结果 `/api/health` 200：`version=0.10.0`、`ready=true`、`degraded=false`、
+    `supabase.reachable=true`、`mockMode=false`（`sentry` 与 `stripe` 是 `configured:false`，
+    `required:false`，不影响 ready）。猜的那个域名不属于本项目（同一时间恒 500，且不属于本账号的
+    任何已知部署）。教训：**报环境涨跌前先从仓库配置里读地址**，不要从项目名推、也不要凭记忆；
+    `docs/operations/incident-2026-09-21-production-500.md` 已随本更正删除。
+  - 真实阻塞（不变，外部）：Vercel build 配额——`main` HEAD 的状态是
+    `Deployment rate limited — retry in 24 hours`，生产仍跑 `0.10.0`，**tag v0.11.0 继续推迟**；
+    本机 `vercel` CLI 不存在、`.env.local` 里的 `VERCEL_TOKEN` / `SENTRY_*` 是 `.env.example` 占位值，
+    因此无云端部署与可观测权限。
   - 部署配额（不变）：`indie-stack` 与 `indie-stack-docs-site` 自 2026-09-21T18:03Z 起
     `Deployment rate limited — retry in 24 hours`；另仍缺隔离测试账号（生产删号闭环）、
     Supabase Dashboard 权限（pg_cron）、Vercel deployment 切换权限（回滚探针）。
