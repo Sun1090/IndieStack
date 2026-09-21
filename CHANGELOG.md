@@ -187,6 +187,23 @@ All notable changes to IndieStack will be documented in this file.
   24 条单测覆盖（含真实仓库反例：删掉 `projectNotFound` 文案、还原修复前的裸渲染调用点），
   接入 `pnpm check:all` 与 CI，并登记进贡献者测试矩阵的 `i18n` 领域。
 
+- **翻译值完整性门禁（D02 / D03 剩余部分）**：`pnpm check:locales` 此前只比对 en 与 zh-CN 的**键集合**，
+  于是「加了键但忘了翻译」在构建上与翻译对了完全同色——`settings.sections.security.title` 就长期是
+  英文 `"Security"`，而同级的 `danger` 分区早就翻成「危险区域」。现在同一道门禁审**值**：
+  `zh-CN` 文案里一个汉字都没有即失败，值是小写开头的驼峰单词（`projectNotFound`）则按「把键名/错误码
+  当文案」单独报一条更具体的规则（后者必然也不含汉字，若先判漏翻译前者永不可达）；英文侧不要求任何文字，
+  `and` / `days` 不会被误伤。确实不翻译的值要在 `UNTRANSLATED_VALUE_ALLOWLIST` 逐项登记理由，
+  支持 `zh-CN:blog.posts.*.slug` 形式的单段通配——只匹配一个路径段，放行 `slug` 不会顺手放行同数组的
+  `title`。审计覆盖消息数组内容并**按下标展开路径**：`home.statLabels`、`terms.sections[].content`、
+  `blog.posts[].title` 这些 `t.raw()` 直接渲染的营销正文占了文案的一半，把数组当叶子丢弃就等于只审一半；
+  键对称也因此精确到叶子路径，少一篇文章就是少一个键。实测 en/zh-CN 各 1235 条叶子路径对称、
+  2470 条文案受审、86 条值由 38 条登记放行（品牌名、邮箱/验证码占位符、slug/版本号/分类枚举等结构字段）。
+  写这道门禁时发现自己对汉字区间的判定是错的：字面字符区间 `[豈-﫿]` 的起点实为 U+8C48，
+  整个谚文块 U+AC00–U+D7AF 落在里面，`한국어` 会被判成「含中文」而静默放行——改为显式码点，
+  并留下一条谚文反例测试。规则由 `src/lib/i18n/translation-values.ts` 纯函数 + 31 条单测覆盖
+  （含复现修复前真实值的反例：`"Security"`、`deleteProjectNotFound = "projectNotFound"`、数组里的英文），
+  抽不到值 / 未登记 locale / 登记项过期同样失败。
+
 - **语言切换的中文渲染端到端验证（D06）**：`e2e/smoke.spec.ts` 原有的两条断言只覆盖「键盘能打开菜单」
   与「切到 English 后写入 `app-locale` cookie」，而 English 本来就是默认语言——即使 zh-CN 消息完全
   加载失败，页面也会安静地退回英文或键名，两条断言照样通过。新增一条把 `简体中文` 选到底：断言 cookie

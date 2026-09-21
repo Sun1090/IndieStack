@@ -98,7 +98,7 @@
  docker compose up -d    # PostgreSQL + pgAdmin
  docker build -t indiestack . && docker run -p 3000:3000 indiestack
  ```
-| `pnpm check:locales` | Verify en/zh-CN translation key symmetry |
+| `pnpm check:locales` | Verify en/zh-CN key symmetry and that values are actually translated |
 | `pnpm check:agents` | Verify AGENTS.md index consistency |
 | `pnpm check:rls` | Static check of RLS migrations (USING/WITH CHECK) |
 | `pnpm check:bundle` | Client bundle size gate (build + baseline compare) |

@@ -134,7 +134,7 @@ src/
 | `pnpm type-check`                 | TypeScript type check                                             |
 | `pnpm format`                     | Format code with Prettier                                         |
 | `pnpm check`                      | type-check + lint + i18n symmetry check                           |
-| `pnpm check:locales`              | Verify en/zh-CN translation key symmetry                          |
+| `pnpm check:locales`              | Verify en/zh-CN key symmetry and that values are actually translated |
 | `pnpm db:migrate`                 | Push database migrations                                          |
 | `pnpm db:types`                   | Generate TypeScript types from DB                                 |
 | `pnpm check:security`             | Verify secrets/env policy and security-scanner configuration      |
