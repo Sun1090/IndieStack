@@ -122,7 +122,7 @@ export const FormFieldError = React.forwardRef<HTMLParagraphElement, FormFieldEr
         ref={ref}
         id={errorId}
         role="alert"
-        className={cn("text-destructive text-sm font-medium", className)}
+        className={cn("text-destructive-text text-sm font-medium", className)}
         {...props}
       />
     );

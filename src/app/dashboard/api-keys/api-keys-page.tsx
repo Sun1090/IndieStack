@@ -330,7 +330,7 @@ export function ApiKeysPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-destructive hover:text-destructive"
+                          className="text-destructive-text hover:text-destructive-text"
                           disabled={revokingId === key.id}
                           onClick={() => revokeKey(key.id)}
                         >

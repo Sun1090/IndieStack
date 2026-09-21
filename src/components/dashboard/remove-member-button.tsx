@@ -51,7 +51,7 @@ export function RemoveMemberButton({ memberId }: RemoveMemberButtonProps) {
         variant="ghost"
         size="sm"
         disabled={loading}
-        className="text-destructive hover:text-destructive"
+        className="text-destructive-text hover:text-destructive-text"
       >
         {loading ? tc("loading") : t("team.list.removeMember")}
       </Button>

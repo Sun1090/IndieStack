@@ -241,7 +241,7 @@ export function AnalyticsPage() {
                       <span className="text-muted-foreground font-mono text-xs">{event.path}</span>
                     </div>
                     <div className="text-muted-foreground flex items-center gap-4 text-xs">
-                      <span className={isError ? "text-destructive font-medium" : ""}>
+                      <span className={isError ? "text-destructive-text font-medium" : ""}>
                         {event.status_code ?? "—"}
                       </span>
                       <span>{formatEventTime(event.created_at)}</span>

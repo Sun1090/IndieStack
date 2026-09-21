@@ -62,6 +62,13 @@ const SURFACE_TOKENS = [
  * 此前状态提示直接写 Tailwind 调色板（`bg-green-500` / `text-amber-600` / `bg-red-500`），
  * 同一个语义在不同文件里选了不同色阶，深色模式下也没有统一回退。收口成 4 组语义 token：
  * `success` / `warning` / `info` / `destructive`（destructive 复用 shadcn 既有定义）。
+ *
+ * `destructive-text`（D10 新增）是 **destructive 作为文字颜色**时的专用变体。
+ * `--destructive` 是给「红底 + 浅色前景」（按钮、徽标、边框）用的：浅色模式是
+ * `0 84.2% 60.2%`（#ef4444，白底对比度 3.76:1，AA 正文要求 4.5:1 → 不达标），
+ * 深色模式更是 `0 62.8% 30.6%` 的暗红，直接当文字用几乎看不见。
+ * 因此凡是将 destructive 作为**可读文字**（错误提示、删除按钮文案、状态数值）的地方
+ * 一律用 `text-destructive-text`，图标/边框/背景仍可用 `destructive`。
  */
 const STATUS_TOKENS = [
   "success",
@@ -70,6 +77,7 @@ const STATUS_TOKENS = [
   "warning-foreground",
   "info",
   "info-foreground",
+  "destructive-text",
 ] as const;
 
 /** 图表色板，供 Recharts 等以 CSS 变量消费。 */

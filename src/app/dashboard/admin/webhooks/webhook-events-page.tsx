@@ -133,7 +133,7 @@ export function WebhookEventsPage() {
                       )}
                     </details>
                     {event.error_message && (
-                      <p className="text-destructive text-xs">{event.error_message}</p>
+                      <p className="text-destructive-text text-xs">{event.error_message}</p>
                     )}
                   </div>
                   <time className="text-muted-foreground shrink-0 text-xs">
