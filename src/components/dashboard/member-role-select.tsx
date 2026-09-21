@@ -25,6 +25,7 @@ interface MemberRoleSelectProps {
 
 export function MemberRoleSelect({ memberId, currentRole, disabled }: MemberRoleSelectProps) {
   const t = useTranslations("dashboard.team.list");
+  const ta = useTranslations("actions");
   const [pending, startTransition] = useTransition();
   const [value, setValue] = useState(currentRole);
 
@@ -35,7 +36,7 @@ export function MemberRoleSelect({ memberId, currentRole, disabled }: MemberRole
       const result = await updateMemberRole(memberId, newRole as "admin" | "member");
       if (!result.ok) {
         setValue(previous);
-        toast({ title: result.error, variant: "destructive" });
+        toast({ title: ta(result.error), variant: "destructive" });
       }
     });
   }

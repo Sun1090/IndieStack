@@ -173,7 +173,7 @@
         "deleting": "删除中..."
       },
       "security": {
-        "title": "Security",
+        "title": "安全",
         "logoutAll": "退出所有设备",
         "logoutAllDesc": "在所有浏览器和设备上登出，需要重新登录。",
         "signOutOthers": "退出其他设备",
@@ -377,7 +377,6 @@
     "deleteConfirmTitle": "确认删除项目？",
     "deleteConfirmDesc": "此操作不可撤销。",
     "deleteDeleted": "项目已删除",
-    "deleteProjectNotFound": "projectNotFound",
     "filter": {
       "all": "全部",
       "active": "活跃",
