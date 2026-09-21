@@ -22,7 +22,7 @@ E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名
 7. A07 Supabase Storage fallback
 8. A08 头像上传接入 profile
 9. A09 项目封面与附件接入
-10. A10 删除、孤儿对象清理与审计
+10. A10 删除、孤儿对象清理与审计（完成：迁移 `033_upload_object_orphan_audit.sql` 把 `upload_objects.owner_id` 从 `on delete cascade` 改为 `on delete set null`（031 的级联会让「provider 删除失败」这条唯一线索随账户一起消失），新增 `upload_object_is_referenced(text)` / `list_user_objects_for_erasure(uuid)` / `find_orphan_upload_objects()`，引用判定用后缀相等而不是 `LIKE`（对象键里的 `_` 是通配符）也不是子串包含（`xavatars/u/f.png` 会误判），三个函数跨行读取资料 URL 故只对 `service_role` 开放；删号链路 `src/lib/uploads/erasure.ts` 先清理该用户未被引用的对象（`referenced=true` 的团队封面保留），单个对象删除失败不阻塞删号但留在孤儿清单里；`032` 的 `prune_deleted_upload_objects()` 提供 30 天元数据保留期。**明确未覆盖**：bucket 里存在但从未登记过元数据的历史对象，仍需 provider 侧列目录做差集，仓库不含该工具）
 
 ### B. 推送与通知统一（B01–B10）
 

@@ -1,3 +1,50 @@
+## 2026-09-22 — A10 受管对象孤儿可发现性与删号清理
+
+- 里程碑 / 版本：v0.6.0 任务池 A10（承接 H08 的隐私链路）；计入 CHANGELOG `[Unreleased]`，不涉及版本号或 tag。
+- 状态：DONE（迁移在真实库演练通过、应用链路与 mock 语义均有测试；bucket 侧历史对象列举明确列为未覆盖）。
+- 分支 / commit：`feat/storage-orphan-cleanup`，基线 `origin/main` `2b52ce1`（H08 经 PR #39 已合并）；
+  `773a173` feat(db)（迁移 033 + `docs/db/upload-metadata.md` 孤儿巡检章节重写）、
+  `9ad2659` feat(app)（对象清理服务 + 仓储/编排/mock/边界清单）、本提交为 docs。
+- 完成内容：
+  - 查实 H08 之后仍存在的第二个隐私缺口：031 把 `upload_objects.owner_id` 建成
+    `not null ... on delete cascade`，删号会连带抹掉元数据行，而用户上传过的头像/封面
+    继续留在 bucket 里公开可读——**唯一一条「provider 删除失败」的线索恰好被级联删除**。
+    033 将列改为可空并把外键换成 `on delete set null`。
+  - 新增 `upload_object_is_referenced(text)`、`list_user_objects_for_erasure(uuid)`、
+    `find_orphan_upload_objects()`。引用判定刻意用 `right(url, length(key)+1) = '/' || key`
+    的后缀相等：`LIKE` 会把对象键里的 `_` 当单字符通配符（`a_b.png` 会匹配 `axb.png`），
+    子串包含会把 `xavatars/u/f.png` 误判为引用；两个反例都在真实库回滚事务里验证过。
+    三个函数跨行读取所有人的资料 URL，因此 `security definer` + 空 `search_path`、
+    建函数即收回 `PUBLIC`/`anon`/`authenticated` 的 `EXECUTE`。
+  - 应用链路：`src/lib/uploads/erasure.ts` 在擦除数据库数据**之前**清理该用户
+    `referenced=false` 的对象（团队项目封面等仍被引用的保留），provider 删除失败不阻塞删号
+    但记入失败清单；`deleteAccountWithData` 顺序固定为「对象 → 擦除 → 删号」，
+    审计行只记计数（对象键含用户 id，不能进审计 metadata）。
+  - Mock 与测试：mock `rpc()` 镜像 033 的引用判定与两个清单函数；新增 12 条用例
+    （仓储映射 4、清理策略 4、编排顺序与失败语义 6 中新增 2、mock 枚举 3）；
+    `admin-client-boundary` 清单补 `rpc: [find_orphan_upload_objects, list_user_objects_for_erasure]`，
+    调用点预算 84 → 86，`docs/db/security-audit.md` 的迁移数、模块/调用点、RPC 清单与
+    SECURITY DEFINER 表同步。
+- 变更文件：21 个（迁移 / manifest / types / 仓储 / 新服务 / 编排 / mock / 边界清单 / 5 份文档 / CHANGELOG / roadmap）。
+- 验证命令与结果：`pnpm verify:build` 通过（170 文件 / 1929 用例、build 与静态生成成功）；
+  `pnpm check:supabase-security` → 33 个迁移、31 个已分类调用点；`pnpm check:rls` → 33 个迁移；
+  `pnpm check:migration-runbook` → 最新 `033_upload_object_orphan_audit.sql`；
+  `npx supabase db push --local`（显式本地，未触碰云端）应用 033；
+  真实库演练（回滚事务）：三个 active 对象中 `used`/`cover` 判为被引用、`lostorphan` 判为孤儿、
+  `deleted` 行不进清单；`xavatars/...` 与 `axb.png` 两个反例均未被误判为引用；
+  删除 `auth.users` 后 2 行元数据保留且 `owner_id is null`、仍出现在 `find_orphan_upload_objects()`。
+- 阻塞：无代码/测试阻塞。发布与 pg_cron 启用仍受外部权限限制（见上一条记录）。
+- 风险 / 回滚：033 已在本地应用、**未应用到云端**，与代码一起通过 PR 评审后再决定何时推；
+  `owner_id` 改可空只放宽数据库约束，不改变任何写入路径（上传始终带上传者）；
+  新增的删号步骤是 best-effort，失败时行为退化为「对象残留但可被孤儿清单发现」，
+  不会静默。回滚为撤销本分支提交。
+- 下一项：D 域 i18n 质量缺口（`check:i18n` 目前只校验字面量 key 存在，不校验动态 key、
+  孤儿 key 与「zh-CN 值与 en 完全相同的未翻译项」——本次就撞到 `settings.sections.danger`
+  6 个孤儿键和 `dashboard.json` 里 `"title": "Security"` 这类未翻译值）；
+  以及 bucket 侧对象列举的孤儿差集工具。
+- 更新时间：2026-09-22T01:30:00+08:00。
+
+
 ## 2026-09-22 — H08 账户数据擦除与保留期收口
 
 - 里程碑 / 版本：v0.6.0 任务池 H08（+H07 补记）；变更计入 CHANGELOG `[Unreleased]`，随 v0.10.0 之后发布，本次不涉及版本号或 tag。

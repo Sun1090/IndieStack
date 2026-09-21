@@ -6,6 +6,19 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **受管对象孤儿可发现性与删号后的对象清理（A10）**：031 声称「`status='active'` 的行集合就是
+  数据库认为应该存在的对象」，但 `owner_id` 是 `on delete cascade`——用户删号后元数据跟着消失，
+  而他上传过的头像/封面仍在 bucket 里公开可读，于是**唯一一条「provider 删除失败」的线索恰好被级联抹掉**。
+  迁移 `033_upload_object_orphan_audit.sql` 把该外键改为 `on delete set null`（列改可空），
+  并新增 `upload_object_is_referenced(text)` / `list_user_objects_for_erasure(uuid)` /
+  `find_orphan_upload_objects()`：引用判定用 `right(url, length(key)+1) = '/' || key` 的后缀相等而不是
+  `LIKE`——对象键里的 `_` 在 `LIKE` 里是通配符，`includes` 又会把 `xavatars/u/f.png` 当成引用。
+  三个函数跨行读取所有人的资料 URL，因此同为 `security definer` + 空 `search_path`、只对 `service_role` 开放。
+  删号链路（`src/lib/uploads/erasure.ts`）现在会在擦除数据前清理该用户**未被任何业务行引用**的对象
+  （团队项目封面等 `referenced=true` 的一律保留，删一个人的账户不应弄坏别人的页面）；
+  单个对象删除失败不阻塞删号（删号是用户的权利），失败行保持 `active`、删号后归属变 `null`，
+  因此会稳定出现在孤儿清单里等待补删，而不是变成看不见的泄露。账户删除审计只记计数，不记对象键（键含用户 id）。
+
 - **账户数据擦除与保留期补齐（H08）**：隐私声明承诺「删除账户后 30 天内删除或匿名化个人数据」，
   而账户删除此前只有外键级联——`api_usage`（含 `ip_address`）与 `audit_logs` 是 `on delete set null`，
   删号只留下失去指向却仍带 PII 的行；`contact_messages` 按裸邮箱存储、根本没有外键。
