@@ -1,3 +1,51 @@
+## 2026-09-22 — v0.11.0 冻结后连做两项：i18n 错误码收口 + 孤儿巡检与删号演练
+
+- 里程碑 / 版本：v0.11.0（未打 tag，冻结仍在进行）；本条覆盖 PR #43（已合并）与 PR #44（本次）。
+- 状态：DONE（本地全部验证通过；生产部署与 tag 仍被 Vercel 配额阻塞，见「阻塞」）。
+- 分支 / commit：
+  - `fix/action-error-translation` → PR **#43** 已 rebase 合并（`c96ab2e..a2a3676`），本地/远端分支已删；
+  - `feat/storage-orphan-audit`：`660cb5c` feat(uploads)（`pnpm audit:storage-orphans`）、
+    `5303534` docs(ops)（删号演练与权限核验入库）、本提交为进度记录。
+- 完成内容：
+  1. **i18n 错误码收口（D02/D03 + 真实用户可见 Bug）**：实测 5 处把内部错误码当文案渲染
+     （`contact-form` / `project-settings-form` / `project-delete-button` / `member-role-select` 用
+     `description: result.error`，MFA 页两处漏 `ta()`、challenge 失败还直接透出 Supabase 英文 message），
+     仓库其余 8 个 `authErrorKey` 调用点都是 `ta(authErrorKey(err))`，说明是漏网而非设计。补齐
+     `actions.projectNotFound`（两侧都缺，光加 `ta()` 只会得到 MISSING_MESSAGE）、删除零引用且
+     值就是错误码的 `dashboard.projects.deleteProjectNotFound`、把 zh-CN `settings.sections.security.title`
+     从 `"Security"` 改成「安全」。新增门禁 `pnpm check:action-errors`（42 个错误码 × 2 locale，
+     0 豁免；产出侧按 **import** 判定，否则 `codeql-alert-policy.ts` 记账用的 `fail("push")` 会误报 2 个）。
+     `global-error.tsx` 的 `<html lang="en">` + 全页中文一并改为中英并列并标注 `lang="zh-CN"`。
+     新增 zh-CN 渲染 E2E（D06 此前只断言切到默认 en + cookie，证明不了消息真的加载）。
+  2. **孤儿巡检命令化**：033 与 `erasure.ts` 注释都写着「可由 `pnpm audit:storage-orphans` 发现」，
+     而这命令根本不存在——删号后留在 bucket 的对象没有任何入口看得见。新增
+     `src/lib/uploads/orphan-audit.ts`（严格解析、汇总、报告、退出码）+
+     `scripts/lib/storage-orphans.js`（只读 RPC、`--json` / `--output` / `--fail-on-findings`）+ 27 条单测。
+     **对真实 PostgREST 跑通**：本地库插 2 条 `owner_id is null` 的 active 行 → 报告「2 条 / 9.5 MiB，
+     其中 2 条上传者账户已删除」、最老 12 天、按 bucket 分组；`--fail-on-findings` 退出码 2；随后清理，表回 0 行。
+  3. **账户删除数据层演练入库**：`docs/operations/drills/account-erasure.sql` 在本地 `001`–`033` 库上
+     跑完「对象清单 → 擦除 → 删号」，20 条断言全过，含最关键的**顺序证据**（擦除后、删号前
+     `profiles` 仍在）与「`status='deleted'` 不进清单」「他人团队封面因 `projects.logo_url` 仍引用而保留」。
+     权限矩阵改为真实调用核验：`anon` / `authenticated` 逐个调用 032/033 的 7 个函数，14/14 `permission denied`。
+- 变更文件：约 24 个（消息 JSON 4、组件 5、i18n 门禁 3、门禁接线 4、演练 SQL 1、文档 5、命令实现 3）。
+- 验证命令与结果：`pnpm check:all` → 33 个门禁全绿、175 文件 / **1982** 用例全过；
+  `pnpm type-check` / `pnpm lint` 干净；`pnpm test:coverage`（上一分支）branches 91.56% 未降；
+  `pnpm exec playwright test e2e/smoke.spec.ts -g "语言切换"` → 3 passed；
+  `pnpm --silent check:action-errors` → `✅ 42 个错误码 × 2 个 locale，163 个前端文件无裸渲染`；
+  本地库演练 psql 两次运行均为 20/20 断言成立并 ROLLBACK。
+- 阻塞（不变，外部）：Vercel `indie-stack` 与 `indie-stack-docs-site` 两个项目自
+  2026-09-21T18:03Z 起 `Deployment rate limited — retry in 24 hours`，生产仍是 `version=0.10.0`，
+  所以 **tag v0.11.0 继续推迟**；此外仍缺隔离测试账号（生产删号闭环）、Supabase Dashboard 权限（pg_cron）、
+  Vercel deployment 切换权限（回滚探针）。
+- 风险 / 回滚：本次不改数据库、不改运行时行为契约（只改错误展示与新增只读命令）。
+  `audit:storage-orphans` 明确不写不删。新门禁可能因错误码提取规则偏保守而漏报，但不会误判通过：
+  提取为空即失败。回滚为撤销这两个分支的提交。
+- 下一项：把「各 locale 逐字相同即漏翻译」从 `actions` 命名空间推广到全部 18 个消息文件
+  （已测得 984 键中 23 个同值、21 个属品牌名/占位符，需要一份显式豁免表），即 D02/D03 的剩余部分；
+  配额恢复后立刻补生产部署证据并打 tag。
+- 更新时间：2026-09-22T03:30:00+08:00。
+
+
 ## 2026-09-22 — v0.11.0 RELEASE_FREEZE（版本号、发布产物、tag 暂缓）
 
 - 里程碑 / 版本：v0.11.0（可观测性里程碑收口 + 数据生命周期闭环）；本条目是冻结记录，**不是发布完成记录**。
