@@ -1,10 +1,15 @@
-/** 上传元数据仓库单测（H02）：写入形状、复合冲突键与错误传播。 */
+/** 上传元数据仓库单测（H02 + A10）：写入形状、复合冲突键、错误传播与删号/孤儿枚举映射。 */
 import { describe, expect, it, vi } from "vitest";
 
 const { createAdminClientMock } = vi.hoisted(() => ({ createAdminClientMock: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
-import { markUploadObjectDeleted, recordUploadObject } from "./upload-objects";
+import {
+  listObjectsForErasure,
+  listOrphanObjects,
+  markUploadObjectDeleted,
+  recordUploadObject,
+} from "./upload-objects";
 
 const CHECKSUM = "a".repeat(64);
 
@@ -71,5 +76,59 @@ describe("upload objects repository", () => {
   it("标记删除失败同样抛出，避免把未清理的对象当成已清理", async () => {
     admin({ message: "db down" });
     await expect(markUploadObjectDeleted("avatars", "k")).rejects.toThrow("db down");
+  });
+});
+
+describe("受管对象枚举（A10）", () => {
+  function rpc(rows: unknown[] | null, error: { message: string } | null = null) {
+    const rpcMock = vi.fn().mockResolvedValue({ data: rows, error });
+    createAdminClientMock.mockReturnValue({ rpc: rpcMock });
+    return rpcMock;
+  }
+
+  it("删号清单按 RPC 返回引用状态，缺字段按未引用处理", async () => {
+    const rpcMock = rpc([
+      { bucket: "avatars", object_key: "avatars/u1/a.png", referenced: true },
+      { bucket: "avatars", object_key: "avatars/u1/b.png" },
+    ]);
+
+    await expect(listObjectsForErasure("u1")).resolves.toEqual([
+      { bucket: "avatars", objectKey: "avatars/u1/a.png", referenced: true },
+      { bucket: "avatars", objectKey: "avatars/u1/b.png", referenced: false },
+    ]);
+    expect(rpcMock).toHaveBeenCalledWith("list_user_objects_for_erasure", { p_user_id: "u1" });
+  });
+
+  it("RPC 报错时抛出，让删号在枚举失败时中止而不是当作没有对象", async () => {
+    rpc(null, { message: "permission denied" });
+    await expect(listObjectsForErasure("u1")).rejects.toThrow("permission denied");
+  });
+
+  it("孤儿清单保留 null 归属（账户已删除的对象仍需被补删）", async () => {
+    const rpcMock = rpc([
+      {
+        bucket: "avatars",
+        object_key: "avatars/gone/u.png",
+        owner_id: null,
+        byte_size: "2048",
+        created_at: "2026-09-22T00:00:00Z",
+      },
+    ]);
+
+    await expect(listOrphanObjects()).resolves.toEqual([
+      {
+        bucket: "avatars",
+        objectKey: "avatars/gone/u.png",
+        ownerId: null,
+        byteSize: 2048,
+        createdAt: "2026-09-22T00:00:00Z",
+      },
+    ]);
+    expect(rpcMock).toHaveBeenCalledWith("find_orphan_upload_objects");
+  });
+
+  it("RPC 返回 null 视为没有孤儿", async () => {
+    rpc(null);
+    await expect(listOrphanObjects()).resolves.toEqual([]);
   });
 });

@@ -379,6 +379,57 @@ function claimMockWebhookEvent(
   return { data: [{ outcome: "claimed", attempts: attempts + 1 }], error: null };
 }
 
+/**
+ * 镜像 033 的后缀引用判定：`right(url, length(key) + 1) = '/' || key`。
+ * 用后缀相等而不是 `includes`/LIKE：对象键里的 `_` 在 LIKE 里是通配符，
+ * `includes` 又会把 `xavatars/u/f.png` 当成 `avatars/u/f.png` 的引用。
+ */
+function mockObjectIsReferenced(objectKey: string): boolean {
+  const suffix = `/${objectKey}`;
+  const referencedBy = (rows: Record<string, unknown>[], column: string) =>
+    rows.some((row) => typeof row?.[column] === "string" && String(row[column]).endsWith(suffix));
+  return (
+    referencedBy(getMockProfiles() as unknown as Record<string, unknown>[], "avatar_url") ||
+    referencedBy(getMockProjects() as unknown as Record<string, unknown>[], "logo_url")
+  );
+}
+
+/** 镜像 033 的 list_user_objects_for_erasure：该用户的 active 对象 + 引用状态。 */
+function listMockUserObjects(
+  args: Record<string, unknown> | undefined,
+): { data: unknown; error: unknown } {
+  const userId = String(args?.[ACCOUNT_ERASURE_ARG] ?? "");
+  if (!userId) {
+    return { data: null, error: { message: "list_user_objects_for_erasure requires a user id" } };
+  }
+  return {
+    data: getMockUploadObjects()
+      .filter((row) => row.owner_id === userId && row.status === "active")
+      .map((row) => ({
+        bucket: row.bucket,
+        object_key: row.object_key,
+        referenced: mockObjectIsReferenced(String(row.object_key)),
+      })),
+    error: null,
+  };
+}
+
+/** 镜像 033 的 find_orphan_upload_objects：active 且无人引用（含删号后失去归属的行）。 */
+function listMockOrphanObjects(): { data: unknown; error: unknown } {
+  return {
+    data: getMockUploadObjects()
+      .filter((row) => row.status === "active" && !mockObjectIsReferenced(String(row.object_key)))
+      .map((row) => ({
+        bucket: row.bucket,
+        object_key: row.object_key,
+        owner_id: row.owner_id ?? null,
+        byte_size: row.byte_size ?? 0,
+        created_at: row.created_at ?? "",
+      })),
+    error: null,
+  };
+}
+
 function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {  const cached = mockCacheGet<Record<string, unknown>[]>(store, "MarketingSubscriptions");
   if (cached) {
     _mockMarketingSubscriptions = cached;
@@ -1552,13 +1603,15 @@ export class MockSupabaseClient {
     return Promise.resolve(channel.unsubscribe());
   }
 
-  /** RPC 桩：仅实现 claim_webhook_event（H06）与 erase_user_data（H08），其余调用返回空数据保持既有行为 */
+  /** RPC 桩：实现 claim_webhook_event（H06）、erase_user_data（H08）与 033 的两个对象清单函数，其余调用返回空数据保持既有行为 */
   async rpc(
     fn?: string,
     args?: Record<string, unknown>,
   ): Promise<{ data: unknown; error: unknown }> {
     if (fn === "claim_webhook_event") return claimMockWebhookEvent(args, this.store);
     if (fn === ACCOUNT_ERASURE_RPC) return eraseMockUserData(args);
+    if (fn === "list_user_objects_for_erasure") return listMockUserObjects(args);
+    if (fn === "find_orphan_upload_objects") return listMockOrphanObjects();
     return { data: null, error: null };
   }
 }

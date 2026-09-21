@@ -442,14 +442,19 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
   {
     file: "src/lib/repositories/upload-objects.ts",
     surface: "data-access",
-    calls: ["markUploadObjectDeleted", "recordUploadObject"],
+    calls: [
+      "listObjectsForErasure",
+      "listOrphanObjects",
+      "markUploadObjectDeleted",
+      "recordUploadObject",
+    ],
     tables: ["upload_objects"],
-    rpc: [],
+    rpc: ["find_orphan_upload_objects", "list_user_objects_for_erasure"],
     storageBuckets: [],
     authAdmin: [],
     trust: { kind: "server-internal", evidence: [] },
     rationale:
-      "Upload metadata rows are written only after the upload service validated the caller, session and file; the table stays RLS deny-all (migration 031).",
+      "Upload metadata rows are written only after the upload service validated the caller, session and file; the table stays RLS deny-all (migration 031). The two RPCs (migration 033) read every profile/project URL column to decide reference state, so they are security-definer and service-role only.",
   },
   {
     file: "src/lib/repositories/webauthn.ts",

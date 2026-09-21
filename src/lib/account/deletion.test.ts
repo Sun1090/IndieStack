@@ -1,20 +1,27 @@
 /**
- * 账户删除编排单测（H08）
+ * 账户删除编排单测（H08 + A10）
  *
- * 要锁住的是顺序与失败语义：擦除先于删号、擦除失败就不删号、
+ * 要锁住的是顺序与失败语义：对象清理与擦除都先于删号、任一步失败就不删号、
  * 删号后的审计补记失败不把成功说成失败、审计行不重新建立与已擦除身份的连接。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { eraseAccountDataMock, createAdminClientMock, appendAuditLogMock, logActionErrorMock } =
-  vi.hoisted(() => ({
-    eraseAccountDataMock: vi.fn(),
-    createAdminClientMock: vi.fn(),
-    appendAuditLogMock: vi.fn(),
-    logActionErrorMock: vi.fn(),
-  }));
+const {
+  eraseAccountDataMock,
+  removeObjectsMock,
+  createAdminClientMock,
+  appendAuditLogMock,
+  logActionErrorMock,
+} = vi.hoisted(() => ({
+  eraseAccountDataMock: vi.fn(),
+  removeObjectsMock: vi.fn(),
+  createAdminClientMock: vi.fn(),
+  appendAuditLogMock: vi.fn(),
+  logActionErrorMock: vi.fn(),
+}));
 
 vi.mock("@/lib/repositories/account-erasure", () => ({ eraseAccountData: eraseAccountDataMock }));
+vi.mock("@/lib/uploads/erasure", () => ({ removeUnreferencedUserObjects: removeObjectsMock }));
 vi.mock("@/lib/repositories/audit-logs", () => ({ appendAuditLog: appendAuditLogMock }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 vi.mock("@/lib/api-log", () => ({ logActionError: logActionErrorMock }));
@@ -23,6 +30,7 @@ import { deleteAccountWithData } from "./deletion";
 
 const CALLS: string[] = [];
 const ERASURE = { apiUsage: 3, contactMessages: 1, auditLogsAnonymized: 9 };
+const OBJECTS = { removed: 2, retained: 1, failed: ["avatars/u1/skipped.png"] };
 
 function adminClient(deleteError: { message: string } | null = null) {
   createAdminClientMock.mockReturnValue({
@@ -40,6 +48,10 @@ function adminClient(deleteError: { message: string } | null = null) {
 beforeEach(() => {
   vi.clearAllMocks();
   CALLS.length = 0;
+  removeObjectsMock.mockImplementation(async () => {
+    CALLS.push("objects");
+    return { removed: 0, retained: 0, failed: [] };
+  });
   eraseAccountDataMock.mockImplementation(async () => {
     CALLS.push("erase");
     return ERASURE;
@@ -49,11 +61,19 @@ beforeEach(() => {
 });
 
 describe("deleteAccountWithData", () => {
-  it("先擦除个人数据，再删除账户", async () => {
+  it("先清理对象、再擦除个人数据、最后删除账户", async () => {
     const result = await deleteAccountWithData("u1");
 
-    expect(CALLS).toEqual(["erase", "deleteUser"]);
+    expect(CALLS).toEqual(["objects", "erase", "deleteUser"]);
     expect(result.erasure).toEqual(ERASURE);
+  });
+
+  it("对象枚举失败时不删号（宁可重试，也不带着未清的公开对象继续）", async () => {
+    removeObjectsMock.mockRejectedValue(new Error("permission denied"));
+
+    await expect(deleteAccountWithData("u1")).rejects.toThrow("permission denied");
+    expect(CALLS).not.toContain("erase");
+    expect(CALLS).not.toContain("deleteUser");
   });
 
   it("擦除失败时不删号（可重试，且不会留下无法补救的状态）", async () => {
@@ -70,7 +90,9 @@ describe("deleteAccountWithData", () => {
     expect(appendAuditLogMock).not.toHaveBeenCalled();
   });
 
-  it("审计补记只留事件、不重建身份连接", async () => {
+  it("审计补记只留计数事件、不重建身份连接（对象键含用户 id，因此不进审计）", async () => {
+    removeObjectsMock.mockResolvedValue(OBJECTS);
+
     await deleteAccountWithData("u1");
 
     expect(appendAuditLogMock).toHaveBeenCalledWith({
@@ -78,14 +100,21 @@ describe("deleteAccountWithData", () => {
       action: "account.deleted",
       entityType: "user",
       entityId: null,
-      metadata: { apiUsage: 3, contactMessages: 1, auditLogsAnonymized: 9 },
+      metadata: {
+        apiUsage: 3,
+        contactMessages: 1,
+        auditLogsAnonymized: 9,
+        objectsRemoved: 2,
+        objectsRetained: 1,
+        objectsFailed: 1,
+      },
     });
   });
 
   it("账户已删除后审计补记失败只记日志，不把成功报成失败", async () => {
     appendAuditLogMock.mockRejectedValue(new Error("audit insert rejected"));
 
-    await expect(deleteAccountWithData("u1")).resolves.toEqual({ erasure: ERASURE });
+    await expect(deleteAccountWithData("u1")).resolves.toMatchObject({ erasure: ERASURE });
     expect(logActionErrorMock).toHaveBeenCalled();
   });
 });

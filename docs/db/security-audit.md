@@ -13,10 +13,10 @@
 
 ## 静态审计状态（2026-09-13）
 
-`pnpm check:supabase-security` 通过：32 个迁移、20 张 public 表、39 条生效 RLS policy、
+`pnpm check:supabase-security` 通过：33 个迁移、20 张 public 表、39 条生效 RLS policy、
 Storage bucket 策略（应用引用的每个 bucket 都已登记、由迁移建行，且有按租户收敛的生效策略）、
 `SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与
-31 个已分类的 service-role 调用点（84 个调用点）均通过。迁移
+31 个已分类的 service-role 调用点（86 个调用点）均通过。迁移
 `024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
 约束的 INSERT/UPDATE/DELETE policy 纳入版本控制；bucket 清单、规则与运行时核对见
 [docs/db/storage-policy-audit.md](storage-policy-audit.md)。
@@ -50,6 +50,15 @@ PostgreSQL 默认把新函数的 `EXECUTE` 授予 `PUBLIC`，Supabase 的默认�
 | `cleanup_old_api_usage()` | anon 可强制删除 API 使用记录 | 仅 `service_role` + 属主 |
 | `prune_deleted_upload_objects()` | anon 可强制清理上传元数据（破坏孤儿巡检依据） | 仅 `service_role` + 属主 |
 | `cleanup_resolved_contact_messages()` | anon 可强制删除联系内容 | 仅 `service_role` + 属主 |
+
+`033_upload_object_orphan_audit.sql` 的三个函数同样建函数即收口（它们跨行读取
+`profiles.avatar_url` / `projects.logo_url`，客户端可调用等于越权读取他人资料字段）：
+
+| 函数 | 若未收口的风险 | 现状 |
+|---|---|---|
+| `upload_object_is_referenced(text)` | 探测某个对象键是否被某个人引用（枚举攻击面） | 仅 `service_role` + 属主 |
+| `list_user_objects_for_erasure(uuid)` | 列出并进而删除他人对象 | 仅 `service_role` + 属主 |
+| `find_orphan_upload_objects()` | 全库对象键与他人资料 URL 的读取 | 仅 `service_role` + 属主 |
 
 **未收口且必须保留客户端 `EXECUTE` 的函数**：`is_team_member` / `is_team_admin` /
 `is_team_owner` / `get_profile_role` / `get_profile_email` / `get_project_team_id` /
@@ -167,7 +176,7 @@ server-only 白名单（RLS 开启、**零**策略，仅 `service_role` 经 `BYP
 
 ```bash
 pnpm check:rls
-# ✅ RLS 全表回归通过：32 个迁移、20 张 public 表、35 条生效策略均带 USING / WITH CHECK，且每张表都已分类
+# ✅ RLS 全表回归通过：33 个迁移、20 张 public 表、35 条生效策略均带 USING / WITH CHECK，且每张表都已分类
 ```
 
 **与线上目录的交叉验证**（本地 Supabase）：
@@ -201,14 +210,14 @@ RLS 只约束 `anon` / `authenticated`；`service_role` 带 `BYPASSRLS`，因此
 
 ```bash
 pnpm check:supabase-security
-# ✅ Supabase security audit passed: 32 migrations, 20 public tables,
+# ✅ Supabase security audit passed: 33 migrations, 20 public tables,
 #    server-only service role checks, 39 effective RLS policies,
 #    31 classified service-role call sites
 ```
 
 ### 清点结果
 
-**31 个模块 / 84 个调用点**，按 surface 与信任依据分布：
+**31 个模块 / 86 个调用点**，按 surface 与信任依据分布：
 
 | surface | 模块数 | 信任依据（trust kind） | 说明 |
 |---|---:|---|---|
@@ -222,11 +231,13 @@ pnpm check:supabase-security
 | `auth-bridge` | 1 | `caller-validated` | 调用方校验 WebAuthn 断言 |
 | `server-internal` | 2 | `server-internal` / `caller-validated` | 服务端通知辅助函数与账户删除编排 |
 | `storage-adapter` | 1 | `server-internal` | 固定 `avatars` bucket |
-| **合计** | **31** | 15 个模块带字面量授权证据 | **84 个调用点** |
+| **合计** | **31** | 15 个模块带字面量授权证据 | **86 个调用点** |
 
-被 service_role 触达的表面：15 张表、1 个 bucket（`avatars`）、2 个 RPC
+被 service_role 触达的表面：15 张表、1 个 bucket（`avatars`）、4 个 RPC
 （`claim_webhook_event`，见 [webhook-idempotency.md](./webhook-idempotency.md)；
-`erase_user_data`，删号前的个人数据擦除，见 [retention.md](./retention.md)），
+`erase_user_data`，删号前的个人数据擦除，见 [retention.md](./retention.md)；
+`list_user_objects_for_erasure` 与 `find_orphan_upload_objects`，删号前的对象枚举与孤儿审计，
+见 [storage-policy-audit.md](./storage-policy-audit.md)），
 以及 5 个 `auth.admin` 方法（`deleteUser` / `generateLink` / `getUserById` /
 `listFactors` / `deleteFactor`）。`auth.admin` 与跨用户写入是这条清单里权限最高的操作，
 都应保持"入口即校验"。账户删除链路因此被拆成
