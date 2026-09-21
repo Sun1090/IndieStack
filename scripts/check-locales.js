@@ -1,44 +1,22 @@
+#!/usr/bin/env node
 /**
- * i18n 翻译对称性校验
- * 递归对比 messages/en 与 messages/zh-CN 的所有嵌套 key：
- * 缺失或多出的键都会导致进程退出码非 0（CI 门禁 / 本地 node scripts/check-locales.js）
+ * i18n 翻译完整性门禁入口。
+ *
+ * 检查逻辑在 src/lib/i18n/translation-values.ts 与 scripts/lib/locales-check.js，
+ * 这里只负责用 Node 原生 type stripping 运行 ESM（.ts import 需要该 flag）。
  */
-const fs = require("fs");
-const path = require("path");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
-function flatten(obj, prefix = "") {
-  return Object.entries(obj).flatMap(([k, v]) => {
-    const key = prefix ? `${prefix}.${k}` : k;
-    return v && typeof v === "object" && !Array.isArray(v)
-      ? flatten(v, key)
-      : [key];
-  });
-}
+const cli = path.join(__dirname, "lib", "locales-check.js");
+const result = spawnSync(
+  process.execPath,
+  ["--no-warnings", "--experimental-strip-types", cli, ...process.argv.slice(2)],
+  { stdio: "inherit" },
+);
 
-function loadLocaleDir(locale) {
-  const dir = path.join(__dirname, "..", "messages", locale);
-  const result = {};
-  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".json"))) {
-    const ns = path.basename(file, ".json");
-    result[ns] = JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
-  }
-  return result;
-}
-
-const en = flatten(loadLocaleDir("en"));
-const zh = flatten(loadLocaleDir("zh-CN"));
-const enSet = new Set(en);
-const zhSet = new Set(zh);
-
-const missingInZh = en.filter((k) => !zhSet.has(k));
-const missingInEn = zh.filter((k) => !enSet.has(k));
-
-if (missingInZh.length || missingInEn.length) {
-  if (missingInZh.length)
-    console.error(`❌ zh-CN 缺失 ${missingInZh.length} 个 key:\n  ` + missingInZh.join("\n  "));
-  if (missingInEn.length)
-    console.error(`❌ en 缺失 ${missingInEn.length} 个 key:\n  ` + missingInEn.join("\n  "));
+if (result.error) {
+  console.error(`❌ 无法运行翻译完整性校验：${result.error.message}`);
   process.exit(1);
 }
-
-console.log(`✅ 翻译对称性校验通过：en/zh-CN 各 ${en.length} 个 key 完全一致`);
+process.exit(result.status ?? 1);
