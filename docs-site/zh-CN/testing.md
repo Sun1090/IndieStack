@@ -24,8 +24,8 @@
 
 ## 说明
 
-- 只有 `ui` 领域需要 `pnpm test:visual`；视觉基线必须在 Linux 容器里重生成（见
-  [Mock 运行时](/zh-CN/mock) 与 [脚本工具](/zh-CN/scripts)），不要在 macOS 上直接生成。
+- 只有 `ui` 领域需要 `pnpm test:visual`；视觉基线必须取**CI runner 自己产出的截图**（见
+  [测试指南](/zh-CN/testing)——Playwright 容器并不等价于 `ubuntu-latest`），不要在 macOS 上直接生成。
 - `database` 与 `rls-security` 在 `supabase/migrations` 上重叠：改 schema 既过迁移漂移门禁，也过 RLS 覆盖门禁。
 - `pnpm check:migration-history` 与 `pnpm smoke:supabase-identity` 需要本地 Supabase，CI 不跑，归属发布 runbook。
 - 改动跨越多个领域时取门禁并集；拿不准就跑 `pnpm check:all`，这正是 pre-push 已经强制的那一套。

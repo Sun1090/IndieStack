@@ -301,8 +301,11 @@ All notable changes to IndieStack will be documented in this file.
   浅色 `--muted-foreground` 压到 `240 3.8% 44%`（在 `--muted` 上 4.78:1、在白底 5.25:1）。
   9 处「destructive 作为可读文字」改用 `text-destructive-text`（表单错误、MFA 错误 ×4、删除账户、
   移除成员、API 密钥、统计趋势、分析页、webhook 错误），图标与背景仍用 `destructive`（图形对象要求 3:1，
-  已满足）。视觉基线按 `docs/testing.md` 的 Linux 容器流程重生成：只有 `pricing` 一张变化
-  （次要文字略深），容器内两次独立比对均 4/4 通过。
+  已满足）。视觉基线只有 `pricing` 一张变化（次要文字略深）。**这里踩过一个坑**：容器内自比
+  4/4 通过并不能作为证据——CI 的视觉步骤跑在 `ubuntu-latest` 宿主机上而不是那个容器里，
+  两者子像素抗锯齿不同，同一份代码累计 16353 px（约 1.0%）超阈值，CI 直接失败。
+  基线最终改用 runner 自己产出的 `-actual.png`，并把 `docs/testing.md` 里
+  「用该容器生成基线」的错误流程一并改掉。
 
 ## [0.10.0] — 2026-09-13
 

@@ -19,14 +19,17 @@
      压到 `240 3.8% 44%`（在 `--muted` 上 4.78:1、白底 5.25:1）。9 处「destructive 作为可读文字」
      改用 `text-destructive-text`；图标与背景保持 `destructive`（图形对象 3:1 已满足）。
      对比度值全部用 WCAG 相对亮度公式实算，不靠肉眼。
-  4. **视觉基线按文档流程重生成**：`docs/testing.md` 记录的方式在
-     `mcr.microsoft.com/playwright:v1.63.0-noble` 容器内跑，先比对（`pricing` 1 failed / 3 passed，
-     说明只有次要文字色变化）、再 `--update-snapshots`、最后两次独立比对 4/4。
-     只有 `pricing-chromium-visual-linux.png` 一张发生变化，已肉眼核对无布局位移。
+  4. **视觉基线：容器 4/4 通过是假证据**。先按 `docs/testing.md` 写的流程在
+     `mcr.microsoft.com/playwright:v1.63.0-noble` 容器内重生成（容器内两次独立比对 4/4），
+     推上去 **CI 的 `E2E shard 1` 直接失败**：CI 的视觉步骤跑在 `ubuntu-latest` 宿主机上、
+     不在该容器里，两者子像素抗锯齿不同，同一份代码差 16353 px（约 1.0%）> 0.1% 阈值。
+     从失败 job 的 `playwright-report-shard-1` artifact 取 runner 自己的 `pricing-actual.png`
+     作为基线（已核对：该图 muted 文字为 `#6c6c74`，即本次改色后的渲染），
+     并把 `docs/testing.md` / 双语 `docs-site/testing.md` 里「用该容器生成基线」的错误流程改掉。
 - 变更文件：15 个——e2e 1、token 注册 1、globals.css 1、组件/页面 9、视觉基线 1、文档 5（含本条）。
 - 验证命令与结果：
   - `pnpm exec playwright test e2e/a11y.spec.ts` → 修复前 **1 failed（团队列表 3.76:1）→ 修复后 14 passed**；
-  - 容器内 `playwright test --config=playwright.visual.config.ts` → 两次独立运行各 **4 passed**；
+  - 容器内视觉比对 4/4 **不足以作为证据**（CI 失败，见上）；最终以 runner 产出的 `-actual.png` 为准；
   - `pnpm check:all` → 32 门禁全绿、**183 文件 / 2086 用例**；`pnpm check:tokens` →
     `✅ 40 个已登记 token（39 个深色覆盖、39 条 @theme 映射）`；`pnpm type-check` / `pnpm lint` 干净。
 - 意外收获（已登记为下一项，未在本条修）：dev server 日志显示

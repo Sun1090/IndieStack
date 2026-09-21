@@ -25,8 +25,9 @@ change area; `pnpm check:all` (same as `pnpm verify:all`) runs the full local ag
 
 ## Notes
 
-- The `ui` area is the only one that needs `pnpm test:visual`; baselines must be regenerated inside the
-  Linux container documented in [Mock runtime](/mock) and [Scripts](/scripts), never on macOS directly.
+- The `ui` area is the only one that needs `pnpm test:visual`; baselines must come from the **CI runner's
+  own screenshot** (see [Testing](/testing) — the Playwright container is not equivalent to `ubuntu-latest`, and
+  never generate them on macOS).
 - `database` and `rls-security` overlap on `supabase/migrations`: schema changes need both the migration
   drift gate and the RLS coverage gate.
 - `pnpm check:migration-history` and `pnpm smoke:supabase-identity` need a local Supabase instance; they are
