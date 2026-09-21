@@ -2785,3 +2785,16 @@ default 1` 与 `last_attempt_at timestamptz not null default now()`；把 `event
   - 回滚：`git revert <pending>` 会恢复 0/1 语义、移除配置缺失/状态查询失败的样本、删除两个新测试文件与运维文档条目；不改数据库、外部接口与告警平台配置，回滚后需同步撤回仪表盘查询改动
 - 下一步：E09 运维 runbook 与故障演练（E 段仅剩该项；先审计 `docs/operations/` 现有 runbook 与是否已有演练记录，再决定补哪一层）
 - 最后更新：2026-09-13
+
+## 2026-09-21 — 本地稳定 LocaleSwitcher 依赖测试
+
+- 状态：LOCAL_BLOCKED（测试修复、全量本地验证完成；受 GitHub PR 分支权限与 Vercel 生产部署权限阻塞）。
+- 当前分支 / 提交：`fix/dependabot-locale-switcher-test` / `3b7a5df`，基于 `origin/main` `9444967` 重建；工作树干净。
+- 完成内容：Dependabot PR #34 的 `jsdom 30.1.0` / `vitest 5.0.1` 更新会在第二个 Radix DropdownMenu 用例中丢失跨用例指针焦点，导致 `user.click` 不打开菜单；测试显式查询无障碍触发按钮、先聚焦再点击，并等待 `menu` 可见后点击 `menuitem`。
+- 变更文件：`package.json`、`pnpm-lock.yaml`、`src/components/layout/locale-switcher.test.tsx`（依赖原 Dependabot diff + 测试稳定化）。
+- 验证命令与结果：目标测试连续 10 次通过；`pnpm lint`、`pnpm type-check`、`pnpm test`（164 files / 1,850 tests）、`pnpm build`（23/23 static pages）、`pnpm check:workflows`、`pnpm check:docs`、`pnpm check:gates`、`git diff --check` 均通过。
+- PR 阻塞：PR #34 head branch 仍是 Dependabot commit `c2d3b68`，GitHub 报告 `maintainerCanModify=false`；从 `149203d` 重建的本地 `3b7a5df` 不能 fast-forward，且不允许改写共享分支历史/force push。
+- 发布阻塞：`pnpm check:production-smoke` 契约通过；production drift 于 2026-09-21T03:28:00Z 仍为 5/6，`/api/health` 返回 `version=0.6.0`、期望 `0.10.0`，不得创建或推送 `v0.10.0` tag。
+- 风险 / 回滚：本地提交仅稳定测试交互，无运行时行为变更；撤销 `3b7a5df` 即可恢复原 Dependabot diff。
+- 下一项：由具备仓库写权限/PR head 权限者应用 `3b7a5df` 并运行 GitHub CI；由具备 Vercel 生产权限者部署最新 `main` 并取得 6/6 smoke 后再进入 release freeze。
+- 更新时间：2026-09-21T11:28:13+08:00。
