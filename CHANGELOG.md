@@ -318,6 +318,32 @@ All notable changes to IndieStack will be documented in this file.
   基线最终改用 runner 自己产出的 `-actual.png`，并把 `docs/testing.md` 里
   「用该容器生成基线」的错误流程一并改掉。
 
+### Added
+
+- **动态翻译键不再无人看守（D04 补集）**：`check:i18n` 只扫静态 `t("字面量")`，
+  动态模板 `t(`notifications.list.types.${type}`)` 按设计被跳过——这是文档里写明的盲区。
+  新增 `pnpm check:dynamic-keys`（`src/lib/i18n/dynamic-keys.ts` 纯函数 +
+  `scripts/lib/dynamic-keys-check.js` IO）：9 条契约声明「键前缀 → 权威取值集合」，要求每个取值在
+  **每个 locale** 都有键（缺 → `DYNAMIC_KEY_MISSING`）、前缀下不得出现集合之外的键
+  （→ `DYNAMIC_KEY_ORPHAN`）、源码里每个动态模板都必须登记契约（→ `DYNAMIC_KEY_UNREGISTERED_TEMPLATE`），
+  零 locale / 零契约 / 空取值一律失败封闭。取值集合**必须来自代码常量**而不是抄消息文件，
+  否则门禁同义反复、永远不会失败：为此把 `NOTIFICATION_TYPES` 抽到无依赖的
+  `@/lib/notifications/types`（原模块一导入就初始化 Supabase 客户端），并把 `SHORTCUT_ITEMS`、
+  `STRENGTH_LABELS`、角色与语言枚举收进 `.ts`。同前缀下的静态兄弟键（`common.shortcuts.desc` /
+  `.title`）由静态引用放行，避免契约一登记全是误报。首跑即抓到两处：账单页
+  `tc(`tierFeatures.${feature}`)` 从未被任何门禁覆盖，以及 `pricing.features.storage10Gb`
+  是没有任何方案引用的死键（en/zh-CN 同步删除）。三项变异测试全红：删一个 zh-CN 键、
+  注销一条契约、把 mock 枚举改回去。
+
+### Fixed
+
+- **mock 通知数据自造了一套不存在的类型**：`generateMockNotifications` 用
+  `["info", "success", "warning", "error"]` 生成 `type`，而真实的 `NOTIFICATION_TYPES` 是另外 7 个。
+  页面用动态键取标签并被 `try/catch` 兜住，于是 mock / 开发 / E2E 环境每次渲染通知列表都在抛
+  `MISSING_MESSAGE` 后静默退回原始英文串，而 `check:i18n` 按设计不扫动态模板——没有任何测试或
+  门禁会发现。现在生成器直接取 `NOTIFICATION_TYPES`，并新增 `src/lib/mock/data.test.ts` 把
+  「mock 生成的枚举值必须落在权威集合内」钉住（通知类型、profile 角色与语言、团队成员角色）。
+
 ## [0.10.0] — 2026-09-13
 
 > 主题：**UI 系统收口**——把界面层从「逐页手写」收敛为可复用系统，并补齐暗色模式、移动端断点与
