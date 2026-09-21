@@ -128,7 +128,7 @@ export function SiteHeader() {
               {/* 已登录：显示仪表盘按钮和用户头像下拉菜单 */}
               <Button variant="ghost" size="sm" asChild className="hidden lg:flex">
                 <Link href={ROUTES.dashboard}>
-                  <LayoutDashboard className="mr-2 h-4 w-4" /> {t("dashboard")}
+                  <LayoutDashboard className="me-2 h-4 w-4" /> {t("dashboard")}
                 </Link>
               </Button>
               <DropdownMenu>
@@ -150,22 +150,22 @@ export function SiteHeader() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href={ROUTES.dashboard}>
-                      <LayoutDashboard className="mr-2 h-4 w-4" /> {t("dashboard")}
+                      <LayoutDashboard className="me-2 h-4 w-4" /> {t("dashboard")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href={ROUTES.dashboardProfile}>
-                      <User className="mr-2 h-4 w-4" /> {tc("profile")}
+                      <User className="me-2 h-4 w-4" /> {tc("profile")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href={ROUTES.dashboardSettings}>
-                      <Settings className="mr-2 h-4 w-4" /> {tc("settings")}
+                      <Settings className="me-2 h-4 w-4" /> {tc("settings")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
-                    <LogOut className="mr-2 h-4 w-4" /> {tc("signOut")}
+                    <LogOut className="me-2 h-4 w-4" /> {tc("signOut")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

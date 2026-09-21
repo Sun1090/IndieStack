@@ -147,7 +147,7 @@ export default async function TeamPage() {
         {canManage && (
           <Button asChild>
             <Link href={ROUTES.dashboardTeamInvite}>
-              <Plus className="mr-2 h-4 w-4" /> {t("team.list.invite")}
+              <Plus className="me-2 h-4 w-4" /> {t("team.list.invite")}
             </Link>
           </Button>
         )}

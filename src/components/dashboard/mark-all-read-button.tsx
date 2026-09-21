@@ -33,7 +33,7 @@ export function MarkAllReadButton({ unreadCount }: MarkAllReadButtonProps) {
 
   return (
     <Button variant="outline" size="sm" onClick={handleClick} disabled={pending}>
-      <CheckCheck className="mr-2 h-4 w-4" />
+      <CheckCheck className="me-2 h-4 w-4" />
       {pending ? "..." : t("notifications.list.markAllRead")}
     </Button>
   );

@@ -57,7 +57,7 @@ export function MobileDashboardNav() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 overflow-y-auto" aria-describedby={undefined}>
-          <SheetHeader className="text-left">
+          <SheetHeader className="text-start">
             <SheetTitle>{t("dashboard")}</SheetTitle>
           </SheetHeader>
           <nav aria-label={t("dashboard")} className="flex flex-col gap-1">
@@ -81,7 +81,7 @@ export function MobileDashboardNav() {
                   {isNotificationsLink(link.href) && unreadCount > 0 && (
                     <span
                       className={cn(
-                        "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold",
+                        "ms-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold",
                         isActive
                           ? "bg-primary-foreground text-primary"
                           : "bg-primary text-primary-foreground",

@@ -71,7 +71,7 @@ export function WebhookEventsPage() {
           {t("webhookLogs.autoRefresh")}
         </label>
         <Button variant="outline" size="sm" onClick={() => void refetch()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
+          <RefreshCw className="me-2 h-4 w-4" />
           {t("auditLogs.refresh")}
         </Button>
       </div>

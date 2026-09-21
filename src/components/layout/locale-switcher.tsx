@@ -53,7 +53,7 @@ export function LocaleSwitcher() {
             className={locale === currentLocale ? "font-bold" : ""}
             aria-current={locale === currentLocale ? "true" : undefined}
           >
-            <span className="mr-2">{localeMeta[locale].flag}</span>
+            <span className="me-2">{localeMeta[locale].flag}</span>
             {localeMeta[locale].label}
           </DropdownMenuItem>
         ))}

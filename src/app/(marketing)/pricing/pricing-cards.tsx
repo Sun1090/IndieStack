@@ -59,7 +59,7 @@ export function PricingCards() {
           return (
             <Card key={key} className={key === "pro" ? "relative border-primary shadow-lg" : ""}>
               {key === "pro" && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <div className="absolute -top-3 start-1/2 -translate-x-1/2">
                   <Badge>{t("popular")}</Badge>
                 </div>
               )}

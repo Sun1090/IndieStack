@@ -38,7 +38,7 @@ export default function DashboardError({
       }
       action={
         <Button onClick={reset} variant="default">
-          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+          <RefreshCw className="me-2 h-4 w-4" aria-hidden="true" />
           {t("errorBoundary.retry")}
         </Button>
       }

@@ -132,7 +132,7 @@ export function AnalyticsPage() {
               )
             }
           >
-            <Download className="mr-1 h-4 w-4" />
+            <Download className="me-1 h-4 w-4" />
             {t("analytics.exportCsv")}
           </Button>
 
@@ -146,14 +146,14 @@ export function AnalyticsPage() {
               {RANGE_OPTIONS.find((r) => r.value === range)
                 ? t(RANGE_OPTIONS.find((r) => r.value === range)!.key)
                 : t("analytics.last30Days")}
-              <ChevronDown className="ml-1 h-4 w-4" />
+              <ChevronDown className="ms-1 h-4 w-4" />
             </Button>
             {showRangeMenu && (
-              <div className="bg-popover absolute top-full right-0 z-50 mt-1 w-36 rounded-md border p-1 shadow-md">
+              <div className="bg-popover absolute top-full end-0 z-50 mt-1 w-36 rounded-md border p-1 shadow-md">
                 {RANGE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    className={`hover:bg-accent w-full rounded-sm px-3 py-1.5 text-left text-sm ${
+                    className={`hover:bg-accent w-full rounded-sm px-3 py-1.5 text-start text-sm ${
                       opt.value === range ? "bg-accent font-medium" : ""
                     }`}
                     onMouseDown={() => {

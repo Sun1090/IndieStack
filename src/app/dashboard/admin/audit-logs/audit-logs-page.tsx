@@ -127,12 +127,12 @@ export function AdminAuditLogsPage() {
                 )
               }
             >
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="me-2 h-4 w-4" />
               CSV
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             {t("auditLogs.refresh")}
           </Button>
         </div>
@@ -141,17 +141,17 @@ export function AdminAuditLogsPage() {
       {/* 筛选栏 */}
       <div className="flex flex-wrap gap-3">
         <div className="relative max-w-xs flex-1">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <Search className="text-muted-foreground absolute top-1/2 start-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder={t("auditLogs.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="ps-9"
           />
         </div>
         <Select value={actionFilter} onValueChange={setActionFilter}>
           <SelectTrigger className="w-36">
-            <Filter className="mr-2 h-4 w-4" />
+            <Filter className="me-2 h-4 w-4" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
