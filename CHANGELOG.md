@@ -193,6 +193,22 @@ All notable changes to IndieStack will be documented in this file.
   值为 `zh-CN`、`<html lang>` 跟着变、首屏 Badge 渲染出 `生产就绪的 SaaS 启动模板` 且英文原文不再出现。
   这是全仓库第一条真正验证「中文用户看到中文」的 E2E。
 
+- **账户删除数据层演练与孤儿巡检命令（E09 / A10）**：`033` 与 `src/lib/uploads/erasure.ts` 的注释
+  都写着失败对象「可被 `find_orphan_upload_objects()` / `pnpm audit:storage-orphans` 发现并补删」，
+  但那当时只是一句承诺——既没有命令，也没有人真的跑过这条链路。新增 `docs/operations/drills/account-erasure.sql`：
+  在本地 `001`–`033` 库上造两个隔离账户与三类个人数据，按「对象清单 → 擦除 → 删号」的真实顺序跑完，
+  20 条断言逐面核对（`api_usage` 删除而他人保留、`contact_messages` 按 `lower(btrim(email))` 命中大小写/空格变体、
+  `audit_logs` 行数不变但身份列与 PII 键清空、非 object 的脏 metadata 整体清空、
+  **擦除后删号前 `profiles` 仍在**这条顺序证据、删号后元数据行活下来且 `owner_id is null` 并进孤儿清单、
+  他人团队封面因 `projects.logo_url` 仍引用而保留），整段包在事务里回滚。权限矩阵改为**真实调用**核验：
+  `anon` / `authenticated` 逐个调用 032/033 的 7 个函数，14/14 全部 `permission denied`。
+  新增 `pnpm audit:storage-orphans`（只读，不删任何对象）：把清单里 **owner_id 为空** 的行单列——
+  那代表上传者账户已删而对象还公开可读，是隐私问题不是容量问题；`--json` / `--output` 留证据，
+  退出码 0 / 1（执行失败）/ 2（`--fail-on-findings` 且有孤儿）。响应形状严格解析而不是断言，
+  列缺失或类型漂移会让巡检失败，而不是把「读不懂」报成「没有孤儿」。
+  顺带记录一条判定精度上限：`upload_object_is_referenced(text)` 拿不到 bucket，
+  因此末段同名的不同对象会被保守判为「仍被引用」——只会漏删、不会误删。
+
 ### Fixed
 
 - **四处调用点把内部错误码当文案渲染**：`contact-form`、`project-settings-form`、

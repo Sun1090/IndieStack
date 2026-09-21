@@ -151,6 +151,39 @@ pnpm vitest run src/lib/repositories/push-delivery-attempts.test.ts \
   src/app/api/cron/push-retry/route.test.ts
 ```
 
+## 演练记录
+
+### 2026-09-22 · 账户删除全链路（本地 Supabase，`001`–`033` 已应用，事务内回滚）
+
+脚本已入库：`docs/operations/drills/account-erasure.sql`（含运行命令与断言清单）。
+
+```bash
+docker exec -i supabase_db_indiestack psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 -f - < docs/operations/drills/account-erasure.sql
+```
+
+- `erase_user_data()` 返回 `{"apiUsage": 2, "contactMessages": 2, "auditLogsAnonymized": 3}`；
+  本人 `api_usage` 归零、他人那条保留；`contact_messages` 三种邮箱写法（大小写混排 + 前后空格）
+  按 `lower(btrim(email))` 命中两条，他人邮箱保留。
+- `audit_logs` 四条行数不变（合规留存），本人三行 `user_id` 置空、指向本人的 `entity_id` 置空、
+  指向他人的 `project-42` 保留；`metadata` 剔掉 `email`/`ip`/`user_agent`/`avatar_url` 但保留
+  `keepMe`/`name`/非 PII 键；非 object 的历史脏 `metadata` 整体清成 `{}` 而不是报错中断擦除。
+- **顺序证据**：`profiles` 行在擦除之后、删号之前仍为 1 行；删号后才随级联消失——
+  这正是「先擦除、再删号」，反过来做会留下无法反查归属的个人数据。
+- **对象证据**：删号后本人两条 `upload_objects` 行仍在且 `owner_id is null`，其中仍被
+  `profiles.avatar_url` 指着的那条出现在 `find_orphan_upload_objects()`（等补删），
+  `status='deleted'` 的那条不再出现；他人团队项目封面因 `projects.logo_url` 仍引用而不进清单。
+- 引用判定反例同时验证：`xavatars/<uid>/drill.png`（前缀巧合）判为未引用，
+  `<uid>/drill.png` 判为被引用；同名末段（`drill.png`）判为**被引用**——保守方向，见
+  `docs/db/upload-metadata.md` 的精确度说明。
+- **权限矩阵按真实调用验证**（不只是查 `has_function_privilege`）：`anon` 与 `authenticated`
+  对 032/033 的 7 个函数（`erase_user_data`、3 条保留期清理、2 个对象清单函数、引用判定）
+  全部 `permission denied`（14/14），`service_role` 可正常调用。
+
+**仍未取得的生产证据**：真实 `auth.admin.deleteUser`（演练里用 `delete from auth.users` 等价替代，
+级联语义相同但没走 GoTrue 的会话清理）、真实 bucket 对象删除、隔离账号在**生产**上的删号闭环。
+这三项需要 Vercel/Supabase 侧权限与一个可牺牲账号，见 `docs/operations/production-smoke-v0.11.0.md`。
+
 ## 变更痕迹
 
 - `003_projects_notifications_indexes.sql`：`cleanup_old_notifications()`
