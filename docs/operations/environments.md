@@ -41,7 +41,7 @@ Supabase 免费版项目 7 天无活动会被暂停，本仓库用三层兜底�
 | 恢复备 | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 手动触发默认 `dry_run=true`                        |
 
 - 保活与恢复探测共用有限重试：冷启动或瞬时 5xx/网络错误最多尝试 3 次（间隔 5 秒）；
-  404/401 等确定错误和持续故障仍会失败，不会把真实故障静默吞掉。
+  GitHub workflow 的 `health_url` 或仓库变量 `HEALTHCHECK_URL` 可填部署根地址，也会统一解析到 `/api/health`；404/401 等确定错误和持续故障仍会失败，不会把真实故障静默吞掉。
 - 恢复只在 Management API 明确返回 `status=INACTIVE` 时发生；`RESTORING`/`COMING_UP` 等中间态
   只记录不写操作，`REMOVED` 等终态显式失败交给人工。
 - 恢复主层需要 Vercel 环境变量 `CRON_SECRET` + `SUPABASE_ACCESS_TOKEN`（`SUPABASE_PROJECT_REF`

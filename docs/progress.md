@@ -1,3 +1,16 @@
+## 2026-09-21 — 修复 Health workflow 根 URL 误用
+
+- 状态：DONE（本地实现、测试与 workflow policy 完成；v0.10.0 仍受生产应用版本漂移阻塞）。
+- 当前分支：`feat/health-url-normalization`；基线：`origin/main` `67901cc0a1be62df475a77f6428387431821c6b9`。
+- 失败原因：失败 run `35548877440` 手动传入站点根 URL，HTML `HTTP 200` 被严格 readiness 契约判为未就绪，尽管仓库变量 `HEALTHCHECK_URL` 本身指向 `/api/health`。
+- 修复：`scripts/check-health.js` 的 `parseHealthUrl()` 将任意部署地址统一解析为 `/api/health`，清空 query/hash，并拒绝 userinfo 与非 HTTP(S)；health workflow 直接复用该解析器，不再维护第二份 inline 逻辑。
+- 防护：`workflow-policy.ts` 新增 `HEALTHCHECK_URL_NOT_NORMALIZED`，要求 workflow 保留手动输入/仓库变量入口并调用共享 probe；测试覆盖正例及变量、共享解析器两类漂移。
+- 文档：同步中/英文部署文档和运行环境说明，明确根地址与 `/api/health` 输入均可接受。
+- 验证：`pnpm vitest run src/lib/ci/workflow-policy.test.ts src/lib/health-probe.test.ts` 通过（39 tests）；`pnpm check:workflows`、`pnpm check:docs`、`pnpm check:gates`、`pnpm lint`、`pnpm type-check`、`pnpm test`（1,850 tests）、`pnpm build`、`git diff --check` 均通过。
+- 阻塞：不得发布 v0.10.0。生产应用仍返回 `version=0.6.0`，需要 Vercel 生产部署权限后才能取得 6/6 smoke。
+- 下一项：本 PR 合并后部署最新 `main` 到应用生产并执行 production smoke；6/6 通过后再进入 release freeze。
+- 更新时间：2026-09-21T09:14:00+08:00。
+
 ## 2026-09-21 — 修复 Vercel Hobby Cron 部署阻塞
 
 - 状态：DONE（已解除 PR #32 的 `Vercel – indie-stack` failure；生产应用部署仍阻塞在版本漂移）。
@@ -5,6 +18,7 @@
 - 修复：保留 digest 每天 09:00 UTC，将 push-retry 收敛为每天 22:00 UTC；新增 `isValidVercelHobbyCronSchedule` 与 `countCronRunsPerDay`，由 `pnpm check:cron-contract` 在部署前拒绝多次/天表达式。
 - 风险：push 重试延迟从 15 分钟提升到最多 24 小时；在 Hobby plan 不变的前提下，这是让应用部署可推进的必要折中。Pro plan 解锁后应恢复更高频重试并调整契约。
 - 验证：`pnpm vitest run src/lib/observability/cron-contract.test.ts src/lib/observability/cron-contract-check.test.ts`、`pnpm check:cron-contract`、`pnpm lint`、`pnpm type-check`、`pnpm test`、`pnpm build`、`pnpm check:release-docs`、`pnpm check:changelog`、`pnpm check:docs`、`pnpm check:adr`、`pnpm check:workflows`、`pnpm check:gates`、`pnpm check:production-smoke`、`pnpm audit --audit-level high`、`git diff --check` 均通过。
+
 ## 2026-09-21 — Production Smoke 定时漂移检测
 
 - 状态：DONE（本地代码/门禁完成；v0.10.0 发布仍被生产部署版本阻塞）。
@@ -786,7 +800,7 @@
     已在文档中标注为需 Dashboard 确认项）。
   - 风险：清理为不可逆删除；窗口固定 90 天且只按 `created_at`，不读取业务字段。
   - 回滚：`git revert <本提交>` 删除该迁移；如需撤销已应用状态，另行追加迁移 `drop function
-    public.cleanup_old_email_worker_runs()` 并 `cron.unschedule('cleanup-old-email-worker-runs')`
+public.cleanup_old_email_worker_runs()` 并 `cron.unschedule('cleanup-old-email-worker-runs')`
     （迁移仅追加，不改写历史）。
 - 下一步：实现 028 SECURITY DEFINER 授权加固（撤销 PUBLIC/anon/authenticated 对清理类函数的 EXECUTE），
   并扩展 `pnpm check:supabase-security` 使其对默认 PUBLIC EXECUTE 失败封闭。
@@ -912,8 +926,8 @@
 - 验证命令与结果：
   - 门禁先于修复运行 → **失败封闭**：
     `[SERVER_ONLY_TABLE_CLIENT_WRITE_POLICY] 002_rbac_audit.sql: public.audit_logs: policy
-    "Audit logs insertable by authenticated users" grants INSERT to public but the table is
-    server-only`，证明新规则确实能发现该真实缺陷。
+"Audit logs insertable by authenticated users" grants INSERT to public but the table is
+server-only`，证明新规则确实能发现该真实缺陷。
   - `pnpm update:migrations-manifest` → 29 文件；`pnpm check:migrations` → ✅ 29 个不可变迁移与
     SHA-256 基线一致。
   - `pnpm exec supabase migration up` → 本地应用 `029_audit_logs_write_lockdown.sql` 成功。
@@ -923,7 +937,7 @@
     service_role INSERT → **HTTP 201**（服务端写入路径不变）；
     service_role `rpc/log_audit_action` → **HTTP 200**；service_role SELECT → HTTP 200。
   - 权限矩阵（`has_table_privilege` / `pg_policies`）：`audit_logs` 只剩 `Audit logs viewable by
-    super_admin` 一条 SELECT 策略；anon/authenticated 的 insert/update/delete/truncate 全为 `f`
+super_admin` 一条 SELECT 策略；anon/authenticated 的 insert/update/delete/truncate 全为 `f`
     （select 仍 `t`）；service_role 全为 `t`。
   - `pnpm smoke:supabase-identity -- --url http://127.0.0.1:54321 ...` → **20/20 通过**
     （`/tmp/indiestack-identity-029.json`），确认收口未破坏任何合法 authenticated 路径。
@@ -1059,7 +1073,7 @@
   - `pnpm check:rls` → ✅ 29 个迁移、19 张 public 表、**35** 条生效策略（旧实现为 24 条）。
   - **与线上目录交叉验证**：把静态收敛结果与
     `select 'public.'||tablename, policyname, cmd, array_to_string(roles,',') from pg_policies
-    where schemaname='public'` 做集合比较 → **35/35 完全一致，双向零差集**（不多算、不漏算）。
+where schemaname='public'` 做集合比较 → **35/35 完全一致，双向零差集**（不多算、不漏算）。
   - **失败封闭验证**（临时 `099_probe_rls.sql`，验证后立即删除）：
     `create table public.probe_widgets (...)` 不开 RLS → `TABLE_MISSING_RLS`，退出码 1；
     在 `public.teams` 上追加 `"Probe can write"`（UPDATE，只有 `USING`）+
@@ -1192,7 +1206,7 @@
   F05 的"重复 event id 幂等"用例只断言日志行数，结构上发现不了重放。
 - 已完成：
   - `supabase/migrations/030_webhook_event_idempotency.sql`：新增 `attempts integer not null
-    default 1` 与 `last_attempt_at timestamptz not null default now()`；把 `event_id` 单列唯一
+default 1` 与 `last_attempt_at timestamptz not null default now()`；把 `event_id` 单列唯一
     收窄为 `(provider, event_id)` 复合唯一（`webhook_events_provider_event_id_key`）；
     新增 `claim_webhook_event(p_provider, p_event_id, p_event_type)`，`security definer` +
     `set search_path = ''`，`insert … on conflict do nothing` 命中即 `claimed/1`，否则
@@ -1263,7 +1277,7 @@
     但要求 `markEventFailed()` 自身成功（它失败时仅记日志）。
   - 风险：`claim_webhook_event` 是 `SECURITY DEFINER`，权限一旦误授予 `anon`/`authenticated`
     即可伪造占位或置 `failed` 触发重放；`check:supabase-security` 已按（固定 `search_path`
-    + 仅 `service_role`）纳入门禁。
+    - 仅 `service_role`）纳入门禁。
   - 回滚：见 `docs/db/webhook-idempotency.md` 的回滚步骤——**先回应用**（恢复先执行副作用、
     后写日志的旧路径），**再回 DDL**（删函数、删 `(provider, event_id)` 唯一约束、可选删两列）；
     回滚期间必须接受同一 `event.id` 重投会重放副作用。
@@ -1371,7 +1385,7 @@
     `checksum`（`^[0-9a-f]{64}$`）/ `status`（`active|deleted`）/ 时间戳；
     `unique (bucket, object_key)`，`(owner_id,status)` 与 `(bucket,status)` 两条索引，
     `handle_updated_at` 触发器。RLS 打开且**零策略**，并 `revoke insert, update, delete, truncate
-    ... from anon, authenticated`（即使将来误加策略，表级写权限仍缺失）。
+... from anon, authenticated`（即使将来误加策略，表级写权限仍缺失）。
   - 访问边界：新增 `src/lib/repositories/upload-objects.ts`（`createAdminClient()`，
     `recordUploadObject` 走 `upsert(..., { onConflict: "bucket,object_key" })` 并复位 `status='active'`，
     `markUploadObjectDeleted` 标记删除、行不存在是 no-op）；同时登记进
@@ -1435,8 +1449,8 @@
   - 风险：表是旁路记录，`status='deleted'` 只代表"应用认为已删除"；绕过应用直写 bucket 的对象
     不会出现在表里，需要巡检侧做反向差集。
   - 回滚：先 `git revert ee94266` 恢复服务层与仓储（停止写元数据），再 `drop table if exists public.upload_objects;`
-    + `notify pgrst, 'reload schema';`。**顺序不能反**——先删表会导致每次上传写不存在的表。
-    详细步骤见 `docs/db/upload-metadata.md` 的「回滚」。
+    - `notify pgrst, 'reload schema';`。**顺序不能反**——先删表会导致每次上传写不存在的表。
+      详细步骤见 `docs/db/upload-metadata.md` 的「回滚」。
 - 下一步：H02 收尾即触发 **RELEASE_FREEZE**：M1「安全与测试基建」的 H02–H10 可本地执行项已全部完成，
   按语义化版本评估下一版本号（新增功能 + 安全加固 → minor）、写 CHANGELOG 与发布说明、确认迁移/回滚方案、
   跑全量 `pnpm verify:build` 与 release 文档门禁，并把 tag/PR 准备到 LOCAL_ONLY 允许的最后一步（本地提交 + exit report）。
@@ -1455,19 +1469,19 @@
 
 ### 包含任务
 
-| 任务 | 内容                                     | 提交                          |
-| ---- | ---------------------------------------- | ----------------------------- |
-| H02  | 上传对象元数据迁移（031）                | `ee94266` + `dea198d`         |
-| H05  | Storage bucket 策略审计跟随代码          | `90f0071` + `406c8fb`         |
-| H06  | Stripe webhook 幂等占位（030）           | `d85b7ef` + `90f8f5b`/`a908662` |
-| H03  | RLS 全表回归门禁修复（35 条策略漏检）    | `d1ab460`                     |
-| H04  | service_role 调用点清单门禁              | `ec8a7dc` + `b3b1549`         |
-| H07  | 审计日志索引复审 + 精确计数收口          | `ca0770b`                     |
-| H09  | 审计日志写入面收口（029）                | `af956aa`                     |
-| H09  | SECURITY DEFINER 执行权限收口（028）     | `5db7c0b`                     |
-| H08  | 邮件 worker 运行记录保留期（027）        | `9331c1d`                     |
-| —    | Push 重试链路 mock-only E2E 覆盖         | `5c76873` + `67fdab8`         |
-| —    | 发布产物（CHANGELOG/runbook/README/docs） | `b26a953`                     |
+| 任务 | 内容                                      | 提交                            |
+| ---- | ----------------------------------------- | ------------------------------- |
+| H02  | 上传对象元数据迁移（031）                 | `ee94266` + `dea198d`           |
+| H05  | Storage bucket 策略审计跟随代码           | `90f0071` + `406c8fb`           |
+| H06  | Stripe webhook 幂等占位（030）            | `d85b7ef` + `90f8f5b`/`a908662` |
+| H03  | RLS 全表回归门禁修复（35 条策略漏检）     | `d1ab460`                       |
+| H04  | service_role 调用点清单门禁               | `ec8a7dc` + `b3b1549`           |
+| H07  | 审计日志索引复审 + 精确计数收口           | `ca0770b`                       |
+| H09  | 审计日志写入面收口（029）                 | `af956aa`                       |
+| H09  | SECURITY DEFINER 执行权限收口（028）      | `5db7c0b`                       |
+| H08  | 邮件 worker 运行记录保留期（027）         | `9331c1d`                       |
+| —    | Push 重试链路 mock-only E2E 覆盖          | `5c76873` + `67fdab8`           |
+| —    | 发布产物（CHANGELOG/runbook/README/docs） | `b26a953`                       |
 
 ### 发布产物
 
@@ -2187,7 +2201,6 @@
 - 下一步：I07 本地 mock 开发指南收口（`docs-site/mock.md` 与 `docs/architecture/13-mock-system.md` 对齐并补齐可复现步骤）。
 - 最后更新：2026-09-13
 
-
 ## I07 本地 mock 开发指南（DONE）
 
 - 状态：DONE（M3「文档与发布体验」roadmap `docs/roadmap-0.6.0.md` 第 87 项）
@@ -2222,7 +2235,6 @@
   - 回滚：`git revert 0405e2b` 即移除门禁与新文档；纯文档 / 校验脚本改动，无数据库、迁移或运行时影响。
 - 下一步：I08 provider 配置诊断指南。
 - 最后更新：2026-09-13
-
 
 ## I08 Provider 配置诊断指南（DONE）
 
@@ -2280,7 +2292,6 @@
   - 回滚：`git revert 1c80cd0` 即移除诊断模块、CLI、门禁与两份指南；纯校验 / 文档改动，无数据库、迁移或运行时影响。
 - 下一步：I09 贡献者测试矩阵。
 - 最后更新：2026-09-13
-
 
 ## I09 贡献者测试矩阵（DONE）
 
@@ -2500,6 +2511,7 @@
   - 回滚：`git revert 517b17a` 即移除门禁、runbook 与文档接线；纯校验、CI 与文档改动，无数据库、运行时接口或部署影响。
 - 下一步：J07 tag/release 自动化（J06 / J08 仍受生产环境与部署权限阻塞）。
 - 最后更新：2026-09-13
+
 ## J07 Tag / Release Notes 自动化（DONE）
 
 - 状态：DONE（M4「发布收口」roadmap `docs/roadmap-0.6.0.md` 第 97 项）

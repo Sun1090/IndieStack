@@ -62,6 +62,7 @@ export type WorkflowIssueCode =
   | "CONCURRENCY_NOT_CANCELLING"
   | "PULL_REQUEST_TARGET_FORBIDDEN"
   | "SCRIPT_UNKNOWN"
+  | "HEALTHCHECK_URL_NOT_NORMALIZED"
   | "CI_TOPOLOGY_DRIFT";
 
 export interface WorkflowIssue {
@@ -485,6 +486,39 @@ function auditCiTopology(
 }
 
 /**
+ * 检查 HEALTHCHECK_URL 契约不会把站点根地址伪装成 health endpoint。
+ *
+ * 历史上手动 health workflow 曾因传入根 URL 而收到 HTML 200，严格 readiness
+ * 校验只能把故障暴露出来，无法在运行前阻止配置错误。这里保证 workflow 仍从
+ * 仓库变量/手动输入读取目标，并由共享的 check-health 解析器统一补全为 /api/health。
+ */
+function auditHealthCheckWorkflow(
+  workflow: ParsedWorkflow,
+  issues: WorkflowIssue[],
+): void {
+  if (workflow.path !== ".github/workflows/health-check.yml") return;
+  const health = workflow.jobs.find((job) => job.id === "health");
+  const envLine = /^\s*HEALTHCHECK_URL:\s*(.+)$/m.exec(workflow.content)?.[1]?.trim() ?? "";
+  const hasConfigurableSource =
+    envLine.includes("github.event.inputs.health_url") &&
+    envLine.includes("vars.HEALTHCHECK_URL");
+  const usesSharedNormalizer = jobRuns(
+    health?.body ?? "",
+    'node scripts/check-health.js "$HEALTHCHECK_URL"',
+  );
+
+  if (!hasConfigurableSource || !usesSharedNormalizer) {
+    issues.push({
+      code: "HEALTHCHECK_URL_NOT_NORMALIZED",
+      path: workflow.path,
+      job: health?.id,
+      detail:
+        "HEALTHCHECK_URL 必须支持手动输入/仓库变量，并由 scripts/check-health.js 解析为 /api/health",
+    });
+  }
+}
+
+/**
  * 逐行判断作业是否执行了某条命令：既支持 `- run: pnpm x` 内联写法，也支持
  * `run: |` 块标量。按行扫描而不是跨行正则，避免 `\s` 吞掉换行后把别的步骤误判进来。
  */
@@ -545,6 +579,7 @@ function auditWorkflow(
   auditJobHygiene(workflow, issues);
   auditConcurrency(workflow, issues);
   auditScripts(workflow, scripts, issues);
+  auditHealthCheckWorkflow(workflow, issues);
 }
 
 /** 审计全部工作流；纯函数，不读取文件系统。 */

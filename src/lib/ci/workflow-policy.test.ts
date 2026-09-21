@@ -274,6 +274,45 @@ ${STATIC_JOB}${UNIT_JOB}`;
   });
 });
 
+describe("health check URL contract", () => {
+  const HEALTH_WORKFLOW =
+    'name: Post-deploy health check\n\non:\n  workflow_dispatch:\n    inputs:\n      health_url:\n        required: false\n        type: string\n  schedule:\n    - cron: "17 3 * * *"\n\npermissions:\n  contents: read\n\njobs:\n  health:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    env:\n      HEALTHCHECK_URL: ${{ github.event.inputs.health_url || vars.HEALTHCHECK_URL }}\n    steps:\n      - uses: actions/checkout@v7\n      - run: node scripts/check-health.js "$HEALTHCHECK_URL"';
+
+  function auditHealthWorkflow(content: string): WorkflowPolicyReport {
+    return audit(content, {
+      path: ".github/workflows/health-check.yml",
+      topology: sampleTopology({ path: SAMPLE_PATH }),
+    });
+  }
+
+  it("accepts the shared normalizer as the health URL contract", () => {
+    const report = auditHealthWorkflow(HEALTH_WORKFLOW);
+    expect(
+      report.issues.filter((issue) => issue.code === "HEALTHCHECK_URL_NOT_NORMALIZED"),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "does not read vars.HEALTHCHECK_URL",
+      HEALTH_WORKFLOW.replace("vars.HEALTHCHECK_URL", "vars.OTHER_URL"),
+    ],
+    [
+      "does not use the shared check-health parser",
+      HEALTH_WORKFLOW.replace(
+        '      - run: node scripts/check-health.js "$HEALTHCHECK_URL"',
+        "run: node -e 'console.log(process.env.HEALTHCHECK_URL)'",
+      ),
+    ],
+  ])("rejects a workflow that %s", (_, content) => {
+    const report = auditHealthWorkflow(content);
+    expect(codes(report)).toContain("HEALTHCHECK_URL_NOT_NORMALIZED");
+    expect(
+      report.issues.filter((issue) => issue.code === "HEALTHCHECK_URL_NOT_NORMALIZED"),
+    ).toEqual([expect.objectContaining({ job: "health" })]);
+  });
+});
+
 describe("ci.yml topology contract", () => {
   const expensive = ["build", "e2e"];
 

@@ -122,3 +122,22 @@ describe("health probe retry", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+describe("health URL normalization", () => {
+  const { parseHealthUrl } = require("../../scripts/check-health.js") as {
+    parseHealthUrl: (value: string) => URL | null;
+  };
+
+  it("normalizes base URLs and strips query and fragment state", () => {
+    expect(String(parseHealthUrl("https://example.com/"))).toBe("https://example.com/api/health");
+    expect(String(parseHealthUrl("https://example.com/api/health?cache=bust#probe"))).toBe(
+      "https://example.com/api/health",
+    );
+  });
+
+  it("rejects credentials and unsupported schemes", () => {
+    expect(parseHealthUrl("https://user:pass@example.com")).toBeNull();
+    expect(parseHealthUrl("ftp://example.com/api/health")).toBeNull();
+    expect(parseHealthUrl("not a URL")).toBeNull();
+  });
+});
