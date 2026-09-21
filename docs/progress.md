@@ -1,7 +1,8 @@
 ## 2026-09-22 — i18n 值审计门禁：`check:locales` 从「比对键」升级为「审值」（D02 / D03 收口）
 
 - 里程碑 / 版本：v0.11.0（仍未打 tag，冻结继续）；上一条目记录 PR #44，本条只记录值审计门禁。
-- 状态：DONE（本地全部验证通过；生产部署与 tag 仍被 Vercel 配额阻塞，见「阻塞」）。
+- 状态：DONE（本地全部验证通过；PR **#45** 已 rebase 合并 `ab7ee92..a3be130`，分支已删）。
+  **但 2026-09-21T19:50Z 起生产全站动态路由 500，见「阻塞」第一条。**
 - 分支 / commit：
   - `feat/storage-orphan-audit` → PR **#44** 已 rebase 合并（`a2a3676..ab7ee92`），本地/远端分支已删、
     远端仅剩 `main`；
@@ -35,16 +36,31 @@
   - `pnpm check:locales` → `✅ en/zh-CN 各 1235 个 key 完全一致（值审计 2470 条文案，86 条登记为无需翻译）`；
   - `pnpm type-check` / `pnpm lint` 干净；`pnpm test:coverage` → branches **91.61%**（原 91.56%，未降），
     新模块 `translation-values.ts` 本身 stmts 100% / branches 96% / funcs 100%。
-- 阻塞（不变，外部）：Vercel `indie-stack` 与 `indie-stack-docs-site` 自 2026-09-21T18:03Z 起
-  `Deployment rate limited`，生产仍是 `version=0.10.0`，**tag v0.11.0 继续推迟**；
-  另仍缺隔离测试账号（生产删号闭环）、Supabase Dashboard 权限（pg_cron）、
-  Vercel deployment 切换权限（回滚探针）。
+- 阻塞：
+  - **生产事故（最高优先）**：`indie-stack.vercel.app` 全部动态路由 500
+    （`FUNCTION_INVOCATION_FAILED`），首次观测 2026-09-21T19:50Z，持续中。
+    已排除：本次合并上线了坏代码（`main` HEAD 的 Vercel 状态是 `Deployment rate limited`，
+    根本没有产生部署）、Supabase 不可达（GoTrue `/auth/v1/health` 200、PostgREST 401 正常拒绝 anon）、
+    账号级封禁（静态资源与 docs 项目均 200）、构建产物问题（同一代码 `NODE_ENV=production`
+    本地起服 3 条路由全 200）。根因需要 Vercel 的 Runtime Logs 与 19:30–19:50Z 的 env 变更记录，
+    本机 `VERCEL_TOKEN` / `SENTRY_AUTH_TOKEN` 均为占位值，无凭据。
+    过程与所需权限见 `docs/operations/incident-2026-09-21-production-500.md`。
+    连带影响：`health-check.yml` 的每日保活此刻是失效的（它依赖调用生产 `/api/health`），
+    `smoke-main` 会持续红。**tag v0.11.0 继续推迟。**
+  - 部署配额（不变）：`indie-stack` 与 `indie-stack-docs-site` 自 2026-09-21T18:03Z 起
+    `Deployment rate limited — retry in 24 hours`；另仍缺隔离测试账号（生产删号闭环）、
+    Supabase Dashboard 权限（pg_cron）、Vercel deployment 切换权限（回滚探针）。
 - 风险 / 回滚：不改数据库、不改运行时行为——新增的是构建期门禁与文档。
   规则偏保守：宁可要求登记理由，也不会把漏翻译判成通过；抽取为空即失败。
   回滚为撤销本分支提交。
-- 下一项：D01 术语表与翻译贡献规范（值审计已能挡住「没翻」，但没规定「该翻成什么」——
-  `account`/`workspace`、`team`/`organization` 这类术语目前无单一事实来源）；
-  配额恢复后立刻补生产部署证据并打 tag。
+- 下一项：等 Vercel 侧日志/env 变更确认后写复盘并恢复发布链路。在此之前继续做不依赖生产的项——
+  D01 术语表与翻译贡献规范：值审计能挡住「没翻」，但没规定「该翻成什么」。已按英文原值逐条核对
+  zh-CN 1235 条值里的候选漂移：`工程`=blog 分类 "Engineering"、`组织`=文章正文里的动词、
+  `提醒`="alerts"（与 `通知`=notifications 是两个概念）、`移除`="remove"（与 `删除`=delete 是两个概念）、
+  `配置`="configured"（与 `设置`=settings 是两个概念）——**都不是漂移**；
+  真正的不一致只有一处：`dashboard.settings.sections.security.devicesDesc` 把 "account" 译成「账号」，
+  而全库其余 26 处都用「账户」。因此 D01 不能按「同一中文词必须唯一」上门禁（会把正确的概念区分当成错误），
+  要按 en 术语 → zh 唯一译法 来判，并先修掉这一处。
 - 更新时间：2026-09-22。
 
 ## 2026-09-22 — v0.11.0 冻结后连做两项：i18n 错误码收口 + 孤儿巡检与删号演练
