@@ -251,6 +251,6 @@ describe("migration rollback runbook in this repository", () => {
       scripts,
     });
     expect(report.issues).toEqual([]);
-    expect(report.latest).toBe("031_upload_objects.sql");
+    expect(report.latest).toBe("032_data_retention_erasure.sql");
   });
 });

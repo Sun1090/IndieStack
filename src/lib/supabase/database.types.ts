@@ -823,9 +823,12 @@ export type Database = {
           outcome: string
         }[]
       }
+      cleanup_old_api_usage: { Args: never; Returns: undefined }
       cleanup_old_email_worker_runs: { Args: never; Returns: undefined }
       cleanup_old_notifications: { Args: never; Returns: undefined }
       cleanup_old_webhook_events: { Args: never; Returns: undefined }
+      cleanup_resolved_contact_messages: { Args: never; Returns: undefined }
+      erase_user_data: { Args: { p_user_id: string }; Returns: Json }
       get_profile_email: { Args: { p_id: string }; Returns: string }
       get_profile_role: { Args: { p_id: string }; Returns: string }
       get_project_created_by: { Args: { p_id: string }; Returns: string }
@@ -845,6 +848,7 @@ export type Database = {
         }
         Returns: number
       }
+      prune_deleted_upload_objects: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
