@@ -91,8 +91,14 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     id: "i18n",
     zh: "多语言",
     en: "Internationalization",
-    paths: ["messages", "src/i18n", "src/lib/i18n"],
-    commands: ["check:locales", "check:i18n", "check:action-errors", "check:glossary"],
+    paths: ["messages", "src/i18n", "src/lib/i18n", "src/lib/constants.ts", "src/lib/notifications"],
+    commands: [
+      "check:locales",
+      "check:i18n",
+      "check:dynamic-keys",
+      "check:action-errors",
+      "check:glossary",
+    ],
   },
   {
     id: "providers",

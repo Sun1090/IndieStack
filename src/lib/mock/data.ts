@@ -4,6 +4,7 @@
  * 当 Supabase 未配置或 NEXT_PUBLIC_MOCK_ENABLED=true 时使用
  */
 import { faker } from "@faker-js/faker/locale/zh_CN";
+import { NOTIFICATION_TYPES } from "@/lib/notifications/types";
 
 /** 固定的 mock 用户 ID（便于调试） */
 export const MOCK_USER_ID = "mock-user-001";
@@ -168,7 +169,6 @@ export function generateMockProjects(count = 6) {
  * 生成模拟通知列表
  */
 export function generateMockNotifications(count = 8) {
-  const types = ["info", "success", "warning", "error"] as const;
   return Array.from({ length: count }, (_, i) => ({
     id: `notif_${i + 1}`,
     user_id: MOCK_USER_ID,
@@ -183,7 +183,7 @@ export function generateMockNotifications(count = 8) {
       "积分更新",
     ]),
     body: faker.lorem.sentence(),
-    type: types[faker.number.int({ min: 0, max: 3 })],
+    type: faker.helpers.arrayElement(NOTIFICATION_TYPES),
     link: null,
     metadata: null,
     is_read: faker.datatype.boolean(0.3),

@@ -7,6 +7,7 @@ echo "==> check:locales"; pnpm --silent check:locales
 echo "==> check:i18n";   pnpm --silent check:i18n
 echo "==> check:action-errors"; pnpm --silent check:action-errors
 echo "==> check:glossary"; pnpm --silent check:glossary
+echo "==> check:dynamic-keys"; pnpm --silent check:dynamic-keys
 echo "==> check:direction"; pnpm --silent check:direction
 echo "==> check:agents"; pnpm --silent check:agents
 echo "==> check:rls";    pnpm --silent check:rls

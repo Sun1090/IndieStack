@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ASSIGNABLE_USER_ROLES } from "@/lib/constants";
 import { dashboardQueryOptions, CACHE_STALE, QUERY_KEYS } from "@/lib/query-cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -212,7 +213,7 @@ export function AdminUsersPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>{t("users.changeRole")}</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {(["member", "admin", "viewer"] as const).map((r) => (
+                        {ASSIGNABLE_USER_ROLES.map((r) => (
                           <DropdownMenuItem
                             key={r}
                             disabled={user.role === r}

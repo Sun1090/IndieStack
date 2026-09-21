@@ -15,15 +15,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { SHORTCUT_ITEMS } from "@/lib/shortcuts";
 
 /** 这些控件里输入 "?" 是文本，不应该弹出快捷键帮助 */
 const TEXT_INPUT_TAGS = /^(input|textarea|select)$/i;
-
-const SHORTCUTS = [
-  { keys: ["⌘", "K"], desc: "commandPalette" },
-  { keys: ["?"], desc: "shortcutsHelp" },
-  { keys: ["Esc"], desc: "closeDialog" },
-];
 
 export function ShortcutsDialog() {
   const t = useTranslations("common");
@@ -59,11 +54,11 @@ export function ShortcutsDialog() {
           <DialogDescription>{t("shortcuts.desc")}</DialogDescription>
         </DialogHeader>
         <ul className="space-y-2">
-          {SHORTCUTS.map((s) => (
-            <li key={s.desc} className="flex items-center justify-between text-sm">
-              <span>{t(`shortcuts.${s.desc}`)}</span>
+          {SHORTCUT_ITEMS.map((item) => (
+            <li key={item.desc} className="flex items-center justify-between text-sm">
+              <span>{t(`shortcuts.${item.desc}`)}</span>
               <kbd className="rounded border bg-muted px-2 py-0.5 font-mono text-xs">
-                {s.keys.join(" + ")}
+                {item.keys.join(" + ")}
               </kbd>
             </li>
           ))}
