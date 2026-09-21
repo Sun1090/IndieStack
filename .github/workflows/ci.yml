@@ -57,6 +57,9 @@ jobs:
       - name: Check server action error code translations
         run: pnpm check:action-errors
 
+      - name: Check zh-CN terminology glossary
+        run: pnpm check:glossary
+
       - name: Check shared agent index
         run: pnpm check:agents
 
