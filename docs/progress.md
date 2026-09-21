@@ -1,3 +1,53 @@
+## 2026-09-22 — 应用层逻辑方向迁移 + `check:direction`（D08 收口，D 域完成）
+
+- 里程碑 / 版本：v0.11.0（仍未打 tag；生产健康、跑 `0.10.0`，缺的是 Vercel build 配额）。
+- 状态：DONE（本地 `check:all` 32 门禁 / 2058 用例、`type-check`、`lint`、干净生产构建后的
+  CSS 产出比对、响应式 E2E 全绿；视觉基线待 CI，见「验证命令与结果」）。
+- 分支 / commit：`feat/app-rtl-safe-layout`——迁移、门禁、文档各一个 commit。
+- 完成内容：
+  1. **应用层 74 处物理方向类迁为逻辑方向**（33 个文件，含上一轮批量替换漏掉的 `border-r` 单例）：
+     `ml-/mr-`→`ms-/me-`、`pl-/pr-`→`ps-/pe-`、`left-/right-`→`start-/end-`、
+     `text-left/right`→`text-start/end`、`rounded-tl/tr/bl/br/l/r`→`rounded-ss/se/es/ee/s/e`、
+     `border-l/r`→`border-s/e`。逻辑方向在 LTR 下与物理写法渲染结果一致，因此视觉不变；
+     复核用的是**构建产物比对**而不是截图——已提交基线只有 `-linux.png`，本机运行只会自动生成
+     `-darwin.png`（上一轮就这样造出过 4 张假基线并当成通过），所以视觉基线交给 CI，本地不声称跑过。
+     迁移用脚本批量替换后**逐条核对生成的 token**：正则 `rounded-l(?=[\w-])` 把 24 处 `rounded-lg`
+     一并打成 `rounded-sg`（Tailwind 静默不产出，视觉才会暴露），当场发现并回滚——
+     批量改类名必须核对 token 集合，看 diff 行数不够。
+  2. **新增门禁 `pnpm check:direction`**：`src/lib/styling/direction.ts`（纯函数，6 类规则码）+
+     `scripts/lib/direction-check.js`（IO）+ `scripts/check-direction.js`（wrapper），
+     要求应用层 0 处物理方向类、扫不到文件即 `DIRECTION_NO_FILES`。
+     判定只看**字符串字面量内部**且**先剥掉注释**，所以 `// 用 ml- 表示左边距` 与 JSX 文本不报；
+     代码字符串里真写出 `text-right` 仍会报——这是刻意的取舍，已写成测试钉住而不是留给读者猜。
+     `space-x-*` 在 Tailwind v4 里已是 `margin-inline-start`，不属于禁止项（先确认再生效，不凭记忆）。
+  3. **D08 评估入档**：`docs/architecture/10-i18n.md` 新增「书写方向与长文本」，
+     写明两处诚实残留——`src/components/ui/**` 的 35 处（shadcn 基元，升级被上游覆盖，改在这里只制造冲突）
+     与 `translate-x-*`(11 处) / `origin-left`（**v4 无逻辑等价物**，禁止只会逼人到处加 `dir`）——
+     以及长文本约定（`min-w-0` + `truncate`、长 token 用 `break-words`、不给固定宽度）。
+- 变更文件：50 个——应用层 tsx 33、门禁实现 3、测试 2、接线 6（`package.json`、`scripts/check-all.sh`、
+  `ci.yml`、`test-matrix.ts`、双语 `docs-site/testing.md`）、文档 5（`10-i18n.md`、roadmap、CHANGELOG、
+  双语 release notes）+ 本进度条目。
+- 验证命令与结果：
+  - `pnpm check:direction` → `✅ 133 个应用层文件无物理方向类（src/components/ui/** 按设计排除）`；
+  - `pnpm vitest run src/lib/styling/` → 2 文件 / **18** 条全过（含跨行模板串反例、注释不算违规、
+    真实仓库反例：把任一 `ms-` 改回 `ml-` 立刻失败）；
+  - 变异测试：向 `src/components/auth/login-form.tsx` 注入一个 `ml-4` → 门禁立刻
+    `[DIRECTION_PHYSICAL_UTILITY]` + 退出码 1，还原后回到 0（证明门禁不是永远为真的空转）；
+  - `rm -rf .next && pnpm build` → 退出码 0；再把产出 CSS 去转义逐条比对：应用层用到的
+    本次新写的 **25 个逻辑类（74 处）**全部仍生成规则，0 处被静默丢弃，且值函数与物理写法一致
+    （`.ms-2{margin-inline-start:calc(var(--spacing)*2)}` 对 `.ml-2{margin-left:calc(var(--spacing)*2)}`）；
+    `src/app/layout.tsx` 的 `<html lang={locale}>` 不带 `dir`，两个语言均按 `ltr` 计算；
+  - `pnpm exec playwright test e2e/responsive.spec.ts` → **11/11**，375/768/1280 三断点无横向溢出；
+  - `pnpm check:all` → 32 个门禁全绿、**181 文件 / 2058 用例**全过；`pnpm type-check` / `pnpm lint` 干净；
+  - 视觉基线 `e2e-visual/visual.spec.ts` **本机不作为证据**（见上）。
+- 阻塞：Vercel build 配额（`retry in 24 hours`），生产仍 `0.10.0`，**tag v0.11.0 继续推迟**。
+- 风险 / 回滚：纯类名替换 + 新增构建期门禁，不改数据、不改行为契约。风险点是逻辑方向类写错成
+  不存在的 utility（Tailwind 会静默不产出、不报错）——由上面的 CSS 产出比对与响应式 E2E 兜住，
+  门禁本身又经变异测试确认能失败。回滚为撤销本分支提交。
+- 下一项：roadmap 0.6.0 的 D 域 10/10 完成；剩 E09（runbook 演练闭环，需隔离生产账号）、
+  J06/J08/J09/J10（发布链路与退出报告，多数依赖一次真实部署）。配额恢复后立刻补部署证据并打 tag。
+- 更新时间：2026-09-22。
+
 ## 2026-09-22 — 中英术语表与 `check:glossary`（D01 收口，D 域只剩 D08）
 
 - 里程碑 / 版本：v0.11.0（仍未打 tag；生产健康，仍跑 `0.10.0`，缺的是部署配额，见「阻塞」）。
