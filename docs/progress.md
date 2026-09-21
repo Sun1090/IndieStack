@@ -1,3 +1,15 @@
+## 2026-09-21 — E09 运维 runbook 收口
+
+- 状态：DONE（本地文档与已有契约覆盖完成；真实演练仍由外部权限决定，不标记为已演练）。
+- 当前分支：`feat/ops-e09-runbook-contract`；基线：`origin/main` `94449678d7516202ceff17e7a10928835bd32706`。
+- 完成内容：在 `docs/operations/release-gap-audit-v0.10.0.md` 增加 E09 汇总表，明确部署/回滚、数据库、Secrets、CodeQL、production smoke、provider/alerts 六类 runbook 的仓库产物、可本地校验契约与真实演练边界。
+- 明确结论：`check:release-docs`、`check:migration-runbook`、`check:secrets-scan`、`check:codeql`、`check:production-smoke`、`provider:doctor` / `check:provider-docs` 只能证明文档和契约，不证明生产权限操作、凭据轮换、数据库维护窗口或 provider 演练已完成。
+- 验证：`node scripts/check-release-docs.js` 通过（v0.10.0 / 7 artifacts）；`git diff --check` 通过。
+- 阻塞：production smoke 于 2026-09-21T03:46:21Z 复核仍为 5/6，生产 `/api/health` 返回 `version=0.6.0`、期望 `0.10.0`；不得发布 v0.10.0。PR #36 仅 Vercel Hobby preview rate limit 未解除，GitHub CI 已全部通过。
+- 风险 / 回滚：仅新增运维审计文档，无运行时代码、依赖、数据库或 CI 行为变更；回滚为撤销该提交。
+- 下一项：具备 Vercel 生产权限者部署当前 `main` 并取 6/6 smoke；具备配额/Pro plan 者解除 PR #36 preview rate limit。
+- 更新时间：2026-09-21T11:48:00+08:00。
+
 ## 2026-09-21 — v0.10.0 发布外部阻塞复核
 
 - 状态：BLOCKED（无仓库代码、测试或 CI 阻塞；必须由具备权限者提供 Vercel 生产部署凭据/账号权限）。
