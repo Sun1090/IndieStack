@@ -8,18 +8,14 @@ import type { Database } from "@/lib/supabase/database.types";
 
 export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 
-/** 通知类型（seed 既有 + v0.4.0 新增；展示映射见通知页 badgeVariant） */
-export const NOTIFICATION_TYPES = [
-  "system",
-  "team_invite",
-  "role_changed",
-  "payment_succeeded",
-  "billing_update",
-  "deployment",
-  "security_alert",
-] as const;
-
-export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+/**
+ * 通知类型定义在 `@/lib/notifications/types`（无依赖模块，mock 层与 i18n 门禁也要用，
+ * 而本模块导入时会初始化 Supabase 客户端）。这里原样再导出，保持既有 import 路径不变。
+ */
+export { NOTIFICATION_TYPES } from "@/lib/notifications/types";
+export type { NotificationType } from "@/lib/notifications/types";
+import { NOTIFICATION_TYPES } from "@/lib/notifications/types";
+import type { NotificationType } from "@/lib/notifications/types";
 
 export interface NewNotification {
   userId: string;

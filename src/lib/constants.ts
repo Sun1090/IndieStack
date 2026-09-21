@@ -126,6 +126,27 @@ export const SUBSCRIPTION_TIERS = {
   },
 } as const;
 
+/**
+ * 角色与语言的权威取值集合。
+ *
+ * 这些枚举此前只以字符串字面量散落在各页面里（`["member", "admin", "viewer"]`、
+ * `t(`users.roleLabels.${role}`)`），而 `check:i18n` 按设计不扫动态模板，
+ * 所以「新增一个角色但忘了加翻译」不会有任何门禁报警。`pnpm check:dynamic-keys`
+ * 以这里为唯一事实源来校验 `*.roles.*` / `*.roleLabels.*` 的键集合。
+ */
+
+/** 系统角色（账户 `profiles.role`）：`super_admin` 只读展示，不可从界面授予。 */
+export const SYSTEM_ROLES = ["super_admin", "admin", "member", "viewer"] as const;
+
+/** 管理员在用户表里可以改成的角色（刻意不含 `super_admin`）。 */
+export const ASSIGNABLE_USER_ROLES = ["member", "admin", "viewer"] as const;
+
+/** 团队角色（`team_members.role`）。 */
+export const TEAM_ROLES = ["owner", "admin", "member", "viewer"] as const;
+
+/** 个人资料里展示的语言偏好取值（与站点 locale 不是一回事）。 */
+export const PROFILE_LANGUAGES = ["en", "zh", "ja", "ko"] as const;
+
 export const RATE_LIMIT = {
   maxRequests: 100,
   windowMs: 60 * 1000, // 1 minute

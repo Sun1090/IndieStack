@@ -7,28 +7,12 @@
 
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
+import { scorePassword, STRENGTH_LABELS } from "@/lib/password-strength";
+import type { StrengthLevel } from "@/lib/password-strength";
 import { cn } from "@/lib/utils";
 
-export type StrengthLevel = 0 | 1 | 2 | 3 | 4;
-
-export function scorePassword(password: string): StrengthLevel {
-  if (!password) return 0;
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (password.length >= 12) score++;
-  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
-  if (/\d/.test(password)) score++;
-  if (/[^a-zA-Z0-9]/.test(password)) score++;
-  return Math.min(4, Math.max(1, score - (password.length < 8 ? 1 : 0))) as StrengthLevel;
-}
-
-const LABELS: Record<StrengthLevel, string> = {
-  0: "",
-  1: "weak",
-  2: "fair",
-  3: "good",
-  4: "strong",
-};
+export { scorePassword } from "@/lib/password-strength";
+export type { StrengthLevel } from "@/lib/password-strength";
 
 const BAR_COLORS: Record<StrengthLevel, string> = {
   0: "bg-transparent",
@@ -57,7 +41,7 @@ export function PasswordStrength({ password }: { password: string }) {
         ))}
       </div>
       <p className="text-xs text-muted-foreground">
-        {level > 0 ? t(`strength.${LABELS[level]}`) : ""}
+        {level > 0 ? t(`strength.${STRENGTH_LABELS[level]}`) : ""}
       </p>
     </div>
   );

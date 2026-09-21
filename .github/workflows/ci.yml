@@ -60,6 +60,9 @@ jobs:
       - name: Check zh-CN terminology glossary
         run: pnpm check:glossary
 
+      - name: Check dynamic translation key contracts
+        run: pnpm check:dynamic-keys
+
       - name: Check logical CSS direction
         run: pnpm check:direction
 
