@@ -90,7 +90,7 @@ if (shouldUseMock()) {
 | `select()` | 在本地应用过滤、`order()`、`limit()`/`range()`、`single()`/`maybeSingle()` |
 | `eq()` / `neq()` / `in()` / `is()` | 支持 |
 | `insert()` / `update()` / `delete()` | 就地修改缓存列表，后续读取可见 |
-| `rpc()` | 只实现 `claim_webhook_event` 与 `erase_user_data`，其它函数名返回 `null` 数据 |
+| `rpc()` | 实现 `claim_webhook_event`、`erase_user_data`、`list_user_objects_for_erasure` 与 `find_orphan_upload_objects`，其它函数名返回 `null` 数据 |
 | 未知表名 | 读取返回 `[]`，写入不落库 |
 
 认证接口：`getUser`、`getSession`、`signInWithPassword`、`signUp`、`signInWithOAuth`、

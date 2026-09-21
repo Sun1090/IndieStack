@@ -56,3 +56,61 @@ export async function markUploadObjectDeleted(bucket: string, objectKey: string)
     .eq("object_key", objectKey);
   if (error) throw new Error(error.message);
 }
+
+/** `upload_objects` 的一行最小可用形状（provider 侧定位对象所需）。 */
+export interface ManagedUploadObject {
+  bucket: string;
+  objectKey: string;
+}
+
+export interface OwnedUploadObject extends ManagedUploadObject {
+  /** 是否仍被某个 `profiles.avatar_url` / `projects.logo_url` 指着。 */
+  referenced: boolean;
+}
+
+export interface OrphanUploadObject extends ManagedUploadObject {
+  /** 账户已删除时为 null——元数据故意活过删号，失败的删除才能被补做。 */
+  ownerId: string | null;
+  byteSize: number;
+  createdAt: string;
+}
+
+type ObjectRow = {
+  bucket: string;
+  object_key: string;
+  referenced?: boolean;
+  owner_id?: string | null;
+  byte_size?: number;
+  created_at?: string;
+};
+
+function toOwned(row: ObjectRow): OwnedUploadObject {
+  return { bucket: row.bucket, objectKey: row.object_key, referenced: row.referenced === true };
+}
+
+/**
+ * 删号前枚举该用户上传过的 active 对象及其引用状态。
+ * 只有 `referenced === false` 的对象可以删：他替团队上传的封面在别人页面上还亮着。
+ */
+export async function listObjectsForErasure(userId: string): Promise<OwnedUploadObject[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("list_user_objects_for_erasure", {
+    p_user_id: userId,
+  });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as ObjectRow[]).map(toOwned);
+}
+
+/** 全库 active 但已无任何业务行引用的对象（`pnpm audit:storage-orphans` 的数据源）。 */
+export async function listOrphanObjects(): Promise<OrphanUploadObject[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("find_orphan_upload_objects");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as ObjectRow[]).map((row) => ({
+    bucket: row.bucket,
+    objectKey: row.object_key,
+    ownerId: row.owner_id ?? null,
+    byteSize: Number(row.byte_size ?? 0),
+    createdAt: row.created_at ?? "",
+  }));
+}

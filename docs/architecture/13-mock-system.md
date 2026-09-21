@@ -100,7 +100,7 @@ graph LR
 | `push_subscriptions` | 预置，可写 | |
 | `upload_objects` | 预置，可写 | |
 
-未知表名读取返回空结果、写入为空操作。`rpc()` 只实现 `claim_webhook_event` 与 `erase_user_data`（后者镜像迁移 032 的擦除语义，见 `docs/db/retention.md`）。
+未知表名读取返回空结果、写入为空操作。`rpc()` 实现 `claim_webhook_event`、`erase_user_data`（镜像迁移 032 的擦除语义，见 `docs/db/retention.md`）以及 `list_user_objects_for_erasure` / `find_orphan_upload_objects`（镜像迁移 033 的对象引用判定，见 `docs/db/upload-metadata.md`）。
 
 ## 状态模型
 

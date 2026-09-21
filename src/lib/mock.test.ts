@@ -793,6 +793,81 @@ describe("Mock 账户个人数据擦除（H08）", () => {
   });
 });
 
+describe("Mock 受管对象枚举（A10）", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  async function seedObject(objectKey: string, status: "active" | "deleted" = "active") {
+    const client = createMockSupabaseClient();
+    await client.from("upload_objects").upsert(
+      {
+        bucket: "avatars",
+        object_key: objectKey,
+        owner_id: MOCK_USER_ID,
+        byte_size: 1024,
+        content_type: "image/png",
+        checksum: "a".repeat(64),
+        status,
+      },
+      { onConflict: "bucket,object_key" },
+    );
+  }
+
+  it("缺少 user id 时报错", async () => {
+    const client = createMockSupabaseClient();
+    const result = (await client.rpc("list_user_objects_for_erasure", {})) as {
+      error: { message: string } | null;
+    };
+    expect(result.error?.message).toContain("requires a user id");
+  });
+
+  it("active 对象按引用状态分类，deleted 行不参与", async () => {
+    const client = createMockSupabaseClient();
+    await seedObject("avatars/mock-user-001/avatar.png");
+    await seedObject("avatars/mock-user-001/old.png");
+    await seedObject("avatars/mock-user-001/gone.png", "deleted");
+    await client
+      .from("profiles")
+      .update({ avatar_url: `https://h/object/public/avatars/avatars/mock-user-001/avatar.png` })
+      .eq("id", MOCK_USER_ID);
+
+    const listed = (await client.rpc("list_user_objects_for_erasure", {
+      p_user_id: MOCK_USER_ID,
+    })) as { data: { object_key: string; referenced: boolean }[] };
+    // 迁移按 created_at 排序，mock 保持插入顺序；调用方只遍历全集，这里按 key 归一
+    expect([...listed.data].sort((a, b) => a.object_key.localeCompare(b.object_key))).toEqual([
+      { bucket: "avatars", object_key: "avatars/mock-user-001/avatar.png", referenced: true },
+      { bucket: "avatars", object_key: "avatars/mock-user-001/old.png", referenced: false },
+    ]);
+
+    const orphans = (await client.rpc("find_orphan_upload_objects")) as {
+      data: { object_key: string; owner_id: string | null }[];
+    };
+    expect(orphans.data).toHaveLength(1);
+    // 「从未记录」与「已清理」是两回事：deleted 行不能出现在待补删清单里
+    expect(orphans.data[0]).toMatchObject({
+      object_key: "avatars/mock-user-001/old.png",
+      owner_id: MOCK_USER_ID,
+      byte_size: 1024,
+    });
+  });
+
+  it("后缀相等而不是子串包含：xavatars/... 不算引用", async () => {
+    const client = createMockSupabaseClient();
+    await seedObject("avatars/mock-user-001/f.png");
+    await client
+      .from("profiles")
+      .update({ avatar_url: "https://h/objects/xavatars/mock-user-001/f.png" })
+      .eq("id", MOCK_USER_ID);
+
+    const listed = (await client.rpc("list_user_objects_for_erasure", {
+      p_user_id: MOCK_USER_ID,
+    })) as { data: { referenced: boolean }[] };
+    expect(listed.data[0]?.referenced).toBe(false);
+  });
+});
+
 describe("Mock 上传对象元数据（H02）", () => {
   beforeEach(() => {
     resetMockCache();
