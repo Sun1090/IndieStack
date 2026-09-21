@@ -1,3 +1,16 @@
+## 2026-09-21 — PR #36 / 生产部署阻塞二次复核
+
+- 状态：BLOCKED（无代码/测试阻塞；发布仍被外部权限阻塞）。
+- 远端与分支：已 `git fetch origin --prune`；当前分支 `feat/minor-patch-dependency-stabilization` 与 `origin/feat/minor-patch-dependency-stabilization` 同步于 `c301fff7c4e0a20439cd5b90774f055af150f385`，工作树干净。
+- PR 复核：PR #36 仍为 `OPEN / MERGEABLE`；替换 Dependabot 分支后，Vercel Hobby 对 `c301fff` 的自动预览返回 `Deployment rate limited — retry in 24 hours`，因此 GitHub 将 PR 标为 `BLOCKED`。GitHub 托管 CI 中 lint/type-check、unit tests、build、docs build、E2E shards、CodeQL、Secrets Scan 与 security-config 均为成功或完成；失败项仅为平台预览部署限流。
+- 替代 PR：旧 Dependabot PR #34 的分支不可安全更新（`maintainerCanModify=false`），且 Unit Tests 因 locale-switcher 测试失败；PR #36 为当前唯一可继续推进的替换传输分支，未对受限分支执行 force-push 或历史改写。
+- 生产 smoke 复核（`generatedAt=2026-09-21T03:34:00.303Z`）：5/6 通过；唯一失败仍为 `GET /api/health` 返回 `version=0.6.0`、期望 `0.10.0`。证据：`/tmp/indiestack-production-smoke-recheck-20260921T033340Z.json`。
+- 部署漂移复核：`Production – indie-stack` 最新 deployment 为 `b0ea6f7ed2eb4aea21f7982c974c496b01dc2d89`（2026-09-19T22:52:55Z）；当前 `origin/main` 为 `94449678`，尚未部署到应用生产。
+- 发布判断：不得创建/推送 `v0.10.0` tag，不得把 smoke 标记为通过，也不得把 Vercel Hobby 预览限流当作仓库 CI 失败关闭 PR。必须先由具备权限者部署当前 `main` 到生产并取得 6/6 smoke 证据。
+- 风险 / 回滚：本次追加仅记录外部状态，无运行时代码、依赖或 workflow 变更；回滚只需撤销该文档提交。
+- 下一项：取得 Vercel 生产部署权限后部署 `origin/main`，运行 `pnpm smoke:production -- https://indie-stack-theta.vercel.app --expected-version 0.10.0 --output production-smoke.json`；6/6 后再进入 release freeze。若 Vercel Hobby 构建配额恢复，重新检查 PR #36 的 preview 状态与合并条件。
+- 更新时间：2026-09-21T11:36:00+08:00。
+
 ## 2026-09-21 — v0.10.0 发布外部阻塞复核
 
 - 状态：BLOCKED（无仓库代码、测试或 CI 阻塞；必须由具备权限者提供 Vercel 生产部署凭据/账号权限）。
