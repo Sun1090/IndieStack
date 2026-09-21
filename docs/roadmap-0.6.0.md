@@ -32,7 +32,10 @@ E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名
 > （浅 5.06:1 / 深 6.4:1，因为 `--destructive` 是「红底配浅色前景」语义，深色模式下当文字几乎不可读）、
 > 压深浅色 `--destructive` 与 `--muted-foreground`；9 处「destructive 作为可读文字」改用新 token，
 > 图标与背景保持 `destructive`（图形对象 3:1 已满足）。视觉基线按 `docs/testing.md` 的 Linux 容器流程
-> 重生成（只有 `pricing` 一张变化），容器内两次独立比对 4/4。**顺带在 dev server 日志里发现
+> 重生成只有 `pricing` 一张变化；**但容器内 4/4 不算证据**——CI 的视觉步骤跑在 `ubuntu-latest`
+> 宿主机上而非该容器，两者子像素抗锯齿不同，同一份代码差 16353 px（约 1.0%）> 0.1% 阈值直接失败，
+> 最终改用 runner 自己产出的 `-actual.png`，并改掉 `docs/testing.md` 的错误流程。
+> **顺带在 dev server 日志里发现
 > mock 通知类型与真实 `NotificationType` 完全脱节**（`info/success/warning/error` vs 7 个真实类型），
 > 动态 `t(\`...types.${type}\`)` 是 `check:i18n` 的已知盲区，已登记为下一项。
 

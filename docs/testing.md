@@ -82,7 +82,19 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
 `e2e-visual/visual.spec.ts-snapshots/` 中的 Linux Chromium PNG 对比。CI 在常规 E2E
 之后自动运行 `pnpm test:visual`，像素差异门禁为 0.1%。
 
-基线必须使用与 CI 相同的 Linux 容器生成，不要在 macOS 直接运行 `--update-snapshots`：
+**基线只能由 CI 那个 runner 自己产出**，不要在 macOS 直接运行 `--update-snapshots`
+（会生成 `-darwin.png` 并「通过」，那是自造证据）。
+
+也不要以为 `mcr.microsoft.com/playwright` 容器等价于 CI：CI 的视觉步骤跑在
+`ubuntu-latest` 宿主机上（`actions/setup-node` + `playwright install`），**不在该容器里**。
+两者的 FreeType 子像素抗锯齿设置不同，实测同一份代码在容器与 runner 下每个字形边缘
+都会差 1 个通道，定价页一次就累计 16353 px（约 1.0%），超过 0.1% 的像素阈值而失败——
+而容器内部自己比对永远是 4/4，看不出问题。
+
+正确流程：改动会影响像素时，先推分支让 CI 跑一次，从失败 job 的
+`playwright-report-shard-1` artifact 里取 `test-results/**/<name>-actual.png`
+（那就是 runner 对本次代码的渲染），存成 `e2e-visual/visual.spec.ts-snapshots/<name>-chromium-visual-linux.png`
+再提交。容器命令可以保留作**本地冒烟**（确认页面能渲染、没有布局崩塌），但不能当作基线来源：
 
 ```bash
 docker run --rm --ipc=host --platform linux/amd64 \
@@ -90,7 +102,7 @@ docker run --rm --ipc=host --platform linux/amd64 \
   -v indiestack-visual-node-modules:/work/node_modules \
   -v indiestack-visual-next:/work/.next \
   mcr.microsoft.com/playwright:v1.63.0-noble \
-  bash -lc 'corepack enable && pnpm install --frozen-lockfile && pnpm test:visual:update'
+  bash -lc 'corepack enable && pnpm install --frozen-lockfile && pnpm test:visual'
 ```
 
 容器镜像的 Playwright 版本必须与 `@playwright/test` 保持一致。视觉配置固定单 worker、
