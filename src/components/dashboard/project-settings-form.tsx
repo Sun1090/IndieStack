@@ -27,6 +27,7 @@ export function ProjectSettingsForm({
 }: ProjectSettingsFormProps) {
   const t = useTranslations("dashboard.projects");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [pending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -44,7 +45,7 @@ export function ProjectSettingsForm({
         },
       });
       if (!result.ok) {
-        toast({ title: tc("error"), description: result.error, variant: "destructive" });
+        toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       }
     });
   }

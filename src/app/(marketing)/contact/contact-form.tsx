@@ -18,6 +18,7 @@ import { useTranslations } from "next-intl";
 
 export function ContactForm() {
   const t = useTranslations("contact");
+  const ta = useTranslations("actions");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
@@ -32,7 +33,7 @@ export function ContactForm() {
     const result = await submitContactMessage(formData);
 
     if (!result.ok) {
-      toast({ title: t("form.unavailable"), description: result.error, variant: "destructive" });
+      toast({ title: t("form.unavailable"), description: ta(result.error), variant: "destructive" });
       setLoading(false);
       return;
     }

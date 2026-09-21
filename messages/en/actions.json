@@ -49,6 +49,7 @@
   "passwordsRequired": "Both current and new password are required",
   "priceIdRequired": "Missing product information",
   "projectNameRequired": "Project name is required",
+  "projectNotFound": "Project not found",
   "projectSlugExists": "A project with this slug already exists in your team",
   "rateLimited": "Too many requests",
   "slugInvalid": "Only lowercase letters, numbers, and hyphens",

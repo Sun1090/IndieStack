@@ -21,13 +21,14 @@ interface ProjectDeleteButtonProps {
 export function ProjectDeleteButton({ projectId, projectName }: ProjectDeleteButtonProps) {
   const t = useTranslations("dashboard.projects");
   const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [pending, startTransition] = useTransition();
 
   function handleConfirm() {
     startTransition(async () => {
       const result = await deleteProject(projectId);
       if (!result.ok) {
-        toast({ title: tc("error"), description: result.error, variant: "destructive" });
+        toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
         return;
       }
       toast({ title: t("deleteDeleted") });

@@ -61,7 +61,7 @@ function MfaForm() {
     });
 
     if (challengeError || !challengeData) {
-      toast({ title: "MFA", description: challengeError?.message, variant: "destructive" });
+      toast({ title: "MFA", description: ta(authErrorKey(challengeError)), variant: "destructive" });
       setLoading(false);
       return;
     }
@@ -75,7 +75,7 @@ function MfaForm() {
     if (verifyError) {
       toast({
         title: "MFA",
-        description: authErrorKey(verifyError),
+        description: ta(authErrorKey(verifyError)),
         variant: "destructive",
       });
       setLoading(false);

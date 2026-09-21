@@ -49,6 +49,7 @@
   "passwordsRequired": "当前密码和新密码均为必填",
   "priceIdRequired": "缺少商品信息",
   "projectNameRequired": "项目名称不能为空",
+  "projectNotFound": "未找到该项目",
   "projectSlugExists": "该团队中已存在同 slug 的项目",
   "rateLimited": "请求过于频繁",
   "slugInvalid": "仅允许小写字母、数字和连字符",
