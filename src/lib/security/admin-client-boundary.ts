@@ -191,17 +191,6 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
       "Invite and removal handlers authenticate the caller and verify owner/admin membership before using service_role for cross-user writes.",
   },
   {
-    file: "src/app/api/user/route.ts",
-    surface: "request-handler",
-    calls: ["DELETE"],
-    tables: [],
-    rpc: [],
-    storageBuckets: [],
-    authAdmin: ["deleteUser"],
-    trust: { kind: "session", evidence: ["supabase.auth.getUser", "deleteUser(user.id)"] },
-    rationale: "Account deletion is limited to the authenticated user's own id.",
-  },
-  {
     file: "src/app/api/webhooks/stripe/route.ts",
     surface: "webhook-handler",
     calls: [
@@ -230,6 +219,18 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     authAdmin: [],
     trust: { kind: "role", evidence: ["safelyRequireRole"] },
     rationale: "Admin dashboard reads platform aggregates after the admin role guard.",
+  },
+  {
+    file: "src/lib/account/deletion.ts",
+    surface: "server-internal",
+    calls: ["deleteAccountWithData"],
+    tables: [],
+    rpc: [],
+    storageBuckets: [],
+    authAdmin: ["deleteUser"],
+    trust: { kind: "caller-validated", evidence: ["deleteUser(userId)", "eraseAccountData(userId)"] },
+    rationale:
+      "Account deletion erases cascade-invisible personal data first, and only then deletes the caller-validated own user id; the route handler and the server action both authorize the session before calling it.",
   },
   {
     file: "src/lib/actions/admin.ts",
@@ -288,6 +289,18 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     authAdmin: [],
     trust: { kind: "server-internal", evidence: [] },
     rationale: "Notification helper resolves recipient preferences for trusted server workflows.",
+  },
+  {
+    file: "src/lib/repositories/account-erasure.ts",
+    surface: "data-access",
+    calls: ["eraseAccountData"],
+    tables: [],
+    rpc: ["erase_user_data"],
+    storageBuckets: [],
+    authAdmin: [],
+    trust: { kind: "server-internal", evidence: [] },
+    rationale:
+      "erase_user_data is a security-definer RPC that migration 032 revokes from anon/authenticated and grants only to service_role; the table itself stays RLS deny-all.",
   },
   {
     file: "src/lib/repositories/admin-users.ts",

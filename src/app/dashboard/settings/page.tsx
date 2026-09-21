@@ -21,6 +21,7 @@ import { LogoutAllButton } from "@/components/dashboard/logout-all-button";
 import { SignOutOthersButton } from "@/components/dashboard/sign-out-others-button";
 import { RevokeSessionButton } from "@/components/dashboard/revoke-session-button";
 import { PasskeySection } from "@/components/dashboard/passkey-section";
+import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
 import { listMyCredentials } from "@/lib/repositories/webauthn";
 import { features } from "@/lib/feature-flags";
 import { sessionIdFromAccessToken } from "@/lib/session-id";
@@ -194,6 +195,8 @@ export default async function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <DeleteAccountSection />
     </div>
   );
 }

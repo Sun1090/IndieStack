@@ -168,7 +168,9 @@
         "deleteAccount": "删除账户",
         "deleteDesc": "永久删除你的账户和所有数据。此操作不可撤销。",
         "deleteConfirm": "确认删除",
-        "confirmPhrase": "请输入「删除」确认"
+        "confirmPhrase": "请输入「删除」确认",
+        "eraseSummary": "同时清除外键级联覆盖不到的个人数据：API 调用记录（含 IP 地址）与以你邮箱提交的联系内容；审计日志按合规要求保留行为事实，但会匿名化。",
+        "deleting": "删除中..."
       },
       "security": {
         "title": "Security",

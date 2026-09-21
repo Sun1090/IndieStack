@@ -7,7 +7,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { deleteAccountWithData } from "@/lib/account/deletion";
 import { rateLimit } from "@/lib/rate-limit";
 import { logApiError } from "@/lib/api-log";
 import { getProfileById, updateProfile } from "@/lib/repositories/profiles";
@@ -140,11 +140,10 @@ export async function DELETE(request: NextRequest) {
     return jsonNoStore({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Delete user via admin API
-  const admin = createAdminClient();
-  const { error } = await admin.auth.admin.deleteUser(user.id);
-
-  if (error) {
+  // 先擦除级联覆盖不到的个人数据，再删号；擦除失败时保留账户（见 deletion service）
+  try {
+    await deleteAccountWithData(user.id);
+  } catch (error) {
     await logApiError("[API /user] 删除用户失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }

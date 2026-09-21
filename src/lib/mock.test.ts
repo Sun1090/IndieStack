@@ -710,6 +710,89 @@ describe("Mock webhook 幂等占位（H06）", () => {
   });
 });
 
+describe("Mock 账户个人数据擦除（H08）", () => {
+  beforeEach(() => {
+    resetMockCache();
+  });
+
+  async function erase(userId?: string) {
+    const client = createMockSupabaseClient();
+    return (await client.rpc("erase_user_data", { p_user_id: userId })) as {
+      data: Record<string, number> | null;
+      error: { message: string } | null;
+    };
+  }
+
+  it("缺少 user id 时报错，而不是静默 no-op", async () => {
+    const { data, error } = await erase();
+    expect(data).toBeNull();
+    expect(error?.message).toContain("requires a user id");
+  });
+
+  it("删除该用户的 API 使用记录", async () => {
+    const client = createMockSupabaseClient();
+    const before = asRows(
+      (await client.from("api_usage").select("*").eq("user_id", MOCK_USER_ID)).data,
+    );
+    expect(before.length).toBeGreaterThan(0);
+
+    const { data } = await erase(MOCK_USER_ID);
+    expect(data!.apiUsage).toBe(before.length);
+
+    const after = await client.from("api_usage").select("*").eq("user_id", MOCK_USER_ID);
+    expect(asRows(after.data)).toHaveLength(0);
+  });
+
+  it("匿名化审计日志并按邮箱匹配联系消息（大小写与空白都不该漏删）", async () => {
+    const client = createMockSupabaseClient();
+    const profiles = asRows(
+      (await client.from("profiles").select("*").eq("id", MOCK_USER_ID)).data,
+    );
+    const email = String(profiles[0]?.email);
+    expect(email.length).toBeGreaterThan(0);
+
+    await client.from("audit_logs").insert({
+      user_id: MOCK_USER_ID,
+      action: "team.invite",
+      entity_type: "user",
+      entity_id: MOCK_USER_ID,
+      metadata: { email, ip_address: "203.0.113.9", role: "admin" },
+    });
+    await client.from("contact_messages").insert({
+      name: "Mock User",
+      email: `  ${email.toUpperCase()}  `,
+      subject: "erase-me-subject",
+      message: "private content",
+      status: "new",
+    });
+
+    const { data } = await erase(MOCK_USER_ID);
+    expect(data!.contactMessages).toBe(1);
+    expect(
+      asRows((await client.from("contact_messages").select("*")).data).filter(
+        (row) => row.subject === "erase-me-subject",
+      ),
+    ).toHaveLength(0);
+
+    const invited = asRows(
+      (await client.from("audit_logs").select("*").eq("action", "team.invite")).data,
+    );
+    const mine = invited.find(
+      (row) => (row.metadata as Record<string, unknown>)?.role === "admin",
+    );
+    expect(mine).toBeDefined();
+    expect(mine!.user_id).toBeNull();
+    expect(mine!.entity_id).toBeNull();
+    expect(mine!.metadata).toEqual({ role: "admin" });
+  });
+
+  it("第二次擦除不再影响任何行（幂等）", async () => {
+    await erase(MOCK_USER_ID);
+    const { data } = await erase(MOCK_USER_ID);
+    expect(data).toEqual({ apiUsage: 0, contactMessages: 0, auditLogsAnonymized: 0 });
+  });
+});
+
 describe("Mock 上传对象元数据（H02）", () => {
   beforeEach(() => {
     resetMockCache();
