@@ -203,8 +203,7 @@ the project warm with two daily probes, both aimed at `/api/health` (which runs 
 | GitHub Actions (backup) | `.github/workflows/health-check.yml` | `17 3 * * *`   | GitHub disables `schedule` after 60 days without commits  |
 
 The GitHub Actions job reads the repository variable `HEALTHCHECK_URL`
-(Settings → Secrets and variables → Actions → Variables), e.g.
-`https://your-domain.com/api/health`; manual runs can override it with the `health_url` input.
+(Settings → Secrets and variables → Actions → Variables); it accepts either the deployed origin or the explicit `/api/health` URL and normalizes both to `/api/health`. Manual runs can override it with the `health_url` input.
 Both keepalive probes retry transient network errors, 5xx responses, and not-ready bodies up
 to three times with a five-second delay. Permanent errors such as 404/401 and sustained
 failures still fail loudly.

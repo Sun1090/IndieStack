@@ -202,7 +202,7 @@ Supabase 免费版项目连续 7 天无 API 活动会被自动暂停。IndieStac
 | GitHub Actions（备） | `.github/workflows/health-check.yml` | `17 3 * * *` | 仓库 60 天无提交后 GitHub 会自动停用 |
 
 GitHub Actions 侧需要配置仓库变量 `HEALTHCHECK_URL`（Settings → Secrets and variables →
-Actions → Variables），例如 `https://你的域名/api/health`；手动触发时可用 `health_url` 输入覆盖。
+Actions → Variables）；可以填写部署根地址或明确的 `/api/health` 地址，二者都会统一解析到 `/api/health`。手动触发时可用 `health_url` 输入覆盖。
 两条保活探测都会对瞬时网络错误、5xx 和未就绪响应最多重试 3 次，间隔 5 秒；404/401
 等确定错误以及持续故障仍会失败并告警，不会被静默吞掉。
 

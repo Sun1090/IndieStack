@@ -14,7 +14,12 @@ function parseHealthUrl(value) {
   } catch {
     return null;
   }
-  return /^https?:$/.test(parsed.protocol) ? parsed : null;
+  if (!/^https?:$/.test(parsed.protocol)) return null;
+  if (parsed.username || parsed.password) return null;
+  if (parsed.pathname !== "/api/health") parsed.pathname = "/api/health";
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed;
 }
 
 async function main() {

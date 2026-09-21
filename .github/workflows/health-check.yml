@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       health_url:
-        description: "Deployed /api/health URL (defaults to the HEALTHCHECK_URL repository variable)"
+        description: "Deployed origin or /api/health URL (defaults to HEALTHCHECK_URL)"
         required: false
         type: string
   schedule:
