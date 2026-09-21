@@ -22,7 +22,6 @@
 - 发布判断：v0.10.0 仍不得发布。生产 smoke 于 2026-09-21T03:50:46Z 复核仍 5/6，`/api/health` 版本 `0.6.0`、期望 `0.10.0`。
 - 下一项：等待 Vercel Hobby 配额恢复或提升计划；由具备生产权限者部署 `main` 并重新取得 6/6 smoke。
 - 更新时间：2026-09-21T11:56:00+08:00。
->>>>>>> c19f20f (docs(progress): record e09 pr status)
 
 ## 2026-09-21 — E09 运维 runbook 收口
 
@@ -35,7 +34,6 @@
 - 风险 / 回滚：仅新增运维审计文档，无运行时代码、依赖、数据库或 CI 行为变更；回滚为撤销该提交。
 - 下一项：具备 Vercel 生产权限者部署当前 `main` 并取 6/6 smoke；具备配额/Pro plan 者解除 PR #36 preview rate limit。
 - 更新时间：2026-09-21T11:48:00+08:00。
->>>>>>> 9ea6120 (docs(ops): document e09 runbook drill boundaries)
 
 ## 2026-09-21 — v0.10.0 发布外部阻塞复核
 
