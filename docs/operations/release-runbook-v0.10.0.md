@@ -74,3 +74,32 @@ pnpm check:migration-history     # 本地 Supabase 迁移历史（需先 `pnpm e
    仍是既有前置条件，本版本未新增 cron 路由。
 8. **观察窗口新增项**：除 v0.9.0 的 health/5xx/Sentry 外，额外关注首屏主题闪烁上报、移动端导航相关
    前端错误，以及 `pnpm check:tokens` / `check:fields` / `check:states` 在 CI 上是否保持绿。
+
+## v0.10.0 发布记录（事后复核，2026-09-22）
+
+本版本是**没有 tag 的发布**：2026-09-13 把 `package.json` / `.env.example` 升到 0.10.0、
+CHANGELOG 写出 `[0.10.0]` 章节并部署 `main`，但没有创建 `v0.10.0` 标签或 GitHub Release
+（仓库唯一的 tag 仍是 `v0.6.0`）。因此本节的字段是按「部署即发布」的事实事后回填的，
+而不是发布前逐条勾选的产物；下一个走完整 tag → release 流程的版本是 v0.11.0。
+
+- 版本 / tag：v0.10.0 / **无 tag**（缺口已记录，不追溯补打：`main` 自 2026-09-13 之后又前进了
+  数十个提交，事后补打的 `v0.10.0` 会指向一个已经不代表生产内容的 commit）
+- commit SHA：`6465e89`（2026-09-21T17:33Z 复核时的 `main` HEAD；生产报告 `version=0.10.0`）
+- 数据库迁移：v0.10.0 范围内为 001–031；`032`（个人数据擦除与保留期）与 `033`
+  （上传对象孤儿可发现性）是 0.10.0 之后合入的，属于 v0.11.0，已按 DB-first 顺序应用到云端库
+- 构建与 E2E 证据路径：`CI` run `35633071050`（`Lint & Type Check` / `Unit Tests` / `Build` /
+  `Build Docs Site` / `E2E shard 1` / `E2E shard 2` / `E2E (Playwright)` 全成功，`main` push）
+- 冒烟开始/结束时间（含时区）：2026-09-21T17:33:38Z → 17:34:21Z（UTC）；
+  本地 `node scripts/production-smoke.js ... --expected-version 0.10.0` 6/6，
+  证据 `/tmp/indiestack-production-smoke-20260922.json`；
+  workflow `Production Smoke` run `35632786147` success，artifact 保留 30 天
+- 观察指标及基线：`/api/health` 连续 10 次采样全部 HTTP 200（0.85–2.92s，含一次冷启动 2.92s），
+  `status=ok`、`ready=true`；`x-request-id` 与安全头齐全；未观察到 5xx
+- 操作者 / 审查者：Qoder 自主开发代理（单人执行，**缺少第二位审查者**，是本记录的已知缺陷；
+  `release.yml` 的标签校验与 CHANGELOG 门禁承担机器侧复核）
+- 结果：成功（应用层内容与生产一致，无副作用冒烟 6/6）
+- 未解决风险与后续 issue：
+  1. 需要登录 / provider 的冒烟矩阵项仍未执行（见 [production-smoke-v0.10.0.md](./production-smoke-v0.10.0.md)）；
+  2. 云端与本地库都**未安装 pg_cron**，`docs/db/retention.md` 登记的每周清理从未执行；
+  3. 本版本没有 tag，回滚只能按 deployment 而非版本标签定位；
+  4. Vercel Hobby 计划限制每条 cron 路径每天一次，`push-retry` 的重试延迟已放宽到最多 24 小时。
