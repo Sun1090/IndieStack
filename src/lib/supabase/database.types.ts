@@ -647,7 +647,7 @@ export type Database = {
           created_at: string
           id: string
           object_key: string
-          owner_id: string
+          owner_id: string | null
           status: string
           updated_at: string
         }
@@ -659,7 +659,7 @@ export type Database = {
           created_at?: string
           id?: string
           object_key: string
-          owner_id: string
+          owner_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -671,7 +671,7 @@ export type Database = {
           created_at?: string
           id?: string
           object_key?: string
-          owner_id?: string
+          owner_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -829,6 +829,16 @@ export type Database = {
       cleanup_old_webhook_events: { Args: never; Returns: undefined }
       cleanup_resolved_contact_messages: { Args: never; Returns: undefined }
       erase_user_data: { Args: { p_user_id: string }; Returns: Json }
+      find_orphan_upload_objects: {
+        Args: never
+        Returns: {
+          bucket: string
+          byte_size: number
+          created_at: string
+          object_key: string
+          owner_id: string
+        }[]
+      }
       get_profile_email: { Args: { p_id: string }; Returns: string }
       get_profile_role: { Args: { p_id: string }; Returns: string }
       get_project_created_by: { Args: { p_id: string }; Returns: string }
@@ -839,6 +849,14 @@ export type Database = {
       is_team_admin: { Args: { p_team_id: string }; Returns: boolean }
       is_team_member: { Args: { p_team_id: string }; Returns: boolean }
       is_team_owner: { Args: { p_team_id: string }; Returns: boolean }
+      list_user_objects_for_erasure: {
+        Args: { p_user_id: string }
+        Returns: {
+          bucket: string
+          object_key: string
+          referenced: boolean
+        }[]
+      }
       log_audit_action: {
         Args: {
           p_action: string
@@ -849,6 +867,10 @@ export type Database = {
         Returns: number
       }
       prune_deleted_upload_objects: { Args: never; Returns: undefined }
+      upload_object_is_referenced: {
+        Args: { p_object_key: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

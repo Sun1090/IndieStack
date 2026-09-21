@@ -6,7 +6,7 @@
 > **不自动回滚数据库。** 逆向迁移可能造成不可逆的数据丢失，必须由 DBA 与发布负责人共同决定；
 > 多数情况下正确的做法是**前向修复**（新增一条迁移）而不是删除已经应用的历史。
 
-<!-- migration-runbook:latest=032_data_retention_erasure.sql -->
+<!-- migration-runbook:latest=033_upload_object_orphan_audit.sql -->
 
 ## 触发条件
 
@@ -33,7 +33,7 @@
 `supabase/migration-manifest.json` 就不可改写。`pnpm update:migrations-manifest` 会拒绝重写已登记的
 迁移校验和，`pnpm check:migrations` 会校验每个文件的 SHA-256 与顺序。因此：
 
-- 想撤销一条迁移的效果，正确做法是**新增一条反向迁移**（例如 `033_...`）而不是删掉 `032`；
+- 想撤销一条迁移的效果，正确做法是**新增一条反向迁移**（例如 `034_...`）而不是删掉 `033`；
 - 想修正一条写错的迁移，同样是新增一条修复迁移；
 - 迁移文件里应当自带幂等保护（`IF EXISTS` / `IF NOT EXISTS`）与可观测注释，方便前向修复。
 

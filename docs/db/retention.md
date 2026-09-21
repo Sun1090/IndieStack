@@ -159,6 +159,9 @@ pnpm vitest run src/lib/repositories/push-delivery-attempts.test.ts \
 - `027_email_worker_runs_retention.sql`：`cleanup_old_email_worker_runs()` + pg_cron 调度
 - `028_revoke_security_definer_execute.sql`：收回清理/审计写函数的客户端 `EXECUTE`
 - `031_upload_objects.sql`：上传元数据表（`status` 区分 active / deleted，为孤儿巡检留依据）
+- `033_upload_object_orphan_audit.sql`：`upload_objects.owner_id` 改为 `on delete set null`
+  （元数据活过账户删除）+ `upload_object_is_referenced()` / `list_user_objects_for_erasure()` /
+  `find_orphan_upload_objects()` 引用判定与孤儿清单
 - `032_data_retention_erasure.sql`：`erase_user_data()` 个人数据擦除 +
   `cleanup_old_api_usage()` / `prune_deleted_upload_objects()` /
   `cleanup_resolved_contact_messages()` 三条保留期 + 两个局部索引 + 三条 pg_cron 调度
