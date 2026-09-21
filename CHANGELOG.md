@@ -6,6 +6,25 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **账户数据擦除与保留期补齐（H08）**：隐私声明承诺「删除账户后 30 天内删除或匿名化个人数据」，
+  而账户删除此前只有外键级联——`api_usage`（含 `ip_address`）与 `audit_logs` 是 `on delete set null`，
+  删号只留下失去指向却仍带 PII 的行；`contact_messages` 按裸邮箱存储、根本没有外键。
+  迁移 `032_data_retention_erasure.sql` 新增 `erase_user_data(uuid)`（删 API 使用记录、按邮箱删除联系内容、
+  匿名化审计行：`user_id` 与指向本人的 `entity_id` 置空、`metadata` 剔除 PII 键，保留行为事实），
+  以及 `cleanup_old_api_usage()`（90 天）、`prune_deleted_upload_objects()`（`deleted` 元数据 30 天）、
+  `cleanup_resolved_contact_messages()`（`resolved` 满 365 天）三条保留期与两个局部索引；
+  四个函数在建函数时即收回 `PUBLIC` / `anon` / `authenticated` 的 `EXECUTE`（沿用 028 的结论，
+  客户端此前可直接 `rpc()` 触发数据破坏）。应用侧新增 `src/lib/account/deletion.ts` 编排
+  **「先擦除、再删号」**：擦除失败即中止（可重试），删号后的审计补记失败只记日志；
+  `DELETE /api/user` 与新的 `deleteAccountAction` 共用该编排，服务端独立校验确认短语
+  （`delete` / 「删除」）与会话归属，设置页补上此前只有 i18n 文案、没有实现的「危险区域」入口。
+  `src/lib/privacy/data-policy.ts` 是保留天数、cron 任务名、擦除数据面、PII 键与确认短语的单一事实来源，
+  `data-policy.test.ts`（40 条）把它与迁移 SQL、`docs/db/retention.md`、双语界面文案双向钉死；
+  Mock 客户端镜像同一套擦除语义，另有 5 条 Playwright 用例覆盖两步确认与服务端拒绝路径。
+  顺带记录一条真实运维缺陷：`docs/db/retention.md` 登记的所有 SQL 侧调度都依赖 pg_cron，
+  而本地与云端项目的 `pg_extension` 均未安装该扩展，因此每周清理从未执行过——
+  保留期此前只是文档上的承诺，现已在文档中显式标注为待启用的运维动作。
+
 - **Production Smoke 定时漂移检测**：`.github/workflows/production-smoke.yml` 新增 UTC 02:17 定时任务 `smoke-main`，从 `package.json` 读取期望版本并对生产 URL 执行无副作用 smoke，保留 `production-smoke.json` artifact 30 天；新增 `pnpm check:production-smoke` 与契约测试，防止手动发布 smoke 与定时版本漂移检查在执行命令、URL、触发时间和证据留存上漂移。
 
 - **Supabase 恢复告警契约与去重（E07）**：新增 `src/lib/observability/ops-metrics.ts` 固化 `ops.supabase.restore`

@@ -94,7 +94,7 @@ returns an empty result (reads) or a no-op (writes).
 | `select()` | Filters, `order()`, `limit()`/`range()` and `single()`/`maybeSingle()` are applied locally |
 | `eq()` / `neq()` / `in()` / `is()` | Supported filters |
 | `insert()` / `update()` / `delete()` | Mutate the cached list in place so later reads see the write |
-| `rpc()` | Only `claim_webhook_event` is implemented; other names return `null` data |
+| `rpc()` | Only `claim_webhook_event` and `erase_user_data` are implemented; other names return `null` data |
 | Unknown table | Reads resolve `[]`, writes resolve without persisting |
 
 Auth surface: `getUser`, `getSession`, `signInWithPassword`, `signUp`,
