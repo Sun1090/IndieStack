@@ -794,3 +794,39 @@
     （镜像源没有 audit 端点，必须显式指公有源，否则读到的「零漏洞」是假的）。
 - 风险 / 回滚：patch 版本、行为面为零；回滚 = revert 本 commit（锁文件与 package.json 一起回去）。
 - 下一项：等依赖审计与通知链路审计的结果，按发现修复。
+
+## 2026-09-23 — 通知链路审计：三处「记录说假话」修掉，另一处记成待决口径
+
+- 里程碑 / 版本：v0.12.0 A 域（投递语义）的缺陷收口 + A05 的第二条静默出队路径登记。
+- 状态：PARTIAL（两处代码缺陷已修 ✅；「站内已读即不再寄信」是待决口径，只补了文档与登记 ✅）。
+- 分支 / commit：`fix/email-receipt-attribution`（基于 `c6d49ef`）。
+- 为什么做：v0.12.0 池内没有可自主执行的条目了，于是改成主动量缺陷——让一个只读代理沿
+  digest 路由、实时通知、仓储队列口径、push 重试与新加的队列读数走一遍，要求每条结论带 file:line。
+  报告里两条我复核后确认是真缺陷，一条复核后**否掉**，一条是新的口径事实。
+- 完成内容：
+  1. `email-notify.ts`：`markEmailSent` 原本和 `sendResendEmail` 共用一个 `try`，回执写失败会被
+     catch 成「发送失败（留待 cron 重试）」。改成发送与回执各自上报（`push-retry.ts` 早就是这个形状）。
+     重复投递是 at-least-once 的既有代价，本轮修的是**文案说谎**。
+  2. `cron/digest/route.ts`：`recordFailedRun` 写死 `pulled: 0` → 提到 `try` 外记真实值；
+     并修失败原因抽取（PostgREST 抛的是普通对象，`String(error)` = `"[object Object]"`），
+     新增 `failureText()` 认 `Error` / 带 `message` 对象 / 其余 `String()`。
+  3. 文档与登记：双语 `docs-site/email.md` 补上队列条件含 `is_read=false` 的后果；
+     roadmap A05 记下这是**第二条静默出队路径**——站内先读过就不再寄，且该行从 `email.backlog`
+     消失，也就是说它会**掩盖**第一条积压（队列越堵读数越小）；A05 定夺时必须两条一起判。
+  4. 复核后否掉的审计结论（记下以免下次又照抄）：报告说 `push-retry.ts` 成功分支与 email 同罪——
+     实际它是 `markSent` 单独一个 `try` 且无论如何 `return "sent"`，不会重复投递；真正可疑的是
+     `scheduleRetry` 里 `markRetry` 写失败后 `attempt_count` 冻结（行会反复重试而不进死信），
+     本轮**没有动**它，需要的是重试写路径的设计而不是补一句日志。
+- 变更文件：9 个——`email-notify.ts` 与其单测、`cron/digest/route.ts` 与其单测、
+  `docs-site/email.md` 双语两份、`docs/roadmap-0.12.0.md`、CHANGELOG、本条目。
+- 验证命令与结果：
+  - 变异核对 4 项全红：回执写回原来的 `try` / 失败轮次记 `pulled: 0` / 不 hoist 计数 /
+    换回 Error-only 抽取；恢复后逐文件比对与备份一致。
+  - `pnpm vitest run src/lib/email-notify.test.ts src/app/api/cron/digest/route.test.ts` →
+    29 passed（新增 3 条：文案互斥 1 + 失败轮次真实 pulled 1 + 非 Error 形状回落 1）。
+  - `CI=true pnpm check:all` → `✅ 全部校验通过`；`pnpm build` → 编译通过。
+- 风险 / 回滚：只改「失败时说什么、记什么」，发送条件与队列语义一字未动；
+  回执写失败仍会让学生在下一轮重复收到一封信（既有 at-least-once 代价，现在至少看得见）。
+  回滚 = revert 本 commit。
+- 下一项：A05 的出队决策（现在含两条路径：skip 永不离开队列 / 已读静默离开并掩盖积压）；
+  `scheduleRetry` 写失败导致 `attempt_count` 冻结，需要先定重试写路径的设计再动。

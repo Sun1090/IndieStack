@@ -63,6 +63,13 @@
    `pulled>0 && sent===0 && failed===0` 的空发送轮次（`src/lib/notifications/queue-diagnostics.ts`）。
    三个读数刻意与 worker 的拉取口径共用同一段过滤，并由一条「三处过滤调用逐项相等」的用例钉住。
    **出队语义仍未决**：本条没有改变任何发送行为，被跳过的条目依旧永远出不了队列。
+   **2026-09-23 审计又量出第二条静默出队路径**：队列条件含 `is_read=false`
+   （`repositories/notifications.ts:66,85,103`），而 `markAllNotificationsRead`
+   （`:222-231`）不带类型地把用户全部未读通知标成已读、也不写 `email_sent`——
+   站内先读过一条 `security_alert`，它就再也不会被 digest 寄出，同时**从 `email.backlog` 里消失**。
+   也就是说这条路径会**掩盖上面那条积压**：队列越堵，读数越小。它此前既没有文档也没有用例。
+   文档已经补上（双语 `docs-site/email.md`），但「已读是否等于不必寄」是同一个待决产品决策的一部分：
+   A05 定出队语义时必须把这两条路径一起判，不要只修 `no_email`/`preference` 那两条。
 
 ### B. 发布证据闭环（来自 J06 / J08 / E09）
 
