@@ -242,6 +242,21 @@ All notable changes to IndieStack will be documented in this file.
   （复用 `common.error` + `actions.databaseError`，不新增文案）。
   仓库 2 条 + 组件 3 条新用例（该组件此前零覆盖）；变异核对 4 项全部被抓（两处退回吞错、删掉失败
   `else` 分支、把成功提示也改成 destructive），源文件逐字节还原。
+- **`teams.member_count` 读不到时不再靠猜**：这一列是派生缓存（迁移 007 明写「由服务端重算写入」，
+  数据库侧没有触发器兜底），而四处重算代码在重算查询失败时写 `count ?? 1`（邀请）/ `count ?? 0`
+  （移除）：一次读失败就能把 7 人的团队记成 1 人或 0 人，而成员本身**已经改成功了**，
+  既回滚不了、也不该回滚。`src/app/api/invitations/route.ts` 的邀请分支更糟——计数用的是**用户作用域**
+  的客户端（RLS 下只能看到自己可见的行），写回的却是 service_role 的那一列。
+  现在四处收进 `src/lib/repositories/teams.ts` 的 `syncTeamMemberCount()`：读不到真实行数（含
+  provider 没回 `count`）就**一条 UPDATE 都不发**，宁可留一个偏旧的数字；返回值区分
+  `synced` / `count-failed` / `write-failed`，调用方按各自前缀上报「成员已改，但计数没更新」。
+  Action 仍返回成功是刻意的——为一枚缓存把已完成的操作说成失败，会诱导用户重复邀请。
+  新增仓储 5 条用例（含「真实人数 0 必须写 0，不能和读不到混成同一条路径」）+ 1 条 Action 用例断言
+  那条上报真的发生；变异核对：退回 `count ?? 0` 的旧形状时，恰好是「不发 UPDATE」那两条红
+  （第一次跑的探针写法无效——它替换的是一个 `const` 解构，TypeScript 层面根本不成立，
+  于是红在别处；换成完整旧代码块后结果才可归因）。`/api/invitations` 侧此前零单测，计数逻辑
+  由共享仓储承接后至少有了覆盖。service-role 清单 31 → 32 个模块 / 88 → 89 个调用点，
+  `docs/db/security-audit.md` 快照同步。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
   `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
   `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是

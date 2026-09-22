@@ -1001,4 +1001,40 @@
 - 阻塞 / 风险 / 回滚：不改队列过滤、不改 schema、不改发送条件；用户能感知的变化只有一条——
   以前静默失败的「全部已读」现在会报错。回滚 = revert 本 commit。
 - 下一项：#35 `teams.member_count` 的 `count ?? 1` / `?? 0` 造数（同一家族：把「不知道」写成「是 0/1」）。
+## 2026-09-23 — `teams.member_count` 读不到时保持旧值，不再写一个猜出来的数
+
+- 里程碑 / 版本：v0.12.0；通知链路审计之后又量出的第 3 条（#35，与 #36 同一族：把「不知道」写成精确数字）。
+- 状态：DONE。
+- 分支 / commit：`fix/team-member-count-staleness`（基于 `9c9024a`）。
+- 为什么做：`teams.member_count` 是**派生缓存**——迁移 007 明写「由服务端重算写入」，数据库侧没有
+  触发器兜底，所以它只有两种合法状态：等于真实行数，或者保持上一次的旧值。四处重算代码在读不到
+  数字时写 `count ?? 1`（邀请）/ `count ?? 0`（移除），把「我不知道」写成「7 人的团队只有 1 人」，
+  而成员本身已经改成功了、回滚不了也不该回滚。其中 `src/app/api/invitations/route.ts` 的邀请分支
+  更糟：计数走的是**用户作用域**客户端（RLS 下只能看见自己可见的行），写回的却是 service_role 那一列。
+- 完成内容：
+  1. 新增 `src/lib/repositories/teams.ts`：`syncTeamMemberCount(teamId)` 读真实行数，
+     读不到（`error` 或 `count === null`）就**一条 UPDATE 都不发**；返回
+     `"synced" | "count-failed" | "write-failed"`，让调用方说清坏在哪一半。
+  2. 四处调用点（`actions/team.ts` 邀请 / 移除，`api/invitations/route.ts` 加入 / 移除）改为调用它，
+     非 `synced` 时各自 `logActionError` / `logApiError` 上报「成员已改，但计数没更新」。
+     Action 仍返回成功是刻意的：为一枚缓存把已完成的操作说成失败，会诱导用户重复邀请。
+  3. service-role 清单登记新模块（`ADMIN_CLIENT_INVENTORY`，`data-access` / `server-internal`），
+     门禁输出 31 → 32 个模块；`docs/db/security-audit.md` 快照同步（含调用点 88 → 89 的来源说明）。
+- 变更文件：`src/lib/repositories/teams.ts`、`teams.test.ts`（新增，5 条）、`src/lib/actions/team.ts`、
+  `src/lib/actions/team.test.ts`（改 1 条用例的标题与断言：现在必须看到那条上报）、
+  `src/app/api/invitations/route.ts`、`src/lib/security/admin-client-boundary.ts`、
+  `src/lib/security/admin-client-boundary.test.ts`（预算 88 → 89）、
+  `docs/db/security-audit.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`pnpm --silent lint` / `pnpm --silent type-check` → 0；
+  `npx vitest run src/lib/actions/team.test.ts src/lib/repositories/teams.test.ts` → 36 通过；
+  `pnpm check:supabase-security` → ✅ 32 个模块（登记之前它先报了 `ADMIN_CLIENT_UNCLASSIFIED`，
+  失败封闭如设计）；全量 `CI=true pnpm check:all` 与 `pnpm build` 结果见 commit 之后补记；
+  变异核对：把仓储退回旧的 `count ?? 0` 完整形状 → 恰好「重算查询失败时不发任何 UPDATE」与
+  「provider 没回 count」两条红（第一次的探针写法无效：替换进去的是对 `const` 解构的重新赋值，
+  类型上根本不成立，红也红在别处，换成完整旧代码块之后结果才可归因）；另 3 项（只认 `error`、
+  写失败也报 synced、去掉上报）全部被抓，源文件逐字节还原。
+- 阻塞 / 风险 / 回滚：不改成员写入本身、不改 schema、不改 RLS；数字可能变旧，但不会再被造出来。
+  并发重算的竞态（两人同时被邀请 → 后写的那次赢）本条**不**解决，它要的是把计数改成查询派生或
+  数据库触发器，那是另一个决定。回滚 = revert 本 commit。
+- 下一项：#37（Stripe webhook 给解析不出团队的行记 `processed`）与 #38（注销时丢掉擦除结果）。
 

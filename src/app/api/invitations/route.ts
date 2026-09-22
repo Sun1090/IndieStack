@@ -18,6 +18,7 @@ import { inviteMemberSchema } from "@/lib/validations/team";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import { ROUTES } from "@/lib/constants";
 import { notifyUser } from "@/lib/email-notify";
+import { syncTeamMemberCount } from "@/lib/repositories/teams";
 
 export const dynamic = "force-dynamic";
 
@@ -204,19 +205,14 @@ export async function POST(request: NextRequest) {
       return jsonNoStore({ error: "Internal server error" }, { status: 500 });
     }
 
-    // 更新成员计数
-    await admin
-      .from("teams")
-      .update({
-        member_count:
-          (
-            await supabase
-              .from("team_members")
-              .select("*", { count: "exact", head: true })
-              .eq("team_id", teamId)
-          ).count ?? 0,
-      })
-      .eq("id", teamId);
+    // 更新成员计数（派生缓存：读不到真实行数就保持旧值，见 repositories/teams.ts）
+    const synced = await syncTeamMemberCount(teamId);
+    if (synced !== "synced") {
+      await logApiError(
+        `[Invitations API] 成员已加入，但 teams.member_count 未更新（${synced}）：面板上的人数会偏旧`,
+        new Error("member_count_sync_failed"),
+      );
+    }
 
     // 通知被邀请人（失败不阻断邀请主流程）
     try {
@@ -304,15 +300,13 @@ export async function DELETE(request: NextRequest) {
       return jsonNoStore({ error: "Internal server error" }, { status: 500 });
     }
 
-    const { count } = await admin
-      .from("team_members")
-      .select("*", { count: "exact", head: true })
-      .eq("team_id", member.team_id);
-
-    await admin
-      .from("teams")
-      .update({ member_count: count ?? 0 })
-      .eq("id", member.team_id);
+    const synced = await syncTeamMemberCount(member.team_id);
+    if (synced !== "synced") {
+      await logApiError(
+        `[Invitations API] 成员已移除，但 teams.member_count 未更新（${synced}）：面板上的人数会偏新`,
+        new Error("member_count_sync_failed"),
+      );
+    }
 
     return jsonNoStore({ success: true });
   } catch (error) {

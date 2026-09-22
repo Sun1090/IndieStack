@@ -450,6 +450,18 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
       "Every retention cleanup is a security-definer function that migrations 028/032 revoke from anon/authenticated and grant only to service_role; the worker triggers them and never reads row data back into a response.",
   },
   {
+    file: "src/lib/repositories/teams.ts",
+    surface: "data-access",
+    calls: ["syncTeamMemberCount"],
+    tables: ["team_members", "teams"],
+    rpc: [],
+    storageBuckets: [],
+    authAdmin: [],
+    trust: { kind: "server-internal", evidence: [] },
+    rationale:
+      "teams.member_count is a server-maintained derived cache (migration 007 revokes member writes to that column); recounting it has to count membership rows across users, which an RLS-scoped client cannot do consistently.",
+  },
+  {
     file: "src/lib/repositories/upload-objects.ts",
     surface: "data-access",
     calls: [
