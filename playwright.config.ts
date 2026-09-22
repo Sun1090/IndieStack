@@ -47,6 +47,8 @@ export default defineConfig({
   timeout: 60_000,
   fullyParallel,
   workers: SERVERS,
+  // 并行时先替每台服务器把关键路由编译一遍（`next dev` 按路由冷编译，第一个用例本来要付这个钱）
+  globalSetup: "./e2e/support/warm-up.ts",
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
