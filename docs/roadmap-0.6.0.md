@@ -6,6 +6,12 @@
 >
 > **排期原则**：先补测试隔离与安全边界，再扩大外部能力；所有外部 provider 均保留 mock/fallback，生产开关默认安全关闭。
 
+> **本 roadmap 已于 2026-09-22 收口。** 100 项任务与 6 条退出标准的逐条核对结果、可复现证据与未达成项
+> 都在 `docs/operations/release-exit-report-v0.6.0.md`；下一版任务池见 `docs/roadmap-0.12.0.md`。
+> 本文件下方的 `（完成：…）` 标注、开头的进度汇总与其中的具体数字都是**写入当时的快照**，
+> 已知与代码不符（例如「F01–F10 已完成」而 F01 未做，「A01–A10 已完成」而 A09 的附件无实现），
+> 一律以退出报告为准，不再逐条追改历史文本。
+
 > **进度（2026-09-13）**：I01–I03 已完成（docs-site 邮件投递 0b94d8e、存储与 OSS 配置 e3a2ac1、Web Push f2e0070 三章 + 中英 configuration 同步）；I05 已完成；H09/H10 已完成（迁移漂移门禁、依赖高危与 secrets/scanner 配置漂移门禁）；C01–C10 已完成；F01–F10 已完成（F01 Mock MFA 状态隔离、F02 request-scoped mock store 第一阶段、F03 file-backed fixture 评估、F04 fullyParallel 隔离实验、F05 webhook events E2E、F06 audit logs 详情 E2E、F07 storage 上传失败/重试 E2E、F08 email provider contract tests、F09 coverage branch 90% 门禁、F10 CI artifact/coverage 告警清理）。A01–A10 已完成；B01–B10 已完成（Service Worker 生命周期、provider contract、服务端中转 action、上传白名单、通知 E2E）；E01 已完成（Appark 事件采样配置与诊断回退）；E02 已完成（`x-request-id` 契约 + 带 trace 的错误入口 + 覆盖门禁）；E03 已完成（修复 digest 未调度，新增 cron 调度/指标契约门禁与鉴权拒绝指标）；E04 已完成（邮件队列拉取与积压计数共用 `EMAIL_NOTIFICATION_TYPES`，空轮次记录真实耗时，`email.backlog` 每轮上报与阈值边界纳入测试）；E05 已完成（`storage-metrics.ts` 固化 provider 写入与请求终态两个指标，补齐「provider 成功但元数据回写失败」的用户可见失败盲区，驱动与领域层测试覆盖四个 provider/结果组合与三个终态）；
 E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名」去重闸门，`getStorageDriver()` 上报实际驱动；补齐 `RESEND_API_KEY` 缺失时失败率告警零样本的盲区，未配置路径立即产出 `reason=not-configured` 样本）；E08 已完成（health endpoint 依赖分级）；E10 已完成（手动触发的部署后 health check workflow 与本地 probe script）；G08/G09 已完成（真实上传进度/取消、通知 Realtime 与 025 迁移）；I04/I06–I10 已完成（ADR 治理、release checklist 与门禁接线审计、mock 指南、provider 诊断指南、贡献者测试矩阵、迁移回滚 runbook）；J02 已完成（E2E shard 策略）；J03 已完成（CI 并行与缓存优化）；J04 已完成（CodeQL 告警零回归）；J05 已完成（Secrets Scan 零回归）；J07 已完成（标签/Release Notes 自动化门禁）。E07 已完成（`ops.supabase.restore` 全部终态上报 `value=1` 计数样本，修复恢复链路告警盲区，并把文档阈值与代码常量钉在一起）；其余任务按 M1→M2→M3→M4 推进；H07/H08 已完成（审计日志索引以真实 EXPLAIN 定案、账户数据擦除与保留期补齐）；J06/J08/J09/J10（发布 smoke、回滚演练、退出报告、候选池评审）仍按下方任务池待收口；D 域已于 2026-09-22 全部收口（见下方 D01/D02/D03/D08 条目——但 D10 的静态门禁当天被复核为**形同虚设**，同日修复，见「D10 复核」条目）。
 
@@ -188,8 +194,8 @@ E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名
 96. J06 production smoke test
 97. J07 tag/release 自动化（完成：新增 `pnpm check:release-tag`，要求 `vX.Y.Z` 与 `package.json` 一致、CHANGELOG 存在带合法日期的非空版本章节，并从该章节生成 Release Notes；审计 `release.yml` 必须冻结安装、跑 `pnpm check:all`、以 `$GITHUB_REF_NAME` 校验标签、在创建 Release 前生成 notes 文件，且用 `gh release create --notes-file` 发布而不是 `--generate-notes`；顺带修正 `check:gates` 误把任意 workflow 的 `pnpm check:all` 当成覆盖聚合豁免门禁的接线判断，46 条标签策略单测 + 29 条门禁接线单测接入 `check:all` 与 CI）
 98. J08 发布后回滚演练
-99. J09 v0.6.0 退出报告
-100.  J10 v0.7.0 候选池评审
+99. J09 v0.6.0 退出报告（完成：`docs/operations/release-exit-report-v0.6.0.md`——100 项任务与 6 条退出标准逐条对回代码、门禁与执行记录，结论 89 达成 / 9 部分达成 / 2 未达成，并核对出「digest 错峰门控与每天一次的调度不兼容导致摘要邮件对除 UTC-1 外所有用户不投递」这一 P0；v0.6.0 当年是先发版、后补报告）
+100.  J10 v0.7.0 候选池评审（完成：任务名里的版本号已过期——v0.7.0 早在 2026-09-12 发布，候选池因此落在 `docs/roadmap-0.12.0.md`，20 项全部来自退出报告的部分达成/未达成项与生产证据缺口）
 
 ## 里程碑
 
@@ -202,11 +208,20 @@ E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名
 
 ## 退出标准
 
-1. `pnpm verify:build`、`pnpm test:e2e` 全绿，且覆盖率 branches 不低于 90%。
-2. CI、CodeQL、Secrets Scan 全绿，生产依赖无高危漏洞。
-3. Mock 测试可显式 reset，E2E 不依赖不可控的跨用例共享状态。
-4. 上传、通知、MFA 关键路径均有失败/重试/权限边界测试。
-5. 数据库迁移、RLS、发布清单与 docs-site 章节同步完成。
-6. 发布后 smoke 与回滚 runbook 已演练并记录结果。
+> 2026-09-22 收口核对（证据与逐条来源见 `docs/operations/release-exit-report-v0.6.0.md`）：
+> 1–2、4–5 达成，3 与 6 只达成一半。
+
+1. ✅ `pnpm verify:build`、`pnpm test:e2e` 全绿，且覆盖率 branches 不低于 90%。
+   （今日在 `main@75fae73` 复跑：188 文件 / 2,132 用例、CI E2E 两个 shard 全绿、branches 实测 91.64%）
+2. ✅ CI、CodeQL、Secrets Scan 全绿，生产依赖无高危漏洞。
+   （`main@75fae73` 四条 workflow 均 success；`pnpm audit --prod` → `No known vulnerabilities found`）
+3. ⚠️ Mock 测试可显式 reset，E2E 不依赖不可控的跨用例共享状态。
+   （reset 端点有，但 MFA mock 仍是进程全局 → F01 未达成；E2E 靠 `workers: 1` 串行兜住）
+4. ✅ 上传、通知、MFA 关键路径均有失败/重试/权限边界测试。
+   （`e2e/uploads`、`e2e/mail-flow`、`e2e/webhook-events`、`e2e/admin-contact-mfa` + `check:rls`/`check:supabase-security`）
+5. ✅ 数据库迁移、RLS、发布清单与 docs-site 章节同步完成。
+   （`check:migrations` 33 个迁移内容比对、`check:migration-history` 与本地库对齐、`check:release-docs` 7 artifacts）
+6. ⚠️ 发布后 smoke 与回滚 runbook 已演练并记录结果。
+   （v0.6.0 smoke 6/6 已执行且可追溯到 Actions run `34681676184`；**回滚演练没有任何一次记录** → J08 未达成）
 
 > 执行记录（2026-09-06）：新增 `020_push_subscriptions.sql`，为 B03 提供 user/endpoint 唯一约束、RLS、索引和更新时间触发器；后续 B04 负责 action 接入。
