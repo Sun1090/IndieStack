@@ -99,8 +99,14 @@
     会把门禁退化成翻译质量检查），只比对结构化事实
 19. D03 补 `docs/operations/release-gap-audit-v0.11.0.md`（该系列在 v0.10.0 之后断了），
     并把退出报告的核对方法写成模板，供后续版本复用
-20. D04 清除剩余文档里的易漂移数字（F09 覆盖率基线、G02 token 数、G04/H05 的测试条数等），
-    统一改为「指向命令」或「指向门禁输出」
+20. D04 （**2026-09-22 已完成**）清除剩余文档里的易漂移数字，统一改为「指向命令」或「指向门禁输出」：
+    `docs/testing.md` 的规则文件单测条数全部去掉、约定显式扩展到「局部计数」，覆盖率阈值改指
+    `vitest.config.ts`；扫描中另发现两处**已经错了**的陈述并修掉（`supabase db reset` 示例注释
+    写「25 个迁移」而仓库当时 33 个，出现在 `docs/testing.md` 与 `docs/db/security-audit.md`），
+    `docs/db/security-audit.md` 的门禁状态段改为列类别不列数量。
+    **保留不动的**：历史版本页（`docs-site/v0.*.md`）、roadmap 与退出/演练/Runbook 记录里的数字——
+    那些是带日期的证据而非当前断言；service-role 清点表保留为快照，但已在其上方与开头标注
+    「以 `pnpm check:supabase-security` 与清单文件为准」
 
 ## 里程碑
 

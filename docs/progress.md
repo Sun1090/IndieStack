@@ -1,3 +1,33 @@
+## 2026-09-22 — 文档不再复述会过期的数字（D04）
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；关闭 v0.12.0 的 D04。
+- 状态：DONE。
+- 分支 / commit：`docs/drop-volatile-doc-numbers`（基于 main `8b91740`）。
+- 为什么做：今天为了 digest 那一条改动，我手工修了 4 处文档里的数字（service-role 87→86、
+  指标 15→14、E2E 端点 9→8、任务池三档计数）。**需要人追着改的数字就是错的数字**——
+  它们不会自己报错，只会在下一次核对时被重新量出来。D04 就是把这类断言换成指向命令与清单文件。
+- 完成内容：
+  1. `docs/testing.md`：去掉各门禁小节里的「规则实现有 N 条单测」，统一写成「纯函数，单测覆盖」；
+     把文件开头既有的约定「本文不写用例条数」显式扩展到局部计数（某个规则文件有多少条测试）。
+  2. `docs/testing.md` 覆盖率小节：不再抄 `coverage.thresholds` 的四个值，改指
+     `vitest.config.ts` 与 `pnpm test:coverage` 的不达标即失败。
+  3. **扫描当场发现两处已经是错的**：`docs/testing.md` 与 `docs/db/security-audit.md` 的
+     `pnpm exec supabase db reset` 示例注释都写着「25 个迁移」，而 `check:supabase-security`
+     今天打印的是 33 个迁移。这类数字不会自己报错，正是 D04 要消灭的形态。
+  4. `docs/db/security-audit.md`：静态审计状态段改为列类别、不列数量，并写明以
+     `pnpm check:supabase-security` 与 `src/lib/security/admin-client-boundary.ts` 为准；
+     策略名那段的「35 条策略」去掉条数；service-role 清点表保留（它就是这份文档的内容），
+     但标注为「会过期的快照」并给出以谁为准。
+- 明确保留：历史版本页 `docs-site/v0.*.md`、`docs/roadmap-*.md`、退出报告、gap 审计与
+  runbook/演练记录里的数字——它们是带日期的证据，不是当前断言；改它们等于伪造历史。
+- 变更文件：5 个——`docs/testing.md`、`docs/db/security-audit.md`、`docs/roadmap-0.12.0.md`、
+  CHANGELOG、本条目。
+- 验证命令与结果：
+  - `grep` 复扫 living docs 已无「N 条单测 / N 个迁移」形态的断言（命中的只剩带日期的记录类文档）；
+  - 纯文档改动，不涉及代码路径；仍按约定复跑 `pnpm check:all` 与 `pnpm verify:build`（结果见提交记录）。
+- 风险 / 回滚：无功能影响；回滚 = revert 本 commit。
+- 下一项：v0.12.0 的 C01（mock 请求级隔离，顺带解锁 C03 剩下的那条 E2E）。
+
 ## 2026-09-22 — 双语调度事实门禁 D02 接线，并修掉它当场查出的三处漂移
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；关闭 v0.12.0 的 D02。
