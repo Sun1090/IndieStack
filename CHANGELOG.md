@@ -204,6 +204,20 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
+  `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
+  `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是
+  `pending`、`next_attempt_at` 停在过去的时刻、计数冻结，于是下一轮它又被按 `next_attempt_at` 升序
+  拉到队首，永远到不了上限：一行毒记录可以无限期占住单轮 50 条的预算，而看板上看起来「一切正常地在重试」。
+  现在补上绝对上界 `PUSH_RETRY_MAX_AGE_MS`（7 天）：超龄的行写 `dead`/`failure_code=max-age`，判定只认
+  `created_at`（入队时定死、写失败动不了它），`created_at` 解析不出来时按未超时处理，宁可不收紧也不把
+  还能送的行判死。取 7 天而不是「退避总和」：worker 每天 22:00 UTC 才跑一轮，健康路径上 3 次尝试本来就要
+  跨三天。回执写失败也不再静默：新增 `push.delivery.retry_failed`（`reason` 是那次投递失败的原因），
+  日志文案改成明确说「行仍待下一轮，退避与计数未推进」，并与「已安排重试」互斥。
+  变异核对 10 项全部被抓（去掉年龄判定、恒判超时、NaN 判超时、把上界错写成退避封顶、
+  `max-age` 降级回 `max-attempts`、不报指标、指标维度写死、日志文案改回含糊、catch 里不再 return、
+  整段退回旧写法）；新增的 E2E 用例在移除年龄判定后确实变红（串行模式下该条一红即停），
+  规则文件与备份逐字节比对后恢复。
 - **worker 运行记录不再按一个根本不存在的列排序**：`/api/e2e/email-worker-runs` 用
   `.order("started_at", { ascending: false })` 读 `email_worker_runs`，而这张表从建表（迁移 017）起就只有
   `created_at`（还专门建了 `created_at desc` 索引）。Mock 客户端对未知排序列静默 no-op，而 mock store 的插入

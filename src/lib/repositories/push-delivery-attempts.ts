@@ -23,12 +23,28 @@ export type PushFailureCode =
   | "subscription-missing"
   | "notification-missing"
   | "max-attempts"
+  | "max-age"
+  | "retry-write-failed"
   | "timeout"
   | "network"
   | string;
 
 /** 重试上限（含首次即时投递）：达到后进入死信，不再被 worker 拉取（与邮件一致） */
 export const PUSH_MAX_ATTEMPTS = 3;
+
+/**
+ * 一行 pending 允许存活的最长时间，超过即按 `max-age` 进死信。
+ *
+ * 重试上限本身是靠 `attempt_count` 表达的，而这个计数器只有在**重排回执写成功**时才会前进：
+ * `markPushDeliveryRetry` 抛错时引擎只会上报并继续，行仍是 pending、`next_attempt_at` 仍是过去
+ * 时间、计数器冻结不动——下一轮它又被拉到队首，永远到不了 `PUSH_MAX_ATTEMPTS`。所以这条界必须
+ * 落在一个写入失败也动不了的时间戳上，`created_at`（入队时定死）就是这样一个事实。
+ *
+ * 取 7 天而不是「几次退避的总和」：worker 每天 22:00 UTC 才跑一轮（Hobby 每日一次），
+ * `PUSH_MAX_ATTEMPTS=3` 在健康路径上最长也要跨三天才走完，7 天留出足够余量，
+ * 又保证任何冻结的行不会永远占着按 `next_attempt_at` 升序拉取的队首。
+ */
+export const PUSH_RETRY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** 退避基数：首次失败 60s 后重试，其后指数翻倍 */
 export const PUSH_BACKOFF_BASE_MS = 60_000;

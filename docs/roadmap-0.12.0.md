@@ -36,6 +36,16 @@
    按 `next_attempt_at` 升序取 50 条），到点的行不会因为调度时刻而永远落在窗口外；
    失败侧另有 `PUSH_MAX_ATTEMPTS` → `dead`/`revoked` 与 `push.delivery.dead`、`push.backlog` 兜底。
    **仍需盯的是 digest（A01）而不是这里**，本条按已完成收口
+   - **2026-09-23 更正这条的结论范围**：「push 没有同型缺陷」只对**按小时/时区门控**这一类成立。
+     同一轮里发现的 push 缺陷是另一类：终止条件只有一个 `attempt_count`，而它依赖重排回执写成功才前进，
+     写失败时计数器冻结 → 行永远到不了上限，会长期占住按 `next_attempt_at` 升序拉取的队首。
+     已修（绝对上界 `PUSH_RETRY_MAX_AGE_MS` → `failure_code=max-age`，并新增
+     `push.delivery.retry_failed`），见 CHANGELOG 与 `docs-site/web-push.md`。
+     **邮件侧核对过，不是同一个形状**：`recordEmailFailures` 里的 `markEmailFailed` 没有包 try/catch
+     （`cron/digest/route.ts:84`、`repositories/notifications.ts:151` 出错即 throw），所以回执写失败会让
+     整轮抛错、返回 500 并落 `cron.digest.failed` + 失败轮次记录——计数器一样没前进，但它是**响亮地**卡住，
+     不会像 push 那样装作在正常重试。邮件真正缺的是 A05 那道口径：一行待发被跳过或反复失败时，
+     它凭什么离开队列；那是产品决策，不在本条的工程收口里。
 4. A04 （**2026-09-22 已完成**）：任何 cron worker 路由里**按用户条件跳过投递**的分支，
    都必须同时上报一个跳过计数指标。落地为
    `src/lib/observability/cron-skip-coverage.ts`（TypeScript 解析器核对带条件的 `continue`

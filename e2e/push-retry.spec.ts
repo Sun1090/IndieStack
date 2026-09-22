@@ -3,7 +3,7 @@
  *
  * 通过 mock-only 的 `/api/e2e/push-queue` 种子端点驱动真实 cron 路由
  * （`POST /api/cron/push-retry`），覆盖投递引擎的全部分支：
- *   成功 → sent / 瞬时失败 → 退避重试 / 超过上限 → 死信 /
+ *   成功 → sent / 瞬时失败 → 退避重试 / 超过上限 → 死信 / 超过行龄上界 → max-age 死信 /
  *   404-410 → 撤销订阅 / 订阅缺失 / 用户关闭 Push / 通知缺失 /
  *   终态保留策略清理。
  *
@@ -144,6 +144,24 @@ test.describe("Web Push 重试链路 (F06)", () => {
 
     const [row] = (await queue(TRANSIENT)).attempts;
     expect(row).toMatchObject({ status: "dead", attempt_count: 3, failure_code: "max-attempts" });
+  });
+
+  test("行龄超过上界：计数没到上限也进死信（max-age）", async () => {
+    // 这就是「重排回执一直写不进去」的样子：8 天前入队，attempt_count 还停在 0。
+    // 没有行龄上界的话，这一行会永远占在按到期时间升序拉取的队首。
+    await seed({
+      endpoint: TRANSIENT,
+      status: "pending",
+      attemptCount: 0,
+      dueInMs: -1000,
+      createdAtOffsetMs: -8 * DAY_MS,
+    });
+
+    const { body } = await runCron();
+    expect(body).toMatchObject({ pulled: 1, sent: 0, retried: 0, dead: 1, revoked: 0 });
+
+    const [row] = (await queue(TRANSIENT)).attempts;
+    expect(row).toMatchObject({ status: "dead", failure_code: "max-age" });
   });
 
   test("端点永久失效（410）：死信并撤销本地订阅", async () => {

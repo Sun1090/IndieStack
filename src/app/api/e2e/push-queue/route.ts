@@ -22,6 +22,7 @@
  *     pushDisabled?: boolean,          // true 时把 mock 用户 push 偏好关掉
  *     sentAtOffsetMs?: number,         // status=sent 的 sent_at 偏移（保留策略用例）
  *     lastAttemptAtOffsetMs?: number,  // status=dead 的 last_attempt_at 偏移（保留策略用例）
+ *     createdAtOffsetMs?: number,      // created_at 偏移（行龄上界用例；默认 0 即此刻入队）
  *   }
  *   → { notificationId, subscriptionId, attemptId }
  *
@@ -61,6 +62,7 @@ interface SeedBody {
   pushDisabled?: boolean;
   sentAtOffsetMs?: number;
   lastAttemptAtOffsetMs?: number;
+  createdAtOffsetMs?: number;
 }
 
 function authOrThrow(request: NextRequest): Response | null {
@@ -139,6 +141,38 @@ function parseBody(raw: string): SeedBody {
   }
 }
 
+/**
+ * 拼出 `push_delivery_attempts` 的种子行。
+ *
+ * 单独成函数有两个原因：POST 里已经把鉴权、三类种子与插入串在一起，再往里塞六个默认值分支就顶到
+ * ESLint 的复杂度上限；而这张表的默认值语义（哪个偏移缺省等于「此刻」）本来就该写在一处。
+ */
+function attemptSeedRow(input: {
+  attemptId: string;
+  notificationId: string;
+  subscriptionId: string | null;
+  endpoint: string;
+  status: SeedStatus;
+  attemptCount: number;
+  body: SeedBody;
+}) {
+  const { body, status } = input;
+  return {
+    id: input.attemptId,
+    notification_id: input.notificationId,
+    user_id: MOCK_USER_ID,
+    // 订阅缺失场景需要一个「存在但查不到」的 id，才能走到 subscription-missing
+    push_subscription_id: input.subscriptionId ?? crypto.randomUUID(),
+    endpoint: input.endpoint,
+    status,
+    attempt_count: input.attemptCount,
+    next_attempt_at: isoAt(body.dueInMs ?? -1000),
+    created_at: isoAt(body.createdAtOffsetMs ?? 0),
+    sent_at: status === "sent" ? isoAt(body.sentAtOffsetMs ?? -1000) : null,
+    last_attempt_at: status === "dead" ? isoAt(body.lastAttemptAtOffsetMs ?? -1000) : null,
+  };
+}
+
 export async function POST(request: NextRequest) {
   const unauth = authOrThrow(request);
   if (unauth) return unauth;
@@ -159,20 +193,9 @@ export async function POST(request: NextRequest) {
   const attemptId = crypto.randomUUID();
 
   const admin = createAdminClient();
-  const { error } = await admin.from("push_delivery_attempts").insert({
-    id: attemptId,
-    notification_id: notificationId,
-    user_id: MOCK_USER_ID,
-    // 订阅缺失场景需要一个「存在但查不到」的 id，才能走到 subscription-missing
-    push_subscription_id: subscriptionId ?? crypto.randomUUID(),
-    endpoint,
-    status,
-    attempt_count: attemptCount,
-    next_attempt_at: isoAt(body.dueInMs ?? -1000),
-    sent_at: status === "sent" ? isoAt(body.sentAtOffsetMs ?? -1000) : null,
-    last_attempt_at:
-      status === "dead" ? isoAt(body.lastAttemptAtOffsetMs ?? -1000) : null,
-  });
+  const { error } = await admin
+    .from("push_delivery_attempts")
+    .insert(attemptSeedRow({ attemptId, notificationId, subscriptionId, endpoint, status, body, attemptCount }));
   if (error) return jsonNoStore({ error: error.message }, { status: 500 });
 
   return jsonNoStore({ notificationId, subscriptionId, attemptId });
