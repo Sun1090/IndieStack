@@ -6,7 +6,7 @@
  *   2) 种通知 → POST /api/cron/digest → 摘要邮件落到 email-inbox + worker_runs 落表
  *   3) 注入 failNext → digest 失败回执：email_attempts 累加 + worker_runs.failed>0
  *
- * 全部 mock：Resend → /api/e2e/email-inbox，cron secret 已注入，digest 时区门控通过
+ * 全部 mock：Resend → /api/e2e/email-inbox，cron secret 已注入；digest 不再看用户时区
  */
 
 import { test, expect, request as pwRequest, type APIRequestContext } from "@playwright/test";
@@ -23,7 +23,7 @@ test.describe("邮件全链路 (F01)", () => {
   test.beforeAll(async ({ playwright }) => {
     api = await pwRequest.newContext({ baseURL: APP_URL });
 
-    // 全链路 setup：清空收件箱 → 清空通知；cron 用受保护的 mock-only 强制门控。
+    // 全链路 setup：清空收件箱 → 清空通知；cron 用受保护的 mock-only 端点复位状态。
     await api.delete(`${APP_URL}/api/e2e/email-inbox`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
@@ -92,12 +92,11 @@ test.describe("邮件全链路 (F01)", () => {
     const seedJson = (await seed.json()) as { inserted: number };
     expect(seedJson.inserted).toBe(2);
 
-    // 跑 digest cron（mock-only 强制门控，不改变生产时区策略）
+    // 跑 digest cron（每轮把队列里该用户的通知并成一封摘要）
     const cronRes = await request.post(`${APP_URL}/api/cron/digest`, {
       headers: {
         "x-cron-secret": CRON_SECRET,
         authorization: `Bearer ${E2E_BEARER}`,
-        "x-e2e-force-digest": "true",
       },
     });
     expect(cronRes.ok()).toBeTruthy();
@@ -105,13 +104,10 @@ test.describe("邮件全链路 (F01)", () => {
       sent: number;
       groups: number;
       failed: number;
-      deferred: number;
     };
     expect(cronJson.sent).toBe(2);
     expect(cronJson.groups).toBe(1);
     expect(cronJson.failed).toBe(0);
-    // 强制门控下不存在「窗口外跳过」：这条计数为 0 才说明发送是真发了而不是被跳过
-    expect(cronJson.deferred).toBe(0);
 
     // 断言：摘要邮件已发
     const inboxAfterDigest = await api.get(
@@ -161,7 +157,6 @@ test.describe("邮件全链路 (F01)", () => {
       headers: {
         "x-cron-secret": CRON_SECRET,
         authorization: `Bearer ${E2E_BEARER}`,
-        "x-e2e-force-digest": "true",
       },
     });
     expect(cronRes.ok()).toBeTruthy();
@@ -210,7 +205,6 @@ test.describe("通知失败回执与死信 (B10)", () => {
           headers: {
             "x-cron-secret": CRON_SECRET,
             authorization: `Bearer ${E2E_BEARER}`,
-            "x-e2e-force-digest": "true",
           },
         });
         expect(cron.ok()).toBeTruthy();
@@ -231,7 +225,6 @@ test.describe("通知失败回执与死信 (B10)", () => {
         headers: {
           "x-cron-secret": CRON_SECRET,
           authorization: `Bearer ${E2E_BEARER}`,
-          "x-e2e-force-digest": "true",
         },
       });
       expect(fourth.ok()).toBeTruthy();

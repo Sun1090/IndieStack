@@ -12,7 +12,10 @@
 
 ## 结论
 
-1. **任务池**：100 项中 **91 达成 / 7 部分达成 / 2 未达成**。未达成是 F01（Mock MFA 状态隔离）
+1. **任务池**：100 项中 **92 达成 / 6 部分达成 / 2 未达成**。本报告首次写成时（commit `118fd3c`）
+   是 89 / 9 / 2，之后随 `1c1c381`（J01 包体积门禁接进 CI）→ 90 / 8 / 2、`82d24b0`（C03 MFA 页面测试）
+   → 91 / 7 / 2、以及 2026-09-22 的 E03（digest 投递定案）逐项收口到现在的数；三档计数**只在本报告维护**，
+   roadmap 与 CHANGELOG 只引用不另计。未达成仍是 F01（Mock MFA 状态隔离）
    与 J08（发布后回滚演练）；部分达成集中在「接线做了、语义没做」与「文档没打标」两类。
 2. **退出标准 1–5 达成，标准 6 只达成一半**：生产 smoke 在 v0.6.0 真跑过（6/6，含可核对的
    Actions run 与 artifact 指纹），但**回滚演练至今没有任何一次执行记录**——每个版本的
@@ -25,7 +28,8 @@
    E03 当时修的是「没人调度」，调度确实补上了，但**错峰门控让这次调度对绝大多数用户恒定不命中**，
    而跳过分支此前不计数：每轮在指标上表现为 `pulled=N, sent=0, groups=0, failed=0` 的「成功」。
    PR #59 加了 `cron.digest.deferred` 与对应告警规则，并把双语 docs-site 的反话改对；
-   **投递语义怎么改仍是产品决策**（见「遗留项」第一条）。
+   **投递语义已于 2026-09-22 定案并落地**（放宽窗口、一天一封，门控与调试通道随之删除，
+   见「遗留项」第一条）。
 4. **roadmap 文件与代码不符**：开头的进度汇总把 F 域整体记为已完成，而 F01 在代码里完全没落地、
    F02 的请求级 store 零消费者；另有若干条目**已达成却没有打标**（H01、A04 等）。文件已改为
    「收口 + 指向本报告」，历史快照文本不再逐条修订。
@@ -109,13 +113,13 @@
 | D09 | 达成 | `e2e/keyboard.spec.ts`（6 用例 / 27 断言，`toBeFocused`、`aria-expanded`、可访问名） |
 | D10 | 达成 | `src/lib/ui/a11y-rules.ts` + `check:a11y`（重写后含失败封闭与计数器）+ `e2e/a11y.spec.ts`（5 公共页 + 9 已认证页跑 axe） |
 
-### E. 可观测性与运维（8 达成 / 2 部分）
+### E. 可观测性与运维（9 达成 / 1 部分）
 
 | # | 状态 | 证据 | 缺口 |
 | - | ---- | ---- | ---- |
 | E01 | 达成 | `src/lib/appark-config.ts` 采样解析 + `appark.ts:49-66`（0 静音、非法值回退并告警） | 无专用门禁，靠 env 校验与单测 |
 | E02 | 达成 | `src/lib/trace-id.ts` + `src/proxy.ts` + `api-log.ts`；`check:trace-coverage` 进 CI | - |
-| E03 | 部分达成 | 接线达成：`CRON_WORKERS` 注册表 + `vercel.json` 五条调度 + `check:cron-contract`（3 worker / 15 指标） | **语义未达成**：digest 错峰门控与每天一次的调度不兼容，除 UTC-1 外无人被投递；本次核对发现，可见性已在 PR #59 修，产品决策待做 |
+| E03 | 达成 | 接线达成：`CRON_WORKERS` 注册表 + `vercel.json` 五条调度 + `check:cron-contract`（3 worker / 14 指标） | **核对时语义未达成**：digest 错峰门控与每天一次的调度不兼容，除 UTC-1 外无人被投递。可见性先在 PR #59 修，2026-09-22 按用户定案（放宽窗口、一天一封）删除 `isDigestHour` 门控，改由三时区回归钉子锁住投递；指标随门控一并回到 14。仍待生产上观察一轮 09:00 UTC 调度（本机无云端权限） |
 | E04 | 达成 | `EMAIL_NOTIFICATION_TYPES` 单源同时供拉取与 `email.backlog`；`notifications.test.ts` 与 digest 路由测试钉边界 | - |
 | E05 | 达成 | `src/lib/observability/storage-metrics.ts` 被 `uploads/service.ts` 与 `storage/index.ts` 引用（含「provider 成功但回写失败」的用户可见失败） | - |
 | E06 | 达成 | `provider-metrics.ts` 的 `provider.fallback` + 缺失变量签名去重；未配置路径立即产出 `reason=not-configured` | - |
@@ -215,10 +219,15 @@
 
 ## 遗留项（按优先级，作为下一版候选池输入）
 
-1. **digest 投递语义（P0，需产品决策）**：三选一——(a) 放宽窗口为「本地已过 08:00 或已等够一天」，
-   保证送达但发送时刻偏离本地早晨，且固定 UTC 时刻会把西半球钉在凌晨；(b) 按时区带注册多条
-   digest 路径（保住 08:00 语义，代价是平台 cron 名额与调度面）；(c) 接外部逐小时调度器
-   （不改代码，引入仓库外运行依赖）。可见性已由 PR #59 解决：`cron.digest.deferred` + 告警规则。
+1. **digest 投递语义（P0）— 2026-09-22 已定案并落地**：报告核对时列了三条路（放宽窗口 /
+   按时区带加多条调度 / 外部逐小时调度器）。用户选了**放宽窗口、接受一天一封**，于是
+   `isDigestHour` 门控连同 `DIGEST_LOCAL_HOUR` / `DIGEST_DEFAULT_TIMEZONE` 一起删除，
+   语义变成「每轮给每个有待发通知的用户发一封，发送时刻固定为 09:00 UTC、不随用户时区」。
+   为这条门控服务的 `x-e2e-force-digest` 头与从未被任何 spec 调用的
+   `/api/e2e/profile-timezone` 端点一并移除（service-role 调用点预算 87 → 86），
+   临时用来暴露该静默失效的 `cron.digest.deferred` 也随之删除（指标 15 → 14）。
+   回归钉子留在 `src/app/api/cron/digest/route.test.ts`：上海 / 纽约 / 圣保罗三个时区在同一时刻
+   必须各自收到一封——门控若被写回来，这条立刻变红。
 2. **J08 回滚演练**：需要一次受控的生产版本切换演练并填 `rollback-runbook-*.md` 的记录；
    前置是 Vercel 部署权限（当前缺 build 配额与 token）。
 3. **生产 smoke 复跑**：v0.7.0–v0.11.0 的执行记录待补，v0.11.0 的有副作用场景需隔离账号。

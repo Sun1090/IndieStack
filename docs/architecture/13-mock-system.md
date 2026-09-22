@@ -161,7 +161,6 @@ flowchart TD
 | `/api/e2e/email-worker-runs` | GET | cron worker run 记录 |
 | `/api/e2e/webhook-events` | GET, DELETE | webhook 事件占位记录 |
 | `/api/e2e/contact-messages` | GET, POST, DELETE | 联系表单提交 |
-| `/api/e2e/profile-timezone` | PATCH | 强制 Mock 资料时区 |
 
 ## 使用场景
 

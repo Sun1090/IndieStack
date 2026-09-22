@@ -62,7 +62,7 @@ beforeEach(() => {
   fetchMockResolved.ok = true;
   fetchMockResolved.text = async () => "";
   vi.stubGlobal("fetch", fetchMock);
-  // 固定为默认时区（Asia/Shanghai）本地 08:00，使错峰门控放行
+  // 固定时钟：轮次耗时断言需要确定值（发送不再看向导时刻）
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-01-01T00:00:00Z").getTime());
 });
 
@@ -89,12 +89,12 @@ describe("POST /api/cron/digest", () => {
   it("空队列返回 sent=0，并记录完整轮次耗时（E04）", async () => {
     listUnsentEmailNotificationsMock.mockResolvedValue([]);
     const base = new Date("2026-01-01T00:00:00Z").getTime();
-    vi.mocked(Date.now).mockReturnValueOnce(base).mockReturnValueOnce(base).mockReturnValueOnce(base + 125);
+    vi.mocked(Date.now).mockReturnValueOnce(base).mockReturnValueOnce(base + 125);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, deferred: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
     expect(recordWorkerRunMock).toHaveBeenCalledWith(
       expect.objectContaining({ pulled: 0, durationMs: 125 }),
     );
@@ -103,7 +103,7 @@ describe("POST /api/cron/digest", () => {
         name: "cron.digest.completed",
         value: 125,
         unit: "ms",
-        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0, deferred: 0 },
+        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
       }),
     );
   });
@@ -133,7 +133,7 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0, deferred: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.anything());
     expect(markEmailSentMock).toHaveBeenCalledTimes(2);
@@ -152,7 +152,7 @@ describe("POST /api/cron/digest", () => {
     const res = await POST(req());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ sent: 0, groups: 0, failed: 1, deferred: 0 });
+    expect(body).toEqual({ sent: 0, groups: 0, failed: 1 });
     expect(JSON.stringify(body)).not.toMatch(/boom/);
     expect(markEmailSentMock).not.toHaveBeenCalled();
     expect(markEmailFailedMock).toHaveBeenCalledWith(
@@ -161,62 +161,45 @@ describe("POST /api/cron/digest", () => {
     );
   });
 
-  it("用户时区未到本地发送小时则跳过（A04 错峰）", async () => {
-    // 覆盖默认固定时间：UTC 01:00 = 上海 09:00，不在 08:00 发送窗口
-    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-01-01T01:00:00Z").getTime());
-    listUnsentEmailNotificationsMock.mockResolvedValue([
-      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
-    ]);
-    createAdminClientMock.mockReturnValue({
-      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+  it("任意时区的用户在一次调度里都会收到摘要（错峰门控已移除）", async () => {
+    // 回归钉子：曾经的 isDigestHour 要求「本地小时恰好等于 8」，而 Hobby plan 每天只有一个
+    // 固定 UTC 时刻，结果是除 UTC-1 时区带外没人能收到。这三个时区在该时刻分属早/午/夜，
+    // 门控一旦回来，这里只会发出 0-1 封。
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-22T09:00:00Z").getTime());
+    const notif = (id: string, user: string) => ({
+      id,
+      user_id: user,
+      type: "system",
+      title: `t-${id}`,
+      body: null,
+      created_at: "2026-09-22",
+      is_read: false,
+      email_sent: false,
+      link: null,
+      metadata: null,
     });
-
-    const res = await POST(req());
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, deferred: 1 });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(markEmailSentMock).not.toHaveBeenCalled();
-  });
-
-  it("窗口外的条数进入 cron.digest.deferred，且不影响窗口内用户（E03 可见性）", async () => {
-    // 默认固定时间 UTC 00:00：上海 08:00 命中窗口，纽约 19:00 被跳过
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     listUnsentEmailNotificationsMock.mockResolvedValue([
-      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
-      { id: "n2", user_id: "u2", type: "system", title: "B", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      notif("n1", "u1"),
+      notif("n2", "u2"),
+      notif("n3", "u3"),
     ]);
     createAdminClientMock.mockReturnValue({
       from: vi.fn(() =>
         chainMock({
           data: [
-            { id: "u1", email: "a@b.c", timezone: "America/New_York", notification_settings: { emailNotifications: true } },
-            { id: "u2", email: "d@e.f", timezone: "Asia/Shanghai", notification_settings: { emailNotifications: true } },
+            { id: "u1", email: "sh@b.c", timezone: "Asia/Shanghai", notification_settings: { emailNotifications: true } },
+            { id: "u2", email: "ny@b.c", timezone: "America/New_York", notification_settings: { emailNotifications: true } },
+            { id: "u3", email: "sp@b.c", timezone: "America/Sao_Paulo", notification_settings: { emailNotifications: true } },
           ],
         }),
       ),
     });
 
     const res = await POST(req());
-    await expect(res.json()).resolves.toEqual({ sent: 1, groups: 1, failed: 0, deferred: 1 });
-    expect(metricEvents(log)).toContainEqual(
-      expect.objectContaining({ name: "cron.digest.deferred", value: 1, unit: "count" }),
-    );
-    expect(markEmailSentMock).toHaveBeenCalledTimes(1);
-    expect(markEmailSentMock).toHaveBeenCalledWith("n2");
-  });
-
-  it("用户自带时区按各自本地小时判断（覆盖默认回退窗口）", async () => {
-    // 默认固定时间 UTC 00:00 = 上海 08:00（回退用户会发送）；纽约 19:00 → 该用户跳过
-    listUnsentEmailNotificationsMock.mockResolvedValue([
-      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
-    ]);
-    createAdminClientMock.mockReturnValue({
-      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", timezone: "America/New_York", notification_settings: { emailNotifications: true } }] })),
-    });
-
-    const res = await POST(req());
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, deferred: 1 });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ sent: 3, groups: 3, failed: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(markEmailSentMock).toHaveBeenCalledTimes(3);
   });
 
   it("正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出", async () => {

@@ -133,17 +133,16 @@
 - 发件人取 `RESEND_FROM`，兜底 `IndieStack <onboarding@indiestack.dev>`；
   `RESEND_API_KEY` 缺失时发送直接抛错（走 500 分支）。
 
-### 调度与时区（v0.5.0 A04 错峰）
+### 调度与发送时刻（v0.5.0 A04 → 2026-09-22 移除错峰门控）
 
 - 调度声明在 `vercel.json`（`{"path":"/api/cron/digest","schedule":"0 9 * * *"}`，每天 09:00 UTC；Hobby 每天最多一次），
   与 worker 注册表 `src/lib/observability/cron-contract.ts` 逐字一致，由
   `pnpm check:cron-contract` 强制；自建调度器按同样频率调用即可。
-- 错峰门控：worker 只发送当前处于**本地 08:00** 的用户
-  （`profiles.timezone` IANA 标识，经 `Intl.DateTimeFormat` 解析；
-  为空或非法时回退 `Asia/Shanghai`/UTC+8，不让坏数据静默丢邮件）。
-  因此中国用户在北京时间 08:00-09:00 之间的那次 cron 运行中收到摘要，
-  其他时区用户各自错峰，单次 cron 最多处理 100 条。
-- Vercel Cron 使用 UTC；当前 Hobby plan 每天最多运行一次，因此 digest 固定为 `0 9 * * *`。自建调度器按同样频率调用即可。
+- 发送时刻：每轮给**每个有待发邮件通知的用户**发一封摘要，单次 cron 最多处理 100 条。
+  2026-09-22 起不再按 `profiles.timezone` 判断「本地是否 08:00」——Hobby plan 每路径每天只能
+  调度一次，一个固定 UTC 时刻不可能落进所有人的早晨，那道门控的实际效果是让 UTC-1 时区带
+  之外的用户永远收不到摘要。要恢复「贴着本地早晨投递」需要再加一条 cron 路径或外部逐小时
+  调度器，而不是放宽门控（权衡记录见 `docs/roadmap-0.12.0.md` A01）。
 - Vercel Cron 自动附加 `Authorization: Bearer <CRON_SECRET>`，手工触发仍可用
   `x-cron-secret`；两种方式都被接受，鉴权失败会产出
   `cron.auth.rejected{worker="digest",reason=...}`，便于区分「没调度」与「鉴权没配对」。

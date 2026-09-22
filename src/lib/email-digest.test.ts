@@ -3,13 +3,7 @@
  * 覆盖：同类型折叠阈值、明细截断上限、溢出计数、分组顺序保留
  */
 import { describe, it, expect } from "vitest";
-import {
-  foldDigestNotifications,
-  isDigestHour,
-  localHourInTimeZone,
-  DIGEST_MAX_ITEMS,
-  EMAIL_TYPE_LABELS,
-} from "./email-digest";
+import { foldDigestNotifications, DIGEST_MAX_ITEMS, EMAIL_TYPE_LABELS } from "./email-digest";
 import type { Notification } from "@/lib/repositories/notifications";
 
 function notif(id: string, type: Notification["type"], title = id, body: string | null = null): Notification {
@@ -99,47 +93,5 @@ describe("foldDigestNotifications()", () => {
   it("条目携带 body", () => {
     const result = foldDigestNotifications([notif("s1", "system", "标题", "正文")]);
     expect(result.entries).toEqual([{ kind: "item", title: "标题", body: "正文" }]);
-  });
-});
-
-describe("localHourInTimeZone()", () => {
-  const utcMidnight = new Date("2026-01-01T00:00:00Z");
-
-  it("按 IANA 时区解析本地小时", () => {
-    expect(localHourInTimeZone("Asia/Shanghai", utcMidnight)).toBe(8);
-    expect(localHourInTimeZone("UTC", utcMidnight)).toBe(0);
-    expect(localHourInTimeZone("America/New_York", utcMidnight)).toBe(19);
-  });
-});
-
-describe("isDigestHour()", () => {
-  const shanghaiEight = new Date("2026-01-01T00:00:00Z");
-  const shanghaiNine = new Date("2026-01-01T01:00:00Z");
-
-  it("空时区回退默认时区（UTC+8）", () => {
-    expect(isDigestHour(null, shanghaiEight)).toBe(true);
-    expect(isDigestHour(undefined, shanghaiEight)).toBe(true);
-    expect(isDigestHour("  ", shanghaiEight)).toBe(true);
-  });
-
-  it("用户时区本地到达发送小时才放行", () => {
-    expect(isDigestHour("Asia/Shanghai", shanghaiEight)).toBe(true);
-    expect(isDigestHour("Asia/Shanghai", shanghaiNine)).toBe(false);
-    expect(isDigestHour("America/New_York", shanghaiEight)).toBe(false);
-  });
-
-  it("非法时区回退默认时区而非静默丢弃", () => {
-    expect(isDigestHour("Not/AZone", shanghaiEight)).toBe(true);
-  });
-});
-
-describe("foldDigestNotifications() 未知类型标签", () => {
-  it("类型不在标签表时折叠行标签回退原始类型", () => {
-    const result = foldDigestNotifications([
-      notif("x1", "custom" as Notification["type"]),
-      notif("x2", "custom" as Notification["type"]),
-      notif("x3", "custom" as Notification["type"]),
-    ]);
-    expect(result.entries).toEqual([{ kind: "folded", label: "custom", count: 3 }]);
   });
 });

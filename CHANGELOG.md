@@ -14,9 +14,10 @@ All notable changes to IndieStack will be documented in this file.
   命令，现扩展为**也认实现脚本被直接调用**（按 `scripts/*.js` 路径匹配，出现别的脚本不算接线），
   那条已经不再成立的 CI 豁免理由随之删除。
 - **v0.6.0 退出报告（J09）与 v0.12.0 候选池（J10）**：`docs/operations/release-exit-report-v0.6.0.md`
-  把 roadmap 的 100 项任务与 6 条退出标准逐条对回代码、门禁与执行记录（90 达成 / 8 部分达成 /
-  2 未达成，未达成是 F01 与 J08），核对过程中发现摘要邮件因错峰门控与每天一次的调度不兼容而对
-  除 UTC-1 外所有用户不投递；`docs/roadmap-0.12.0.md` 的 20 项全部来自这些部分/未达成项与生产证据缺口。
+  把 roadmap 的 100 项任务与 6 条退出标准逐条对回代码、门禁与执行记录（首次核对 89 达成 /
+  9 部分达成 / 2 未达成，未达成是 F01 与 J08），核对过程中发现摘要邮件因错峰门控与每天一次的调度不兼容而对
+  除 UTC-1 外所有用户不投递（该门控已于同日按产品决策移除，见下面的定案条目）；
+  `docs/roadmap-0.12.0.md` 的 20 项全部来自这些部分/未达成项与生产证据缺口。
 - **保留期终于有了执行者：`/api/cron/retention`（每天 05:00 UTC）**。迁移 `003` / `014` / `027` / `032`
   里的 6 个 `security definer` 清理函数此前只注册在 pg_cron 上，而那段调度写成
   `if exists (select 1 from pg_extension where extname = 'pg_cron')`——本地与云端项目都没装 pg_cron，
@@ -29,7 +30,8 @@ All notable changes to IndieStack will be documented in this file.
   `src/lib/observability/cron-contract.ts`，由 `pnpm check:cron-contract` 校验（登记了没调度、
   调度了没登记、指标没写进告警文档都会失败）；`src/lib/repositories/retention.test.ts` 把清理清单与
   `RETENTION_POLICIES` 双向钉死，新增保留策略忘记接调度会直接失败。service-role 边界相应扩大到
-  32 个模块 / 87 个调用点 / 10 个 RPC，已在 `docs/db/security-audit.md` 与清单里登记。
+  32 个模块 / 86 个调用点 / 10 个 RPC，已在 `docs/db/security-audit.md` 与清单里登记
+  （该条目写就时是 87 个调用点，随 digest 门控删除 `/api/e2e/profile-timezone` 后为 86）。
 - **孤儿巡检不再只靠人记得跑**：`/api/cron/retention` 每轮顺带调用一次 `find_orphan_upload_objects()`，
   产出 `storage.orphan.objects` 与 `storage.orphan.unowned` 两个计数——后者就是「上传者账户已删除、
   对象还在 bucket 里公开可读」的隐私面。033 与 `erasure.ts` 的注释一直写着失败删除「可被发现并补删」，
@@ -72,6 +74,17 @@ All notable changes to IndieStack will be documented in this file.
   接外部逐小时调度器）是产品决策，未在本次改动**，已写入退出报告遗留项。
   同时纠正 `docs-site/email.md` 与中文版：两份文档都还写着「仓库里的 Vercel cron 没有调度 digest 路由」
   （E03 之后已经不成立），英文版更声称可以逐小时外部调度，与 zh 版写的每天 09:00 UTC 直接互斥。
+  （该窗口本身已于同日按产品决策移除，见下条；`cron.digest.deferred` 随之删除。）
+- **摘要邮件不再要求「用户本地恰好 08:00」才发送**：`isDigestHour` 与 `DIGEST_LOCAL_HOUR` /
+  `DIGEST_DEFAULT_TIMEZONE` 一并删除，digest 的语义变成**每轮每人一封、固定 09:00 UTC 送达**，
+  不再随用户时区。这是退出报告核对出的 P0 的定案：Hobby plan 每路径每天只能调度一次，
+  任何「贴着本地早晨」的门控都只会把除一个时区带外的所有人永久挡在队列里——放宽窗口
+  （而不是加调度）是本次选择，代价是发送时刻不再贴合本地时区，已在双语 docs-site 与
+  `docs/design/email-templates.md` 写明。配套清理：`x-e2e-force-digest` 强制头、
+  从未被任何 spec 调用的 `/api/e2e/profile-timezone` 端点（service-role 调用点预算 87 → 86）、
+  以及临时可见性指标 `cron.digest.deferred`（注册表回到 14 个指标）。
+  回归钉子：`src/app/api/cron/digest/route.test.ts` 断言上海 / 纽约 / 圣保罗三个时区
+  在同一时刻各自收到一封，门控若被写回来这条立刻失败。
 - **主题切换 E2E 在 CI 上稳定失败**：`e2e/theme.spec.ts` 的「按钮切换主题」用例直接 `click()` 后断言
   `<html>` 带上 `dark`，但 E2E 跑在 `next dev` 上——首屏 HTML 和内联主题脚本早已就位，React 却可能
   还没 hydration，这一次点击因为没有监听器而被**静默丢弃**。CI 上 3 次尝试（首次 + 2 次重试）全部以
