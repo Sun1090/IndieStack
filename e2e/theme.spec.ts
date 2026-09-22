@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { THEME_STORAGE_KEY } from "../src/lib/theme/theme";
+import { appUrl } from "./support/base-url";
 
 /**
  * G05 暗色模式回归。
@@ -26,7 +27,7 @@ test.describe("主题首屏（hydration 之前）", () => {
     );
     await blockHydration(page);
 
-    await page.goto("/", { waitUntil: "commit" });
+    await page.goto(`${appUrl()}/`, { waitUntil: "commit" });
     await expect(page.locator("html")).toHaveClass(/\bdark\b/);
   });
 
@@ -37,7 +38,7 @@ test.describe("主题首屏（hydration 之前）", () => {
     );
     await blockHydration(page);
 
-    await page.goto("/", { waitUntil: "commit" });
+    await page.goto(`${appUrl()}/`, { waitUntil: "commit" });
     await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
   });
 
@@ -51,13 +52,13 @@ test.describe("主题首屏（hydration 之前）", () => {
       );
       await blockHydration(page);
 
-      await page.goto("/", { waitUntil: "commit" });
+      await page.goto(`${appUrl()}/`, { waitUntil: "commit" });
       await expect(page.locator("html")).toHaveClass(/\bdark\b/);
     });
 
     test("没有保存过主题时默认 system，同样使用 dark", async ({ page }) => {
       await blockHydration(page);
-      await page.goto("/", { waitUntil: "commit" });
+      await page.goto(`${appUrl()}/`, { waitUntil: "commit" });
       await expect(page.locator("html")).toHaveClass(/\bdark\b/);
     });
   });
@@ -80,7 +81,7 @@ test.describe("主题切换与持久化", () => {
   }
 
   test("按钮切换主题、持久化并同步 color-scheme", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
     const html = page.locator("html");
     const toggle = page.getByRole("button", { name: "Toggle theme" });
     await expect(toggle).toBeVisible();
@@ -108,7 +109,7 @@ test.describe("主题切换与持久化", () => {
       ([key, value]) => window.localStorage.setItem(key, value),
       [THEME_KEY, "dark"],
     );
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
     await expect(page.locator("html")).toHaveClass(/\bdark\b/);
   });
 });

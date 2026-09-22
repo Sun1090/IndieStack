@@ -15,7 +15,7 @@ import { test, expect, request as pwRequest, type APIRequestContext } from "@pla
 
 const E2E_BEARER = "e2e-bearer-token";
 const CRON_SECRET = "e2e-cron-secret";
-const APP_URL = "http://localhost:3100";
+import { appUrl } from "./support/base-url";
 const OK = "https://push-e2e.test/ok";
 const TRANSIENT = "https://push-e2e.test/transient";
 const GONE = "https://push-e2e.test/gone";
@@ -57,11 +57,11 @@ test.describe("Web Push 重试链路 (F06)", () => {
   let api: APIRequestContext;
 
   async function reset(): Promise<void> {
-    await api.delete(`${APP_URL}/api/e2e/push-queue`, { headers: auth });
+    await api.delete(`${appUrl()}/api/e2e/push-queue`, { headers: auth });
   }
 
   async function seed(body: Record<string, unknown>): Promise<void> {
-    const res = await api.post(`${APP_URL}/api/e2e/push-queue`, {
+    const res = await api.post(`${appUrl()}/api/e2e/push-queue`, {
       headers: auth,
       data: body,
     });
@@ -70,22 +70,22 @@ test.describe("Web Push 重试链路 (F06)", () => {
 
   async function queue(endpoint?: string): Promise<QueueState> {
     const url = endpoint
-      ? `${APP_URL}/api/e2e/push-queue?endpoint=${encodeURIComponent(endpoint)}`
-      : `${APP_URL}/api/e2e/push-queue`;
+      ? `${appUrl()}/api/e2e/push-queue?endpoint=${encodeURIComponent(endpoint)}`
+      : `${appUrl()}/api/e2e/push-queue`;
     const res = await api.get(url, { headers: auth });
     expect(res.ok()).toBeTruthy();
     return (await res.json()) as QueueState;
   }
 
   async function runCron(secret = CRON_SECRET): Promise<{ status: number; body: CronResult }> {
-    const res = await api.post(`${APP_URL}/api/cron/push-retry`, {
+    const res = await api.post(`${appUrl()}/api/cron/push-retry`, {
       headers: { "x-cron-secret": secret },
     });
     return { status: res.status(), body: (await res.json()) as CronResult };
   }
 
   test.beforeAll(async ({ playwright }) => {
-    api = await pwRequest.newContext({ baseURL: APP_URL });
+    api = await pwRequest.newContext({ baseURL: appUrl() });
   });
 
   test.afterAll(async () => {
@@ -100,7 +100,7 @@ test.describe("Web Push 重试链路 (F06)", () => {
     const unauthorized = await runCron("wrong-secret");
     expect(unauthorized.status).toBe(401);
 
-    const e2eUnauthorized = await api.get(`${APP_URL}/api/e2e/push-queue`);
+    const e2eUnauthorized = await api.get(`${appUrl()}/api/e2e/push-queue`);
     expect(e2eUnauthorized.status()).toBe(401);
   });
 
@@ -133,9 +133,7 @@ test.describe("Web Push 重试链路 (F06)", () => {
     const [row] = (await queue(TRANSIENT)).attempts;
     expect(row).toMatchObject({ status: "pending", attempt_count: 1, failure_code: "network" });
     // 首次失败退避 60s：next_attempt_at 必须被推到未来，避免 cron 空转热循环
-    expect(new Date(row.next_attempt_at as string).getTime()).toBeGreaterThan(
-      Date.now() + 50_000,
-    );
+    expect(new Date(row.next_attempt_at as string).getTime()).toBeGreaterThan(Date.now() + 50_000);
   });
 
   test("超过重试上限：第三次失败进入死信", async () => {

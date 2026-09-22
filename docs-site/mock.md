@@ -197,10 +197,16 @@ The web server is shared mutable state, so `workers` defaults to `1`. Only the i
 experiment sets `PW_FULLY_PARALLEL=true`.
 
 That experiment is no longer a one-off: the `E2E parallel baseline` workflow runs the **whole**
-suite (deliberately without `--shard`) with `PW_FULLY_PARALLEL=true` against a single dev server,
-on demand and every Monday at `30 7 * * 1` (07:30 UTC). It forces `--retries=0`: CI defaults to two
-retries, and a shared-state conflict is exactly the "red the first time, green on retry" kind, so a
-parallel run measured with retries on would report a green that is not real.
+suite (deliberately without `--shard`) with `PW_FULLY_PARALLEL=true`, on demand and every Monday at
+`30 7 * * 1` (07:30 UTC). It opens **one dev server per worker** (`E2E_SERVERS=3`; the config sets
+`workers` to the same number), because the first run of this baseline — several workers against a
+single server — measured 4 failing specs whose only common cause was the shared default store.
+Each of those servers gets its own `NEXT_DIST_DIR`: Next refuses a second `next dev` for one working
+copy, since `<distDir>/dev/lock` is how it decides "this repo already has a dev server". Every spec
+addresses the app through `appUrl()`, which picks the port from the worker index.
+It forces `--retries=0`: CI defaults to two
+retries, and a retry gets a new worker index, i.e. a clean server, so "succeeded the second time"
+would no longer describe the same state at all.
 It is a measurement, not a merge gate —
 a red run means "the parallel baseline has a shared-state conflict, record which state from the
 report", not "this PR may not merge". The regular CI shards each get their own dev server and stay

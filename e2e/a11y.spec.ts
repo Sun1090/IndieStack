@@ -10,6 +10,7 @@
 
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { appUrl } from "./support/base-url";
 
 /** mock 模式下默认 profile 是 super_admin，可进入 admin 专属页。 */
 const MOCK_EMAIL = "dev@indiestack.local";
@@ -37,7 +38,7 @@ const authedPages = [
 ];
 
 async function loginAsMockUser(page: Page): Promise<void> {
-  await page.goto("/auth/login", { timeout: 60_000 });
+  await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
   await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
   await page.locator("input[type=password]").first().fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: /sign in|登录/i }).click();

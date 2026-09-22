@@ -2,7 +2,7 @@
 import { test, expect, request as pwRequest, type APIRequestContext } from "@playwright/test";
 import Stripe from "stripe";
 
-const APP_URL = "http://localhost:3100";
+import { appUrl } from "./support/base-url";
 const TOKEN = "e2e-bearer-token";
 const SECRET = "whsec_e2e_webhook";
 
@@ -22,13 +22,16 @@ function signedEvent(
     request: null,
     type: eventType,
   });
-  return { payload, signature: Stripe.webhooks.generateTestHeaderString({ payload, secret: SECRET }) };
+  return {
+    payload,
+    signature: Stripe.webhooks.generateTestHeaderString({ payload, secret: SECRET }),
+  };
 }
 
 test.describe("Stripe webhook events (F05)", () => {
   let api: APIRequestContext;
   test.beforeAll(async ({ playwright }) => {
-    api = await pwRequest.newContext({ baseURL: APP_URL });
+    api = await pwRequest.newContext({ baseURL: appUrl() });
   });
   test.afterAll(async () => api.dispose());
   test.beforeEach(async () => {

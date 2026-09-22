@@ -3,7 +3,9 @@ name: E2E parallel baseline
 ## 用途：把「全量并行」变成可复跑的现实基线，而不是 F04 档案里的一次历史实验（C02）。
 ## 默认 CI 跑的是 2 个 shard、每个 shard 内部单 worker（见 ci.yml 的 e2e job）——那测的是
 ## 分片是否正确，测不出「多个 spec 同时用同一份可变 Mock 状态会怎样」。
-## 这里用 PW_FULLY_PARALLEL=true 让 Playwright 自己在**一个** dev server 上开多 worker。
+## 这里用 PW_FULLY_PARALLEL=true 开多 worker，并按 E2E_SERVERS 起同样数量的 dev server：
+## 默认 store 是进程级的，「一个服务器上开多 worker」首跑就是 4 条红（同处一份假数据库的
+## 并发写入），所以并行要成立，隔离边界只能落在 worker↔服务器一一对应上。
 ##
 ## 本 workflow 不在任何 PR 的必需检查里，也不被 ci.yml 依赖：它变红的含义是
 ## 「并行基线存在共享状态冲突，请按报告记下具体是哪一份状态」，不是「这个 PR 不能合」。
@@ -23,11 +25,14 @@ permissions:
 
 jobs:
   parallel:
-    name: Fully parallel E2E on one dev server
+    name: Fully parallel E2E, one dev server per worker
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       PW_FULLY_PARALLEL: "true"
+      # 服务器数 = worker 数（config 里 workers 直接取这个值）。3 是 ubuntu-latest 上
+      # 「3 台 next dev + 3 个浏览器」还留有余量的上限，不是测出来的最优值。
+      E2E_SERVERS: "3"
     steps:
       - uses: actions/checkout@v7
 
@@ -59,8 +64,8 @@ jobs:
       - name: Report the planned suite
         run: pnpm exec playwright test --list | tail -n 1
 
-      # `--retries=0` 是这条基线成立的前提：ci.yml 里 CI 默认 retries=2，而共享 Mock 状态的
-      # 竞争正是「第一次红、重跑绿」的那种失败。带着重试跑并行，测出来的绿是假的。
+      # `--retries=0` 是这条基线成立的前提：ci.yml 里 CI 默认 retries=2，而重跑会换
+      # workerIndex，也就是换一台干净的服务器——「第二次成功」就不再是同一份状态了。
       # 所以这里刻意关掉重跑——红了就按报告去认是哪一份共享状态在打架。
       - name: Run the full suite in parallel
         run: pnpm test:e2e --retries=0

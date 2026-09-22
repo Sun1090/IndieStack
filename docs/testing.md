@@ -65,27 +65,33 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 ## E2E
 
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
-- 默认单 worker 串行执行，避免多个 spec 通过同一个 dev server 互相清理/覆盖可变 Mock 状态；仅隔离实验可设置 `PW_FULLY_PARALLEL=true`
+- 默认单 worker 串行、一台 dev server，避免多个 spec 通过同一份可变 Mock 状态互相清理/覆盖
 - **全量并行的可复跑基线**：`.github/workflows/e2e-parallel.yml`（手动 `workflow_dispatch` +
-  每周一 07:30 UTC 定时，`30 7 * * 1`）在一个 dev server 上让 Playwright 自己开多 worker 跑**全量**
-  （不带 `--shard`），并强制 `--retries=0`——CI 默认 `retries: 2`，而共享 Mock 状态的竞争恰好是
-  「第一次红、重跑绿」的那类失败，带着重试测出来的并行全绿是假的。
-  **它是测量，不是门禁**：不在必需检查里、`ci.yml` 也不依赖它，红了的含义是
-  「并行基线有共享状态冲突，请按报告记下具体是哪一份状态」，而不是「这个 PR 不能合」。
-  默认 CI 的 `[1, 2]` shard 分片各自独立 dev server，测的是分片是否正确，**测不出**并发冲突，
-  两者互补，不能互相替代。`src/lib/testing/e2e-shard-policy.test.ts` 钉住：全量（无 `--shard`）、
-  不接 `pull_request`/`push`、报告即使通过也留档，以及 artifact 名字全局唯一（#68 的教训：
-  两个作业写同一个名字，后跑的把先跑的悄悄盖掉，「证据」就变成另一件事了）。
-  **首跑已测（2026-09-22，run `35727094401`）：4 条红**，逐条归因见 `docs/roadmap-0.12.0.md` 的 C02。
-  其中最反直觉的一条在 `e2e/mail-flow.spec.ts`：它把清理写在文件顶层的 `beforeAll`/`beforeEach`，
-  而 `fullyParallel` 下这类钩子是**每个 worker 各跑一次**，不是每个文件一次——同一文件的三条用例被拆到
-  不同 worker 后互相删对方的数据，它既是受害者也是加害者。把用例拆开不会让「文件级清理」获得文件级
-  作用域，这是并行改造最容易误判的一点。
-- **本机跑 E2E 前先确认 3100 空闲**：Playwright 只在 `webServer.url` 真能应答时才复用已有 server；
+  每周一 07:30 UTC 定时，`30 7 * * 1`）跑**全量**（不带 `--shard`），条件是
+  `PW_FULLY_PARALLEL=true` + `E2E_SERVERS=3`：config 按这个数起**同样多**的 dev server，`workers`
+  也取它，于是一个 worker 一台服务器。这不是退让而是首跑量出来的结论——默认 store 是**进程级**的
+  （`docs/architecture/13-mock-system.md`），「一台服务器上开多 worker」的首跑
+  （run `35727094401`）红了 4 条，逐条归因见 `docs/roadmap-0.12.0.md` 的 C02；而把运行时默认 store
+  改成请求级会重演 v0.5.0 的「Action 写进去、RSC 读不到」，所以禁止。
+  其中 `e2e/mail-flow.spec.ts` 那条最反直觉：清理写在文件顶层的 `beforeAll`/`beforeEach`，而
+  `fullyParallel` 下这类钩子是**每个 worker 各跑一次**，不是每个文件一次——同文件三条用例被拆到
+  不同 worker 后互相删对方的数据，它既是受害者也是加害者。把用例拆开不会让文件级清理获得文件级作用域。
+  基线强制 `--retries=0`：CI 默认 `retries: 2`，而重跑会换 `workerIndex`、也就是换一台干净的服务器，
+  「第二次成功」测的已经不是同一份状态。
+  **它是测量，不是门禁**：不在必需检查里、`ci.yml` 也不依赖它，红了的含义是「按报告记下哪一份共享状态
+  在冲突」，而不是「这个 PR 不能合」。默认 CI 的 `[1, 2]` shard 各自独立 dev server、内部单 worker，
+  测的是分片是否正确，**测不出**并发冲突，两者互补，不能互相替代。
+  `src/lib/testing/e2e-shard-policy.test.ts` 钉住：全量（无 `--shard`）、`workers` 等于服务器数、
+  不接 `pull_request`/`push`、报告即使通过也留档、artifact 名字全局唯一（#68 的教训：两个作业写同一个
+  名字，后跑的把先跑的悄悄盖掉，「证据」就变成另一件事了），以及下面那条地址约定。
+- **本机跑 E2E 前先确认端口空闲**：Playwright 只在 `webServer.url` 真能应答时才复用已有 server；
   端口被别的项目占着且应答不了时，它会试图自启、以 `EADDRINUSE` 退出，而**一条用例都没跑**。
   外层 shell 仍可能报 0——判定「跑过了」的依据是输出里的用例数，不是退出码。
-- **新写的 E2E 用相对路径导航**（`page.goto("/auth/login")`，端口由 config 的 `baseURL` 决定）：
-  老 spec 里的 `APP_URL` 常量把端口写死在断言文件里，于是「换一个空闲端口复跑」这件事只能去改被测文件。
+  被占用时换基准端口即可：`E2E_BASE_PORT=3101 pnpm test:e2e`。
+- **E2E 里的应用地址一律走 `appUrl()`（`e2e/support/base-url.ts`）**：它按 `TEST_WORKER_INDEX` 选端口，
+  所以第二个 worker 打到自己那台服务器上。写死 `localhost:3100`、或者用裸相对路径 `page.goto("/x")`
+  借 `baseURL` 解析，都会把并发的 worker 全指回 slot 0，隔离只剩形式。与端口无关的 glob
+  （`waitForURL("**/dashboard")`、`page.route("**/api/...")`）仍然写相对形式。
 - **组件级用例会把 mock 客户端的缺口藏起来**：`src/app/auth/mfa/page.test.tsx` 桩掉整个 Supabase client，
   `auth.refreshSession` 在 mock 里不存在这件事它看不见——只有真跑 mock 客户端的 E2E 撞得到（C03 就是这样
   发现「验证码对了、页面报通用登录失败」的）。所以认证链路的用例要两层都有：组件层管交互分支，

@@ -22,7 +22,7 @@ import {
 } from "@playwright/test";
 
 const E2E_BEARER = "e2e-bearer-token";
-const APP_URL = "http://localhost:3100";
+import { appUrl } from "./support/base-url";
 const MOCK_EMAIL = "dev@indiestack.local";
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -43,8 +43,8 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
   let api: APIRequestContext;
 
   test.beforeAll(async ({ playwright }) => {
-    api = await pwRequest.newContext({ baseURL: APP_URL });
-    const res = await api.post(`${APP_URL}/api/e2e/mock-upload`, {
+    api = await pwRequest.newContext({ baseURL: appUrl() });
+    const res = await api.post(`${appUrl()}/api/e2e/mock-upload`, {
       headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
       data: { failNext: 0 },
     });
@@ -56,13 +56,16 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
   });
 
   async function loginAndOpenEdit(page: Page) {
-    await page.goto("/auth/login", { timeout: 60_000 });
+    await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
 
-    await page.goto("/dashboard/profile/edit", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.goto(`${appUrl()}/dashboard/profile/edit`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     await expect(page.getByRole("button", { name: /upload avatar|上传头像/i })).toBeVisible();
   }
 
@@ -119,7 +122,7 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
     await loginAndOpenEdit(page);
 
     // 注入：下一次 storage.put() 返回错误
-    const inject = await api.post(`${APP_URL}/api/e2e/mock-upload`, {
+    const inject = await api.post(`${appUrl()}/api/e2e/mock-upload`, {
       headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
       data: { failNext: 1 },
     });
@@ -140,7 +143,7 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
     await expect(visibleToast(page, PROFILE_UPDATED)).toBeVisible({ timeout: 20_000 });
 
     // avatar_url 已写回 profiles（经 /api/user 读共享 mock 内存）
-    const userRes = await api.get(`${APP_URL}/api/user`);
+    const userRes = await api.get(`${appUrl()}/api/user`);
     expect(userRes.ok()).toBeTruthy();
     const body = (await userRes.json()) as { profile: { avatar_url: string | null } };
     expect(body.profile.avatar_url).toMatch(
@@ -148,7 +151,7 @@ test.describe("头像上传闭环 (F07 + G08)", () => {
     );
 
     // 注入计数确认归零
-    const peek = await api.get(`${APP_URL}/api/e2e/mock-upload`, {
+    const peek = await api.get(`${appUrl()}/api/e2e/mock-upload`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
     expect(((await peek.json()) as { failNext: number }).failNext).toBe(0);

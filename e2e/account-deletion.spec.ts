@@ -16,10 +16,10 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-const APP_URL = "http://localhost:3100";
+import { appUrl } from "./support/base-url";
 
 async function openDangerZone(page: Page) {
-  await page.goto(`${APP_URL}/dashboard/settings`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${appUrl()}/dashboard/settings`, { waitUntil: "domcontentloaded" });
   const danger = page.getByRole("heading", { name: /Danger Zone|危险区域/ });
   await expect(danger).toBeVisible();
   return danger;
@@ -30,9 +30,7 @@ test.describe("账户删除危险区域 (H08)", () => {
     const danger = await openDangerZone(page);
     await danger.scrollIntoViewIfNeeded();
     await expect(danger).toBeVisible();
-    await expect(
-      page.getByText(/foreign keys cannot reach|外键级联覆盖不到/),
-    ).toBeVisible();
+    await expect(page.getByText(/foreign keys cannot reach|外键级联覆盖不到/)).toBeVisible();
   });
 
   test("删除是两步确认：入口 → 输入短语，空输入不可提交", async ({ page }) => {
@@ -51,7 +49,10 @@ test.describe("账户删除危险区域 (H08)", () => {
 
   test("短语输错由服务端拒绝，错误可被辅助技术读到", async ({ page }) => {
     await openDangerZone(page);
-    await page.getByRole("button", { name: /Delete Account|删除账户/ }).first().click();
+    await page
+      .getByRole("button", { name: /Delete Account|删除账户/ })
+      .first()
+      .click();
 
     const input = page.getByRole("textbox");
     // 与界面提示不同的一项：客户端只做非空门控，真正的匹配在服务端
@@ -66,7 +67,10 @@ test.describe("账户删除危险区域 (H08)", () => {
 
   test("取消后回到入口状态，不留下半个删除表单", async ({ page }) => {
     await openDangerZone(page);
-    await page.getByRole("button", { name: /Delete Account|删除账户/ }).first().click();
+    await page
+      .getByRole("button", { name: /Delete Account|删除账户/ })
+      .first()
+      .click();
     await expect(page.getByRole("textbox")).toBeVisible();
 
     await page.getByRole("button", { name: /Cancel|取消/ }).click();

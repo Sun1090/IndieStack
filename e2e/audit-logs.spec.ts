@@ -14,11 +14,12 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { appUrl } from "./support/base-url";
 
 const MOCK_EMAIL = "dev@indiestack.local";
 
 async function loginAsMockUser(page: Page): Promise<void> {
-  await page.goto("/auth/login", { timeout: 60_000 });
+  await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
   await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
   await page.locator("input[type=password]").first().fill("password123");
   await page.getByRole("button", { name: /sign in|登录/i }).click();
@@ -42,7 +43,7 @@ test.describe("审计日志详情 (F06)", () => {
       if (/MISSING_MESSAGE|Could not resolve/i.test(text)) i18nErrors.push(text);
     });
 
-    await page.goto("/dashboard/admin/audit-logs", {
+    await page.goto(`${appUrl()}/dashboard/admin/audit-logs`, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
@@ -74,7 +75,7 @@ test.describe("审计日志详情 (F06)", () => {
   });
 
   test("搜索可按 action 过滤，无结果空态，清空恢复", async ({ page }) => {
-    await page.goto("/dashboard/admin/audit-logs", {
+    await page.goto(`${appUrl()}/dashboard/admin/audit-logs`, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
@@ -105,7 +106,7 @@ test.describe("审计日志详情 (F06)", () => {
   });
 
   test("操作类型 Select 分组过滤：team 组 4 行并可恢复", async ({ page }) => {
-    await page.goto("/dashboard/admin/audit-logs", {
+    await page.goto(`${appUrl()}/dashboard/admin/audit-logs`, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
