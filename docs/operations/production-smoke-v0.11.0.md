@@ -5,28 +5,43 @@
 
 - 目标版本：v0.11.0
 - 目标环境：生产（`https://indie-stack-theta.vercel.app`）
-- 目标 commit：待填（release 分支合并后的 `main` HEAD SHA）
-- 执行人 / 日期（含时区）：待填
+- 目标 commit：无法从响应确定——`/api/health` 只暴露 `version`，不暴露构建 SHA。
+  最近一次 `main` 推送是 `23a2677`（2026-09-22T07:50Z），观测时刻（08:05:33Z）实例 `uptime=368s`
+  （≈07:59:25Z 启动），与该推送后的部署窗口一致；但 `0.11.0` 之后的纯文档提交在响应上不可区分。
+- 执行人 / 日期（含时区）：自主开发代理，2026-09-22 08:05–08:11 UTC（本地探测 + CI 定时与手动运行）
 - **发布形态说明**：与 v0.10.0「部署 `main` 即发布、事后补记录」不同，v0.11.0 走完整 tag → release 流程。
   本文件在**部署之后**填写结果，打 tag 前必须已经有：入口条件全绿、迁移 DB-first 复核、
   以及下方「账户删除演练」一行（本版本新增，不可省略）。
 
 ## 无副作用检查（自动化，`pnpm smoke:production`）
 
+> 2026-09-22 起生产已是 `0.11.0`（Vercel 构建配额已恢复），以下 6 项由本地直跑与 CI 各取一次证据，
+> 两边结论一致。
+
 | 检查项                        | 期望                                                                           | 状态        |
 | ----------------------------- | ------------------------------------------------------------------------------ | ----------- |
-| `GET /api/health`             | 200，`status=ok`、`ready=true`、`version=0.11.0`、`no-store` 且带 `x-request-id` | ⏳ 待执行   |
-| 首页/静态资源                 | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG                  | ⏳ 待执行   |
-| 未授权 dashboard              | 匿名请求重定向到 `/auth/login`，不返回受保护内容                               | ⏳ 待执行   |
-| Webhook 缺签名                | HTTP 400，`Missing signature`，`no-store`                                      | ⏳ 待执行   |
-| 安全头                        | CSP、HSTS、nosniff、DENY、Referrer-Policy、Permissions-Policy、request ID 齐全 | ⏳ 待执行   |
-| 版本漂移定时检测              | `Production Smoke` workflow `smoke-main`（UTC 02:17）以 `package.json` 为期望版本通过 | ⏳ 待执行 |
+| `GET /api/health`             | 200，`status=ok`、`ready=true`、`version=0.11.0`、`no-store` 且带 `x-request-id` | ✅ 2026-09-22T08:05:33Z：`status=ok`、`ready=true`、`version=0.11.0`、`environment=production`、`mockMode=false`、`supabase.reachable=true`、`cache-control: no-store, must-revalidate`、`x-request-id: 4320a463-161c-4ab9-ae7f-e390c30f3c4c` |
+| 首页/静态资源                 | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG                  | ✅ 本地 6/6 与 CI 6/6 均通过（`homepage:200`、`static-asset:200`） |
+| 未授权 dashboard              | 匿名请求重定向到 `/auth/login`，不返回受保护内容                               | ✅ `anonymous-dashboard:307` → `/auth/login` |
+| Webhook 缺签名                | HTTP 400，`Missing signature`，`no-store`                                      | ✅ `webhook-signature-rejection:400`，拒绝且无副作用 |
+| 安全头                        | CSP、HSTS、nosniff、DENY、Referrer-Policy、Permissions-Policy、request ID 齐全 | ✅ `security-headers:200`；实测响应含 `content-security-policy`（含 nonce + `strict-dynamic`）、`strict-transport-security: max-age=63072000; includeSubDomains; preload`、`x-content-type-options: nosniff`、`x-frame-options: DENY`、`referrer-policy: strict-origin-when-cross-origin`、`permissions-policy`、`x-request-id` |
+| 版本漂移定时检测              | `Production Smoke` workflow `smoke-main`（UTC 02:17）以 `package.json` 为期望版本通过 | ✅ run `35700843878`（schedule 2026-09-22T07:41:07Z）该作业 success；run `35702965727`（dispatch 08:05:56Z）两作业均 success |
+
+> ⚠️ 同一批定时运行暴露一条真实缺陷（已修）：`smoke`（手动 smoke）作业被 `schedule` 一起触发，
+> 而它的参数全来自 `workflow_dispatch` inputs——`inputs` 在定时触发时为空，于是它每天以
+> `Error: --timeout-ms requires a value` 失败（2026-09-21T07:56Z、2026-09-22T07:41Z 两次日志一致），
+> 从未访问过生产，却长期占据「Production Smoke 变红」这个信号位。
+> 现在它带作业级 `if: github.event_name == 'workflow_dispatch'`，并由
+> `pnpm check:production-smoke` 的 `SMOKE_MANUAL_TRIGGER_GUARD_MISSING` 守住；
+> 两个作业的证据 artifact 也改为不同名（`production-smoke-evidence` / `production-version-drift-evidence`），
+> 此前同名会让 `gh run download -n` 静默留下后落地的一份。
+
 
 ## 需要只读凭证 / 只读 SQL
 
 | 检查项                        | 期望                                                                           | 状态        |
 | ----------------------------- | ------------------------------------------------------------------------------ | ----------- |
-| 迁移基线核对                  | `supabase migration list --linked` 显示 001–033 全部 applied；`db push --linked --dry-run` 为空 | ⏳ 待执行 |
+| 迁移基线核对                  | `supabase migration list --linked` 显示 001–033 全部 applied；`db push --linked --dry-run` 为空 | ✅ 通过（2026-09-22 只读复核，证据记录见 `docs/operations/release-runbook-v0.11.0.md` 差异 1） |
 | RLS / 权限目录核对            | `pnpm check:supabase-security` 与 `pnpm smoke:supabase-identity` 对生产回读一致 | ⏳ 需生产只读凭证 |
 | 服务端函数只对 `service_role` 开放 | 032/033 的 7 个函数（`erase_user_data`、3 个保留期函数、2 个对象清单函数、孤儿清单函数）`anon`/`authenticated` = false、`service_role` = true | ✅ 权限矩阵已按**真实调用**核验（本地库 `set role anon` / `set role authenticated` 逐个调用 7 个函数，14/14 `permission denied`；`service_role` 正常返回）。⏳ 云端仍只有 `has_function_privilege` 目录核对，未做匿名 `rpc` 实调 |
 | 匿名 `audit_logs` 写入已关闭  | 直接 `POST /rest/v1/audit_logs` 不再返回 201                                   | ⏳ 未执行   |
@@ -61,24 +76,38 @@
   `200 + status=ok`。这是 required 依赖在冷启窗口内真的连不上，而不是探针写错——
   `pnpm health:check` 最多 3 次探测正是为此设计。**不要**据此判定需要回滚，也不要为了让第一帧变绿
   把 supabase 降级成 optional 依赖。
-- **Vercel Hobby 构建配额**：2026-09-21T18:03Z 起 `indie-stack` 项目的部署状态为
-  `Deployment rate limited — retry in 24 hours`（同一时点 `indie-stack-docs-site` 部署成功，
-  说明限流按项目计）。配额未恢复前 `main` 的推送**不会**产生生产部署，
-  因此 `pnpm smoke:production --expected-version 0.11.0` 与 `check-production-version.js`
-  必然失败。被限流的构建不会排队，恢复后要重新触发一次部署才能拿到证据。
-- **由此产生的定时告警是预期信号**：`Production Smoke` workflow 的 `smoke-main`
-  （每日 02:17 UTC）以 `package.json` 为期望版本，生产停留在 `0.10.0` 期间它会每天失败。
-  这正是「生产落后于仓库」的设计用途，禁止通过回退版本号或放宽期望来让它变绿。
+- **Vercel Hobby 构建配额（2026-09-22 已恢复）**：2026-09-21T18:03Z 起 `indie-stack` 项目曾被
+  `Deployment rate limited — retry in 24 hours` 挡住（同一时点 `indie-stack-docs-site` 部署成功，
+  说明限流按项目计），期间 `main` 的推送不产生生产部署。2026-09-22 08:05Z 直读生产
+  `/api/health` 已返回 `version=0.11.0`，即该限流窗口已结束、当前 `main` 已落地生产。
+  **这条不是永久状态**：再次触发配额时，被限流的构建不会排队，恢复后必须重新触发一次部署才有证据。
+- **定时告警的含义**：`smoke-main`（每日 02:17 UTC）以 `package.json` 为期望版本，
+  它变红只应表示「生产落后于仓库」，禁止通过回退版本号或放宽期望来让它变绿。
+  在它旁边还有一个同名作业名的干扰项已消除：`smoke`（手动）作业此前每次定时运行都以空参数崩溃，
+  使「Production Smoke 变红」这句话失去区分力——见上方无副作用检查一节末尾的说明。
 
 ## 执行结果
 
-- 结果：待填（格式：无副作用 N/6、只读 N/M、隔离账号 N/K）
-- 命令：`node scripts/production-smoke.js "$PRODUCTION_URL" --expected-version 0.11.0 --output production-smoke.json`
-- 目标 commit：待填
-- GitHub Actions：待填（`CI` / `CodeQL` / `Secrets Scan` / `Security and configuration checks` / `Production Smoke`）
-- 证据 artifact：由 `Production Smoke` workflow 上传，保留 30 天
-- 证据 JSON：待填（路径 + 关键字段快照）
-- 账户删除演练证据：待填（**必须包含删除前后的行数对照与 bucket 对象清单**，这是本版本唯一的不可逆面）
+- 结果：无副作用 6/6；只读 3/6（迁移基线、函数权限矩阵、孤儿清单；另 3 项需生产只读凭证或云端实调）；
+  隔离账号 0/14（**本版本打 tag 的必要前置仍未满足**）
+- 命令：`node scripts/production-smoke.js https://indie-stack-theta.vercel.app --expected-version 0.11.0 --output production-smoke.json`
+  → `✅ production smoke: 6/6 passed`（本地 2026-09-22T08:05:00Z）
+- 目标 commit：不可判定（见文首「目标 commit」——`/api/health` 不暴露构建 SHA）
+- GitHub Actions：`Production Smoke` run `35702965727`（`workflow_dispatch`，2026-09-22T08:05:56Z）
+  两作业均 success；定时 run `35700843878`（07:41:07Z）`smoke-main` success
+- 证据 artifact：`production-smoke-evidence`（run `35702965727` 内 id `10683565868`，666 B，
+  zip SHA-256 `7075985ca093ab2c63f3a1fe545a8de9edfe98cf705ecf614c8ddb5419dbe1dc`，保留 30 天）；
+  定时漂移检查的证据自 2026-09-22 起改名为 `production-version-drift-evidence`
+- 证据 JSON：本地 `production-smoke.json`（`generatedAt=2026-09-22T08:05:0xZ`、`passed=true`、
+  6 项状态码 `200/200/200/200/307/400`，文件 SHA-256
+  `cfb32bb3a125380b0245dcfc987738837eb658b7a88808624db97e6bcd419229`）；
+  CI 两份 JSON 关键字段一致（`expectedVersion=0.11.0`、`passed=true`、同一组状态码）
+- 迁移基线核对：见 `docs/operations/release-runbook-v0.11.0.md` 差异 1（2026-09-22 对云端项目
+  `ntqggnztzvoavjbiillb` 的只读复核：001–033 全部 applied、`db push --linked --dry-run` 为空、
+  `confdeltype = n`、7 个新函数权限矩阵符合预期）
+- 账户删除演练证据：待填（**必须包含删除前后的行数对照与 bucket 对象清单**，这是本版本唯一的不可逆面；
+  数据层等价演练 20/20 已通过并入库，见上表，但那不能替代真实 `auth.admin.deleteUser` + 真实 bucket）
+
 
 ## 为什么这一版不能只跑自动化的 6 项
 

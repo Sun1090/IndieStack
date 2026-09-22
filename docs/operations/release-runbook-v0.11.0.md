@@ -95,10 +95,13 @@ README 与 `RELEASE_CHECKLIST` 接线；本地 `pnpm check:release-docs` / `chec
 
 **尚未执行、也不应假装执行的部分**：
 
-- **tag `v0.11.0` 未创建**。生产 `/api/health` 仍返回 `0.10.0`，因为 Vercel `indie-stack` 项目自
-  2026-09-21T18:03Z 起被构建配额限流（`Deployment rate limited — retry in 24 hours`）。
-  在没有部署的情况下打 tag，等于对外宣称发布了一个没有跑起来的版本，且 `release.yml` 生成的
-  Release Notes 与冒烟证据都会失真。等配额恢复、`smoke-main` 由红转绿后再打标签。
+- **tag `v0.11.0` 未创建**。原因已经变了：2026-09-22 08:05Z 直读生产 `/api/health` 已返回
+  `version=0.11.0`（此前的 Vercel 构建配额限流已解除），`smoke-main` 定时漂移检查也在 07:41Z 转绿，
+  无副作用 smoke 本地与 CI 各取一次证据都是 6/6（见 `docs/operations/production-smoke-v0.11.0.md`）。
+  仍然挡住打标签的是两条前置：①**账户删除端到端演练未执行**（下文），它是本版本唯一的不可逆面；
+  ②**无法证明生产跑的是哪个 commit**——`/api/health` 只暴露 `version`，`0.11.0` 之后的纯文档提交
+  在响应上不可区分，而本文件的停止条件正是「无法证明部署 commit 与验证 commit 相同」。
+  在此之前打 tag 等于把一个无法归属的构建说成发布制品。
 - **账户删除端到端演练未执行**（差异 2）。这是本版本唯一的不可逆面，缺它就没有发布证据；
   需要一个可牺牲的测试账号，不接受用真实用户数据代跑。
 - **回滚探针未演练**：需要 Vercel dashboard 的 deployment 切换权限。
