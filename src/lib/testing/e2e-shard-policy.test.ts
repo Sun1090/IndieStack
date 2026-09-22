@@ -10,7 +10,10 @@ function read(relativePath: string): string {
 
 function workflowJob(workflow: string, id: string): string {
   const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`^  ${escapedId}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|$(?![\\s\\S]))`, "m").exec(workflow);
+  const match = new RegExp(
+    `^  ${escapedId}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|$(?![\\s\\S]))`,
+    "m",
+  ).exec(workflow);
   if (!match) throw new Error(`workflow 中找不到 ${id} job`);
   return match[0];
 }
@@ -27,7 +30,31 @@ describe("E2E shard policy", () => {
   it("keeps mutable Mock tests serial unless the isolation experiment opts in", () => {
     expect(config).toContain('const fullyParallel = process.env.PW_FULLY_PARALLEL === "true";');
     expect(config).toContain("fullyParallel,");
-    expect(config).toContain("workers: fullyParallel ? undefined : 1");
+    // 并行时「几台服务器 = 几个 worker」：默认 store 是进程级的，同一进程里的并发 worker
+    // 必然互相看见对方的写入，所以隔离只能落在 worker↔服务器一一对应上。
+    expect(config).toContain(
+      "const SERVERS = fullyParallel ? Number(process.env.E2E_SERVERS ?? 3) : 1;",
+    );
+    expect(config).toContain("workers: SERVERS");
+    expect(config).toContain("Array.from({ length: SERVERS }");
+  });
+
+  it("地址一律走 appUrl()，spec 里不留固定端口和裸相对导航", () => {
+    // 写死端口或裸相对路径都会让第二个 worker 打回第一台服务器，隔离只剩形式。
+    const dir = path.join(REPO_ROOT, "e2e");
+    const offenders: string[] = [];
+    for (const entry of fs.readdirSync(dir).sort()) {
+      if (!entry.endsWith(".spec.ts")) continue;
+      const body = fs.readFileSync(path.join(dir, entry), "utf8");
+      if (body.includes("localhost:3100")) offenders.push(`${entry}: 写死了 localhost:3100`);
+      if (/page\.goto\((?:"\/|`\/)/.test(body)) {
+        offenders.push(`${entry}: page.goto 用了裸相对路径`);
+      }
+      if (!body.includes("support/base-url") && /page\.goto\(/.test(body)) {
+        offenders.push(`${entry}: 有 page.goto 却没引入 appUrl()`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("runs two isolated CI shards with independent servers and artifact names", () => {
@@ -60,20 +87,24 @@ describe("E2E parallel baseline", () => {
     for (const entry of fs.readdirSync(dir).sort()) {
       if (!entry.endsWith(".yml") && !entry.endsWith(".yaml")) continue;
       const body = fs.readFileSync(path.join(dir, entry), "utf8");
-      for (const match of body.matchAll(/uses:\s*actions\/upload-artifact@v\d+[\s\S]*?\n\s+name:\s*([^\n]+)/g)) {
+      for (const match of body.matchAll(
+        /uses:\s*actions\/upload-artifact@v\d+[\s\S]*?\n\s+name:\s*([^\n]+)/g,
+      )) {
         found.push(match[1].trim());
       }
     }
     return found;
   }
 
-  it("lets Playwright open its own workers against a single dev server", () => {
+  it("runs every worker against its own dev server", () => {
     expect(parallelJob).toContain('PW_FULLY_PARALLEL: "true"');
+    // 服务器数 = worker 数，两者都由 config 读同一个变量，写不一样的值就没有隔离可言
+    expect(parallelJob).toContain('E2E_SERVERS: "3"');
     // 全量：不能带 --shard，否则测的是「分片内的并行」，正是要暴露的那件事会被切走
     expect(parallelJob).toContain("run: pnpm test:e2e");
     expect(parallelJob).not.toContain("--shard");
-    // 必须关掉重跑：CI 默认 retries=2，而共享 Mock 状态的竞争正是「第一次红、重跑绿」的失败，
-    // 带着重试测出来的「并行全绿」是假的。
+    // 必须关掉重跑：CI 默认 retries=2，重跑会换 workerIndex（也就是换一台服务器），
+    // 于是「第二次成功」测的是另一台干净的服务器，共享状态的竞争被抹掉了。
     expect(parallelJob).toContain("pnpm test:e2e --retries=0");
     expect(parallelJob).not.toMatch(/pnpm test:e2e(?![^\n]*--retries=0)/);
   });

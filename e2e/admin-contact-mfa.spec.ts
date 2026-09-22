@@ -18,7 +18,7 @@
 import { test, expect, request as pwRequest, type APIRequestContext } from "@playwright/test";
 
 const E2E_BEARER = "e2e-bearer-token";
-const APP_URL = "http://localhost:3100";
+import { appUrl } from "./support/base-url";
 const MOCK_EMAIL = "dev@indiestack.local";
 
 async function resetContactMessages(api: APIRequestContext): Promise<void> {
@@ -29,7 +29,7 @@ async function resetContactMessages(api: APIRequestContext): Promise<void> {
   // 只重试网络错误和服务端错误；鉴权/路由配置错误应立即失败。
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const response = await api.delete(`${APP_URL}/api/e2e/contact-messages`, { headers });
+      const response = await api.delete(`${appUrl()}/api/e2e/contact-messages`, { headers });
       if (response.ok()) return;
 
       const message = `HTTP ${response.status()} ${await response.text()}`;
@@ -52,7 +52,7 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
   let api: APIRequestContext;
 
   test.beforeAll(async ({ playwright }) => {
-    api = await pwRequest.newContext({ baseURL: APP_URL });
+    api = await pwRequest.newContext({ baseURL: appUrl() });
   });
 
   test.afterAll(async () => {
@@ -65,58 +65,74 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
   });
 
   test("admin 概览页可达并渲染统计卡片", async ({ page }) => {
-    await page.goto("/auth/login", { timeout: 60_000 });
+    await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
 
-    const response = await page.goto("/dashboard/admin", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const response = await page.goto(`${appUrl()}/dashboard/admin`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     expect(response?.status()).toBe(200);
     const cardCount = await page.locator('[class*="rounded"][class*="border"]').count();
     expect(cardCount).toBeGreaterThan(0);
   });
 
   test("admin/users 用户列表页可达并渲染用户行", async ({ page }) => {
-    await page.goto("/auth/login", { timeout: 60_000 });
+    await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
 
-    const response = await page.goto("/dashboard/admin/users", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const response = await page.goto(`${appUrl()}/dashboard/admin/users`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     expect(response?.status()).toBe(200);
     await expect(page.getByText("dev@indiestack.local").first()).toBeVisible({ timeout: 10_000 });
   });
 
   test("admin/messages 联系消息列表页可达", async ({ page }) => {
-    await page.goto("/auth/login", { timeout: 60_000 });
+    await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
 
-    const response = await page.goto("/dashboard/admin/messages", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const response = await page.goto(`${appUrl()}/dashboard/admin/messages`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     expect(response?.status()).toBe(200);
     await expect(page.locator("body")).not.toBeEmpty();
   });
 
   test("settings MFA：开启 → 验证后显示已启用", async ({ page }) => {
-    await page.goto("/auth/login", { timeout: 60_000 });
+    await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
 
-    await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await expect(page.getByText(/Two-Factor Authentication|两步验证/i).first()).toBeVisible({ timeout: 10_000 });
+    await page.goto(`${appUrl()}/dashboard/settings`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    await expect(page.getByText(/Two-Factor Authentication|两步验证/i).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     await page.getByRole("button", { name: /Enable 2FA|开启两步验证/i }).click();
     await expect(page.getByText(/Verify|验证并启用/i)).toBeVisible({ timeout: 10_000 });
     await page.getByLabel(/Verification code|验证码/i).fill("123456");
     await page.getByRole("button", { name: /Verify|验证并启用/i }).click();
 
-    await expect(page.getByRole("button", { name: /Disable 2FA|解除两步验证/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: /Disable 2FA|解除两步验证/i })).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByText(/Enabled|已启用/i).first()).toBeVisible();
   });
 
@@ -125,7 +141,10 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     const consoleErrors: string[] = [];
     page.on("pageerror", (err) => consoleErrors.push(err.message));
 
-    const response = await page.goto("/contact", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const response = await page.goto(`${appUrl()}/contact`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     expect(response?.status()).toBe(200);
     await expect(page.locator("#name")).toBeVisible();
     await expect(page.locator("#contact-email")).toBeVisible();
@@ -135,7 +154,8 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     const NAME = "E2E Tester";
     const EMAIL = "e2e-tester-ui@example.com";
     const SUBJECT = "Playwright UI 测试联系";
-    const MESSAGE = "这是来自 Playwright UI 的 E2E 测试消息（仅断言 UI 流程不报错，落表由 #5 覆盖）。";
+    const MESSAGE =
+      "这是来自 Playwright UI 的 E2E 测试消息（仅断言 UI 流程不报错，落表由 #5 覆盖）。";
 
     await page.locator("#name").fill(NAME);
     await page.locator("#contact-email").fill(EMAIL);
@@ -148,9 +168,7 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
 
     // 等待 submit 处理完成（form fields 清空 或 toast 出现）
     // 表单 reset 是成功标志；不必依赖跨进程 mock 可见性
-    await expect
-      .poll(() => page.locator("#name").inputValue(), { timeout: 10_000 })
-      .toBe("");
+    await expect.poll(() => page.locator("#name").inputValue(), { timeout: 10_000 }).toBe("");
 
     // 断言：UI 流程没有抛出未捕获运行时错误
     const fatal = consoleErrors.filter((m) => !/aborted|ECONNRESET/i.test(m));
@@ -158,10 +176,10 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
   });
 
   test("mock reset 端点：Bearer 保护并返回 reset 确认", async () => {
-    const unauthorized = await api.post(`${APP_URL}/api/e2e/mock-reset`);
+    const unauthorized = await api.post(`${appUrl()}/api/e2e/mock-reset`);
     expect(unauthorized.status()).toBe(401);
 
-    const reset = await api.post(`${APP_URL}/api/e2e/mock-reset`, {
+    const reset = await api.post(`${appUrl()}/api/e2e/mock-reset`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
     expect(reset.ok()).toBeTruthy();
@@ -174,7 +192,7 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     const SUBJECT = "Playwright API 测试联系";
     const MESSAGE = "通过 mock /api/e2e/contact-messages POST 端点写入并验证回读字段。";
 
-    const postRes = await api.post(`${APP_URL}/api/e2e/contact-messages`, {
+    const postRes = await api.post(`${appUrl()}/api/e2e/contact-messages`, {
       headers: {
         authorization: `Bearer ${E2E_BEARER}`,
         "content-type": "application/json",
@@ -184,13 +202,20 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     expect(postRes.ok()).toBeTruthy();
     const postJson = (await postRes.json()) as {
       ok: boolean;
-      message: { id: string; name: string; email: string; subject: string; message: string; created_at: string };
+      message: {
+        id: string;
+        name: string;
+        email: string;
+        subject: string;
+        message: string;
+        created_at: string;
+      };
     };
     expect(postJson.ok).toBe(true);
     expect(postJson.message.email).toBe(EMAIL);
 
     // GET 回读
-    const listRes = await api.get(`${APP_URL}/api/e2e/contact-messages`, {
+    const listRes = await api.get(`${appUrl()}/api/e2e/contact-messages`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
     expect(listRes.ok()).toBeTruthy();

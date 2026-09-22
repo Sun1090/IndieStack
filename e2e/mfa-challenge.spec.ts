@@ -14,6 +14,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
+import { appUrl } from "./support/base-url";
 
 const MOCK_EMAIL = "dev@indiestack.local";
 const MOCK_PASSWORD = "password123";
@@ -36,14 +37,13 @@ async function seedVerifiedFactor(page: Page): Promise<void> {
 }
 
 async function signInWithPassword(page: Page): Promise<void> {
-  await page.goto("/auth/login", { timeout: 60_000 });
+  await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
   await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
   await page.locator("input[type=password]").first().fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: /sign in|登录/i }).click();
 }
 
-const verifyButton = (page: Page) =>
-  page.getByRole("button", { name: /^(Verify|验证)$/ });
+const verifyButton = (page: Page) => page.getByRole("button", { name: /^(Verify|验证)$/ });
 const codeInput = (page: Page) => page.getByLabel(/Verification code|验证码/i);
 
 test.describe("MFA 登录挑战 (C03)", () => {
@@ -73,7 +73,7 @@ test.describe("MFA 登录挑战 (C03)", () => {
   });
 
   test("直接访问缺 factor 的挑战页给出重新登录入口", async ({ page }) => {
-    await page.goto("/auth/mfa", { timeout: 60_000 });
+    await page.goto(`${appUrl()}/auth/mfa`, { timeout: 60_000 });
     await expect(page.getByText(/Missing verification context|缺少验证上下文/)).toBeVisible();
     await expect(page.getByRole("link", { name: /Back to sign in|返回登录/ })).toBeVisible();
   });

@@ -16,6 +16,10 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 // 规避 Turbopack + standalone 在 Vercel 上的 nft.json 追踪错误
 const nextConfig: NextConfig = {
   ...(process.env.DOCKER_BUILD === "1" ? { output: "standalone" as const } : {}),
+  // 并行 E2E 基线要在同一个工作副本上起 N 台 `next dev`：Next 用 `<distDir>/dev/lock`
+  // 认定「本仓库已有一个 dev server」，共享 `.next` 时第二台会直接退出 1。
+  // 只有 E2E 会注入 NEXT_DIST_DIR，本地开发与构建仍然用默认的 `.next`。
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // Visual regression runs against `next dev`; hide its fixed, interactive badge so
   // full-page screenshots contain the application UI only.
   ...(process.env.VISUAL_REGRESSION === "1" ? { devIndicators: false as const } : {}),
@@ -72,9 +76,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/static/(.*)",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
     ];
   },

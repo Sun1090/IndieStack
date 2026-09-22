@@ -3,6 +3,7 @@
  * 覆盖：营销页渲染、登录页可达、Mock 模式下 dashboard 可访问
  */
 import { test, expect } from "@playwright/test";
+import { appUrl } from "./support/base-url";
 
 test.describe("营销页", () => {
   for (const path of ["/", "/features", "/pricing", "/faq"]) {
@@ -16,12 +17,12 @@ test.describe("营销页", () => {
 
 test.describe("认证流", () => {
   test("登录页正常渲染且包含邮箱输入", async ({ page }) => {
-    await page.goto("/auth/login");
+    await page.goto(`${appUrl()}/auth/login`);
     await expect(page.locator("input[type=email]").first()).toBeVisible();
   });
 
   test("注册页正常渲染", async ({ page }) => {
-    const response = await page.goto("/auth/register");
+    const response = await page.goto(`${appUrl()}/auth/register`);
     expect(response?.status()).toBe(200);
     await expect(page.locator("input[type=email]").first()).toBeVisible();
   });
@@ -29,7 +30,7 @@ test.describe("认证流", () => {
 
 test.describe("Dashboard（Mock 模式）", () => {
   test("dashboard 主页可访问并渲染侧边栏", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto(`${appUrl()}/dashboard`);
     await expect(page.locator("body")).toContainText(/dashboard|仪表盘|概览/i);
   });
 
@@ -67,7 +68,7 @@ test.describe("安全与容错", () => {
   });
 
   test("不存在的路由返回 404 页面", async ({ page }) => {
-    const response = await page.goto("/this-page-does-not-exist");
+    const response = await page.goto(`${appUrl()}/this-page-does-not-exist`);
     expect(response?.status()).toBe(404);
     await expect(page.locator("body")).not.toContainText("FUNCTION_INVOCATION_FAILED");
   });
@@ -75,7 +76,7 @@ test.describe("安全与容错", () => {
 
 test.describe("登录全流程（Mock）", () => {
   test("邮箱密码登录后跳转 dashboard", async ({ page }) => {
-    await page.goto("/auth/login");
+    await page.goto(`${appUrl()}/auth/login`);
     await page.locator("input[type=email]").first().fill("dev@indiestack.local");
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
@@ -86,7 +87,7 @@ test.describe("登录全流程（Mock）", () => {
 
 test.describe("语言切换", () => {
   test("键盘可打开语言菜单并识别当前语言", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
     const trigger = page.getByRole("button", { name: "切换语言 / Switch language" });
     await trigger.focus();
     await page.keyboard.press("Enter");
@@ -99,7 +100,7 @@ test.describe("语言切换", () => {
   });
 
   test("切换到 English 后 Cookie 持久化", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
     // 打开语言菜单并选择 English
     await page.getByRole("button", { name: "切换语言 / Switch language" }).click();
     await page.getByRole("menuitem", { name: /English/ }).click();
@@ -110,7 +111,7 @@ test.describe("语言切换", () => {
   });
 
   test("切换到简体中文后页面真的渲染中文文案", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
     const badge = page.getByText("Production-Ready IndieStack", { exact: true });
     await expect(badge).toBeVisible();
 
@@ -130,11 +131,13 @@ test.describe("语言切换", () => {
 
 test.describe("主题切换", () => {
   test("点击切换按钮后 html 根元素 dark 类变化", async ({ page }) => {
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.goto(`${appUrl()}/`, { waitUntil: "domcontentloaded" });
     const html = page.locator("html");
-    const toggle = page.getByRole("button", {
-      name: /toggleTheme|切换主题|Toggle theme/i,
-    }).first();
+    const toggle = page
+      .getByRole("button", {
+        name: /toggleTheme|切换主题|Toggle theme/i,
+      })
+      .first();
 
     // G05 起首屏内联脚本已在 hydration 前写好主题 class，class 不再"从无到有"，
     // 因此必须由真实点击驱动；重试用于吸收 dev server 冷编译导致的 hydration 延迟
@@ -149,7 +152,7 @@ test.describe("主题切换", () => {
 
 test.describe("注册与找回密码", () => {
   test("Mock 注册流程跳转登录页", async ({ page }) => {
-    await page.goto("/auth/register");
+    await page.goto(`${appUrl()}/auth/register`);
     await page.locator("input[type=email]").first().fill("new@indiestack.local");
     await page.locator("input[type=password]").first().fill("password123");
     // 可能有确认密码字段
@@ -162,32 +165,32 @@ test.describe("注册与找回密码", () => {
   });
 
   test("忘记密码页正常渲染", async ({ page }) => {
-    const response = await page.goto("/auth/forgot-password");
+    const response = await page.goto(`${appUrl()}/auth/forgot-password`);
     expect(response?.status()).toBe(200);
     await expect(page.locator("input[type=email]").first()).toBeVisible();
   });
 
   test("重置密码页正常渲染", async ({ page }) => {
-    const response = await page.goto("/auth/reset-password");
+    const response = await page.goto(`${appUrl()}/auth/reset-password`);
     expect(response?.status()).toBe(200);
   });
 });
 
 test.describe("Admin 扩展（Mock 模式）", () => {
   test("webhook 日志页可访问", async ({ page }) => {
-    const response = await page.goto("/dashboard/admin/webhooks");
+    const response = await page.goto(`${appUrl()}/dashboard/admin/webhooks`);
     expect(response?.status()).toBe(200);
   });
 
   test("audit-logs 页可访问", async ({ page }) => {
-    const response = await page.goto("/dashboard/admin/audit-logs");
+    const response = await page.goto(`${appUrl()}/dashboard/admin/audit-logs`);
     expect(response?.status()).toBe(200);
   });
 });
 
 test.describe("a11y", () => {
   test("skip-to-content 链接存在且指向主内容锚点", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
     const skip = page.locator('a[href="#main-content"]');
     await expect(skip).toBeAttached();
     // 键盘聚焦后可见
@@ -196,13 +199,15 @@ test.describe("a11y", () => {
   });
 
   test("html lang 属性为 en（默认语言）", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
   });
 });
 
 test.describe("安全头细节", () => {
-  test("CSP 含 nonce 机制与 strict-dynamic（脚本不再依赖全局 unsafe-inline）", async ({ request }) => {
+  test("CSP 含 nonce 机制与 strict-dynamic（脚本不再依赖全局 unsafe-inline）", async ({
+    request,
+  }) => {
     const response = await request.get("/");
     const csp = response.headers()["content-security-policy"] ?? "";
     expect(csp).toContain("strict-dynamic");

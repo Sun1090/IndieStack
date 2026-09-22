@@ -13,7 +13,7 @@ import { test, expect, request as pwRequest, type APIRequestContext } from "@pla
 
 const E2E_BEARER = "e2e-bearer-token";
 const CRON_SECRET = "e2e-cron-secret";
-const APP_URL = "http://localhost:3100";
+import { appUrl } from "./support/base-url";
 const MOCK_EMAIL = "dev@indiestack.local";
 
 test.describe("邮件全链路 (F01)", () => {
@@ -21,13 +21,13 @@ test.describe("邮件全链路 (F01)", () => {
   let api: APIRequestContext;
 
   test.beforeAll(async ({ playwright }) => {
-    api = await pwRequest.newContext({ baseURL: APP_URL });
+    api = await pwRequest.newContext({ baseURL: appUrl() });
 
     // 全链路 setup：清空收件箱 → 清空通知；cron 用受保护的 mock-only 端点复位状态。
-    await api.delete(`${APP_URL}/api/e2e/email-inbox`, {
+    await api.delete(`${appUrl()}/api/e2e/email-inbox`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
-    await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+    await api.delete(`${appUrl()}/api/e2e/seed-notifications`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
   });
@@ -38,24 +38,24 @@ test.describe("邮件全链路 (F01)", () => {
 
   test.beforeEach(async () => {
     // 每个用例独立清空，避免共享状态污染
-    await api.delete(`${APP_URL}/api/e2e/email-inbox`, {
+    await api.delete(`${appUrl()}/api/e2e/email-inbox`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
-    await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+    await api.delete(`${appUrl()}/api/e2e/seed-notifications`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
   });
 
   test("happy path: 营销开关 → 确认邮件 → digest 摘要 → worker 回执", async ({ page, request }) => {
     // 登录
-    await page.goto("/auth/login");
+    await page.goto(`${appUrl()}/auth/login`);
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
 
     // 设置页 → 拨营销开关 → 保存
-    await page.goto("/dashboard/settings");
+    await page.goto(`${appUrl()}/dashboard/settings`);
     const marketingSwitch = page.locator("#marketingEmails");
     await expect(marketingSwitch).toBeVisible();
     if (!(await marketingSwitch.isChecked())) {
@@ -69,7 +69,7 @@ test.describe("邮件全链路 (F01)", () => {
 
     // 断言：确认邮件到达 inbox
     const inboxRes = await api.get(
-      `${APP_URL}/api/e2e/email-inbox?to=${encodeURIComponent(MOCK_EMAIL)}`,
+      `${appUrl()}/api/e2e/email-inbox?to=${encodeURIComponent(MOCK_EMAIL)}`,
       { headers: { authorization: `Bearer ${E2E_BEARER}` } },
     );
     expect(inboxRes.ok()).toBeTruthy();
@@ -84,7 +84,7 @@ test.describe("邮件全链路 (F01)", () => {
     expect(confirmMail!.html).toContain("/api/marketing/confirm?token=");
 
     // 种 2 条 type=payment_succeeded 通知
-    const seed = await api.post(`${APP_URL}/api/e2e/seed-notifications`, {
+    const seed = await api.post(`${appUrl()}/api/e2e/seed-notifications`, {
       headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
       data: { count: 2, type: "payment_succeeded" },
     });
@@ -93,7 +93,7 @@ test.describe("邮件全链路 (F01)", () => {
     expect(seedJson.inserted).toBe(2);
 
     // 跑 digest cron（每轮把队列里该用户的通知并成一封摘要）
-    const cronRes = await request.post(`${APP_URL}/api/cron/digest`, {
+    const cronRes = await request.post(`${appUrl()}/api/cron/digest`, {
       headers: {
         "x-cron-secret": CRON_SECRET,
         authorization: `Bearer ${E2E_BEARER}`,
@@ -111,7 +111,7 @@ test.describe("邮件全链路 (F01)", () => {
 
     // 断言：摘要邮件已发
     const inboxAfterDigest = await api.get(
-      `${APP_URL}/api/e2e/email-inbox?to=${encodeURIComponent(MOCK_EMAIL)}`,
+      `${appUrl()}/api/e2e/email-inbox?to=${encodeURIComponent(MOCK_EMAIL)}`,
       { headers: { authorization: `Bearer ${E2E_BEARER}` } },
     );
     const inboxDigest = (await inboxAfterDigest.json()) as {
@@ -122,7 +122,7 @@ test.describe("邮件全链路 (F01)", () => {
     expect(digestMail!.subject).toContain("2 条");
 
     // worker run 落表
-    const runsRes = await api.get(`${APP_URL}/api/e2e/email-worker-runs`, {
+    const runsRes = await api.get(`${appUrl()}/api/e2e/email-worker-runs`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
     expect(runsRes.ok()).toBeTruthy();
@@ -140,20 +140,20 @@ test.describe("邮件全链路 (F01)", () => {
     request,
   }) => {
     // 种 1 条
-    const seed = await request.post(`${APP_URL}/api/e2e/seed-notifications`, {
+    const seed = await request.post(`${appUrl()}/api/e2e/seed-notifications`, {
       headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
       data: { count: 1, type: "payment_succeeded" },
     });
     expect(seed.ok()).toBeTruthy();
 
     // 注入：下一次 sendResendEmail 失败
-    const trigger = await request.get(`${APP_URL}/api/e2e/email-inbox?failNext=1`, {
+    const trigger = await request.get(`${appUrl()}/api/e2e/email-inbox?failNext=1`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
     expect(trigger.ok()).toBeTruthy();
 
     // 跑 cron
-    const cronRes = await request.post(`${APP_URL}/api/cron/digest`, {
+    const cronRes = await request.post(`${appUrl()}/api/cron/digest`, {
       headers: {
         "x-cron-secret": CRON_SECRET,
         authorization: `Bearer ${E2E_BEARER}`,
@@ -169,7 +169,7 @@ test.describe("邮件全链路 (F01)", () => {
     expect(cronJson.failed).toBe(1);
 
     // worker_runs：latest run 应 recorded failed=1
-    const runsRes = await request.get(`${APP_URL}/api/e2e/email-worker-runs`, {
+    const runsRes = await request.get(`${appUrl()}/api/e2e/email-worker-runs`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
     const runsJson = (await runsRes.json()) as {
@@ -185,23 +185,23 @@ test.describe("邮件全链路 (F01)", () => {
 // 保持与 happy/failure 用例相同的 mock-only 入口，验证真实 cron/repository 链路。
 test.describe("通知失败回执与死信 (B10)", () => {
   test("达到重试上限后不再拉取，并可查询 dead-letter", async ({ request }) => {
-    const api = await pwRequest.newContext({ baseURL: APP_URL });
+    const api = await pwRequest.newContext({ baseURL: appUrl() });
     try {
-      await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+      await api.delete(`${appUrl()}/api/e2e/seed-notifications`, {
         headers: { authorization: `Bearer ${E2E_BEARER}` },
       });
-      const seed = await api.post(`${APP_URL}/api/e2e/seed-notifications`, {
+      const seed = await api.post(`${appUrl()}/api/e2e/seed-notifications`, {
         headers: { authorization: `Bearer ${E2E_BEARER}`, "content-type": "application/json" },
         data: { count: 1, type: "payment_succeeded" },
       });
       expect(seed.ok()).toBeTruthy();
 
       for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const inject = await api.get(`${APP_URL}/api/e2e/email-inbox?failNext=1`, {
+        const inject = await api.get(`${appUrl()}/api/e2e/email-inbox?failNext=1`, {
           headers: { authorization: `Bearer ${E2E_BEARER}` },
         });
         expect(inject.ok()).toBeTruthy();
-        const cron = await api.post(`${APP_URL}/api/cron/digest`, {
+        const cron = await api.post(`${appUrl()}/api/cron/digest`, {
           headers: {
             "x-cron-secret": CRON_SECRET,
             authorization: `Bearer ${E2E_BEARER}`,
@@ -210,7 +210,7 @@ test.describe("通知失败回执与死信 (B10)", () => {
         expect(cron.ok()).toBeTruthy();
         await expect
           .poll(async () => {
-            const response = await api.get(`${APP_URL}/api/e2e/seed-notifications`, {
+            const response = await api.get(`${appUrl()}/api/e2e/seed-notifications`, {
               headers: { authorization: `Bearer ${E2E_BEARER}` },
             });
             const body = (await response.json()) as {
@@ -221,7 +221,7 @@ test.describe("通知失败回执与死信 (B10)", () => {
           .toBe(attempt);
       }
 
-      const fourth = await api.post(`${APP_URL}/api/cron/digest`, {
+      const fourth = await api.post(`${appUrl()}/api/cron/digest`, {
         headers: {
           "x-cron-secret": CRON_SECRET,
           authorization: `Bearer ${E2E_BEARER}`,
@@ -230,7 +230,7 @@ test.describe("通知失败回执与死信 (B10)", () => {
       expect(fourth.ok()).toBeTruthy();
       await expect(fourth.json()).resolves.toMatchObject({ sent: 0, failed: 0 });
 
-      const deadLetters = await api.get(`${APP_URL}/api/e2e/seed-notifications?deadLetter=true`, {
+      const deadLetters = await api.get(`${appUrl()}/api/e2e/seed-notifications?deadLetter=true`, {
         headers: { authorization: `Bearer ${E2E_BEARER}` },
       });
       expect(deadLetters.ok()).toBeTruthy();
@@ -242,7 +242,7 @@ test.describe("通知失败回执与死信 (B10)", () => {
       expect(body.notifications[0].metadata.email_attempts).toBe(3);
       expect(body.notifications[0].metadata.email_error).toBeTruthy();
     } finally {
-      await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+      await api.delete(`${appUrl()}/api/e2e/seed-notifications`, {
         headers: { authorization: `Bearer ${E2E_BEARER}` },
       });
       await api.dispose();

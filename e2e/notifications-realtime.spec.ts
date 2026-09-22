@@ -6,9 +6,15 @@
  * 发送 mock Realtime 事件，验证过滤、router.refresh 与 UI 更新闭环。
  */
 
-import { expect, request as pwRequest, test, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  request as pwRequest,
+  test,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
 
-const APP_URL = "http://localhost:3100";
+import { appUrl } from "./support/base-url";
 const E2E_BEARER = "e2e-bearer-token";
 const MOCK_EMAIL = "dev@indiestack.local";
 const MOCK_USER_ID = "mock-user-001";
@@ -17,17 +23,17 @@ test.describe("通知中心实时刷新 (G09)", () => {
   let api: APIRequestContext;
 
   test.beforeAll(async ({ playwright }) => {
-    api = await pwRequest.newContext({ baseURL: APP_URL });
+    api = await pwRequest.newContext({ baseURL: appUrl() });
   });
 
   test.beforeEach(async () => {
-    await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+    await api.delete(`${appUrl()}/api/e2e/seed-notifications`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
   });
 
   test.afterEach(async () => {
-    await api.delete(`${APP_URL}/api/e2e/seed-notifications`, {
+    await api.delete(`${appUrl()}/api/e2e/seed-notifications`, {
       headers: { authorization: `Bearer ${E2E_BEARER}` },
     });
   });
@@ -37,12 +43,12 @@ test.describe("通知中心实时刷新 (G09)", () => {
   });
 
   async function loginAndOpenNotifications(page: Page) {
-    await page.goto("/auth/login");
+    await page.goto(`${appUrl()}/auth/login`);
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
     await page.locator("input[type=password]").first().fill("password123");
     await page.getByRole("button", { name: /sign in|登录/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
-    await page.goto("/dashboard/notifications", { waitUntil: "domcontentloaded" });
+    await page.goto(`${appUrl()}/dashboard/notifications`, { waitUntil: "domcontentloaded" });
   }
 
   test("新通知事件触发实时刷新，并严格按 user_id 过滤", async ({ page }) => {
@@ -52,7 +58,7 @@ test.describe("通知中心实时刷新 (G09)", () => {
     await expect(status).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/No notifications yet|暂无通知/)).toBeVisible();
 
-    const seed = await api.post(`${APP_URL}/api/e2e/seed-notifications`, {
+    const seed = await api.post(`${appUrl()}/api/e2e/seed-notifications`, {
       headers: {
         authorization: `Bearer ${E2E_BEARER}`,
         "content-type": "application/json",

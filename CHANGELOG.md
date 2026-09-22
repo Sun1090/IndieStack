@@ -17,11 +17,14 @@ All notable changes to IndieStack will be documented in this file.
   双语 docs-site 那套接线复制第三遍。变异核对：把 `refreshSession` 改名 → 扫描用例红并点名
   `src/app/auth/mfa/page.tsx`；把某条豁免换成已实现的方法名 → 反向断言红。
 - **全量并行的 E2E 基线从此可复跑**（C02）：新增 `.github/workflows/e2e-parallel.yml`，用
-  `PW_FULLY_PARALLEL=true` 在**一个** dev server 上跑**全量** E2E（刻意不带 `--shard`），
+  `PW_FULLY_PARALLEL=true` 跑**全量** E2E（刻意不带 `--shard`），
   手动 `workflow_dispatch` 与每周一 `30 7 * * 1`（07:30 UTC）各一次，并强制 `--retries=0`：
-  CI 默认重跑 2 次，而共享状态的竞争正是「第一次红、重跑就绿」那一类——带着重试测出的并行全绿是假的。F04 留下的问题从来不是
+  CI 默认重跑 2 次，而重跑会换 workerIndex、也就是换一台干净的服务器——「第二次成功」说的
+  已经不是同一份状态了。F04 留下的问题从来不是
   「没有并行开关」——开关一直有——而是「那句 31/31 通过是一次再也复现不了的实验」。
   这条把它变成有固定触发点、报告留档（`if: always()`，成功也留）的测量。
+  最初一版是「一个 dev server 上开多 worker」，首跑就是在这个条件下量出 4 条红（见 Known
+  Limitations），随后改成**一个 worker 一台 dev server**（见下面那条）。
   **它是测量，不是门禁**：不接 `pull_request`/`push`、不在必需检查里、`ci.yml` 也不依赖它；
   变红的含义是「按报告记下哪一份共享状态冲突」，禁止为了让它绿而把 mock 的运行时默认 store
   改成请求级。默认 CI 的 shard 各自独立 dev server、内部单 worker，本来就测不出并发冲突，

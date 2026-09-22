@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { appUrl } from "./support/base-url";
 
 /**
  * G06 移动端断点回归。
@@ -48,7 +49,7 @@ async function expectNoHorizontalOverflow(page: Page, label = "") {
 test.describe("视口元信息", () => {
   test("移动端声明 device-width", async ({ page }) => {
     await page.setViewportSize(MOBILE);
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     const content = await page.locator('meta[name="viewport"]').getAttribute("content");
     expect(content).toContain("width=device-width");
@@ -59,7 +60,7 @@ test.describe("手机（375px）", () => {
   test.use({ viewport: MOBILE });
 
   test("顶部导航折叠为汉堡菜单，展开后可跳转", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     const menuButton = page.locator("header").getByRole("button", { name: SITE_MENU_BUTTON });
     await expect(menuButton).toBeVisible();
@@ -89,7 +90,7 @@ test.describe("手机（375px）", () => {
   }
 
   test("仪表盘保留可达的移动端导航", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto(`${appUrl()}/dashboard`);
     await expect(page.locator("aside").first()).toBeHidden();
 
     const trigger = page.getByRole("button", { name: DASHBOARD_MENU_BUTTON });
@@ -108,7 +109,7 @@ test.describe("手机（375px）", () => {
   });
 
   test("仪表盘无横向溢出", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto(`${appUrl()}/dashboard`);
     await expectNoHorizontalOverflow(page, "/dashboard");
   });
 });
@@ -117,7 +118,7 @@ test.describe("平板（768px）", () => {
   test.use({ viewport: TABLET });
 
   test("改用汉堡菜单避免页头挤压，且不溢出", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     await expect(page.locator("header nav").first()).toBeHidden();
     await expect(
@@ -127,7 +128,7 @@ test.describe("平板（768px）", () => {
   });
 
   test("仪表盘侧边栏可见且无溢出", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto(`${appUrl()}/dashboard`);
 
     await expect(page.locator("aside").first()).toBeVisible();
     await expectNoHorizontalOverflow(page, "/dashboard @768");
@@ -138,7 +139,7 @@ test.describe("桌面（1280px）", () => {
   test.use({ viewport: DESKTOP });
 
   test("公共页展示完整导航且不溢出", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     const nav = page.locator("header nav").first();
     await expect(nav).toBeVisible();
@@ -151,7 +152,7 @@ test.describe("桌面（1280px）", () => {
   });
 
   test("仪表盘侧边栏保持展开宽度", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto(`${appUrl()}/dashboard`);
 
     const sidebar = page.locator("aside").first();
     await expect(sidebar).toBeVisible();

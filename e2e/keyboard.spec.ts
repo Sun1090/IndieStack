@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { appUrl } from "./support/base-url";
 
 /**
  * G07 键盘与 screen reader 交互回归。
@@ -43,7 +44,7 @@ test.describe("跳转到主内容", () => {
   test.use({ viewport: DESKTOP });
 
   test("首个 Tab 焦点是跳转链接，激活后焦点进入主内容", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     await page.keyboard.press("Tab");
     const skipLink = page.getByRole("link", { name: SKIP_LINK });
@@ -64,7 +65,7 @@ test.describe("移动端页头菜单", () => {
   test.use({ viewport: MOBILE });
 
   test("Esc 关闭菜单并把焦点交还汉堡按钮", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     const menuButton = page.locator("header").getByRole("button", { name: MENU_BUTTON });
     await retry(
@@ -81,7 +82,7 @@ test.describe("移动端页头菜单", () => {
   });
 
   test("菜单内链接可被 Tab 依次访问", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     const menuButton = page.locator("header").getByRole("button", { name: MENU_BUTTON });
     await retry(
@@ -100,7 +101,7 @@ test.describe("仪表盘侧边栏折叠", () => {
   test.use({ viewport: DESKTOP });
 
   test("折叠按钮暴露名称与展开状态，折叠后链接仍有可访问名称", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto(`${appUrl()}/dashboard`);
 
     // 折叠按钮的可访问名称会随状态变化，因此用位置稳定的 locator 断言，避免断言期间 locator 失效
     const toggle = page.locator("aside").first().getByRole("button").first();
@@ -132,7 +133,7 @@ test.describe("快捷键帮助对话框", () => {
   test.use({ viewport: DESKTOP });
 
   test("按 ? 打开，Esc 关闭并归还焦点", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`${appUrl()}/`);
 
     await retry(
       () => page.keyboard.press("?"),
@@ -143,11 +144,13 @@ test.describe("快捷键帮助对话框", () => {
 
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
-    await expect(page.locator("header").getByRole("button", { name: SHORTCUTS_BUTTON })).toBeFocused();
+    await expect(
+      page.locator("header").getByRole("button", { name: SHORTCUTS_BUTTON }),
+    ).toBeFocused();
   });
 
   test("命令面板输入框里输入 ? 不弹快捷键帮助", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto(`${appUrl()}/dashboard`);
 
     const paletteInput = page.getByPlaceholder(/Type a command or search|输入命令/);
     await retry(
