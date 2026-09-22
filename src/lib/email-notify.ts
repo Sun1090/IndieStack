@@ -2,6 +2,7 @@
  * 实时通知邮件（v0.5.0 A03）
  * 高优先级类型在事件触发时即时单发，不经 cron 等待；
  * 发送失败不抛错，通知留在队列由 cron digest 重试（at-least-once 兜底）。
+ * 「发送失败」与「已发出但回执写失败」是两件事，分开上报——见 notifyUser 末尾的注释。
  */
 import type { Notification } from "@/lib/repositories/notifications";
 import { renderEmailHtml } from "@/lib/email-template";
@@ -110,8 +111,24 @@ export async function notifyUser(input: NewNotification): Promise<void> {
       subject,
       html: renderEmailHtml(siteUrl(), subject, [notification]),
     });
-    if (notificationId) await markEmailSent(notificationId);
   } catch (error) {
+    // 只有「还没发出去」的失败才配得上这句「留待 cron 重试」。
     await logApiError("[Email Notify] 实时通知邮件发送失败（留待 cron 重试）", error);
+    return;
+  }
+
+  // 邮件已经在 provider 那边落地，回执写入失败不能再落进上面那条 catch：
+  // 谎报成「未发送」会让人以为重试是免费的，而队列里的行确实仍是待发、下一轮 digest 会再寄一封。
+  // 重复投递是 at-least-once 的既有代价（`push-retry.ts` 的成功分支用的是同一个形状），
+  // 这里能负责的是把它说清楚，而不是掩盖。
+  if (notificationId) {
+    try {
+      await markEmailSent(notificationId);
+    } catch (error) {
+      await logApiError(
+        "[Email Notify] 邮件已发出，但发送回执写入失败（下一轮摘要可能重复寄出）",
+        error,
+      );
+    }
   }
 }

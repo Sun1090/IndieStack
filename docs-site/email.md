@@ -35,6 +35,9 @@ Immediate delivery respects `shouldSendEmail()`. A successful send records the n
 sent; a failure leaves it queued for the digest worker. Other notification types remain in-app
 only in the current implementation.
 
+A send that succeeded while its receipt write failed is reported as its own event, not as a send
+failure: the message did leave, and the next digest run may send it again.
+
 ## Digest Worker
 
 `POST /api/cron/digest` processes up to 100 queued notifications per run. It groups them by user,

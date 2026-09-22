@@ -30,6 +30,12 @@ vi.mock("@/lib/push-notify", () => ({
 }));
 
 import { notifyUser, REALTIME_EMAIL_TYPES } from "./email-notify";
+import { logApiError } from "@/lib/api-log";
+
+/** 已经上报过哪些事——本文件只关心「说的是不是真话」。 */
+function loggedMessages(): string[] {
+  return vi.mocked(logApiError).mock.calls.map((call) => String(call[0]));
+}
 
 function profileChain(row: Record<string, unknown> | null) {
   const chain: Record<string, unknown> = {};
@@ -100,6 +106,17 @@ describe("notifyUser()", () => {
     profileChain({ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: false } });
     await notifyUser(notificationInput("team_invite"));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("邮件已发出后回执写失败：不得谎报成「发送失败，留待 cron 重试」", async () => {
+    profileChain({ id: "u1", email: "a@b.c", notification_settings: { securityAlerts: true } });
+    markEmailSentMock.mockRejectedValueOnce(new Error("receipt write refused"));
+
+    await expect(notifyUser(notificationInput("security_alert"))).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const messages = loggedMessages();
+    expect(messages.some((m) => m.includes("回执写入失败"))).toBe(true);
+    expect(messages.some((m) => m.includes("留待 cron 重试"))).toBe(false);
   });
 
   it("无邮箱用户跳过邮件", async () => {

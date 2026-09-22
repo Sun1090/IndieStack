@@ -32,6 +32,9 @@ CRON_SECRET=replace-with-a-random-secret
 实时发送同样受 `shouldSendEmail()` 控制。发送成功会写入已发送回执；发送失败则保留在队列中，
 等待 digest worker 重试。其他类型的通知在当前实现中仅站内展示。
 
+「信已经发出去、但回执写入失败」是单独上报的一类，不会混进「发送失败」：邮件确实走了，
+下一轮 digest 有可能再寄一次。
+
 ## Digest Worker
 
 `POST /api/cron/digest` 每轮最多拉取 100 条待发通知，按用户分组并按该用户的邮件偏好过滤，
