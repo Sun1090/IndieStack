@@ -162,6 +162,60 @@ pnpm vitest run src/lib/repositories/push-delivery-attempts.test.ts \
 
 ## 演练记录
 
+### 2026-09-22 · 某个清理函数报错时，整轮会怎样（真实收回 `EXECUTE` 授权）
+
+此前的演练证明的是「一切正常时删得对」；这一条证明**失败形状**。`src/lib/repositories/retention.test.ts`
+里「单点失败不中断整轮」只是一句 mock 断言：它让 RPC 返回一个错误对象，却从不产生数据库侧真会发生的
+失败（授权缺失、迁移没应用、函数被改签名）。这类失败若被静默吞掉，看板上的 `ran` 会照样是 6。
+
+```bash
+# 起一个关掉 mock 的 dev server（凭据取 `supabase status -o json`，做法见下一条演练）
+docker exec -i supabase_db_indiestack psql -U postgres -d postgres <<'SQL'
+insert into public.notifications (user_id,type,title,is_read,created_at)
+  select id,'system','fail-drill-n',true, now() - interval '91 days'
+    from public.profiles order by created_at limit 1;
+insert into public.webhook_events (event_id,event_type,created_at)
+  values ('fail-drill-w','checkout.session.completed', now() - interval '91 days');
+insert into public.api_usage (path,method,created_at)
+  values ('/fail-drill','GET', now() - interval '91 days');
+-- 让其中一个函数在 service_role 下调用失败（028/032 只把 EXECUTE 留给 service_role）
+revoke execute on function public.cleanup_old_api_usage() from service_role;
+SQL
+
+curl -s -X POST http://127.0.0.1:3212/api/cron/retention -H "x-cron-secret: $CRON_SECRET"
+# {"ran":5,"failed":1,"orphans":0,"unownedOrphans":0}    ← 部分失败不报 500
+
+docker exec -i supabase_db_indiestack psql -U postgres -d postgres -tAc \
+  "select (select count(*) from public.notifications where title='fail-drill-n')::text
+          || ' ' || (select count(*) from public.webhook_events where event_id='fail-drill-w')::text
+          || ' ' || (select count(*) from public.api_usage where path='/fail-drill')::text;"
+# 0 0 1   ← 前两张表的过期行照删，报错那张留在原地
+
+docker exec -i supabase_db_indiestack psql -U postgres -d postgres -c \
+  "grant execute on function public.cleanup_old_api_usage() to service_role;"
+curl -s -X POST http://127.0.0.1:3212/api/cron/retention -H "x-cron-secret: $CRON_SECRET"
+# {"ran":6,"failed":0,"orphans":0,"unownedOrphans":0}
+# 同一条计数查询 → 0 0 0：上一轮的残留由本轮补删
+```
+
+- **HTTP 状态码另取一次**：同一注入下 `curl -s -o /dev/null -w '%{http_code}'` → `200`，
+  恢复授权后仍是 `200`（`ran` 回到 6）。这与路由的退出语义一致：**一个函数都没跑成才 500**。
+- **其余函数照常删除**：三张表各播一条 91 天前的过期行，报错的是 `api_usage` 那条，
+  另两张表的过期行在同一轮里真的消失了，报错那张留在原地（上面那条计数查询的 `0 0 1`）。
+- **失败不留尾巴，下一轮自动补上**：恢复授权后再打一次，`ran` 回到 6，上一轮那条残留行被删掉——
+  不需要人工回填，这正是「逐个调用、单个失败继续」在真库上的收益。
+- **失败不是静默的**：dev server 日志给出可告警的两行——
+  `{"type":"metric","name":"cron.retention.cleanup_failed","value":1,"unit":"count","attributes":{"cleanup_function":"cleanup_old_api_usage"},…}`
+  与 `[ERROR] [Cron Retention] cleanup_old_api_usage 清理失败 … Error: permission denied for function cleanup_old_api_usage`，
+  `cron.retention.completed` 同时带上 `{"ran":5,"failed":1,"orphans":0}`。
+  `docs/operations/sentry-alerts.md` 那条告警的处置建议「查 service_role 执行权限」从此有了实测案例，
+  而不是一句猜测。
+- 收尾核对：三条样本行（`fail-drill-n` / `fail-drill-w` / `/fail-drill`）删除后计数为 0，
+  `has_function_privilege('service_role','public.cleanup_old_api_usage()','EXECUTE')` 回到 `t`
+  （授权已还原，本地库不留权限漂移）。
+- **注意别练成假绿**：把授权收回来只影响 `service_role`，函数定义与 SQL 本身没变；它演练的是
+  「调用失败时的隔离与可见性」，不演练「SQL 写错时的行为」（那由本节「保留期清理」那条窗口两侧断言负责）。
+
 ### 2026-09-22 · 整条链路不带 mock（本地 Supabase + 非 mock dev server）
 
 SQL 演练证明「函数在真库里删对了」，但**路由 → 仓储 → PostgREST** 那一段此前只在 mock 下跑过。

@@ -1,3 +1,38 @@
+## 2026-09-22 — 保留期 worker 的失败路径也进了真库：收回授权后其余表照常删
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE（本地 Supabase 实跑，授权与样本行均已还原）。
+- 分支 / commit：`docs/retention-failure-path-drill`（基于 main `0b2091f`）。
+- 为什么做：上一条把「正常时删得对」钉住了，但失败时怎样只有 mock 断言——
+  `retention.test.ts` 让 `rpc()` 返回一个错误对象，它证明的是 JS 的 `continue` 写对了，
+  证明不了数据库真报错时（授权缺失、迁移没应用、函数签名被改）会发生什么。
+  而这恰恰是**唯一会静默的失败形状**：`ran` 计数照常涨，看板全绿，过期数据一直在堆积。
+  另外 `docs/operations/sentry-alerts.md` 的处置建议写着「查 service_role 执行权限」，
+  那句话此前没有实测案例支撑。
+- 完成内容：
+  1. 用本地栈起关掉 mock 的 dev server，在 `notifications` / `webhook_events` / `api_usage`
+     各播一条 91 天前的过期行，然后 `revoke execute on public.cleanup_old_api_usage() from service_role`。
+  2. **实测隔离与可见性**：`{"ran":5,"failed":1,"orphans":0,"unownedOrphans":0}`、HTTP 仍是 200；
+     事后计数 `0 0 1`——报错那张表的行留在原地，另两张真的删掉了；
+     日志里 `cron.retention.cleanup_failed{cleanup_function:"cleanup_old_api_usage"}`
+     与 `[ERROR] … Error: permission denied for function cleanup_old_api_usage` 都在，
+     `cron.retention.completed` 带 `{"ran":5,"failed":1,"orphans":0}`。
+  3. **实测失败不留尾巴**：恢复授权再打一次 → `{"ran":6,"failed":0,…}`，上一轮那条残留被本轮补删，
+     计数 `0 0 0`，无需人工回填。
+  4. 证据写进 `docs/db/retention.md` 的演练记录（**可逐字运行的命令 + 真实输出**，不是叙述性总结），
+     并写明这条演练的边界：收回授权只影响 `service_role`，函数 SQL 没变，所以它练的是隔离与可见性，
+     不是「SQL 写错」。CHANGELOG 的保留期演练条目补一段。
+- 变更文件：3 个——`docs/db/retention.md`（新增一条演练记录）、`CHANGELOG.md`、本条目。纯文档，无运行行为改动。
+- 验证命令与结果：
+  - 文档里的命令块**逐字重跑**过：heredoc 播种 + `revoke` 退出码 0、计数 `1 1 1`，
+    还原授权与清理样本后计数 0、`has_function_privilege(...)` = `t`（本地库不留权限漂移与残留）；
+  - `pnpm check:all` → `✅ 全部校验通过`；`pnpm verify:build` → 188 文件 / 2,131 用例、
+    Bundle 在基线内、生产构建成功（未改用例，数量不变）。
+- 阻塞：无。云端项目仍需要同型演练，但那需要 Dashboard/直连凭据（外部权限）。
+- 风险 / 回滚：只改文档；revert 即回滚。
+- 下一项：`check:cron-contract` 目前只校验 digest / push-retry / retention 三条；
+  `docs/roadmap-0.6.0.md` 的 J09（v0.6.0 退出报告）与 J10（v0.7.0 候选池）仍是 milestone 收尾项。
+
 ## 2026-09-22 — 保留期清理接上真实 Postgres 演练：14 条断言，边界取「差一天」
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
