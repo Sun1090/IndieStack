@@ -228,7 +228,7 @@
     「`await` 一条 `.from()/.rpc()` 链的结果、且断言类型里没有 `error` 成员」，未 await 的构造器断言
     （`… as unknown as FilterChain`）不再算数，`x as unknown as T` 只算一处而不是两处。
     接线前实测（修掉鉴权路径之后）：358 个非测试文件里 37 处 awaited 断言，22 处抹掉 `error`，分布在 12 个文件。
-    本条修掉鉴权/管理路径上的四处：`lib/auth/guards.ts`（两处，改为 `SERVICE_UNAVAILABLE` + `guardHttpStatus` 503，
+    本条修掉鉴权/管理路径上四个文件里的**五处**断言：`lib/auth/guards.ts`（两处，改为 `SERVICE_UNAVAILABLE` + `guardHttpStatus` 503，
     读失败不再答成「你没登录」）、`app/dashboard/admin/layout.tsx`、`app/dashboard/admin/audit-logs/layout.tsx`
     （不再把管理员静默降级成 member）、`actions/admin.ts`（读失败不再答 `userNotFound`）。
     其余 22 处进台账：`permission-gate.tsx` 两处标为 justified（客户端组件无法 5xx，回落最低权限是刻意的），

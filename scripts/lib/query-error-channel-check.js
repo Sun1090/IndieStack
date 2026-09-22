@@ -42,7 +42,8 @@ export function buildSources(repoRoot = REPO_ROOT) {
     file: toRepoPath(repoRoot, file),
     content: fs.readFileSync(file, "utf8"),
   }));
-  if (sources.length === 0) throw new Error(`no TypeScript sources found under ${SCAN_DIRS.join(", ")}`);
+  if (sources.length === 0)
+    throw new Error(`no TypeScript sources found under ${SCAN_DIRS.join(", ")}`);
   return sources;
 }
 

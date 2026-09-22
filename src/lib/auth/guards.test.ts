@@ -55,11 +55,13 @@ function mockSupabase(
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          maybeSingle: vi.fn().mockResolvedValue(
-            profileQueryError
-              ? { data: null, error: { message: "connection terminated" } }
-              : { data: profileRole ? { role: profileRole } : null, error: null },
-          ),
+          maybeSingle: vi
+            .fn()
+            .mockResolvedValue(
+              profileQueryError
+                ? { data: null, error: { message: "connection terminated" } }
+                : { data: profileRole ? { role: profileRole } : null, error: null },
+            ),
         }),
       }),
     }),

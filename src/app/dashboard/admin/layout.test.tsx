@@ -23,7 +23,10 @@ vi.mock("next-intl/server", () => ({
 import AdminLayout from "./layout";
 
 /** `maybeSingle` 的三种答案：有行、没行、读失败。 */
-function mockProfileRead(result: { data: { role: string } | null; error: { message: string } | null }) {
+function mockProfileRead(result: {
+  data: { role: string } | null;
+  error: { message: string } | null;
+}) {
   const query = {
     select: () => query,
     eq: () => query,
