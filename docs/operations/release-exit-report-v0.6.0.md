@@ -12,7 +12,7 @@
 
 ## 结论
 
-1. **任务池**：100 项中 **89 达成 / 9 部分达成 / 2 未达成**。未达成是 F01（Mock MFA 状态隔离）
+1. **任务池**：100 项中 **90 达成 / 8 部分达成 / 2 未达成**。未达成是 F01（Mock MFA 状态隔离）
    与 J08（发布后回滚演练）；部分达成集中在「接线做了、语义没做」与「文档没打标」两类。
 2. **退出标准 1–5 达成，标准 6 只达成一半**：生产 smoke 在 v0.6.0 真跑过（6/6，含可核对的
    Actions run 与 artifact 指纹），但**回滚演练至今没有任何一次执行记录**——每个版本的
@@ -184,11 +184,11 @@
 | I09 | 达成 | `docs-site/{,zh-CN/}testing.md` + `src/lib/testing/test-matrix.ts` + `check:test-matrix` | 文档按既有约定不再写易漂移的用例条数 |
 | I10 | 达成 | `docs/operations/migration-rollback-runbook.md` + `check:migration-runbook` | 「演练记录」空白属 J08 |
 
-### J. 质量与发布（8 达成 / 1 部分 / 1 未达成）
+### J. 质量与发布（9 达成 / 1 未达成）
 
 | # | 状态 | 证据 | 缺口 |
 | - | ---- | ---- | ---- |
-| J01 | 部分达成 | `verify:build` = `check` + `test` + `check:bundle` + `build`，`.husky/pre-push` 强制；CI 用四个拆分 job 覆盖同等组件 | `verify:build` **本身不在任何 workflow**（`grep -rn verify:build .github/workflows/` 无命中），因此 CI 绿不等于跑过这条命令 |
+| J01 | 达成 | `verify:build` = `check` + `test` + `check:bundle` + `build`，`.husky/pre-push` 强制同一口径；CI 的 `Lint & Type Check` job 逐个执行 32 条 `check:*`（等价于 `check:all`），`Build` job 跑 `pnpm build` + `node scripts/check-bundle.js` + `node scripts/check-perf.js` + `check:a11y`，`Unit Tests` 跑覆盖率，`E2E (Playwright)` 分片跑 `test:e2e` | `verify:build` 这条**聚合命令名**不在 workflow 里（按组件拆开执行），`check:gates` 以豁免表如实登记这一口径 |
 | J02 | 达成 | CI E2E 为 `[1, 2]` shard matrix，独立 dev server、内部单 worker，配置回归测试锁住分片与串行 | 分流条数由运行时决定，按约定不写进文档 |
 | J03 | 达成 | 覆盖率拆到独立 job 与静态门禁并行，E2E 缓存 Playwright browsers，PR 并发取消，`check:workflows` 校验拓扑 | - |
 | J04 | 达成 | `check:codeql` 固化 analyzer/套件/SARIF 契约 + `docs/operations/codeql-alert-triage.md` | 真实告警列表需 GitHub 权限 |
@@ -227,8 +227,9 @@
 5. **C03 挑战页测试**：`/auth/mfa` 页面本身目前没有自动化覆盖，可补组件测试 + 一条 E2E。
 6. **A02 孤岛 Server Action**：确认是保留为编程入口还是删除（删除需同步 service-role inventory、
    错误码门禁与文档）。
-7. **J01 的 CI 口径**：让 CI 某个 job 真的执行 `pnpm verify:build`，或在 `check:gates` 的豁免表
-   登记「组件已拆分覆盖」并写明理由。
+7. **J01 的 CI 口径（核对后已关闭）**：客户端包体积基线 `check:bundle` 此前只在本地 `verify:build`
+   生效，现已接进 CI 的 `Build` job（`node scripts/check-bundle.js`，复用同一次构建、不额外花时间），
+   `check:gates` 里对应的 CI 豁免理由同步删除。剩下的只是 `verify:build` 这条**聚合命令名**仍按组件拆开跑。
 8. **A10 存量对象差集**：031 之前从未落元数据的对象需要 provider 侧 `list()` 与数据库做差集，
    目前只能发现「有元数据行、无业务引用」的对象。
 

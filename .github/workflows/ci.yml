@@ -207,6 +207,10 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # 直接读 .next/static，不重复构建：客户端包体积基线此前只在本地 verify:build 生效
+      - name: Bundle size baseline
+        run: node scripts/check-bundle.js
+
       - name: a11y static audit
         run: pnpm check:a11y
 
