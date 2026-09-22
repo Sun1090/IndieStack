@@ -53,6 +53,18 @@ bounded. For operational monitoring it emits backlog and run metrics, plus
 has no address; `preference` — the user switched those types off). Skipping is never silent:
 `pnpm check:cron-contract` statically fails a worker route whose conditional skip has no counter.
 
+Receipt writes are separated from delivery in the other direction too: a group counts as sent the
+moment the provider accepts it, and a receipt write that then fails is reported on its own
+(`cron.digest.receipt_failed{stage="sent"}`) instead of aborting the run — the row stays queued, so a
+later run may send that user a second digest. The mirror case (`stage="retry"`) is a send that failed
+*and* whose `email_attempts` increment could not be written: the group still counts as failed, but the
+retry counter did not move, and nothing on the email side bounds it — unlike Web Push there is no
+row-age ceiling, because dropping a queued email after N days changes delivery semantics and that
+belongs to the A05 decision below. Neither case may erase the round's own record any more: a run that
+dies mid-way logs `pulled` / `sent` / `groups` / `failed` exactly as they stood, because the panel's
+"empty send round" reading is defined as `pulled > 0 && sent === 0 && failed === 0`, and a round that
+had already delivered mail must never appear there.
+
 The admin overview panel shows the queue itself: how many notifications are pending, how long the
 oldest one has been waiting (past 48 h — two daily cycles — it reads as stuck), and how many recent
 runs pulled items yet sent none. All three go through exactly the filter the worker pulls with, so

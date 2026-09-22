@@ -927,3 +927,49 @@
 - 下一项：v0.12.0 池内可自主执行的条目已清空，剩余项分别等用户拍板（A05 出队口径、A01 `profiles.timezone`
   去留、C06 两个孤儿 Server Action）与外部权限（B02–B05、C05、digest 生产复验、task #28 的生产冒烟）。
   下一轮优先做「再量一次缺陷」而不是等大任务。
+
+## 2026-09-23 — digest 中途抛错不再把已经寄出的信抹成 0，顺手给「文档里出现过」装上牙齿
+
+- 里程碑 / 版本：v0.12.0；上一条通知链路审计留下的第 1 条（另外 4 条见下面「下一项」）。
+- 状态：DONE。
+- 分支 / commit：`fix/digest-run-progress`（基于 `9c9024a`），两个 commit：
+  digest 路由本身 + `check:cron-contract` 的指标登记判定收紧。
+- 为什么做：审计找到的不是「回执写失败会 500」，而是**失败时落的那条记录在说谎**。
+  `recordFailedRun` 把 `sent / groups / failed` 写死成 0，而 A05 面板的「空发送轮次」读数定义就是
+  `pulled>0 && sent===0 && failed===0`——一轮真的给若干用户寄出了摘要、随后崩在某个回执上的运行，
+  会在 `email_worker_runs` 里被永久记成「拉到东西、一封没发」。A05 的出队语义打算按这个读数拍板，
+  读数本身是假的就没法拍；这比「看不见」严重，因为看板会教人相信一个假信号。
+- 完成内容：
+  1. `DigestProgress` 由 `POST` 持有、`runDigest` 就地累加，`recordFailedRun` 照实写当时的
+     `pulled / sent / groups / failed`；`sent` 在 provider 收下那封信之后、回执写入之前累加（顺序即语义）。
+  2. 两处回执各包一个 `try`：`markEmailSent` 失败上报 `cron.digest.receipt_failed{stage="sent"}` 并说
+     「邮件已发出，但发送回执写入失败（下一轮摘要可能重复寄出）」；`recordEmailFailures` 失败上报
+     `{stage="retry"}` 并说清「该行重试次数未累加，下一轮仍会重发」，`failed` 照累加（发送确实失败了）。
+  3. 指标登记进 `cron-contract.ts`（15 → 16）、`docs/operations/sentry-alerts.md`、双语 `docs-site/email.md`；
+     roadmap 里那段「邮件侧不是同一个形状，它是响亮地卡住」的旧结论同步改写，因为它描述的正是被这次修掉的行为。
+  4. 刻意**不加**邮件侧行龄上界（Push 上一条刚加了 `max-age`）：丢掉一封排了 N 天的信改变的是送达语义，
+     归 A05 拍板，不在「修日志诚实度」这一步里替用户决定。理由写进文档与 roadmap，不留成沉默的差异。
+  5. 附带修一颗假绿牙：写文档时一次编辑把 `cron.digest.failed` 的表行整行删掉而全部门禁绿灯——
+     `CRON_METRIC_UNDOCUMENTED` 当时只判「指标名在文档里出现过一次」，而该名字还躺在调度表和告警规则表里。
+     新增 `documentsMetric()` 只认表行首格（反引号可选）。收紧前先量：16 个指标在真实文档里都已有表行，
+     所以当前仓库仍绿。
+- 变更文件：`src/app/api/cron/digest/route.ts`、`route.test.ts`（+3 用例，18 条）、
+  `src/lib/observability/cron-contract.ts`、`cron-contract.test.ts`（+2 用例，37 条）、
+  `docs/operations/sentry-alerts.md`、`docs/testing.md`、双语 `docs-site/email.md`、
+  `docs/roadmap-0.12.0.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`pnpm --silent lint` → 0；`pnpm --silent type-check` → 0；
+  `CI=true pnpm check:all` → ✅ 全部校验通过（197 文件 / 2272 用例）；`pnpm build` → 成功；
+  `pnpm test:e2e` → 108 passed / 1 failed，红的是 `e2e/account-deletion.spec.ts:50`（Server Action 往返
+  在并行下撞到 60s 用例超时，`fill` 没等到第二步表单），单独复跑该文件 5 passed / 7.7s、exit 0；
+  本机 `retries=0` 而 CI `retries=2`。与本次改动无交集（digest 路由不在这条链上），**不**记成本次的绿。
+  变异核对：`/tmp/mutate-digest.py` 8/8 被抓（回执退回裸调用、`sent` 挪回回执之后、`recordFailedRun`
+  退回写死 0、两个 `stage` 写死或删掉、删指标、删日志、`failed` 累加挪进内层 `try`），源文件与备份逐字节一致；
+  文档表行那颗牙用真实仓库验：删掉 `cron.digest.failed` 行 → `[CRON_METRIC_UNDOCUMENTED] cron.digest.failed`，
+  还原后 `cmp` 通过。第一版测量脚本的正则漏了连字符，误报「两个 push-retry 指标没登记」——
+  那是探测器自己的洞，改成 `[a-z0-9_.-]+` 后为 0。
+- 阻塞 / 风险 / 回滚：不改发送条件、不改队列过滤、不改 schema；重复投递窗口本来就有（回执没写上＝下一轮重发），
+  这次只是把它从「一次 500 + 一条假记录」变成显式记账。回滚 = revert 这两个 commit。
+- 下一项：审计剩下的第 2 条（`countUnreadNotifications` / `markAllNotificationsRead` 把 `error` 丢掉，
+  与同文件 `:196` 的规矩自相矛盾），随后是 `teams.member_count` 的 `?? 1` 造数、Stripe webhook 给解析不出
+  团队的行记 `processed`、注销时丢掉擦除结果。
+
