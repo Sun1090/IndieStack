@@ -1467,3 +1467,40 @@
   那两处数据丢失各只挡在一条分支上（#93 已在做 `actions/projects.ts`，#94 在做 profiles 那三处），
   先确认不重复再动。
 - 更新时间：2026-09-24。
+## 2026-09-23 — C08-b 第一批：项目操作的五处读取不再猜答案（其中一处是数据丢失）
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 22 → 19 处）。
+- 分支 / commit：`fix/c08b-projects-error-channel`（栈在 `feat/gate-query-error-channel` 之上，
+  因为台账与门禁都住在那个还没合并的 PR #92 里；#92 合并后 GitHub 会把本 PR 的 base 自动接回 main）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么先动 `src/lib/actions/projects.ts`：C08 接线时逐行读过台账，`updateProject` 的 config 合并是
+  **22 处里唯一一处会丢数据的**——合并语义是「保留未提交的其他键」，靠的是先读回 `config`，
+  而那次读取不接 `error`，读失败时 `current?.config ?? {}` 就把「没读到」当成「原本没有键」，
+  于是这次 update 真的写下去，把用户没提交的其他键全部抹掉。用户只是改了个开关，别处的配置没了，
+  全程没有任何一处报错。其余四处（两处成员身份、两处项目行）是同一条链上的前置读取：
+  读失败时分别答成「你还没有团队」「项目不存在」「只有团队管理员能操作」。
+- 做了什么：五处一律绑定 `error` 并让它决定回答（记日志 + `fail("databaseError")`），
+  删掉三处把结果断言成不含 `error` 的 `as unknown as { … }`（门禁的 22 → 19 就是这么来的），
+  config 读失败时**在写之前就返回**，一次都不写。
+- **用户可见的变化**：数据库抖动时删除/编辑项目会看到「数据库操作失败，请稍后重试」这条可重试的提示，
+  而不是「项目不存在」或「只有团队管理员能操作」——后者会把人送去开工单，而真正该做的只是再点一次。
+- 覆盖：这条路径原本**零测试**（config 合并连一条用例都没有）。补了 7 条：`createProject` 一处、
+  `deleteProject` 两处、`updateProject` 三处读失败，外加一条正向断言「config 合并保留未提交的其他键」
+  ——没有这条，「中止不写」和「照样写」在测试里长得一模一样。测试桩改成按 `select` 的列分派，
+  否则 `select("config")` 会复用项目行的形状，config 分支永远测不到。
+- 变异核对 6 项：五个 `if (xxxError)` 逐个短路成 `if (false)`，各自只让对应那条红；
+  合并写成 `{ ...input.config }` 时正向那条红。前后用 `diff -q` 与备份比对确认源码还原。
+- 门禁的账是真的：删掉 `src/lib/actions/projects.ts` 台账条目时 `check:query-errors` 先报
+  `QUERY_ERROR_CHANNEL_EXEMPT_STALE（登记 3 处，实际 0 处）`，改完才恢复绿；
+  单测里那条「逐文件对账」也同步从写死的地板值 30 改成挂在台账总数上——
+  一个「改进会让它红」的地板值迟早教会人跳过它。
+- 验证：`CI=true pnpm check:all` → **exit 0**（38 道门禁、202 个测试文件全过）；`pnpm build` → exit 0；
+  `pnpm check:query-errors` → 358 文件 / 31 处 awaited 断言 / 台账 19 处；
+  `npx vitest run src/lib/actions src/app/dashboard` → 20 文件 / 223 passed。
+  一条方法上的教训：中途我**同时**开了两个 vitest 全量进程，其中一个报
+  `src/app/dashboard/admin/page.test.tsx` 一条红；单独跑该文件、以及后来干净的全量跑都是绿的——
+  那是并发进程互相干扰出来的假红，不是回归。以后不在同一个工作目录里并跑两套全量。
+- 下一批（顺序已写在 roadmap C08-b ②）：`dashboard/profile/edit/page.tsx:33` 与
+  `notifications/page.tsx:46` —— 同属「保存即覆盖真数据」，读完代码才发现它们和 config 是一族。
+- 更新时间：2026-09-23（UTC）。
+

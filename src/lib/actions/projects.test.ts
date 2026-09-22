@@ -26,10 +26,16 @@ function mockClient(
   opts: {
     user?: object | null;
     membership?: { team_id: string; role: string } | null;
+    membershipError?: { message: string } | null;
     insertError?: { code?: string; message: string } | null;
   } = {},
 ) {
-  const { user = USER, membership = { team_id: "t1", role: "owner" }, insertError = null } = opts;
+  const {
+    user = USER,
+    membership = { team_id: "t1", role: "owner" },
+    membershipError = null,
+    insertError = null,
+  } = opts;
   return {
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
     from: vi.fn((table: string) => {
@@ -38,7 +44,13 @@ function mockClient(
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
               limit: vi.fn(() => ({
-                maybeSingle: vi.fn(() => Promise.resolve({ data: membership, error: null })),
+                maybeSingle: vi.fn(() =>
+                  Promise.resolve(
+                    membershipError
+                      ? { data: null, error: membershipError }
+                      : { data: membership, error: null },
+                  ),
+                ),
               })),
             })),
           })),
@@ -81,7 +93,10 @@ beforeEach(() => {
 describe("createProject()", () => {
   it("未登录返回 notAuthenticated", async () => {
     createClientMock.mockResolvedValue(mockClient({ user: null }));
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "notAuthenticated" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "notAuthenticated",
+    });
   });
 
   it("空名称返回 projectNameRequired", async () => {
@@ -109,7 +124,10 @@ describe("createProject()", () => {
     createClientMock.mockResolvedValue(
       mockClient({ membership: { team_id: "t1", role: "member" } }),
     );
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "onlyAdminsCreateProject" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "onlyAdminsCreateProject",
+    });
   });
 
   it("owner 创建成功并触发 revalidatePath", async () => {
@@ -126,11 +144,27 @@ describe("createProject()", () => {
     createClientMock.mockResolvedValue(
       mockClient({ insertError: { code: "23505", message: "dup" } }),
     );
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "projectSlugExists" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "projectSlugExists",
+    });
+  });
+
+  it("身份读取失败返回 databaseError，而不是「你还没有团队」", async () => {
+    createClientMock.mockResolvedValue(
+      mockClient({ membershipError: { message: "connection terminated" } }),
+    );
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
   });
 
   it("其他数据库错误返回 databaseError", async () => {
     createClientMock.mockResolvedValue(mockClient({ insertError: { message: "db" } }));
-    await expect(createProject(VALID_INPUT)).resolves.toEqual({ ok: false, error: "databaseError" });
+    await expect(createProject(VALID_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
   });
 });
