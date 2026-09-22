@@ -222,6 +222,14 @@ All notable changes to IndieStack will be documented in this file.
   另一条断言**真实折叠 HTML** 的用例一起弄红，所以换成 `importOriginal` 透传 spy，只替 `renderEmailHtml`。
   变异核对 8 项全部被抓（回执退回裸调用、`sent` 挪回回执之后、`recordFailedRun` 退回写死 0、
   两个 `stage` 维度写死或删掉、删指标、删日志、把 `failed` 累加挪进内层 `try`）。
+- **`check:cron-contract` 从此要求指标真的占一行**：上一条在改告警文档时，一次编辑把
+  `docs/operations/sentry-alerts.md` 里 `cron.digest.failed` 的**表行整行删掉**了，而全部门禁绿灯——因为该规则
+  判的是「指标名在文档里出现过」，那个名字同时还躺在调度表和告警规则表里。这正是 C04 学过的形状：
+  「集合里某处存在」不是不变量。现在 `documentsMetric()` 只认表行首格（反引号可选），报错文案改成
+  「指标表里没有 X 那一行」。收紧前先量：注册表 16 个指标在真实文档里都已有表行，所以当前仓库仍绿；
+  变异核对 = 删掉 `cron.digest.failed` 那一行 → 门禁红并点名该指标（旧规则下同一变异是绿的）。
+  规则侧 2 条新用例：一条把指标只写在散文里，必须红；一条把整张表改成带反引号的写法，必须绿
+  （不给探测器一个它必须标的输入，就等于没测）。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
   `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
   `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是
