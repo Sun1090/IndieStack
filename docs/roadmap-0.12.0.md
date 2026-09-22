@@ -85,10 +85,20 @@
 
 ### C. 测试与门禁基建（来自 F01 / F02 / F04 / J01 / C03 / A02 / A10）
 
-11. C01 把 `createMockRequestStore` 真正接进 mock 的 client/query/auth（F02 的第二阶段），
-    并把 MFA 的 `_mockMfaFactors` / `_mockMfaChallenges` 从进程全局搬进请求级 store（F01）
+11. C01 （**2026-09-22 已完成，但结论和这条当初的假设相反**）先测后改，量出两点：
+    ① `createMockRequestStore` **早就接进了** client / query / auth —— `from()` 建
+    `MockQueryBuilder(table, "*", this.store)`、`rpc()` 与整个 `auth.mfa.*` 都用 `this.store`，
+    所谓「第二阶段」没有待接的线；② 被点名「仍是进程全局」的 `_mockMfaFactors` /
+    `_mockMfaChallenges` 是一批**只被写入、从不被读取**的模块级镜像，同形状的共有 21 个，
+    它们不承载任何状态，真正的进程级状态只有一份：默认 store（`MOCK_GLOBAL`）。
+    因此本条的交付是：删掉那 21 个镜像（store 自此是唯一来源）、补齐 MFA 的**可证伪**隔离测试
+    （共享 store 的可见性、challenge 失败计数与锁定的 store 私有性、同 store 内两个 challenge
+    各自计数、`listFactors` 返回副本），并在 `docs/architecture/13-mock-system.md` 写清
+    「默认 store 是假数据库，运行时故意共享」这条边界——把它改成请求级会重演 v0.5.0 的
+    「Action 写进去、RSC 读不到」
 12. C02 在 C01 之后建立 `PW_FULLY_PARALLEL` 的**可复跑**并行基线（CI 里跑一次全量并行，
-    而不是历史上的一次实验），失败则记录具体共享状态并回退
+    而不是历史上的一次实验），失败则记录具体共享状态并回退。注意前置认知：mock 的默认 store
+    是**故意**共享的假数据库，并行 E2E 要隔离的是各自的 store，而不是把运行时改成请求级
 13. C03 （2026-09-22 组件层已完成：`src/app/auth/mfa/page.test.tsx` 13 条，并修掉抛异常时
     `loading` 不复位导致按钮永久卡住的缺陷。剩一条真实走挑战流程的 E2E——它需要 Mock 的 MFA
     状态在 E2E 之间可隔离，属 C01 的前置）
@@ -148,7 +158,7 @@
    且 `sent=0 而 pulled>0` 的轮次要么为 0、要么有明确解释；跳过类分支一律带可见性指标。
 2. B01、B02 有执行记录（UTC 时间、命令、状态码、artifact 指纹或 deployment id），
    「演练记录」小节不再是空模板。
-3. C01、C02 完成：MFA mock 不再依赖进程全局，且 CI 里有一份全量并行的运行记录。
+3. C01、C02 完成：mock 状态（含 MFA）的隔离边界只剩 store 一处，且 CI 里有一份全量并行的运行记录。
 4. `pnpm check:all`、`pnpm verify:build`、`pnpm test:e2e` 全绿，覆盖率阈值不降低
    （地板见 `vitest.config.ts`）。
 5. 新增或改动的门禁都要能通过「故意做坏」的变异测试变红——一个永远不会失败的门禁比没有门禁更糟。

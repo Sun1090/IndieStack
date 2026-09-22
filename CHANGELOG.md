@@ -199,6 +199,17 @@ All notable changes to IndieStack will be documented in this file.
   只是重跑（本机当天两次停在这一点，单跑与复跑都通过，CI 侧始终绿）。现在前者报
   `advisory request failed (code=…, message=…)`，后者把实际拿到的顶层键列出来。
   **两种都仍然失败封闭**，审计强度没动过一分：读不到结果不等于没有漏洞。
+- **mock 里 21 个「看起来像状态」的模块级变量其实是死代码**：v0.6.0 退出报告的 F01 指着
+  `src/lib/mock/index.ts` 的 `_mockMfaFactors` / `_mockMfaChallenges` 说「MFA 状态仍是进程全局」，
+  顺着查下去发现这两个变量（以及同形状的另外 19 个，如 `_mockUser`、`_mockWebhookEvents`）**只被写入、
+  从不被读取**——生成数据时先赋值给模块变量、再把同一份引用塞进 store，读的时候只认 store。
+  它们不承载状态，只是让「进程全局」这个判断看起来有依据。本次全部删除（净 -84 行），store 自此是
+  mock 状态的唯一来源。同时补齐 MFA 侧真正缺的可证伪覆盖：共享 store 的跨 client 可见性（Server
+  Action 写、RSC 读的假数据库契约）、challenge 失败计数与锁定跨 store 不串、同一 store 内两个
+  challenge 各自计数、`listFactors` 返回副本所以调用方改不动库。变异核对：把 MFA getter 改回读
+  `MOCK_GLOBAL` → 5 条断言同时变红；去掉 `listFactors` 的拷贝 → 恰好红那一条。
+  **运行时的默认 store 仍然全局共享，这是设计而不是遗留**：理由写在
+  `docs/architecture/13-mock-system.md`，顺手改成请求级会重演 v0.5.0 的「写进去了、读不到」。
 
 ### Known Limitations
 
