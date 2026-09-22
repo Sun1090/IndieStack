@@ -25,7 +25,12 @@
   `docs/roadmap-0.12.0.md`（D03 收口）、本条目。
 - 验证命令与结果：`pnpm check:release-docs` → `✅ (v0.11.0, 7 artifacts)`；
   `pnpm check:docs` / `check:changelog` / `check:gates` / `check:bilingual-docs` 各自通过；
-  `pnpm check:all` 与 `pnpm verify:build` 见下「提交前复跑」。
+  `pnpm check:all` → exit 0（`✅ 全部校验通过`，193 文件 / 2,194 用例）。本轮只改 markdown 与新文档，
+  未重跑 `verify:build`（构建面由同日合并的 PR #69 覆盖）。
+  **一次真实的偶发失败值得记下来**：第一次 `check:all` 停在 `check:security` 的
+  `pnpm audit: report is missing metadata`，复跑即通过——`pnpm audit --json` 对注册表的一次瞬时失败
+  没有 `metadata` 字段，门禁按「读不懂 ≠ 没有漏洞」失败封闭。看到这条不要当成配置坏了，
+  也不要为了让它变绿去放宽审计强度。
   审计里出现的每条命令都要求真实存在（`check:docs` 与 `check:test-matrix` 会拒绝文档引用不存在的脚本）。
 - 阻塞 / 风险：审计判定 v0.11.0 **仍未发布**（缺 B03 隔离账号演练与 commit 归属证明），
   这是结论不是本条目的阻塞；模板属纯文档，回滚 = 删除两份文件与两处引用。
