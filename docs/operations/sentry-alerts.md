@@ -81,7 +81,7 @@
 
 | 路径 | 调度（UTC） | 语义 | 失败告警 |
 |---|---|---|---|
-| `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，按用户本地时间错峰发送摘要；Vercel Hobby 每天最多一次 | `cron.digest.failed`、`cron.digest.deferred`、`email.backlog` |
+| `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，只向**本地时刻恰为 08:00** 的用户发送；Vercel Hobby 每天最多一次，因此除 UTC-1 时区带外的条目每轮被跳过（见 `cron.digest.deferred`） | `cron.digest.failed`、`cron.digest.deferred`、`email.backlog` |
 | `/api/cron/push-retry` | `0 22 * * *` | 每天 22:00 UTC 重试待投递 Push 并清理保留期外的终态行；Vercel Hobby 每天最多一次 | `cron.push-retry.failed`、`push.backlog` |
 | `/api/cron/retention` | `0 5 * * *` | 每天 05:00 UTC 逐个执行迁移里定义的保留期清理函数（不依赖 pg_cron），并顺带只读巡检存储孤儿；Vercel Hobby 每天最多一次 | `cron.retention.failed`、`cron.retention.cleanup_failed`、`storage.orphan.unowned` |
 

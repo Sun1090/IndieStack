@@ -21,8 +21,12 @@
    外部逐小时调度器）。验收：决策写进 `docs-site/{,zh-CN/}email.md` 与 `docs/db/retention.md`
    同级的运维说明，并给出**一条能证明「非 UTC-1 用户真的收到」的**执行证据
 2. A02 按定案实现窗口或多调度，并把 `cron.digest.deferred` 从「能看到」变成「正常运行为 0」
-3. A03 同型核对 push 链路：`/api/cron/push-retry` 每天 22:00 UTC 一次，是否存在与 A01 同类的
-   「固定 UTC 时刻 + 本地条件门控」组合（若门控与调度不匹配，表现同样是静默不投递）
+3. A03 （2026-09-22 已核对，**push 链路没有同型缺陷**）：`src/lib/push-retry.ts` 与
+   `src/app/api/cron/push-retry/route.ts` 里没有任何按小时/时区的门控（`grep -n "hour\|timezone\|local"`
+   无命中），出队条件是单调的 `next_attempt_at <= now`（`repositories/push-delivery-attempts.ts:104`，
+   按 `next_attempt_at` 升序取 50 条），到点的行不会因为调度时刻而永远落在窗口外；
+   失败侧另有 `PUSH_MAX_ATTEMPTS` → `dead`/`revoked` 与 `push.delivery.dead`、`push.backlog` 兜底。
+   **仍需盯的是 digest（A01）而不是这里**，本条按已完成收口
 4. A04 为 A01 的定案补契约：新增纯函数规则（`src/lib/**`）+ 门禁或单测，使「窗口与调度不匹配」
    这类配置错误在 PR 阶段失败，而不是靠看板发现
 5. A05 死信与积压的可操作路径：admin 面板能看到被窗口挡住的队列规模与最早一条的年龄
