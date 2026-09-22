@@ -34,7 +34,12 @@ test.describe("数据保留期清理 cron", () => {
     });
     expect(response.status()).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["failed", "ran"]);
+    expect(Object.keys(body).sort()).toEqual([
+      "failed",
+      "orphans",
+      "ran",
+      "unownedOrphans",
+    ]);
     expect(response.headers()["cache-control"]).toContain("no-store");
   });
 });

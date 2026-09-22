@@ -19,7 +19,7 @@
 
 | 层级 | 规模 |
 |------|------|
-| 单元 + 组件测试（Vitest 双项目） | 186 个文件 / **2,119 用例** |
+| 单元 + 组件测试（Vitest 双项目） | 188 个文件 / **2,131 用例** |
 | E2E 冒烟（Playwright） | `e2e/smoke.spec.ts` / **25 用例** |
 | 覆盖率门禁 | 核心逻辑 statements 91 / branches 90 / functions 93 / lines 92（阈值来自 `vitest.config.ts`） |
 

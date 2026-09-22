@@ -167,6 +167,12 @@ SUPABASE_SERVICE_ROLE_KEY=... pnpm audit:storage-orphans -- --json --output /tmp
 # 或显式传参：pnpm audit:storage-orphans -- --url ... --service-role-key ... --fail-on-findings
 ```
 
+命令是**按需**跑的；每天那一轮由 `/api/cron/retention` 顺带做：它调用同一个
+`find_orphan_upload_objects()`，只产出两个计数（`storage.orphan.objects` /
+`storage.orphan.unowned`）而不导出清单——告警负责发现「出现了孤儿」，具体对象仍按上面的命令取。
+巡检失败既不拖垮保留期清理那一轮，也不会被报成「零孤儿」：响应里 `orphans` 为 `null`，
+且那一轮的 `cron.retention.completed` 干脆不带 `orphans` 维度（缺失才是真的缺失）。
+
 报告把 **owner_id 为空** 的行单列出来——那意味着上传者账户已经删除而对象还公开可读，
 是隐私问题而不只是容量问题，所以它排在总字节数之前。退出码：0 无孤儿、1 执行失败
 （缺凭据 / RPC 报错 / 响应形状不认识）、2 有孤儿且带了 `--fail-on-findings`。

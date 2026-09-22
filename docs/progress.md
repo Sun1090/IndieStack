@@ -1,3 +1,38 @@
+## 2026-09-22 — 孤儿巡检接上同一条每日链路：`storage.orphan.*` 两个计数
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE。
+- 分支 / commit：`feat/orphan-audit-observability`（基于 main `8a36cfa`，上一条是 retention worker）。
+- 为什么接着做：上一条把「保留期没人执行」补上了，但同一批迁移里 033 的孤儿审计是**同一个失败形状**——
+  `erasure.ts` 与本仓库注释都写着 provider 删除失败的对象「可被 `find_orphan_upload_objects()` /
+  `pnpm audit:storage-orphans` 发现并补删」，而那是一条需要人记得跑的命令。没人跑 = 这条线索不存在。
+  而 `unowned > 0` 的含义是「账户已删除、对象仍公开可读」，是隐私面。
+- 完成内容：
+  1. `/api/cron/retention` 每轮顺带一次**只读**巡检，产出 `storage.orphan.objects` 与
+     `storage.orphan.unowned`；直接复用 `summarizeOrphans()`（已有单测的纯函数）而不是重写聚合，
+     数据取自已存在的 `listOrphanObjects()`，因此 service-role 清单与调用点预算**没有**变化。
+  2. 失败语义：巡检失败不拖垮保留期那一轮（它只读），但也绝不报成「零孤儿」——响应里 `orphans` 为
+     `null`，且 `cron.retention.completed` **不带** `orphans` 维度。缺失就该表现为缺失。
+  3. 两个新指标登记进 `CRON_WORKERS`，由 `check:cron-contract` 强制写进告警文档；
+     运维文档加 2 条指标行 + 2 条告警规则（`unowned > 0` 立即、`objects > 0` 看 24 小时窗口），
+     `docs/db/upload-metadata.md` 说清「命令取完整清单 / worker 出计数」的分工。
+- 变更文件：9 个——route、route 单测、e2e 入口断言、`cron-contract.ts`、
+  `orphan-audit.ts` 注释（记明两个消费方）、告警文档、upload-metadata 文档、CHANGELOG、本条目。
+- 验证命令与结果：
+  - `pnpm check:cron-contract` → `✅ 3 个 worker / 14 个指标 / 调度表达式与 vercel.json 及运维文档一致`；
+  - `npx vitest run src/app/api/cron src/lib/observability src/lib/uploads src/lib/repositories`
+    → 34 文件 / 353 用例通过（含新增 3 条：孤儿计数上报、失败不报零、指标顺序）；
+  - `pnpm type-check` 干净；`pnpm check:all` → `✅ 全部校验通过`；`pnpm verify:build` →
+    **188 文件 / 2,131 用例**、Bundle 在基线内、生产构建成功；
+    `pnpm exec playwright test e2e/retention.spec.ts` → 3 passed。
+  - 过程教训：`vi.clearAllMocks()` **不会**清掉 `mockRejectedValue` 设的实现，
+    前一条用例的失败注入污染了后面的用例；已在 `beforeEach` 显式恢复默认实现。
+- 阻塞：真实孤儿数量仍需连生产库才能验证（本机无云端权限）。
+- 风险 / 回滚：只加只读查询与指标；revert 本 commit 即回滚（同时需从 `CRON_WORKERS` 摘掉两个指标，
+  否则 `check:cron-contract` 会因指标未接线失败）。
+- 下一项：`docs/progress.md` 里记录的 J09（v0.6.0 退出报告）与 J10（v0.7.0 候选池）仍是 milestone
+  收尾项；继续按「X 由 Y 守住」验真剩余文档断言。
+
 ## 2026-09-22 — 保留期从「承诺」变成「有人执行」：`/api/cron/retention`
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
