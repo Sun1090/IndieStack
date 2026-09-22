@@ -25,6 +25,13 @@ All notable changes to IndieStack will be documented in this file.
   但那之前只有一个人手动的 `pnpm audit:storage-orphans`，没人跑就等于没这条链路；完整清单仍由该命令提供。
   巡检是只读的，失败既不拖垮保留期那一轮，也不会被报成「零孤儿」：响应里 `orphans` 为 `null`，
   且 `cron.retention.completed` 干脆不带 `orphans` 维度——缺失才是真的缺失。
+- **保留期清理的真实数据库演练**：`docs/operations/drills/retention-cleanup.sql`（沿用
+  `account-erasure.sql` 的约定，`begin; … rollback;` 全程不留数据）。worker 与单测都只证明
+  「函数被调用」，mock 从不碰真实 SQL，而保留期真正会错的地方就在 SQL 里：窗口边界差一天，
+  要么隐私承诺失真，要么用户数据被静默删掉，两种都不会让门禁变红。脚本对 6 个函数各测
+  「窗口两侧 + 受保护状态」，边界刻意取差一天（90/91、29/30、364/365）而不是差一年——
+  后者任何实现都能蒙对。本地 Supabase（`001`–`033`）实测 14 条断言全通过，结果记在
+  `docs/db/retention.md` 的演练记录里。
 
 ### Fixed
 

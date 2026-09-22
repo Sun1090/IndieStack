@@ -20,7 +20,10 @@
 
 - [ ] 本地 `pnpm verify:build` 全绿（lint / type-check / test / build）
 - [ ] CI 工作流全绿：`CI`（`Lint & Type Check` / `Unit Tests` / `Build` / `Build Docs Site` / `E2E (Playwright)`）、`CodeQL`、`Secrets Scan`、`Security and configuration checks`
-- [ ] 覆盖率门禁未降低（statements/functions/lines ≥ 90%、branches ≥ 90%）
+- [ ] 覆盖率门禁未降低（当前阈值来自 `vitest.config.ts`：statements 91、branches 90、functions 93、lines 92）
+- [ ] 数据保留与擦除演练在本地 Supabase（`001`–`033` 已应用）通过：
+      `docs/operations/drills/retention-cleanup.sql` 末行 `failures = 0`（14 条断言），
+      `docs/operations/drills/account-erasure.sql` 全部断言通过；两者结果记入 `docs/db/retention.md` 的演练记录
 - [ ] `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version "$EXPECTED_APP_VERSION" --output production-smoke.json` 通过，或 `Production Smoke` workflow 成功并保留 30 天 artifact
 - [ ] `Production Smoke` workflow 的定时漂移检测 `smoke-main` 为通过（期望版本来自 `package.json`；失败表示生产部署落后，禁止发布）
 - [ ] RLS 回归脚本通过；`pnpm audit` 无高危
