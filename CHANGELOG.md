@@ -75,6 +75,13 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **文档不再复述会过期的数字（D04）**：`docs/testing.md` 里几处「某个规则文件有多少条单测」
+  全部改为「纯函数，单测覆盖」，并把「本文不写用例条数」这条约定显式扩展到局部计数；
+  覆盖率阈值不再抄在文档里（改指 `vitest.config.ts` 与 `pnpm test:coverage` 的输出）。同一次扫描里发现两处**已经错了**的陈述：`docs/testing.md` 与
+  `docs/db/security-audit.md` 的 `supabase db reset` 示例注释还写着「25 个迁移」，
+  而仓库当时有 33 个——正是这类数字的必然结局。`docs/db/security-audit.md` 的门禁状态段
+  改为列类别、不列数量，并标明 service-role 清点表是会过期的快照、以门禁输出与清单文件为准。
+  历史版本页、roadmap 与退出/演练记录里的数字**保留**：那些是带日期的证据，不是当前断言。
 - **英文版仍在教一种平台不允许的调度**：`docs-site/web-push.md` 写着
   `/api/cron/push-retry`「scheduled every 15 minutes in `vercel.json`」，而该表达式在
   2026-09-21（PR #32）就被改成 `0 22 * * *`——Hobby plan 每个路径每天最多一次，`*/15 * * * *`

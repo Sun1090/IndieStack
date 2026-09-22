@@ -13,10 +13,12 @@
 
 ## 静态审计状态（2026-09-13；service-role 清点更新至 2026-09-22）
 
-`pnpm check:supabase-security` 通过：33 个迁移、20 张 public 表、39 条生效 RLS policy、
+`pnpm check:supabase-security` 通过：迁移与 public 表清单、生效 RLS policy、
 Storage bucket 策略（应用引用的每个 bucket 都已登记、由迁移建行，且有按租户收敛的生效策略）、
-`SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与
-31 个已分类的 service-role 模块（86 个调用点）均通过。迁移
+`SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与全部已分类模块
+（含每个模块的调用点数）都在门禁里逐条校验；**具体数量以 `pnpm check:supabase-security`
+与 `src/lib/security/admin-client-boundary.ts` 为准，本文不复述**——这组数字在过去两周
+已经漂移过三次，而复述它的文档不会自己报错。迁移
 `024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
 约束的 INSERT/UPDATE/DELETE policy 纳入版本控制；bucket 清单、规则与运行时核对见
 [docs/db/storage-policy-audit.md](storage-policy-audit.md)。
@@ -154,12 +156,12 @@ from unnest(array['anon','authenticated','service_role']) r;
 ## RLS 全表回归（2026-09-13 加固）
 
 `pnpm check:rls` 原先用一条正则把迁移收敛成"最终策略表"，但策略名捕获写成了
-`"?([\w-]+)"?`——只吃**一个单词**。本仓库 35 条策略几乎全部命名为带空格的句子
+`"?([\w-]+)"?`——只吃**一个单词**。本仓库的策略几乎全部命名为带空格的句子
 （`"Users can view own profile"`），于是名字被截断成 `Users`，同一张表上的多条策略在
 `Map` 里互相覆盖：门禁只报了 **24** 条策略，实际生效 **35** 条，且漏掉的 11 条从未被校验
 `USING` / `WITH CHECK`。
 
-现在的 `pnpm check:rls` 由 `src/lib/security/rls-coverage.ts`（纯函数 + 14 条单测）驱动，
+现在的 `pnpm check:rls` 由 `src/lib/security/rls-coverage.ts`（纯函数，单测覆盖）驱动，
 与 `scripts/check-supabase-security.js` 共用同一套最终态模型：
 
 | 规则 | 失败码 | 说明 |
@@ -217,7 +219,9 @@ pnpm check:supabase-security
 
 ### 清点结果
 
-**31 个模块 / 86 个调用点**，按 surface 与信任依据分布（2026-09-22：随 digest 错峰门控删除，
+**31 个模块 / 86 个调用点**（本表是清点快照，会随清单变化过期；数字与门禁输出不一致时以
+`pnpm check:supabase-security` 与 `src/lib/security/admin-client-boundary.ts` 为准），
+按 surface 与信任依据分布（2026-09-22：随 digest 错峰门控删除，
 `/api/e2e/profile-timezone` 从清单移除，`e2e-mock-route` 6 → 5、模块 32 → 31、调用点 87 → 86）：
 
 | surface | 模块数 | 信任依据（trust kind） | 说明 |
@@ -307,7 +311,7 @@ cron / 跨用户写入依赖 `service_role`，缺它属于部署配置错误，�
 ```bash
 # 前置：本地 Supabase 已启动并完成迁移 + seed
 pnpm exec supabase start
-pnpm exec supabase db reset        # 25 个迁移 + supabase/seed.sql
+pnpm exec supabase db reset        # 全部迁移 + supabase/seed.sql
 
 pnpm smoke:supabase-identity -- --output /tmp/indiestack-identity-matrix.json
 ```

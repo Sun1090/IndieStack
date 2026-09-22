@@ -13,7 +13,7 @@
 └────────────────────────────────┘
 ```
 
-本文**不写用例条数**：条数每加一次测试就会变，写进文档就一定追不上——README 的 `pnpm test` 行写下时是
+本文**不写用例条数**（也包括「某个规则文件有多少条单测」这类局部计数）：条数每加一次测试就会变，写进文档就一定追不上——README 的 `pnpm test` 行写下时是
 准确的（进度日志里记着当天的 106 文件 / 1,034 用例），之后用例翻了一倍，它就一直是旧的。当前数量以
 `pnpm test` 与 `pnpm exec playwright test --list` 的输出为准。
 
@@ -58,9 +58,9 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 
 ## 覆盖率门禁
 
-`src/lib/**`（除 mock/stripe/supabase 客户端胶水层）的阈值来自 `vitest.config.ts` 的
-`coverage.thresholds`，CI 用 `pnpm test:coverage` 强制：statements 91、branches 90、
-functions 93、lines 92。调整阈值改配置即可，本文这段只是当前值的快照。
+`src/lib/**`（除 mock/stripe/supabase 客户端胶水层）的阈值只写在 `vitest.config.ts` 的
+`coverage.thresholds` 里，CI 用 `pnpm test:coverage` 强制（不达标即非零退出）。本文不复述这四个数字——
+调阈值只需要改配置，文档跟着改只会多一处会过期的地方；当前值看 `vitest.config.ts` 或门禁输出。
 
 ## E2E
 
@@ -134,7 +134,7 @@ API，验证租户隔离、`profiles` 可见范围、私有项目不可读，以
 
 ```bash
 pnpm exec supabase start
-pnpm exec supabase db reset        # 25 个迁移 + seed
+pnpm exec supabase db reset        # 全部迁移 + supabase/seed.sql
 pnpm smoke:supabase-identity -- --output /tmp/indiestack-identity-matrix.json
 ```
 
@@ -274,7 +274,7 @@ Lint & Type Check job 均会执行。门禁只验证治理结构和引用完整�
 `check:bundle`（本地需要完整生产构建，由 `pnpm verify:build` 覆盖；CI 的 Build job 在
 `pnpm build` 之后直接跑 `node scripts/check-bundle.js`，复用同一份产物，不需要再构建）、
 `check:perf`（本地需要 `.next` 产物，CI 由 Build job 执行）。
-规则实现位于 `src/lib/release/gate-wiring.ts`（纯函数，29 条单测），IO/CLI 位于
+规则实现位于 `src/lib/release/gate-wiring.ts`（纯函数，单测覆盖），IO/CLI 位于
 `scripts/lib/gate-wiring-check.js`，由 `scripts/check-gates.js` 经 Node 原生 type stripping 调用；
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明门禁被接线，不证明门禁本身的强度。
 
@@ -299,7 +299,7 @@ E2E 端点新增，`docs-site/mock.md`、`docs-site/zh-CN/mock.md` 与
 5. 抽不到表名/端点/文档时失败封闭 → `MOCK_DOC_SOURCE_EMPTY`。
 
 「表名清单」只认首列表头为 `Table` / `表名` 且数据行首列是行内代码的 markdown 表格，示例代码里的
-表名不计入登记。规则实现位于 `src/lib/mock/mock-docs.ts`（纯函数，28 条单测），IO/CLI 位于
+表名不计入登记。规则实现位于 `src/lib/mock/mock-docs.ts`（纯函数，单测覆盖），IO/CLI 位于
 `scripts/lib/mock-docs-check.js`，由 `scripts/check-mock-docs.js` 经 Node 原生 type stripping 调用；
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明文档与代码的事实一致，
 不判断文案质量，也不替代人工复核。
@@ -326,7 +326,8 @@ env 对象）产出 `ProviderReport`：
 文档一致性门禁 `src/lib/providers/provider-docs.ts` 拿 `PROVIDER_REGISTRY` 做双向校验：注册表里
 每个 provider id 与每个环境变量都必须出现在两份文档里，文档源为空或抽不到 provider 时失败封闭。
 规则码为 `PROVIDER_DOC_SOURCE_EMPTY` / `PROVIDER_DOC_MISSING_PROVIDER` /
-`PROVIDER_DOC_MISSING_KEY`。规则实现 26 条单测（`diagnostics.test.ts` 20 + `provider-docs.test.ts` 6），
+`PROVIDER_DOC_MISSING_KEY`。规则实现由 `src/lib/providers/diagnostics.ts` 与
+`src/lib/providers/provider-docs.ts` 的单测覆盖，
 IO/CLI 位于 `scripts/lib/provider-doctor.js` 与 `scripts/lib/provider-docs-check.js`，
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。文档门禁只证明「文档覆盖了注册表事实」，
 不判断文案质量，也不校验真实凭据是否有效。
@@ -340,7 +341,7 @@ IO/CLI 位于 `scripts/lib/provider-doctor.js` 与 `scripts/lib/provider-docs-ch
 
 `src/components/ui/**` 是 shadcn 上游基元的落点，写法跟随上游版本更新，因此只统计成一条非阻断 warning（收口进度可见，但不会为了改类名手改上游文件）。`shadow` / `rounded` / `blur` 这类「裸名」**不在**禁用列表：本项目 `@theme inline` 把 radius 刻度显式映射回 shadcn 语义，实测 `.rounded` 与 `.rounded-sm` 都解析为 4px，改名只会制造无收益 diff。
 
-规则实现位于 `src/lib/tailwind/native-theme.ts`（纯函数，24 条单测覆盖），IO/CLI 位于 `scripts/lib/tailwind-native-check.js`（支持传入临时仓库根做反例测试），由 `scripts/check-tailwind.js` 经 Node 原生 type stripping 调用；`pnpm check:all` 与 CI Lint & Type Check job 均会执行。该门禁只证明类名与主题写法合规，不替代视觉回归（`pnpm test:visual`）对像素结果的验证。
+规则实现位于 `src/lib/tailwind/native-theme.ts`（纯函数，单测覆盖），IO/CLI 位于 `scripts/lib/tailwind-native-check.js`（支持传入临时仓库根做反例测试），由 `scripts/check-tailwind.js` 经 Node 原生 type stripping 调用；`pnpm check:all` 与 CI Lint & Type Check job 均会执行。该门禁只证明类名与主题写法合规，不替代视觉回归（`pnpm test:visual`）对像素结果的验证。
 
 ## 设计 token 门禁（G02）
 
@@ -362,7 +363,7 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 `--chart-1..5` 补上 `--color-chart-*` 映射以对齐 shadcn 上游；图表组件仍以 `hsl(var(--chart-N))` 消费原始变量，
 因为 `@theme inline` 只把值内联进工具类、并不会在运行时输出 `--color-*` 自定义属性，SVG `<stop stopColor>` 拿不到它。
 
-规则实现位于 `src/lib/design/tokens.ts`（纯函数，28 条单测覆盖），IO/CLI 位于 `scripts/lib/design-token-check.js`
+规则实现位于 `src/lib/design/tokens.ts`（纯函数，单测覆盖），IO/CLI 位于 `scripts/lib/design-token-check.js`
 （支持传入临时仓库根做反例测试），由 `scripts/check-tokens.js` 经 Node 原生 type stripping 调用；
 `pnpm check:all` 与 CI Lint & Type Check job 均会执行。该门禁只证明 token 层自洽，不校验像素结果，
 视觉回归仍由 `pnpm test:visual` 负责。
