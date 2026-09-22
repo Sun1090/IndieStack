@@ -27,6 +27,9 @@ permissions:
 jobs:
   smoke:
     name: Side-effect-free production smoke
+    # `on:` 的 schedule 作用于所有作业，而本作业的参数全部来自 workflow_dispatch inputs：
+    # 定时触发时 inputs 为空，脚本会在参数解析上失败且从未访问生产。
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -92,7 +95,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: production-smoke-evidence
+          name: production-version-drift-evidence
           path: production-smoke.json
           retention-days: 30
           if-no-files-found: warn
