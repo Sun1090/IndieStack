@@ -1,3 +1,33 @@
+## 2026-09-22 — `pnpm audit` 的偶发红改成分得清「网络」还是「仓库」
+
+- 里程碑 / 版本：v0.12.0 的 C 域（CI/门禁可靠性），承接上一条目点名的下一项。
+- 状态：DONE。
+- 分支 / commit：`docs/deployment-identity-evidence` 的第二个 commit（与部署身份文档同 PR，不同主题）。
+- 为什么做：当天 `pnpm check:all` 三次停在 `check:security` 的
+  `pnpm audit: report is missing metadata`，单跑 `pnpm check:security` 又通过。这条结论把
+  「注册表没连上」和「仓库配置坏了」压成同一句话，看的人只会去查配置。
+- 完成内容：
+  1. **先复现再改**：用 `HTTPS_PROXY=http://127.0.0.1:9 pnpm audit --json` 强制请求失败，拿到真实
+     载荷 `{ "error": { "code": "pnpm", "message": "fetch failed" } }` 与退出码 1——合法 JSON、
+     没有 `metadata`，正是那条误导结论的来源。顺手否掉一个错误假设：把 `npm_config_registry` 指向
+     不存在的域名并不能触发失败，项目级 `.npmrc` 优先于环境变量，那次探针其实跑的是真注册表。
+  2. 规则侧（纯函数）新增 `describeUnreadableReport()`：`error` 形状报
+     `advisory request failed (code=…, message=…)`，其余报 `report is missing metadata (top-level keys: …)`。
+     两种仍然失败封闭，审计强度一字未改。
+  3. 补上原来**完全没有**的失败信息断言：真实载荷、`error` 缺字段、`{}`、`{metadata:null}`，
+     外加一条「读不到永远不等于审计干净」。`src/lib/security` 9 文件 / 225 用例绿。
+- 变更文件：`src/lib/security/security-config.ts`、`src/lib/security/security-config.test.ts`、
+  `docs/testing.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`HTTPS_PROXY=http://127.0.0.1:9 node scripts/check-security-config.js` → 退出码 1，
+  `- pnpm audit: advisory request failed (code=pnpm, message=fetch failed)`（变异核对：仍然红，但说清了是谁）；
+  不加代理 → `✅ security/config checks passed: 933 tracked files, 546 source files, 8 workflows`；
+  `npx vitest run src/lib/security --project node` → 9 文件 / 225 用例通过；
+  `pnpm type-check` / `pnpm lint` → 0。
+- 风险 / 回滚：只改结论文案，不改判定阈值，也不引入「读不到就当通过」。回滚 = revert 本 commit。
+  没有加重试：CI 侧这道门禁当天始终绿，抖动只发生在本机网络，重试只会把同一件事藏起来。
+- 下一项：等 Vercel 配额窗口放行后确认生产 `/api/health` 开始上报 SHA（B 域打 tag 前置之一）。
+- 更新时间：2026-09-22（UTC 11:40 前后）。
+
 ## 2026-09-22 — 「配额恢复」不等于「`main` 已落地生产」：部署身份改走权威来源
 
 - 里程碑 / 版本：v0.11.0 的发布前置（B 域），同时是 D03 审计方法的一次实际应用。

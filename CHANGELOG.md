@@ -192,6 +192,13 @@ All notable changes to IndieStack will be documented in this file.
   「当前 `main` 已落地」当天其实从未成立。三处措辞已改为只陈述能证明的部分，并把「`version` 相同
   ≠ 同一个 commit」与那条不需要 Vercel 权限的取证命令写进冒烟产物与 runbook——冒烟产物原先靠
   `uptime=368s` 反推部署窗口，那是旁证，现在降级为注脚。
+- **依赖审计的偶发红现在说清是网络还是仓库**：`pnpm check:security` 此前对两种完全不同的失败给
+  同一条结论——`pnpm audit: report is missing metadata`。真实形状已复现确认：注册表请求失败时
+  `pnpm audit --json` 退出码为 1 并打印 `{"error":{"code":"pnpm","message":"fetch failed"}}`，
+  那是合法 JSON、只是没有 `metadata`，于是「网络抖了一下」读起来像「仓库配置坏了」，而正确的响应
+  只是重跑（本机当天两次停在这一点，单跑与复跑都通过，CI 侧始终绿）。现在前者报
+  `advisory request failed (code=…, message=…)`，后者把实际拿到的顶层键列出来。
+  **两种都仍然失败封闭**，审计强度没动过一分：读不到结果不等于没有漏洞。
 
 ### Known Limitations
 

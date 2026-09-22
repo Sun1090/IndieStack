@@ -347,6 +347,31 @@ describe("inspectAuditReport()", () => {
   ])("fails closed for malformed report %#", (report) => {
     expect(auditIssues(report).length).toBeGreaterThan(0);
   });
+
+  it("names the registry failure instead of blaming the repository", () => {
+    // pnpm audit --json 在请求失败时退出码 1 并打印这个形状：合法 JSON，只是没有 metadata。
+    expect(auditIssues({ error: { code: "pnpm", message: "fetch failed" } })).toEqual([
+      "pnpm audit: advisory request failed (code=pnpm, message=fetch failed)",
+    ]);
+    expect(auditIssues({ error: { code: "ERR_HTTP429" } })[0]).toBe(
+      "pnpm audit: advisory request failed (code=ERR_HTTP429, message=(empty))",
+    );
+  });
+
+  it("reports which keys an unreadable report actually carried", () => {
+    expect(auditIssues({ metadata: null })[0]).toBe(
+      "pnpm audit: report is missing metadata (top-level keys: metadata)",
+    );
+    expect(auditIssues({})[0]).toBe(
+      "pnpm audit: report is missing metadata (top-level keys: (none))",
+    );
+  });
+
+  it("never reads a missing or failed report as a clean audit", () => {
+    for (const report of [{}, { error: { code: "pnpm", message: "fetch failed" } }, null, []]) {
+      expect(Array.isArray(inspectAuditReport(report))).toBe(true);
+    }
+  });
 });
 
 describe("formatSecurityIssues()", () => {
