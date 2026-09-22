@@ -70,7 +70,7 @@ async function expectNoA11yViolations(page: Page, name: string): Promise<void> {
 
 for (const pageInfo of publicPages) {
   test(`${pageInfo.name}通过 WCAG 2.1 A/AA 自动审计`, async ({ page }) => {
-    await page.goto(pageInfo.path);
+    await page.goto(`${appUrl()}${pageInfo.path}`);
     await expectNoA11yViolations(page, pageInfo.name);
   });
 }
@@ -81,7 +81,7 @@ test.describe("已认证仪表盘页", () => {
   for (const pageInfo of authedPages) {
     test(`${pageInfo.name}通过 WCAG 2.1 A/AA 自动审计`, async ({ page }) => {
       await loginAsMockUser(page);
-      await page.goto(pageInfo.path, { timeout: 60_000 });
+      await page.goto(`${appUrl()}${pageInfo.path}`, { timeout: 60_000 });
       await expectNoA11yViolations(page, pageInfo.name);
     });
   }

@@ -8,7 +8,7 @@ import { appUrl } from "./support/base-url";
 test.describe("营销页", () => {
   for (const path of ["/", "/features", "/pricing", "/faq"]) {
     test(`首页/营销路由 ${path} 正常渲染`, async ({ page }) => {
-      const response = await page.goto(path);
+      const response = await page.goto(`${appUrl()}${path}`);
       expect(response?.status()).toBe(200);
       await expect(page).toHaveTitle(/.+/);
     });
@@ -35,7 +35,7 @@ test.describe("Dashboard（Mock 模式）", () => {
   });
 
   test("健康检查端点返回 ok", async ({ request }) => {
-    const response = await request.get("/api/health");
+    const response = await request.get(`${appUrl()}/api/health`);
     expect(response.ok()).toBeTruthy();
     const body = await response.json();
     expect(body.status).toBe("ok");
@@ -44,11 +44,11 @@ test.describe("Dashboard（Mock 模式）", () => {
 
 test.describe("安全与容错", () => {
   test("运维 cron 端点未授权时拒绝访问", async ({ request }) => {
-    const anonymous = await request.get("/api/ops/supabase-restore");
+    const anonymous = await request.get(`${appUrl()}/api/ops/supabase-restore`);
     expect(anonymous.status()).toBe(401);
     expect(anonymous.headers()["cache-control"]).toBe("no-store");
 
-    const wrongSecret = await request.get("/api/ops/supabase-restore", {
+    const wrongSecret = await request.get(`${appUrl()}/api/ops/supabase-restore`, {
       headers: { "x-cron-secret": "wrong-secret" },
     });
     expect(wrongSecret.status()).toBe(401);
@@ -59,7 +59,7 @@ test.describe("安全与容错", () => {
   });
 
   test("安全响应头齐全（CSP / nosniff / X-Frame-Options）", async ({ request }) => {
-    const response = await request.get("/");
+    const response = await request.get(`${appUrl()}/`);
     const headers = response.headers();
     expect(headers["content-security-policy"]).toContain("default-src 'self'");
     expect(headers["x-content-type-options"]).toBe("nosniff");
@@ -208,7 +208,7 @@ test.describe("安全头细节", () => {
   test("CSP 含 nonce 机制与 strict-dynamic（脚本不再依赖全局 unsafe-inline）", async ({
     request,
   }) => {
-    const response = await request.get("/");
+    const response = await request.get(`${appUrl()}/`);
     const csp = response.headers()["content-security-policy"] ?? "";
     expect(csp).toContain("strict-dynamic");
     expect(csp).toMatch(/nonce-/);
@@ -217,7 +217,7 @@ test.describe("安全头细节", () => {
   });
 
   test("响应携带 x-request-id 用于链路追踪", async ({ request }) => {
-    const response = await request.get("/api/health");
+    const response = await request.get(`${appUrl()}/api/health`);
     expect(response.headers()["x-request-id"]).toBeTruthy();
   });
 });

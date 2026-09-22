@@ -96,7 +96,10 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
   被占用时换基准端口即可：`E2E_BASE_PORT=3101 pnpm test:e2e`。
 - **E2E 里的应用地址一律走 `appUrl()`（`e2e/support/base-url.ts`）**：它按 `TEST_WORKER_INDEX` 选端口，
   所以第二个 worker 打到自己那台服务器上。写死 `localhost:3100`、或者用裸相对路径 `page.goto("/x")`
-  借 `baseURL` 解析，都会把并发的 worker 全指回 slot 0，隔离只剩形式。与端口无关的 glob
+  借 `baseURL` 解析，都会把并发的 worker 全指回 slot 0，隔离只剩形式。**「相对」不必是字面量**——
+  `page.goto(pageInfo.path)` 与 `request.get("/api/health")` 同样落在 `baseURL` 上，却躲得过按字面量写的
+  规则（这两类真实存在过，见 2026-09-23 那条修复），所以门禁是**逐行看调用点**：`page.goto(` 与
+  `request.get|post|put|delete(` 后面必须出现 `appUrl()`。与端口无关的 glob
   （`waitForURL("**/dashboard")`、`page.route("**/api/...")`）仍然写相对形式。
 - **组件级用例会把 mock 客户端的缺口藏起来**：`src/app/auth/mfa/page.test.tsx` 桩掉整个 Supabase client，
   `auth.refreshSession` 在 mock 里不存在这件事它看不见——只有真跑 mock 客户端的 E2E 撞得到（C03 就是这样
