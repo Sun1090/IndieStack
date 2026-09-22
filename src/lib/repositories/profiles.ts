@@ -25,14 +25,20 @@ export async function getProfileById(id: string): Promise<DbResult<Profile | nul
   return { data: (data as Profile) ?? null, error: error?.message ?? null };
 }
 
-/** 按邮箱精确查询用户 ID（service_role，绕过 RLS——仅供邀请等受信流程使用） */
+/**
+ * 按邮箱精确查询用户 ID（service_role，绕过 RLS——仅供邀请等受信流程使用）。
+ *
+ * 失败抛错而不是返回 null：调用方把 null 解释成「这个邮箱没注册过」，
+ * 于是一次数据库抖动会被答成一条确定的、可执行的结论（用户会以为对方没账号）。
+ */
 export async function findUserIdByEmail(email: string): Promise<string | null> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("profiles")
     .select("id")
     .eq("email", email.toLowerCase())
     .maybeSingle();
+  if (error) throw new Error(error.message);
   return data?.id ?? null;
 }
 

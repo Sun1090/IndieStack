@@ -137,12 +137,19 @@ export async function inviteMember(input: InviteMemberInput): Promise<ActionResu
   }
 
   // Check if user is admin/owner
-  const { data: membership } = (await supabase
+  // 「查不到成员行」与「查不了」必须分开：抹掉 error 会让一次故障答成「你没有权限」，
+  // 那是凭空造出来的一条权限拒绝。
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("role")
     .eq("team_id", team.id)
     .eq("user_id", user.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle();
+
+  if (membershipError) {
+    await logActionError("[inviteMember] 权限查询失败", membershipError);
+    return fail("databaseError");
+  }
 
   if (!membership || !["owner", "admin"].includes(membership.role)) {
     return fail("onlyAdminsInvite");
@@ -150,19 +157,33 @@ export async function inviteMember(input: InviteMemberInput): Promise<ActionResu
 
   // 按邮箱在 profiles 表精确查询目标用户（经 Repository，service_role 绕过 RLS；
   // profiles.email 由注册触发器写入，与 auth.users 一致）
-  const invitedProfileId = await findUserIdByEmail(validated.data.email);
+  let invitedProfileId: string | null;
+  try {
+    invitedProfileId = await findUserIdByEmail(validated.data.email);
+  } catch (error) {
+    await logActionError("[inviteMember] 邮箱查询失败", error);
+    return fail("databaseError");
+  }
 
   if (!invitedProfileId) {
     return fail("userNotFound");
   }
 
   // Check if already a member
-  const { data: existing } = (await supabase
+  // 用 maybeSingle：`.single()` 在「没有这一行」这个正常结果上就会返回 error，
+  // 旧代码因此把它 `as unknown as { error: null }` 抹掉——错误通道和「不是成员」混在一起，
+  // 真出故障时就一路走到 INSERT，让唯一约束去替权限逻辑说话。
+  const { data: existing, error: existingError } = await supabase
     .from("team_members")
     .select("id")
     .eq("team_id", team.id)
     .eq("user_id", invitedProfileId)
-    .single()) as unknown as { data: { id: string } | null; error: null };
+    .maybeSingle();
+
+  if (existingError) {
+    await logActionError("[inviteMember] 成员查重失败", existingError);
+    return fail("databaseError");
+  }
 
   if (existing) {
     return fail("alreadyMember");
