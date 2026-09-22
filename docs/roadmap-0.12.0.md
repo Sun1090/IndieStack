@@ -14,7 +14,7 @@
 > （见退出报告「与 roadmap 文本的矛盾」）。因此本文件要求：状态只在退出报告里维护，
 > roadmap 只写目标与验收口径。
 
-## 任务池（20 项）
+## 任务池（21 项）
 
 ### A. 通知投递语义（P0，来自 E03 与退出报告遗留项 1）
 
@@ -186,24 +186,31 @@
 15. C05 孤儿巡检补上 provider 侧 `list()` 与数据库的集合差，覆盖 031 之前从未落元数据的存量对象
 16. C06 定夺 `src/lib/actions/uploads.ts` 两个 Server Action：保留为编程入口（补调用方与文档）
     或删除（同步 service-role inventory、错误码门禁与 docs-site）
+17. C07 （**2026-09-23 已完成**）：`pnpm check:query-columns` 把 `src/**` 每条 `.from("<表>")` 查询链上的
+    字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row` 类型。存在的理由是一条真实缺陷：
+    `/api/e2e/email-worker-runs` 按 `email_worker_runs.started_at` 排序，而这张表从建表（迁移 017）起就
+    只有 `created_at`——生成的类型只约束查询**结果**、单测里查询链是 mock 的、Mock 客户端对未知排序列
+    静默 no-op，lint / type-check / 单测 / E2E 四层全部失明，只有真库会给 400。规则位于
+    `src/lib/db/query-columns.ts`（TypeScript AST、纯函数、11 项变异核对），文档见
+    `docs/testing.md`「查询列名一致性门禁（C07）」。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 
-17. D01 （**2026-09-22 已完成，范围按实测收窄**）：`pnpm check:cron-contract` 现在核对
+18. D01 （**2026-09-22 已完成，范围按实测收窄**）：`pnpm check:cron-contract` 现在核对
     `docs-site/**` 与 `docs/**` 里的 cron 表达式与 `/api/cron/*` 路径是否真的存在于仓库
     （注册表 ∪ `vercel.json` ∪ workflow `schedule`），带日期的快照排除，抽不到文档即失败封闭；
     表达式抽取与 D02 共用同一个函数。**没有**做环境变量名与表名/迁移号两类：
     前者要求 feature flag 名能识别 `flag("PASSKEY")` 这类组合写法与前缀（`NEXT_PUBLIC_FEATURE_*`），
     后者要和 SQL 关键字、平台变量名做停用表，两者都是先量到误报才有依据的扩展，
     留作后续按需追加，而不是第一版就把门禁做成噪音
-18. D02 （**2026-09-22 已完成**）双语一致性最小检查：同一页面的 EN/zh 若提到 cron 表达式或
+19. D02 （**2026-09-22 已完成**）双语一致性最小检查：同一页面的 EN/zh 若提到 cron 表达式或
     `HH:MM UTC` 时刻，两边集合必须完全相等（一边提到一边没有也算失败）。落地为
     `pnpm check:bilingual-docs`（规则 `src/lib/docs/bilingual-facts.ts` + IO + CI/check:all 接线）。
     接线时当场查出三处存量漂移并修掉：`docs-site/web-push.md` 英文版的「every 15 minutes」
     （`vercel.json` 早于 2026-09-21 改为 `0 22 * * *`）、`docs-site/v0.8.0.md` 双语互相矛盾、
     中文版缺 cron 表达式。故意不比对文案（"hourly" vs「每小时」这类同义表达经实测误报率高，
     会把门禁退化成翻译质量检查），只比对结构化事实
-19. D03 （**2026-09-22 已完成**）：`docs/operations/release-gap-audit-v0.11.0.md` 补上断档的系列，
+20. D03 （**2026-09-22 已完成**）：`docs/operations/release-gap-audit-v0.11.0.md` 补上断档的系列，
    `docs/operations/release-audit-template.md` 把退出报告/缺口审计共用的判定规则写成可复用模板
    （三档状态各要什么证据、「文档已写」不算证据、门禁自身要做变异复核、范围由 CHANGELOG 章节生成、
    「代码合并 / 已部署 / 已发布 / 演练过」四件事不得互相冒充）。
@@ -212,7 +219,7 @@
    另外记录 `D01` 这类编号在 v0.6.0 池与 v0.12.0 池含义不同，引用必须带池子名。
    防断档机制：`.github/RELEASE_CHECKLIST.md` 的文档段新增一条「本版本缺口审计已按模板产出」，
    由人工在冻结时勾选（`check:release-docs` 按版本拼路径，本来就无法强制这个系列存在）
-20. D04 （**2026-09-22 已完成**）清除剩余文档里的易漂移数字，统一改为「指向命令」或「指向门禁输出」：
+21. D04 （**2026-09-22 已完成**）清除剩余文档里的易漂移数字，统一改为「指向命令」或「指向门禁输出」：
     `docs/testing.md` 的规则文件单测条数全部去掉、约定显式扩展到「局部计数」，覆盖率阈值改指
     `vitest.config.ts`；扫描中另发现两处**已经错了**的陈述并修掉（`supabase db reset` 示例注释
     写「25 个迁移」而仓库当时 33 个，出现在 `docs/testing.md` 与 `docs/db/security-audit.md`），

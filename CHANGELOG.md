@@ -6,6 +6,26 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
+  把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
+  类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
+  `pnpm type-check` 退出 0——生成的类型只约束查询**结果**，过滤与排序参数在类型上只是字符串；单测里查询链
+  是 mock 的；Mock 客户端的 `order()` 对未知列静默 no-op。四类门禁全部失明，这条错误只有打上真库才现形。
+  接线前先量（D01 口径）：命中恰好 1 条，就是那条真实缺陷，误报 0。规则在 `src/lib/db/query-columns.ts`
+  （TypeScript AST、纯函数、单测覆盖），IO 在 `scripts/lib/query-columns-check.js`，
+  `scripts/check-query-columns.js` 只负责用 Node 原生 type stripping 跑起来。判定范围刻意收窄，但每一处收窄
+  都计数并随结果打印，「范围本来就窄」和「范围被调空」在输出里一眼可分：只认字面量表名与纯标识符（视图与表在
+  读侧同形，`Views` 的 `Row` 一样算合法列集合；`Row` 展不开的关系直接丢掉而不是把它的每列都判错——写第一版时
+  真实类型里就有一个 `Row: Record<string, never>` 的视图踩在这条上），`*`、`metadata->>role`、`amount::text`、
+  `count()` 一律跳过并计数），`select("alias:column")` 判的是冒号
+  右边那一列，含关联嵌入的链整条跳过（展平关联后基表 `Row` 不再是合法寻址集合），`storage.from("avatars")`
+  是桶不是表。两条失败封闭：读不出任何表报 `QUERY_TYPES_UNREADABLE`（第一版解析器把 `type Database` 读成
+  0 张表，正是这条当场把它自己抓了出来），一条列名都没判报 `QUERY_COLUMN_GATE_VACUOUS`。11 项变异核对全部
+  被抓（去掉两处 storage 豁免、去掉嵌入跳过、`PLAIN_COLUMN` 放开成 `/^.+$/`、拆掉别名解析、把 `select`
+  移出判定集、关掉两条封闭、反转成员判断、断掉链遍历）。其中 storage 豁免第一版**逃过了变异**：一个变异脚本
+  崩在中途没走到还原，把 `collectQueryFacts` 里的那处豁免静默吃掉而门禁全绿——补了一条「桶名与表名同名」
+  的用例，现在它必须由那条用例红。
+  CI 不需要单独接线：`ci.yml` 的静态作业跑 `pnpm check:all`（C04），新门禁进聚合入口即进 CI。
 - **管理面板终于看得见邮件待发队列的形状**（A05 前半）：新增 `src/lib/notifications/queue-diagnostics.ts`
   ——纯规则，四件事：队列有多少条、最老一条卡了多久、最近有几轮「拉到东西却一封没发出去」、
   以及超过 48h（两个日调度周期）算不算卡住；admin 概览页多一张「邮件待发队列」卡片。
@@ -184,6 +204,12 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **worker 运行记录不再按一个根本不存在的列排序**：`/api/e2e/email-worker-runs` 用
+  `.order("started_at", { ascending: false })` 读 `email_worker_runs`，而这张表从建表（迁移 017）起就只有
+  `created_at`（还专门建了 `created_at desc` 索引）。Mock 客户端对未知排序列静默 no-op，而 mock store 的插入
+  顺序恰好让 `runs[0]` 仍是最新一轮，于是这条链从来没有被真正验证过——接上真库它就是一次 400。改为
+  `created_at` 后 `pnpm test:e2e e2e/mail-flow.spec.ts` 3/3 仍绿；这条列名由新门禁 C07
+  `pnpm check:query-columns` 永久钉住（见上面的 Added）。
 - **实时邮件「已经发出去」不再被记成「发送失败、留待 cron 重试」**：`email-notify.ts` 把
   `markEmailSent` 写在和 `sendResendEmail` 同一个 `try` 里，于是**回执写入**失败也会落进
   「发送失败（留待 cron 重试）」那条 catch——邮件其实已经在 provider 那里落地，日志却把人往

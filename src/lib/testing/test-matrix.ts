@@ -71,10 +71,15 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     id: "database",
     zh: "数据库与迁移",
     en: "Database & migrations",
-    paths: ["supabase/migrations", "supabase/migration-manifest.json"],
+    paths: [
+      "supabase/migrations",
+      "supabase/migration-manifest.json",
+      "src/lib/supabase/database.types.ts",
+    ],
     commands: [
       "check:migrations",
       "check:migration-history",
+      "check:query-columns",
       "update:migrations-manifest",
       "db:types",
       "smoke:supabase-identity",

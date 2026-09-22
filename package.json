@@ -75,6 +75,7 @@
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
     "check:migration-history": "node scripts/check-migration-history.js",
+    "check:query-columns": "node scripts/check-query-columns.js",
     "update:migrations-manifest": "node scripts/check-migrations.js --update",
     "audit:storage-orphans": "node scripts/storage-orphans.js"
   },
