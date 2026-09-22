@@ -90,7 +90,7 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     zh: "RLS 与安全配置",
     en: "RLS & security config",
     paths: ["src/proxy.ts", "src/lib/security"],
-    commands: ["check:rls", "check:security", "check:supabase-security"],
+    commands: ["check:rls", "check:security", "check:supabase-security", "check:query-errors"],
   },
   {
     id: "i18n",
