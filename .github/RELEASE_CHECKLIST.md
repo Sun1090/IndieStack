@@ -13,6 +13,8 @@
 ## 文档
 
 - [ ] `CHANGELOG.md` `[Unreleased]` 已转正为 `[x.y.z]` 并写发布日期
+- [ ] 本版本缺口审计已按 `docs/operations/release-audit-template.md` 产出：`docs/operations/release-gap-audit-v<x.y.z>.md`
+      （范围由 CHANGELOG 章节生成而不是凭记忆写；每条「未执行」要写明缺的是权限、账号还是产品决策）
 - [ ] `docs/roadmap-*.md` 退出标准逐项确认
 - [ ] docs-site 功能章节已同步（含中英双语）
 
