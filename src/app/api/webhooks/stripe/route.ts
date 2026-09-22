@@ -37,13 +37,17 @@ async function resolveTeamId(
   if (!userId) return null;
 
   const supabase = createAdminClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("team_members")
     .select("team_id")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+
+  // 「查不到团队」与「查不了」是两件事：后者必须抛错。吞掉它会让一次数据库抖动被固化成
+  // 「这个订阅没有归属」——事件标成 skipped、Stripe 不再重投，而那一行永远写不进 subscriptions。
+  if (error) throw new Error(error.message);
 
   return data?.team_id ?? null;
 }

@@ -169,6 +169,23 @@ describe("POST /api/webhooks/stripe 事件分支", () => {
     );
   });
 
+  it("回退查询本身失败时抛错标 failed，而不是把抖动固化成「无归属」", async () => {
+    CURRENT_EVENT = event("evt_lookup_down", "customer.subscription.created", {
+      id: "sub_retry",
+      status: "active",
+      metadata: { userId: "user_1" },
+      items: { data: [] },
+    });
+    adminFromMock.mockReturnValue(chain({ data: null, error: pgError("supabase down") }));
+
+    const response = await post();
+    expect(response.status).toBe(500);
+    // 标 failed 才会被 Stripe 的重投重新占位；记成 skipped 就等于永久漏单
+    expect(finalizeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ event_id: "evt_lookup_down", status: "failed" }),
+    );
+  });
+
   it("付款成功通知 owner 并落定 skipped", async () => {
     CURRENT_EVENT = event("evt_paid", "invoice.payment_succeeded", {
       id: "in_1",

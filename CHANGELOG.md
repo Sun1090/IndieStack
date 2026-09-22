@@ -265,6 +265,10 @@ All notable changes to IndieStack will be documented in this file.
   自愈也没有任何读数能发现。现在 `upsertSubscription()` 返回是否真的写了一行，没写就落 `skipped`；
   **不改任何重放行为**，只改那一条记录说的话。新增 2 条路由用例（`metadata` 为空、以及 `userId`
   回退查不到团队），变异核对：退回无条件 `return "processed"` 时恰好这两条红。
+  修这条时顺带量出同一函数里的另一半：`resolveTeamId()` 的回退查询只取 `{ data }`，把
+  `error` 丢掉——一次数据库抖动因此与「这个用户真的没有团队」长得一模一样，会被记成
+  `skipped` 并永远不再重投，也就是把抖动**固化成永久漏单**。现在查询失败直接抛错，
+  事件标 `failed` + 回 500，交给 Stripe 重投（第 3 条用例；把 `throw` 删掉只有它红）。
   同一函数族里的另一处——「订阅删除事件命中 0 行也算 processed」本条**不**改：那是一种合法的幂等
   无操作，要区分它得让 UPDATE 带回计数，属另一件事。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
