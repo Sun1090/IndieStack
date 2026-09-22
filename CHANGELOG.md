@@ -119,6 +119,18 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **Mock 模式下 MFA 挑战根本走不完，而且第一步就进不去**（C03）：三处缺口一次性补上，全部由
+  新增的 `e2e/mfa-challenge.spec.ts` 钉住（真走一遍：登录 → 挑战页 → 错码不困住用户 → 正确码进
+  dashboard）。① mock 的 `auth.signInWithPassword` 不返回 `user.factors`（真实 Supabase 返回），
+  而 `login-form.tsx:86` 正是读这个字段决定要不要跳 `/auth/mfa`——mock 下这条分支永远走不到；
+  ② 挑战页在 verify 成功后 `await supabase.auth.refreshSession()`，而 mock 客户端**没有这个方法**，
+  于是「验证码明明对了，页面却报通用登录失败」；③ 浏览器侧的 mock store 挂在 `window` 上、整页导航
+  即重置，`/api/e2e/*` 那套服务端端点种不到它，种子改由 `page.addInitScript` 在页面脚本之前写入。
+  组件级用例把整个 Supabase client 桩掉，①② 在那一层是不可见的——只有真跑 mock 客户端的 E2E 撞得到。
+  变异核对：把 `factors` 摘掉，E2E 停在跳挑战页那一步（另两条不受影响）；`refreshSession` 缺失时
+  第三条用例在进 dashboard 前超时；mock 侧「返回副本」那半在去掉 `{...factor}` 后变红。
+  同一次扫描记下同类的其余缺口（`auth.resend` / `auth.verifyOtp` / `auth.exchangeCodeForSession`），
+  它们各自要等用到它的 E2E 才有意义，本次未动，见 `docs/roadmap-0.12.0.md` C03。
 - **`Production Smoke` 的手动作业每天在空参数上失败，而该红的检查其实是绿的**：workflow 的 `on:`
   同时声明 `workflow_dispatch` 与 `schedule`，触发器作用于**所有**作业，但手动 `smoke` 作业的生产 URL
   与超时取自 `inputs.*`——定时触发时 `inputs` 为空，于是它每天以 `Error: --timeout-ms requires a value`

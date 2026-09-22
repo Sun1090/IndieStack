@@ -84,6 +84,12 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 - **本机跑 E2E 前先确认 3100 空闲**：Playwright 只在 `webServer.url` 真能应答时才复用已有 server；
   端口被别的项目占着且应答不了时，它会试图自启、以 `EADDRINUSE` 退出，而**一条用例都没跑**。
   外层 shell 仍可能报 0——判定「跑过了」的依据是输出里的用例数，不是退出码。
+- **新写的 E2E 用相对路径导航**（`page.goto("/auth/login")`，端口由 config 的 `baseURL` 决定）：
+  老 spec 里的 `APP_URL` 常量把端口写死在断言文件里，于是「换一个空闲端口复跑」这件事只能去改被测文件。
+- **组件级用例会把 mock 客户端的缺口藏起来**：`src/app/auth/mfa/page.test.tsx` 桩掉整个 Supabase client，
+  `auth.refreshSession` 在 mock 里不存在这件事它看不见——只有真跑 mock 客户端的 E2E 撞得到（C03 就是这样
+  发现「验证码对了、页面报通用登录失败」的）。所以认证链路的用例要两层都有：组件层管交互分支，
+  E2E 管「mock 客户端到底有没有这个方法」。
 - CI 使用 **Playwright shard 隔离并行**：`E2E (Playwright)` job 的 `[1, 2]` matrix 各自启动独立 dev server，
   在 job 内继续单 worker；因此跨 shard 不共享 Mock 状态，全部 E2E 由两个 job 分担（具体条数由
   `--shard` 在运行时划分，随用例增减），而不是在同一条进程里提高 worker 数。视觉基线必须单 worker，

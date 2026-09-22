@@ -490,6 +490,29 @@ describe("Mock MFA 状态机", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({ id: factorId, status: "verified" });
   });
+  it("signInWithPassword 带回 user.factors，登录表单据此决定是否跳挑战页", async () => {
+    const store = createMockRequestStore();
+    const client = createMockSupabaseClient({ store });
+
+    // 参数在 mock 里不参与判定（真实客户端要 credentials），这里测的是响应形状。
+    const anonymous = await client.auth.signInWithPassword();
+    expect(anonymous.data.user?.factors).toEqual([]);
+
+    const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+    await client.auth.mfa.challengeAndVerify({
+      factorId: enrolled.data?.id ?? "",
+      code: "123456",
+    });
+
+    const signed = await client.auth.signInWithPassword();
+    expect(signed.data.user?.factors).toEqual([
+      expect.objectContaining({ id: enrolled.data?.id, type: "totp", status: "verified" }),
+    ]);
+
+    // 返回的是副本：调用方（表单里的 filter/map）改不动假数据库里的因子表。
+    signed.data.user?.factors.pop();
+    expect((await client.auth.mfa.listFactors()).data.totp).toHaveLength(1);
+  });
 
   it("challenge 的失败计数与锁定是 store 私有的", async () => {
     const first = createMockSupabaseClient({ store: createMockRequestStore() });

@@ -1,3 +1,37 @@
+## 2026-09-22 — MFA 挑战流程在 mock 里根本走不完：三处缺口，E2E 一撞就现形（C03）
+
+- 里程碑 / 版本：关闭 v0.12.0 的 C03。
+- 状态：DONE（密码那条入口）；passkey 那条另说，见「阻塞」。
+- 分支 / commit：`test/e2e-parallel-baseline-first-run` 的第二个 commit（基于 `ea9489f`）。
+- 为什么做：上一条目改掉 C03 的假前置（不是 store 隔离）之后，真阻塞只剩仓库内可验证的几行代码，
+  于是接着把那条「真实走一遍挑战流程」的 E2E 写出来。
+- 完成内容：
+  1. `e2e/mfa-challenge.spec.ts` 三条：已开 2FA 的账号密码登录 → 跳 `/auth/mfa` → 错码留在原页且
+     按钮恢复可点 → 正确码进 dashboard；未开 2FA 的账号**不**被送去挑战页；直接访问缺 `factor` 的
+     页面给出重新登录入口。
+  2. **① mock 的 `signInWithPassword` 补 `user.factors`**（store 里因子的副本）。真实 Supabase 在登录
+     响应里带这个字段，而 `login-form.tsx:86` 正是读它决定跳不跳——不带，mock 下 MFA 那条分支永远走不到。
+  3. **② mock 客户端补 `auth.refreshSession`**。挑战页 verify 成功后 await 它，方法不存在就是
+     TypeError → 被 `catch` 兜住 → 用户看到「登录失败，请稍后重试」，而验证码其实对了。
+     这条是首跑撞出来的：那次红在 `waitForURL("**/dashboard")`，页面快照停在挑战页 + 一条 toast。
+  4. **③ 种子的位置**：浏览器侧 mock store 挂在 `window.__indiestackMockCache__`，整页导航即重置，
+     `/api/e2e/*` 是服务端那份、种不到它。改用 `page.addInitScript` 在页面脚本之前写入已验证因子。
+  5. 新 spec 全程用相对路径导航（`baseURL` 决定端口），因此可以在任意空闲端口复跑——本机 3100 正被
+     `~/Projects/trade-buty` 的 dev server 占着，没有动它。
+- 变更文件：`e2e/mfa-challenge.spec.ts`（新增）、`src/lib/mock/index.ts`（`factors` + `refreshSession`）、
+  `src/lib/mock.test.ts`（+1 条，含「返回副本」断言）、`docs/roadmap-0.12.0.md`（C03 按实测改口径，
+  并记下 `resend`/`verifyOtp`/`exchangeCodeForSession` 三处未动的同类缺口）、`CHANGELOG.md`、`docs/testing.md`、本条目。
+- 验证命令与结果：`npx playwright test e2e/mfa-challenge.spec.ts`（临时把 `baseURL` 指到 3101 的
+  一次性 config，跑完删除）→ 3 passed；`npx vitest run src/lib/mock.test.ts --project node` → 53 通过。
+  变异核对：摘掉 `factors` → E2E 只有第一条红（停在跳挑战页那步）；去掉 `{...factor}` 拷贝 →
+  「返回副本」那条断言恰好在 `listFactors` 长度处失败；`refreshSession` 的缺失状态就是首跑那次超时本身。
+- 阻塞 / 风险：passkey 入口需要 Chromium 的虚拟 WebAuthn authenticator，仓库目前没有任何 passkey E2E，
+  这条不在本 commit 范围内。风险是有人把 mock 当成「够跑就行」的桩——`auth.*` 少一个方法就少一条真实路径，
+  已按 C03 记下的静态门禁方案（应用调用的 auth 方法必须存在于 mock 客户端）留作后续。回滚 = revert 本 commit。
+- 下一项：回到 B 域之外可自动推进的部分——检查 PR 状态与远程多余分支，然后把 C04 剩余部分与
+  v0.11.0 tag 的两个前置（演练 + 生产 commit 证据）里能推的那个推进。
+- 更新时间：2026-09-22（UTC 13:30 前后）。
+
 ## 2026-09-22 — 并行基线首跑红了 4 条：逐条对着 artifact 归因，不猜（C02）
 
 - 里程碑 / 版本：关闭 v0.12.0 的 C02 的「可复跑」那一半，并给出首跑的实测结论。

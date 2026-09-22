@@ -122,21 +122,28 @@
     把运行时的默认 store 改成请求级（见 C01 与 `docs/architecture/13-mock-system.md`）。
     退出标准第 3 条里的「C02 完成」按这条的口径判定：**有可复跑的运行记录只是下限，
     并行全绿才算完成**
-13. C03 （2026-09-22 组件层已完成：`src/app/auth/mfa/page.test.tsx` 13 条，并修掉抛异常时
-    `loading` 不复位导致按钮永久卡住的缺陷。剩一条真实走挑战流程的 E2E。）
-    **原文把它挂在「Mock 的 MFA 状态在 E2E 之间可隔离」上是错的**，那是 C01 的前置，与这条无关。
-    实测的阻塞有两处，都在仓库内：
+13. C03 （**2026-09-22 已完成**：组件层 13 条 + 真走一遍挑战流程的 E2E `e2e/mfa-challenge.spec.ts` 3 条）
+    原文把它挂在「Mock 的 MFA 状态在 E2E 之间可隔离」上是错的，那是 C01 的前置，与这条无关。
+    实测的阻塞有三处，都在仓库内，也都在这次改掉了：
     ① `/auth/mfa` 只有两个入口，都在 `src/components/auth/login-form.tsx`——密码登录（第 86～92 行，
       读 `signInWithPassword` 响应里的 `user.factors`，有 `status==="verified"` 才跳）与 passkey
-      （第 179～182 行，`/api/auth/passkey/auth-verify` 返回 `mfaRequired`）。而 mock 的
-      `signInWithPassword`（`src/lib/mock/index.ts:1289`）返回的是不带 `factors` 的 `getMockUser()`，
-      真实 Supabase 会带——所以 mock 下密码登录永远不会把人送到挑战页，E2E 连第一步都进不去。
-      挑战页本身在 mock 里是通的：`mfa.challenge` + `mfa.verify` 有状态（码 `123456`、失败计数、锁定）。
+      （第 179～182 行，`/api/auth/passkey/auth-verify` 返回 `mfaRequired`）。mock 的
+      `signInWithPassword` 返回的是不带 `factors` 的 `getMockUser()`，真实 Supabase 会带——
+      所以 mock 下密码登录永远不会把人送到挑战页。现在响应带回 store 里因子的副本。
     ② 浏览器侧的 mock store 挂在 `globalThis.__indiestackMockCache__`，也就是 `window`，整页导航即重置，
-      所以 `e2e/admin-contact-mfa.spec.ts:104` 那种「同一页里 enroll→verify」的状态活不到下一次登录；
-      种子得由 `page.addInitScript` 在页面脚本之前写进缓存，或者由 ① 的那处改动带进来。
+      所以 `e2e/admin-contact-mfa.spec.ts:104` 那种「同一页里 enroll→verify」的状态活不到下一次登录，
+      `/api/e2e/*` 那套服务端端点也种不到浏览器里那份 store。E2E 用 `page.addInitScript` 在页面脚本
+      之前写入已验证因子，等价于真库里「这个账号开了 2FA」。
+    ③ **mock 客户端根本没有 `auth.refreshSession`**：挑战页 `page.tsx:85` 在 verify 成功后 await 它，
+      于是 mock 下「验证码明明对了，页面却报通用登录失败」。组件级用例（`page.test.tsx`）把整个
+      client 桩掉了，看不见这个缺口——只有真跑 mock 客户端的 E2E 能撞见。
+      顺带量出的同类缺口（**本次未动**，各自要等用到它的 E2E 才有意义）：`auth.resend`
+      （`login-form.tsx:104`）、`auth.verifyOtp`（`src/lib/auth/passkey-session.ts:62`）、
+      `auth.exchangeCodeForSession`（`src/app/auth/callback/page.tsx:37`、`api/auth/callback/route.ts:25`）。
+      把它们做成一条「应用调用的 auth 方法必须存在于 mock 客户端」的静态门禁是对的，但那要新增规则模块
+      +脚本+CI 接线+双语 docs-site，另开一条再动
     passkey 那条入口另需 Chromium 的虚拟 WebAuthn authenticator，仓库现在**没有任何** passkey E2E
-    （`grep -rn virtualAuthenticator e2e playwright.config.ts` 为空），它和 ①② 是两件事，不要混做
+    （`grep -rn virtualAuthenticator e2e playwright.config.ts` 为空），它和 ①②③ 是两件事，不要混做
 14. C04 （2026-09-22 已完成一半：`node scripts/check-bundle.js` 接进 CI Build job，`check:bundle` 的 CI 豁免随之删除，
     CI 现在覆盖 `verify:build` 的全部组件。剩余部分是可选的——把 CI 的逐个 `check:*` 步骤换成 `pnpm check:all`，
     让本地聚合与 CI 只有一份清单）
