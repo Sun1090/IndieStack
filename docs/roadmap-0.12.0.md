@@ -137,11 +137,16 @@
     ③ **mock 客户端根本没有 `auth.refreshSession`**：挑战页 `page.tsx:85` 在 verify 成功后 await 它，
       于是 mock 下「验证码明明对了，页面却报通用登录失败」。组件级用例（`page.test.tsx`）把整个
       client 桩掉了，看不见这个缺口——只有真跑 mock 客户端的 E2E 能撞见。
-      顺带量出的同类缺口（**本次未动**，各自要等用到它的 E2E 才有意义）：`auth.resend`
-      （`login-form.tsx:104`）、`auth.verifyOtp`（`src/lib/auth/passkey-session.ts:62`）、
-      `auth.exchangeCodeForSession`（`src/app/auth/callback/page.tsx:37`、`api/auth/callback/route.ts:25`）。
-      把它们做成一条「应用调用的 auth 方法必须存在于 mock 客户端」的静态门禁是对的，但那要新增规则模块
-      +脚本+CI 接线+双语 docs-site，另开一条再动
+      同类的还有 `auth.resend`、`auth.verifyOtp`（`src/lib/auth/passkey-session.ts:62`，需要
+      `user.factors`）、`auth.exchangeCodeForSession`、`auth.admin.mfa.listFactors/deleteFactor`
+      （恢复码自救要删因子，缺这段就是「兑换成功、随后报错」），本次一并补齐。
+      并把这件事做成了一条**静态自检** `src/lib/mock/auth-surface.test.ts`：扫 `src/**` 里的
+      `<client>.auth.<路径>(` 调用点，逐个对回 `new MockSupabaseClient().auth` 的对象形状，
+      缺一个就报出「哪个文件 → auth.xxx（缺哪一段）」。它跑在 `pnpm test` 里（那本来就是 push 的
+      硬性前置），所以不再往 `scripts/check-*` + CI + 双语 docs-site 那套接线抄第三遍。
+      两条 passkey magiclink 的 admin 方法（`admin.generateLink` / `admin.getUserById`）暂时挂在
+      `KNOWN_GAPS` 里带理由豁免，并且有**反向断言**钉住：谁补上了实现，那条豁免就会因为
+      「它已不再是缺口」而变红，逼着删行——静默生效的豁免清单正是这类缺口能活久的原因
     passkey 那条入口另需 Chromium 的虚拟 WebAuthn authenticator，仓库现在**没有任何** passkey E2E
     （`grep -rn virtualAuthenticator e2e playwright.config.ts` 为空），它和 ①②③ 是两件事，不要混做
 14. C04 （2026-09-22 已完成一半：`node scripts/check-bundle.js` 接进 CI Build job，`check:bundle` 的 CI 豁免随之删除，

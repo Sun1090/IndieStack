@@ -421,6 +421,18 @@ function getMockMfaFactors(store: MockStore = MOCK_GLOBAL): MockMfaFactor[] {
   return fresh;
 }
 
+/**
+ * 登录 / 会话类响应里的 user。真实 Supabase 在 `user.factors` 上带回因子（含 status），
+ * 登录表单与 passkey 会话签发都读它决定要不要走 MFA 挑战；不带等于那条分支在 mock 下不可达。
+ * 返回副本，调用方（表单里的 filter/map）改不动假数据库里的因子表。
+ */
+function getMockAuthUser(store: MockStore = MOCK_GLOBAL) {
+  return {
+    ...getMockUser(),
+    factors: getMockMfaFactors(store).map((factor) => ({ ...factor })),
+  };
+}
+
 export function getMockContactMessages() {
   const cached = mockCacheGet<ReturnType<typeof generateMockContactMessages>>("ContactMessages");
   if (cached) {
@@ -1292,14 +1304,8 @@ export class MockSupabaseClient {
       return { data: { user: getMockUser(), session: generateMockSession() }, error: null };
     },
     signInWithPassword: async () => {
-      // 真实 Supabase 在登录响应里带回 user.factors（含 status），登录表单据此判断要不要跳挑战页；
-      // 不带就等于 mock 模式下 MFA 那条分支永远走不到，E2E 也就进不了 /auth/mfa。
-      const factors = getMockMfaFactors(this.store).map((factor) => ({ ...factor }));
       return {
-        data: {
-          user: { ...getMockUser(), factors },
-          session: generateMockSession(),
-        },
+        data: { user: getMockAuthUser(this.store), session: generateMockSession() },
         error: null,
       };
     },
@@ -1308,6 +1314,20 @@ export class MockSupabaseClient {
     },
     resetPasswordForEmail: async () => {
       return { data: {}, error: null };
+    },
+    resend: async () => {
+      return { data: { id: getMockUser().id }, error: null };
+    },
+    // passkey 登录用 magiclink 换会话：调用方（src/lib/auth/passkey-session.ts）读的是
+    // data.session 与 data.user.factors，所以这里必须带回因子。
+    verifyOtp: async () => {
+      return {
+        data: { user: getMockAuthUser(this.store), session: generateMockSession() },
+        error: null,
+      };
+    },
+    exchangeCodeForSession: async () => {
+      return { data: { user: getMockUser(), session: generateMockSession() }, error: null };
     },
     updateUser: async (attrs: Record<string, unknown>) => {
       return { data: { user: { ...getMockUser(), ...attrs } }, error: null };
@@ -1438,6 +1458,34 @@ export class MockSupabaseClient {
       },
       deleteUser: async () => {
         return { data: { user: getMockUser() }, error: null };
+      },
+      // service-role 侧的因子管理。恢复码自救（src/lib/actions/recovery-codes.ts）先列出再删除
+      // 用户的 TOTP 因子，缺这一段就是「兑换明明成功了，随后就报错」。
+      // 形状按 GoTrue 的 admin 端点来（total + factors[].factor_type），与用户侧
+      // `auth.mfa.listFactors()` 的 {all, totp} 不是一回事。
+      mfa: {
+        listFactors: async () => {
+          const factors = getMockMfaFactors(this.store).map((factor) => ({
+            id: factor.id,
+            friendly_name: factor.friendly_name,
+            factor_type: factor.type,
+            status: factor.status,
+            created_at: factor.created_at,
+            updated_at: factor.created_at,
+          }));
+          return { data: { total: factors.length, factors }, error: null };
+        },
+        deleteFactor: async (params: unknown) => {
+          const id =
+            typeof params === "object" && params !== null
+              ? String((params as { id?: unknown }).id ?? "")
+              : "";
+          const factors = getMockMfaFactors(this.store);
+          const index = factors.findIndex((factor) => factor.id === id);
+          if (index === -1) return { data: null, error: { message: "Factor not found" } };
+          factors.splice(index, 1);
+          return { data: null, error: null };
+        },
       },
     },
   };

@@ -6,6 +6,16 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **Mock 客户端的 auth 表面积从此要覆盖应用真正调用的方法**：新增 `src/lib/mock/auth-surface.test.ts`，
+  扫 `src/**` 里的 `<client>.auth.<路径>(` 调用点（指标名之类的字符串不算，抽取靠「必须是调用」这一形状），
+  逐个对回 `new MockSupabaseClient().auth` 的真实对象形状，缺哪一段就报「哪个文件 → auth.xxx（缺 xxx）」。
+  动机是 C03 撞到的那件事：挑战页 `await supabase.auth.refreshSession()`，而 mock 没这个方法，
+  浏览器里就是一次 TypeError 被页面的 catch 兜成「登录失败，请稍后重试」——组件级用例把整个 client 桩掉，
+  永远看不见这类缺口。两条 passkey magiclink 的 admin 方法暂时带理由挂在 `KNOWN_GAPS`，并配一条
+  **反向断言**：谁把它们实现了，豁免就因「已不再是缺口」而变红，必须删行。
+  它跑在 `pnpm test` 里（本来就是 push 的硬性前置），所以没有再往 `scripts/check-*` + CI +
+  双语 docs-site 那套接线复制第三遍。变异核对：把 `refreshSession` 改名 → 扫描用例红并点名
+  `src/app/auth/mfa/page.tsx`；把某条豁免换成已实现的方法名 → 反向断言红。
 - **全量并行的 E2E 基线从此可复跑**（C02）：新增 `.github/workflows/e2e-parallel.yml`，用
   `PW_FULLY_PARALLEL=true` 在**一个** dev server 上跑**全量** E2E（刻意不带 `--shard`），
   手动 `workflow_dispatch` 与每周一 `30 7 * * 1`（07:30 UTC）各一次，并强制 `--retries=0`：
@@ -129,8 +139,10 @@ All notable changes to IndieStack will be documented in this file.
   组件级用例把整个 Supabase client 桩掉，①② 在那一层是不可见的——只有真跑 mock 客户端的 E2E 撞得到。
   变异核对：把 `factors` 摘掉，E2E 停在跳挑战页那一步（另两条不受影响）；`refreshSession` 缺失时
   第三条用例在进 dashboard 前超时；mock 侧「返回副本」那半在去掉 `{...factor}` 后变红。
-  同一次扫描记下同类的其余缺口（`auth.resend` / `auth.verifyOtp` / `auth.exchangeCodeForSession`），
-  它们各自要等用到它的 E2E 才有意义，本次未动，见 `docs/roadmap-0.12.0.md` C03。
+  同一次扫描（见上面的 Added）又量出四处同类缺口，一并补齐：`auth.resend`、`auth.verifyOtp`
+  （passkey 会话签发要读 `user.factors`）、`auth.exchangeCodeForSession`，以及
+  `auth.admin.mfa.listFactors/deleteFactor`——恢复码自救要先列出再删除 TOTP 因子，缺这段就是
+  「兑换明明成功、随后就报错」。
 - **`Production Smoke` 的手动作业每天在空参数上失败，而该红的检查其实是绿的**：workflow 的 `on:`
   同时声明 `workflow_dispatch` 与 `schedule`，触发器作用于**所有**作业，但手动 `smoke` 作业的生产 URL
   与超时取自 `inputs.*`——定时触发时 `inputs` 为空，于是它每天以 `Error: --timeout-ms requires a value`
