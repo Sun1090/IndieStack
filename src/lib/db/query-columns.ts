@@ -291,6 +291,48 @@ function isStorageFromCall(call: ts.CallExpression): boolean {
   return ts.isIdentifier(receiver) && receiver.text === "storage";
 }
 
+/**
+ * The `.from("<known table>")` call this node is, or `null` when it isn't one.
+ *
+ * Guard clauses live here so the traversal below stays a two-level decision instead of a
+ * pyramid of `&&` checks wrapped in the AST visitor's loops.
+ */
+function knownTableFromCall(
+  node: ts.Node,
+  knownTables: ReadonlySet<string>,
+): { call: ts.CallExpression; table: string } | null {
+  if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return null;
+  if (node.expression.name.text !== "from" || isStorageFromCall(node)) return null;
+  const table = literalStringArgument(node);
+  return table !== null && knownTables.has(table) ? { call: node, table } : null;
+}
+
+/** Column addresses inside one query chain, plus how many addresses were left unjudged. */
+function chainColumnChecks(
+  chain: ts.CallExpression[],
+  readLine: (call: ts.CallExpression) => number,
+): { items: { method: string; column: string; line: number }[]; skippedArguments: number } {
+  const items: { method: string; column: string; line: number }[] = [];
+  let skippedArguments = 0;
+
+  for (const call of chain) {
+    const method = methodName(call);
+    if (!method || !JUDGED_METHODS.has(method)) continue;
+    const argument = literalStringArgument(call);
+    if (argument === null) {
+      skippedArguments += 1;
+      continue;
+    }
+    const address = readColumnAddress(method, argument);
+    for (const column of address.columns) {
+      items.push({ method, column, line: readLine(call) });
+    }
+    skippedArguments += address.exotic.length;
+  }
+
+  return { items, skippedArguments };
+}
+
 export interface CollectedQueryFacts {
   checks: QueryColumnCheck[];
   fromCalls: number;
@@ -312,36 +354,24 @@ export function collectQueryFacts(
     const parsed = parse(source.file, source.content);
 
     const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-        const isFrom = node.expression.name.text === "from" && !isStorageFromCall(node);
-        const table = isFrom ? literalStringArgument(node) : null;
-        if (isFrom && table !== null && knownTables.has(table)) {
-          fromCalls += 1;
-          const chain = chainOf(node);
-          if (hasEmbeddedResource(chain)) {
-            skippedEmbedded += 1;
-          } else {
-            for (const call of chain) {
-              const method = methodName(call);
-              if (!method || !JUDGED_METHODS.has(method)) continue;
-              const argument = literalStringArgument(call);
-              if (argument === null) {
-                skippedArguments += 1;
-                continue;
-              }
-              const address = readColumnAddress(method, argument);
-              for (const column of address.columns) {
-                checks.push({
-                  file: source.file,
-                  line: lineOf(parsed, call),
-                  table,
-                  method,
-                  column,
-                });
-              }
-              skippedArguments += address.exotic.length;
-            }
+      const query = knownTableFromCall(node, knownTables);
+      if (query) {
+        fromCalls += 1;
+        const chain = chainOf(query.call);
+        if (hasEmbeddedResource(chain)) {
+          skippedEmbedded += 1;
+        } else {
+          const analysed = chainColumnChecks(chain, (call) => lineOf(parsed, call));
+          for (const item of analysed.items) {
+            checks.push({
+              file: source.file,
+              line: item.line,
+              table: query.table,
+              method: item.method,
+              column: item.column,
+            });
           }
+          skippedArguments += analysed.skippedArguments;
         }
       }
       ts.forEachChild(node, visit);

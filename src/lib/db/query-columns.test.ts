@@ -232,16 +232,16 @@ describe("inspectQueryColumns", () => {
   });
 
   it("reports a table the generated types do not know instead of staying silent", () => {
-    expect(
-      codes([
-        source(
-          "src/b.ts",
-          `export async function a(client) {
-  return client.from("notifactions").select("id");
+    const ghost = source(
+      "src/b.ts",
+      `export async function a(client) {
+  return client.from("notifactions").eq("usr_id", 1);
 }`,
-        ),
-      ]),
-    ).toEqual(["QUERY_TABLE_UNKNOWN"]);
+    );
+    expect(codes([ghost])).toEqual(["QUERY_TABLE_UNKNOWN"]);
+    // 覆盖计数只算「真的判断过的链」：把读不懂的链也算进去，失败封闭就成了摆设。
+    const report = stats([REAL_CHAIN, ghost]);
+    expect(report).toMatchObject({ fromCalls: 1, checked: 1 });
   });
 
   it("ignores Storage buckets, which reuse .from() for a name that is not a table", () => {
