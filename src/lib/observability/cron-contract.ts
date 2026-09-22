@@ -35,6 +35,16 @@ export const CRON_ROUTE_DIRECTORY = "src/app/api/cron";
 /** 指标与调度契约文档（运维视角的单一入口）。 */
 export const CRON_OPERATIONS_DOC = "docs/operations/sentry-alerts.md";
 
+/** 文档对仓库核对的默认目录（D01）；带日期的快照由 `isCronDocAuditable` 排除。 */
+export const CRON_DOC_DIRECTORY = "docs-site";
+
+/** 参与核对的一篇文档。 */
+export interface CronDocSource {
+  /** 仓库相对 POSIX 路径。 */
+  path: string;
+  content: string;
+}
+
 /** worker 标识：作为 `cron.auth.rejected` 的维度，禁止含用户或环境数据。 */
 export type CronWorkerId = "digest" | "push-retry" | "retention";
 
@@ -149,6 +159,14 @@ export interface CronContractInput {
   platformCrons: readonly PlatformCron[];
   /** 运维文档内容（指标契约表 + 调度契约表）。 */
   operationsDoc: string;
+  /**
+   * 参与 D01 核对的文档（`docs-site/**` 与 `docs/**`）。
+   * 不传即不核对（单测只验 worker 时用）；传空数组是失败封闭——收集规则坏掉时
+   * 不能把「一篇都没读到」当成「没有漂移」。
+   */
+  docs?: readonly CronDocSource[];
+  /** 不属于 worker、但确实存在于仓库里的调度表达式（GitHub workflow 的 `schedule`）。 */
+  externalSchedules?: readonly string[];
 }
 
 export type CronContractIssueCode =
@@ -170,6 +188,10 @@ export type CronContractIssueCode =
   | "CRON_SKIP_UNPARSEABLE"
   | "CRON_REJECTION_UNOBSERVABLE"
   | "CRON_DOC_SCHEDULE_MISSING"
+  | "CRON_DOC_STALE_SCHEDULE"
+  | "CRON_DOC_UNREGISTERED_PATH"
+  | "CRON_DOC_SOURCE_EMPTY"
+  | "CRON_DOC_NO_SOURCES"
   | "CRON_STALE_EXEMPTION";
 
 export interface CronContractIssue {
@@ -189,6 +211,8 @@ export interface CronContractReport {
   scheduledPaths: string[];
   /** 走 worker 契约的调度路径（排序后）。 */
   workerPaths: string[];
+  /** 实际参与「文档 vs 仓库」核对的文档篇数；0 表示调用方没传 `docs`。 */
+  docPages: number;
   /** 仍存在的平台级豁免路径（排序后）。 */
   exemptedPaths: string[];
   /** 全部 worker 路由里「带条件的 continue 跳过」分支数（A04 的核对面）。 */
@@ -303,6 +327,116 @@ export function isValidCronSchedule(expression: string): boolean {
     const parts = field.split(",");
     return parts.length > 0 && parts.every((part) => isValidFieldPart(part, min, max));
   });
+}
+
+/** 文本里长得像 5 字段 cron 的候选；前后边界避免把 `0 9 * * *,0 5 * * *` 这类串切碎。 */
+const CRON_CANDIDATE = /(?:^|[^0-9*/,-])((?:[\d*,/\-]+\s+){4}[\d*,/\-]+)(?![0-9*/,-])/g;
+
+/**
+ * 从一段文本里抽出**合法**的 5 字段 cron 表达式（去重、排序）。
+ *
+ * 合法性过滤是这一步的全部意义：不过一遍 `isValidCronSchedule`，散文里任意四个空格分隔的
+ * 数字串都会变成一条假「调度事实」。双语门禁（D02）与文档对仓库门禁（D01）共用这个抽取，
+ * 两边看到的才是同一件事。
+ */
+export function extractCronExpressions(content: string): string[] {
+  const found = new Set<string>();
+  for (const match of content.matchAll(CRON_CANDIDATE)) {
+    const expression = match[1].trim().replace(/\s+/g, " ");
+    if (isValidCronSchedule(expression)) found.add(expression);
+  }
+  return [...found].sort();
+}
+
+/** 文本里提到的 cron 路由路径（去重排序）。 */
+export function extractCronPaths(content: string): string[] {
+  const found = new Set<string>();
+  for (const match of content.matchAll(/\/api\/cron\/[a-z0-9-]+/g)) found.add(match[0]);
+  return [...found].sort();
+}
+
+/**
+ * 「带日期的快照」：文件名里写死了版本或日期，记录的是**当时**的事实。
+ * 它们允许引用已经废弃的调度（`docs-site/v0.8.0.md` 里那条每 15 分钟一次的旧表达式就是），
+ * 否则门禁会逼人改写历史证据——那比文档漂移更糟。
+ */
+const DATED_SNAPSHOT = /(?:^|\/)(?:[a-z-]+-)?v\d+\.\d+(?:\.\d+)?\.md$/;
+const DATED_DOCS = /^docs\/(?:progress\.md|roadmap-[^/]+\.md|operations\/drills\/)/;
+
+/** 这篇文档是否归「文档 vs 仓库」门禁核对。 */
+export function isCronDocAuditable(path: string): boolean {
+  return !DATED_SNAPSHOT.test(path) && !DATED_DOCS.test(path);
+}
+
+/**
+ * 文档里写的调度，必须是仓库里真的存在的调度（D01）。
+ *
+ * D02 管「中英两边说同一件事」，这里管「文档与代码说同一件事」：
+ * `docs-site/web-push.md` 曾长期写着 `/api/cron/push-retry` 每 15 分钟一次，而 `vercel.json`
+ * 早就改成每天一次；E03 那次则是文档写了一个根本没被调度的路由。两种情况在只比对中英对称时
+ * 都是「两边一致」，因此门禁永远绿——必须由代码这边做权威。
+ *
+ * 故意**不**核对「路径 ↔ 表达式」的同行配对：那要求解析表格行或句子，会把散文式引用全误伤。
+ * 所以「digest 写成 push-retry 的表达式」这类错不在本规则射程内，那一层由 worker 注册表与
+ * 运维告警文档（`CRON_DOC_SCHEDULE_MISSING`）负责。
+ */
+export function auditCronDocs(
+  docs: readonly CronDocSource[],
+  workers: readonly CronWorkerContract[],
+  platformCrons: readonly PlatformCron[],
+  externalSchedules: readonly string[],
+  issues: CronContractIssue[],
+): number {
+  if (docs.length === 0) {
+    push(
+      issues,
+      "CRON_DOC_NO_SOURCES",
+      CRON_DOC_DIRECTORY,
+      "一篇文档都没收集到：文档目录或收集规则失效，不能把「读不到」当成「没有漂移」",
+    );
+    return 0;
+  }
+
+  const knownSchedules = new Set<string>([
+    ...workers.map((worker) => worker.schedule),
+    ...platformCrons.map((entry) => entry.schedule),
+    ...externalSchedules,
+  ]);
+  const knownPaths = new Set<string>([
+    ...workers.map((worker) => worker.path),
+    ...platformCrons.map((entry) => entry.path),
+  ]);
+
+  let audited = 0;
+  for (const doc of docs) {
+    if (!isCronDocAuditable(doc.path)) continue;
+    audited += 1;
+    if (doc.content.trim().length === 0) {
+      push(issues, "CRON_DOC_SOURCE_EMPTY", doc.path, "文档内容为空，无法核对调度事实");
+      continue;
+    }
+
+    for (const expression of extractCronExpressions(doc.content)) {
+      if (knownSchedules.has(expression)) continue;
+      push(
+        issues,
+        "CRON_DOC_STALE_SCHEDULE",
+        doc.path,
+        `文档里的 cron 表达式 ${expression} 在仓库里不存在：worker 注册表、vercel.json 与 workflow schedule 都不是它`,
+      );
+    }
+
+    for (const mentionedPath of extractCronPaths(doc.content)) {
+      if (knownPaths.has(mentionedPath)) continue;
+      push(
+        issues,
+        "CRON_DOC_UNREGISTERED_PATH",
+        doc.path,
+        `文档提到 ${mentionedPath}，但没有 worker 或 vercel.json 调度它（E03 就是这个形状：链路上线了却没人调度）`,
+      );
+    }
+  }
+  return audited;
 }
 
 /** 路由是否导出某个 HTTP 方法（`export function GET` / `export async function GET`）。 */
@@ -593,6 +727,16 @@ export function auditCronContract(input: CronContractInput): CronContractReport 
   auditOrphanSchedules(input.platformCrons, declaredPaths, exempted, issues);
   auditExemptions(input.platformCrons, exempted, issues);
   auditUndeclaredRoutes(routeFiles, declaredRouteFiles, issues);
+  const docPages =
+    input.docs === undefined
+      ? 0
+      : auditCronDocs(
+          input.docs,
+          workers,
+          input.platformCrons,
+          input.externalSchedules ?? [],
+          issues,
+        );
 
   return {
     issues,
@@ -600,6 +744,7 @@ export function auditCronContract(input: CronContractInput): CronContractReport 
     metrics: [...metrics].sort(),
     scheduledPaths: input.platformCrons.map((entry) => entry.path).sort(),
     workerPaths: workers.map((worker) => worker.path).sort(),
+    docPages,
     exemptedPaths: Object.keys(exempted)
       .filter((path) => input.platformCrons.some((entry) => entry.path === path))
       .sort(),

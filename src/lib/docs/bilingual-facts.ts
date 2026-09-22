@@ -17,7 +17,7 @@
  * 但一份文档整体为空或根本找不到配对时失败封闭。
  */
 
-import { isValidCronSchedule } from "../observability/cron-contract.ts";
+import { extractCronExpressions } from "../observability/cron-contract.ts";
 
 export type BilingualDocIssueCode =
   | "DOC_NO_PAIRS"
@@ -49,16 +49,12 @@ export interface BilingualDocFacts {
 /** zh 文档目录；配对口径是「同目录树下的同名文件」。 */
 export const ZH_DIRECTORY = "docs-site/zh-CN/";
 
-const CRON_CANDIDATE = /(?:^|[^0-9*/,-])((?:[\d*,/\-]+\s+){4}[\d*,/\-]+)(?![0-9*/,-])/g;
 const UTC_TIME = /(\d{1,2}):(\d{2})\s*UTC/g;
 
 /** 从一篇文档里抽出可机器核对的调度事实。 */
 export function extractSchedulingFacts(content: string): BilingualDocFacts {
-  const cron = new Set<string>();
-  for (const match of content.matchAll(CRON_CANDIDATE)) {
-    const expression = match[1].trim().replace(/\s+/g, " ");
-    if (isValidCronSchedule(expression)) cron.add(expression);
-  }
+  // cron 表达式抽取由 worker 契约门禁提供（同一份合法性判定），这里只管时刻。
+  const cron = extractCronExpressions(content);
 
   const times = new Set<string>();
   for (const match of content.matchAll(UTC_TIME)) {
@@ -69,7 +65,7 @@ export function extractSchedulingFacts(content: string): BilingualDocFacts {
   }
 
   return {
-    cronExpressions: [...cron].sort(),
+    cronExpressions: cron,
     utcTimes: [...times].sort(),
   };
 }

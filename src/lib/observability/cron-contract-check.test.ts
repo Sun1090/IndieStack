@@ -4,7 +4,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildCronContractSnapshot,
+  collectCronDocs,
   collectCronRouteFiles,
+  collectExternalSchedules,
   readPlatformCrons,
   runCronContractCheck,
 } from "../../../scripts/lib/cron-contract-check.js";
@@ -99,6 +101,24 @@ describe("buildCronContractSnapshot()", () => {
       "recordCronRejected",
     );
     expect(snapshot.operationsDoc).toContain("cron.auth.rejected");
+  });
+});
+
+describe("D01 的文档收集", () => {
+  it("读真实文档与 workflow schedule，不读构建产物", () => {
+    const docs = collectCronDocs();
+    expect(docs.map((entry) => entry.path)).toContain("docs-site/email.md");
+    expect(docs.some((entry) => entry.path.startsWith("docs/"))).toBe(true);
+    expect(docs.some((entry) => entry.path.includes(".vitepress"))).toBe(false);
+    expect(docs.some((entry) => entry.path.includes("/dist/"))).toBe(false);
+    expect(collectExternalSchedules()).toContain("17 2 * * *");
+    // 成功日志必须自报核对面积：不打印篇数就等于「没读文档也算通过」。
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(runCronContractCheck()).toBe(0);
+    const output = log.mock.calls.flat().join(" ");
+    log.mockRestore();
+    expect(output).toMatch(/(\d+) 篇文档里的调度事实都能在仓库里找到对应/);
+    expect(Number(/(\d+) 篇文档/.exec(output)?.[1])).toBeGreaterThan(0);
   });
 });
 

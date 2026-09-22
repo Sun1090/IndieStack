@@ -4,6 +4,9 @@ import {
   CRON_REJECTED_METRIC,
   CRON_WORKERS,
   exportsMethod,
+  extractCronExpressions,
+  extractCronPaths,
+  isCronDocAuditable,
   isValidCronSchedule,
   isValidVercelHobbyCronSchedule,
   countCronRunsPerDay,
@@ -387,5 +390,58 @@ describe("条件跳过必须计数（A04）", () => {
         expect(worker.metrics, `${worker.id} 的 ${metric}`).toContain(metric);
       }
     }
+  });
+});
+
+describe("文档里的调度事实必须能在仓库里找到对应（D01）", () => {
+  const doc = (path: string, content: string) => ({ path, content });
+  const truthful = doc("docs-site/email.md", "`/api/cron/digest` 由 `0 9 * * *` 调度。");
+
+  it("仓库里真的存在的表达式与路径通过", () => {
+    expect(codes(baseInput({ docs: [truthful] }))).toEqual([]);
+    // 不传 docs 就不核对：worker 契约的单测不该被文档内容干扰。
+    expect(codes(baseInput())).not.toContain("CRON_DOC_NO_SOURCES");
+  });
+
+  it("文档教一个仓库里不存在的调度就失败", () => {
+    expect(
+      codes(baseInput({ docs: [doc("docs-site/web-push.md", "`*/15 * * * *` 重试一次。")] })),
+    ).toContain("CRON_DOC_STALE_SCHEDULE");
+    // GitHub workflow 的 schedule 不是 cron worker，必须由 externalSchedules 承认它。
+    const keepAlive = doc("docs/operations/environments.md", "备份探测 `17 3 * * *` 每日跑。");
+    expect(codes(baseInput({ docs: [keepAlive] }))).toContain("CRON_DOC_STALE_SCHEDULE");
+    expect(codes(baseInput({ docs: [keepAlive], externalSchedules: ["17 3 * * *"] }))).toEqual([]);
+  });
+
+  it("文档提到一条没被调度的路由就失败", () => {
+    const stale = doc("docs-site/email.md", "`/api/cron/legacy-digest` 负责发送。");
+    expect(codes(baseInput({ docs: [stale] }))).toContain("CRON_DOC_UNREGISTERED_PATH");
+  });
+
+  it("带日期的快照不参与核对，空输入失败封闭", () => {
+    const dated = doc("docs-site/v0.8.0.md", "当时是 `*/15 * * * *`。");
+    expect(codes(baseInput({ docs: [dated] }))).toEqual([]);
+    const roadmap = doc("docs/roadmap-0.12.0.md", "`*/15 * * * *`");
+    expect(codes(baseInput({ docs: [roadmap] }))).toEqual([]);
+    expect(codes(baseInput({ docs: [] }))).toContain("CRON_DOC_NO_SOURCES");
+    const blank = doc("docs-site/email.md", "   ");
+    expect(codes(baseInput({ docs: [blank] }))).toContain("CRON_DOC_SOURCE_EMPTY");
+  });
+
+  it("抽取只承认合法表达式，且不核对「存在但配错」的组合", () => {
+    expect(extractCronExpressions("第 3 节 0 9 点开会，共 4 项")).toEqual([]);
+    expect(extractCronExpressions("`0 9 * * *` 与 `0 9 * * *`")).toEqual(["0 9 * * *"]);
+    expect(extractCronPaths("`/api/cron/digest` 和 `/api/cron/digest`")).toEqual([
+      "/api/cron/digest",
+    ]);
+    // 在这个 fixture 里注册表只有 digest 一个 worker，所以借用别的调度会被抓到。
+    // 真实仓库的已知限制：digest 写成 push-retry 的 `0 22 * * *` 抽不出来——两个表达式都存在，
+    // 要拦就得解析「路径 ↔ 表达式」的同行配对，那会误伤一切散文式引用。
+    const wrongPair = doc("docs-site/email.md", "`/api/cron/digest` 由 `0 22 * * *` 调度。");
+    expect(codes(baseInput({ docs: [wrongPair] }))).toContain("CRON_DOC_STALE_SCHEDULE");
+    expect(isCronDocAuditable("docs-site/deployment.md")).toBe(true);
+    expect(isCronDocAuditable("docs-site/v0.11.0.md")).toBe(false);
+    expect(isCronDocAuditable("docs/operations/production-smoke-v0.10.0.md")).toBe(false);
+    expect(isCronDocAuditable("docs/progress.md")).toBe(false);
   });
 });

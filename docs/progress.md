@@ -1,4 +1,44 @@
+## 2026-09-22 — 文档里的调度事实必须对得上仓库（D01）
+
+- 里程碑 / 版本：关闭 v0.12.0 的 D01；退出标准第 6 条（D01、D02 落地）自此满足。
+- 状态：DONE。
+- 分支 / commit：与 D03 同分支 `docs/release-gap-audit-v0.11.0`（基于 main `8037bbd`）。
+- 为什么做：D02 只保证「中英两边说同一件事」，两边一起写错时它永远绿；E03 那次是另一类——
+  文档写了一个根本没被调度的路由。两类漂移都需要各自的门禁，而 roadmap 指定的做法是
+  给 `check:cron-contract` 加文档来源，不新造一道门禁。
+- 完成内容：
+  1. 先量再写：把 `docs-site/**` 与 `docs/**` 里所有合法 5 字段表达式与 `/api/cron/*` 路径抽出来
+     对回「注册表 ∪ `vercel.json` ∪ workflow `schedule`」，实测**零**存量违规（v0.8.0 发布页那条
+     已废弃表达式由「带日期快照」规则排除）。
+  2. 规则实现：`auditCronDocs` 三条判定 `CRON_DOC_STALE_SCHEDULE` / `CRON_DOC_UNREGISTERED_PATH` /
+     `CRON_DOC_NO_SOURCES`（一篇都没收集到就失败封闭），加 `CRON_DOC_SOURCE_EMPTY`；
+     `isCronDocAuditable` 排除 `v0.8.0.md`、`*-runbook-v0.10.0.md`、`production-smoke-v0.11.0.md`、
+     `roadmap-*.md`、`progress.md`、`docs/operations/drills/` 这类带日期的证据。
+  3. 抽取层共用：`extractCronExpressions` 落在 `cron-contract.ts`，D02 的
+     `extractSchedulingFacts` 改为调用它——原来两边各写一份同一条正则，正是漂移的入口。
+  4. **删掉一条更严但会误伤的子规则**：第一版要求「文档提到 worker 路径就必须登记它的调度」，
+     在真实仓库当场产出 8 条告警，全部是合法陈述（`web-push.md` 顺带引用 digest、`docs/testing.md`
+     列举 worker 路径等）。这种门禁只会教会人怎么绕开它，故移除并把「为什么不做」写进规则 docblock。
+  5. 明确不做（也写进 roadmap）：环境变量名与表名/迁移号两类核对。前者要能识别
+     `flag("PASSKEY")` 组合出来的 `NEXT_PUBLIC_FEATURE_PASSKEY`，后者需要 SQL 关键字与
+     `VERCEL_ORG_ID` 这类非文案 token 的停用表——都是先量到误报才有依据的扩展。
+- 变更文件：`src/lib/observability/cron-contract.ts`、`src/lib/docs/bilingual-facts.ts`、
+  `scripts/lib/cron-contract-check.js`、两份测试、`docs/testing.md`、双语 `docs-site/scripts.md`、
+  CHANGELOG、roadmap、缺口审计的 D01 行、本条目。
+- 验证命令与结果：
+  - `npx vitest run src/lib/observability --project node` → 113 passed；`src/lib/docs` 双语门禁测试同绿；
+  - `pnpm check:cron-contract` → `✅ … 84 篇文档里的调度事实都能在仓库里找到对应 …`；
+  - 变异核对（真实文档，跑完从 `/tmp` 还原并确认 `git status` 干净）：给 `docs-site/email.md` 追加一条
+    仓库里不存在的表达式 → `CRON_DOC_STALE_SCHEDULE`；再追加一条未调度的路由 → 两条各报一次；
+  - 复跑全量：`pnpm type-check` → 0；`pnpm lint` → 0；`pnpm test` → 193 文件 / 2,200 用例全绿。
+- 风险 / 回滚：新规则会让「文档写一条仓库里不存在的调度」在 PR 阶段失败；已确认现存 84 篇全部通过，
+  因此不会挡任何在途工作。回滚 = revert 本 commit（抽取共用一并回退）。
+- 下一项：推送本分支（D03 + D01 三个 commit）开 PR；部署侧仍欠一次复核——
+  生产 `/api/health` 是否真的开始上报 SHA。
+- 更新时间：2026-09-22（UTC 10:15 前后）。
+
 ## 2026-09-22 — v0.11.0 缺口审计补档（D03），核对方法落成模板
+
 
 - 里程碑 / 版本：关闭 v0.12.0 的 D03；产物服务于后续每次发布。
 - 状态：DONE。

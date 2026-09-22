@@ -101,7 +101,7 @@
 | A01 剩余 | `profiles.timezone` 失去全部功能性消费者，资料页却仍要求填写 | 产品决策 |
 | C06 | `src/lib/actions/uploads.ts` 两个无调用方的 Server Action | 产品决策（保留为编程入口或删除） |
 | C01 / C02 | mock 请求级隔离（含 MFA 进程全局）与其后的可复跑并行基线 | 工作量大，属下一版 |
-| D01 / D03 | docs-site 可机器核对的事实；本文件所属系列在 v0.10.0 之后断档（本文件即补档） | D01 待做；D03 由本文件关闭 |
+| D01 / D03 | docs-site 可机器核对的事实；本文件所属系列在 v0.10.0 之后断档（本文件即补档） | 同日双双关闭：D03 是本文件与 `release-audit-template.md`，D01 由 `check:cron-contract` 的文档核对承担 |
 
 ## 可复现验证
 
