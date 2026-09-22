@@ -6,6 +6,15 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **发布核对方法落成模板（D03）**：新增 `docs/operations/release-audit-template.md`，把 v0.6.0
+  退出报告里那套「逐条对回代码、门禁与执行记录」的做法写成可复用规则——三档状态各自需要什么证据、
+  「文档已写」不算证据、每条门禁都要做一次「故意做坏会不会红」的变异核对、版本范围由 CHANGELOG
+  章节生成而不是凭记忆写散文，以及四件容易互相冒充的事：代码合并 ≠ 已部署、生产跑新版本 ≠ 已发布、
+  本地真库演练 ≠ 云端演练、门禁全绿 ≠ 生产证据齐全。同时补上断档的系列文件
+  `docs/operations/release-gap-audit-v0.11.0.md`，它量出三处口径问题（runbook 声称范围内有 5 项
+  其实更早就完成、J06 只完成一半、整个 D 域交付了却没写进范围段），并把「本版本缺口审计已按模板产出」
+  加进 `.github/RELEASE_CHECKLIST.md` 的冻结清单——`check:release-docs` 按版本拼路径校验，
+  本来就管不到这个系列是否存在，断档只能靠把动作写进清单来防。
 - **生产现在会说自己跑的是哪个 commit**：`/api/health` 新增 `commit` 字段，取自构建时内联的
   `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`（Vercel 自动提供），回落到运行时的 `VERCEL_GIT_COMMIT_SHA`，
   两者都没有时为 `null`。此前 `version` 只能说明「这是 0.11.0 的某个构建」，说明不了是哪一个，
