@@ -42,7 +42,10 @@ applies that user's email preferences, and sends one digest per user. Immediate-
 items left in the queue are retried by this worker.
 
 The worker can fold large groups and caps the visible digest details, keeping the message size
-bounded. It also emits backlog and worker metrics for operational monitoring.
+bounded. For operational monitoring it emits backlog and run metrics, plus
+`cron.digest.skipped{reason}` whenever a run skips items it cannot deliver (`no_email` — the profile
+has no address; `preference` — the user switched those types off). Skipping is never silent:
+`pnpm check:cron-contract` statically fails a worker route whose conditional skip has no counter.
 
 Digest delivery is **one email per run, per user, with something queued**. It deliberately does not
 try to hit each user's local morning: on the Hobby plan a cron path can run at most once a day, so a

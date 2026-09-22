@@ -488,6 +488,10 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 - `vercel.json` 中每个 cron worker 的路径与五字段调度表达式必须逐字匹配注册表，表达式非法、重复或只存在于文档都会失败；
 - worker 路由文件必须真实存在，并导出注册表中声明的全部 HTTP 方法；`src/app/api/cron` 下新增但未登记的路由也会失败；
 - 每轮运行指标与鉴权拒绝指标必须出现在路由源码中，同时必须登记在 `docs/operations/sentry-alerts.md`；指标改名但不改告警文档会失败；
+- **带条件的 `continue` 跳过必须留下计数证据**（A04）：证据可以是上报该 worker 注册的 skip 指标
+  （`skipMetrics`，且必须带 `reason` 维度），或累加进本轮返回对象里已上报的计数器；
+  两者都没有就报 `CRON_SKIP_UNCOUNTED`。规则用 TypeScript 解析器读源码，只认「同一函数、同一 if 分支」里的证据，
+  无法解析的源码按 `CRON_SKIP_UNPARSEABLE` 失败封闭；
 - 非 worker 的 `/api/health` 与 `/api/ops/supabase-restore` 使用带理由的显式豁免，避免把平台保活任务误当成 worker；
 - 注册表、路由集合、调度表或指标文档为空时失败封闭。
 
@@ -495,9 +499,12 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 `cron.auth.rejected`，但不会记录请求头或密钥内容。摘要 worker 的 `cron.digest.completed` 现在覆盖完整运行时长，
 500 路径会写入 `email_worker_runs.error` 并上报 `cron.digest.failed`；失败运行记录自身的写入失败只记日志，不覆盖原始错误。
 
-规则本体位于 `src/lib/observability/cron-contract.ts`，IO/CLI 位于 `scripts/lib/cron-contract-check.js` /
+规则本体位于 `src/lib/observability/cron-contract.ts`（跳过证据判定拆在同目录的
+`cron-skip-coverage.ts`），IO/CLI 位于 `scripts/lib/cron-contract-check.js` /
 `scripts/check-cron-contract.js`，由 `pnpm check:all` 与 CI 的 `Lint & Type Check` job 执行。专项测试覆盖
-表达式校验、路由发现、方法/指标/文档漂移、豁免过期、鉴权拒绝原因与失败运行记录。
+表达式校验、路由发现、方法/指标/文档漂移、豁免过期、鉴权拒绝原因、失败运行记录，以及跳过的
+四类判定（未计数 / 缺 reason / 指标未登记 / 源码不可解析）。成功日志会打印「N 处条件跳过均有计数证据」，
+让「核对过多少条」本身可核对。
 
 **局限**：门禁证明仓库内的调度与指标接线一致，不证明 Vercel 平台已实际部署该配置，也不替代线上 cron 执行历史与告警投递验收。
 

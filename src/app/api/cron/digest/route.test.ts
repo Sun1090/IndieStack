@@ -1,6 +1,6 @@
 /**
  * /api/cron/digest 路由测试
- * 覆盖：鉴权（含 E03 拒绝指标）、空队列、发送与回执、发送失败兜底、整轮失败落表
+ * 覆盖：鉴权（含 E03 拒绝指标）、空队列、发送与回执、发送失败兜底、条件跳过的计数可见（A04）、整轮失败落表
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { metricEvents } from "@/lib/testing/metric-events";
@@ -200,6 +200,57 @@ describe("POST /api/cron/digest", () => {
     await expect(res.json()).resolves.toEqual({ sent: 3, groups: 3, failed: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(markEmailSentMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("资料没有邮箱时跳过，并把条数上报成 cron.digest.skipped{reason=no_email}", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n2", user_id: "u1", type: "system", title: "B", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: null, notification_settings: null }] })),
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.skipped",
+        value: 2,
+        unit: "count",
+        attributes: { reason: "no_email" },
+      }),
+    );
+    // 没有可投递目标：不发、不标已发、也不累加重试（条目留在队列里由 backlog/skipped 暴露）
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(markEmailSentMock).not.toHaveBeenCalled();
+    expect(markEmailFailedMock).not.toHaveBeenCalled();
+  });
+
+  it("用户关掉所有相关类型时跳过，并上报 reason=preference", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() =>
+        chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: false } }] }),
+      ),
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.skipped",
+        value: 1,
+        unit: "count",
+        attributes: { reason: "preference" },
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(markEmailSentMock).not.toHaveBeenCalled();
   });
 
   it("正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出", async () => {

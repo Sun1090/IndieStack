@@ -43,6 +43,7 @@
 |---|---|---|---|
 | `email.send.completed` | `ms` | `provider`, `outcome`, `status`, `reason` | 每次 Resend 调用结束；provider 未配置时不发起请求，立即以 `reason=not-configured` 结束 |
 | `email.backlog` | `count` | 无 | 每轮 digest 开始 |
+| `cron.digest.skipped` | `count` | `reason` | 每轮 digest 里被条件跳过的通知条数（`no_email` = 该用户资料没有邮箱，`preference` = 该用户把队列里涉及的类型全关了） |
 | `cron.digest.completed` | `ms` | `pulled`, `sent`, `groups`, `failed` | 每轮 digest 成功结束（含空队列） |
 | `cron.digest.failed` | `count` | `error_type` | 每轮 digest 未处理异常 |
 | `cron.auth.rejected` | `count` | `worker`, `reason` | 任一 cron worker 返回 401（`secret_unconfigured` / `missing_credentials` / `invalid_credentials`） |
@@ -80,7 +81,7 @@
 
 | 路径 | 调度（UTC） | 语义 | 失败告警 |
 |---|---|---|---|
-| `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，给每个有待发通知的用户发一封摘要；发送时刻固定，不随用户时区（错峰门控已于 2026-09-22 移除） | `cron.digest.failed`、`email.backlog` |
+| `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，给每个有待发通知的用户发一封摘要；发送时刻固定，不随用户时区（错峰门控已于 2026-09-22 移除） | `cron.digest.failed`、`email.backlog`、`cron.digest.skipped` |
 | `/api/cron/push-retry` | `0 22 * * *` | 每天 22:00 UTC 重试待投递 Push 并清理保留期外的终态行；Vercel Hobby 每天最多一次 | `cron.push-retry.failed`、`push.backlog` |
 | `/api/cron/retention` | `0 5 * * *` | 每天 05:00 UTC 逐个执行迁移里定义的保留期清理函数（不依赖 pg_cron），并顺带只读巡检存储孤儿；Vercel Hobby 每天最多一次 | `cron.retention.failed`、`cron.retention.cleanup_failed`、`storage.orphan.unowned` |
 
@@ -98,6 +99,7 @@
 |---|---|---|
 | Digest 连续失败 | `cron.digest.failed > 0`，5 分钟窗口 | 立即排查 cron 鉴权、Supabase 与邮件 provider |
 | 邮件积压 | `email.backlog > 500`，连续 3 轮或 15 分钟 | 检查 worker、provider 限流与死信增长 |
+| 摘要整轮没发出 | `cron.digest.completed{pulled>0, sent=0}` 连续 2 轮 | 按 `cron.digest.skipped{reason}` 拆分：`no_email` 是资料缺邮箱（数据问题），`preference` 是用户主动关掉了涉及的类型；两者都意味着队列里有当前投递不掉的条目，出队语义见 `docs/roadmap-0.12.0.md` A05 |
 | 邮件失败率 | `email.send.completed{outcome=failure}` 占比 > 2%，10 分钟且样本 ≥20 | 检查 Resend 状态与响应码 |
 | 邮件 provider 未配置 | `email.send.completed{reason="not-configured"} > 0`，15 分钟窗口 | 补部署环境的 `RESEND_API_KEY`；该类样本不带 `status`，说明请求根本没发出去 |
 | provider 写入失败率 | `storage.upload.completed{outcome=failure}` 占比 > 5%，15 分钟且样本 ≥20 | 检查 Storage 权限、配额与 provider 状态 |
@@ -123,6 +125,10 @@
 - `cron.digest.completed`、`email.backlog`、`cron.digest.failed`、`push.backlog` 和
   `cron.push-retry.completed|failed` 每轮最多一条；`push.queue.pruned` 每轮按 `status` 最多两条，
   不要按删除行数放大告警。
+- `cron.digest.skipped` 按用户逐条上报，一轮里可以有任意多条（每个被跳过的用户各一条），
+  `value` 是该用户被跳过的通知条数：告警要按 `reason` 聚合后的总条数判断，不要把样本条数当条数、
+  也不要对单个用户的一次跳过报警。`preference` 是用户选择的正常结果，只有与
+  `cron.digest.completed{sent=0}` 同时出现才说明队列里全是投递不掉的条目。
 - `cron.auth.rejected` 按 `worker + reason` 聚合，且设置 15 分钟抑制窗口：该计数在鉴权失败时
   由未通过鉴权的调用方触发，不排除外部扫描流量，**不要**按原始条数直接报警（会变成噪声），
   只用于区分「鉴权配置坏了」与「调度没跑」。
