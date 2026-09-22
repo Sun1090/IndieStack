@@ -1,3 +1,41 @@
+## 2026-09-22 — 保留期清理接上真实 Postgres 演练：14 条断言，边界取「差一天」
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE（本地 Supabase 实跑通过，事务回滚零残留）。
+- 分支 / commit：`test/retention-real-db-drill`（基于 main `6eda90a`）。
+- 为什么做：`/api/cron/retention` 与它的单测/E2E 都只证明「函数被调用」——mock 从不执行真实 SQL。
+  而保留期会要命的地方恰恰在 SQL 里：窗口边界写错一天，要么过期数据还在（隐私承诺失真），
+  要么未读通知被当过期删掉（用户数据静默消失）。**两种都不会让门禁变红**，只能靠真库演练留证据。
+  本地栈可用是这次能做的前提：`docker info` 正常、`supabase status` 在跑、
+  `supabase migration list --local` 显示 `001`–`033` 与 main 一致。
+- 完成内容：
+  1. `docs/operations/drills/retention-cleanup.sql`——沿用仓库既有的
+     `docs/operations/drills/account-erasure.sql` 约定（而不是新造 `scripts/drills/`），
+     整段 `begin; … rollback;`，结尾输出一行 `failures / report`，非 0 即失败。
+  2. 6 个清理函数各测「窗口两侧 + 受保护状态」共 14 条断言：已读超窗删 / 未超窗留 / **未读即使
+     999 天也留**；`deleted` 对象超 30 天清 / 未超留 / **`active` 永不因保留期被清**；
+     `resolved` 联系消息超 365 天删 / 未超留 / **`new` 永不删**。
+  3. **边界刻意取差一天**（90/91、29/30、364/365）而不是差一年——取整百天的样本任何实现都能蒙对过去，
+     抓不到 `interval '90 days'` 被写成 `91` 这种真会犯的错。
+  4. `docs/db/retention.md` 新增一条演练记录（命令、断言数、零残留核对），CHANGELOG 登记。
+- 顺带钉住的事实（第一版踩过）：`upload_objects.checksum` 有 `^[0-9a-f]{64}$` 约束
+  （直接塞 `md5()` 的 32 位会被拒），`status` 只接受 `active` / `deleted`；
+  `supabase db query --local` 只能跑单条语句（`cannot insert multiple commands into a prepared statement`），
+  所以多语句脚本走 `docker exec -i supabase_db_indiestack psql -f -`。
+- 变更文件：5 个——新增 `docs/operations/drills/retention-cleanup.sql`、`docs/db/retention.md`
+  （演练记录）、`.github/RELEASE_CHECKLIST.md`（把两条数据演练挂进发布前勾选，并顺手把覆盖率那行
+  对齐到 `vitest.config.ts` 的真实阈值 91/90/93/92——之前写的是「≥90%」）、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - `docker exec -i supabase_db_indiestack psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - <
+    docs/operations/drills/retention-cleanup.sql` → `failures = 0`、`全部断言通过（14 条）`、`ROLLBACK`；
+  - 残留核对：`select count(*) … where title/object_key/subject like 'drill-%'` → `0`；
+  - `pnpm check:all` → `✅ 全部校验通过`；`pnpm verify:build` → 188 文件 / 2,131 用例、Bundle 在基线内、
+    生产构建成功（本条只动脚本与文档，用例数不变）。
+- 阻塞：无（云端项目仍需一次同型演练，但那需要 Dashboard/直连凭据，属外部权限）。
+- 风险 / 回滚：纯脚本 + 文档，不改运行行为；revert 即回滚。
+- 下一项：把同样的「窗口两侧」思路推广到 worker 的失败路径——目前只有 mock 断言，
+  真实库里「某个函数报错时其余继续跑」尚未演练。
+
 ## 2026-09-22 — 孤儿巡检接上同一条每日链路：`storage.orphan.*` 两个计数
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。

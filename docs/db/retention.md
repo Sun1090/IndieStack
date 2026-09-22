@@ -162,6 +162,24 @@ pnpm vitest run src/lib/repositories/push-delivery-attempts.test.ts \
 
 ## 演练记录
 
+### 2026-09-22 · 保留期清理（本地 Supabase，`001`–`033` 已应用，事务内回滚）
+
+脚本已入库：`docs/operations/drills/retention-cleanup.sql`。
+
+```bash
+docker exec -i supabase_db_indiestack psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 -f - < docs/operations/drills/retention-cleanup.sql
+```
+
+- **14 条断言全部通过**（最后一行 `failures = 0`）：每个清理函数都验了「窗口两侧 + 受保护状态」，
+  即过期行真的消失、未过期的一行不少、未读通知 / `new` 联系消息 / `active` 对象绝不因保留期被删。
+- 两侧刻意取**差一天**（90/91、29/30、364/365）而不是差一年：只有这样才能抓到
+  `interval '90 days'` 被写成 `91` 这类真实错误，取整百天的样本任何实现都能蒙对过去。
+- 演练顺带钉住了两个行形状约束：`upload_objects.checksum` 必须是 64 位十六进制
+  （第一版直接塞 `md5()` 的 32 位，被 check 约束拒绝），`status` 只接受 `active` / `deleted`。
+- 全程 `begin; … rollback;`，跑完 `select count(*) … where object_key like 'drill-%'` 为 0，
+  本地开发库不留样本行。
+
 ### 2026-09-22 · 账户删除全链路（本地 Supabase，`001`–`033` 已应用，事务内回滚）
 
 脚本已入库：`docs/operations/drills/account-erasure.sql`（含运行命令与断言清单）。
