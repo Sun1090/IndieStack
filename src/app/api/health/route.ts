@@ -1,7 +1,7 @@
 /**
  * 健康检查 API
  * 用于负载均衡器、Docker HEALTHCHECK、监控系统的心跳检测
- * 返回服务状态、运行时间和依赖连通性
+ * 返回服务状态、构建身份（version + commit）、运行时间和依赖连通性
  *
  * GET /api/health
  */
@@ -102,6 +102,12 @@ export async function GET() {
   );
   const status = !ready ? (degraded ? "degraded" : "error") : "ok";
 
+  // 构建内联优先（它标识被构建的那份代码），其次才是运行时变量；空串按「未知」处理。
+  const commit =
+    [process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA, process.env.VERCEL_GIT_COMMIT_SHA].find(
+      (value) => Boolean(value && value.trim()),
+    ) ?? null;
+
   const body = {
     status,
     timestamp: new Date().toISOString(),
@@ -110,6 +116,10 @@ export async function GET() {
     // 单一来源：package.json version（构建时内联，本文件仅服务端运行）；
     // 部署时可用 NEXT_PUBLIC_APP_VERSION 显式覆盖
     version: process.env.NEXT_PUBLIC_APP_VERSION ?? pkgVersion,
+    // 只有 version 说明不了「哪个 commit」。发布证据要求能证明「部署的 commit == 验证过的
+    //  commit」，缺这个字段就只能靠平台控制台的人工截图。Vercel 在构建时提供
+    //  NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA；本地与 Docker 没有它时返回 null，调用方必须能表达「未知」。
+    commit,
     environment: process.env.NODE_ENV,
     mockMode,
     checks,

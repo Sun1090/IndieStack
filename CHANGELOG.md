@@ -6,6 +6,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **生产现在会说自己跑的是哪个 commit**：`/api/health` 新增 `commit` 字段，取自构建时内联的
+  `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`（Vercel 自动提供），回落到运行时的 `VERCEL_GIT_COMMIT_SHA`，
+  两者都没有时为 `null`。此前 `version` 只能说明「这是 0.11.0 的某个构建」，说明不了是哪一个，
+  而发布 runbook 的停止条件恰好写着「无法证明部署 commit 与验证 commit 相同」——同一个版本号里
+  夹了几个纯文档提交，从外部看完全一样，于是这条证据只能靠平台控制台的人工截图。
+  `pnpm smoke:production` 相应支持 `--expected-commit`（短 SHA 按前缀匹配，`EXPECTED_APP_COMMIT`
+  为等价环境变量）：**期望值给了而生产不上报 `commit` 就判失败**，因为「没证明」不等于「证明了自己没问题」；
+  期望值少于 7 个字符直接拒绝解析，否则任何构建都能匹配上。每日定时的 `smoke-main` 只把观测到的
+  commit 写进证据、不做断言——两次部署之间生产落后于 `main` 是常态，硬断言会让定时作业红在无关的事上。
+  路由测试覆盖「内联值优先 / 只有运行时值 / 两者皆无」，冒烟测试覆盖「全 SHA、短前缀、不匹配、
+  生产不上报」四种组合。
 - **双语页从此必须说同一个调度事实**：新增 `pnpm check:bilingual-docs`
   （规则本体 `src/lib/docs/bilingual-facts.ts`，IO `scripts/lib/bilingual-docs-check.js`，
   已接进 `check:all` 与 CI）。逐页比对 `docs-site/<page>.md` 与 `docs-site/zh-CN/<page>.md`
@@ -164,10 +175,11 @@ All notable changes to IndieStack will be documented in this file.
   不会真的删号（Mock 的 `deleteUser` 是空操作，真实提交会清空共享 Mock 状态）。
   擦除语义由 Mock 镜像与 40 条契约测试保证，「先擦除、再删号」在生产数据上的验证仍依赖
   隔离账号的一次性演练。
-- **生产响应证明不了自己跑的是哪个 commit**：`/api/health` 只暴露 `version`，同一版本号内的后续提交
-  在生产上不可区分，而发布 runbook 的停止条件恰好是「无法证明部署 commit 与验证 commit 相同」。
-  6/6 冒烟通过因此只能证明「某个 0.11.0 构建是好的」。要把构建 SHA（Vercel 会注入
-  `VERCEL_GIT_COMMIT_SHA`）纳入健康响应并让 smoke 断言它，否则这条证据只能靠控制台截图。
+- **当前生产构建仍无法证明自己是哪个 commit**：`/api/health` 已经会上报 `commit`（见上面的 Added），
+  但 2026-09-22 部署的这版构建早于该字段，所以 v0.11.0 的冒烟证据仍然只能给出版本号而不是 SHA。
+  下一次部署之后，`pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 才是可用证据。
+  非 Vercel 构建（本地、Docker）没有这两个环境变量，`commit` 恒为 `null`——这条链路的 commit 归属
+  只在 Vercel 上成立，自建部署需要自己注入同名变量。
 
 ## [0.11.0] — 2026-09-22
 

@@ -5,6 +5,7 @@
  * Usage:
  *   pnpm smoke:production -- https://indie-stack-theta.vercel.app
  *   pnpm smoke:production -- https://example.com --expected-version 0.6.0 --output smoke.json
+ *   pnpm smoke:production -- https://example.com --expected-commit 2b52ce1f  # 短 SHA 也可
  *
  * The suite only performs GET requests and one intentionally invalid webhook POST.
  * It never follows redirects for the protected dashboard check and never sends credentials.
@@ -15,11 +16,23 @@ const { DEFAULT_ATTEMPTS, DEFAULT_RETRY_DELAY_MS, probeHealth } = require("./lib
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+/**
+ * `--flag value` 与 `--flag=value` 两种写法共用的取值表。
+ * 查表必须走 `Object.hasOwn`，否则位置参数叫 `constructor` 时会命中原型上的属性。
+ */
+const CLI_FLAGS = {
+  "--expected-version": "expectedVersion",
+  "--expected-commit": "expectedCommit",
+  "--output": "output",
+  "--timeout-ms": "timeoutMs",
+};
+
 function parseArgs(argv) {
   const args = argv.filter((arg) => arg !== "--");
   const options = {
     url: undefined,
     expectedVersion: undefined,
+    expectedCommit: undefined,
     output: undefined,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
@@ -34,25 +47,38 @@ function parseArgs(argv) {
 
   for (; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === "--expected-version") options.expectedVersion = readValue(arg);
-    else if (arg.startsWith("--expected-version="))
-      options.expectedVersion = arg.slice("--expected-version=".length);
-    else if (arg === "--output") options.output = readValue(arg);
-    else if (arg.startsWith("--output=")) options.output = arg.slice("--output=".length);
-    else if (arg === "--timeout-ms") options.timeoutMs = Number(readValue(arg));
-    else if (arg.startsWith("--timeout-ms="))
-      options.timeoutMs = Number(arg.slice("--timeout-ms=".length));
-    else if (!arg.startsWith("-") && !options.url) options.url = arg;
+    const equals = arg.indexOf("=");
+    const name = equals === -1 ? arg : arg.slice(0, equals);
+    if (!Object.hasOwn(CLI_FLAGS, name)) {
+      if (!arg.startsWith("-") && !options.url) options.url = arg;
+      continue;
+    }
+    const raw = equals === -1 ? readValue(name) : arg.slice(equals + 1);
+    options[CLI_FLAGS[name]] = name === "--timeout-ms" ? Number(raw) : raw;
   }
 
-  if (options.expectedVersion === "")
-    throw new Error("--expected-version requires a non-empty value");
-  if (options.output === "") throw new Error("--output requires a non-empty value");
+  return validateOptions(options);
+}
 
-  options.url ??= process.env.PRODUCTION_URL;
-  if (options.expectedVersion === undefined)
-    options.expectedVersion = process.env.EXPECTED_APP_VERSION;
-  return options;
+/** 空值与「等于没断言」的期望值都在入口拒掉；未提供的字段回落到环境变量。 */
+function validateOptions(options) {
+  for (const [flag, value] of [
+    ["--expected-version", options.expectedVersion],
+    ["--expected-commit", options.expectedCommit],
+    ["--output", options.output],
+  ]) {
+    if (value === "") throw new Error(`${flag} requires a non-empty value`);
+  }
+  // 按前缀比较：1 个字符的「期望 commit」能匹配任何构建，等于没有断言。
+  if (options.expectedCommit && options.expectedCommit.trim().length < 7) {
+    throw new Error("--expected-commit must be at least 7 characters (a short SHA)");
+  }
+  return {
+    ...options,
+    url: options.url ?? process.env.PRODUCTION_URL,
+    expectedVersion: options.expectedVersion ?? process.env.EXPECTED_APP_VERSION,
+    expectedCommit: options.expectedCommit ?? process.env.EXPECTED_APP_COMMIT,
+  };
 }
 
 function parseBaseUrl(value) {
@@ -94,7 +120,23 @@ function headerIncludes(headers, name, expected) {
   return typeof value === "string" && value.toLowerCase().includes(expected.toLowerCase());
 }
 
-function healthFailureDetail(response, body, versionMatches, expectedVersion) {
+/**
+ * 生产上报的构建 commit 与期望值是否同一次构建。
+ *
+ * 期望值允许是短 SHA（`git rev-parse --short` 的产物），因此按前缀比较；但**没有**期望值时
+ * 一律返回 true，由调用方决定是否把「生产未上报 commit」当作信息缺失记录。
+ */
+function commitMatches(observed, expected) {
+  if (!expected) return true;
+  if (typeof observed !== "string" || observed.trim().length === 0) return false;
+  return observed.trim().toLowerCase().startsWith(expected.trim().toLowerCase());
+}
+
+function commitLabel(commit) {
+  return typeof commit === "string" && commit.trim().length > 0 ? commit.trim().slice(0, 7) : "unknown";
+}
+
+function healthFailureDetail(response, body, versionMatches, expectedVersion, commitOk, expectedCommit) {
   const version = body?.version ?? "missing";
   const checks = [
     [`HTTP ${response.status}`, response.status === 200],
@@ -103,6 +145,10 @@ function healthFailureDetail(response, body, versionMatches, expectedVersion) {
     ["cache-control", headerIncludes(response.headers, "cache-control", "no-store")],
     ["x-request-id", Boolean(response.headers.get("x-request-id"))],
     [`version=${version}, expected=${expectedVersion ?? "unknown"}`, versionMatches],
+    [
+      `commit=${commitLabel(body?.commit)}, expected=${expectedCommit ?? "unset"}`,
+      commitOk,
+    ],
   ];
   const failed = checks
     .filter(([, passed]) => !passed)
@@ -112,6 +158,7 @@ function healthFailureDetail(response, body, versionMatches, expectedVersion) {
 
 async function checkHealth(baseUrl, options) {
   const expectedVersion = options.expectedVersion;
+  const expectedCommit = options.expectedCommit;
   const probeResult = await probeHealth(joinUrl(baseUrl, "/api/health"), {
     fetchImpl: options.fetchImpl,
     timeoutMs: options.timeoutMs,
@@ -127,7 +174,8 @@ async function checkHealth(baseUrl, options) {
         candidate.body?.ready === true &&
         headerIncludes(candidate.headers, "cache-control", "no-store") &&
         Boolean(candidate.headers?.get("x-request-id")) &&
-        versionMatches
+        versionMatches &&
+        commitMatches(candidate.body?.commit, expectedCommit)
       );
     },
     onRetry: ({ attempt, attempts, result: failed }) => {
@@ -141,12 +189,22 @@ async function checkHealth(baseUrl, options) {
   };
   const body = probeResult.body;
   const versionMatches = !options.expectedVersion || body?.version === options.expectedVersion;
+  const commitOk = commitMatches(body?.commit, expectedCommit);
   const passed = probeResult.healthy;
   const detail = passed
-    ? `HTTP 200, status=ok, ready=true, version=${body.version}${probeResult.attempts > 1 ? ` (attempt ${probeResult.attempts})` : ""}`
-    : healthFailureDetail(response, body, versionMatches, options.expectedVersion);
+    ? `HTTP 200, status=ok, ready=true, version=${body.version}, commit=${commitLabel(body.commit)}${probeResult.attempts > 1 ? ` (attempt ${probeResult.attempts})` : ""}`
+    : healthFailureDetail(
+        response,
+        body,
+        versionMatches,
+        options.expectedVersion,
+        commitOk,
+        expectedCommit,
+      );
   return result("health", passed, detail, response.status, {
     version: body?.version ?? null,
+    commit: body?.commit ?? null,
+    expectedCommit: expectedCommit ?? null,
     attempts: probeResult.attempts,
   });
 }
@@ -297,6 +355,7 @@ async function runProductionSmoke(baseUrlValue, options = {}) {
     fetchImpl: options.fetchImpl ?? globalThis.fetch,
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     expectedVersion: options.expectedVersion,
+    expectedCommit: options.expectedCommit,
     healthAttempts: options.healthAttempts ?? DEFAULT_ATTEMPTS,
     healthRetryDelayMs: options.healthRetryDelayMs ?? DEFAULT_RETRY_DELAY_MS,
     sleepImpl: options.sleepImpl,
@@ -324,10 +383,23 @@ async function runProductionSmoke(baseUrlValue, options = {}) {
     }
   }
 
+  return summarizeReport(checks, config, baseUrl);
+}
+
+/**
+ * 证据文件的顶层字段。
+ *
+ * `commit` 是「生产此刻在跑哪个构建」——没有它，6/6 只能证明某个 0.11.0 构建是好的，
+ * 证明不了它是被验证过的那一个。
+ */
+function summarizeReport(checks, config, baseUrl) {
+  const health = checks.find((check) => check.name === "health");
   return {
     generatedAt: new Date().toISOString(),
     baseUrl: baseUrl.origin,
     expectedVersion: config.expectedVersion ?? null,
+    expectedCommit: config.expectedCommit ?? null,
+    commit: health?.commit ?? null,
     passed: checks.every((check) => check.passed),
     checks,
   };
@@ -337,7 +409,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!options.url) {
     console.error(
-      "Usage: pnpm smoke:production -- https://example.com [--expected-version 0.6.0] [--output smoke.json]",
+      "Usage: pnpm smoke:production -- https://example.com [--expected-version 0.6.0] [--expected-commit 2b52ce1] [--output smoke.json]",
     );
     return 2;
   }
@@ -346,6 +418,7 @@ async function main() {
   try {
     report = await runProductionSmoke(options.url, {
       expectedVersion: options.expectedVersion,
+      expectedCommit: options.expectedCommit,
       timeoutMs: options.timeoutMs,
     });
   } catch (error) {

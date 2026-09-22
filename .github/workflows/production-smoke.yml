@@ -13,6 +13,11 @@ on:
         required: false
         default: ""
         type: string
+      expected_commit:
+        description: Expected deployed commit SHA, full or short (optional)
+        required: false
+        default: ""
+        type: string
       timeout_ms:
         description: Per-request timeout in milliseconds
         required: true
@@ -52,11 +57,15 @@ jobs:
         env:
           SMOKE_URL: ${{ inputs.url }}
           EXPECTED_VERSION: ${{ inputs.expected_version }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           TIMEOUT_MS: ${{ inputs.timeout_ms }}
         run: |
           args=( "$SMOKE_URL" --timeout-ms "$TIMEOUT_MS" --output production-smoke.json )
           if [[ -n "$EXPECTED_VERSION" ]]; then
             args+=( --expected-version "$EXPECTED_VERSION" )
+          fi
+          if [[ -n "$EXPECTED_COMMIT" ]]; then
+            args+=( --expected-commit "$EXPECTED_COMMIT" )
           fi
           pnpm smoke:production -- "${args[@]}"
 

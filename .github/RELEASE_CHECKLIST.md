@@ -24,7 +24,8 @@
 - [ ] 数据保留与擦除演练在本地 Supabase（`001`–`033` 已应用）通过：
       `docs/operations/drills/retention-cleanup.sql` 末行 `failures = 0`（14 条断言），
       `docs/operations/drills/account-erasure.sql` 全部断言通过；两者结果记入 `docs/db/retention.md` 的演练记录
-- [ ] `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version "$EXPECTED_APP_VERSION" --output production-smoke.json` 通过，或 `Production Smoke` workflow 的 `smoke` 作业（只能由 `workflow_dispatch` 触发）成功并保留 30 天 artifact `production-smoke-evidence`；记下 artifact 的 run 与文件名，定时漂移检查的证据是**另一个** artifact `production-version-drift-evidence`
+- [ ] `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version "$EXPECTED_APP_VERSION" --expected-commit "$(git rev-parse HEAD)" --output production-smoke.json` 通过，或 `Production Smoke` workflow 的 `smoke` 作业（只能由 `workflow_dispatch` 触发）成功并保留 30 天 artifact `production-smoke-evidence`；记下 artifact 的 run 与文件名，定时漂移检查的证据是**另一个** artifact `production-version-drift-evidence`
+- [ ] 冒烟断言过 commit：生产 `/api/health` 的 `commit` 与被验证的 commit 一致（短 SHA 按前缀匹配）。生产不上报 `commit` 时这条判**失败**，不要改用「版本一致就行」绕过——同一版本号内的多个构建在外部不可区分，回滚也就不知道该回到哪一个
 - [ ] `Production Smoke` workflow 的定时漂移检测 `smoke-main` 为通过（期望版本来自 `package.json`；失败表示生产部署落后，禁止发布）
 - [ ] RLS 回归脚本通过；`pnpm audit` 无高危
 

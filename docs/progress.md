@@ -1,4 +1,42 @@
+## 2026-09-22 — `/api/health` 上报构建 commit，冒烟从此能断言部署身份
+
+- 里程碑 / 版本：v0.12.0 的 B01 残余 + B02 前置；顺带修一处双语文档的事实错误。
+- 状态：DONE（代码与文档侧闭环；对生产的有效性要等下一次部署验证）。
+- 分支 / commit：`feat/health-build-identity`（基于 main `a322a4e`）。
+- 为什么做：上一轮取冒烟证据时撞上硬事实——`/api/health` 只有 `version`，
+  而发布 runbook 的停止条件写着「无法证明部署 commit 与验证 commit 相同」。
+  0.11.0 之后 main 上又夹了纯文档提交，从外部看它们都是「0.11.0」，回滚不知道该回到哪一个。
+- 完成内容：
+  1. `src/app/api/health/route.ts`：新增 `commit`，取构建时内联的 `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`
+     （Vercel 自动提供，语义就是「这次构建是哪个 commit」），回落运行时 `VERCEL_GIT_COMMIT_SHA`，
+     空串按未知处理，两者皆无 → `null`。
+  2. `scripts/production-smoke.js`：`--expected-commit` / `EXPECTED_APP_COMMIT`，按前缀匹配（短 SHA 可用）、
+     少于 7 字符拒绝解析、**生产不上报 `commit` 时判失败**；health 的 detail 与证据 JSON 都记录观测值
+     （顶层新增 `commit` / `expectedCommit`）。
+  3. `scripts/check-production-version.js`：同样接受期望值，但**默认不断言**并写明原因——
+     两次部署之间生产落后于 `main` 是常态，硬断言会让定时作业天天红在无关的事上；它只把观测到的
+     commit 打进 summary 与证据。
+  4. `.github/workflows/production-smoke.yml` 新增 `expected_commit` 输入（手动发布 smoke 用）。
+  5. `docs-site/{,zh-CN/}pages.md` 把 `/api/health` 的说明从「数据库连接、Supabase 状态、**内存使用**」
+     改成实际有的东西（响应里从来没有内存指标），双语同步。
+- 变更文件：health 路由与其单测、两个脚本、workflow、`docs/architecture/07-api-routes.md`、
+  `docs/architecture/12-deployment.md`、`.github/RELEASE_CHECKLIST.md`、
+  `docs/operations/production-smoke-v0.11.0.md`、`release-runbook-v0.11.0.md`、roadmap、CHANGELOG、
+  新增 `src/lib/production-version-drift.test.ts`、本条目。
+- 验证命令与结果：
+  - `npx vitest run src/lib/production-smoke.test.ts src/lib/production-version-drift.test.ts src/app/api/health --project node`
+    → 17 passed（路由 3 条 commit 用例 + 冒烟 4 种组合 + 漂移脚本 3 条）；
+  - `pnpm check:production-smoke` / `pnpm check:workflows` → 通过（新增输入与既有触发守卫共存）；
+  - `pnpm check:all`、`pnpm type-check`、`pnpm verify:build`、`pnpm test:coverage` → 见下「提交前复跑」。
+- 风险 / 回滚：`/api/health` 是只增字段，现有消费者（`health-probe.js`、`check-health.js`、
+  Docker HEALTHCHECK、e2e/smoke）都是按字段读取，没有键集合相等断言；回滚 = revert 本 commit。
+  **注意 `commit` 在 Vercel 之外恒为 `null`**，自建部署要自己注入同名环境变量。
+- 下一项：**合并部署后用 `curl /api/health` 确认生产真的上报 SHA**——这是本条目唯一还没落地的部分；
+  随后 D01（docs-site 可机器核对事实）、D03（v0.11.0 缺口审计）。
+- 更新时间：2026-09-22（UTC 09:10 前后）。
+
 ## 2026-09-22 — 生产冒烟证据落地（B01）+ 手动 smoke 作业其实从未跑过
+
 
 - 里程碑 / 版本：v0.11.0 发布证据（B01）；顺带修 `Production Smoke` workflow 的一条真实 CI 缺陷。
 - 状态：DONE（无副作用 6/6 已入库；tag 仍不打，原因见「阻塞」）。

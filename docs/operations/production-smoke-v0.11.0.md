@@ -5,9 +5,11 @@
 
 - 目标版本：v0.11.0
 - 目标环境：生产（`https://indie-stack-theta.vercel.app`）
-- 目标 commit：无法从响应确定——`/api/health` 只暴露 `version`，不暴露构建 SHA。
+- 目标 commit：无法从响应确定——本轮证据取用时（2026-09-22）生产跑的是 `/api/health` 尚未暴露
+  `commit` 字段的构建，`/api/health` 只有 `version`。
   最近一次 `main` 推送是 `23a2677`（2026-09-22T07:50Z），观测时刻（08:05:33Z）实例 `uptime=368s`
   （≈07:59:25Z 启动），与该推送后的部署窗口一致；但 `0.11.0` 之后的纯文档提交在响应上不可区分。
+  自下一次包含 `commit` 字段的部署起，这一行改由 `pnpm smoke:production --expected-commit <SHA>` 判定。
 - 执行人 / 日期（含时区）：自主开发代理，2026-09-22 08:05–08:11 UTC（本地探测 + CI 定时与手动运行）
 - **发布形态说明**：与 v0.10.0「部署 `main` 即发布、事后补记录」不同，v0.11.0 走完整 tag → release 流程。
   本文件在**部署之后**填写结果，打 tag 前必须已经有：入口条件全绿、迁移 DB-first 复核、
@@ -20,7 +22,7 @@
 
 | 检查项                        | 期望                                                                           | 状态        |
 | ----------------------------- | ------------------------------------------------------------------------------ | ----------- |
-| `GET /api/health`             | 200，`status=ok`、`ready=true`、`version=0.11.0`、`no-store` 且带 `x-request-id` | ✅ 2026-09-22T08:05:33Z：`status=ok`、`ready=true`、`version=0.11.0`、`environment=production`、`mockMode=false`、`supabase.reachable=true`、`cache-control: no-store, must-revalidate`、`x-request-id: 4320a463-161c-4ab9-ae7f-e390c30f3c4c` |
+| `GET /api/health`             | 200，`status=ok`、`ready=true`、`version=0.11.0`、`no-store` 且带 `x-request-id`；发布时另传 `--expected-commit` 断言构建身份 | ✅ 2026-09-22T08:05:33Z：`status=ok`、`ready=true`、`version=0.11.0`、`environment=production`、`mockMode=false`、`supabase.reachable=true`、`cache-control: no-store, must-revalidate`、`x-request-id: 4320a463-161c-4ab9-ae7f-e390c30f3c4c`（该构建尚无 `commit` 字段） |
 | 首页/静态资源                 | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG                  | ✅ 本地 6/6 与 CI 6/6 均通过（`homepage:200`、`static-asset:200`） |
 | 未授权 dashboard              | 匿名请求重定向到 `/auth/login`，不返回受保护内容                               | ✅ `anonymous-dashboard:307` → `/auth/login` |
 | Webhook 缺签名                | HTTP 400，`Missing signature`，`no-store`                                      | ✅ `webhook-signature-rejection:400`，拒绝且无副作用 |
