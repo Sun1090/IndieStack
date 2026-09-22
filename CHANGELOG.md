@@ -31,7 +31,9 @@ All notable changes to IndieStack will be documented in this file.
   要么隐私承诺失真，要么用户数据被静默删掉，两种都不会让门禁变红。脚本对 6 个函数各测
   「窗口两侧 + 受保护状态」，边界刻意取差一天（90/91、29/30、364/365）而不是差一年——
   后者任何实现都能蒙对。本地 Supabase（`001`–`033`）实测 14 条断言全通过，结果记在
-  `docs/db/retention.md` 的演练记录里。
+  `docs/db/retention.md` 的演练记录里。同一份记录还有一次**关掉 mock** 的整链路验证：用本地栈凭据起
+  dev server、真实播种两条行（91 天 / 89 天）后打 `POST /api/cron/retention`，得到
+  `{"ran":6,"failed":0,…}`、91 天那条消失、89 天那条留下，未携带与错误凭据各自 401。
 
 ### Fixed
 

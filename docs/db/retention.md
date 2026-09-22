@@ -162,6 +162,32 @@ pnpm vitest run src/lib/repositories/push-delivery-attempts.test.ts \
 
 ## 演练记录
 
+### 2026-09-22 · 整条链路不带 mock（本地 Supabase + 非 mock dev server）
+
+SQL 演练证明「函数在真库里删对了」，但**路由 → 仓储 → PostgREST** 那一段此前只在 mock 下跑过。
+这次用本地栈自己的凭据起一个关掉 mock 的 dev server，真实播种两条行再打路由：
+
+```bash
+supabase status -o json     # 取 API_URL / SERVICE_ROLE_KEY / ANON_KEY
+
+NEXT_PUBLIC_MOCK_ENABLED=false NEXT_PUBLIC_SUPABASE_URL="$API_URL" \
+SUPABASE_SERVICE_ROLE_KEY="$SRK" NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON" \
+CRON_SECRET=live-drill-secret pnpm exec next dev -p 3211
+
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:3211/api/cron/retention
+# 401（未携带凭据）
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:3211/api/cron/retention \
+  -H 'x-cron-secret: nope'
+# 401（凭据错误）
+curl -s -X POST http://127.0.0.1:3211/api/cron/retention -H 'x-cron-secret: live-drill-secret'
+# {"ran":6,"failed":0,"orphans":0,"unownedOrphans":0}
+```
+
+- 播种 `is_read=true` 的 91 天前与 89 天前各一条：调用后 **91 天那条消失、89 天那条仍在**，
+  与 SQL 演练同一组边界，只是这次穿过的是真实的 HTTP + PostgREST + service_role 路径。
+- `ran: 6` 与 `RETENTION_POLICIES` 的条数一致（不是 mock 里「六个空操作」）。
+- 收尾 `delete from notifications where title like 'live-drill-%'` 后计数为 0，本地库无残留。
+
 ### 2026-09-22 · 保留期清理（本地 Supabase，`001`–`033` 已应用，事务内回滚）
 
 脚本已入库：`docs/operations/drills/retention-cleanup.sql`。

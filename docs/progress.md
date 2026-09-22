@@ -29,6 +29,11 @@
   - `docker exec -i supabase_db_indiestack psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - <
     docs/operations/drills/retention-cleanup.sql` → `failures = 0`、`全部断言通过（14 条）`、`ROLLBACK`；
   - 残留核对：`select count(*) … where title/object_key/subject like 'drill-%'` → `0`；
+  - **关掉 mock 的整链路实跑**（本地栈凭据 + `NEXT_PUBLIC_MOCK_ENABLED=false` 的 dev server）：
+    播种 `is_read=true` 的 91 天 / 89 天各一条 → 未携带与错误凭据各 401；
+    `POST /api/cron/retention` 返回 `{"ran":6,"failed":0,"orphans":0,"unownedOrphans":0}`，
+    事后 91 天那条**消失**、89 天那条**留下**，本地库零残留（`live-drill-%` 计数 0）。
+    这一步补上了「路由 → 仓储 → PostgREST → service_role → 迁移 SQL」整段从未脱离 mock 运行的空白。
   - `pnpm check:all` → `✅ 全部校验通过`；`pnpm verify:build` → 188 文件 / 2,131 用例、Bundle 在基线内、
     生产构建成功（本条只动脚本与文档，用例数不变）。
 - 阻塞：无（云端项目仍需一次同型演练，但那需要 Dashboard/直连凭据，属外部权限）。
