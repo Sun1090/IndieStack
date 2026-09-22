@@ -43,20 +43,23 @@ describe("E2E shard policy", () => {
     expect(read("e2e/support/warm-up.ts")).toContain("if (SERVERS < 2) return;");
   });
 
-  it("地址一律走 appUrl()，spec 里不留固定端口和裸相对导航", () => {
+  it("地址一律走 appUrl()：不留固定端口，也不留裸相对导航与请求", () => {
     // 写死端口或裸相对路径都会让第二个 worker 打回第一台服务器，隔离只剩形式。
+    // `baseURL` 只兜住字面量相对路径，所以逐行看调用点而不是只匹配 `"/..."` 前缀：
+    // `page.goto(pageInfo.path)` 和 `request.get("/api/health")` 同样落在 slot 0，
+    // 却躲得过按字面量写的规则——规则漏一半，就等于第二个 worker 还在共用别人的状态。
     const dir = path.join(REPO_ROOT, "e2e");
     const offenders: string[] = [];
     for (const entry of fs.readdirSync(dir).sort()) {
       if (!entry.endsWith(".spec.ts")) continue;
       const body = fs.readFileSync(path.join(dir, entry), "utf8");
       if (body.includes("localhost:3100")) offenders.push(`${entry}: 写死了 localhost:3100`);
-      if (/page\.goto\((?:"\/|`\/)/.test(body)) {
-        offenders.push(`${entry}: page.goto 用了裸相对路径`);
-      }
-      if (!body.includes("support/base-url") && /page\.goto\(/.test(body)) {
-        offenders.push(`${entry}: 有 page.goto 却没引入 appUrl()`);
-      }
+      body.split("\n").forEach((line, index) => {
+        const call = /(?:page\.goto|request\.(?:get|post|put|delete))\(/.exec(line);
+        if (!call) return;
+        if (line.slice(call.index + call[0].length).includes("appUrl()")) return;
+        offenders.push(`${entry}:${index + 1} 未走 appUrl()：${line.trim()}`);
+      });
     }
     expect(offenders).toEqual([]);
   });

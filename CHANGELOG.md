@@ -169,6 +169,14 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **两条 E2E 其实一直在共用第一台 dev server**：`a11y.spec.ts` 的 `page.goto(pageInfo.path)`、
+  `smoke.spec.ts` / `responsive.spec.ts` 的 `page.goto(path)`，加上 5 处 `request.get("/…")`，
+  都不带 `appUrl()` 而靠 Playwright 的 `baseURL` 解析——`baseURL` 写死的是基准端口，于是并行时
+  第二个 worker 的无障碍审计和冒烟请求全打回 slot 0。C02 那条「不得出现裸相对 `page.goto`」
+  按字面量 `"/` 与反引号匹配，正好放过「路径装在变量里」这种写法：规则看着是绿的，隔离只剩形式。
+  现在逐行看调用点——`page.goto(` 与 `request.get|post|put|delete(` 都必须带 `appUrl()`。
+  变异核对：临时塞进变量式 goto、裸相对 request、裸相对字面量、写死 `localhost:3100` 四种各让门禁红，
+  带 `appUrl()` 的对照组保持绿。
 - **Mock 模式下 MFA 挑战根本走不完，而且第一步就进不去**（C03）：三处缺口一次性补上，全部由
   新增的 `e2e/mfa-challenge.spec.ts` 钉住（真走一遍：登录 → 挑战页 → 错码不困住用户 → 正确码进
   dashboard）。① mock 的 `auth.signInWithPassword` 不返回 `user.factors`（真实 Supabase 返回），

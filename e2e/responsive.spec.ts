@@ -84,7 +84,7 @@ test.describe("手机（375px）", () => {
 
   for (const path of MARKETING_PAGES) {
     test(`${path} 无横向溢出`, async ({ page }) => {
-      await page.goto(path);
+      await page.goto(`${appUrl()}${path}`);
       await expectNoHorizontalOverflow(page, path);
     });
   }
