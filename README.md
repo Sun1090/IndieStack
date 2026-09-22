@@ -141,7 +141,7 @@ src/
 | `pnpm check:migrations`           | Enforce immutable migration checksums + filename/ordering rules   |
 | `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only)         |
 | `pnpm check:migration-history`    | Compare local Supabase migration history (needs `supabase start`) |
-| `pnpm test`                       | Vitest unit + component tests (106 files / 1,034 tests)           |
+| `pnpm test`                       | Vitest unit + component tests (node + jsdom projects)             |
 | `pnpm test:e2e`                   | Playwright E2E smoke tests                                        |
 | `pnpm test:visual`                | Compare Linux Chromium visual regression baselines                |
 | `pnpm verify:build`               | Full local release gate: checks, tests, bundle, production build  |
@@ -153,7 +153,7 @@ Before a release, run `pnpm verify:build`, `pnpm test:e2e`, `pnpm audit --audit-
 
 ## Testing
 
-- **Unit/Component**: Vitest dual projects (node + jsdom), coverage gate ≥90% on core logic.
+- **Unit/Component**: Vitest dual projects (node + jsdom); the core-logic coverage floors are enforced by `pnpm test:coverage` and defined in `vitest.config.ts`.
 - **E2E**: Playwright smoke tests (`pnpm test:e2e`; local Mock mode needs no Supabase).
 - **Visual regression**: Linux Chromium baselines for key public pages (`pnpm test:visual`).
 - **Database identity matrix**: `pnpm smoke:supabase-identity` runs the RLS/Storage matrix against a real local/staging Supabase.

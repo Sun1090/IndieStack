@@ -15,13 +15,13 @@
 
 ### 当前测试覆盖（Vitest）
 
-> 数据截至 2026-09-08。完整清单以 `pnpm test` 输出为准。
+> 数据截至 2026-09-22。完整清单以 `pnpm test` 输出为准。
 
 | 层级 | 规模 |
 |------|------|
-| 单元 + 组件测试（Vitest 双项目） | 87 个文件 / **761 用例** |
-| E2E 冒烟（Playwright） | `e2e/smoke.spec.ts` / **22 用例** |
-| 覆盖率门禁 | 核心逻辑 statements/functions/lines ≥90%，branches ≥90% |
+| 单元 + 组件测试（Vitest 双项目） | 186 个文件 / **2,119 用例** |
+| E2E 冒烟（Playwright） | `e2e/smoke.spec.ts` / **25 用例** |
+| 覆盖率门禁 | 核心逻辑 statements 91 / branches 90 / functions 93 / lines 92（阈值来自 `vitest.config.ts`） |
 
 关键测试资产：
 - Server Actions：`src/lib/actions/*.test.ts`（ActionResult 形状断言）

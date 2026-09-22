@@ -19,7 +19,7 @@
 - **Database**: [Supabase](https://supabase.com) (PostgreSQL) with Row Level Security on every table
 - **UI**: [Tailwind CSS](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com) components, dark/light themes
 - **Validation**: [Zod v4](https://zod.dev) schemas shared between client forms and server actions
-- **Testing**: Vitest (270+ unit/component tests, coverage-gated ≥90%) + Playwright E2E smoke suite
+- **Testing**: Vitest dual projects (node + jsdom, core-logic coverage floors enforced in CI) + Playwright E2E smoke suite
 - **CI/CD**: GitHub Actions (lint, type-check, i18n symmetry, tests, build, CodeQL, gitleaks) + Vercel deploys
 
 ## Design Principles

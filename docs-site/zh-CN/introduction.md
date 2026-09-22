@@ -19,7 +19,7 @@
 - **数据库**: [Supabase](https://supabase.com)（PostgreSQL），所有表启用 Row Level Security
 - **UI**: [Tailwind CSS](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com)，深色/浅色主题
 - **校验**: [Zod v4](https://zod.dev) schema 在客户端表单与服务端 Action 间共享
-- **测试**: Vitest（270+ 单元/组件测试，核心逻辑覆盖率门禁 ≥90%）+ Playwright E2E 冒烟测试
+- **测试**: Vitest 双项目（node + jsdom，核心逻辑覆盖率阈值在 CI 强制）+ Playwright E2E 冒烟测试
 - **CI/CD**: GitHub Actions（lint / 类型检查 / i18n 对称性 / 测试 / 构建 / CodeQL / gitleaks）+ Vercel 部署
 
 ## 设计原则

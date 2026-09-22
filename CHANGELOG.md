@@ -14,6 +14,18 @@ All notable changes to IndieStack will be documented in this file.
   「先读当前状态 → 需要才点 → 断言」整体（`toggleThemeTo()`；只重试断言会把已经切好的主题再翻回去）。
   本机用 CDP `Emulation.setCPUThrottlingRate`（`rate: 25`）复现：旧写法以与 CI 完全相同的签名失败，
   新写法在同一节流下通过。`docs/testing.md` 同步补上这条 E2E 编写规则，避免下一个裸点击用例。
+- **README 与 docs-site 的测试规模数字已经失真**：`pnpm test` 那行仍写着「106 files / 1,034 tests」，
+  实测 **186 文件 / 2,119 用例**；docs-site 技术栈页写「270+ unit/component tests」，差约 8 倍；
+  `docs/testing.md` 的金字塔写 E2E「62 用例」、shard 分流「86 条（46 / 40）」，而
+  `playwright test --list` 实测 101 条 / 13 个文件，且每个 shard 的条数由 Playwright 运行时决定。
+  这些数字没有任何门禁守着，每加一次测试就漂一次，所以本次**把易漂移的计数从文档里删掉**、
+  改为指向 `pnpm test` 与 `pnpm exec playwright test --list`，而不是再抄一份新的当前值。
+  同时把仍然存在的声明逐条对回真实来源：覆盖率阈值按 `vitest.config.ts` 改为
+  statements 91 / branches 90 / functions 93 / lines 92（文档原写「≥90%」，低于实际地板）、
+  v0.11.0 release notes 的 provider 环境变量 28 → 29（与 `pnpm check:provider-docs` 输出一致）、
+  `docs/testing.md` 里 `gate-wiring` 28 → 29、`security-config` 无法归属的「54 条」改为按文件登记
+  （31 + 5）。可核对后保留原样的有：`check:mock-docs` 的 18 张表、trace 专项「58 条」
+  （11 + 5 + 3 + 18 + 6 + 15 实测吻合）、`tokens` 28 与 `native-theme` 24（均含配套 IO 层测试文件）。
 
 ### Known Limitations
 
