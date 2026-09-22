@@ -1051,11 +1051,27 @@
 - 完成内容：`upsertSubscription()` 返回「是否真的写了一行」，没写就落 `skipped`；幂等语义、HTTP
   响应、重放行为一律不变，变的只有那条记录的说法。`docs/db/webhook-idempotency.md` 的流程图补上
   这条区分，免得下一个人以为 skipped 是「漏处理」。
-- 变更文件：`src/app/api/webhooks/stripe/route.ts`、`route.test.ts`（+2 用例，12 条）、
+  修这条的过程中量出**同一函数的另一半**：`resolveTeamId()` 用 `{ data }` 解构回退查询，丢掉
+  `error`——一次数据库抖动与「这个用户真的没有团队」因此同形，而在新语义下它会被记成
+  `skipped`、Stripe 不再重投：抖动被固化成永久漏单。现在查询失败抛错 → 事件标 `failed` + 500，
+  交回 Stripe 的重投机制。
+- 顺手做了一次全库测量（`/tmp/measure2.mjs`，TypeScript AST：`await` 一个 `.from()/.rpc()` 链、
+  解构里没有 `error`）：**19 处**，其中 `repositories/notifications.ts:213,224`（#36 已修）、
+  `actions/team.ts:185,256` 与 `api/invitations/route.ts:307`（#35 已修）、本条的
+  `webhooks/stripe/route.ts:40`（本条已修）之外，还剩 `repositories/profiles.ts:31`、
+  `dashboard/admin/page.tsx:47,50,53`、`dashboard/team/page.tsx:110`、
+  `api/stripe/checkout/route.ts:58,68`、`api/invitations/route.ts:55,165`、
+  `api/webhooks/stripe/route.ts:252,259`（在 `notifyTeamOwner` 的整段 try 里，刻意不阻塞主流程）、
+  `api/e2e/push-queue/route.ts:86,230`（mock 路由）。另有 3 处「解构了 `error` 但同一块里再没引用」。
+  **第一版探测器报的是 0**——它的链遍历只在 `isCallExpression` 上推进，`.select()` 走到
+  `supabase.from` 之前就停了，与 C07 第一版 `chainOf` 是同一个错；改成无条件 `.expression`
+  爬升后才拿到可信数字。
+- 变更文件：`src/app/api/webhooks/stripe/route.ts`、`route.test.ts`（+3 用例，13 条）、
   `docs/db/webhook-idempotency.md`、`CHANGELOG.md`、本条目。
-- 验证命令与结果：`npx vitest run src/app/api/webhooks/stripe/route.test.ts` → 12 通过；
-  变异核对：把 `applyEvent` 退回无条件 `return "processed"` → 恰好新增的两条红
-  （`metadata` 为空 / `userId` 回退查不到团队），其余 10 条不动，源文件还原后比对通过；
+- 验证命令与结果：`npx vitest run src/app/api/webhooks/stripe/route.test.ts` → 13 通过；
+  变异核对 2 项：把 `applyEvent` 退回无条件 `return "processed"` → 恰好两条 skipped 语义用例红；
+  删掉 `resolveTeamId` 的 `if (error) throw` → 恰好「回退查询失败标 failed」那条红，
+  其余不动；源文件还原后逐字节比对通过；
   全量 `CI=true pnpm check:all` / `pnpm lint` / `type-check` / `build` 见 commit 之后补记。
 - 阻塞 / 风险 / 回滚：不改支付数据的写入路径；对账视图以后会真的出现 `skipped` 行——那正是本条要
   的东西，但若有人按「processed 数 == 事件数」做过对账，读数会变（仓库里没有这样的读数）。
@@ -1063,4 +1079,12 @@
 - 明确**不**做的：`customer.subscription.deleted` 命中 0 行时同样记 `processed`。那是合法的幂等
   无操作（重复投递、或订阅在 Stripe 侧被直接删除），要把它和「没找到目标行」区分开需要 UPDATE
   带回 `updated` 计数（`Prefer: count=exact`），那是另一次语义决定，不在修这条谎话时顺手改。
-- 下一项：#38（注销时丢掉擦除结果）。
+- 下一项：#38（注销时丢掉擦除结果）——**核对后判定不是缺陷，不改代码**：
+  `deleteAccountWithData()` 的两步前置（`removeUnreferencedUserObjects` 的枚举、
+  `eraseAccountData`）都是 `if (error) throw`，`admin.auth.admin.deleteUser` 的 `error` 也抛；
+  两个调用方（`actions/account.ts:32-37`、`api/user/route.ts:143-151`）都 catch 后回
+  `accountDeleteFailed` / 500，因此「擦除没做成却报删除成功」这条路径不存在。返回值
+  `AccountDeletionResult` 被调用方丢弃也不是漏记：各数据面计数与 `objectsFailed` 已经在
+  `deleteAccountWithData` 内部写进 `account.deleted` 审计行的 metadata（`deletion.ts:47-60`）。
+  刻意保留的两类失败（provider 删对象失败、审计补记失败）都写在模块头部，且前者仍会被
+  孤儿清单发现。审计记录的这一条是**误报**，按「先核对再动手」的规矩关掉。
