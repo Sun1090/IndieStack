@@ -44,12 +44,19 @@ export async function createProject(
     return fail(validated.error.issues[0]?.message ?? "invalidInput");
   }
 
-  const { data: membership } = (await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id, role")
     .eq("user_id", user.id)
     .limit(1)
-    .maybeSingle()) as unknown as { data: { team_id: string; role: string } | null; error: null };
+    .maybeSingle();
+
+  // 读失败与「这个用户没有团队」不是一回事：后者要引导去建团队，前者只要用户重试一次。
+  // 落进 `!membership` 就会把一次抖动答成「你还没有团队」。
+  if (membershipError) {
+    await logActionError("[createProject] 团队成员身份读取失败", membershipError);
+    return fail("databaseError");
+  }
 
   if (!membership) {
     return fail("noTeam");
@@ -98,22 +105,32 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
   if (!user) return fail("notAuthenticated");
 
   // 权限校验：当前用户须为项目所属团队的 owner/admin
-  const { data: project } = (await supabase
+  const { data: project, error: projectError } = await supabase
     .from("projects")
     .select("team_id, logo_url")
     .eq("id", projectId)
-    .maybeSingle()) as unknown as {
-    data: { team_id: string; logo_url: string | null } | null;
-  };
+    .maybeSingle();
+
+  if (projectError) {
+    await logActionError("[deleteProject] 项目读取失败", projectError);
+    return fail("databaseError");
+  }
 
   if (!project) return fail("projectNotFound");
 
-  const { data: membership } = (await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("role")
     .eq("team_id", project.team_id)
     .eq("user_id", user.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle();
+
+  // 同上：读失败时答「只有团队管理员能操作」，用户会以为自己权限被改了，
+  // 而真正该做的事是重试一次。
+  if (membershipError) {
+    await logActionError("[deleteProject] 团队成员身份读取失败", membershipError);
+    return fail("databaseError");
+  }
 
   if (!membership || !["owner", "admin"].includes(membership.role)) {
     return fail("onlyAdminsCreateProject");
@@ -152,20 +169,30 @@ export async function updateProject(
 
   if (!user) return fail("notAuthenticated");
 
-  const { data: project } = (await supabase
+  const { data: project, error: projectError } = await supabase
     .from("projects")
     .select("team_id")
     .eq("id", projectId)
-    .maybeSingle()) as unknown as { data: { team_id: string } | null };
+    .maybeSingle();
+
+  if (projectError) {
+    await logActionError("[updateProject] 项目读取失败", projectError);
+    return fail("databaseError");
+  }
 
   if (!project) return fail("projectNotFound");
 
-  const { data: membership } = (await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("role")
     .eq("team_id", project.team_id)
     .eq("user_id", user.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle();
+
+  if (membershipError) {
+    await logActionError("[updateProject] 团队成员身份读取失败", membershipError);
+    return fail("databaseError");
+  }
 
   if (!membership || !["owner", "admin"].includes(membership.role)) {
     return fail("onlyAdminsCreateProject");
@@ -179,12 +206,21 @@ export async function updateProject(
   }
   if (input.description !== undefined) patch.description = input.description;
   if (input.config !== undefined) {
-    // 合并写入 config（保留未提交的其他键）
-    const { data: current } = (await supabase
+    // 合并写入 config（保留未提交的其他键）。这一处是台账里最贵的：读失败时
+    // `current?.config ?? {}` 会安静地当成「原本没有键」，于是这次 update 把项目 config 里
+    // 没提交的其他键全部抹掉——用户只是改了个开关，却丢了别处的配置，而且没有任何地方报错。
+    // 合并的前提是知道原来有什么，读不到就必须停下来，不能拿空对象继续算。
+    const { data: current, error: currentError } = await supabase
       .from("projects")
       .select("config")
       .eq("id", projectId)
-      .maybeSingle()) as unknown as { data: { config: Record<string, unknown> } | null };
+      .maybeSingle();
+
+    if (currentError) {
+      await logActionError("[updateProject] 项目 config 读取失败", currentError);
+      return fail("databaseError");
+    }
+
     patch.config = { ...(current?.config ?? {}), ...input.config };
   }
 
