@@ -78,7 +78,7 @@ src/app/
 
 | 路由 | 方法 | 说明 | 认证 |
 |------|------|------|------|
-| `/api/health` | GET | 健康检查（数据库连接、Supabase 状态、内存使用） | 公开 |
+| `/api/health` | GET | 就绪检查（Supabase 连通性、可选的 Sentry/Stripe 配置、已部署的版本与 commit） | 公开 |
 | `/api/auth/callback` | GET | 认证回调处理 | 公开 |
 | `/api/user` | GET/PUT | 获取/更新用户信息 | 需认证 |
 | `/api/teams` | POST/GET | 创建/获取团队 | 需认证 |

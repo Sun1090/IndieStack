@@ -78,7 +78,7 @@ All dashboard pages use `export const dynamic = "force-dynamic"` for real-time d
 
 | Route | Method | Description | Auth |
 |-------|--------|-------------|------|
-| `/api/health` | GET | Health check (DB, Supabase, memory) | Public |
+| `/api/health` | GET | Readiness check (Supabase reachability, optional Sentry/Stripe configuration, deployed version and commit) | Public |
 | `/api/auth/callback` | GET | Auth callback | Public |
 | `/api/user` | GET/PUT | Get/update user info | Required |
 | `/api/teams` | POST/GET | Create/get teams | Required |
