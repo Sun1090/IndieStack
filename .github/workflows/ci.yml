@@ -138,6 +138,9 @@ jobs:
       - name: Check cron schedule and metric contract
         run: pnpm check:cron-contract
 
+      - name: Check bilingual scheduling facts parity
+        run: pnpm check:bilingual-docs
+
       - name: Check release tag policy
         run: pnpm check:release-tag
 

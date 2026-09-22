@@ -508,6 +508,27 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 **局限**：门禁证明仓库内的调度与指标接线一致，不证明 Vercel 平台已实际部署该配置，也不替代线上 cron 执行历史与告警投递验收。
 
+## 双语调度事实门禁（D02）
+
+`pnpm check:bilingual-docs` 逐页比对 `docs-site/<page>.md` 与 `docs-site/zh-CN/<page>.md` 里
+**可机器核对的调度事实**：5 字段 cron 表达式与 `HH:MM UTC` 时刻。两边集合必须完全相等，
+一边提到而另一边没有也算失败——「只改一种语言」正是漂移的发生方式。
+
+它拦的是真实发生过的两类事故：v0.6.0 的 I01（EN 写「外部 cron 逐小时调度」、zh 写「每天 09:00 UTC」，
+两条互斥陈述长期并存，而 digest 的投递语义恰恰取决于这个频率）；以及本次接线当场查出的
+`docs-site/web-push.md`（EN 仍说 `/api/cron/push-retry` 每 15 分钟一次，而 `vercel.json` 早在
+2026-09-21 就改成 `0 22 * * *`）。规则只认结构化事实，不比对文案，因此不会退化成翻译质量检查；
+cron 表达式是否合法复用 `isValidCronSchedule`，避免把散文里的数字串当成表达式。
+
+失败封闭项：找不到任何配对（`DOC_NO_PAIRS`）、英文页缺中文同名页（`DOC_PAIR_MISSING`）、
+文档内容为空（`DOC_SOURCE_EMPTY`，空文件不等于「没有差异」）。
+
+规则本体在 `src/lib/docs/bilingual-facts.ts`，IO/CLI 在 `scripts/lib/bilingual-docs-check.js` /
+`scripts/check-bilingual-docs.js`，由 `pnpm check:all` 与 CI 的 `Lint & Type Check` job 执行。
+成功日志会报出核对面（多少对文档、多少个 cron 表达式与 UTC 时刻）——数量以命令输出为准，本文不复述，
+免得文档比门禁先过期。
+**局限**：只覆盖带单位的调度事实，不判断同一事实的其他表述（如 "hourly" 与「每小时」）是否一致。
+
 ## 数据保留与账户擦除契约（H08）
 
 保留期、cron 任务名、擦除数据面、`audit_logs.metadata` 的 PII 键与删除确认短语同时存在于

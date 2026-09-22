@@ -60,6 +60,7 @@
     "check:secrets-scan": "node scripts/check-secrets-scan.js",
     "check:trace-coverage": "node scripts/check-trace-coverage.js",
     "check:cron-contract": "node scripts/check-cron-contract.js",
+    "check:bilingual-docs": "node scripts/check-bilingual-docs.js",
     "check:release-tag": "node scripts/check-release-tag.js",
     "check:mock-docs": "node scripts/check-mock-docs.js",
     "check:test-matrix": "node scripts/check-test-matrix.js",
