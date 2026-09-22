@@ -207,26 +207,36 @@ export async function listRecentNotifications(userId: string, limit = 10): Promi
   return (data as Notification[]) ?? [];
 }
 
-/** 未读通知数（命中 idx_notifications_unread 部分索引） */
+/**
+ * 未读通知数（命中 idx_notifications_unread 部分索引）。
+ * 查询失败抛错：把一次数据库故障读成「0 条未读」，会让侧边栏角标和「全部已读」按钮一起消失，
+ * 而用户没有任何线索知道刚刚那次没读成。
+ */
 export async function countUnreadNotifications(userId: string): Promise<number> {
   const supabase = await createClient();
-  const { count } = await supabase
+  const { count, error } = await supabase
     .from("notifications")
     .select("*", { count: "exact", head: true })
     .eq("user_id", userId)
     .eq("is_read", false);
+  if (error) throw new Error(error.message);
   return count ?? 0;
 }
 
-/** 批量标记已读；返回更新的行数 */
+/**
+ * 批量标记已读；返回更新的行数。
+ * 失败抛错（调用方回 `databaseError`）：这条链上「返回 0」既可能是真的没有未读，
+ * 也可能是**一条都没改成**，混在一起就等于对用户宣布成功。
+ */
 export async function markAllNotificationsRead(userId: string): Promise<number> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("notifications")
     .update({ is_read: true })
     .eq("user_id", userId)
     .eq("is_read", false)
     .select("id");
+  if (error) throw new Error(error.message);
   return data?.length ?? 0;
 }
 
