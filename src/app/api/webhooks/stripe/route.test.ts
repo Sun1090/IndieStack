@@ -130,6 +130,45 @@ describe("POST /api/webhooks/stripe 事件分支", () => {
     );
   });
 
+  it("解析不出团队时什么都没写，落定 skipped 而不是 processed", async () => {
+    CURRENT_EVENT = event("evt_no_team", "customer.subscription.created", {
+      id: "sub_orphan",
+      status: "active",
+      metadata: {}, // 既没有 teamId 也没有 userId
+      items: { data: [{ price: { id: "price_pro" }, current_period_start: 1, current_period_end: 2 }] },
+    });
+    const subscriptions = chain({ data: null, error: null });
+    adminFromMock.mockReturnValue(subscriptions);
+
+    const response = await post();
+    expect(response.status).toBe(200);
+    expect(subscriptions.upsert).not.toHaveBeenCalled();
+    // 唯一的对账凭据不能说「已处理」：这一轮库里一行都没写
+    expect(finalizeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ event_id: "evt_no_team", status: "skipped" }),
+    );
+  });
+
+  it("userId 回退查不到团队同样算 skipped", async () => {
+    CURRENT_EVENT = event("evt_no_team_fallback", "customer.subscription.updated", {
+      id: "sub_orphan_2",
+      status: "active",
+      metadata: { userId: "user_gone" },
+      items: { data: [] },
+    });
+    adminFromMock.mockImplementation((table: string) =>
+      table === "team_members"
+        ? chain({ data: null })
+        : chain({ data: null, error: null }),
+    );
+
+    const response = await post();
+    expect(response.status).toBe(200);
+    expect(finalizeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ event_id: "evt_no_team_fallback", status: "skipped" }),
+    );
+  });
+
   it("付款成功通知 owner 并落定 skipped", async () => {
     CURRENT_EVENT = event("evt_paid", "invoice.payment_succeeded", {
       id: "in_1",

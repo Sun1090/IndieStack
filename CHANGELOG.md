@@ -257,6 +257,16 @@ All notable changes to IndieStack will be documented in this file.
   于是红在别处；换成完整旧代码块后结果才可归因）。`/api/invitations` 侧此前零单测，计数逻辑
   由共享仓储承接后至少有了覆盖。service-role 清单 31 → 32 个模块 / 88 → 89 个调用点，
   `docs/db/security-audit.md` 快照同步。
+- **解析不出团队的 Stripe 事件不再记成「已处理」**：`upsertSubscription()` 在
+  `resolveTeamId()` 返回空时打一条 `unresolvable_team` 日志然后 `return`——什么都没写，
+  但 `applyEvent()` 照样返回 `"processed"`，于是 `webhook_events` 里留下的是「这笔订阅我们已经
+  处理」，而 `subscriptions` 表里没有任何一行能对上它。这张表是唯一的对账凭据：Stripe 收到 200
+  就不再重投，而 `processed` 与 `skipped` 在幂等上同形（重复投递都判 duplicate），所以这个错既不会
+  自愈也没有任何读数能发现。现在 `upsertSubscription()` 返回是否真的写了一行，没写就落 `skipped`；
+  **不改任何重放行为**，只改那一条记录说的话。新增 2 条路由用例（`metadata` 为空、以及 `userId`
+  回退查不到团队），变异核对：退回无条件 `return "processed"` 时恰好这两条红。
+  同一函数族里的另一处——「订阅删除事件命中 0 行也算 processed」本条**不**改：那是一种合法的幂等
+  无操作，要区分它得让 UPDATE 带回计数，属另一件事。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
   `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
   `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是

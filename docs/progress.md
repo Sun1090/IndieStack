@@ -1038,3 +1038,29 @@
   数据库触发器，那是另一个决定。回滚 = revert 本 commit。
 - 下一项：#37（Stripe webhook 给解析不出团队的行记 `processed`）与 #38（注销时丢掉擦除结果）。
 
+## 2026-09-23 — 解析不出团队的 Stripe 事件落 `skipped`，不再谎报「已处理」
+
+- 里程碑 / 版本：v0.12.0；通知链路审计之后又量出的第 4 条（#37）。
+- 状态：DONE。
+- 分支 / commit：`fix/stripe-webhook-unresolved-status`（基于 `9c9024a`）。
+- 为什么做：`webhook_events` 是与支付方对账的唯一凭据。`upsertSubscription()` 在
+  `resolveTeamId()` 返回空时只打一条 `unresolvable_team` 日志就 `return`，`applyEvent()` 随后照样
+  返回 `"processed"`——库里一行都没写，登记表上却写着「这笔订阅我们处理过了」。Stripe 收到 200
+  就不再重投，而 `processed` 与 `skipped` 在幂等上同形（`claim_webhook_event` 都判 duplicate），
+  所以这个错既不会自愈、也没有任何读数能把它暴露出来。
+- 完成内容：`upsertSubscription()` 返回「是否真的写了一行」，没写就落 `skipped`；幂等语义、HTTP
+  响应、重放行为一律不变，变的只有那条记录的说法。`docs/db/webhook-idempotency.md` 的流程图补上
+  这条区分，免得下一个人以为 skipped 是「漏处理」。
+- 变更文件：`src/app/api/webhooks/stripe/route.ts`、`route.test.ts`（+2 用例，12 条）、
+  `docs/db/webhook-idempotency.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`npx vitest run src/app/api/webhooks/stripe/route.test.ts` → 12 通过；
+  变异核对：把 `applyEvent` 退回无条件 `return "processed"` → 恰好新增的两条红
+  （`metadata` 为空 / `userId` 回退查不到团队），其余 10 条不动，源文件还原后比对通过；
+  全量 `CI=true pnpm check:all` / `pnpm lint` / `type-check` / `build` 见 commit 之后补记。
+- 阻塞 / 风险 / 回滚：不改支付数据的写入路径；对账视图以后会真的出现 `skipped` 行——那正是本条要
+  的东西，但若有人按「processed 数 == 事件数」做过对账，读数会变（仓库里没有这样的读数）。
+  回滚 = revert 本 commit。
+- 明确**不**做的：`customer.subscription.deleted` 命中 0 行时同样记 `processed`。那是合法的幂等
+  无操作（重复投递、或订阅在 Stripe 侧被直接删除），要把它和「没找到目标行」区分开需要 UPDATE
+  带回 `updated` 计数（`Prefer: count=exact`），那是另一次语义决定，不在修这条谎话时顺手改。
+- 下一项：#38（注销时丢掉擦除结果）。

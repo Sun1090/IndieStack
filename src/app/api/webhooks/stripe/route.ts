@@ -48,15 +48,21 @@ async function resolveTeamId(
   return data?.team_id ?? null;
 }
 
-/** upsert 订阅记录（依赖 subscriptions.provider_id 唯一索引） */
-async function upsertSubscription(subscription: Stripe.Subscription): Promise<void> {
+/**
+ * upsert 订阅记录（依赖 subscriptions.provider_id 唯一索引）。
+ *
+ * 返回是否**真的写了一行**：解析不出 team_id 时这里什么都不会写，但事件已经消费掉、Stripe
+ * 不会重投——所以调用方必须把这一轮记成 `skipped` 而不是 `processed`，否则 `webhook_events`
+ * 里留下的是「处理成功」，而数据库里没有任何一行能对上这笔订阅。
+ */
+async function upsertSubscription(subscription: Stripe.Subscription): Promise<boolean> {
   const teamId = await resolveTeamId(subscription.metadata?.teamId, subscription.metadata?.userId);
   if (!teamId) {
     await logApiError(
       `[Stripe Webhook] 无法解析 team_id，跳过订阅 ${subscription.id}（userId=${subscription.metadata?.userId ?? "unknown"}）`,
       new Error("unresolvable_team"),
     );
-    return;
+    return false;
   }
 
   const firstItem = subscription.items?.data?.[0];
@@ -81,6 +87,7 @@ async function upsertSubscription(subscription: Stripe.Subscription): Promise<vo
     onConflict: "provider_id",
   });
   if (error) throw error;
+  return true;
 }
 
 /** 将订阅标记为已取消 */
@@ -99,13 +106,19 @@ const WEBHOOK_PROVIDER = "stripe";
 /**
  * 执行事件副作用，返回落库状态。
  * 未知事件类型落 skipped + Sentry 上报（同 type 自动分组，需人工评估是否适配）。
+ *
+ * `processed` 只留给**真的改动了计费状态**的轮次：解析不出团队而什么都没写的订阅事件也记成
+ * processed，等于在唯一的对账凭据上写下「这笔订阅我们已经处理」，而库里一行都没有。
+ * skipped 与 processed 在幂等上同形（重复投递都视为 duplicate，见迁移 030），所以这条修正
+ * 不改变任何重放行为，只改变那一条记录说的话。
  */
 async function applyEvent(event: Stripe.Event): Promise<"processed" | "skipped"> {
   switch (event.type) {
     case "customer.subscription.created":
     case "customer.subscription.updated":
-      await upsertSubscription(event.data.object as Stripe.Subscription);
-      return "processed";
+      return (await upsertSubscription(event.data.object as Stripe.Subscription))
+        ? "processed"
+        : "skipped";
 
     case "customer.subscription.deleted":
       await markSubscriptionCanceled((event.data.object as Stripe.Subscription).id);
