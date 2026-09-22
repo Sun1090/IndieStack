@@ -9,7 +9,7 @@ const { createAdminClientMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 
-import { recordWorkerRun } from "./worker-runs";
+import { recordWorkerRun, listRecentEmailWorkerRuns } from "./worker-runs";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -37,5 +37,35 @@ describe("recordWorkerRun()", () => {
     await expect(
       recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs: 0, error: "boom" }),
     ).rejects.toThrow("db");
+  });
+});
+
+describe("listRecentEmailWorkerRuns()", () => {
+  it("只取算空发送轮次用得上的三列，从新到旧", async () => {
+    const chain = chainMock({
+      data: [{ pulled: 4, sent: 0, failed: 0 }, { pulled: 0, sent: 0, failed: 0 }],
+    });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(listRecentEmailWorkerRuns(2)).resolves.toEqual([
+      { pulled: 4, sent: 0, failed: 0 },
+      { pulled: 0, sent: 0, failed: 0 },
+    ]);
+    expect(chain.select).toHaveBeenCalledWith("pulled, sent, failed");
+    expect(chain.order).toHaveBeenCalledWith("created_at", { ascending: false });
+    expect(chain.limit).toHaveBeenCalledWith(2);
+  });
+
+  it("缺列按 0 处理：一行没有 sent 不等于它发出去过未知数量的邮件", async () => {
+    const chain = chainMock({ data: [{ pulled: 3 }] });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+    await expect(listRecentEmailWorkerRuns()).resolves.toEqual([
+      { pulled: 3, sent: 0, failed: 0 },
+    ]);
+    expect(chain.limit).toHaveBeenCalledWith(20);
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
+    await expect(listRecentEmailWorkerRuns()).rejects.toThrow("db");
   });
 });

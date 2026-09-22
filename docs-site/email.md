@@ -47,6 +47,13 @@ bounded. For operational monitoring it emits backlog and run metrics, plus
 has no address; `preference` — the user switched those types off). Skipping is never silent:
 `pnpm check:cron-contract` statically fails a worker route whose conditional skip has no counter.
 
+The admin overview panel shows the queue itself: how many notifications are pending, how long the
+oldest one has been waiting (past 48 h — two daily cycles — it reads as stuck), and how many recent
+runs pulled items yet sent none. All three go through exactly the filter the worker pulls with, so
+the age on the panel describes that same queue. This is visibility only: items skipped for
+`no_email` or `preference` still never leave the queue, and **how** they should be dequeued is an
+open decision (v0.12.0 A05).
+
 Digest delivery is **one email per run, per user, with something queued**. It deliberately does not
 try to hit each user's local morning: on the Hobby plan a cron path can run at most once a day, so a
 single fixed UTC instant (`0 9 * * *`) can only fall inside one timezone's morning — before 2026-09-22

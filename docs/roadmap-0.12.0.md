@@ -49,15 +49,20 @@
    **2026-09-22 核对时补一条更要紧的事实**：被跳过的条目**永远出不了队列**——
    两个 skip 分支（`cron/digest/route.ts` 的 `!profile?.email` 与偏好过滤后 `filtered.length === 0`）
    都不调用 `markEmailSent`，也不调用 `markEmailFailed`，所以 `metadata.email_attempts` 不增长、
-   达不到 `EMAIL_MAX_ATTEMPTS`（`repositories/notifications.ts:31`）的死信门槛；
+   达不到 `EMAIL_MAX_ATTEMPTS`（`repositories/notifications.ts:32`）的死信门槛；
    实时通道 `email-notify.ts:90-91` 对同样两种情况也是早退，条目会持续产生。
    后果：`listUnsentEmailNotifications` 是 `created_at` 升序 + `limit 100`
-   （`repositories/notifications.ts:46-59`），这些永久不可投递的行会一直占住最前面的名额，
+   （`repositories/notifications.ts:57-73`），这些永久不可投递的行会一直占住最前面的名额，
    攒够 100 条之后**新产生的、可投递的通知再也拉不到**，表现为每天 `pulled=100, sent=0`
    且 `email.backlog` 单调增长（阈值 500 的告警只说明规模、不说明原因）。
    本条因此包含一个决策：偏好关闭/无邮箱的行应当以什么语义出队
    （复用死信、新增 `email_skipped_reason` 过滤，还是拉取侧翻页跳过），
-   三者都会改变 admin 面板与既有指标口径，不接受顺手用 `markEmailSent` 掩盖
+   三者都会改变 admin 面板与既有指标口径，不接受顺手用 `markEmailSent` 掩盖。
+   **2026-09-23：可观测那一半已落地**——admin 概览页新增「邮件待发队列」卡片，报队列条数、
+   最老一条的年龄（48h = 两个日调度周期以上算「已卡住」）、以及最近几轮
+   `pulled>0 && sent===0 && failed===0` 的空发送轮次（`src/lib/notifications/queue-diagnostics.ts`）。
+   三个读数刻意与 worker 的拉取口径共用同一段过滤，并由一条「三处过滤调用逐项相等」的用例钉住。
+   **出队语义仍未决**：本条没有改变任何发送行为，被跳过的条目依旧永远出不了队列。
 
 ### B. 发布证据闭环（来自 J06 / J08 / E09）
 
