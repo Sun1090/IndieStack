@@ -1,3 +1,41 @@
+## 2026-09-22 — 主题切换 E2E 的 hydration 竞态：CI 红的是用例写法，不是产品
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE（`pnpm verify:build` 与 `pnpm check:all` 均通过；竞态已在本地复现并验证修复）。
+- 分支 / commit：`fix/theme-hydration-race`（基于 main `6682629`）。
+- 触发：PR #52 的 `E2E shard 2` 失败——`e2e/theme.spec.ts:79` 断言 `<html>` 带 `dark`，收到 `"light"`，
+  首次 + 2 次重试共 3 次同一签名，看起来像 #52 引入的回归。
+- 排查（只看 CI 自己的产物，不靠猜）：
+  1. `gh run download` 取 `playwright-report-shard-2` 并解 `trace.zip`：日志里按钮已解析、
+     `element is visible, enabled and stable`、点击坐标 (1184, 32) 正是 40×40 盒子的中心、
+     `click action done`；
+  2. trace 的 console 只有 `Download the React DevTools` 和 `[HMR] connected`，**零报错**；
+     `frame-snapshot` 是 `<html lang="en" class="light" style="color-scheme: light">` 加完整 body——
+     DOM 没塌、没进 error boundary；#52 的 diff 只碰通知类型 / 快捷键 / 密码强度 / i18n 契约，与主题无关。
+  3. 结论：E2E 跑在 `next dev` 上，首屏 HTML 与内联主题脚本先就位、React 的监听器后挂上，
+     这一次 click 被**静默丢弃**。`e2e/smoke.spec.ts` 与 `e2e/keyboard.spec.ts` 早就把这个坑写进了注释，
+     theme.spec 是漏网的那条。
+- 完成内容：
+  1. `e2e/theme.spec.ts` 新增 `toggleThemeTo()`：每轮先读 `<html>` 当前 class，只有与目标不一致才点击，
+     再断言（`toPass` 20s、内层 1s，让慢 runner 上多排几次点击）。只重试断言不行——第二轮会把已经切好的
+     主题翻回去；先读状态就不会重复点。
+  2. **修复被反向验证过**：临时 spec 用 CDP `Emulation.setCPUThrottlingRate { rate: 25 }` 节流后 reload
+     并立刻点击——旧写法以与 CI 完全相同的签名失败（`Received string: "light"`、
+     `9 × locator resolved to <html lang="en" class="light">`），新写法在同样节流下通过。
+     实验文件已删除，没有进仓库。
+  3. `docs/testing.md` E2E 一节补这条编写规则，并把症状写清楚（断言超时 + DOM 完整 + 控制台零报错），
+     否则下一个人还会把它当产品 Bug 查。
+- 变更文件：4 个——`e2e/theme.spec.ts`、`docs/testing.md`、`CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：
+  - 节流实验：同一条件下旧写法 1 failed、新写法 1 passed；
+  - `pnpm exec playwright test e2e/theme.spec.ts` → 6 passed；
+  - `pnpm verify:build` → 通过：**183 文件 / 2086 用例**，Bundle 2863.7 kB（基线 2733.8 kB，门禁内），
+    Next.js 生产构建成功；`pnpm check:all` → `✅ 全部校验通过`；`pnpm lint` / `pnpm type-check` 干净。
+- 阻塞：无。PR #52 的 CI 红与本条同因，合并本条后 rebase 即可复绿。
+- 风险 / 回滚：只改测试与文档，不动产品代码；回滚 = revert 本 commit。
+- 遗留观察（暂不改）：`e2e/smoke.spec.ts` 的语言切换用例是同形状的裸点击（click 触发 Radix 菜单 →
+  断言 menuitem），目前没有任何失败证据；真要强化必须先读开合态再点，否则重试会把菜单关掉。
+
 ## 2026-09-22 — 把 axe 推进登录后区域：3 处 AA 对比度违规与 token 层修复（D10 续）
 
 - 里程碑 / 版本：v0.11.0（未打 tag；生产仍 `0.10.0`，缺 Vercel build 配额）。
