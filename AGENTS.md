@@ -94,3 +94,25 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Before publishing, fetch/prune and audit existing PRs/branches; reuse or finish relevant work instead of creating duplicates. Rebase safely on `origin/<base>` before publishing.
 - After a PR is merged or closed, immediately delete its remote branch and prune. The normal remote steady state is only the protected branch plus the minimum branches attached to active PRs.
 - Never discard unfinished local work: finish and validate it, merge through a PR, then clean up its local and remote branches.
+
+## Product Boundaries (thesis → queue, not checklist)
+
+Boundaries derive from the project thesis: a production-grade Next.js / Supabase starter template for indie developers. Queues derive from this boundary; parked ideas are not backlog items unless their entry conditions are met.
+
+### In Scope (template thesis-internal queue)
+
+- The v0.12.0 task pool (notification delivery semantics, release evidence, gate infrastructure, doc governance)
+
+### Out of Scope (parking; every item carries entry conditions)
+
+- Platformization / hosted-service offerings: entry = deliberate repositioning from starter template to platform
+- Own MCP / agent-product surface: entry = validated demand on top of the template thesis
+
+### Environment Blocked (external permissions, NOT ideas)
+
+- B-domain release evidence: entry = Vercel deploy/build quota + cloud Supabase credentials + disposable isolated account (roadmap risk note already states v0.12.0 exit criteria cannot be claimed without them)
+
+### Boundary Review Signals (check before moving any boundary)
+
+- Whether starter-template users keep asking for hosted/runtime offerings
+- Whether external permissions for the B-domain evidence have materialized
