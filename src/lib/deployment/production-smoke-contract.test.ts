@@ -128,6 +128,64 @@ describe("auditProductionSmokeWorkflow", () => {
     ).toBe("");
   });
 
+  it("reports every missing job and unpinned evidence step", () => {
+    const withoutManualJob = SAMPLE_WORKFLOW.replace(
+      /  smoke:\n(?:.*\n)*?          retention-days: 30\n/,
+      "  smoke-other:\n",
+    );
+    expect(issuesOf(withoutManualJob)).toContain("SMOKE_MANUAL_JOB_MISSING");
+    const withoutScheduledJob = SAMPLE_WORKFLOW.replace(
+      /  smoke-main:\n(?:.*\n)*?          retention-days: 30/,
+      "  smoke-side:\n",
+    );
+    expect(issuesOf(withoutScheduledJob)).toContain("SMOKE_SCHEDULED_JOB_MISSING");
+    expect(issue(SAMPLE_WORKFLOW, { from: "  smoke-main:\n", to: "  smoke-main:\n    needs: [smoke]\n" })).toContain(
+      "SMOKE_SCHEDULED_DEP_DRIFT",
+    );
+    expect(
+      issue(SAMPLE_WORKFLOW, { from: "on:\n  workflow_dispatch:\n", to: "on:\n  push:\n" }),
+    ).toContain("SMOKE_MANUAL_TRIGGER_MISSING");
+    // 没有 upload 步骤 = 没有 30 天证据，两个作业各报各的。
+    expect(
+      issue(SAMPLE_WORKFLOW, {
+        from: /      - name: Upload smoke evidence\n(?:.*\n)*?          retention-days: 30\n/,
+        to: "",
+      }),
+    ).toContain("SMOKE_ARTIFACT_DRIFT");
+    expect(
+      issue(SAMPLE_WORKFLOW, {
+        from: /      - name: Upload drift evidence\n(?:.*\n)*?          retention-days: 30/,
+        to: "",
+      }),
+    ).toContain("SMOKE_SCHEDULED_ARTIFACT_DRIFT");
+  });
+
+  it("stops scanning the upload step at its own boundaries", () => {
+    // `with:` 里没有 name: → 视为未声明，而不是去抓兄弟步骤的字段。
+    const noName = SAMPLE_WORKFLOW.replace(
+      "        with:\n          name: production-smoke-evidence\n",
+      "        with:\n          path: other.json\n",
+    );
+    expect(issuesOf(noName)).toContain("SMOKE_ARTIFACT_NAME_DRIFT");
+    expect(issuesOf(noName)).toContain("（未声明）");
+    // 后面再来一个步骤：它自己的 `- name:` 不能被当成前一个步骤的 artifact 名。
+    const withExtraStep = SAMPLE_WORKFLOW.replace(
+      "  smoke-main:",
+      [
+        "      - name: A later step",
+        "        run: echo done",
+        "  smoke-main:",
+      ].join("\n") + "\n",
+    );
+    expect(issuesOf(withExtraStep)).toBe("");
+    // 步骤内部的空行不得截断扫描。
+    const withBlankLine = SAMPLE_WORKFLOW.replace(
+      "        if: always()\n        with:\n          name: production-smoke-evidence",
+      "        if: always()\n\n        with:\n          name: production-smoke-evidence",
+    );
+    expect(issuesOf(withBlankLine)).toBe("");
+  });
+
   it("keeps the tracked production smoke workflow on the contract", () => {
     const workflows = readWorkflows();
     const report = auditProductionSmokeWorkflow(workflows);
