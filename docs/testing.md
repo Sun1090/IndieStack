@@ -186,7 +186,8 @@ pnpm smoke:supabase-identity -- --output /tmp/indiestack-identity-matrix.json
 
 ## CI 门禁
 
-push/PR 触发以下关卡：`Lint & Type Check`（含 i18n/RLS/工作流等静态门禁）· `Unit Tests`（覆盖率门禁）·
+push/PR 触发以下关卡：`Lint & Type Check`（一道 `pnpm check:all`：lint / type-check / 单测与全部
+i18n/RLS/工作流等静态门禁）· `Unit Tests`（覆盖率门禁）·
 `Build` · `Build Docs Site` · `E2E (Playwright)`（`[1, 2]` shard）· `CodeQL` · `Secrets Scan` ·
 `Security and configuration checks`。任何一道失败即阻塞合并。
 
@@ -194,6 +195,14 @@ push/PR 触发以下关卡：`Lint & Type Check`（含 i18n/RLS/工作流等静�
 
 `ci.yml` 按「廉价门禁先失败、昂贵作业并行」分层，改动这层结构等于改动 CI 的墙钟时间与失败代价：
 
+- **静态门禁只有一份清单**（C04）：`Lint & Type Check` job 跑的是 `pnpm check:all`，而不是逐个
+  `check:*` 步骤。过去本地聚合与 CI 是两份各自手工维护的清单，仓库里确实出现过「只在本地」或
+  「只在 CI」的门禁。这件事**不能**交给 `check:gates` 把关：它按「任意 workflow」判定接线，
+  而 `release.yml` 也跑聚合——把 `pnpm check:all` 从 `ci.yml` 删掉，它仍然全绿，PR 上却一道门禁都不跑
+  （变异核对量出来的）。约束因此落在 CI 拓扑门禁上：静态作业正文里必须出现 `pnpm check:all`，
+  删掉即 `CI_TOPOLOGY_DRIFT`，逐个写 `check:*` 不算替代。代价两条：CI 界面少了一层「哪一步红了」，
+  靠 `check-all.sh` 每步前的 `==> <门禁>` 与出错时的 `❌ 门禁失败：<命令>` 找回来；
+  单测在本 job 与 `Unit Tests`（覆盖率）各跑一次，多花约一分钟，换两处的判定完全同源；
 - `Lint & Type Check` 与 `Unit Tests` 都**没有前置依赖**，因此 lint/type-check/`check:*` 与
   `pnpm test:coverage` 同时开跑；覆盖率不再排在静态门禁后面；
 - `Build` 与 `E2E (Playwright)` 的 `needs` **只**指向 `Lint & Type Check`：静态门禁一绿就开始构建与 E2E，

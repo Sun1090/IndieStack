@@ -16,6 +16,7 @@ import {
 const REPO_ROOT = process.cwd();
 const SAMPLE_PATH = ".github/workflows/sample.yml";
 const DEFAULT_SCRIPTS = {
+  "check:all": "bash scripts/check-all.sh",
   "check:docs": "node scripts/check-docs-scripts.js",
   "test:coverage": "vitest run --coverage",
 };
@@ -58,6 +59,7 @@ const STATIC_JOB = `  static-checks:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - run: pnpm check:all
       - run: pnpm check:docs
 `;
 
@@ -378,6 +380,21 @@ describe("ci.yml topology contract", () => {
     const staticWithCoverage = `${STATIC_JOB}      - run: pnpm test:coverage\n`;
     const report = audit(sampleWorkflow(staticWithCoverage + UNIT_JOB), { topology: topology() });
     expect(codes(report)).toContain("CI_TOPOLOGY_DRIFT");
+  });
+
+  it("flags a static job that stopped running the aggregate entry point", () => {
+    // CI 与本地共用一份清单的前提是「静态作业确实在跑 check:all」。这一步不能只交给
+    // `check:gates` 去查：它按任意 workflow 判定接线，而 release.yml 同样跑聚合——
+    // 从 ci.yml 里删掉这一步，那边仍然全绿，PR 的门禁却已经全没了。
+    const noAggregate = STATIC_JOB.replace("      - run: pnpm check:all\n", "");
+    const report = audit(sampleWorkflow(noAggregate + UNIT_JOB + expensiveJobs), {
+      topology: topology(),
+    });
+    const drift = report.issues.filter(
+      (issue) => issue.code === "CI_TOPOLOGY_DRIFT" && issue.job === "static-checks",
+    );
+    expect(drift).toHaveLength(1);
+    expect(drift[0].detail).toContain("check:all");
   });
 
   it("flags a unit test job that skips coverage", () => {

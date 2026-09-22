@@ -167,6 +167,21 @@ All notable changes to IndieStack will be documented in this file.
   `{"ran":5,"failed":1,…}`（HTTP 仍是 200），另两张表的过期行照常删除，恢复授权后下一轮把残留那条补删掉，
   且 `cron.retention.cleanup_failed{cleanup_function}` 与 `permission denied` 日志都真实落到了输出里。
 
+### Changed
+
+- **CI 的静态门禁与本地聚合从此只有一份清单**（C04 的剩余部分）：`ci.yml` 的 `Lint & Type Check` job
+  过去逐个写 30 步 `pnpm check:*`，与 `scripts/check-all.sh` 是两份各自手工维护的清单——历史上确实
+  出现过「只在本地聚合里有」和「只在 CI 里有」的门禁（`check:gates` 就是为这件事存在的）。现在那 30 步
+  换成一步 `pnpm check:all`。**接线审计在这一步上原本是空的，是变异核对把它照出来的**：把
+  `pnpm check:all` 从 `ci.yml` 删掉，`check:gates` 仍然全绿——它按「任意 workflow」判定接线，
+  而 `release.yml` 同样跑聚合，于是「CI 在跑一份清单」这个前提可以由一个只在打标签时才执行的工作流
+  满足，PR 上门禁却一道都不跑。规则因此搬进 CI 拓扑门禁（`check:workflows`）：**静态作业正文里必须
+  出现 `pnpm check:all`**，删掉即 `CI_TOPOLOGY_DRIFT`，且逐个写 `check:*` 不能替代它。
+  作业名 `Lint & Type Check` 一字未改——分支保护的必需检查按名字匹配，改它属于改动共享配置。
+  代价两条，都记下：CI 界面少了一层「哪一步红了」，靠聚合脚本每步前的 `==> <门禁>` 与出错时补的
+  `❌ 门禁失败：<命令>` 找回来；单测在本 job 与 `Unit Tests`（覆盖率）各跑一次，多花约一分钟，
+  换两处的判定完全同源。
+
 ### Fixed
 
 - **两条 E2E 其实一直在共用第一台 dev server**：`a11y.spec.ts` 的 `page.goto(pageInfo.path)`、

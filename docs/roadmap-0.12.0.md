@@ -167,9 +167,12 @@
       「它已不再是缺口」而变红，逼着删行——静默生效的豁免清单正是这类缺口能活久的原因
     passkey 那条入口另需 Chromium 的虚拟 WebAuthn authenticator，仓库现在**没有任何** passkey E2E
     （`grep -rn virtualAuthenticator e2e playwright.config.ts` 为空），它和 ①②③ 是两件事，不要混做
-14. C04 （2026-09-22 已完成一半：`node scripts/check-bundle.js` 接进 CI Build job，`check:bundle` 的 CI 豁免随之删除，
-    CI 现在覆盖 `verify:build` 的全部组件。剩余部分是可选的——把 CI 的逐个 `check:*` 步骤换成 `pnpm check:all`，
-    让本地聚合与 CI 只有一份清单）
+14. C04 （**2026-09-23 已完成**）：`node scripts/check-bundle.js` 先接进 CI Build job（2026-09-22），
+    `check:bundle` 的 CI 豁免随之删除；本次把 `Lint & Type Check` job 里逐个写的 30 步 `pnpm check:*`
+    换成一步 `pnpm check:all`——本地聚合与 CI 从此只有一份清单。约束的落点不是 `check:gates`：
+    它按「任意 workflow」判定接线，`release.yml` 也跑聚合，删掉 ci.yml 那一步它照样绿（变异核对量出来的），
+    因此规则加在 CI 拓扑门禁上——静态作业正文必须出现 `pnpm check:all`，缺即 `CI_TOPOLOGY_DRIFT`。
+    作业名保持 `Lint & Type Check` 不变，因为分支保护按名字匹配必需检查
 15. C05 孤儿巡检补上 provider 侧 `list()` 与数据库的集合差，覆盖 031 之前从未落元数据的存量对象
 16. C06 定夺 `src/lib/actions/uploads.ts` 两个 Server Action：保留为编程入口（补调用方与文档）
     或删除（同步 service-role inventory、错误码门禁与 docs-site）

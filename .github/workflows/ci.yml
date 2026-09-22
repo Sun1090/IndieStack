@@ -42,107 +42,12 @@ jobs:
       - name: Dependency security audit
         run: pnpm audit --audit-level high
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Type check
-        run: pnpm type-check
-
-      - name: Check i18n locale symmetry
-        run: pnpm check:locales
-
-      - name: Check i18n translation usage
-        run: pnpm check:i18n
-
-      - name: Check server action error code translations
-        run: pnpm check:action-errors
-
-      - name: Check zh-CN terminology glossary
-        run: pnpm check:glossary
-
-      - name: Check dynamic translation key contracts
-        run: pnpm check:dynamic-keys
-
-      - name: Check logical CSS direction
-        run: pnpm check:direction
-
-      - name: Check shared agent index
-        run: pnpm check:agents
-
-      - name: Check docs-site script sync
-        run: pnpm check:docs
-
-      - name: Check RLS migrations
-        run: pnpm check:rls
-
-      - name: Check migration ordering and drift hazards
-        run: pnpm check:migrations
-
-      - name: Check migration rollback runbook
-        run: pnpm check:migration-runbook
-
-      - name: Check Supabase security boundaries
-        run: pnpm check:supabase-security
-
-      - name: Check repository security configuration
-        run: pnpm check:security
-
-      - name: Check release documentation
-        run: pnpm check:release-docs
-
-      - name: Check CHANGELOG structure
-        run: pnpm check:changelog
-
-      - name: Check ADR governance
-        run: pnpm check:adr
-
-      - name: Check gate wiring
-        run: pnpm check:gates
-
-      - name: Check Mock documentation parity
-        run: pnpm check:mock-docs
-
-      - name: Check contributor test matrix parity
-        run: pnpm check:test-matrix
-
-      - name: Check provider documentation parity
-        run: pnpm check:provider-docs
-
-      - name: Check Tailwind v4 native theme usage
-        run: pnpm check:tailwind
-
-      - name: Check design token consistency
-        run: pnpm check:tokens
-
-      - name: Check shared form field usage
-        run: pnpm check:fields
-
-      - name: Check shared state usage
-        run: pnpm check:states
-
-      - name: Check CI workflow topology
-        run: pnpm check:workflows
-
-      - name: Check production smoke workflow contract
-        run: pnpm check:production-smoke
-
-      - name: Check CodeQL alert policy
-        run: pnpm check:codeql
-
-      - name: Check secrets scan policy
-        run: pnpm check:secrets-scan
-
-      - name: Check request trace coverage
-        run: pnpm check:trace-coverage
-
-      - name: Check cron schedule and metric contract
-        run: pnpm check:cron-contract
-
-      - name: Check bilingual scheduling facts parity
-        run: pnpm check:bilingual-docs
-
-      - name: Check release tag policy
-        run: pnpm check:release-tag
+      # 一份清单：lint / type-check / 单测与全部 `check:*` 门禁只由 `scripts/check-all.sh` 列举。
+      # CI 过去逐项写步骤，于是本地聚合与 CI 是两份手工清单——历史上确实出现过
+      # 「只存在于本地」和「只存在于 CI」的门禁（`check:gates` 就是为此而存在的）。
+      # 聚合脚本 `set -e` 且在每一步前打印 `==> <门禁>`，失败日志的最后一条就是失败的门禁。
+      - name: Run every repository gate
+        run: pnpm check:all
 
   unit-tests:
     name: Unit Tests

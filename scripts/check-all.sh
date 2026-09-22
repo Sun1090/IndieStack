@@ -3,6 +3,9 @@
 # 说明：check:bundle / check:perf 依赖构建产物，走 pnpm verify（含 build）覆盖，不在此重复触发构建
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# CI 只跑这一个入口，所以「哪道门禁红了」必须在日志里自己说出来：每步前打印 `==> <门禁>`，
+# 出错时再补一条指明失败命令的收尾。缺了它，30 道门禁在 CI 里就是同一条红。
+trap 'printf "\n❌ 门禁失败：%s\n" "$BASH_COMMAND" >&2' ERR
 echo "==> check:locales"; pnpm --silent check:locales
 echo "==> check:i18n";   pnpm --silent check:i18n
 echo "==> check:action-errors"; pnpm --silent check:action-errors

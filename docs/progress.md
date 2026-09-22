@@ -704,3 +704,43 @@
   不改任何发送/出队行为，生产队列语义与改动前完全一致。回滚 = revert 本分支的两个 commit。
 - 下一项：A05 的后半（出队语义）等产品决策；A01 剩下的 `profiles.timezone`、C06 的两条孤儿 Server
   Action 同样等决策。可继续自主推进的是 C04 余下部分与文档事实门禁的收尾。
+
+## 2026-09-23 — CI 与本地从此只有一份门禁清单，而「有没有这份清单」这件事换了个更该待的地方（C04）
+
+- 里程碑 / 版本：v0.12.0 C04 收口（第一半是 2026-09-22 把 `check:bundle` 接进 Build job）。
+- 状态：DONE。
+- 分支 / commit：`ci/single-gate-list`（基于 `e969035`）。
+- 为什么做：roadmap 把剩余部分标成「可选」，但两份手工清单的实际后果已经发生过
+  （`check:docs` / `check:agents` 曾只存在于本地聚合，CI 从未跑过）。趁 v0.12.0 把它并成一份。
+- 完成内容：
+  1. `ci.yml` 的 `Lint & Type Check` job：30 步逐个 `pnpm check:*` + `pnpm lint` + `pnpm type-check`
+     → 一步 `pnpm check:all`（净删 102 行）。**作业名一字未改**——分支保护的必需检查按名字匹配，
+     改它等于改共享配置，不在本条射程内。
+  2. `scripts/check-all.sh` 加一条 `trap … ERR`：失败时补打 `❌ 门禁失败：<命令>`。
+     CI 界面由此少了一层「哪一步红了」，这一步把那层找回来。
+  3. **变异核对量出一个真实空洞**：把 `pnpm check:all` 从 `ci.yml` 删掉后跑 `pnpm check:gates` →
+     仍然全绿。原因写在规则自己的注释里——它按「任意 workflow」判定 CI 侧接线，而
+     `release.yml` 也跑 `pnpm check:all`，于是「CI 在跑一份清单」这个前提可以由一个**只在打标签时
+     才执行**的工作流满足，PR 上门禁一道都不跑。第一步的探针还把「删除没生效」当成「规则放过」：
+     needle 字符串不匹配时 `String.replace` 静默返回原文，所以重做的那版先断言 needle 命中再判定。
+  4. 约束搬到它该在的地方：`src/lib/ci/workflow-policy.ts` 的 `auditEntryJobs` 新增一条——静态作业
+     正文必须出现 `pnpm check:all`（用现成的 `jobRuns`，认块标量），缺即 `CI_TOPOLOGY_DRIFT`；
+     逐个写 `check:*` 不算替代。测试 fixture 的 `STATIC_JOB` 因此同时带 `check:all` 与 `check:docs`
+     （后者被三条既有反例用例当锚点用），并加一条「删掉聚合入口→只剩一条 drift」的用例。
+  5. 文档：`docs/testing.md` 的 CI 拓扑段新增一条（写清代价：单测在本 job 与覆盖率 job 各跑一次）；
+     roadmap C04 标注完成与约束落点；CHANGELOG 新增 `### Changed` 段。
+- 变更文件：8 个——`.github/workflows/ci.yml`、`scripts/check-all.sh`、
+  `src/lib/ci/workflow-policy.ts` 与其测试、`docs/testing.md`、`docs/roadmap-0.12.0.md`、CHANGELOG、本条目。
+- 验证命令与结果：
+  - `pnpm check:workflows` / `pnpm check:gates` → 通过；
+  - `pnpm vitest run src/lib/ci/workflow-policy.test.ts src/lib/release/gate-wiring.test.ts` → 63 passed；
+  - 变异：删 `ci.yml` 里的 `pnpm check:all` → 新规则红（`CI_TOPOLOGY_DRIFT`，job=静态作业）；
+    从 `check-all.sh` 摘掉 `check:a11y` → `check:gates` 红并点名该门禁；
+  - trap 探针：临时脚本跑到一条不存在的门禁 → exit 1 且末行 `❌ 门禁失败：pnpm --silent check:ghost`，
+    探针已删除；
+  - 待补：本次改的就是 CI 本身，**PR 上这一步真跑一次的绿才算收口**（本地 `pnpm check:all` 只能证明
+    聚合入口自洽，证明不了 GitHub 侧那一步存在）。
+- 风险 / 回滚：CI 墙钟多一次单测（约 1 分钟）；失败定位从「步骤名」变成「日志末行」。
+  回滚 = revert 本 commit（30 步回到 ci.yml，`check:workflows` 的新规则随之下线）。
+- 下一项：v0.12.0 任务池里可自主执行的条目已清空，剩余全部需要产品决策（A05 出队语义、
+  A01 的 `profiles.timezone`、C06 两个孤儿 Action）或外部权限（B 域发布证据、C05 provider 侧对账）。
