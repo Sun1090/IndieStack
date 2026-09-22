@@ -117,10 +117,14 @@ flowchart TD
     UseCache --> Return
 ```
 
-- **store 是唯一的状态来源**：`MockStore` 就是一个对象，读与写都经过它，默认值是挂在
-  `globalThis.__indiestackMockCache__` 上的那一份。这个跳板是必要的——Next.js dev 与生产构建都会把
-  Mock 模块拆成多个 chunk，缺少它时 RSC / 路由处理里的写入在后续 Server Action 中不可见
-  （v0.5.0 实际踩到的跨 chunk 问题）。**模块级不再有 `_mock*` 变量**：曾有 21 个与 store 并行的
+- **store 是唯一的状态来源，边界是「一个进程」**：`MockStore` 就是一个对象，读与写都经过它，默认值是挂在
+  `globalThis.__indiestackMockCache__` 上的那一份。这个跳板解决的是**同一进程内**的模块拆包——
+  Next.js dev 与生产构建都会把 Mock 模块拆成多个 chunk，缺少它时 RSC / 路由处理里的写入在后续
+  Server Action 中不可见（v0.5.0 实际踩到的跨 chunk 问题）。它**不跨进程**：`next dev` 的 Turbopack
+  会把 Server Action 与 route handler 拆到不同 worker 进程，那时每个进程各有一份 `globalThis`，
+  彼此看不见对方的写入。所以 E2E 里「提交是否落表」这类断言走 `/api/e2e/*` HTTP 端点覆盖，
+  而不是指望 action 的内存写入在另一个端点里读得到（`e2e/admin-contact-mfa.spec.ts` 的头注记的就是这件事）。
+  **模块级不再有 `_mock*` 变量**：曾有 21 个与 store 并行的
   模块级「镜像」，实测全部只被写入、从不被读取——它们不是第二份状态，而是死代码，已整体删除。
   留着真正的害处是让「MFA 状态还是进程全局」这类判断看起来有依据（v0.6.0 退出报告的 F01 正是
   这么写的），而决定隔离边界的一直只有 store。
@@ -130,7 +134,7 @@ flowchart TD
 - **请求级隔离是给测试用的，不是运行时的默认形态**：并行 spec 与并发场景测试用
   `createMockRequestStore()` 造私有作用域并注入客户端，避免共享可变状态互相覆盖。
   运行时**故意**共享默认 store：Server Action 写入、紧接着的 RSC 读取必须在同一份「假数据库」上
-  看得见彼此，那正是上面跨 chunk 一条的内容；把它当成「顺手改成请求级」的优化，就会重演 v0.5.0 的
+  看得见彼此（范围是上一条说的那个进程），把它当成「顺手改成请求级」的优化，就会重演 v0.5.0 的
   「写进去了、读不到」。这条边界是可证伪的：`src/lib/mock.test.ts` 里让 MFA 的 getter 改回读
   `MOCK_GLOBAL`，隔离与共享两组断言会同时变红。
 - 仓库不使用 file-backed fixture 作为运行时数据源，原因见 `docs/testing.md`（F02/F03）。
