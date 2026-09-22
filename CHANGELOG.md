@@ -225,6 +225,22 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **项目读取失败不再被答成「项目不存在」「只有管理员能操作」，也不再悄悄抹掉 config**（C08-b 第一批）：
+  `src/lib/actions/projects.ts` 里五处 awaited 查询——`createProject` / `deleteProject` / `updateProject`
+  的成员身份读取、两处项目行读取，以及 `updateProject` 合并写入前读回来的那份 `config`——原先都不读
+  `error`（其中三处的结果还被断言成不含 `error` 的类型，正是 C08 门禁抓的那一类）。
+  现在五处一律绑定 `error` 并让它决定回答：记日志后回 `databaseError`（「数据库操作失败，请稍后重试」），
+  而不是往下走成一条关于用户权限或数据的事实。**用户可见的变化**：数据库抖一下时，删除/编辑项目会看到
+  可以重试的失败提示，而不是「项目不存在」或「只有团队管理员能操作」这种把人送去开工单的假结论。
+  最贵的一处是 config：合并语义是「保留未提交的其他键」，而读失败时 `current?.config ?? {}` 会安静地
+  当成「原本没有键」，于是这次 update 把项目 config 里没提交的其他键全部抹掉——用户只是改了个开关，
+  别处的配置就没了，且全程没有任何报错。现在读不到就中止，一次都不写。
+  这条路径原本**零测试覆盖**（config 合并连一条用例都没有），所以补了六条：五处各自的读失败回答，
+  加上「config 合并保留未提交的其他键」这条正向断言（否则「中止」和「照样写」在测试里长得一样）。
+  变异核对：把五个 `if (xxxError)` 逐个短路成 `if (false)`，各自让对应那条用例红；正向那条在把合并
+  写成 `{ ...input.config }` 时红。台账里 `src/lib/actions/projects.ts` 的三条随之下线（22 → 19 处），
+  门禁的按文件对账保证这个数字没有靠嘴改。
+
 - **管理员不再在一次数据库抖动后被礼貌地请出后台**（C08 鉴权路径）：`src/lib/auth/guards.ts` 的角色读取改走
   `maybeSingle()` 并真正读 `error`，读不出来时新增 `SERVICE_UNAVAILABLE`（`guardHttpStatus` 映射 503，
   与「你没权限」的 403 分开）。`safelyRequireAuth()` 不让它落到最外层 catch——那里会回答 401，客户端于是清掉

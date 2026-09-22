@@ -75,11 +75,6 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
     reason:
       "debt (C08-b): invitation accept/revoke reads answer `No team found`, `Member not found` or `Only team admins …` to a failed read, and the already-a-member probe lets a duplicate invite through.",
   },
-  "src/lib/actions/projects.ts": {
-    sites: 3,
-    reason:
-      "debt (C08-b): two membership reads answer `projectNotFound` on failure, and the config merge read writes `{…{}, …input}` over `projects.config` — a failed read silently drops the other keys.",
-  },
   "src/lib/uploads/service.ts": {
     sites: 3,
     reason:
