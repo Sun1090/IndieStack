@@ -1153,3 +1153,70 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — C08：错误通道门禁接线，鉴权路径先止血
+
+- 里程碑 / 版本：v0.12.0 / C08（任务池 22 → 24 项，新增 C08-b、C08-c）。
+- 分支 / commit：`feat/gate-query-error-channel`（基于 `main`）。
+- 状态：DONE（PR 待 review 合并）。
+- 这一条修的是本仓库连续第五次遇到的同一类缺陷：**一次读失败被答成一个确定的结论**。
+  前四次（digest 轮次、未读数、`teams.member_count`、Stripe 事件状态）都是记录在撒谎，
+  这一次撒谎的是**类型**——`(await supabase.from(...)single()) as { data: { role: string } | null }`
+  不只是关掉一个告警，它断言「这条查询不可能出错」，于是下面的代码可以放心地把读失败当成
+  「没有这一行」。`src/lib/auth/guards.ts` 里两处这种写法意味着：数据库抖一下，管理员被降级成
+  `member`，日志里一行记录都没有。
+- 做了什么：
+  1. **先量后写（D01 口径）**：`src/**` 358 个非测试文件里 37 处 awaited 查询结果断言，
+     其中 **22 处抹掉 `error`，分布在 12 个文件**。roadmap 里原先记的「29 处 / 46 处」是错的——
+     那一版用单行 grep 数，多行断言整个漏掉；条目里已按实测改写并说明为什么错。
+     测量脚本本身改了三轮才对：链遍历只沿 `CallExpression` 走会在 `.select()` 处停住（与 C07
+     第一版同型错误）；未 await 的构造器断言（`admin.from("contact_messages").select(…) as unknown as FilterChain`）
+     是给 builder 定形状、不该在射程内；`x as unknown as T` 会被数成两处。
+  2. **鉴权路径先止血**（本条唯一的运行期行为改动）：`guards.ts` 两处收敛成一个 `readSessionRole()`，
+     走 `maybeSingle()` 并真正读 `error`；读不出来抛新增的 `SERVICE_UNAVAILABLE`，
+     `guardHttpStatus` 映射 **503**（403 是「你没权限」，重试多少次都一样；503 是可重试）。
+     `safelyRequireAuth()` 内层单独 catch，不让它落到最外层那个会回答 401 的 catch——401 会让客户端
+     清会话跳登录页，而重新登录并不会让那次读取成功。另修 `dashboard/admin/layout.tsx`、
+     `dashboard/admin/audit-logs/layout.tsx`（原来把读失败当非管理员 redirect）与
+     `actions/admin.ts` 的 `updateUserRole`（原来对没跑完的查询回答 `userNotFoundAdmin`）。
+     **用户看到的变化**：管理员在数据库抖动时不再被无声降权或踢回 `/dashboard`，而是看到
+     `dashboard/error.tsx` 的错误页（可点重试）；抛出的中文文案只进服务端日志，错误页走的是
+     `errors.errorBoundary.*` 翻译键，不泄露内部信息。
+  3. **门禁落地**：纯规则 `src/lib/security/query-error-channel.ts` + 单测、IO
+     `scripts/lib/query-error-channel-check.js`、薄壳 `scripts/check-query-error-channel.js`、
+     `pnpm check:query-errors` 进 `scripts/check-all.sh`（CI 经 C04 的聚合入口自动覆盖）。
+     文档：`docs/testing.md`「查询错误通道门禁（C08）」+ 命令表行、`docs-site/scripts.md`（双语）
+     与 `docs-site/testing.md`（双语）的 `rls-security` 行、`src/lib/testing/test-matrix.ts`。
+- 台账而不是豁免表：`ERROR_CHANNEL_EXEMPTIONS` 按文件记数量，**双向对账**——新增一处抹除报
+  `QUERY_ERROR_CHANNEL_CAST_AWAY`，修好一处却忘改数字报 `QUERY_ERROR_CHANNEL_EXEMPT_STALE`。
+  条目分 `justified`（`permission-gate.tsx`：客户端组件无法 5xx，读角色失败回落最低权限是刻意的）
+  与 `debt (C08-b)`（其余 20 处确实在撒谎）。要说清楚：**这一版门禁放行了 22 处中的 22 处**，
+  它的价值是「从今天起不能再多一处」，不是「问题清完了」——清偿顺序已按影响面写进 C08-b，
+  第一条是 `actions/projects.ts:183`（config 合并读失败后会把没提交的其他键静默清掉，台账里唯一一处数据丢失）。
+- 一条门禁自检的收获：`QUERY_ERROR_CHANNEL_PARSE` 是**被自己的测试 fixture 抓出来的**——
+  把 `as { data: … }` 换行写，TS 解析器按 ASI 截断，该文件语法树不完整，于是门禁安静地判到 0 处、
+  测试还绿。解析不动的文件在门禁眼里等于不存在，这是比误报更坏的一种绿，现在它必须点名。
+- 两条写下来免得下次重推：① `redirect()` 的 mock **必须照抄它抛 NEXT_REDIRECT 的行为**——第一版让它正常返回，于是「读失败抛错」那条路径一路走到渲染，测试仍然是绿的（假绿）；改成抛之后，`未登录` 那条用例立刻红，说明两条路径此前根本没被区分。② 台账里三处理由最初是**按文件名猜的**（billing 写「隐藏套餐」、api-keys 写「答 notFound」），逐行读过代码后全部改写：billing 是 `?? "free"` **把付费账户显示成免费**，api-keys 是「不存在」与「读失败」共用一个 `databaseError`，profile/edit 与 notifications 是**预填默认值、用户一保存就把真数据覆盖掉**——理由写错比不写更糟，因为下一个动手的人会照它排优先级。
+- 验证（全部在最后一次改动之后重跑）：
+  - `CI=true pnpm check:all` → **exit 0**，38 道门禁、202 个测试文件全过；`pnpm build` → exit 0。
+  - 新增/改动的测试：`query-error-channel.test.ts` 10 passed、`guards.test.ts` 33 passed、
+    `admin.test.ts` 18 passed、两个 admin 布局测试各 4 passed。
+  - 变异核对 15 项，逐项红且只红对应的那条：门禁侧 8 项（台账 5→4、拆掉 `as unknown` 穿透、
+    删掉语法诊断循环、`rpc` 移出判定集、`keepsErrorChannel` 恒真 → 红 6 条、跳过台账对账、
+    「豁免覆盖任意数量」、去掉 VACUOUS 封闭），鉴权侧 7 项（`readSessionRole` 吞掉 error、
+    `safelyRequireAuth` 落到 401、`requireAuth` 不抛 503、`guardHttpStatus` 折回 403、
+    去掉 `console.error`、`updateUserRole` 回 `userNotFoundAdmin`、admin 布局的 throw 分支短路）。
+    每次变异前后都用 `diff -q` 与备份比对确认源码已还原——变异脚本崩在中途把改动留下来过一次（C07 的教训）。
+  - 新门禁的红色能力单独验：临时放一个真实违规形状的 `src/lib/security/c08-probe.ts` → 退出 1 并点名
+    `c08-probe.ts:5`，删除后恢复绿，`git status` 确认探针已清理。
+  - `pnpm lint` / `pnpm type-check` → exit 0（`inspectQueryErrorChannel` 一度因复杂度 18 > 15 被 ESLint
+    拦下，按规则拆成 `castAwayIssues` / `staleLedgerIssues` / `countByFile`，没有用 disable 绕过；
+    顺带去掉两处**其实不需要**的 `as string | undefined`——生成类型本来就给得出 `role: string`）。
+  - i18n 面：`check:locales`（en/zh-CN 各 1243 键对称）、`check:action-errors`（43 个错误码 × 2 locale、
+    163 个前端文件无裸渲染）、`check:i18n` / `check:dynamic-keys` / `check:glossary` 全绿。
+  - 文档面：`check:changelog` / `check:release-docs` / `check:test-matrix`（11 领域 / 104 条门禁 × 2 份文档）/
+    `check:bilingual-docs` / `check:docs` / `check:gates`（38 个门禁，本地 35 / CI 37 / 豁免 3）全绿。
+- 仍未闭环：C08-b（20 处债务，顺序已按读过的代码定：先把两处「保存即覆盖真数据」的排最前）、
+  C08-c（12 处解构时压根不取 `error`，本门禁看不见它）、A05 出队语义与 A01 `profiles.timezone` 等用户拍板、
+  B 域演练与生产冒烟等外部权限。
+- 更新时间：2026-09-23（UTC）。

@@ -1,0 +1,190 @@
+/**
+ * 「断言抹掉 error 通道」规则的单测（C08）。
+ *
+ * 两条约束互相拉扯：探测器必须真的能标出一段它该标的代码（否则它就是永不响的门禁），
+ * 又必须不标那些与错误通道无关的写法（否则第一个 PR 就学会加 `// eslint-disable`）。
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  ERROR_CHANNEL_EXEMPTIONS,
+  collectErrorChannelCasts,
+  inspectQueryErrorChannel,
+  type QueryErrorChannelSource,
+} from "./query-error-channel";
+
+const REPO_ROOT = path.resolve(__dirname, "../../..");
+const ROLE_QUERY = `
+  const { data: profile } = (await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()) as { data: { role: string } | null };
+`;
+
+function source(file: string, content: string): QueryErrorChannelSource {
+  return { file, content };
+}
+
+function codes(sources: QueryErrorChannelSource[]): string[] {
+  return inspectQueryErrorChannel(sources).map((issue) => issue.code);
+}
+
+/**
+ * Codes about one file. The ledger covers the whole repo, so any partial scan also reports the
+ * other files as stale — those are real signals for the full scan and noise for a fixture.
+ */
+function codesFor(sources: QueryErrorChannelSource[], file: string): string[] {
+  return inspectQueryErrorChannel(sources)
+    .filter((issue) => issue.file === file)
+    .map((issue) => issue.code);
+}
+
+describe("collectErrorChannelCasts()", () => {
+  it("标出把 awaited 查询结果断言成不含 error 的写法", () => {
+    const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${ROLE_QUERY}}`)]);
+    expect(stats.judged).toBe(1);
+    expect(stats.casts).toEqual([{ file: "a.ts", line: 2 }]);
+  });
+
+  it("断言里保留 error 的写法不算违规", () => {
+    const kept = ROLE_QUERY.replace(
+      "as { data: { role: string } | null }",
+      "as { data: { role: string } | null; error: { message: string } | null }",
+    );
+    const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${kept}}`)]);
+    expect(stats.judged).toBe(1);
+    expect(stats.casts).toEqual([]);
+  });
+
+  it("`as unknown as T` 只算一处，而不是两处", () => {
+    const doubled = ROLE_QUERY.replace(
+      ") as { data:",
+      ") as unknown as { data:",
+    );
+    const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${doubled}}`)]);
+    expect(stats.judged).toBe(1);
+    expect(stats.casts).toHaveLength(1);
+  });
+
+  it("未 await 的链式构造器断言不在射程内（那是给 builder 定形状，不是抹掉结果）", () => {
+    const builder = `
+      let query = admin
+        .from("contact_messages")
+        .select("id", { count: "exact" }) as unknown as FilterChain;
+    `;
+    const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${builder}}`)]);
+    expect(stats.judged).toBe(0);
+    expect(stats.casts).toEqual([]);
+  });
+
+  it("`.rpc()` 的结果同样被判定", () => {
+    const rpc = `
+      const { data } = (await admin.rpc("get_team_member_count", { p_id: id })) as {
+        data: number | null;
+      };
+    `;
+    const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${rpc}}`)]);
+    expect(stats.judged).toBe(1);
+    expect(stats.casts).toEqual([{ file: "a.ts", line: 2 }]);
+  });
+
+  it("解析不动的文件会被点名，而不是安静地算作干净", () => {
+    // `as` 换行会被 ASI 截断成另一条语句——这一份 fixture 本身就是这么写坏的。
+    // 如果扫描器不报语法诊断，这类代码在门禁眼里等于不存在。
+    const broken = `
+      const { data } = (await admin.rpc("x"))
+        as { data: number | null };
+    `;
+    const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${broken}}`)]);
+    expect(stats.judged).toBe(0);
+    expect(stats.unparseable).toEqual([
+      { file: "a.ts", line: 3, message: "Unexpected keyword or identifier." },
+    ]);
+    expect(codes([source("a.ts", `async function f() {${broken}}`), source("b.ts", ROLE_QUERY)])).toContain(
+      "QUERY_ERROR_CHANNEL_PARSE",
+    );
+  });
+});
+
+describe("inspectQueryErrorChannel()", () => {
+  it("真实仓库没有新增违规，且债务台账与实测数量一致", () => {
+    const sources = readQuerySources();
+    const stats = collectErrorChannelCasts(sources);
+    // 地板值：断言扫描真的读到了 awaited 查询结果，否则「零违规」只是没在看。
+    expect(stats.judged).toBeGreaterThanOrEqual(30);
+    expect(stats.unparseable).toEqual([]);
+    expect(inspectQueryErrorChannel(sources)).toEqual([]);
+
+    const ledger = Object.entries(ERROR_CHANNEL_EXEMPTIONS);
+    const registered = ledger.reduce((total, [, entry]) => total + entry.sites, 0);
+    expect(stats.casts).toHaveLength(registered);
+    expect(ledger.length).toBe(new Set(stats.casts.map((cast) => cast.file)).size);
+    for (const [file, entry] of ledger) {
+      const found = stats.casts.filter((cast) => cast.file === file).length;
+      // 逐文件对账，而不是只看总数：一处被修好、另一处新加，总数是不变的。
+      expect(found, `${file} 实际 ${found} 处，台账登记 ${entry.sites} 处`).toBe(entry.sites);
+      expect(entry.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("台账按数量对账：多一处就报，少一处也报（清理完不许留着旧条目）", () => {
+    const file = "src/components/shared/permission-gate.tsx";
+    expect(codesFor([source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}}`)], file)).toEqual(
+      [],
+    );
+
+    const three = `async function f() {${ROLE_QUERY}${ROLE_QUERY}${ROLE_QUERY}}`;
+    expect(codesFor([source(file, three)], file)).toEqual(
+      expect.arrayContaining(["QUERY_ERROR_CHANNEL_CAST_AWAY", "QUERY_ERROR_CHANNEL_EXEMPT_STALE"]),
+    );
+
+    const zero =
+      "async function f() { const { data, error } = await supabase.from('profiles').select('role'); void data; void error; }";
+    expect(
+      codesFor([source(file, zero), source("other.ts", ROLE_QUERY)], file),
+    ).toContain("QUERY_ERROR_CHANNEL_EXEMPT_STALE");
+  });
+
+  it("未登记的违规文件直接报错", () => {
+    const issues = inspectQueryErrorChannel([
+      source("src/lib/auth/guards.ts", `async function f() {${ROLE_QUERY}}`),
+    ]);
+    const casts = issues.filter((issue) => issue.code === "QUERY_ERROR_CHANNEL_CAST_AWAY");
+    expect(casts).toEqual([
+      expect.objectContaining({
+        code: "QUERY_ERROR_CHANNEL_CAST_AWAY",
+        file: "src/lib/auth/guards.ts",
+        line: 2,
+      }),
+    ]);
+  });
+
+  it("三条失败封闭：没有文件、文件全空、扫到了文件却一个 awaited 查询结果都没判", () => {
+    expect(codes([])).toEqual(["QUERY_ERROR_CHANNEL_NO_SOURCES"]);
+    expect(codes([source("a.ts", "   \n  ")])).toEqual(["QUERY_ERROR_CHANNEL_SOURCE_EMPTY"]);
+    expect(codes([source("a.ts", "export const x = 1;")])).toEqual(["QUERY_ERROR_CHANNEL_VACUOUS"]);
+  });
+});
+
+/** 与 IO 层同一套扫描口径：`src/**`，跳过测试文件。 */
+function readQuerySources(): QueryErrorChannelSource[] {
+  const files: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of fs.readdirSync(path.join(REPO_ROOT, directory), { withFileTypes: true })) {
+      const relative = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(relative);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entry.name) || /\.(test|stories)\.tsx?$/.test(entry.name)) continue;
+      files.push(relative.split(path.sep).join("/"));
+    }
+  };
+  walk("src");
+  return files.map((file) => ({
+    file,
+    content: fs.readFileSync(path.join(REPO_ROOT, file), "utf8"),
+  }));
+}
