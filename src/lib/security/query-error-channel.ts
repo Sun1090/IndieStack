@@ -82,7 +82,8 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
   },
   "src/lib/uploads/service.ts": {
     sites: 3,
-    reason: "debt (C08-b): cover upload reads the project and the caller's team role, so a failed read answers `onlyAdminsCreateProject`; the avatar read leaks an unmanaged old object.",
+    reason:
+      "debt (C08-b): cover upload reads the project and the caller's team role, so a failed read answers `onlyAdminsCreateProject`; the avatar read leaks an unmanaged old object.",
   },
   "src/app/dashboard/team/page.tsx": {
     sites: 2,
@@ -95,12 +96,13 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
   },
   "src/app/api/analytics/route.ts": {
     sites: 1,
-    reason: "debt (C08-b): a failed time-series read returns an empty chart that looks like unused keys.",
+    reason:
+      "debt (C08-b): a failed time-series read returns an empty chart that looks like unused keys.",
   },
   "src/app/dashboard/billing/page.tsx": {
     sites: 1,
     reason:
-      "debt (C08-b): `currentPlan = teamInfo?.plan ?? \"free\"` — a failed membership read shows the wrong billing tier.",
+      'debt (C08-b): `currentPlan = teamInfo?.plan ?? "free"` — a failed membership read shows the wrong billing tier.',
   },
   "src/app/dashboard/notifications/page.tsx": {
     sites: 1,
@@ -110,7 +112,7 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
   "src/app/dashboard/profile/edit/page.tsx": {
     sites: 1,
     reason:
-      "debt (C08-b): the edit form prefills `\"\"` / `UTC` / `en` from a failed read, so saving overwrites the real profile values.",
+      'debt (C08-b): the edit form prefills `""` / `UTC` / `en` from a failed read, so saving overwrites the real profile values.',
   },
   "src/app/dashboard/profile/page.tsx": {
     sites: 1,
@@ -119,11 +121,12 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
   "src/lib/actions/api-keys.ts": {
     sites: 1,
     reason:
-      "debt (C08-b): a missing key and a failed read both answer the generic `databaseError`, so \"not found\" is never sayable here.",
+      'debt (C08-b): a missing key and a failed read both answer the generic `databaseError`, so "not found" is never sayable here.',
   },
   "src/lib/actions/sessions.ts": {
     sites: 1,
-    reason: "debt (C08-b): a failed session read answers `sessionNotFound` for a session that may still be valid.",
+    reason:
+      "debt (C08-b): a failed session read answers `sessionNotFound` for a session that may still be valid.",
   },
 };
 
@@ -194,8 +197,7 @@ export function collectErrorChannelCasts(
 
   for (const source of sources) {
     const parsed = ts.createSourceFile(source.file, source.content, ts.ScriptTarget.Latest, true);
-    const lineOf = (position: number): number =>
-      parsed.text.slice(0, position).split("\n").length;
+    const lineOf = (position: number): number => parsed.text.slice(0, position).split("\n").length;
 
     // A file that does not parse has no cast nodes to walk — reporting it as clean would be the
     // one failure mode worse than a false positive: a gate that silently stops looking.
@@ -289,7 +291,9 @@ export function inspectQueryErrorChannel(
 }
 
 /** Every error-erasing cast in a file whose ledger count does not cover it. */
-function castAwayIssues(casts: readonly { file: string; line: number }[]): QueryErrorChannelIssue[] {
+function castAwayIssues(
+  casts: readonly { file: string; line: number }[],
+): QueryErrorChannelIssue[] {
   const perFile = countByFile(casts);
   const issues: QueryErrorChannelIssue[] = [];
 

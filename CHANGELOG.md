@@ -17,8 +17,9 @@ All notable changes to IndieStack will be documented in this file.
   所以它既不会悄悄长胖、也不会悄悄烂成永久豁免表；条目分两种——`justified`（客户端组件 `permission-gate.tsx`
   读角色失败时故意回落到最低权限，客户端没法 5xx）与 `debt (C08-b)`（代码确实在撒谎，等按影响面偿还）。
 
-  接线前按 D01 口径先量：358 个非测试文件里 37 处 awaited 断言、22 处抹掉 `error`、分布在 12 个文件。
-  **先前记在 roadmap 里的「29 处 / 46 处」是错的**——那一版用单行 grep 数，多行断言整个漏掉。测量脚本本身
+  数量是先量后修的对照（同一套 AST，`main` vs 本 PR）：修之前 42 处 awaited 断言 / **27 处抹掉 `error`**，
+  修掉鉴权与管理路径那五处之后 37 处 / **22 处、12 个文件**，这 22 处全部进台账。**先前记在 roadmap 里的
+  「29 处 / 46 处」是错的**——那一版用单行 grep 数，多行断言整个漏掉。测量脚本本身
   被修了三轮：链遍历只沿 `CallExpression` 走会在 `.select()` 就停住；未 await 的构造器断言
   （`admin.from("contact_messages").select(…) as unknown as FilterChain`）是给 builder 定形状、不在射程内；
   `x as unknown as T` 会算成两处。最后一条 `as` 换行是**被自己的测试 fixture 抓出来的**：TS 解析器在那里按

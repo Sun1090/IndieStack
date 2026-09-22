@@ -1190,9 +1190,13 @@
 - 台账而不是豁免表：`ERROR_CHANNEL_EXEMPTIONS` 按文件记数量，**双向对账**——新增一处抹除报
   `QUERY_ERROR_CHANNEL_CAST_AWAY`，修好一处却忘改数字报 `QUERY_ERROR_CHANNEL_EXEMPT_STALE`。
   条目分 `justified`（`permission-gate.tsx`：客户端组件无法 5xx，读角色失败回落最低权限是刻意的）
-  与 `debt (C08-b)`（其余 20 处确实在撒谎）。要说清楚：**这一版门禁放行了 22 处中的 22 处**，
-  它的价值是「从今天起不能再多一处」，不是「问题清完了」——清偿顺序已按影响面写进 C08-b，
-  第一条是 `actions/projects.ts:183`（config 合并读失败后会把没提交的其他键静默清掉，台账里唯一一处数据丢失）。
+  与 `debt (C08-b)`（其余 20 处确实在撒谎）。要说清楚：**这一版门禁把台账里的 22 处全部放行**，
+  它的价值是「从今天起不能再多一处」，不是「问题清完了」。
+  数量对照（同一套 AST，`main` vs 本 PR）：修之前 **42 处 awaited 断言 / 27 处抹掉 `error`**，
+  修掉鉴权与管理路径那五处之后 **37 处 / 22 处、12 个文件**。清偿顺序写在 C08-b，排最前的是
+  **两处「用户一保存就把真数据覆盖掉」**：`actions/projects.ts:183`（config 合并读失败 → 写入
+  `{ ...(current?.config ?? {}), ...input }`，没提交的其他键静默消失）与
+  `dashboard/profile/edit/page.tsx:33`（表单预填 `""` / `UTC` / `en`）。
 - 一条门禁自检的收获：`QUERY_ERROR_CHANNEL_PARSE` 是**被自己的测试 fixture 抓出来的**——
   把 `as { data: … }` 换行写，TS 解析器按 ASI 截断，该文件语法树不完整，于是门禁安静地判到 0 处、
   测试还绿。解析不动的文件在门禁眼里等于不存在，这是比误报更坏的一种绿，现在它必须点名。

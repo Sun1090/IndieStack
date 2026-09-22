@@ -59,10 +59,7 @@ describe("collectErrorChannelCasts()", () => {
   });
 
   it("`as unknown as T` 只算一处，而不是两处", () => {
-    const doubled = ROLE_QUERY.replace(
-      ") as { data:",
-      ") as unknown as { data:",
-    );
+    const doubled = ROLE_QUERY.replace(") as { data:", ") as unknown as { data:");
     const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${doubled}}`)]);
     expect(stats.judged).toBe(1);
     expect(stats.casts).toHaveLength(1);
@@ -102,9 +99,9 @@ describe("collectErrorChannelCasts()", () => {
     expect(stats.unparseable).toEqual([
       { file: "a.ts", line: 3, message: "Unexpected keyword or identifier." },
     ]);
-    expect(codes([source("a.ts", `async function f() {${broken}}`), source("b.ts", ROLE_QUERY)])).toContain(
-      "QUERY_ERROR_CHANNEL_PARSE",
-    );
+    expect(
+      codes([source("a.ts", `async function f() {${broken}}`), source("b.ts", ROLE_QUERY)]),
+    ).toContain("QUERY_ERROR_CHANNEL_PARSE");
   });
 });
 
@@ -131,9 +128,9 @@ describe("inspectQueryErrorChannel()", () => {
 
   it("台账按数量对账：多一处就报，少一处也报（清理完不许留着旧条目）", () => {
     const file = "src/components/shared/permission-gate.tsx";
-    expect(codesFor([source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}}`)], file)).toEqual(
-      [],
-    );
+    expect(
+      codesFor([source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}}`)], file),
+    ).toEqual([]);
 
     const three = `async function f() {${ROLE_QUERY}${ROLE_QUERY}${ROLE_QUERY}}`;
     expect(codesFor([source(file, three)], file)).toEqual(
@@ -142,9 +139,9 @@ describe("inspectQueryErrorChannel()", () => {
 
     const zero =
       "async function f() { const { data, error } = await supabase.from('profiles').select('role'); void data; void error; }";
-    expect(
-      codesFor([source(file, zero), source("other.ts", ROLE_QUERY)], file),
-    ).toContain("QUERY_ERROR_CHANNEL_EXEMPT_STALE");
+    expect(codesFor([source(file, zero), source("other.ts", ROLE_QUERY)], file)).toContain(
+      "QUERY_ERROR_CHANNEL_EXEMPT_STALE",
+    );
   });
 
   it("未登记的违规文件直接报错", () => {
