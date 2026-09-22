@@ -56,52 +56,64 @@ function MfaForm() {
     const factorId = searchParams.get("factor") ?? "";
     const cleaned = code.replace(/\s+/g, "");
 
-    const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
-      factorId,
-    });
-
-    if (challengeError || !challengeData) {
-      toast({ title: "MFA", description: ta(authErrorKey(challengeError)), variant: "destructive" });
-      setLoading(false);
-      return;
-    }
-
-    const { error: verifyError } = await supabase.auth.mfa.verify({
-      factorId,
-      challengeId: challengeData.id,
-      code: cleaned,
-    });
-
-    if (verifyError) {
-      toast({
-        title: "MFA",
-        description: ta(authErrorKey(verifyError)),
-        variant: "destructive",
+    try {
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId,
       });
-      setLoading(false);
-      return;
-    }
 
-    // aal2 已达成，刷新会话后进入目标页
-    await supabase.auth.refreshSession();
-    void logAuthEvent("auth.mfa_verified", {});
-    router.push(redirect);
-    router.refresh();
+      if (challengeError || !challengeData) {
+        toast({ title: "MFA", description: ta(authErrorKey(challengeError)), variant: "destructive" });
+        return;
+      }
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId,
+        challengeId: challengeData.id,
+        code: cleaned,
+      });
+
+      if (verifyError) {
+        toast({
+          title: "MFA",
+          description: ta(authErrorKey(verifyError)),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // aal2 已达成，刷新会话后进入目标页
+      await supabase.auth.refreshSession();
+      void logAuthEvent("auth.mfa_verified", {});
+      router.push(redirect);
+      router.refresh();
+    } catch {
+      // supabase-js 在网络断开或服务端错误时是抛异常而不是返回 error 对象；
+      // 不接住的话按钮永远停在 "..."，用户只能刷新页面。异常没有 Supabase 的
+      // code，可映射的只有通用文案。
+      toast({ title: "MFA", description: ta("authError"), variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleRedeem(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const result = await redeemRecoveryCode(recoveryCode);
-    setLoading(false);
-    if (!result.ok) {
-      toast({ title: "MFA", description: ta(result.error), variant: "destructive" });
-      return;
+    try {
+      const result = await redeemRecoveryCode(recoveryCode);
+      if (!result.ok) {
+        toast({ title: "MFA", description: ta(result.error), variant: "destructive" });
+        return;
+      }
+      // 兑换会登出所有会话，引导重新登录
+      toast({ title: "MFA", description: t("redeemed") });
+      router.push(ROUTES.login);
+      router.refresh();
+    } catch {
+      toast({ title: "MFA", description: ta("authError"), variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-    // 兑换会登出所有会话，引导重新登录
-    toast({ title: "MFA", description: t("redeemed") });
-    router.push(ROUTES.login);
-    router.refresh();
   }
 
   return recoveryMode ? (

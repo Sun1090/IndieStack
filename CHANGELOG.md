@@ -51,6 +51,15 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **MFA 挑战页在请求抛异常时把用户永久卡在 `...`**：`src/app/auth/mfa/page.tsx` 的
+  `handleSubmit` / `handleRedeem` 只在「返回 error 对象」的分支里复位 `loading`，而 supabase-js
+  在断网或服务端错误时是**抛异常**、Server Action 也可能 reject——异常直接绕过 `setLoading(false)`，
+  按钮永远停在 `...`、页面不给任何提示，用户只能刷新。两条路径改为
+  `try { … } catch { 通用 authError 提示 } finally { setLoading(false) }`。
+  顺带补上这个页面此前的**零自动化覆盖**：`src/app/auth/mfa/page.test.tsx` 13 条，覆盖缺 `factor`
+  参数、非数字剔除与 6 位提交门控、challenge/verify 失败与成功（含 `refreshSession` +
+  `auth.mfa_verified` 审计 + 消毒后的跳转）、`?redirect=` 的站外与协议相对回落、恢复码自救分支
+  与两条异常兜底。变异核对：把生产代码还原成修复前写法，恰好那两条异常用例变红。
 - **摘要邮件「已调度但从不投递」从此可见**：`/api/cron/digest` 的错峰门控 `isDigestHour` 要求用户的
   **本地小时恰好等于 8**，而 `vercel.json` 在 Hobby plan 下只能每天跑一次（`0 9 * * *`）。一个固定的
   UTC 时刻只落在一个时区带（UTC-1）的本地 08:00 窗口里——上海、东京、伦敦、纽约、洛杉矶的用户
