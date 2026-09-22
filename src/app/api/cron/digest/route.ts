@@ -61,9 +61,23 @@ async function getProfiles(emails: Map<string, ProfileRow>): Promise<void> {
   }
 }
 
+/**
+ * 读出失败原因。`getProfiles` 抛的是 PostgREST 的错误对象而不是 `Error` 实例，
+ * `String(error)` 只会得到 `"[object Object]"`——那样 `email_worker_runs.error` 就白记了，
+ * 而这张表存在的全部理由就是「worker 一直在失败」要看得出失败成什么。
+ */
+function failureText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return String(error);
+}
+
 /** 单用户发送失败回执：保留既有 metadata，累加重试计数并记录错误（达到上限由拉取侧死信过滤跳过） */
 async function recordEmailFailures(items: Notification[], error: unknown): Promise<void> {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = failureText(error);
   for (const n of items) {
     const metadata = n.metadata as Record<string, unknown> | null;
     const attempts = Number(metadata?.email_attempts ?? 0);
@@ -78,12 +92,20 @@ async function recordEmailFailures(items: Notification[], error: unknown): Promi
 /**
  * 失败轮次也要落表：否则 `email_worker_runs` 只记录成功与空队列，
  * 「worker 一直在失败」在 admin 看板上表现为「根本没有运行记录」。落表失败不覆盖原始错误。
+ *
+ * `pulled` 必须是这一轮**真的拉到了多少条**：崩在发送中途的那一轮，队列头部正压着东西，
+ * 却若记成 0，A05 的「空发送轮次」（只数 `pulled>0 && sent===0 && failed===0`）就永远看不见
+ * 最该看见的那一类——拉到 100 条然后整轮抛错。
  */
-async function recordFailedRun(startedAt: number, error: unknown): Promise<void> {
-  const message = error instanceof Error ? error.message : String(error);
+async function recordFailedRun(
+  startedAt: number,
+  error: unknown,
+  pulled: number,
+): Promise<void> {
+  const message = failureText(error);
   try {
     await recordWorkerRun({
-      pulled: 0,
+      pulled,
       sent: 0,
       groups: 0,
       failed: 0,
@@ -169,6 +191,8 @@ export async function POST(request: NextRequest) {
   const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   // 整轮耗时：包含积压查询与拉取，口径与 push-retry worker 一致
   const startedAt = Date.now();
+  /** 本轮实际拉到的条数；catch 分支要靠它把失败轮次记成真实数字。 */
+  let pulled = 0;
 
   try {
     // C03 积压告警：待发通知超阈值时 Sentry 上报（logApiError → captureException，
@@ -183,7 +207,7 @@ export async function POST(request: NextRequest) {
     }
 
     const notifications = await listUnsentEmailNotifications();
-    const pulled = notifications.length;
+    pulled = notifications.length;
     if (pulled === 0) {
       const durationMs = Date.now() - startedAt;
       await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs });
@@ -224,7 +248,7 @@ export async function POST(request: NextRequest) {
     recordMetric("cron.digest.failed", 1, {
       attributes: { error_type: error instanceof Error ? error.name : "unknown" },
     });
-    await recordFailedRun(startedAt, error);
+    await recordFailedRun(startedAt, error, pulled);
     await logApiError("[Cron Digest] 执行失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }

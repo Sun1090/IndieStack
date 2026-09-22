@@ -326,6 +326,42 @@ describe("POST /api/cron/digest", () => {
     );
   });
 
+  it("拉到条目后整轮抛错：失败轮次记的是真实 pulled，不是 0", async () => {
+    // A05 的「空发送轮次」只数 pulled>0 && sent===0 && failed===0。失败落表若写死 pulled:0，
+    // 「拉到 100 条然后整轮崩掉」这一类——队列头部正压着东西的那一类——就永远不进那个数字。
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "security_alert", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n2", user_id: "u2", type: "security_alert", title: "B", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: null, error: { message: "profiles down" } })),
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pulled: 2,
+        sent: 0,
+        groups: 0,
+        failed: 0,
+        error: "profiles down",
+      }),
+    );
+  });
+
+  it("抛的不是 Error 也不是带 message 的对象：落表退回 String()，不写空字符串", async () => {
+    listUnsentEmailNotificationsMock.mockRejectedValue("resend unreachable");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pulled: 0, error: "resend unreachable" }),
+    );
+  });
+
   it("执行后落一行运行记录（C02）", async () => {
     listUnsentEmailNotificationsMock.mockResolvedValue([
       { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },

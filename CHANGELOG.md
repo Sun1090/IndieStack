@@ -184,6 +184,23 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **实时邮件「已经发出去」不再被记成「发送失败、留待 cron 重试」**：`email-notify.ts` 把
+  `markEmailSent` 写在和 `sendResendEmail` 同一个 `try` 里，于是**回执写入**失败也会落进
+  「发送失败（留待 cron 重试）」那条 catch——邮件其实已经在 provider 那里落地，日志却把人往
+  「没发出去」的方向带；而队列里的行确实仍是待发，下一轮 digest 会再寄一封。重复投递本身是
+  at-least-once 的既有代价（`push-retry.ts` 的成功分支早就是这个形状：发送与回执各一个 `try`），
+  这次修的是**那句说谎的话**：发送失败的 catch 只覆盖发出去之前，回执失败单独上报
+  「邮件已发出，但发送回执写入失败（下一轮摘要可能重复寄出）」。新用例断言的是这两条文案**互斥**；
+  变异核对：把 `markEmailSent` 塞回原来的 `try`，该用例红。
+- **digest 失败轮次的运行记录从此是真实数字**：`recordFailedRun` 原本写死 `pulled: 0`，
+  「拉到 100 条然后整轮抛错」那一类——正是队列头部压得最狠的一类——在 `email_worker_runs` 里表现为
+  「什么都没拉到」，因而永远进不了 A05 的「空发送轮次」（只数 `pulled>0 && sent===0 && failed===0`）。
+  现在把计数提到 `try` 外面、失败时带真实值。同一处还修了失败原因被丢掉：`getProfiles` 抛的是
+  PostgREST 的错误对象而不是 `Error` 实例，`error instanceof Error ? error.message : String(error)`
+  只会得到 `"[object Object]"`，这张表存在的全部理由（看得出 worker 到底失败成什么）就此落空；
+  改成 `failureText()` 认三种形状（`Error` / 带 `message` 的对象 / 其余回落 `String()`）。
+  三条变异核对——记回 `pulled: 0`、不 hoist 计数、换回 Error-only 抽取——分别让对应用例红。
+
 - **两条 E2E 其实一直在共用第一台 dev server**：`a11y.spec.ts` 的 `page.goto(pageInfo.path)`、
   `smoke.spec.ts` / `responsive.spec.ts` 的 `page.goto(path)`，加上 5 处 `request.get("/…")`，
   都不带 `appUrl()` 而靠 Playwright 的 `baseURL` 解析——`baseURL` 写死的是基准端口，于是并行时
