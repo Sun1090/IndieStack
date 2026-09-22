@@ -16,6 +16,7 @@ afterEach(() => {
 
 const DIGEST = CRON_WORKERS.find((worker) => worker.id === "digest") as CronWorkerContract;
 
+// fixture 的指标行由注册表生成：往 `CRON_WORKERS` 加指标不应该让这条 IO 测试变红。
 const DIGEST_ROUTE = `
 import { recordMetric } from "@/lib/metrics";
 import { checkCronAuth } from "@/lib/cron-auth";
@@ -27,18 +28,14 @@ export async function POST() {
     recordCronRejected("digest", auth);
     return new Response("Unauthorized", { status: 401 });
   }
-  recordMetric("email.backlog", 0, { unit: "count" });
-  recordMetric("cron.digest.completed", 0, { unit: "ms" });
-  recordMetric("cron.digest.failed", 1, {});
+${DIGEST.metrics.map((metric) => `  recordMetric("${metric}", 0, { unit: "count" });`).join("\n")}
   return Response.json({ sent: 0 });
 }
 `;
 
 const OPERATIONS_DOC = `
 | cron.auth.rejected | count | worker, reason |
-| email.backlog | count | 无 |
-| cron.digest.completed | ms | pulled |
-| cron.digest.failed | count | error_type |
+${DIGEST.metrics.map((metric) => `| ${metric} | count | 无 |`).join("\n")}
 | /api/cron/digest | \`0 9 * * *\` | 每天 09:00 UTC |
 `;
 

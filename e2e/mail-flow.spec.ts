@@ -105,10 +105,13 @@ test.describe("邮件全链路 (F01)", () => {
       sent: number;
       groups: number;
       failed: number;
+      deferred: number;
     };
     expect(cronJson.sent).toBe(2);
     expect(cronJson.groups).toBe(1);
     expect(cronJson.failed).toBe(0);
+    // 强制门控下不存在「窗口外跳过」：这条计数为 0 才说明发送是真发了而不是被跳过
+    expect(cronJson.deferred).toBe(0);
 
     // 断言：摘要邮件已发
     const inboxAfterDigest = await api.get(

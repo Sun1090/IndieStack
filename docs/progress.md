@@ -1,3 +1,44 @@
+## 2026-09-22 — 退出报告核对时发现：摘要邮件「已调度但从不投递」，先把静默变成可见
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE（观测面与文档已修，**投递语义本身等产品决策**，见「下一项」）。
+- 分支 / commit：`fix/digest-deferral-observability`（基于 main `75fae73`）。
+- 为什么做：在做 J09 退出报告的逐条核实时读到 `isDigestHour`——它要求**用户本地小时恰好等于 8**，
+  而 `vercel.json` 里 digest 是 `0 9 * * *`（Hobby plan 每路径每天最多一次）。一个固定 UTC 时刻
+  不可能同时落在所有人的本地 08:00。实测 `2026-09-22T09:00:00Z` 的本地小时：
+  上海 17、东京 18、伦敦 10、纽约 5、洛杉矶 2，只有 `Atlantic/Cape_Verde`（UTC-1）是 8。
+  也就是说 E03 把「没人调度」修好了，**但除 UTC-1 时区带之外的用户仍然一封都收不到**，
+  而且比之前更难看：跳过分支连计数都没有，看板上每轮是 `pulled=N, sent=0, groups=0, failed=0`
+  的「成功」。文档还写着反话（见下），所以这条既是一个 bug，也是一次文档纠错。
+- 完成内容：
+  1. `runDigest()` 统计被窗口跳过的条数，每轮上报 `cron.digest.deferred`（`count`），
+     并进入 `cron.digest.completed` 的维度；响应体新增 `deferred`。指标登记进 `CRON_WORKERS`，
+     因此 `pnpm check:cron-contract` 会强制它同时接线路由并写进告警文档。
+  2. `docs/operations/sentry-alerts.md`：指标行 + 完成指标维度 + 调度行关键指标 + 去重清单，
+     并新增规则「`cron.digest.deferred` 等于本轮 `pulled` 且 `sent=0`，连续 2 轮」。
+  3. **纠正双语 docs-site**：`docs-site/email.md` 写「用外部调度器逐小时调用，本仓库的 Vercel cron
+     没有调度 digest 路由」，中文版写「每天 09:00 UTC 调用一次；仓库中的 Vercel cron 没有调度该路由」——
+     两者互斥，且「没有调度」在 E03 之后已不成立。现改为按代码事实描述：谁在窗口内、平台每天一次、
+     只有 UTC-1 命中、`cron.digest.deferred` 是这条失败形状的哨兵。
+  4. 顺带把 `cron-contract-check.test.ts` 的 fixture 路由与告警文档**从注册表生成**，
+     以后往 `CRON_WORKERS` 加指标不会再误红这条 IO 测试。
+- 变更文件：10 个——digest 路由、其单测（新增混合窗口用例：一个用户命中、一个跳过，
+  断言 `sent=1/deferred=1` 且只给命中者落 `markEmailSent`）、契约注册表、契约 IO 测试、
+  告警文档、`docs-site/email.md`、`docs-site/zh-CN/email.md`、`e2e/mail-flow.spec.ts`（强制门控下断言
+  `deferred=0`）、CHANGELOG 与本条目。
+- 验证命令与结果：
+  - `npx vitest run src/app/api/cron/digest src/lib/observability` → 9 文件 / 98 用例通过；
+  - `pnpm check:cron-contract` → `✅ 3 个 worker / 15 个指标 / 调度表达式与 vercel.json 及运维文档一致`；
+  - `pnpm check:docs`、`check:provider-docs`、`check:changelog` 各自通过；`pnpm type-check` 干净；
+  - 时区事实核对：`Intl.DateTimeFormat` 逐时区取 `2026-09-22T09:00:00Z` 的本地小时（见上）。
+- 阻塞：投递语义怎么修**是产品决策**，三条路各有代价——(a) 放宽窗口（`>=` 或「等够 24 小时就发」，
+  保证送达但发送时刻不再贴着本地早晨，且固定 UTC 时刻会把西半球固定在凌晨）；
+  (b) 按时区带注册多条 digest 路径（保住 08:00 语义，代价是 Hobby 的 cron 名额与调度面）；
+  (c) 接外部逐小时调度器（不改代码，但引入仓库外的运行依赖）。已作为退出报告的第一遗留项。
+- 风险 / 回滚：只加计数与文档，不改任何发送判定；revert 本 commit 即回滚（`CRON_WORKERS` 需同时摘掉
+  `cron.digest.deferred`，否则契约门禁会失败）。
+- 下一项：写 J09 退出报告（含本条发现），并把这 100 项核对里发现的其余缺口收进 J10 候选池。
+
 ## 2026-09-22 — 保留期 worker 的失败路径也进了真库：收回授权后其余表照常删
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。

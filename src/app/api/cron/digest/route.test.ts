@@ -94,7 +94,7 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, deferred: 0 });
     expect(recordWorkerRunMock).toHaveBeenCalledWith(
       expect.objectContaining({ pulled: 0, durationMs: 125 }),
     );
@@ -103,7 +103,7 @@ describe("POST /api/cron/digest", () => {
         name: "cron.digest.completed",
         value: 125,
         unit: "ms",
-        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
+        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0, deferred: 0 },
       }),
     );
   });
@@ -133,7 +133,7 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0, deferred: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.anything());
     expect(markEmailSentMock).toHaveBeenCalledTimes(2);
@@ -152,7 +152,7 @@ describe("POST /api/cron/digest", () => {
     const res = await POST(req());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ sent: 0, groups: 0, failed: 1 });
+    expect(body).toEqual({ sent: 0, groups: 0, failed: 1, deferred: 0 });
     expect(JSON.stringify(body)).not.toMatch(/boom/);
     expect(markEmailSentMock).not.toHaveBeenCalled();
     expect(markEmailFailedMock).toHaveBeenCalledWith(
@@ -173,8 +173,36 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, deferred: 1 });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(markEmailSentMock).not.toHaveBeenCalled();
+  });
+
+  it("窗口外的条数进入 cron.digest.deferred，且不影响窗口内用户（E03 可见性）", async () => {
+    // 默认固定时间 UTC 00:00：上海 08:00 命中窗口，纽约 19:00 被跳过
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n2", user_id: "u2", type: "system", title: "B", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() =>
+        chainMock({
+          data: [
+            { id: "u1", email: "a@b.c", timezone: "America/New_York", notification_settings: { emailNotifications: true } },
+            { id: "u2", email: "d@e.f", timezone: "Asia/Shanghai", notification_settings: { emailNotifications: true } },
+          ],
+        }),
+      ),
+    });
+
+    const res = await POST(req());
+    await expect(res.json()).resolves.toEqual({ sent: 1, groups: 1, failed: 0, deferred: 1 });
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({ name: "cron.digest.deferred", value: 1, unit: "count" }),
+    );
+    expect(markEmailSentMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSentMock).toHaveBeenCalledWith("n2");
   });
 
   it("用户自带时区按各自本地小时判断（覆盖默认回退窗口）", async () => {
@@ -187,7 +215,7 @@ describe("POST /api/cron/digest", () => {
     });
 
     const res = await POST(req());
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, deferred: 1 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

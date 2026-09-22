@@ -59,7 +59,7 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     routeFile: "src/app/api/cron/digest/route.ts",
     methods: ["POST"],
     schedule: "0 9 * * *",
-    metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
+    metrics: ["email.backlog", "cron.digest.deferred", "cron.digest.completed", "cron.digest.failed"],
     cadence: "每天 09:00 UTC 拉取一次，按用户本地时间错峰发送摘要",
   },
   {

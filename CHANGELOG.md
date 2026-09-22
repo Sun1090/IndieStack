@@ -40,6 +40,18 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **摘要邮件「已调度但从不投递」从此可见**：`/api/cron/digest` 的错峰门控 `isDigestHour` 要求用户的
+  **本地小时恰好等于 8**，而 `vercel.json` 在 Hobby plan 下只能每天跑一次（`0 9 * * *`）。一个固定的
+  UTC 时刻只落在一个时区带（UTC-1）的本地 08:00 窗口里——上海、东京、伦敦、纽约、洛杉矶的用户
+  每一天都被跳过，通知永远停在「已拉取、从不发送」。实测 `2026-09-22T09:00:00Z` 各时区本地小时：
+  上海 17、东京 18、伦敦 10、纽约 5、洛杉矶 2，只有 `Atlantic/Cape_Verde` 是 8。
+  这条路由此前只在「整轮抛异常」时才失败，跳过分支连计数都没有，所以看板上表现为每轮
+  `pulled=N, sent=0, groups=0, failed=0` 的正常成功。现在每轮上报 `cron.digest.deferred`
+  （被窗口跳过的条数）并进入 `cron.digest.completed` 维度，告警文档登记「拉到了却没发出去」的规则，
+  `e2e/mail-flow.spec.ts` 在强制门控下断言该计数为 0。**投递语义本身怎么改（放宽窗口 / 按时区带加调度 /
+  接外部逐小时调度器）是产品决策，未在本次改动**，已写入退出报告遗留项。
+  同时纠正 `docs-site/email.md` 与中文版：两份文档都还写着「仓库里的 Vercel cron 没有调度 digest 路由」
+  （E03 之后已经不成立），英文版更声称可以逐小时外部调度，与 zh 版写的每天 09:00 UTC 直接互斥。
 - **主题切换 E2E 在 CI 上稳定失败**：`e2e/theme.spec.ts` 的「按钮切换主题」用例直接 `click()` 后断言
   `<html>` 带上 `dark`，但 E2E 跑在 `next dev` 上——首屏 HTML 和内联主题脚本早已就位，React 却可能
   还没 hydration，这一次点击因为没有监听器而被**静默丢弃**。CI 上 3 次尝试（首次 + 2 次重试）全部以
