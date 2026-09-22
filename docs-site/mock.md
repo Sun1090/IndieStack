@@ -198,7 +198,10 @@ experiment sets `PW_FULLY_PARALLEL=true`.
 
 That experiment is no longer a one-off: the `E2E parallel baseline` workflow runs the **whole**
 suite (deliberately without `--shard`) with `PW_FULLY_PARALLEL=true` against a single dev server,
-on demand and every Monday at `30 7 * * 1` (07:30 UTC). It is a measurement, not a merge gate —
+on demand and every Monday at `30 7 * * 1` (07:30 UTC). It forces `--retries=0`: CI defaults to two
+retries, and a shared-state conflict is exactly the "red the first time, green on retry" kind, so a
+parallel run measured with retries on would report a green that is not real.
+It is a measurement, not a merge gate —
 a red run means "the parallel baseline has a shared-state conflict, record which state from the
 report", not "this PR may not merge". The regular CI shards each get their own dev server and stay
 single-worker inside, so they cannot surface those conflicts; the two setups are complementary.

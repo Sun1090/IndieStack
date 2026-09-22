@@ -72,6 +72,10 @@ describe("E2E parallel baseline", () => {
     // 全量：不能带 --shard，否则测的是「分片内的并行」，正是要暴露的那件事会被切走
     expect(parallelJob).toContain("run: pnpm test:e2e");
     expect(parallelJob).not.toContain("--shard");
+    // 必须关掉重跑：CI 默认 retries=2，而共享 Mock 状态的竞争正是「第一次红、重跑绿」的失败，
+    // 带着重试测出来的「并行全绿」是假的。
+    expect(parallelJob).toContain("pnpm test:e2e --retries=0");
+    expect(parallelJob).not.toMatch(/pnpm test:e2e(?![^\n]*--retries=0)/);
   });
 
   it("is a measurement, not a merge gate", () => {
