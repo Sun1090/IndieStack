@@ -32,6 +32,44 @@
 - 下一项：C02 的第二半（按 worker 给 store 命名空间）或 C04 剩余部分。
 - 更新时间：2026-09-22（UTC 13:55 前后）。
 
+## 2026-09-22 — 并行的第三种红是计时，不是状态：预热之后 107/107（C02 收尾）
+
+- 里程碑 / 版本：v0.12.0 的 C02 **达成**。
+- 状态：DONE——全量并行第一次拿到可复跑的绿记录（run `35746785602`，107 passed / 0 failed）。
+- 分支 / commit：`test/e2e-per-worker-servers`（PR #77）第三个 commit `3d624e5`。
+- 为什么做：上一条记录里 C02 停在 PARTIAL：共享状态清零后仍有 1～2 条红。留着「并行还是红」这句话
+  不看下去，就等于把计时问题误记成状态问题。
+- 完成内容：
+  1. 分诊两轮红的形状：`uploads`（登录后 `waitForURL` 15s）、`smoke`（`page.goto` 60s + `ERR_ABORTED`）、
+     `webhook-events`（同 id 第二次投递未认 duplicate）——三条各不相同、换轮次换一批，唯一共同点是
+     **第一个打到某台服务器的用例**。这不是并发写表，是在付 `next dev` 的按路由冷编译。
+  2. `globalSetup: e2e/support/warm-up.ts`：并行模式下逐台 GET `/`、`/auth/login`、`/dashboard`、
+     `/dashboard/settings`，把编译从用例时间里挪出来。`E2E_SERVERS>1` 才生效，串行 CI 一秒不多花；
+     预热失败刻意不抛——它只是搬运计时，不该变成新的门禁。
+  3. **踩到自己造的新坑并修掉**：`.next-e2e-<slot>` 里是 Next 生成的 chunk，eslint 不忽略它，
+     于是跑过一次并行之后 `pnpm lint` 永久红（本次真的红了）。`eslint.config.mjs` 现在和 `.next/**`
+     一起忽略 `.next-e2e-*/**`。
+  4. `tsconfig.json` 预先把 slot 0..2 的 types 路径写全：Next 只会往 include 里追加、从不回收，
+     先写全等于以后每换一次端口少脏一次树（本机验证：预热跑完 `git diff tsconfig.json` 不再增长）。
+  5. 契约同步：`e2e-shard-policy` 加两条——config 必须挂 `globalSetup`，且 warm-up 必须有
+     `if (SERVERS < 2) return;`（否则有人会把预热变成串行 CI 的固定税）。
+- 变更文件：`e2e/support/warm-up.ts`（新增）、`playwright.config.ts`、`eslint.config.mjs`、
+  `tsconfig.json`、`src/lib/testing/e2e-shard-policy.test.ts`、`docs/testing.md`、
+  `docs/roadmap-0.12.0.md`（C02 改口为达成 + 风险条目结案）、`CHANGELOG.md`（Known Limitations 里
+  那条「并行仍不可用」删除）、本条目。
+- 验证命令与结果：`pnpm lint`=0（修 ignore 前=1，红因是 `.next-e2e-0/1` 里的生成 chunk）、
+  `type-check`=0、`test`=0（194 文件 / 2218 用例）、`build`=0、`check:security`/`check:docs`/
+  `check:changelog`/`check:bilingual-docs`/`check:test-matrix`/`check:cron-contract`/`check:mock-docs`/
+  `check:gates`/`check:adr` 全 0；本机 `E2E_SERVERS=2` 复跑 `mfa-challenge` + `webhook-events` → 8 passed。
+  **CI 三轮并行**：`35742942744` 106/1、`35744080784` 105/2、`35746785602` **107/0**
+  （用例总数与本机 `playwright test --list` 的 107 对齐；日志端点仍取不到，计数来自
+  check-run 的 🎭 Playwright Run Summary annotation）。
+- 阻塞 / 风险：无。风险是有人把这三条红重新当成共享状态去「修 store」——分诊口径已写进
+  `docs/testing.md` 与 roadmap C02。回滚 = revert `3d624e5`（预热与 eslint ignore 要一起回退）。
+- 下一项：PR #77 合并、清理分支，然后回到 A05 的可观测那一半（队列规模 / 最早一条年龄 /
+  `sent=0` 轮次），出队语义仍等用户拍板。
+- 更新时间：2026-09-22（UTC 15:55 前后）。
+
 ## 2026-09-22 — 并行 E2E 的隔离边界落在 worker 上：共享状态冲突清零，剩下的不是它（C02）
 
 - 里程碑 / 版本：v0.12.0 的 C02 第二半。

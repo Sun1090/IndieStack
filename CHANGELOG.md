@@ -44,6 +44,11 @@ All notable changes to IndieStack will be documented in this file.
   两条新契约由 `e2e-shard-policy` 钉住：`workers` 必须等于服务器数；spec 里不得出现 `localhost:3100`
   或裸相对 `page.goto`。附带收益：本机 3100 被别的项目占用时，`E2E_BASE_PORT=3101 pnpm test:e2e`
   就能跑，不用改任何被测文件。
+  清零共享冲突后又红过两轮（106/107、105/107），红的是三条各不相同的用例，共同点只有一个：它们都是
+  **第一个打到某台服务器的用例**，在付 `next dev` 的按路由冷编译。因此加了一步 `globalSetup` 预热
+  （`e2e/support/warm-up.ts`，只在 `E2E_SERVERS>1` 时生效，串行 CI 一秒不多花）。第三轮
+  run `35746785602` **107 passed / 0 failed**——全量并行第一次有绿的可复跑记录，而且整条路上
+  既没有动 mock 的状态模型，也没有放宽任何断言。
 - **文档里的调度事实从此要对得上仓库**（D01）：`pnpm check:cron-contract` 多一条规则，扫
   `docs-site/**` 与 `docs/**`（带日期的快照除外：发布页、runbook、roadmap 记录的是当时的事实，
   改它们等于伪造证据），把合法的 5 字段 cron 表达式与 `/api/cron/*` 路径逐个对回
@@ -282,18 +287,6 @@ All notable changes to IndieStack will be documented in this file.
   下一次部署之后，`pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 才是可用证据。
   非 Vercel 构建（本地、Docker）没有这两个环境变量，`commit` 恒为 `null`——这条链路的 commit 归属
   只在 Vercel 上成立，自建部署需要自己注入同名变量。
-- **E2E 全量并行仍不算可用，但挡住它的已经不是共享状态**：C02 的并行基线首跑（run
-  `35727094401`）红 4 条，机制是同一条——
-  `next dev` 只有一个进程、一份默认 store，而 `fullyParallel` 把用例拆到不同 worker，于是彼此打断：
-  `webhook-events.spec.ts:114` 的通知数读到 2（预期 1），`notifications-realtime.spec.ts:53` 等不到
-  「暂无通知」空态（并行的 `push-retry.spec` 往同一张 `notifications` 表种了种子），`mail-flow.spec.ts`
-  的前两条被**本文件自己的**顶层清理打死——并行下 `beforeAll`/`beforeEach` 每个 worker 各跑一次，
-  同文件三条用例互相删数据。这类冲突已随「一个 worker 一台 dev server」消失（见上面的 Added）。
-  同一 ref 复跑两轮：106/107 与 105/107，红的是 `uploads`（登录导航 15s 超时）、`smoke`
-  （`page.goto` 60s 超时）、`webhook-events`（同一 event id 的第二次投递没被认成 duplicate）——
-  三条各不相同，形状是 `next dev` 的冷编译与「route handler 被拆到另一个进程」，不是并发写同一份表。
-  在此之前「并行全绿」不作为验收条件；基线变红按测量记录，默认 CI 仍是两个 shard 各单 worker。
-  仍然禁止为了让它绿而把 mock 的运行时默认 store 改成请求级（那是假数据库，见 C01）。
 
 ## [0.11.0] — 2026-09-22
 
