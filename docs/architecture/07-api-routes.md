@@ -30,6 +30,7 @@ flowchart TD
 - **Supabase required** — 非 Mock 模式必需 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY` 和 `SUPABASE_SERVICE_ROLE_KEY`；执行 `profiles` 的 `limit(1)` 探测，超时为 3 秒
 - **可选依赖** — Sentry、Stripe 缺失不会使服务进入 degraded/error
 - **HTTP 状态** — `200` 表示 ready；required 依赖缺失为 `503` + `error`；required 依赖已配置但不可达为 `503` + `degraded`；本地 Mock 模式下 Supabase 为 `skipped` 且返回 `200`
+- **构建身份** — `version` 来自 `package.json`（可用 `NEXT_PUBLIC_APP_VERSION` 覆盖），`commit` 来自构建时内联的 `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`（回落到运行时 `VERCEL_GIT_COMMIT_SHA`），两者都没有时为 `null`。`version` 只能说明「这是 0.11.0 的某个构建」，`commit` 才说明是哪个；缺它就无法从外部证明「部署的 commit == 验证过的 commit」，发布证据只能靠平台控制台截图
 
 响应示例（生产环境 required 依赖正常时）：
 
@@ -39,6 +40,8 @@ flowchart TD
   "ready": true,
   "degraded": false,
   "mockMode": false,
+  "version": "0.11.0",
+  "commit": "a322a4ed6a86a254b2cc8be98fe3c6a97d1d118d",
   "checks": {
     "supabase": {
       "required": true,

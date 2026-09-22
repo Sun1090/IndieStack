@@ -65,6 +65,7 @@ curl -sI https://<production-url>/ | grep -i content-security-policy
 ```
 
 - [ ] `/api/health` 返回 200
+- [ ] `/api/health` 的 `commit` 等于被验证过的 commit（`git rev-parse HEAD`；短 SHA 按前缀匹配即可）。为 `null` 说明这个构建早于 commit 上报能力或不是 Vercel 构建 —— 此时**不得**用「版本一致就行」代替，回滚会因为不知道该回到哪个构建而失效
 - [ ] 首页 200、`/dashboard` 未登录时 307 → `/auth/login`
 - [ ] CSP / X-Frame-Options 等安全头存在
 - [ ] Sentry 无新上报的错误激增

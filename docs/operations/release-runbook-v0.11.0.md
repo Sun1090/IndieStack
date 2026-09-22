@@ -99,9 +99,10 @@ README 与 `RELEASE_CHECKLIST` 接线；本地 `pnpm check:release-docs` / `chec
   `version=0.11.0`（此前的 Vercel 构建配额限流已解除），`smoke-main` 定时漂移检查也在 07:41Z 转绿，
   无副作用 smoke 本地与 CI 各取一次证据都是 6/6（见 `docs/operations/production-smoke-v0.11.0.md`）。
   仍然挡住打标签的是两条前置：①**账户删除端到端演练未执行**（下文），它是本版本唯一的不可逆面；
-  ②**无法证明生产跑的是哪个 commit**——`/api/health` 只暴露 `version`，`0.11.0` 之后的纯文档提交
-  在响应上不可区分，而本文件的停止条件正是「无法证明部署 commit 与验证 commit 相同」。
-  在此之前打 tag 等于把一个无法归属的构建说成发布制品。
+  ②**当前生产跑的是哪个 commit 仍然无法证明**——`/api/health` 的 `commit` 字段是之后才加的，
+  这一版已部署的构建不上报它，而本文件的停止条件正是「无法证明部署 commit 与验证 commit 相同」。
+  在这之前打 tag 等于把一个无法归属的构建说成发布制品。下一次部署带上该字段后，
+  用 `pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 就能把这条补齐。
 - **账户删除端到端演练未执行**（差异 2）。这是本版本唯一的不可逆面，缺它就没有发布证据；
   需要一个可牺牲的测试账号，不接受用真实用户数据代跑。
 - **回滚探针未演练**：需要 Vercel dashboard 的 deployment 切换权限。

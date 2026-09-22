@@ -70,10 +70,10 @@
    只读凭证类 3 项与隔离账号 14 项仍未执行，它们是 B03/B04 的内容，也是打 tag 的前置）
 7. B02 执行一次真实回滚演练（切回上一 deployment、验证 health 与 schema 向前兼容），
    填 `docs/operations/rollback-runbook-*.md` 的「演练记录」——这是 v0.6.0 起从未闭合的 J08。
-   **2026-09-22 补一条会让这条无法收口的硬事实**：`/api/health` 只暴露 `version`，
-   同一版本号内的后续提交在生产上不可区分，所以「部署 commit == 验证 commit」目前只能靠 Vercel
-   控制台截图证明。先把构建 SHA（`VERCEL_GIT_COMMIT_SHA`）纳入健康响应与 smoke 断言，
-   B02 的证据才有可比对象
+   **2026-09-22 补的那条硬事实已经修掉**：`/api/health` 现在上报 `commit`（构建时内联的
+   `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`），`pnpm smoke:production --expected-commit <SHA>` 会断言它，
+   缺失即失败。剩下的是时间问题——2026-09-22 部署的那版构建不带这个字段，
+   所以 B02 的「切回上一 deployment 并证明回到了哪个 commit」要等下一次部署才有可比对象
 8. B03 隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
 9. B04 云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）

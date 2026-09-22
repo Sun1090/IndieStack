@@ -54,6 +54,33 @@ describe("GET /api/health", () => {
     expect(body.allConfigured).toBe(false);
   });
 
+  it("构建身份来自构建时内联的 commit，未知时为 null 而不是编造值", async () => {
+    const unset = await (await GET()).json();
+    expect(unset.commit).toBeNull();
+
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA", "a322a4ed6a86a254b2cc8be98fe3c6a97d1d118d");
+    const inlined = await (await GET()).json();
+    expect(inlined.commit).toBe("a322a4ed6a86a254b2cc8be98fe3c6a97d1d118d");
+
+    // 只有运行时变量（非 Vercel 的自建部署）也要能报出来；两者都在时以构建内联为准。
+    vi.unstubAllEnvs();
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA", "");
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "23a2677fc7b4737a66ab61b8c4e5dc32af0701ca");
+    const runtimeOnly = await (await GET()).json();
+    expect(runtimeOnly.commit).toBe("23a2677fc7b4737a66ab61b8c4e5dc32af0701ca");
+
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA", "a322a4ed6a86a254b2cc8be98fe3c6a97d1d118d");
+    const both = await (await GET()).json();
+    expect(both.commit).toBe("a322a4ed6a86a254b2cc8be98fe3c6a97d1d118d");
+
+    // 空串是「没有」，不是「值为空」——否则发布记录会抄到一个假 SHA。
+    vi.unstubAllEnvs();
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA", "   ");
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "");
+    const blank = await (await GET()).json();
+    expect(blank.commit).toBeNull();
+  });
+
   it("生产环境缺少 required Supabase 配置时返回 503，而不是伪装为 ok", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const res = await GET();
