@@ -189,6 +189,13 @@ Push 保留端点基于 `E2E_PUSH_ENDPOINT_BASE`：
 dev server 是共享可变状态，因此 `workers` 默认 `1`；只有隔离实验会设置
 `PW_FULLY_PARALLEL=true`。
 
+这个实验不再是一次性的：`E2E parallel baseline` workflow 会用 `PW_FULLY_PARALLEL=true` 在**一个**
+dev server 上跑**全量**（刻意不带 `--shard`），可手动触发，也固定在每周一 `30 7 * * 1`（07:30 UTC）。
+它是测量而不是合并门禁——变红的含义是「并行基线存在共享状态冲突，请按报告记下具体是哪一份状态」，
+不是「这个 PR 不能合」。常规 CI 的 shard 各自启动独立 dev server、内部仍是单 worker，因此测不出这类
+冲突，两套配置互补而非互相替代。也**不要**为了让基线变绿把 mock 的运行时默认 store 改成请求级：
+默认 store 是一份刻意共享的假数据库，理由见 `docs/architecture/13-mock-system.md`。
+
 ## 限制
 
 | 能力 | Mock 行为 | 真实替代 |

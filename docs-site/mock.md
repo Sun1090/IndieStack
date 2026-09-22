@@ -196,6 +196,15 @@ needs:
 The web server is shared mutable state, so `workers` defaults to `1`. Only the isolation
 experiment sets `PW_FULLY_PARALLEL=true`.
 
+That experiment is no longer a one-off: the `E2E parallel baseline` workflow runs the **whole**
+suite (deliberately without `--shard`) with `PW_FULLY_PARALLEL=true` against a single dev server,
+on demand and every Monday at `30 7 * * 1` (07:30 UTC). It is a measurement, not a merge gate —
+a red run means "the parallel baseline has a shared-state conflict, record which state from the
+report", not "this PR may not merge". The regular CI shards each get their own dev server and stay
+single-worker inside, so they cannot surface those conflicts; the two setups are complementary.
+Do not "fix" a red baseline by making the runtime mock store request-scoped: the default store is a
+deliberately shared fake database, see `docs/architecture/13-mock-system.md`.
+
 ## Limitations
 
 | Feature | Mock behaviour | Real alternative |
