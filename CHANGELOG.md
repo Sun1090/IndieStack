@@ -185,6 +185,13 @@ All notable changes to IndieStack will be documented in this file.
   `docs/testing.md` 里 `gate-wiring` 28 → 29、`security-config` 无法归属的「54 条」改为按文件登记
   （31 + 5）。可核对后保留原样的有：`check:mock-docs` 的 18 张表、trace 专项「58 条」
   （11 + 5 + 3 + 18 + 6 + 15 实测吻合）、`tokens` 28 与 `native-theme` 24（均含配套 IO 层测试文件）。
+- **「配额恢复」被当成「`main` 已落地生产」——三处文档的这一步推理是错的**：冒烟产物、缺口审计与
+  roadmap 的 B01 行都写着生产配额恢复后 `main` 自动部署。`version=0.11.0` 只能证明「生产跑的是
+  0.11.0 的某个构建」，同一版本号里之后的提交在响应上完全不可区分。用 GitHub 部署记录核到底：
+  生产最后一次成功部署是 `a322a4e`（08:56:51Z），09:31Z 与 10:50Z 两次推送都被限流，
+  「当前 `main` 已落地」当天其实从未成立。三处措辞已改为只陈述能证明的部分，并把「`version` 相同
+  ≠ 同一个 commit」与那条不需要 Vercel 权限的取证命令写进冒烟产物与 runbook——冒烟产物原先靠
+  `uptime=368s` 反推部署窗口，那是旁证，现在降级为注脚。
 
 ### Known Limitations
 
@@ -197,6 +204,11 @@ All notable changes to IndieStack will be documented in this file.
   隔离账号的一次性演练。
 - **当前生产构建仍无法证明自己是哪个 commit**：`/api/health` 已经会上报 `commit`（见上面的 Added），
   但 2026-09-22 部署的这版构建早于该字段，所以 v0.11.0 的冒烟证据仍然只能给出版本号而不是 SHA。
+  带该字段的构建**当天两次没能上生产**：`indie-stack` 项目在 09:31Z 与 10:50Z 各被
+  `Deployment rate limited — retry in 24 hours` 挡下一次，而同一分钟的 `indie-stack-docs-site`
+  部署成功——限流按项目计。生产因此停在 `a322a4e`，响应里连 `commit` 键都不存在。
+  在配额放行之前，部署身份有一条不需要 Vercel 权限的权威读法：GitHub 的部署记录
+  （命令见 `docs/operations/release-runbook-v0.11.0.md`）。
   下一次部署之后，`pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 才是可用证据。
   非 Vercel 构建（本地、Docker）没有这两个环境变量，`commit` 恒为 `null`——这条链路的 commit 归属
   只在 Vercel 上成立，自建部署需要自己注入同名变量。

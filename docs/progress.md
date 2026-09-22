@@ -1,3 +1,40 @@
+## 2026-09-22 — 「配额恢复」不等于「`main` 已落地生产」：部署身份改走权威来源
+
+- 里程碑 / 版本：v0.11.0 的发布前置（B 域），同时是 D03 审计方法的一次实际应用。
+- 状态：DONE（文档订正）；部署本身仍被平台挡住，属外部阻塞不是本条目的完成条件。
+- 分支 / commit：`docs/deployment-identity-evidence`（基于合并 PR #70 之后的 main `ec9d729`）。
+- 为什么做：用户要求「解决远程 CI 与 Vercel 部署的错误」。CI 侧没有错误——PR #70 的 11 项 GitHub
+  检查全绿，只有两条 **非必需** 的 Vercel 检查因配额失败（`upgradeToPro=build-rate-limit`），
+  按定案这类平台拒绝放行不去绕过、也不放宽任何期望。真正的问题是核对过程中发现：**三处文档
+  把「配额已恢复」推成「当前 `main` 已落地生产」**，而这一步推理从来不成立。
+- 完成内容：
+  1. 用权威来源把生产身份查到底：`indie-stack` 生产最后一次**成功**部署是
+     `6587025748`（08:56:51Z，commit `a322a4e`），`8037bbd` 与 `ec9d729` 两次推送都被限流、
+     连生产部署记录都没产生；10:50:39Z 直读 `/api/health` 仍是 `version=0.11.0` 且**没有**
+     `commit` 键，两边互相印证。
+  2. 把这条取证路写成命令并**先跑通再写进文档**：两步（最新一条生产部署 → 它的状态）。
+     过程中踩到自己埋的坑——`startswith("Production – indie-stack")` 会把
+     `Production – indie-stack-docs-site`（另一个项目）一起捞进来，据此得出的 `[0]` 是 `ec9d729`，
+     一个根本没上生产的 commit。环境名必须精确匹配，命令改完后实测返回 `6587025748 a322a4e`。
+  3. 订正三处措辞并降级旁证：冒烟产物的「目标 commit」不再靠 `uptime=368s` 反推；roadmap B01
+     一行不再写「`main` 已部署」；缺口审计结论 2 补上「这句话不包含生产 == 当前 `main`」。
+     另在 runbook 写清两个坑：被限流的推送不会产生部署记录；记录存在 ≠ 构建成功。
+  4. 把「少踩配额只有两条路」（攒部署 / Ignored Build Step）记进冒烟产物，并写明两者都需要
+     dashboard 权限、本机的 `VERCEL_TOKEN` 是占位值，所以这条只是给用户决策的记事，不是待办。
+- 变更文件：`docs/operations/production-smoke-v0.11.0.md`、`docs/operations/release-runbook-v0.11.0.md`、
+  `docs/operations/release-gap-audit-v0.11.0.md`、`docs/roadmap-0.12.0.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`gh api "repos/<owner>/<repo>/deployments?per_page=12"` +
+  `gh api .../deployments/<id>/statuses` → `6587025748 a322a4e 2026-09-22T08:56:51Z` / `success`；
+  `curl /api/health` → 无 `commit` 键；文档类门禁逐个复跑：`check:docs`、`check:release-docs`
+  （v0.11.0, 7 artifacts）、`check:bilingual-docs`、`check:changelog`、`check:test-matrix`、
+  `check:gates` 全部 ✅。`check:all` 本次停在 `check:security` 的 `pnpm audit`（见下一条目的根因）。
+- 阻塞 / 风险：生产部署被 Vercel 配额挡住（09:31Z 与 10:50Z 各一次，描述为 `retry in 24 hours`），
+  本机无 token 不能手动触发；因此「带 `commit` 的构建上过生产」这一条打 tag 前置在窗口放行前无法闭合。
+  回滚 = revert 本文档 commit，无运行时影响。
+- 下一项：`check:security` 里 `pnpm audit` 的偶发失败（同日两次停在
+  `report is missing metadata`，单跑与复跑都通过）——先把失败原因变得可诊断，再决定要不要重试。
+- 更新时间：2026-09-22（UTC 11:20 前后）。
+
 ## 2026-09-22 — 文档里的调度事实必须对得上仓库（D01）
 
 - 里程碑 / 版本：关闭 v0.12.0 的 D01；退出标准第 6 条（D01、D02 落地）自此满足。

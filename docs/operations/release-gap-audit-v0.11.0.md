@@ -17,8 +17,10 @@
    docs-site 双语版本页与 checklist 全部对齐，`pnpm check:release-docs` 通过（按当前版本解析 7 个产物）。
    本版本含两条迁移（`032_data_retention_erasure.sql`、`033_upload_object_orphan_audit.sql`），
    且已按 **DB-first** 顺序应用到云端项目并留下只读复核记录。
-2. **生产已经跑上 `0.11.0`**（2026-09-22，Vercel 构建配额恢复后 `main` 自动部署；
-   08:05:33Z 直读 `/api/health` 得 `version=0.11.0`、`ready=true`、`mockMode=false`），
+2. **生产已经跑上 `0.11.0`**（2026-09-22，08:05:33Z 直读 `/api/health` 得 `version=0.11.0`、
+   `ready=true`、`mockMode=false`）——但这句话**不**包含「生产 == 当前 `main`」：同一版本号下的
+   后续提交在响应里不可区分，事后从 Vercel 部署记录查到生产实际停在 `a322a4e`，
+   而 09-22 当天 `indie-stack` 项目又被 `Deployment rate limited` 挡了两次（详见冒烟产物的配额小节）。
    无副作用冒烟 **6/6** 各取了一次本地与 CI 证据（run `35702965727`，artifact zip SHA-256
    `7075985c…dbe1dc`）。
 3. **`v0.11.0` tag 不存在，本审计不构成发布通过证据。** 缺两条前置：
