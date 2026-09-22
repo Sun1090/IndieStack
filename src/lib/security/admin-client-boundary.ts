@@ -440,6 +440,25 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
       "Push subscription endpoints are needed server-side for delivery; user-visible access remains RLS-scoped.",
   },
   {
+    file: "src/lib/repositories/retention.ts",
+    surface: "data-access",
+    calls: ["runRetentionSweeps"],
+    tables: [],
+    rpc: [
+      "cleanup_old_notifications",
+      "cleanup_old_webhook_events",
+      "cleanup_old_email_worker_runs",
+      "cleanup_old_api_usage",
+      "prune_deleted_upload_objects",
+      "cleanup_resolved_contact_messages",
+    ],
+    storageBuckets: [],
+    authAdmin: [],
+    trust: { kind: "server-internal", evidence: [] },
+    rationale:
+      "Every retention cleanup is a security-definer function that migrations 028/032 revoke from anon/authenticated and grant only to service_role; the worker triggers them and never reads row data back into a response.",
+  },
+  {
     file: "src/lib/repositories/upload-objects.ts",
     surface: "data-access",
     calls: [

@@ -1,3 +1,48 @@
+## 2026-09-22 — 保留期从「承诺」变成「有人执行」：`/api/cron/retention`
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE（`pnpm check:all` 与 `pnpm verify:build` 全绿；新路由的 E2E 入口回归在本地通过）。
+- 分支 / commit：`feat/retention-cron-sweep`（基于 main `57dae93`）。
+- 完成内容：
+  1. **补上唯一一条没人执行的隐私承诺**。迁移 `003` / `014` / `027` / `032` 定义了 6 个
+     `security definer` 清理函数，但调度全部写成 `if exists (select 1 from pg_extension where
+     extname = 'pg_cron')`——本地与云端项目都没有 pg_cron（2026-09-21 已复核 `pg_extension`），
+     所以迁移成功、门禁全绿、`/api/health` 正常，而一行都不会删。
+  2. `src/lib/repositories/retention.ts` 用 service_role **逐个调用同一批迁移函数**：删除逻辑仍然
+     只有 SQL 一个事实源，应用侧只当调度器。顺序执行而非并发（全表删除在免费层实例上会互相等锁）；
+     单表失败不中断整轮。
+  3. `src/app/api/cron/retention/route.ts`（`POST`，`checkCronAuth`）上报
+     `cron.retention.completed{ran,failed}` / `cron.retention.cleanup_failed{cleanup_function}` /
+     `cron.retention.failed{error_type}`；响应只有脱敏计数。
+     **一个函数都没跑成才返回 500**——部分失败仍 200，但全部失败若返回 200，平台调度记录会显示成功、
+     数据却一直在堆积，正是这条链路之前最像「一切正常」的失败形状。
+  4. 登记进 `CRON_WORKERS`（每天 05:00 UTC）与 `vercel.json`；Hobby 每路径每天一次的限制由
+     `isValidVercelHobbyCronSchedule` 守住（周日表达式会被拒），所以执行频率从
+     「每周日」改成「每天」，`docs/db/retention.md` 的调度列同步改写。
+  5. `src/lib/repositories/retention.test.ts` 把清理清单与 `RETENTION_POLICIES` **双向**钉死：
+     每条策略都被调用（新增策略忘记接调度会失败），且清单不得夹带未登记的函数；另覆盖顺序性
+     （并发计数恒为 1）与单点失败隔离。`e2e/retention.spec.ts` 只证明部署里这条路由不是 404
+     （`check:cron-contract` 能证明文件存在与已调度，看不见运行时 404），并在注释里写明 mock 模式
+     不执行 SQL、因此不证明删除语义。
+  6. service-role 边界如实扩面：`ADMIN_CLIENT_INVENTORY` 31→32 模块、调用点预算 86→87、
+     RPC 面 4→10，`docs/db/security-audit.md` 与 `docs/operations/sentry-alerts.md`
+     （指标表 + 调度表 + 两条告警规则）同步。
+- 变更文件：16 个——新增 5（仓储 + 其单测、路由 + 路由单测、E2E）、修改 11（注册表、vercel.json、
+  边界清单与其测试、数据策略注释、文档 5、CHANGELOG、本条目）。
+- 验证命令与结果：
+  - `pnpm check:cron-contract` → `✅ 3 个 worker（digest、push-retry、retention）/ 12 个指标 / 调度表达式与 vercel.json 及运维文档一致 / 2 个平台级豁免`；
+  - `pnpm check:supabase-security` → `✅ 33 个迁移、20 张 public 表、39 条生效 RLS 策略、32 个已分类 service-role 调用点`；
+  - `pnpm exec playwright test e2e/retention.spec.ts` → 3 passed；
+  - `pnpm check:all` → `✅ 全部校验通过`；`pnpm verify:build` → **188 文件 / 2,129 用例**、
+    Bundle 2845.7 kB（基线 2733.8 kB，门禁内）、Next.js 生产构建成功。
+- 阻塞：真删除效果仍需连真实数据库验证（本仓库无法从这台机器触达生产项目）；
+  路由上线依赖部署环境的 `CRON_SECRET`，缺失时 `cron.auth.rejected{reason="secret_unconfigured"}` 会立刻报出来。
+- 风险 / 回滚：新增的是只删过期行的定时任务；若担心首轮删除量，可先在 Dashboard 手工
+  `select public.cleanup_old_notifications();` 逐条演练（`docs/db/retention.md` 的运维检查节)。
+  回滚 = revert 本 commit + 删除 `vercel.json` 的调度条目（否则 `check:cron-contract` 会因孤儿调度失败）。
+- 下一项：这条 worker 的真实删除效果仍需连真实数据库验证（本机无云端权限）；
+  同时继续按「X 由 Y 守住」验真剩余文档断言。
+
 ## 2026-09-22 — 文档数字要么有来源，要么删掉：易漂移计数退出文档，其余逐条对回
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。

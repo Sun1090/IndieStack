@@ -4,6 +4,22 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **保留期终于有了执行者：`/api/cron/retention`（每天 05:00 UTC）**。迁移 `003` / `014` / `027` / `032`
+  里的 6 个 `security definer` 清理函数此前只注册在 pg_cron 上，而那段调度写成
+  `if exists (select 1 from pg_extension where extname = 'pg_cron')`——本地与云端项目都没装 pg_cron，
+  于是迁移成功、门禁全绿、`/api/health` 正常，却一行都不会删。新 worker 用 service_role 逐个调用
+  **同一批迁移函数**，删除逻辑仍然只有迁移 SQL 一个事实源；日后启用 pg_cron 也只是两条链路跑同一个
+  `now() - <retention>` 条件，幂等。逐个顺序执行而不是并发：这些都是全表范围删除，
+  在免费层实例上同时压六个只会互相等锁。单表失败只上报
+  `cron.retention.cleanup_failed{cleanup_function}` 并继续下一张，**全部失败才让整轮返回 500**——
+  否则平台调度记录显示成功，而过期数据一直在堆积。调度与指标登记在
+  `src/lib/observability/cron-contract.ts`，由 `pnpm check:cron-contract` 校验（登记了没调度、
+  调度了没登记、指标没写进告警文档都会失败）；`src/lib/repositories/retention.test.ts` 把清理清单与
+  `RETENTION_POLICIES` 双向钉死，新增保留策略忘记接调度会直接失败。service-role 边界相应扩大到
+  32 个模块 / 87 个调用点 / 10 个 RPC，已在 `docs/db/security-audit.md` 与清单里登记。
+
 ### Fixed
 
 - **主题切换 E2E 在 CI 上稳定失败**：`e2e/theme.spec.ts` 的「按钮切换主题」用例直接 `click()` 后断言
@@ -29,11 +45,6 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Known Limitations
 
-- **数据保留期仍未真正执行**：`003` / `014` / `027` / `032` 的每周清理都被
-  `if exists (select 1 from pg_extension where extname = 'pg_cron')` 守卫包裹，而本地与云端项目
-  均未安装 pg_cron，因此迁移成功、门禁全绿、`/api/health` 正常，但一行都不会删。
-  启用 pg_cron 需要 Supabase Dashboard 权限（外部运维动作），或把清理改由平台定时任务调用
-  service-role RPC；在此之前 `docs/db/retention.md` 的保留天数只能读作「承诺」而不是「已生效」。
 - **从未登记过的 bucket 对象对数据库不可见**：`find_orphan_upload_objects()` 的真相来源是
   `upload_objects`，因此只能发现「有元数据行、无业务引用」的对象；031 之前直接写入 bucket、
   从未落元数据的存量对象不在清单里，需要 provider 侧 `list()` 与数据库做集合差才能发现。

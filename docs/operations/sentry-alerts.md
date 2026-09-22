@@ -58,6 +58,9 @@
 | `push.queue.prune_failed` | `count` | `error_type` | 每轮 push-retry 保留策略清理失败 |
 | `cron.push-retry.completed` | `ms` | `pulled`, `sent`, `retried`, `dead`, `revoked` | 每轮 push-retry 成功结束 |
 | `cron.push-retry.failed` | `count` | `error_type` | 每轮 push-retry 未处理异常 |
+| `cron.retention.completed` | `ms` | `ran`, `failed` | 每轮 retention 结束（含部分失败），`ran`/`failed` 是清理函数的成功/失败个数 |
+| `cron.retention.cleanup_failed` | `count` | `cleanup_function` | 单个保留期清理函数失败，其余函数继续执行 |
+| `cron.retention.failed` | `count` | `error_type` | 每轮 retention 未处理异常 |
 | `ops.supabase.restore` | `count` | `action`, `projectStatus` | 每轮兜底恢复检查结束；`action` ∈ `noop`/`restore`/`wait`/`escalate`/`skipped`，每个终态恰好一条 `value=1` 样本（`projectStatus` 未知时为 `unknown`） |
 
 两层上传指标分工明确：`storage.upload.completed` 只覆盖 provider 的对象写入，反映 OSS/Supabase 自身健康度；
@@ -77,6 +80,7 @@
 |---|---|---|---|
 | `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，按用户本地时间错峰发送摘要；Vercel Hobby 每天最多一次 | `cron.digest.failed`、`email.backlog` |
 | `/api/cron/push-retry` | `0 22 * * *` | 每天 22:00 UTC 重试待投递 Push 并清理保留期外的终态行；Vercel Hobby 每天最多一次 | `cron.push-retry.failed`、`push.backlog` |
+| `/api/cron/retention` | `0 5 * * *` | 每天 05:00 UTC 逐个执行迁移里定义的保留期清理函数（不依赖 pg_cron）；Vercel Hobby 每天最多一次 | `cron.retention.failed`、`cron.retention.cleanup_failed` |
 
 平台级调度不走 worker 契约（无队列、无 worker 指标），在注册表里显式豁免：
 `/api/health`（`0 2 * * *` 保活）与 `/api/ops/supabase-restore`（`0 4 * * *` 兜底恢复）。
@@ -103,6 +107,8 @@
 | Push 失效端点激增 | `push.endpoint.revoked > 10`，1 小时窗口 | 检查浏览器订阅生命周期与 push service 状态码 |
 | Push 死信激增 | `push.delivery.dead > 20`，1 小时窗口 | 按 `reason` 区分瞬时上游故障与永久配置问题 |
 | Push 队列清理失败 | `push.queue.prune_failed > 0`，15 分钟窗口 | 检查 Supabase 删除权限、连接与表锁；投递不受影响但队列会继续增长 |
+| 保留期清理部分失败 | `cron.retention.cleanup_failed > 0`，24 小时窗口 | 按 `cleanup_function` 定位是哪张表：查 service_role 执行权限与连接；其余表照常清理，过期行留到下一轮 |
+| 保留期清理整轮失败 | `cron.retention.failed > 0`，或 `/api/cron/retention` 在平台调度记录里返回 500，立即 | 保留期已全面不生效（隐私承诺开始失真）：查 Supabase 连接、迁移是否应用、028/032 的撤权是否变更 |
 | 兜底恢复执行 | `ops.supabase.restore{action="restore"} > 0`，立即 | 记录恢复时刻；再回溯保活为何失效（`/api/health`、GitHub Actions 探测是否中断） |
 | 兜底层需要人工介入 | `ops.supabase.restore{action="escalate"} > 0`，立即 | 状态查询失败 / 恢复调用失败 / 不可恢复状态；按 `projectStatus` 与结构化错误日志定位 |
 | 兜底恢复被跳过 | `ops.supabase.restore{action="skipped"} > 0`，立即 | 生产环境缺 `SUPABASE_ACCESS_TOKEN` 或 `SUPABASE_PROJECT_REF`/`NEXT_PUBLIC_SUPABASE_URL`，兜底层已静默失效 |
