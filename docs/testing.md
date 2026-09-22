@@ -89,7 +89,9 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 - **组件级用例会把 mock 客户端的缺口藏起来**：`src/app/auth/mfa/page.test.tsx` 桩掉整个 Supabase client，
   `auth.refreshSession` 在 mock 里不存在这件事它看不见——只有真跑 mock 客户端的 E2E 撞得到（C03 就是这样
   发现「验证码对了、页面报通用登录失败」的）。所以认证链路的用例要两层都有：组件层管交互分支，
-  E2E 管「mock 客户端到底有没有这个方法」。
+  E2E 管「mock 客户端到底有没有这个方法」。这条约束由 `src/lib/mock/auth-surface.test.ts` 兜底：
+  它扫全仓库的 `<client>.auth.<路径>(` 调用点，逐个对回 mock 客户端的真实对象形状，缺一段就点名到文件；
+  带理由的豁免放在 `KNOWN_GAPS`，并有反向断言——补上实现却不删豁免同样会红。
 - CI 使用 **Playwright shard 隔离并行**：`E2E (Playwright)` job 的 `[1, 2]` matrix 各自启动独立 dev server，
   在 job 内继续单 worker；因此跨 shard 不共享 Mock 状态，全部 E2E 由两个 job 分担（具体条数由
   `--shard` 在运行时划分，随用例增减），而不是在同一条进程里提高 worker 数。视觉基线必须单 worker，

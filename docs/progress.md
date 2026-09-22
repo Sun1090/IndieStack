@@ -1,3 +1,37 @@
+## 2026-09-22 — 把「mock 少一个方法」变成一条会点名的自检（PR #74 的后续）
+
+- 里程碑 / 版本：v0.12.0 C03 的收尾，外加一条新发现的失效模式。
+- 状态：DONE。
+- 分支 / commit：`test/mock-auth-surface-parity`（基于合并后的 main `e67d383`）。
+- 为什么做：PR #74 补 `refreshSession` 时我在命令行里手扫了一遍「应用调了哪些 `auth.*`」。
+  那次是靠人肉，靠不住——同一个形状下次还会漏。要么把它变成机器检查，要么这条发现就只是运气。
+- 完成内容：
+  1. `src/lib/mock/auth-surface.test.ts`：扫 `src/**`（跳过测试文件与 mock 自身）里的
+     `<client>.auth.<路径>(` 调用点，沿路径逐段对回 `new MockSupabaseClient().auth` 的**真实对象**
+     （不是解析源码，所以改名、漏写都藏不住），缺哪一段就报「文件 → auth.xxx（缺 xxx）」。
+     抽取要求「后面紧跟左括号」，否则 `cron.auth.rejected` 这种指标名会被当成调用点——第一版就误报了这条。
+  2. 扫描当场又量出四处缺口，全部补齐：`auth.resend`、`auth.verifyOtp`（passkey 会话签发要读
+     `user.factors`，所以也走 `getMockAuthUser`）、`auth.exchangeCodeForSession`，
+     以及 `auth.admin.mfa.listFactors/deleteFactor`——恢复码自救（`src/lib/actions/recovery-codes.ts:112`）
+     先列因子再删 TOTP，缺这段就是「兑换明明成功了、随后就报错」。admin 侧的形状按 GoTrue 的
+     `{total, factors[].factor_type}` 来，与用户侧 `{all, totp}` 不是一回事。
+  3. 顺手把三处重复的「登录响应带 factors」收进 `getMockAuthUser(store)`，副本语义只有一处。
+  4. 两条 passkey magiclink 的 admin 方法（`admin.generateLink` / `admin.getUserById`）没有实现，
+     挂在 `KNOWN_GAPS` 里带理由豁免，并配一条**反向断言**：谁实现了它，豁免就因「已不再是缺口」变红。
+     豁免清单不设防静默过期，这是这次缺口能活到 E2E 才被发现的根本原因。
+  5. **不接 `scripts/check-*`**：这条跑在 `pnpm test` 里，而 `pnpm test` 本来就是 push 的硬性前置
+     （AGENTS.md）。再套一层只是把同一条约束抄第三遍，还要多养双语 docs-site。
+- 变更文件：`src/lib/mock/index.ts`、`src/lib/mock/auth-surface.test.ts`（新增）、
+  `docs/roadmap-0.12.0.md`（C03 ③ 改口径：门禁已落地，且是轻量版）、`docs/testing.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`npx vitest run src/lib/mock/auth-surface.test.ts --project node` → 4 通过；
+  变异核对：`refreshSession` 改名 → 扫描用例红并点名 `src/app/auth/mfa/page.tsx → auth.refreshSession`；
+  把一条豁免换成已实现的 `admin.listUsers` → 反向断言红（同时暴露真实缺口那条也依赖豁免，符合预期）；
+  全量 `pnpm lint` / `type-check` / `test` / `build` 与文档门禁见 PR。
+- 阻塞 / 风险：`admin.generateLink` / `getUserById` 仍是缺口（E2E 到不了那条路径，缺虚拟 WebAuthn
+  认证器），已由 `KNOWN_GAPS` 显式记账，不会悄悄长大。回滚 = revert 本 commit。
+- 下一项：C02 的第二半（按 worker 给 store 命名空间）或 C04 剩余部分。
+- 更新时间：2026-09-22（UTC 13:55 前后）。
+
 ## 2026-09-22 — MFA 挑战流程在 mock 里根本走不完：三处缺口，E2E 一撞就现形（C03）
 
 - 里程碑 / 版本：关闭 v0.12.0 的 C03。
