@@ -17,6 +17,7 @@ import {
   AuthGuardError,
   UNAUTHORIZED,
   FORBIDDEN,
+  SERVICE_UNAVAILABLE,
   requireAuth,
   requireRole,
   requirePermission,
@@ -33,12 +34,14 @@ function mockSupabase(
     user?: { id: string; email?: string | null } | null;
     profileRole?: string | null;
     getUserError?: boolean;
+    profileQueryError?: boolean;
   } = {},
 ) {
   const {
     user = { id: "u1", email: "a@b.com" },
     profileRole = "member",
     getUserError = false,
+    profileQueryError = false,
   } = overrides;
 
   return {
@@ -52,7 +55,11 @@ function mockSupabase(
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: profileRole ? { role: profileRole } : null }),
+          maybeSingle: vi.fn().mockResolvedValue(
+            profileQueryError
+              ? { data: null, error: { message: "connection terminated" } }
+              : { data: profileRole ? { role: profileRole } : null, error: null },
+          ),
         }),
       }),
     }),
@@ -125,19 +132,39 @@ describe("认证边界回归", () => {
     });
   });
 
-  it("profile 查询异常时安全守卫拒绝请求", async () => {
+  it("profile 查询返回 error 时回答 SERVICE_UNAVAILABLE，而不是没登录", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ profileQueryError: true }));
+
+    const result = await safelyRequireAuth();
+    expect(result).toEqual({ success: false, error: SERVICE_UNAVAILABLE });
+    expect((result as { error: AuthGuardError }).error.code).toBe("SERVICE_UNAVAILABLE");
+  });
+
+  it("profile 查询本身抛异常时安全守卫同样拒绝，且不是 UNAUTHORIZED", async () => {
     const supabase = mockSupabase();
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockRejectedValue(new Error("profile unavailable")),
+          maybeSingle: vi.fn().mockRejectedValue(new Error("profile unavailable")),
         }),
       }),
     });
     createClientMock.mockResolvedValue(supabase);
 
     const result = await safelyRequireAuth();
-    expect(result).toEqual({ success: false, error: UNAUTHORIZED });
+    expect(result).toEqual({ success: false, error: SERVICE_UNAVAILABLE });
+  });
+
+  it("requireAuth 在角色读取失败时抛 SERVICE_UNAVAILABLE 并记录原因", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    createClientMock.mockResolvedValue(mockSupabase({ profileQueryError: true }));
+
+    await expect(requireAuth()).rejects.toBe(SERVICE_UNAVAILABLE);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[guards] 读取会话角色失败",
+      expect.objectContaining({ message: "connection terminated" }),
+    );
+    consoleError.mockRestore();
   });
 
   it("认证用户的非法 profile role 按最低权限 member 处理", async () => {
@@ -220,6 +247,10 @@ describe("guardHttpStatus()", () => {
     expect(guardHttpStatus(UNAUTHORIZED)).toBe(401);
     expect(guardHttpStatus(FORBIDDEN)).toBe(403);
     expect(guardHttpStatus(new AuthGuardError("x", "NOT_FOUND"))).toBe(403);
+  });
+
+  it("SERVICE_UNAVAILABLE → 503，与「无权限」分开", () => {
+    expect(guardHttpStatus(SERVICE_UNAVAILABLE)).toBe(503);
   });
 });
 

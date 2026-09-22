@@ -58,16 +58,23 @@ function profilesChain(opts: {
   rows?: Array<Record<string, unknown>>;
   error?: unknown;
   target?: { role: string } | null;
+  targetError?: unknown;
   updateError?: unknown;
 }) {
-  const { rows = [], error = null, target = { role: "member" }, updateError = null } = opts;
+  const {
+    rows = [],
+    error = null,
+    target = { role: "member" },
+    targetError = null,
+    updateError = null,
+  } = opts;
   return tableChain((seq) => {
     const first = seq[0];
     if (first?.[0] === "update") {
       return { value: { error: updateError } };
     }
     if (first?.[1]?.[0] === "role") {
-      return { value: { data: target } };
+      return { value: targetError ? { data: null, error: targetError } : { data: target, error: null } };
     }
     return { value: { data: rows, error } };
   });
@@ -155,6 +162,7 @@ describe("updateUserRole()", () => {
     opts: {
       auth?: unknown;
       target?: { role: string } | null;
+      targetError?: { message: string } | null;
       updateError?: unknown;
       throwError?: boolean;
     } = {},
@@ -162,13 +170,14 @@ describe("updateUserRole()", () => {
     const {
       auth = AUTH,
       target = { role: "member" },
+      targetError = null,
       updateError = null,
       throwError = false,
     } = opts;
     safelyRequireRoleMock.mockResolvedValue(auth);
     const admin = adminClient((table) =>
       table === "profiles"
-        ? profilesChain({ target, updateError })
+        ? profilesChain({ target, targetError, updateError })
         : tableChain(() => ({ value: { data: null } })),
     );
     if (throwError)
@@ -200,6 +209,14 @@ describe("updateUserRole()", () => {
     await expect(updateUserRole("u2", "admin")).resolves.toEqual({
       ok: false,
             error: "userNotFoundAdmin",
+    });
+  });
+
+  it("目标角色读取失败返回 roleReadFailedAdmin，而不是「用户不存在」", async () => {
+    setup({ targetError: { message: "connection terminated" } });
+    await expect(updateUserRole("u2", "admin")).resolves.toEqual({
+      ok: false,
+      error: "roleReadFailedAdmin",
     });
   });
 

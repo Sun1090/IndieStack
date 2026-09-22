@@ -25,11 +25,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   // 从 profiles 表获取用户角色
-  const { data: profile } = (await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single()) as { data: { role: string } | null };
+    // 缺行是「这个用户还没有 profiles 记录」，按 member 处理；查询失败不是同一件事。
+    .maybeSingle();
+
+  if (profileError) {
+    // 抛给错误边界，而不是 redirect：读不到角色时把管理员踢回仪表盘，
+    // 用户看到的是一条凭空的权限拒绝，日志里却什么都没有。
+    throw new Error(`读取管理员角色失败：${profileError.message}`);
+  }
 
   const role = parseRole(profile?.role) ?? "member";
 

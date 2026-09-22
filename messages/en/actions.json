@@ -59,6 +59,7 @@
   "superAdminOnly": "Super admins can only be changed by a super admin",
   "teamNameRequired": "Team name is required",
   "teamSlugExists": "A team with this slug already exists",
+  "roleReadFailedAdmin": "We could not read this account's role right now. Please try again.",
   "userNotFound": "User not found. They need to register first.",
   "userNotFoundAdmin": "User not found",
   "passwordChangeUnavailable": "This account has no email, so we can't verify your current password. Use the password reset flow instead.",
