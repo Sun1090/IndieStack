@@ -36,7 +36,6 @@ export const GATE_EXCEPTIONS: Readonly<Record<string, GateException>> = {
   },
   "check:bundle": {
     local: "需要完整生产构建产物，check:all 刻意不触发构建；由 pnpm verify:build 覆盖",
-    ci: "CI Build job 已运行 pnpm build + check:perf，重复构建会浪费 20 分钟预算",
   },
   "check:perf": {
     local: "需要 .next 构建产物，check:all 不触发构建；由 pnpm verify 覆盖",
@@ -101,11 +100,24 @@ function containsPnpmScript(haystack: string, name: string): boolean {
   return new RegExp(`pnpm\\s+(?:--?[a-zA-Z-]+\\s+)*${escaped}(?![\\w:-])`).test(haystack);
 }
 
-/** 门禁是否在某段文本里被执行：接受 `pnpm <gate>` 或其原始命令（如 node scripts/x.js）。 */
+/**
+ * 门禁是否在某段文本里被执行：接受 `pnpm <gate>`、其原始命令，
+ * 或直接调用该门禁的实现脚本（`node scripts/x.js`）。
+ *
+ * 第三种形态是给「产物已经就绪、只需跑断言」的 CI 用的：`check:bundle` 的 package.json
+ * 命令自带一次 `pnpm build`，CI 里照抄会白等 20 分钟，于是 Build job 之后直接跑
+ * `node scripts/check-bundle.js`。只认脚本路径而不是任意文本，避免注释里提一句就算接线。
+ */
 function wiredInScriptList(text: string, gate: string, command: string): boolean {
   if (containsPnpmScript(text, gate)) return true;
   const raw = command.trim();
-  return raw.length > 0 && containsCommand(text, raw);
+  if (raw.length > 0 && containsCommand(text, raw)) return true;
+  return implementationScripts(raw).some((script) => text.includes(script));
+}
+
+/** 从门禁命令里取出实现脚本路径（形如 `scripts/foo.js`），用于识别 CI 的直接脚本调用。 */
+export function implementationScripts(command: string): string[] {
+  return [...command.matchAll(/scripts\/[\w./-]+\.js/g)].map((match) => match[0]).sort();
 }
 
 /** 列出所有 `check:*` 门禁脚本（`check:all` 是聚合入口，本身不是门禁）。 */

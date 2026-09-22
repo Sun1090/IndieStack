@@ -6,6 +6,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **客户端包体积基线从此 CI 也会拦**：`check:bundle` 的 package.json 命令自带一次
+  `pnpm build`，在 CI 里照抄就是再等 20 分钟，因此它此前只在本地 `pnpm verify:build` 与 pre-push
+  生效——CI 的 `Build` job 只跑了 `check:perf`（另一组断言），依赖膨胀要等谁在本地跑全量验证才看得见。
+  脚本本身只读 `.next/static`，于是 `Build` job 在 `pnpm build` 之后直接
+  `node scripts/check-bundle.js` 复用同一份产物。`check:gates` 原先只认「`pnpm <gate>`」或整条原始
+  命令，现扩展为**也认实现脚本被直接调用**（按 `scripts/*.js` 路径匹配，出现别的脚本不算接线），
+  那条已经不再成立的 CI 豁免理由随之删除。
+- **v0.6.0 退出报告（J09）与 v0.12.0 候选池（J10）**：`docs/operations/release-exit-report-v0.6.0.md`
+  把 roadmap 的 100 项任务与 6 条退出标准逐条对回代码、门禁与执行记录（90 达成 / 8 部分达成 /
+  2 未达成，未达成是 F01 与 J08），核对过程中发现摘要邮件因错峰门控与每天一次的调度不兼容而对
+  除 UTC-1 外所有用户不投递；`docs/roadmap-0.12.0.md` 的 20 项全部来自这些部分/未达成项与生产证据缺口。
 - **保留期终于有了执行者：`/api/cron/retention`（每天 05:00 UTC）**。迁移 `003` / `014` / `027` / `032`
   里的 6 个 `security definer` 清理函数此前只注册在 pg_cron 上，而那段调度写成
   `if exists (select 1 from pg_extension where extname = 'pg_cron')`——本地与云端项目都没装 pg_cron，

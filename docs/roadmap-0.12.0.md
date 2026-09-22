@@ -3,7 +3,7 @@
 > 主题：**把已经接上的线真正跑通一次，并留下证据**
 > 基线：v0.11.0（2026-09-22 发布章节已冻结，生产仍是 `0.10.0`）→ 目标：v0.12.0
 > 输入：`docs/operations/release-exit-report-v0.6.0.md`（v0.6.0 任务池 100 项的逐条核对结果，
-> 含 9 项部分达成与 2 项未达成）与本文件下方的来源标注。
+> 含 8 项部分达成与 2 项未达成）与本文件下方的来源标注。
 >
 > **排期原则**：先做「没有证据就等于没做」的收口项（投递语义、发布证据、演练），再做隔离与门禁补强；
 > 任何条目的完成都要留下可复现命令或执行记录，不接受「文档已写」。
@@ -46,8 +46,9 @@
 12. C02 在 C01 之后建立 `PW_FULLY_PARALLEL` 的**可复跑**并行基线（CI 里跑一次全量并行，
     而不是历史上的一次实验），失败则记录具体共享状态并回退
 13. C03 补 `/auth/mfa` 挑战页自身的自动化覆盖：页面级组件测试 + 一条真实走挑战流程的 E2E
-14. C04 让 CI 真的执行 `pnpm verify:build`，或在 `check:gates` 豁免表里登记「组件已拆分覆盖」并写明理由
-    （今天 `grep -rn verify:build .github/workflows/` 无命中）
+14. C04 （2026-09-22 已完成一半：`node scripts/check-bundle.js` 接进 CI Build job，`check:bundle` 的 CI 豁免随之删除，
+    CI 现在覆盖 `verify:build` 的全部组件。剩余部分是可选的——把 CI 的逐个 `check:*` 步骤换成 `pnpm check:all`，
+    让本地聚合与 CI 只有一份清单）
 15. C05 孤儿巡检补上 provider 侧 `list()` 与数据库的集合差，覆盖 031 之前从未落元数据的存量对象
 16. C06 定夺 `src/lib/actions/uploads.ts` 两个 Server Action：保留为编程入口（补调用方与文档）
     或删除（同步 service-role inventory、错误码门禁与 docs-site）

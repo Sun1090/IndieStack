@@ -271,7 +271,9 @@ Lint & Type Check job 均会执行。门禁只验证治理结构和引用完整�
 5. 检查清单「打标签」章节的 `git tag vX.Y.Z` 必须与 `package.json` 版本一致 → `CHECKLIST_TAG_VERSION`。
 
 当前豁免只有三条，且都写明替代覆盖方式：`check:migration-history`（需要本地 Supabase）、
-`check:bundle`（需要完整生产构建）、`check:perf`（本地需要 `.next` 产物，CI 由 Build job 执行）。
+`check:bundle`（本地需要完整生产构建，由 `pnpm verify:build` 覆盖；CI 的 Build job 在
+`pnpm build` 之后直接跑 `node scripts/check-bundle.js`，复用同一份产物，不需要再构建）、
+`check:perf`（本地需要 `.next` 产物，CI 由 Build job 执行）。
 规则实现位于 `src/lib/release/gate-wiring.ts`（纯函数，29 条单测），IO/CLI 位于
 `scripts/lib/gate-wiring-check.js`，由 `scripts/check-gates.js` 经 Node 原生 type stripping 调用；
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明门禁被接线，不证明门禁本身的强度。

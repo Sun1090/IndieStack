@@ -137,6 +137,44 @@ describe("auditGateWiring() 接线判定", () => {
     ).toEqual(["GATE_UNWIRED_CI"]);
   });
 
+  it("CI 直接调用实现脚本也算接线（不要求照抄自带构建的门禁命令）", () => {
+    // check:bundle 的命令自带一次 pnpm build；CI 复用已有产物直接跑脚本，
+    // 若只认整条原始命令，就会把已接线的门禁误报成未接线。
+    const report = auditGateWiring(
+      input({
+        scripts: {
+          "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
+        },
+        checkAll: "pnpm --silent check:bundle\n",
+        workflows: [
+          {
+            path: ".github/workflows/ci.yml",
+            content: "name: CI\njobs:\n  build:\n    steps:\n      - run: node scripts/check-bundle.js\n",
+          },
+        ],
+      }),
+    );
+    expect(report.issues).toEqual([]);
+    expect(report.ciGates).toEqual(["check:bundle"]);
+  });
+
+  it("CI 里出现的是别的脚本路径时仍然报未接线", () => {
+    expect(
+      codes(
+        input({
+          scripts: { "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'" },
+          checkAll: "pnpm --silent check:bundle\n",
+          workflows: [
+            {
+              path: ".github/workflows/ci.yml",
+              content: "name: CI\njobs:\n  build:\n    steps:\n      - run: node scripts/check-perf.js\n",
+            },
+          ],
+        }),
+      ),
+    ).toEqual(["GATE_UNWIRED_CI"]);
+  });
+
   it("CI 直接调用原始命令也算接线", () => {
     expect(
       codes(
@@ -332,14 +370,14 @@ function simpleRepo(overrides: Record<string, string> = {}): string {
       scripts: {
         "check:locales": "node scripts/check-locales.js",
         // 默认豁免表要求这三个门禁真实存在；临时仓库显式登记以验证豁免分支。
-        "check:bundle": "bash -c 'pnpm build'",
+        "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
         "check:perf": "node scripts/check-perf.js",
         "check:migration-history": "node scripts/check-migration-history.js",
       },
     }),
     "scripts/check-all.sh": "pnpm --silent check:locales\n",
     ".github/workflows/ci.yml":
-      "name: CI\njobs:\n  lint:\n    name: Lint & Type Check\n    steps:\n      - run: pnpm check:locales\n      - run: node scripts/check-perf.js\n",
+      "name: CI\njobs:\n  lint:\n    name: Lint & Type Check\n    steps:\n      - run: pnpm check:locales\n      - run: node scripts/check-perf.js\n      - run: node scripts/check-bundle.js\n",
     ".github/RELEASE_CHECKLIST.md":
       "# 检查清单\n\n## 门禁\n\n- [ ] `CI`（`Lint & Type Check`）全绿\n\n## 打标签\n\n```bash\ngit tag v1.2.3\n```\n",
     ...overrides,

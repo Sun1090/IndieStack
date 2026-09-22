@@ -1,3 +1,41 @@
+## 2026-09-22 — 包体积基线接进 CI：顺手把「门禁怎么算已接线」这条规则修对
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE。
+- 分支 / commit：`fix/ci-bundle-size-gate`（基于 main `118fd3c`，即退出报告那条）。
+- 为什么做：写退出报告核对 J01 时读到 `check:gates` 的豁免表，`check:bundle` 的 CI 理由写着
+  「CI Build job 已运行 pnpm build + check:perf，重复构建会浪费 20 分钟预算」。前半句是真的，
+  但它掩盖了一件事：**`check:perf` 与 `check:bundle` 是两组不同断言**（前者查 chunk 结构与
+  `.map` 泄漏，后者查客户端总量 vs `.bundle-baseline`），所以包体积回归在 CI 上根本没人拦，
+  只有本地跑 `verify:build` 的人才会发现。而脚本本身只读 `.next/static`——**它不需要那次构建**，
+  是 package.json 的命令把它包了一层 `pnpm build` 才显得必须在 CI 里豁免。
+- 完成内容：
+  1. `Build` job 在 `pnpm build` 之后加一步 `node scripts/check-bundle.js`，复用同一份产物，
+     零额外构建时间（本地实测这条命令几秒返回）。
+  2. `check:gates` 的接线判定扩展：除了 `pnpm <gate>` 与整条原始命令，**也认实现脚本被直接调用**
+     （从命令里提取 `scripts/*.js` 路径再匹配）。这是让上面那步能被审计承认的前提；
+     刻意只认脚本路径而不是任意文本，避免「注释里提一句就算接线」。
+  3. 删掉 `check:bundle` 的 `ci` 豁免理由（已不成立，留着会被 `EXCEPTION_STALE` 反向拦），
+     `local` 理由保留并改写；`docs/testing.md` 的豁免表说明同步。
+  4. **退出报告随事实更新**：J01 从「部分达成」升为「达成」，任务池汇总改为 90 达成 / 8 部分达成 /
+     2 未达成（`docs/roadmap-0.6.0.md` 的 J09 标记同步），遗留项第 7 条标注已关闭，
+     `docs/roadmap-0.12.0.md` 的 C04 改成剩下的可选部分（把 CI 的逐个 `check:*` 换成 `pnpm check:all`）。
+- 变更文件：8 个——`.github/workflows/ci.yml`、`src/lib/release/gate-wiring.ts`、其单测、
+  `docs/testing.md`、`docs/operations/release-exit-report-v0.6.0.md`、`docs/roadmap-0.6.0.md`、
+  `docs/roadmap-0.12.0.md`、CHANGELOG 与本条目。
+- 验证命令与结果：
+  - `pnpm check:gates` → `✅ 门禁接线审计通过：35 个门禁（本地 32 / CI 34 / 豁免 3）`
+    （过程中先只删了豁免理由、还没扩展接线判定时，这条门禁立刻报
+    `GATE_UNWIRED_CI check:bundle`——说明它真的会拦，也说明「CI 里写了脚本调用」必须被规则承认才算数）；
+  - `npx vitest run src/lib/release` → 2 文件 / 78 用例通过（新增 3 条：CI 直接调用实现脚本算接线、
+    出现别的脚本路径仍算未接线、fixture 仓库按真实命令形态接线）；
+  - `node scripts/check-bundle.js` 对已有产物可独立运行：`Bundle: 当前 2845.7 kB / 基线 2733.8 kB` → 通过；
+  - `pnpm check:all` → `✅ 全部校验通过`；`pnpm verify:build` → 退出码 0、生产构建成功。
+- 风险 / 回滚：CI 多一步只读断言，不改构建；revert 本 commit 即回滚（豁免理由需一起还原，
+  否则 `check:gates` 会因门禁未接线失败）。
+- 下一项：v0.12.0 的 A01（digest 投递语义）等用户定方向；不依赖生产的下一块是
+  C01（把 `createMockRequestStore` 接进 mock 的 client/query/auth，MFA 状态搬出进程全局）。
+
 ## 2026-09-22 — J09 退出报告补上欠账：100 项逐条对回代码，顺带核对出摘要邮件不投递
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
