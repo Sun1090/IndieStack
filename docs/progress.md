@@ -744,3 +744,31 @@
   回滚 = revert 本 commit（30 步回到 ci.yml，`check:workflows` 的新规则随之下线）。
 - 下一项：v0.12.0 任务池里可自主执行的条目已清空，剩余全部需要产品决策（A05 出队语义、
   A01 的 `profiles.timezone`、C06 两个孤儿 Action）或外部权限（B 域发布证据、C05 provider 侧对账）。
+
+## 2026-09-23 — 并行基线第一次跑在 main 上：108 条、零重跑，绿
+
+- 里程碑 / 版本：v0.12.0 C02 的复跑证据（基线此前只在 topic branch 上量过）。
+- 状态：DONE（一次可复跑的绿；这条不是门禁，红了按报告记下共享状态冲突）。
+- 分支 / commit：`docs/e2e-parallel-baseline-on-main`（基于 `6ab5c30`，只改文档）。
+- 为什么做：#78 改的正是并行 E2E 依赖的东西——`e2e/a11y.spec.ts` 的 `page.goto(pageInfo.path)`、
+  `smoke.spec.ts` 的 7 处 `request.get("/…")` 换成 `appUrl()`，并给 admin 概览页加了一条真查询队列的用例。
+  用例总数从 107 变成 108（`pnpm test:e2e --list` → `Total: 108 tests in 15 files`），
+  而基线的全部意义是「在 main 上可复跑」：改动落地后不复跑一次，之前那轮 107/107 说的就是别的分支。
+- 完成内容：
+  1. `gh workflow run e2e-parallel.yml --ref main` → run `35757758491`（job `106847752074`），
+     `PW_FULLY_PARALLEL=true`、全量不带 `--shard`、`E2E_SERVERS=3`、强制 `--retries=0`；
+     `gh run watch --exit-status` → **exit 0，conclusion=success**。
+  2. 取「多少条通过」时又撞上同一个坑：`check-runs/<id>/annotations` 端点返回 0 字节（与 C02 那几轮一样，
+     日志端点也是反复空响应）。所以这里能负责地说出口的是**作业结论 + 零重跑 + 本机 `--list` 的 108 条**，
+     而不是从一份拿不到的报告里抄「108 passed / 0 failed」。缺哪句证据就写缺哪句。
+- 验证命令与结果：
+  - `gh workflow run e2e-parallel.yml --ref main` → run `35757758491`；
+  - `gh run watch 35757758491 --exit-status` → exit 0；
+  - `gh run view 35757758491 --json conclusion,jobs` → `conclusion=success`，作业
+     `Fully parallel E2E, one dev server per worker: success`；
+  - `pnpm test:e2e --list` → `Total: 108 tests in 15 files`。
+- 风险 / 回滚：无代码改动。回滚 = revert 本 commit。
+- 下一项：v0.12.0 池内可自主执行的条目已清空（A05 出队语义、A01 的 `profiles.timezone`、C06 两个孤儿
+  Action 等产品决策；B02–B05 与 C05 要外部权限）。生产仍停在 `0.11.0` 且 `/api/health` 不报 `commit`
+  （2026-09-22T17:00Z 实测），因此 `smoke:production --expected-commit` 依旧无法闭环——Vercel 侧
+  「Deployment rate limited — retry in 24 hours」是平台限制，按既定口径忽略，不绕开任何门禁。
