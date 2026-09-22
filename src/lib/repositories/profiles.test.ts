@@ -48,6 +48,13 @@ describe("findUserIdByEmail()", () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({})));
     await expect(findUserIdByEmail("x@y.com")).resolves.toBeNull();
   });
+
+  it("查询失败抛错，而不是让调用方把故障答成「这个邮箱没注册」", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(findUserIdByEmail("x@y.com")).rejects.toThrow("db");
+  });
 });
 
 describe("updateProfile()", () => {

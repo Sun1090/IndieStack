@@ -255,7 +255,7 @@ describe("inviteMember()", () => {
           team_members: [
             { single: { data: { team_id: "t1" }, error: null } }, // membership
             { maybeSingle: { data: { role: "admin" }, error: null } }, // 角色检查
-            { single: { data: { id: "u2" }, error: null } }, // existing
+            { maybeSingle: { data: { id: "u2" }, error: null } }, // existing（查重用 maybeSingle，无行不是错误）
           ],
           teams: [{ single: { data: TEAM, error: null } }],
         },
@@ -264,6 +264,66 @@ describe("inviteMember()", () => {
     await expect(inviteMember(VALID_INVITE_INPUT)).resolves.toEqual({
       ok: false,
       error: "alreadyMember",
+    });
+  });
+
+  it("权限查询失败回答 databaseError，而不是凭空说「你没有权限」", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: serverQueriesForTeamMember(
+            { data: { team_id: "t1" }, error: null },
+            { data: null, error: { message: "db" } }, // 角色查询本身失败
+          ),
+          teams: [{ single: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    await expect(inviteMember(VALID_INVITE_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
+  });
+
+  it("邮箱查询失败回答 databaseError，而不是「这个邮箱没注册」", async () => {
+    findUserIdByEmailMock.mockRejectedValue(new Error("db"));
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: serverQueriesForTeamMember(
+            { data: { team_id: "t1" }, error: null },
+            { data: { role: "owner" }, error: null },
+          ),
+          teams: [{ single: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    await expect(inviteMember(VALID_INVITE_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
+  });
+
+  it("成员查重失败就停下，不得带着未知状态去 INSERT", async () => {
+    findUserIdByEmailMock.mockResolvedValue("u2");
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: [
+            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { role: "owner" }, error: null } },
+            { maybeSingle: { data: null, error: { message: "db" } } }, // 查重失败
+          ],
+          teams: [{ single: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    // admin 客户端一条队列都不给：若代码继续走到插入，member_count 那步也拿不到结果，
+    // 最终会是 {ok:true} 而不是下面的 databaseError —— 所以这条断言本身就是「没往下走」的证据
+    createAdminClientMock.mockReturnValue(buildClient({ queries: {} }));
+    await expect(inviteMember(VALID_INVITE_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
     });
   });
 

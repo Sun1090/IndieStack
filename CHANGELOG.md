@@ -271,6 +271,20 @@ All notable changes to IndieStack will be documented in this file.
   事件标 `failed` + 回 500，交给 Stripe 重投（第 3 条用例；把 `throw` 删掉只有它红）。
   同一函数族里的另一处——「订阅删除事件命中 0 行也算 processed」本条**不**改：那是一种合法的幂等
   无操作，要区分它得让 UPDATE 带回计数，属另一件事。
+- **邀请流程不再把数据库故障答成一条确定的结论**：三处连在一起看才看得出问题——
+  `repositories/profiles.ts` 的 `findUserIdByEmail()` 只取 `{ data }`，故障时返回 `null`，
+  于是 `inviteMember()` 回答 `userNotFound`（「这个邮箱没注册过」，管理员会去催对方注册）；
+  角色权限检查与成员查重两处更直接，写成
+  `as unknown as { data: …; error: null }`——**在类型上宣称这条查询不会出错**，把 error 通道
+  从编译器手里抹掉，于是故障时分别答成 `onlyAdminsInvite`（凭空一条权限拒绝）与「不是成员」，
+  后者还会带着未知状态继续 INSERT，让唯一约束替权限逻辑说话。现在三处都真的读 `error` 并回
+  `databaseError`（两语言已有该键），查重的 `.single()` 换成 `.maybeSingle()`——「没有这一行」
+  是正常结果，不该占用 error 通道，这也正是旧代码需要那个断言的原因。
+  同时删掉断言后 `pnpm type-check` 依旧通过，说明 `error: null` 从来就不是客户端的真实形状。
+  新增 4 条用例（仓储 1 + Action 3，其中「查重失败」那条用「admin 客户端不给任何队列」来证明
+  代码确实没往下走）；变异核对 4 项全部被抓，且逐个确认是**目标用例**变红而非别处连坐。
+  全库还有 **29 处**同形状的「把查询结果断言成没有 error 通道」的写法（含 `lib/auth/guards.ts`
+  与 `components/shared/permission-gate.tsx` 里的角色检查），已作为门禁候选登记在 roadmap。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
   `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
   `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是

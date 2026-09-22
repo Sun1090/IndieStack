@@ -1037,6 +1037,38 @@
   并发重算的竞态（两人同时被邀请 → 后写的那次赢）本条**不**解决，它要的是把计数改成查询派生或
   数据库触发器，那是另一个决定。回滚 = revert 本 commit。
 - 下一项：#37（Stripe webhook 给解析不出团队的行记 `processed`）与 #38（注销时丢掉擦除结果）。
+## 2026-09-23 — 邀请链上三处「把查询故障答成确定的结论」
+
+- 里程碑 / 版本：v0.12.0；#39，同时把这一族登记为 roadmap C08（门禁候选）。
+- 状态：DONE（代码）+ 已登记后续门禁。
+- 分支 / commit：`fix/invite-error-honesty`（基于 `9c9024a`）。
+- 为什么做：同一个函数里三种「把不知道说成知道」叠在一起才看得出形状——
+  `findUserIdByEmail()` 丢 `error` 返回 null，Action 因此答 `userNotFound`（管理员会去催一个
+  其实已注册的人注册）；角色检查与成员查重两处写成 `as unknown as { data …; error: null }`，
+  等于**在类型上宣称这条查询不会出错**，把 error 通道从编译器手里抹掉：前者故障时答
+  `onlyAdminsInvite`（凭空一条权限拒绝），后者答「不是成员」并带着这个未知状态继续 INSERT，
+  让唯一约束替权限逻辑说话。
+- 完成内容：
+  1. 三处都真的读 `error` 并回 `databaseError`（en / zh-CN 都已有该键，不新增文案）。
+  2. 成员查重的 `.single()` 换成 `.maybeSingle()`：「没有这一行」是正常结果，不该占用 error
+     通道——这正是旧代码非要用那个断言不可的原因。断言删掉后 `pnpm type-check` 仍通过，
+     说明 `error: null` 从来不是客户端的真实形状。
+  3. 全库测量（`/tmp/measure-casts.mjs`，AST）：46 处把查询结果断言改写，其中 **29 处抹掉
+     `error` 成员**；按优先级登记成 roadmap **C08**（`auth/guards.ts`、`permission-gate.tsx`
+     是角色检查；`app/dashboard/**` 是页面读数；门禁判据与误伤面写在条目里）。
+     同时记下第一版探测器的教训：单行 grep 少数了多行断言，且「解构了 error 却没用」的粗判会把
+     `{ error: memberError }` 这种重命名算成未使用——只有「解构里没有 error」那一半是可信的。
+- 变更文件：`src/lib/repositories/profiles.ts`、`profiles.test.ts`、`src/lib/actions/team.ts`、
+  `team.test.ts`（+3 用例、1 处 fixture 从 `single` 改 `maybeSingle`）、`docs/roadmap-0.12.0.md`
+  （任务池 21 → 22，新增 C08）、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`npx vitest run src/lib/actions/team.test.ts src/lib/repositories/profiles.test.ts`
+  → 44 通过；变异核对 4 项全部被抓（仓储退回吞错、删掉角色检查、删掉查重检查、邮箱查询退回不兜住），
+  并逐条用 `-t <用例名>` 复跑确认是**目标用例**变红而不是别处连坐；源文件 `finally` 还原后逐字节一致。
+  全量 `CI=true pnpm check:all` / `pnpm lint` / `type-check` / `build` 见 commit 之后补记。
+- 阻塞 / 风险 / 回滚：不改授权规则、不改 schema、不改邀请成功路径的任何行为；只有「查询失败时说什么」
+  变了。`alreadyMember` 那条 fixture 跟着改了形状（`single` → `maybeSingle`），是生产调用换了方法的
+  结果，不是把断言迁就旧行为。回滚 = revert 本 commit。
+- 下一项：C08 门禁（先量后写），或等 #86–#89 合并后按用户指示继续。
 
 ## 2026-09-23 — 解析不出团队的 Stripe 事件落 `skipped`，不再谎报「已处理」
 
