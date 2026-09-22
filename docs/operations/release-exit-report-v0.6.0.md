@@ -89,7 +89,7 @@
 | - | ---- | ---- | ---- |
 | C01 | 达成 | `src/lib/mock/index.ts:1390-1500` 的 enroll/challenge/verify/unenroll 状态机 + `mock.test.ts:329` | 隔离度见 F01（进程全局，非请求级） |
 | C02 | 达成 | `e2e/admin-contact-mfa.spec.ts:104`「开启 → 验证后显示已启用」 | - |
-| C03 | 达成 | `src/app/auth/mfa/page.tsx` + `login-form.tsx:92,182` + **挑战页自身测试 `src/app/auth/mfa/page.test.tsx`（13 条，2026-09-22 由 v0.12.0 的 C03 补上）** | 仍缺一条端到端走 `/auth/mfa` 的 E2E |
+| C03 | 达成 | `src/app/auth/mfa/page.tsx` + `login-form.tsx:92,182` + **挑战页自身测试 `src/app/auth/mfa/page.test.tsx`（13 条，2026-09-22 由 v0.12.0 的 C03 补上）** + `e2e/mfa-challenge.spec.ts`（同一天补上，真走一遍登录→挑战→dashboard） | 缺口已闭合；补它的过程中发现 mock 缺 `auth.refreshSession`，见 v0.12.0 的 C03 |
 | C04 | 达成 | `src/lib/repositories/mfa-recovery-codes.ts`（listUnused/replace/consume）+ 两个 action 测试 | - |
 | C05 | 达成 | `hashRecoveryCode`（SHA-256，`actions/recovery-codes.ts:26`）+ 迁移 `013`/`022` | 明文只在 UI 单次展示，这一点无门禁守护 |
 | C06 | 达成 | `src/lib/auth/errors.ts:40-43` + `actions/login-attempts.ts`（邮箱 5 次 / IP 20 次每 15 分钟）+ `rate-limit.ts` | - |
