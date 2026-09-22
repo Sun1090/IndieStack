@@ -19,6 +19,7 @@ const WORKER: CronWorkerContract = {
   methods: ["POST"],
   schedule: "0 9 * * *",
   metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
+  skipMetrics: [],
   cadence: "每天 09:00 UTC",
 };
 
@@ -301,6 +302,90 @@ describe("auditCronContract", () => {
     expect(CRON_WORKERS.length).toBeGreaterThan(0);
     for (const worker of CRON_WORKERS) {
       expect(isValidCronSchedule(worker.schedule), worker.id).toBe(true);
+    }
+  });
+});
+
+/** 把一段函数体拼进基础路由源码，用于造出带条件跳过的 worker。 */
+function sourceWith(body: string): string {
+  return `${ROUTE_SOURCE}\nasync function runLoop(items: { email: string | null }[]) {\n  let sent = 0;\n${body}\n  return { sent };\n}\n`;
+}
+
+describe("条件跳过必须计数（A04）", () => {
+  const skipWorker: CronWorkerContract = {
+    ...WORKER,
+    metrics: [...WORKER.metrics, "cron.digest.skipped"],
+    skipMetrics: ["cron.digest.skipped"],
+  };
+  const skipDoc = `${DOC}\n| cron.digest.skipped | count | reason |\n`;
+
+  it("带条件的 continue 没有任何计数证据时报 CRON_SKIP_UNCOUNTED", () => {
+    const issues = auditCronContract(
+      baseInput({
+        workers: [skipWorker],
+        operationsDoc: skipDoc,
+        sources: {
+          [WORKER.routeFile]: sourceWith("  for (const item of items) {\n    if (!item.email) continue;\n    sent += 1;\n  }"),
+        },
+      }),
+    ).issues;
+    expect(issues.map((issue) => issue.code)).toContain("CRON_SKIP_UNCOUNTED");
+    expect(issues.find((issue) => issue.code === "CRON_SKIP_UNCOUNTED")?.message).toContain("!item.email");
+  });
+
+  it("分支上报登记的 skip 指标（带 reason）即通过", () => {
+    const report = auditCronContract(
+      baseInput({
+        workers: [skipWorker],
+        operationsDoc: skipDoc,
+        sources: {
+          [WORKER.routeFile]: sourceWith(
+            "  for (const item of items) {\n    if (!item.email) {\n      recordMetric(\"cron.digest.skipped\", 1, { unit: \"count\", attributes: { reason: \"no_email\" } });\n      continue;\n    }\n    sent += 1;\n  }",
+          ),
+        },
+      }),
+    );
+    expect(report.issues).toEqual([]);
+    expect(report.skipBranches).toBe(1);
+  });
+
+  it("skip 指标没有登记进该 worker 的 metrics 时报 CRON_SKIP_METRIC_UNDECLARED", () => {
+    const issues = auditCronContract(
+      baseInput({
+        workers: [{ ...WORKER, skipMetrics: ["cron.digest.skipped"] }],
+        operationsDoc: skipDoc,
+      }),
+    ).issues;
+    expect(issues.map((issue) => issue.code)).toContain("CRON_SKIP_METRIC_UNDECLARED");
+  });
+
+  it("源码无法解析时按失败封闭报 CRON_SKIP_UNPARSEABLE", () => {
+    const issues = auditCronContract(
+      baseInput({ workers: [skipWorker], operationsDoc: skipDoc, sources: { [WORKER.routeFile]: "async function broken( {" } }),
+    ).issues;
+    expect(issues.map((issue) => issue.code)).toContain("CRON_SKIP_UNPARSEABLE");
+  });
+
+  it("条件跳过的条数进入报告，供成功日志自证核对过多少条", () => {
+    const report = auditCronContract(
+      baseInput({
+        workers: [skipWorker],
+        operationsDoc: skipDoc,
+        sources: {
+          [WORKER.routeFile]: sourceWith(
+            "  for (const item of items) {\n    if (!item.email) {\n      recordMetric(\"cron.digest.skipped\", 1, { unit: \"count\", attributes: { reason: \"no_email\" } });\n      continue;\n    }\n    if (!item.email) {\n      recordMetric(\"cron.digest.skipped\", 1, { unit: \"count\", attributes: { reason: \"no_email\" } });\n      continue;\n    }\n    sent += 1;\n  }",
+          ),
+        },
+      }),
+    );
+    expect(report.skipBranches).toBe(2);
+  });
+
+  it("真实注册表里每个 worker 的 skipMetrics 都是 metrics 的子集", () => {
+    for (const worker of CRON_WORKERS) {
+      for (const metric of worker.skipMetrics) {
+        expect(worker.metrics, `${worker.id} 的 ${metric}`).toContain(metric);
+      }
     }
   });
 });

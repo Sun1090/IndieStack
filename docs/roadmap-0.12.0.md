@@ -35,9 +35,14 @@
    按 `next_attempt_at` 升序取 50 条），到点的行不会因为调度时刻而永远落在窗口外；
    失败侧另有 `PUSH_MAX_ATTEMPTS` → `dead`/`revoked` 与 `push.delivery.dead`、`push.backlog` 兜底。
    **仍需盯的是 digest（A01）而不是这里**，本条按已完成收口
-4. A04 补契约（A01 的教训泛化）：任何 cron worker 路由里**按用户条件跳过投递**的分支，
-   都必须同时上报一个跳过计数指标——新增纯函数规则（`src/lib/**`）+ 接进 `check:cron-contract`，
-   使「静默不投递」在 PR 阶段就失败，而不是靠看板发现
+4. A04 （**2026-09-22 已完成**）：任何 cron worker 路由里**按用户条件跳过投递**的分支，
+   都必须同时上报一个跳过计数指标。落地为
+   `src/lib/observability/cron-skip-coverage.ts`（TypeScript 解析器核对带条件的 `continue`
+   是否留下计数证据）+ 注册表新增 `skipMetrics`（必须是 `metrics` 子集）+ 接进
+   `pnpm check:cron-contract`，成功日志自报「N 处条件跳过均有计数证据」。
+   验收证据：删掉 digest 路由里的 `recordMetric` → `CRON_SKIP_UNCOUNTED`，去掉 `reason` 维度 →
+   `CRON_SKIP_REASON_MISSING`（两条都在真实仓库上跑过，不是 fixture 推演）；
+   规则本身 11 条单测 + 契约 6 条 + IO 2 条。「静默不投递」从此在 PR 阶段失败。
 5. A05 死信与积压的可操作路径：admin 面板能看到未发送队列的规模、最早一条的年龄，
    以及「有队列但整轮 `sent=0`」的轮次（原因只会是无邮箱或偏好全关，两者都该看得见）。
    **2026-09-22 核对时补一条更要紧的事实**：被跳过的条目**永远出不了队列**——
@@ -103,7 +108,7 @@
 
 ## 退出标准（全部满足方可发布 v0.12.0）
 
-1. A01–A04 完成（A01/A02 已于 2026-09-22 收口）：摘要在真实调度周期内每人至多一封、
+1. A01–A04 完成（A01/A02/A04 已于 2026-09-22 收口）：摘要在真实调度周期内每人至多一封、
    且 `sent=0 而 pulled>0` 的轮次要么为 0、要么有明确解释；跳过类分支一律带可见性指标。
 2. B01、B02 有执行记录（UTC 时间、命令、状态码、artifact 指纹或 deployment id），
    「演练记录」小节不再是空模板。

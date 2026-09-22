@@ -166,4 +166,22 @@ describe("runCronContractCheck()", () => {
     expect(runCronContractCheck(root, FIXTURE_OPTIONS)).toBe(1);
     expect(error.mock.calls.flat().join("\n")).toContain("[CRON_METRIC_UNDOCUMENTED] email.backlog");
   });
+
+  it("路由里有未计数的条件跳过时失败（A04）", () => {
+    const root = writeFixtureRepository({
+      routeContent: `${DIGEST_ROUTE}\nfunction skip(items: { email: string | null }[]) {\n  for (const item of items) {\n    if (!item.email) continue;\n  }\n  return 0;\n}\n`,
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(runCronContractCheck(root, FIXTURE_OPTIONS)).toBe(1);
+    expect(error.mock.calls.flat().join("\n")).toContain("[CRON_SKIP_UNCOUNTED] digest");
+  });
+
+  it("成功日志自核对了多少处条件跳过（A04）", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(runCronContractCheck()).toBe(0);
+    const output = log.mock.calls.flat().join(" ");
+    const skipped = Number(output.match(/(\d+) 处条件跳过均有计数证据/)?.[1] ?? "0");
+    // digest 路由里的两处按用户条件跳过（无邮箱 / 偏好全关）都必须被核对到
+    expect(skipped).toBeGreaterThanOrEqual(2);
+  });
 });

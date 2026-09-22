@@ -111,7 +111,8 @@ export function runCronContractCheck(root = REPO_ROOT, overrides = {}) {
 
   console.log(
     `✅ cron 调度与指标契约通过：${report.workers.length} 个 worker（${report.workerPaths.join("、")}）/ ` +
-      `${report.metrics.length} 个指标 / 调度表达式与 vercel.json 及运维文档一致 / ` +
+      `${report.metrics.length} 个指标 / ${report.skipBranches} 处条件跳过均有计数证据 / ` +
+      `调度表达式与 vercel.json 及运维文档一致 / ` +
       `${report.exemptedPaths.length} 个平台级豁免`,
   );
   return 0;

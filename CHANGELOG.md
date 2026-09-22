@@ -6,6 +6,18 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **「按用户条件跳过投递」从此必须有计数，否则 PR 就红**：新增
+  `src/lib/observability/cron-skip-coverage.ts`，用 TypeScript 解析器核对每个 cron worker 路由里
+  **带条件的 `continue`** 是否留下计数证据——上报该 worker 注册过的 skip 指标（且带 `reason` 维度），
+  或累加进本轮已上报的计数器（发送失败走的就是 `failed`）。接进 `pnpm check:cron-contract`，
+  注册表因此多出 `skipMetrics` 字段（必须是 `metrics` 的子集，否则 `CRON_SKIP_METRIC_UNDECLARED`），
+  成功日志也自报「N 处条件跳过均有计数证据」，让「核对过多少条」本身可见。
+  动机就是下面那条 digest P0：跳过不计数时，一轮在指标上表现为 `pulled=N, sent=0, failed=0` 的
+  「成功」，静态类型和普通单测都拦不住。配套实现：`/api/cron/digest` 的两处跳过
+  （资料无邮箱 / 用户关掉涉及类型）现在上报 `cron.digest.skipped{reason=no_email|preference}`，
+  条数按用户上报、告警侧按 `reason` 拆分（`sentry-alerts.md` 登记指标、整轮未发出的判定规则与
+  去重说明）。变异核对：删掉那条 `recordMetric` → `CRON_SKIP_UNCOUNTED`；去掉 `reason` →
+  `CRON_SKIP_REASON_MISSING`；规则单测另覆盖「指标没登记」「源码无法解析」与「无条件 continue 不判」。
 - **客户端包体积基线从此 CI 也会拦**：`check:bundle` 的 package.json 命令自带一次
   `pnpm build`，在 CI 里照抄就是再等 20 分钟，因此它此前只在本地 `pnpm verify:build` 与 pre-push
   生效——CI 的 `Build` job 只跑了 `check:perf`（另一组断言），依赖膨胀要等谁在本地跑全量验证才看得见。

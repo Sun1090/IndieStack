@@ -12,13 +12,19 @@
  *      或者指标名改了而告警文档没改，看板上就是一片安静。
  *
  * 本模块把「谁被调度、用什么表达式、要上报哪些指标」写成一份可执行的注册表，
- * 规则本体是纯函数（无 IO、无 vendor SDK，由 vitest 覆盖）；IO 收集在
+ * 规则本体是纯函数（不读文件系统、不碰网络；源码以字符串传进来）；IO 收集在
  * `scripts/lib/cron-contract-check.js`，入口是 `pnpm check:cron-contract`。
  *
  * 规则只判断调度与指标是否接线，不判断 worker 的业务逻辑是否正确。
+ * 例外是第 4 类失败（A04）：**按用户条件跳过投递却不计数**。digest 的错峰门控就是这一类，
+ * 它让 `src/lib/observability/cron-skip-coverage.ts` 成为本契约的一部分——静态检查每条
+ * 带条件的 `continue` 是否留下了计数证据，让「静默不投递」在 PR 阶段就失败。
+ *
  * 调度表达式校验器是手写的最小实现（5 字段：分 时 日 月 周），
  * 引入 `cron-parser` 之类的依赖对「只校验注册表里这几条固定表达式」来说不划算。
  */
+
+import { auditCronSkips } from "./cron-skip-coverage.ts";
 
 /** 鉴权拒绝计数指标：所有 cron worker 的 401 分支都必须上报。 */
 export const CRON_REJECTED_METRIC = "cron.auth.rejected";
@@ -47,6 +53,13 @@ export interface CronWorkerContract {
   schedule: string;
   /** 每轮运行必须上报的指标名（不含鉴权拒绝指标）。 */
   metrics: readonly string[];
+  /**
+   * 用于「按条件跳过」计数的指标（必须是 `metrics` 的子集，A04）。
+   * 路由里每条带条件的 `continue` 都要在分支里上报其中之一（并带 `reason` 维度），
+   * 否则被跳过的条目在指标上完全静默——digest 的错峰门控就是这样藏住 P0 的。
+   * 没有条件跳过的 worker 显式写 `[]`。
+   */
+  skipMetrics: readonly string[];
   /** 单轮语义说明，供文档核对阅读，不参与规则判定。 */
   cadence: string;
 }
@@ -59,7 +72,13 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     routeFile: "src/app/api/cron/digest/route.ts",
     methods: ["POST"],
     schedule: "0 9 * * *",
-    metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
+    metrics: [
+      "email.backlog",
+      "cron.digest.skipped",
+      "cron.digest.completed",
+      "cron.digest.failed",
+    ],
+    skipMetrics: ["cron.digest.skipped"],
     // 2026-09-22 去掉本地 08:00 错峰门控：Hobby 每天只能调度一次，那个条件让除 UTC-1 外的
     // 用户永远收不到摘要。现在的语义就是一天一封、在调度时刻送达，不贴合用户本地时区。
     cadence: "每天 09:00 UTC 拉取一次，给每个有待发邮件通知的用户发一封摘要（发送时刻不随用户时区变化）",
@@ -77,6 +96,7 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
       "cron.push-retry.completed",
       "cron.push-retry.failed",
     ],
+    skipMetrics: [],
     cadence: "每天 22:00 UTC 重试一次待投递 Push 并执行保留策略清理",
   },
   {
@@ -92,6 +112,7 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
       "storage.orphan.objects",
       "storage.orphan.unowned",
     ],
+    skipMetrics: [],
     cadence:
       "每天 05:00 UTC 执行全部保留期清理函数，并只读巡检存储孤儿；取代未安装的 pg_cron 周调度，且与其并存时保持幂等",
   },
@@ -143,6 +164,10 @@ export type CronContractIssueCode =
   | "CRON_SCHEDULE_PLATFORM_UNSUPPORTED"
   | "CRON_METRIC_MISSING"
   | "CRON_METRIC_UNDOCUMENTED"
+  | "CRON_SKIP_METRIC_UNDECLARED"
+  | "CRON_SKIP_UNCOUNTED"
+  | "CRON_SKIP_REASON_MISSING"
+  | "CRON_SKIP_UNPARSEABLE"
   | "CRON_REJECTION_UNOBSERVABLE"
   | "CRON_DOC_SCHEDULE_MISSING"
   | "CRON_STALE_EXEMPTION";
@@ -166,6 +191,8 @@ export interface CronContractReport {
   workerPaths: string[];
   /** 仍存在的平台级豁免路径（排序后）。 */
   exemptedPaths: string[];
+  /** 全部 worker 路由里「带条件的 continue 跳过」分支数（A04 的核对面）。 */
+  skipBranches: number;
 }
 
 /** 每个字段的取值范围：分 时 日 月 周（周接受 0 与 7 表示周日）。 */
@@ -395,12 +422,66 @@ function auditWorkerObservability(
   }
 }
 
+/** 校验 worker 路由里的条件跳过是否都留下计数证据（A04）。 */
+function auditWorkerSkips(
+  worker: CronWorkerContract,
+  source: string,
+  summary: { skipBranches: number },
+  issues: CronContractIssue[],
+): void {
+  for (const metric of worker.skipMetrics) {
+    if (!worker.metrics.includes(metric)) {
+      push(
+        issues,
+        "CRON_SKIP_METRIC_UNDECLARED",
+        worker.id,
+        `${metric} 登记为跳过计数指标，却不在该 worker 的 metrics 里：它既不会被要求上报，也不会进告警文档`,
+      );
+    }
+  }
+
+  if (!source.trim()) return; // 文件缺失已由 CRON_ROUTE_MISSING 报告
+  const result = auditCronSkips({
+    source,
+    fileName: worker.routeFile,
+    skipMetrics: worker.skipMetrics,
+  });
+  if (!result) {
+    push(
+      issues,
+      "CRON_SKIP_UNPARSEABLE",
+      worker.id,
+      `${worker.routeFile} 无法解析，跳过可见性未核对（按失败封闭处理）`,
+    );
+    return;
+  }
+
+  summary.skipBranches += result.total;
+  for (const finding of result.uncounted) {
+    push(
+      issues,
+      "CRON_SKIP_UNCOUNTED",
+      worker.id,
+      `${worker.routeFile}:${finding.line} 的条件跳过（${finding.condition}）没有任何计数证据：被跳过的条目在指标与看板上完全静默`,
+    );
+  }
+  for (const finding of result.reasonMissing) {
+    push(
+      issues,
+      "CRON_SKIP_REASON_MISSING",
+      worker.id,
+      `${worker.routeFile}:${finding.line} 的跳过计数没有 reason 维度：只知道「跳过了多少」无法排查是哪一个条件`,
+    );
+  }
+}
+
 /** 校验单个 worker 的路由、方法与调度/指标接线。 */
 function auditWorker(
   worker: CronWorkerContract,
   input: CronContractInput,
   routeFiles: ReadonlySet<string>,
   metrics: Set<string>,
+  summary: { skipBranches: number },
   issues: CronContractIssue[],
 ): void {
   if (!routeFiles.has(worker.routeFile)) {
@@ -421,6 +502,7 @@ function auditWorker(
 
   auditWorkerSchedule(worker, input.platformCrons, issues);
   auditWorkerObservability(worker, source, input.operationsDoc, metrics, issues);
+  auditWorkerSkips(worker, source, summary, issues);
 }
 
 /** 校验平台调度没有未注册也未豁免的路径。 */
@@ -484,6 +566,7 @@ export function auditCronContract(input: CronContractInput): CronContractReport 
   const declaredRouteFiles = new Set(workers.map((worker) => worker.routeFile));
   const declaredPaths = new Set(workers.map((worker) => worker.path));
   const metrics = new Set<string>([CRON_REJECTED_METRIC]);
+  const summary = { skipBranches: 0 };
 
   if (workers.length === 0) {
     push(
@@ -503,7 +586,7 @@ export function auditCronContract(input: CronContractInput): CronContractReport 
   }
 
   for (const worker of [...workers].sort((left, right) => left.id.localeCompare(right.id))) {
-    auditWorker(worker, input, routeFiles, metrics, issues);
+    auditWorker(worker, input, routeFiles, metrics, summary, issues);
   }
 
   const exempted = input.excludedSchedules ?? CRON_SCHEDULE_EXEMPTIONS;
@@ -520,6 +603,7 @@ export function auditCronContract(input: CronContractInput): CronContractReport 
     exemptedPaths: Object.keys(exempted)
       .filter((path) => input.platformCrons.some((entry) => entry.path === path))
       .sort(),
+    skipBranches: summary.skipBranches,
   };
 }
 

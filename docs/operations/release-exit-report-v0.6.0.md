@@ -119,7 +119,7 @@
 | - | ---- | ---- | ---- |
 | E01 | 达成 | `src/lib/appark-config.ts` 采样解析 + `appark.ts:49-66`（0 静音、非法值回退并告警） | 无专用门禁，靠 env 校验与单测 |
 | E02 | 达成 | `src/lib/trace-id.ts` + `src/proxy.ts` + `api-log.ts`；`check:trace-coverage` 进 CI | - |
-| E03 | 达成 | 接线达成：`CRON_WORKERS` 注册表 + `vercel.json` 五条调度 + `check:cron-contract`（3 worker / 14 指标） | **核对时语义未达成**：digest 错峰门控与每天一次的调度不兼容，除 UTC-1 外无人被投递。可见性先在 PR #59 修，2026-09-22 按用户定案（放宽窗口、一天一封）删除 `isDigestHour` 门控，改由三时区回归钉子锁住投递；指标随门控一并回到 14。仍待生产上观察一轮 09:00 UTC 调度（本机无云端权限） |
+| E03 | 达成 | 接线达成：`CRON_WORKERS` 注册表 + `vercel.json` 五条调度 + `check:cron-contract`（3 worker；指标随门控删除回到 14，A04 补上跳过计数后为 15） | **核对时语义未达成**：digest 错峰门控与每天一次的调度不兼容，除 UTC-1 外无人被投递。可见性先在 PR #59 修，2026-09-22 按用户定案（放宽窗口、一天一封）删除 `isDigestHour` 门控，改由三时区回归钉子锁住投递。仍待生产上观察一轮 09:00 UTC 调度（本机无云端权限） |
 | E04 | 达成 | `EMAIL_NOTIFICATION_TYPES` 单源同时供拉取与 `email.backlog`；`notifications.test.ts` 与 digest 路由测试钉边界 | - |
 | E05 | 达成 | `src/lib/observability/storage-metrics.ts` 被 `uploads/service.ts` 与 `storage/index.ts` 引用（含「provider 成功但回写失败」的用户可见失败） | - |
 | E06 | 达成 | `provider-metrics.ts` 的 `provider.fallback` + 缺失变量签名去重；未配置路径立即产出 `reason=not-configured` | - |

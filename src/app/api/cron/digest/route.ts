@@ -10,6 +10,9 @@
  * 一个固定 UTC 时刻不可能落进所有人的早晨，那道门控的实际效果是让除 UTC-1 时区带外的用户
  * 永远收不到摘要。现在的语义是**一天一封、在调度时刻送达**，发送时刻不再贴合本地时区。
  * 单用户发送失败累加重试计数，达到上限由拉取侧死信过滤，不阻断整轮。
+ * 任何按用户条件跳过投递的分支都必须上报 `cron.digest.skipped{reason}`，
+ * 这条由 `pnpm check:cron-contract` 静态核对（`src/lib/observability/cron-skip-coverage.ts`）——
+ * 错峰门控那次事故就是「跳过了但没人知道」。
  */
 
 import { NextRequest } from "next/server";
@@ -116,11 +119,25 @@ async function runDigest(
     // 靠 `email.backlog` 可见，但同时长期占住按 `created_at` 升序的前 100 条拉取窗口
     // （偏好全关时实时通道 `email-notify.ts:91` 同样早退，所以条目会持续积累）——
     // 让跳过的条目真正出队属于 v0.12.0 的 A05，不要在这里用 `markEmailSent` 假装发过。
-    if (!profile?.email) continue;
+    if (!profile?.email) {
+      recordMetric("cron.digest.skipped", items.length, {
+        unit: "count",
+        attributes: { reason: "no_email" },
+      });
+      continue;
+    }
 
     const prefs = (profile.notification_settings ?? {}) as Parameters<typeof shouldSendEmail>[0];
     const filtered = items.filter((n) => shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]));
-    if (filtered.length === 0) continue;
+    if (filtered.length === 0) {
+      // 用户把所有相关类型都关掉了：这是选择而不是故障，但必须可见，
+      // 否则「拉到了却没发出去」与错峰门控那次一样无法区分。
+      recordMetric("cron.digest.skipped", items.length, {
+        unit: "count",
+        attributes: { reason: "preference" },
+      });
+      continue;
+    }
 
     const subject = `IndieStack 通知摘要（${filtered.length} 条）`;
     const html = renderEmailHtml(siteUrl, subject, filtered);

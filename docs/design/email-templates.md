@@ -189,6 +189,14 @@
   在图表上是两条可分辨的曲线；恰好等于阈值（500）不告警，只有严格大于才上报，
   判定边界由 `route.test.ts` 锁定。度量精度受限于本轮拉取上限（默认 100），
   但计数走独立的 `count` 查询，不受 limit 截断。
+- **跳过计数（v0.12.0 A04）**：worker 里每一条**按用户条件跳过投递**的分支都必须上报
+  `cron.digest.skipped`（unit `count`，`value` 是该用户被跳过的条数，`attributes.reason` 取
+  `no_email` / `preference`）。这不靠自觉：`src/lib/observability/cron-skip-coverage.ts`
+  在 `pnpm check:cron-contract` 里静态核对——带条件的 `continue` 若既没上报登记的 skip 指标、
+  也没累加进本轮已上报的计数器（发送失败走的就是 `failed`），PR 阶段就直接失败。
+  动机是错峰门控那次 P0：跳过不计数时，指标表现为 `pulled=N, sent=0, failed=0` 的「成功」。
+  `reason=preference` 本身是用户选择的正常结果，只有与 `sent=0` 同时持续出现才说明队列里
+  全是当前投递不掉的条目（出队语义见 `docs/roadmap-0.12.0.md` A05）。
 - **口径单一事实源（v0.6.0 E04）**：进入邮件队列的类型集合收敛为
   `EMAIL_NOTIFICATION_TYPES`（`src/lib/repositories/notifications.ts`），
   拉取（`listUnsentEmailNotifications`）与积压计数（`countUnsentEmailNotifications`）
