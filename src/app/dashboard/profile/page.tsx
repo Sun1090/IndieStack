@@ -32,11 +32,17 @@ export default async function ProfilePage() {
   const t = await getTranslations("dashboard");
   const locale = await getLocale();
 
-  const { data: profile } = (await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single()) as unknown as { data: Record<string, unknown> | null };
+    .maybeSingle();
+
+  if (profileError) {
+    // 读不到就不能假装读到了：继续渲染会把角色显示成 `member`、字段显示成空，
+    // 用户于是相信自己「不是管理员、资料本来就是空的」，而真实原因是一次失败的读取。
+    throw new Error(`读取个人资料失败：${profileError.message}`);
+  }
 
   const memberSince = user?.created_at
     ? formatDate(user.created_at, { locale })
@@ -76,31 +82,31 @@ export default async function ProfilePage() {
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">
+                <p className="text-muted-foreground text-sm font-medium">
                   {t("profile.view.email")}
                 </p>
                 <p className="text-sm">{user?.email}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">
+                <p className="text-muted-foreground text-sm font-medium">
                   {t("profile.view.memberSince")}
                 </p>
                 <p className="text-sm">{memberSince}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">
+                <p className="text-muted-foreground text-sm font-medium">
                   {t("profile.view.role")}
                 </p>
                 <p className="text-sm">{roleLabel}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">
+                <p className="text-muted-foreground text-sm font-medium">
                   {t("profile.view.timezone")}
                 </p>
                 <p className="text-sm">{(profile?.timezone as string) ?? "UTC"}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">
+                <p className="text-muted-foreground text-sm font-medium">
                   {t("profile.view.language")}
                 </p>
                 <p className="text-sm">

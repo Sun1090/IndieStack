@@ -30,19 +30,18 @@ export default async function ProfileEditPage() {
 
   if (!user) redirect(ROUTES.login);
 
-  const { data: profile } = (await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("full_name, bio, timezone, language, avatar_url")
     .eq("id", user.id)
-    .single()) as unknown as {
-    data: {
-      full_name: string | null;
-      bio: string | null;
-      timezone: string | null;
-      language: string | null;
-      avatar_url: string | null;
-    } | null;
-  };
+    // 缺行是「这个账户还没有 profiles 记录」，表单按空值预填是对的；查询失败不是同一件事。
+    .maybeSingle();
+
+  if (profileError) {
+    // 抛给错误边界而不是继续渲染：下面的表单会把 `""` / `UTC` / `en` 当现值预填，
+    // 用户看不出任何异常地点一次「保存」，就把真实的姓名、简介、时区全部覆盖掉。
+    throw new Error(`读取个人资料失败：${profileError.message}`);
+  }
 
   return (
     <div className="space-y-8">
