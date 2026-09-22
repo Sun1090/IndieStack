@@ -1,7 +1,8 @@
 # IndieStack v0.12.0 Roadmap
 
 > 主题：**把已经接上的线真正跑通一次，并留下证据**
-> 基线：v0.11.0（2026-09-22 发布章节已冻结，生产仍是 `0.10.0`）→ 目标：v0.12.0
+> 基线：v0.11.0（2026-09-22 发布章节已冻结；同日生产已部署 `0.11.0`，但 `v0.11.0` tag 仍未打——
+> 缺账户删除演练与 commit 归属证据，见 B01/B02）→ 目标：v0.12.0
 > 输入：`docs/operations/release-exit-report-v0.6.0.md`（v0.6.0 任务池 100 项的逐条核对结果，
 > 含 7 项部分达成与 2 项未达成）与本文件下方的来源标注。
 >
@@ -60,10 +61,19 @@
 
 ### B. 发布证据闭环（来自 J06 / J08 / E09）
 
-6. B01 在部署了 v0.11.0+ 的生产上复跑 `pnpm smoke:production`，把 6 项结果与 artifact 指纹写进
-   `docs/operations/production-smoke-v0.11.0.md`（前置：Vercel build 配额与部署权限）
+6. B01 （**2026-09-22 已完成**：生产构建配额恢复、`main` 已部署，`/api/health` 返回 `version=0.11.0`。
+   本地 `pnpm smoke:production --expected-version 0.11.0` 与 CI `workflow_dispatch` run `35702965727`
+   各取一次 6/6，状态码、header 快照、JSON 与 artifact 指纹已写进
+   `docs/operations/production-smoke-v0.11.0.md`；定时 run `35700843878` 的 `smoke-main` 同步转绿。
+   取证据的过程本身抓出一条缺陷——手动 `smoke` 作业在每次定时运行里都因空 `inputs` 崩溃，
+   已由 `check:production-smoke` 的两条新规则钉住。**B01 只覆盖无副作用面**：
+   只读凭证类 3 项与隔离账号 14 项仍未执行，它们是 B03/B04 的内容，也是打 tag 的前置）
 7. B02 执行一次真实回滚演练（切回上一 deployment、验证 health 与 schema 向前兼容），
-   填 `docs/operations/rollback-runbook-*.md` 的「演练记录」——这是 v0.6.0 起从未闭合的 J08
+   填 `docs/operations/rollback-runbook-*.md` 的「演练记录」——这是 v0.6.0 起从未闭合的 J08。
+   **2026-09-22 补一条会让这条无法收口的硬事实**：`/api/health` 只暴露 `version`，
+   同一版本号内的后续提交在生产上不可区分，所以「部署 commit == 验证 commit」目前只能靠 Vercel
+   控制台截图证明。先把构建 SHA（`VERCEL_GIT_COMMIT_SHA`）纳入健康响应与 smoke 断言，
+   B02 的证据才有可比对象
 8. B03 隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
 9. B04 云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）

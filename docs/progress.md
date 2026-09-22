@@ -1,3 +1,53 @@
+## 2026-09-22 — 生产冒烟证据落地（B01）+ 手动 smoke 作业其实从未跑过
+
+- 里程碑 / 版本：v0.11.0 发布证据（B01）；顺带修 `Production Smoke` workflow 的一条真实 CI 缺陷。
+- 状态：DONE（无副作用 6/6 已入库；tag 仍不打，原因见「阻塞」）。
+- 分支 / commit：`fix/production-smoke-schedule-guard`（基于 main `23a2677`）。
+- 为什么做：退出标准第 2 条要求「B01 有执行记录（UTC 时间、命令、状态码、artifact 指纹）」。
+  09-21 时它被 Vercel 构建配额挡住（生产还是 `0.10.0`），当时把它记成阻塞是对的；
+  今天直读 `/api/health` 发现生产已经是 `0.11.0`——前置没了，证据却还挂着「⏳ 待执行」。
+- 完成内容：
+  1. **取证据**：本地 `node scripts/production-smoke.js https://indie-stack-theta.vercel.app
+     --expected-version 0.11.0` → `6/6 passed`（08:05:00Z）；`Production Smoke`
+     `workflow_dispatch` run `35702965727` 两作业 success，artifact zip SHA-256
+     `7075985c…dbe1dc`；定时 run `35700843878`（07:41:07Z）的 `smoke-main` 也已转绿。
+     结果按行写进 `docs/operations/production-smoke-v0.11.0.md`（含状态码、header 快照、JSON 指纹），
+     只读一节的迁移基线行改指 runbook 差异 1 的云端复核记录，不再挂「待执行」。
+  2. **当场查出并修掉一条 CI 缺陷**：`smoke`（手动）作业与 `smoke-main` 共享同一个 `on:`，
+     而它的 URL 与超时取自 `inputs.*`。schedule 触发时 `inputs` 为空，于是这个作业**每次定时运行**
+     都以 `Error: --timeout-ms requires a value` 失败、从未访问生产（09-21 与 09-22 两份日志一致）。
+     后果不是「多一条红」那么简单：真正在报告版本漂移的是 `smoke-main`，而它此刻已经绿了，
+     看红色 workflow 名的人会得出「生产在漂移」的错误结论。
+  3. **让它不可能再悄悄发生**：`pnpm check:production-smoke` 新增两条规则——读 `inputs.` 的作业必须有
+     作业级 `if:` 排除 schedule（`SMOKE_MANUAL_TRIGGER_GUARD_MISSING`）、每个作业的 artifact 名必须等于
+     契约里自己的名字（`SMOKE_ARTIFACT_NAME_DRIFT`）。后者同样是被实测逼出来的：两个作业此前都上传成
+     `production-smoke-evidence`，一次 dispatch 留下两份 `production-smoke.json`，
+     `gh run download -n production-smoke-evidence` 只落地一份且**不报错**（08:06 那次拿到的是
+     `smoke-main` 的 08:06:29 版本，手动作业的 08:06:27 被静默覆盖）。
+  4. 契约模块补 docblock（为什么需要触发守卫、为什么 artifact 名是契约的一部分），
+     测试夹具改成带 `env: ${{ inputs.* }}` 的真实形状并加 4 项变异用例；
+     `docs/testing.md` 门禁表、`docs/architecture/12-deployment.md`、`.github/RELEASE_CHECKLIST.md`
+     同步；CHANGELOG 加一条 Fixed 与一条 Known Limitations。
+  5. 订正三处已经过期的当前状态断言：runbook「生产仍返回 `0.10.0`／等配额恢复再打标签」、
+     冒烟矩阵「生产停留在 `0.10.0` 期间它会每天失败」、以及构建配额段落的「必然失败」措辞。
+- 验证命令与结果：
+  - `npx vitest run src/lib/deployment/production-smoke-contract.test.ts` → 8 passed；
+  - `pnpm check:production-smoke` → `✅ … 8 个工作流`；`pnpm check:workflows` →
+    `✅ 8 个工作流 / 14 个作业 / 41 个 action 引用`；
+  - 变异核对（真实仓库文件，跑完从 `/tmp` 副本还原，不用 `git checkout`）：删掉 `if:` 行 →
+    `❌ [SMOKE_MANUAL_TRIGGER_GUARD_MISSING]`；把定时作业 artifact 名改回同名 →
+    `❌ [SMOKE_ARTIFACT_NAME_DRIFT]`；还原后两条规则同时通过；
+  - `pnpm check:all` / `pnpm verify:build` / `pnpm test:coverage` 见下方「提交前复跑」。
+- 阻塞（不因本 PR 消失）：**tag `v0.11.0` 仍不打**。缺两条前置——①账户删除端到端演练（需可牺牲账号，
+  B03）；②`/api/health` 不暴露构建 SHA，`0.11.0` 之后的纯文档提交在生产上不可区分，
+  而 runbook 的停止条件正是「无法证明部署 commit 与验证 commit 相同」。②是可修的，已记进
+  Known Limitations 作为下一项。
+- 风险 / 回滚：workflow 改动只影响 `Production Smoke`（无副作用 GET + 一次故意非法 webhook POST），
+  且让定时运行少一个必然失败的作业；回滚 = revert 两个 commit。
+- 下一项：把构建 SHA 纳入 `/api/health` 与 smoke 断言（Vercel 注入 `VERCEL_GIT_COMMIT_SHA`），
+  让「部署 commit == 验证 commit」成为可机读证据；随后 D01（docs-site 可机器核对事实）。
+- 更新时间：2026-09-22（本地 16:20 前后，UTC 08:05–08:20）。
+
 ## 2026-09-22 — 文档不再复述会过期的数字（D04）
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；关闭 v0.12.0 的 D04。
