@@ -96,12 +96,47 @@
     各自计数、`listFactors` 返回副本），并在 `docs/architecture/13-mock-system.md` 写清
     「默认 store 是假数据库，运行时故意共享」这条边界——把它改成请求级会重演 v0.5.0 的
     「Action 写进去、RSC 读不到」
-12. C02 在 C01 之后建立 `PW_FULLY_PARALLEL` 的**可复跑**并行基线（CI 里跑一次全量并行，
-    而不是历史上的一次实验），失败则记录具体共享状态并回退。注意前置认知：mock 的默认 store
-    是**故意**共享的假数据库，并行 E2E 要隔离的是各自的 store，而不是把运行时改成请求级
+12. C02 （**2026-09-22 部分完成：基线可复跑 ✅，全量并行可用 ✗**）`.github/workflows/e2e-parallel.yml`
+    已落地——`PW_FULLY_PARALLEL=true`、一个 dev server、全量（不带 `--shard`）、强制 `--retries=0`，
+    手动触发 + 每周一 `30 7 * * 1`。F04 欠的「可复跑」这一半已经还上。
+    **首跑红了**（run `35727094401`，12:25:42Z→12:29:18Z，job `10674329401`），4 条 spec 失败，
+    机制是同一条：`next dev` 只有**一个**进程、一份 `MOCK_GLOBAL`，而 `fullyParallel` 连同一个文件里
+    的用例都会拆到不同 worker，于是彼此打断——
+    ① `webhook-events.spec.ts:114`：本 spec 先清空通知表、投递一条付款事件，断言通知数 `toBe(1)`，
+    实测 **2**（另一个 worker 在这两步之间 seed 了通知；它前面那句「清空后 `toBe(0)`」倒是过了，
+    所以这不是清理没做，而是清理与断言之间的窗口不收）；
+    ② `notifications-realtime.spec.ts:53`：等不到「暂无通知」空态。失败快照里多出来的那条叫
+    「E2E Push 种子通知」，出自 `src/app/api/e2e/push-queue/route.ts:105`——并行的 `push-retry.spec`
+    往同一张 `notifications` 表种的种子；
+    ③④ `mail-flow.spec.ts` 的前两条用例：`:49` 读到收件箱 `total` 为 0，`:187` 的 `email_attempts`
+    poll 停在 0 超时。凶手在**这个文件自己身上**——它把清理写在文件顶层（`beforeAll` 第 27、30 行
+    DELETE `/api/e2e/email-inbox` 与 `/api/e2e/seed-notifications`，`beforeEach` 第 41、44 行同一对），
+    而 `fullyParallel` 下这类钩子不是「每个文件一次」而是**每个 worker 各跑一次**：同一文件的三条用例
+    被拆到不同 worker 后，彼此的清理删光了对方刚种下的数据，它既是受害者也是加害者。
+    证据指到的共享状态只有两处：`notifications` 表与本地 email inbox。`webhook_events`（去重断言全过）
+    和 `email_worker_runs`（读它的那条失败路径用例没红）这次不在证据里，只是同类风险。
+    **剩下的那一半是新设计，不是改配置**：E2E 需要按 worker 给 store 命名空间（每个 worker 带一个 id，
+    `/api/e2e/*` 与 mock 客户端按 id 选 store），否则「并行」与「共享假数据库」在单个 dev server
+    进程里天然互斥。
+    默认 CI 仍是 2 个 shard、内部单 worker，全绿，不受这条红影响；也**不要**为了让基线变绿
+    把运行时的默认 store 改成请求级（见 C01 与 `docs/architecture/13-mock-system.md`）。
+    退出标准第 3 条里的「C02 完成」按这条的口径判定：**有可复跑的运行记录只是下限，
+    并行全绿才算完成**
 13. C03 （2026-09-22 组件层已完成：`src/app/auth/mfa/page.test.tsx` 13 条，并修掉抛异常时
-    `loading` 不复位导致按钮永久卡住的缺陷。剩一条真实走挑战流程的 E2E——它需要 Mock 的 MFA
-    状态在 E2E 之间可隔离，属 C01 的前置）
+    `loading` 不复位导致按钮永久卡住的缺陷。剩一条真实走挑战流程的 E2E。）
+    **原文把它挂在「Mock 的 MFA 状态在 E2E 之间可隔离」上是错的**，那是 C01 的前置，与这条无关。
+    实测的阻塞有两处，都在仓库内：
+    ① `/auth/mfa` 只有两个入口，都在 `src/components/auth/login-form.tsx`——密码登录（第 86～92 行，
+      读 `signInWithPassword` 响应里的 `user.factors`，有 `status==="verified"` 才跳）与 passkey
+      （第 179～182 行，`/api/auth/passkey/auth-verify` 返回 `mfaRequired`）。而 mock 的
+      `signInWithPassword`（`src/lib/mock/index.ts:1289`）返回的是不带 `factors` 的 `getMockUser()`，
+      真实 Supabase 会带——所以 mock 下密码登录永远不会把人送到挑战页，E2E 连第一步都进不去。
+      挑战页本身在 mock 里是通的：`mfa.challenge` + `mfa.verify` 有状态（码 `123456`、失败计数、锁定）。
+    ② 浏览器侧的 mock store 挂在 `globalThis.__indiestackMockCache__`，也就是 `window`，整页导航即重置，
+      所以 `e2e/admin-contact-mfa.spec.ts:104` 那种「同一页里 enroll→verify」的状态活不到下一次登录；
+      种子得由 `page.addInitScript` 在页面脚本之前写进缓存，或者由 ① 的那处改动带进来。
+    passkey 那条入口另需 Chromium 的虚拟 WebAuthn authenticator，仓库现在**没有任何** passkey E2E
+    （`grep -rn virtualAuthenticator e2e playwright.config.ts` 为空），它和 ①② 是两件事，不要混做
 14. C04 （2026-09-22 已完成一半：`node scripts/check-bundle.js` 接进 CI Build job，`check:bundle` 的 CI 豁免随之删除，
     CI 现在覆盖 `verify:build` 的全部组件。剩余部分是可选的——把 CI 的逐个 `check:*` 步骤换成 `pnpm check:all`，
     让本地聚合与 CI 只有一份清单）
