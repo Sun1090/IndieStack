@@ -45,8 +45,22 @@ worker.
 The worker can fold large groups and caps the visible digest details, keeping the message size
 bounded. It also emits backlog and worker metrics for operational monitoring.
 
-Schedule the endpoint hourly with an external scheduler so every supported timezone reaches its
-local 08:00 window. Vercel cron in this repository does not schedule the digest route.
+The window is per user: `isDigestHour` compares the user's local hour with `DIGEST_LOCAL_HOUR` (8),
+falling back to `Asia/Shanghai` when the timezone is missing or invalid, so a user is only sent a
+digest during the hour when their own clock reads 08:00.
+
+`vercel.json` schedules `POST /api/cron/digest` with Vercel Cron once a day at 09:00 UTC
+(`0 9 * * *`), and `pnpm check:cron-contract` keeps the registry, the platform schedule and
+`docs/operations/sentry-alerts.md` in sync. On the Hobby plan a path cannot run more than once a
+day, so one fixed UTC instant is the only trigger available here —
+and it lands inside the local 08:00 window of exactly one timezone band (UTC-1). Users elsewhere are
+skipped on every run, and their queued notifications keep being pulled again the next day.
+
+That failure is deliberately observable rather than silent: `cron.digest.deferred` counts the items
+skipped by the window each round, `email.backlog` keeps counting them, and `sentry-alerts.md`
+registers a rule for the case where a round pulls items but sends none. Calling the same endpoint from an external scheduler more often
+(e.g. hourly) restores the local-morning behaviour without code changes; widening the window or
+adding timezone-band schedules is still an open product decision.
 
 ## Preferences and Retries
 

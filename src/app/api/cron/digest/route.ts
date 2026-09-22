@@ -103,6 +103,7 @@ async function runDigest(
   sent: number;
   groups: number;
   failed: number;
+  deferred: number;
 }> {
   const byUser = new Map<string, Notification[]>();
   const profiles = new Map<string, ProfileRow>();
@@ -118,11 +119,17 @@ async function runDigest(
   let sent = 0;
   let groups = 0;
   let failed = 0;
+  let deferred = 0;
   for (const [userId, items] of byUser) {
     const profile = profiles.get(userId);
     if (!profile?.email) continue;
     // A04 错峰：仅发送处于本地 digest 时刻的用户，未配置/非法时区回退默认时区
-    if (!forceDigestHour && !isDigestHour(profile.timezone, now)) continue;
+    if (!forceDigestHour && !isDigestHour(profile.timezone, now)) {
+      // 错峰门控跳过的条数必须可见：平台 cron 每天只跑一次，命中不了用户本地 08:00 的人
+      // 会永远停在「已拉取但从不发送」，只报 sent=0 看不出是窗口问题还是队列问题。
+      deferred += items.length;
+      continue;
+    }
 
     const prefs = (profile.notification_settings ?? {}) as Parameters<typeof shouldSendEmail>[0];
     const filtered = items.filter((n) => shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]));
@@ -144,7 +151,7 @@ async function runDigest(
     sent += filtered.length;
   }
 
-  return { sent, groups, failed };
+  return { sent, groups, failed, deferred };
 }
 
 export async function POST(request: NextRequest) {
@@ -186,9 +193,9 @@ export async function POST(request: NextRequest) {
       await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs });
       recordMetric("cron.digest.completed", durationMs, {
         unit: "ms",
-        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
+        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0, deferred: 0 },
       });
-      return jsonNoStore({ sent: 0, groups: 0, failed: 0 });
+      return jsonNoStore({ sent: 0, groups: 0, failed: 0, deferred: 0 });
     }
 
     const result = await runDigest(siteUrl, notifications, now, forceDigestHour);
@@ -205,6 +212,9 @@ export async function POST(request: NextRequest) {
     } catch (metricsError) {
       await logApiError("[Cron Digest] 运行记录写入失败", metricsError);
     }
+    // 错峰窗口跳过条数单独成指标：`pulled>0` 而 `sent=0` 时，用它区分「窗口没命中」与
+    // 「真的没有可发内容」。平台 cron 每天只跑一次，命中不了用户本地 08:00 的人会长期停在前者。
+    recordMetric("cron.digest.deferred", result.deferred, { unit: "count" });
     // APM 关键流程埋点（C01）：cron 运行指标上报后尽力 flush
     recordMetric("cron.digest.completed", durationMs, {
       unit: "ms",

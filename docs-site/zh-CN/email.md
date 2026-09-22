@@ -41,8 +41,18 @@ CRON_SECRET=replace-with-a-random-secret
 Worker 会折叠大量同类型通知并限制正文明细数量，避免邮件随队列无限膨胀；同时输出积压量和运行
 指标供运维监控。
 
-请使用外部调度器每天 09:00 UTC 调用一次；Hobby plan 每天最多运行一次，无法逐小时触发。仓库中的 Vercel cron
-没有调度该 digest 路由。
+错峰是按用户判断的：`isDigestHour` 把用户的本地小时与 `DIGEST_LOCAL_HOUR`（8）比较，时区缺失或
+非法时回退到 `Asia/Shanghai`，因此每个用户只在自己本地时间 08:00 的那一个小时里被发送。
+
+`vercel.json` 用 Vercel Cron 每天 09:00 UTC 调度一次 `POST /api/cron/digest`（`0 9 * * *`），
+注册表、平台调度与 `docs/operations/sentry-alerts.md` 三者由 `pnpm check:cron-contract`
+守住。Hobby plan 下每个路径每天最多运行一次，所以这里能拿到的只有**一个固定的 UTC 时刻**——
+而它只落在一个时区带（UTC-1）的本地 08:00 窗口里。其余用户每一轮都被跳过，他们排队的通知第二天
+仍会被重新拉取。
+
+这种失败被刻意做成可见而不是静默：`cron.digest.deferred` 每轮记录被窗口跳过的条数，`email.backlog`
+继续累计这些条数，而 `sentry-alerts.md` 为「拉到了却没发出去」登记了告警规则。用外部调度器更频繁地调用同一个端点
+（例如逐小时）即可恢复本地早晨发送的行为，无需改代码；而放宽窗口或按时区带增加调度，仍是待定的产品决策。
 
 ## 偏好与重试
 
