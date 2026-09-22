@@ -830,3 +830,51 @@
   回滚 = revert 本 commit。
 - 下一项：A05 的出队决策（现在含两条路径：skip 永不离开队列 / 已读静默离开并掩盖积压）；
   `scheduleRetry` 写失败导致 `attempt_count` 冻结，需要先定重试写路径的设计再动。
+
+## 2026-09-23 — 查询列名第一次有了门禁，起因是一条谁都没看见的假列（C07）
+
+- 里程碑 / 版本：v0.12.0 C 域（测试与门禁基建）新增条目 C07，并当场完成。
+- 状态：DONE ✅。
+- 分支 / commit：`feat/check-query-columns`（基于 `888b998`）。
+- 为什么做：给 A05 的队列读数接线时撞见 `/api/e2e/email-worker-runs` 用 `.order("started_at")` 读
+  `email_worker_runs`——这张表从建表（迁移 017）起只有 `created_at`（还专门建了 `created_at desc` 索引），
+  `started_at` 从来没有存在过。先做实验确认它为什么能活这么久：把 `.order()` 改回 `created_at` 之前的
+  一切检查都照过——`pnpm type-check` 退出 0（生成的类型只约束查询**结果**，过滤与排序参数在类型上只是
+  字符串）、单测里查询链是 mock 的、Mock 客户端 `order()` 对未知列静默 no-op。也就是说「拼错的列名」是
+  这个仓库唯一一类要等打上真库才现形（PostgREST 400）的缺陷，而它已经真实存在一处。
+- 完成内容：
+  1. 新门禁 `pnpm check:query-columns`：纯规则 `src/lib/db/query-columns.ts`（TypeScript AST，
+     与 service-role 清单同一套解析路径）+ IO `scripts/lib/query-columns-check.js` + 薄壳
+     `scripts/check-query-columns.js`，进 `scripts/check-all.sh`。CI 不需要单独接线——`ci.yml` 的静态
+     作业跑的就是聚合入口（C04）。
+  2. 修掉起因缺陷：`route.ts` 的排序列改 `created_at`，文件头注释同步。
+  3. 范围按实测收窄（D01 的「先量后写」）：只认字面量表名/视图名 + `eq/neq/gt/gte/lt/lte/is/in/like/
+     ilike/order` 首参 + `select` 列表里的纯标识符；`select("alias:column")` 判冒号右边那一列；
+     含关联嵌入的链整条跳过；`storage.from("avatars")` 是桶不是表。两处失败封闭：读不出任何关系报
+     `QUERY_TYPES_UNREADABLE`，一条列名都没判报 `QUERY_COLUMN_GATE_VACUOUS`。
+  4. 文档与登记：`docs/testing.md` 新增「查询列名一致性门禁（C07）」并补命令表行；
+     `src/lib/testing/test-matrix.ts` 的 `database` 域补上该命令与 `src/lib/supabase/database.types.ts`
+     路径，双语 `docs-site/testing.md` 与 `docs-site/{,zh-CN/}scripts.md` 同步；roadmap 任务池
+     20 → 21 项，C07 登记为已完成（D01–D04 序号顺移）。
+- 变更文件：16 个——新规则与其单测、IO 与薄壳脚本、`package.json`、`scripts/check-all.sh`、`route.ts`、
+  `test-matrix.ts`、`docs/testing.md`、`docs-site/testing.md`、`docs-site/scripts.md` 及两份 zh-CN、
+  `docs/roadmap-0.12.0.md`、CHANGELOG、本条目。
+- 验证命令与结果：
+  - **先量后写**：`node --experimental-strip-types scripts/lib/query-columns-check.js` 在修缺陷之前跑过一次全仓——
+    21 个关系 / 180 处 `.from()` / 367 个字面量列名，跳过 4 条含关联嵌入的链、46 个非纯列名寻址；
+    命中恰好 1 条，就是 `route.ts` 那条 `started_at`，误报 0。写第一版时正则式解析器把 `type Database`
+    读成 0 张表，`QUERY_TYPES_UNREADABLE` 当场把它自己抓了出来——失败封闭第一次就值回成本。
+  - 变异核对 13 项全部被抓（`/tmp/mutate2.py`，每次跑完把规则文件与备份逐字节比对）：两处 storage 豁免各去掉
+    一处、关掉嵌入跳过、`PLAIN_COLUMN` 放开成 `/^.+$/`、拆掉别名解析、把 `select` 移出判定集、关掉两条
+    失败封闭、反转成员判断、断掉链遍历、去掉未知表上报、不再读 `Views`、保留展不开 `Row` 的关系。
+    其中「storage 豁免去掉一处」在补用例前**逃过了变异**：一次变异脚本崩在中途没走到还原，把
+    `collectQueryFacts` 里的那处豁免静默吃掉而门禁全绿——新增「桶名与表名同名」用例后它必须由该用例红。
+  - `pnpm check:query-columns` → 绿（覆盖数同上）；`npx vitest run src/lib/db/query-columns.test.ts` → 23 passed。
+  - `pnpm test:e2e e2e/mail-flow.spec.ts` → 3 passed；全量 `pnpm test:e2e` → **108 passed**；`pnpm build` → 编译通过。
+- 阻塞 / 风险 / 回滚：只新增一道静态门禁 + 一处 e2e 回读端点的排序列，未碰任何发送、鉴权或 schema 语义。
+  风险是假阳性把开发者挡住：`.filter()`/`.or()` 与 `insert`/`update` payload 有意不判，PostgREST 的富寻址
+  （`->>`、`::`、`count()`、嵌入）只跳过并计数，若将来出现新的合法寻址形状，改的是这份收窄清单而不是把门禁关掉。
+  回滚 = revert 本 commit（门禁与修复同处一个 commit 序列，删脚本行即整体失效）。
+- 下一项：v0.12.0 池内仍需外部权限的条目（B02–B05、C05、digest 生产复验）不变；A05 出队口径与 A01
+  `profiles.timezone` 去留等用户拍板。可选跟进（本轮刻意不做）：让 Mock 客户端对未知排序/过滤列**报错**
+  而不是静默 no-op，那样运行期也有一道防线，但会牵动所有 e2e 桩数据的列形状，需要单独一轮。

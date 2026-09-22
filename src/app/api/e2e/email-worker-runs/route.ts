@@ -4,7 +4,7 @@
  *
  * GET /api/e2e/email-worker-runs
  *   Authorization: Bearer <E2E_BEARER_TOKEN>
- *   → { total, runs: EmailWorkerRunRow[] }   按 started_at desc
+ *   → { total, runs: EmailWorkerRunRow[] }   按 created_at desc
  */
 
 import { NextRequest } from "next/server";
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await admin
     .from("email_worker_runs")
     .select("*")
-    .order("started_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(50);
   if (error) {
     return jsonNoStore({ error: error.message }, { status: 500 });

@@ -66,6 +66,7 @@
 | `pnpm db:types` | Generate TypeScript types from Supabase |
 | `pnpm db:status` | Check Supabase local service status |
 | `pnpm check:migrations` | Enforce immutable migration checksums + filename/ordering rules |
+| `pnpm check:query-columns` | Check every literal column name in a Supabase query chain against the generated row types |
 | `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only) |
 | `pnpm check:migration-history` | Compare local Supabase migration history (needs `supabase start`) |
 | `pnpm check:migration-runbook` | Audit that the migration rollback runbook matches the migration manifest |

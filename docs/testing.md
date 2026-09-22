@@ -29,6 +29,7 @@
 | `pnpm smoke:supabase-identity`       | 本地/staging Supabase 真实身份矩阵（anon/authenticated/service_role + Storage） |
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
 | `pnpm check:production-smoke`       | 校验 Production Smoke workflow 的手动/定时入口、URL、cron、证据留存契约，以及「读 inputs 的手动作业必须排除 schedule 触发」与两个作业各自的 artifact 名 |
+| `pnpm check:query-columns`         | 校验查询链里每个字面量列名都存在于生成的行类型中（C07）                          |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
 ## 贡献者测试矩阵（I09）
@@ -489,6 +490,34 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 该门禁验证的是 runbook 与仓库事实一致，**不替代真实恢复演练**。生产数据库逆向操作与备份恢复仍需 DBA、发布负责人
 和可用快照；自动化只负责阻止文档悄悄过期。
+
+## 查询列名一致性门禁（C07）
+
+`pnpm check:query-columns` 校验代码里每一个字面量列名都存在于 `src/lib/supabase/database.types.ts` 的 `Row` 类型里。
+动机是一个真实缺陷：`src/app/api/e2e/email-worker-runs/route.ts` 一直按 `.order("started_at", …)` 排序，而
+`email_worker_runs` 从建表（迁移 017）起就没有这一列，只有 `created_at`。它之所以能活这么久：类型系统只约束查询
+**结果**，过滤与排序参数在类型上只是字符串；单测里查询链是 mock 的；Mock 客户端的 `order()` 对未知列静默 no-op。
+于是「拼错的列名」成为唯一一类没有任何自动化保护的数据库缺陷——只有打上真库才会变成 400。
+
+规则实现位于 `src/lib/db/query-columns.ts`（TypeScript AST、纯函数、单测覆盖），IO/CLI 位于
+`scripts/lib/query-columns-check.js` 与 `scripts/check-query-columns.js`，`pnpm check:all` 与 CI 均会执行。
+
+判定范围刻意收窄，但**每一处收窄都计数并随结果打印**，所以「范围本来就窄」和「范围被调空」在输出里一眼可分：
+
+- 只判断 `.from("<表名>")` 的字面量表名、且该表（或视图）出现在生成类型里的链；名字不在类型里报
+  `QUERY_TABLE_UNKNOWN`。视图与表一样按读侧寻址，所以 `Views` 的 `Row` 同样算合法列集合；`Row` 展开不出任何列的
+  关系（例如写成 `Record<string, never>`）直接丢掉，而不是把它的每一列都判成错误。
+- 只判断 `eq/neq/gt/gte/lt/lte/is/in/like/ilike/order` 的首参与 `select` 列表里的**纯标识符**。`*`、
+  `metadata->>role`、`amount::text`、`count()` 这类 PostgREST 寻址方式在行类型里本就不存在，跳过并计入
+  `skippedArguments`。
+- `select("alias:column")` 判断的是冒号右边的真实列，别名不能用来藏拼写错误。
+- 含关联嵌入的链（`select("id, profiles:user_id (email)")`）整条跳过：一旦展平关联，基表 `Row` 就不再是合法寻址集合。
+- `client.storage.from("avatars")` 是桶不是表，即便桶名与表名同名也不参与判断。
+- 读不出任何表报 `QUERY_TYPES_UNREADABLE`，一条列名都没判断报 `QUERY_COLUMN_GATE_VACUOUS`。收窄范围可以，
+  把范围调空后报绿不行。
+
+`.filter()` / `.or()` 与 `insert`/`update` 的 payload 键不在门禁内：前者的参数是一门小表达式语言（`and(col.eq.x)`），
+后者由生成的行类型直接约束。
 
 ## 依赖与 secrets 扫描门禁（H10）
 

@@ -16,6 +16,7 @@ echo "==> check:agents"; pnpm --silent check:agents
 echo "==> check:rls";    pnpm --silent check:rls
 echo "==> check:migrations"; pnpm --silent check:migrations
 echo "==> check:supabase-security"; pnpm --silent check:supabase-security
+echo "==> check:query-columns"; pnpm --silent check:query-columns
 echo "==> check:security"; pnpm --silent check:security
 echo "==> check:release-docs"; pnpm --silent check:release-docs
 echo "==> check:changelog";    pnpm --silent check:changelog
