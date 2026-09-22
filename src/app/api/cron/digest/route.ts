@@ -90,25 +90,26 @@ async function recordEmailFailures(items: Notification[], error: unknown): Promi
 }
 
 /**
- * 失败轮次也要落表：否则 `email_worker_runs` 只记录成功与空队列，
- * 「worker 一直在失败」在 admin 看板上表现为「根本没有运行记录」。落表失败不覆盖原始错误。
+ * 失败轮次的运行记录。
  *
- * `pulled` 必须是这一轮**真的拉到了多少条**：崩在发送中途的那一轮，队列头部正压着东西，
- * 却若记成 0，A05 的「空发送轮次」（只数 `pulled>0 && sent===0 && failed===0`）就永远看不见
- * 最该看见的那一类——拉到 100 条然后整轮抛错。
+ * `pulled` 与 `progress` 都必须是**已经发生的事实**，不能是 0 占位：崩在发送中途的那一轮，
+ * 队列头部正压着东西、而且可能已经有人的邮件真的寄出去了。把它记成 `{pulled:0,sent:0}` 会让
+ * A05 的「空发送轮次」（只数 `pulled>0 && sent===0 && failed===0`）把一轮**成功**的发送
+ * 报成空转——那是比「看不见」更糟：看板会教人相信一个假信号。
  */
 async function recordFailedRun(
   startedAt: number,
   error: unknown,
   pulled: number,
+  progress: DigestProgress,
 ): Promise<void> {
   const message = failureText(error);
   try {
     await recordWorkerRun({
       pulled,
-      sent: 0,
-      groups: 0,
-      failed: 0,
+      sent: progress.sent,
+      groups: progress.groups,
+      failed: progress.failed,
       durationMs: Date.now() - startedAt,
       error: message.slice(0, 500),
     });
@@ -117,10 +118,18 @@ async function recordFailedRun(
   }
 }
 
+/** 一轮 digest 的进度；就地累加，好让整轮抛错时也能记下已经发生了什么。 */
+interface DigestProgress {
+  sent: number;
+  groups: number;
+  failed: number;
+}
+
 async function runDigest(
   siteUrl: string,
   notifications: Notification[],
-): Promise<{ sent: number; groups: number; failed: number }> {
+  progress: DigestProgress,
+): Promise<DigestProgress> {
   const byUser = new Map<string, Notification[]>();
   const profiles = new Map<string, ProfileRow>();
   for (const n of notifications) {
@@ -132,9 +141,6 @@ async function runDigest(
 
   await getProfiles(profiles);
 
-  let sent = 0;
-  let groups = 0;
-  let failed = 0;
   for (const [userId, items] of byUser) {
     const profile = profiles.get(userId);
     // 没有邮箱就没有可投递目标。这类条目既不发送也不累加 `email_attempts`，因此永远留在队列里：
@@ -167,17 +173,41 @@ async function runDigest(
       await sendResendEmail({ to: profile.email, subject, html });
     } catch (error) {
       // 单用户失败不阻断整轮，留待重试或死信
-      await recordEmailFailures(filtered, error);
-      failed += filtered.length;
+      try {
+        await recordEmailFailures(filtered, error);
+      } catch (receiptError) {
+        // 发送确实失败了，所以 failed 照记；没写进去的是**重试次数**，
+        // 那意味着这一批的 `email_attempts` 冻结，下一轮还会被拉起来——必须说清是哪一半坏了。
+        recordMetric("cron.digest.receipt_failed", 1, {
+          unit: "count",
+          attributes: { stage: "retry" },
+        });
+        await logApiError("[Cron Digest] 失败回执写入失败（该行重试次数未累加，下一轮仍会重发）", receiptError);
+      }
+      progress.failed += filtered.length;
       continue;
     }
 
-    groups += 1;
-    for (const n of filtered) await markEmailSent(n.id);
-    sent += filtered.length;
+    // provider 已经收下这封信，所以 sent 先累加：后面回执写不写得动都不改变「寄出去了」这件事。
+    progress.groups += 1;
+    progress.sent += filtered.length;
+    for (const n of filtered) {
+      try {
+        await markEmailSent(n.id);
+      } catch (receiptError) {
+        recordMetric("cron.digest.receipt_failed", 1, {
+          unit: "count",
+          attributes: { stage: "sent" },
+        });
+        await logApiError(
+          "[Cron Digest] 邮件已发出，但发送回执写入失败（下一轮摘要可能重复寄出）",
+          receiptError,
+        );
+      }
+    }
   }
 
-  return { sent, groups, failed };
+  return progress;
 }
 
 export async function POST(request: NextRequest) {
@@ -193,6 +223,8 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   /** 本轮实际拉到的条数；catch 分支要靠它把失败轮次记成真实数字。 */
   let pulled = 0;
+  /** 发送进度就累加在这里：整轮抛错时也要能记下「已经寄出去了哪些」。 */
+  const progress: DigestProgress = { sent: 0, groups: 0, failed: 0 };
 
   try {
     // C03 积压告警：待发通知超阈值时 Sentry 上报（logApiError → captureException，
@@ -218,7 +250,7 @@ export async function POST(request: NextRequest) {
       return jsonNoStore({ sent: 0, groups: 0, failed: 0 });
     }
 
-    const result = await runDigest(siteUrl, notifications);
+    const result = await runDigest(siteUrl, notifications, progress);
     const durationMs = Date.now() - startedAt;
     // C02 运行记录：落表失败不影响发送结果返回
     try {
@@ -248,7 +280,7 @@ export async function POST(request: NextRequest) {
     recordMetric("cron.digest.failed", 1, {
       attributes: { error_type: error instanceof Error ? error.name : "unknown" },
     });
-    await recordFailedRun(startedAt, error, pulled);
+    await recordFailedRun(startedAt, error, pulled, progress);
     await logApiError("[Cron Digest] 执行失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }

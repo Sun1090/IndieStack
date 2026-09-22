@@ -585,6 +585,8 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 两条 cron 路由统一使用 `checkCronAuth()`：`CRON_SECRET` 未配置、缺失凭据与无效凭据会以稳定原因上报
 `cron.auth.rejected`，但不会记录请求头或密钥内容。摘要 worker 的 `cron.digest.completed` 现在覆盖完整运行时长，
 500 路径会写入 `email_worker_runs.error` 并上报 `cron.digest.failed`；失败运行记录自身的写入失败只记日志，不覆盖原始错误。
+失败轮次的记录同样带上**已经发生**的进度（`pulled` / `sent` / `groups` / `failed` 照实累加），回执写不写得进去与
+投递是否成功分属两条事实，后者单独上报 `cron.digest.receipt_failed{stage}`（语义见 `docs-site/email.md`）。
 
 规则本体位于 `src/lib/observability/cron-contract.ts`（跳过证据判定拆在同目录的
 `cron-skip-coverage.ts`），IO/CLI 位于 `scripts/lib/cron-contract-check.js` /

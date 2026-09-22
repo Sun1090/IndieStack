@@ -41,11 +41,15 @@
      写失败时计数器冻结 → 行永远到不了上限，会长期占住按 `next_attempt_at` 升序拉取的队首。
      已修（绝对上界 `PUSH_RETRY_MAX_AGE_MS` → `failure_code=max-age`，并新增
      `push.delivery.retry_failed`），见 CHANGELOG 与 `docs-site/web-push.md`。
-     **邮件侧核对过，不是同一个形状**：`recordEmailFailures` 里的 `markEmailFailed` 没有包 try/catch
-     （`cron/digest/route.ts:84`、`repositories/notifications.ts:151` 出错即 throw），所以回执写失败会让
-     整轮抛错、返回 500 并落 `cron.digest.failed` + 失败轮次记录——计数器一样没前进，但它是**响亮地**卡住，
-     不会像 push 那样装作在正常重试。邮件真正缺的是 A05 那道口径：一行待发被跳过或反复失败时，
-     它凭什么离开队列；那是产品决策，不在本条的工程收口里。
+     **邮件侧核对过，不是同一个形状，且已在 2026-09-23 单独收口**：`recordEmailFailures` 里的
+     `markEmailFailed` 当时没有包 try/catch（`cron/digest/route.ts:84`、`repositories/notifications.ts:151`
+     出错即 throw），所以回执写失败会让整轮抛错、返回 500 并落 `cron.digest.failed`——计数器一样没前进，
+     但它是**响亮地**卡住，不会像 push 那样装作在正常重试。那条「响亮」现在也修了：两处回执各自隔离并
+     上报 `cron.digest.receipt_failed{stage}`，轮次记录改为照实累加（`DigestProgress`），不再把**已经寄出
+     邮件**的轮次记成 `sent=0`（那会让 A05 的「空发送轮次」报假信号，比看不见更糟）。
+     **邮件仍然没有行龄上界，这是有意的**：丢掉一封排了 N 天的信改变的是送达语义。
+     邮件真正缺的还是 A05 那道口径：一行待发被跳过或反复失败时，它凭什么离开队列；那是产品决策，
+     不在本条的工程收口里。
 4. A04 （**2026-09-22 已完成**）：任何 cron worker 路由里**按用户条件跳过投递**的分支，
    都必须同时上报一个跳过计数指标。落地为
    `src/lib/observability/cron-skip-coverage.ts`（TypeScript 解析器核对带条件的 `continue`
@@ -72,6 +76,11 @@
    最老一条的年龄（48h = 两个日调度周期以上算「已卡住」）、以及最近几轮
    `pulled>0 && sent===0 && failed===0` 的空发送轮次（`src/lib/notifications/queue-diagnostics.ts`）。
    三个读数刻意与 worker 的拉取口径共用同一段过滤，并由一条「三处过滤调用逐项相等」的用例钉住。
+   **2026-09-23 修掉一个会污染该读数的缺陷**：digest 整轮抛错时，轮次记录曾把 `sent/groups/failed`
+   写死成 0，于是一轮**已经给若干用户真的寄出摘要**的运行正好落进「空发送轮次」的定义里——
+   那不是漏报而是假信号，比看不见更糟。现在进度就地累加、两处回执各自隔离
+   （`cron.digest.receipt_failed{stage}`，见 CHANGELOG），该读数只剩它应当表达的那一件事。
+   邮件侧刻意**没有**跟着 push 加行龄上界：丢掉一封排了 N 天的信是送达语义变化，归本条决定。
    **出队语义仍未决**：本条没有改变任何发送行为，被跳过的条目依旧永远出不了队列。
    **2026-09-23 审计又量出第二条静默出队路径**：队列条件含 `is_read=false`
    （`repositories/notifications.ts:66,85,103`），而 `markAllNotificationsRead`

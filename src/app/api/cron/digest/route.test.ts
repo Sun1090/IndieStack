@@ -7,7 +7,7 @@ import { metricEvents } from "@/lib/testing/metric-events";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
-const { listUnsentEmailNotificationsMock, countUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, recordWorkerRunMock, logApiErrorMock, createAdminClientMock } = vi.hoisted(() => ({
+const { listUnsentEmailNotificationsMock, countUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, recordWorkerRunMock, logApiErrorMock, createAdminClientMock, renderEmailHtmlMock } = vi.hoisted(() => ({
   listUnsentEmailNotificationsMock: vi.fn(),
   countUnsentEmailNotificationsMock: vi.fn(async () => 0),
   markEmailSentMock: vi.fn(async () => {}),
@@ -15,7 +15,16 @@ const { listUnsentEmailNotificationsMock, countUnsentEmailNotificationsMock, mar
   recordWorkerRunMock: vi.fn(async () => {}),
   logApiErrorMock: vi.fn(async () => {}),
   createAdminClientMock: vi.fn(),
+  renderEmailHtmlMock: vi.fn(),
 }));
+
+// 默认**照原样渲染**（有一条用例要断言真实正文），只是留一个能让它第 N 次抛错的把手：
+// 「崩在发送中途」这一类必须可测，而循环里剩下的未保护代码就是模板渲染。
+vi.mock("@/lib/email-template", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/email-template")>();
+  renderEmailHtmlMock.mockImplementation(actual.renderEmailHtml);
+  return { ...actual, renderEmailHtml: renderEmailHtmlMock };
+});
 
 vi.mock("@/lib/repositories/notifications", () => ({
   listUnsentEmailNotifications: listUnsentEmailNotificationsMock,
@@ -347,6 +356,112 @@ describe("POST /api/cron/digest", () => {
         groups: 0,
         failed: 0,
         error: "profiles down",
+      }),
+    );
+  });
+
+  it("崩在发送中途的那一轮：运行记录带上已经寄出的那一组，而不是全 0", async () => {
+    // 落表写死 sent:0 的代价不是「少记一个数」：A05 的空发送轮次只数
+    // pulled>0 && sent===0 && failed===0，于是**真的寄出去了信**的那一轮会被报成空转。
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n2", user_id: "u2", type: "system", title: "B", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [
+        { id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } },
+        { id: "u2", email: "c@d.e", notification_settings: { emailNotifications: true } },
+      ] })),
+    });
+    // 第一组正常渲染并寄出，第二组在渲染时抛错——任何中途的意外异常都是这个形状。
+    renderEmailHtmlMock
+      .mockImplementationOnce(() => "<html>first</html>")
+      .mockImplementationOnce(() => {
+        throw new Error("template boom");
+      });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pulled: 2,
+        sent: 1,
+        groups: 1,
+        failed: 0,
+        error: "template boom",
+      }),
+    );
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({ name: "cron.digest.failed", value: 1 }),
+    );
+  });
+
+  it("发送回执写失败不再中断整轮，也不把已经寄出的信记成没寄", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n2", user_id: "u1", type: "system", title: "B", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+    });
+    markEmailSentMock.mockRejectedValueOnce(new Error("rls denied"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    // provider 已经收下这封信，所以 sent 记 2：回执写不写得动不改变「寄出去了」这件事。
+    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0 });
+    expect(markEmailSentMock).toHaveBeenCalledTimes(2);
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      "[Cron Digest] 邮件已发出，但发送回执写入失败（下一轮摘要可能重复寄出）",
+      expect.objectContaining({ message: "rls denied" }),
+    );
+    expect(logApiErrorMock).not.toHaveBeenCalledWith(
+      "[Cron Digest] 执行失败",
+      expect.anything(),
+    );
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.receipt_failed",
+        value: 1,
+        attributes: { stage: "sent" },
+      }),
+    );
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({ sent: 2, groups: 1, failed: 0 }),
+    );
+  });
+
+  it("失败回执也写不进去时：failed 照记，但说清是重试次数没累加", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "system", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } }] })),
+    });
+    fetchMockResolved.ok = false;
+    fetchMockResolved.text = async () => "boom";
+    markEmailFailedMock.mockRejectedValue(new Error("update denied"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 1 });
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      "[Cron Digest] 失败回执写入失败（该行重试次数未累加，下一轮仍会重发）",
+      expect.objectContaining({ message: "update denied" }),
+    );
+    // 两句「回执」文案各自只属于一条路径
+    expect(logApiErrorMock).not.toHaveBeenCalledWith(
+      "[Cron Digest] 邮件已发出，但发送回执写入失败（下一轮摘要可能重复寄出）",
+      expect.anything(),
+    );
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.receipt_failed",
+        value: 1,
+        attributes: { stage: "retry" },
       }),
     );
   });

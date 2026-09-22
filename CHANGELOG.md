@@ -204,6 +204,24 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
+  `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
+  `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
+  于是**一轮已经给若干用户真的寄出摘要**的运行，在 `email_worker_runs` 里表现为「拉到 N 条、0 封发出、
+  0 封失败」，正好命中 A05 面板「空发送轮次」的定义（`pulled>0 && sent===0 && failed===0`）：看板不是
+  漏看了一轮失败，而是**教人相信一个假信号**——那比看不见更糟。现在进度就地累加在调用方持有的
+  `DigestProgress` 上，`sent` 在 provider 收下那封信时就先加（回执写不写得动都不改变「寄出去了」），
+  抛穿的轮次照实记下当时的 `pulled / sent / groups / failed`。
+  两处回执各自包一个 `try` 并新增指标 `cron.digest.receipt_failed{stage}`：`stage="sent"` 是「信已发出、
+  发送回执没写进去」，那一行仍留在队列里，下一轮可能给同一用户再寄一封（at-least-once 的既有代价）；
+  `stage="retry"` 是「发送失败**且** `email_attempts` 的增量没写进去」，重试计数冻结。邮件侧刻意**没有**
+  照搬 Push 的行龄上界（上一条那个 `max-age`）：丢掉一封排了 N 天的信改变的是送达语义，属于 A05 待拍板
+  的产品决策，不在修日志诚实度的这一步里顺手替用户决定。指标注册表 15 → 16，由
+  `pnpm check:cron-contract` 与 `docs/operations/sentry-alerts.md` 同时登记。
+  新增 3 条用例（该文件 18 条）：一条打桩方式值得记下——整模块 `vi.mock("@/lib/email-template")` 会把
+  另一条断言**真实折叠 HTML** 的用例一起弄红，所以换成 `importOriginal` 透传 spy，只替 `renderEmailHtml`。
+  变异核对 8 项全部被抓（回执退回裸调用、`sent` 挪回回执之后、`recordFailedRun` 退回写死 0、
+  两个 `stage` 维度写死或删掉、删指标、删日志、把 `failed` 累加挪进内层 `try`）。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
   `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
   `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是

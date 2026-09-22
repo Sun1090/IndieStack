@@ -85,6 +85,7 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     metrics: [
       "email.backlog",
       "cron.digest.skipped",
+      "cron.digest.receipt_failed",
       "cron.digest.completed",
       "cron.digest.failed",
     ],
