@@ -98,8 +98,13 @@
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 
-17. D01 把 docs-site 里**可机器核对的事实**纳入门禁：cron 路径与调度表达式、环境变量名、
-    表名/迁移号。做法是给 `check:cron-contract` 增加「文档来源」参数，而不是新造一个门禁
+17. D01 （**2026-09-22 已完成，范围按实测收窄**）：`pnpm check:cron-contract` 现在核对
+    `docs-site/**` 与 `docs/**` 里的 cron 表达式与 `/api/cron/*` 路径是否真的存在于仓库
+    （注册表 ∪ `vercel.json` ∪ workflow `schedule`），带日期的快照排除，抽不到文档即失败封闭；
+    表达式抽取与 D02 共用同一个函数。**没有**做环境变量名与表名/迁移号两类：
+    前者要求 feature flag 名能识别 `flag("PASSKEY")` 这类组合写法与前缀（`NEXT_PUBLIC_FEATURE_*`），
+    后者要和 SQL 关键字、平台变量名做停用表，两者都是先量到误报才有依据的扩展，
+    留作后续按需追加，而不是第一版就把门禁做成噪音
 18. D02 （**2026-09-22 已完成**）双语一致性最小检查：同一页面的 EN/zh 若提到 cron 表达式或
     `HH:MM UTC` 时刻，两边集合必须完全相等（一边提到一边没有也算失败）。落地为
     `pnpm check:bilingual-docs`（规则 `src/lib/docs/bilingual-facts.ts` + IO + CI/check:all 接线）。

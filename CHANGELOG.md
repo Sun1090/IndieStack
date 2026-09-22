@@ -6,7 +6,18 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
-- **发布核对方法落成模板（D03）**：新增 `docs/operations/release-audit-template.md`，把 v0.6.0
+- **文档里的调度事实从此要对得上仓库**（D01）：`pnpm check:cron-contract` 多一条规则，扫
+  `docs-site/**` 与 `docs/**`（带日期的快照除外：发布页、runbook、roadmap 记录的是当时的事实，
+  改它们等于伪造证据），把合法的 5 字段 cron 表达式与 `/api/cron/*` 路径逐个对回
+  「worker 注册表 ∪ `vercel.json` ∪ GitHub workflow 的 `schedule`」。文档教一条仓库里不存在的调度
+  报 `CRON_DOC_STALE_SCHEDULE`（`docs-site/web-push.md` 那条「每 15 分钟」就是这一类），提到一条
+  没人调度的路由报 `CRON_DOC_UNREGISTERED_PATH`（E03 那次 digest 从未被调度就是这个形状），
+  一篇文档都没收集到则报 `CRON_DOC_NO_SOURCES` 失败封闭。cron 表达式的抽取与 D02 共用同一个函数，
+  两条门禁看到的才是同一件事：**D02 管中英两边说同一件事，D01 管它们说的是不是代码里的那件事**。
+  接线时先量后写：一次性核对 84 篇文档，另有一版「文档提到 worker 路径就必须登记其调度」的更强子规则
+  当场产出 8 条**合法**陈述的告警（`web-push.md` 只是顺带引用 digest），说明它会把散文式引用全误伤，
+  因此删掉——门禁的命中率比严格度重要。
+新增 `docs/operations/release-audit-template.md`，把 v0.6.0
   退出报告里那套「逐条对回代码、门禁与执行记录」的做法写成可复用规则——三档状态各自需要什么证据、
   「文档已写」不算证据、每条门禁都要做一次「故意做坏会不会红」的变异核对、版本范围由 CHANGELOG
   章节生成而不是凭记忆写散文，以及四件容易互相冒充的事：代码合并 ≠ 已部署、生产跑新版本 ≠ 已发布、

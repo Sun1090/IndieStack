@@ -25,6 +25,12 @@ const SKIP_DIRECTORIES = new Set(["node_modules", ".next", "coverage", ".git"]);
 
 export const VERCEL_CONFIG_PATH = "vercel.json";
 
+/** 参与 D01 核对的文档目录（在仓库范围内，规则侧再排除带日期的快照）。 */
+const DOCS_DIRECTORIES = ["docs-site", "docs"];
+
+/** VitePress 的构建产物里也有一份 .md 副本，读它等于读旧版本。 */
+const SKIP_DOCS = new Set(["dist", ".vitepress"]);
+
 /** 仓库相对 POSIX 路径。 */
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
@@ -69,6 +75,51 @@ export function readPlatformCrons(root = REPO_ROOT) {
     .map((entry) => ({ path: entry.path, schedule: entry.schedule }));
 }
 
+/**
+ * 收集参与「文档 vs 仓库」核对（D01）的 markdown。
+ *
+ * 只按目录收集，是否在核对范围内由规则侧的 `isCronDocAuditable` 决定——带日期的快照
+ * （发布页、runbook、roadmap）允许引用已废弃的调度，这个判断属于语义而不是 IO。
+ */
+export function collectCronDocs(root = REPO_ROOT) {
+  const docs = [];
+  for (const directory of DOCS_DIRECTORIES) {
+    const start = path.join(root, directory);
+    if (!fs.existsSync(start)) continue;
+    const walk = (current) => {
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        if (SKIP_DIRECTORIES.has(entry.name) || SKIP_DOCS.has(entry.name)) continue;
+        const fullPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          walk(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith(".md")) {
+          docs.push({
+            path: toPosixPath(path.relative(root, fullPath)),
+            content: fs.readFileSync(fullPath, "utf8"),
+          });
+        }
+      }
+    };
+    walk(start);
+  }
+  return docs.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+/** GitHub workflow 里的 `schedule` 表达式：不是 cron worker，但文档引用它们是合法的。 */
+export function collectExternalSchedules(root = REPO_ROOT) {
+  const directory = path.join(root, ".github", "workflows");
+  if (!fs.existsSync(directory)) return [];
+  const expressions = new Set();
+  for (const entry of fs.readdirSync(directory)) {
+    if (!entry.endsWith(".yml") && !entry.endsWith(".yaml")) continue;
+    const content = fs.readFileSync(path.join(directory, entry), "utf8");
+    for (const match of content.matchAll(/cron:\s*["']([^"']+)["']/g)) {
+      expressions.add(match[1].trim());
+    }
+  }
+  return [...expressions].sort();
+}
+
 /** 组装审计所需的完整输入，导出以便测试用临时目录验证 CLI。 */
 export function buildCronContractSnapshot(root = REPO_ROOT, overrides = {}) {
   const routeFiles = collectCronRouteFiles(root);
@@ -85,6 +136,8 @@ export function buildCronContractSnapshot(root = REPO_ROOT, overrides = {}) {
     operationsDoc: fs.existsSync(operationsDocPath)
       ? fs.readFileSync(operationsDocPath, "utf8")
       : "",
+    docs: overrides.docs ?? collectCronDocs(root),
+    externalSchedules: overrides.externalSchedules ?? collectExternalSchedules(root),
     excludedSchedules: overrides.excludedSchedules,
   };
 }
@@ -113,6 +166,7 @@ export function runCronContractCheck(root = REPO_ROOT, overrides = {}) {
     `✅ cron 调度与指标契约通过：${report.workers.length} 个 worker（${report.workerPaths.join("、")}）/ ` +
       `${report.metrics.length} 个指标 / ${report.skipBranches} 处条件跳过均有计数证据 / ` +
       `调度表达式与 vercel.json 及运维文档一致 / ` +
+      `${report.docPages} 篇文档里的调度事实都能在仓库里找到对应 / ` +
       `${report.exemptedPaths.length} 个平台级豁免`,
   );
   return 0;
