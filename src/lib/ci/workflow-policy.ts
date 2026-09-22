@@ -15,7 +15,9 @@
  *   - 禁止 `pull_request_target`（可写权限 + PR 代码的组合）；
  *   - 工作流里引用的 `pnpm <a:b>` 脚本必须真实存在于 `package.json`；
  *   - `ci.yml` 的并行/缓存拓扑必须匹配契约：静态门禁最快失败、单元测试独立并行、
- *     构建与 E2E 只等静态门禁、Playwright 浏览器缓存按锁文件哈希失效。
+ *     构建与 E2E 只等静态门禁、Playwright 浏览器缓存按锁文件哈希失效；
+ *   - 静态门禁作业必须运行聚合入口 `pnpm check:all`——CI 与本地共用一份清单的前提就是这一步，
+ *     而它不能在作业之外查（`release.yml` 也跑聚合，见 `auditEntryJobs`）。
  *
  * 抽取结果为空时失败封闭，避免正则/解析失效被当成「零问题」。
  */
@@ -416,6 +418,18 @@ function auditEntryJobs(
     if (jobRuns(staticJob.body, "pnpm test:coverage")) {
       issues.push(
         topologyDrift(staticJob.id, "覆盖率测试应放在单元测试作业，避免阻塞构建与 E2E 的启动"),
+      );
+    }
+    // 静态作业现在只有聚合入口一步：CI 与本地共用一份清单的前提，就是这一步确实在跑。
+    // 这条必须在本作业正文里查而不是交给 `check:gates`——后者按「任意 workflow」判定接线，
+    // `release.yml` 同样跑 `pnpm check:all`，于是从这里删掉那一步它照样绿，
+    // 而 PR 的门禁其实已经全没了。
+    if (!jobRuns(staticJob.body, "pnpm check:all")) {
+      issues.push(
+        topologyDrift(
+          staticJob.id,
+          "静态门禁作业必须运行聚合入口 pnpm check:all，否则本地清单与 CI 又变成两份",
+        ),
       );
     }
   }
