@@ -66,6 +66,12 @@ statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
   同一条进程里提高 worker 数。视觉基线只有 4 条且必须单 worker，不做 shard，只在 shard 1 运行一次。
 - 上述策略由 `src/lib/testing/e2e-shard-policy.test.ts` 读取 workflow/config 做回归；如果移除 shard、把
   `PW_FULLY_PARALLEL` 改成默认开启，或让两个 job 上传同名 artifact，Vitest 会失败。
+- E2E 跑在 `next dev` 上：首屏 HTML 服务端就渲染好了，但 React 要等冷编译 + hydration 才挂上事件监听。
+  此时 `toBeVisible()` 早已通过，点下去却因监听器还不存在被**静默丢弃**——症状是"断言超时、DOM 完整、
+  控制台零报错"，很容易被误判成产品 Bug。所以依赖客户端事件的用例必须重试「动作 + 断言」整体，而不是
+  只重试断言（`e2e/keyboard.spec.ts` 的 `retry()`、`e2e/theme.spec.ts` 的 `toggleThemeTo()` 都是这个形状）；
+  对「切换」型按钮，每一轮重试要先读当前状态再决定点不点，否则第二次点击会把已经切好的值翻回去。
+  本机复现：CDP `Emulation.setCPUThrottlingRate`（`rate: 25`）后 reload 并立刻点击，慢 runner 上必现。
 - 新页面至少加一条"可渲染"断言到 `e2e/smoke.spec.ts`
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围

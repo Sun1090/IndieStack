@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { THEME_STORAGE_KEY } from "../src/lib/theme/theme";
 
 /**
@@ -64,6 +64,21 @@ test.describe("主题首屏（hydration 之前）", () => {
 });
 
 test.describe("主题切换与持久化", () => {
+  /**
+   * 点「切换」型按钮前 React 可能还没 hydration：dev server 冷编译时首屏 HTML 早已渲染，
+   * 内联主题脚本也已经写好 class，`toBeVisible()` 因此会通过，但监听器还没挂上，
+   * 这一次 click 会被静默丢弃。重试的必须是「先看当前状态、缺了才点」的整体，
+   * 只重试断言的话第二次尝试会把已经切好的主题再翻回去。
+   */
+  async function toggleThemeTo(html: Locator, toggle: Locator, wantDark: boolean) {
+    await expect(async () => {
+      const isDark = /\bdark\b/.test((await html.getAttribute("class")) ?? "");
+      if (isDark !== wantDark) await toggle.click();
+      if (wantDark) await expect(html).toHaveClass(/\bdark\b/, { timeout: 1_000 });
+      else await expect(html).not.toHaveClass(/\bdark\b/, { timeout: 1_000 });
+    }).toPass({ timeout: 20_000, intervals: [500, 1_000] });
+  }
+
   test("按钮切换主题、持久化并同步 color-scheme", async ({ page }) => {
     await page.goto("/");
     const html = page.locator("html");
@@ -75,15 +90,13 @@ test.describe("主题切换与持久化", () => {
     await page.reload();
     await expect(html).not.toHaveClass(/\bdark\b/);
 
-    await toggle.click();
-    await expect(html).toHaveClass(/\bdark\b/);
+    await toggleThemeTo(html, toggle, true);
     await expect(html).toHaveCSS("color-scheme", "dark");
     await expect
       .poll(() => page.evaluate((key) => window.localStorage.getItem(key), THEME_KEY))
       .toBe("dark");
 
-    await toggle.click();
-    await expect(html).not.toHaveClass(/\bdark\b/);
+    await toggleThemeTo(html, toggle, false);
     await expect(html).toHaveCSS("color-scheme", "light");
     await expect
       .poll(() => page.evaluate((key) => window.localStorage.getItem(key), THEME_KEY))

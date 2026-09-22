@@ -4,6 +4,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **主题切换 E2E 在 CI 上稳定失败**：`e2e/theme.spec.ts` 的「按钮切换主题」用例直接 `click()` 后断言
+  `<html>` 带上 `dark`，但 E2E 跑在 `next dev` 上——首屏 HTML 和内联主题脚本早已就位，React 却可能
+  还没 hydration，这一次点击因为没有监听器而被**静默丢弃**。CI 上 3 次尝试（首次 + 2 次重试）全部以
+  `Received string: "light"` 结束；trace 显示点击坐标正是按钮中心、DOM 完整、控制台零报错，
+  丢的是事件而不是元素，因此看起来像"产品没切换主题"。改为按项目既有惯例重试
+  「先读当前状态 → 需要才点 → 断言」整体（`toggleThemeTo()`；只重试断言会把已经切好的主题再翻回去）。
+  本机用 CDP `Emulation.setCPUThrottlingRate`（`rate: 25`）复现：旧写法以与 CI 完全相同的签名失败，
+  新写法在同一节流下通过。`docs/testing.md` 同步补上这条 E2E 编写规则，避免下一个裸点击用例。
+
 ### Known Limitations
 
 - **数据保留期仍未真正执行**：`003` / `014` / `027` / `032` 的每周清理都被
