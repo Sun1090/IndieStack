@@ -76,6 +76,11 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
   两者互补，不能互相替代。`src/lib/testing/e2e-shard-policy.test.ts` 钉住：全量（无 `--shard`）、
   不接 `pull_request`/`push`、报告即使通过也留档，以及 artifact 名字全局唯一（#68 的教训：
   两个作业写同一个名字，后跑的把先跑的悄悄盖掉，「证据」就变成另一件事了）。
+  **首跑已测（2026-09-22，run `35727094401`）：4 条红**，逐条归因见 `docs/roadmap-0.12.0.md` 的 C02。
+  其中最反直觉的一条在 `e2e/mail-flow.spec.ts`：它把清理写在文件顶层的 `beforeAll`/`beforeEach`，
+  而 `fullyParallel` 下这类钩子是**每个 worker 各跑一次**，不是每个文件一次——同一文件的三条用例被拆到
+  不同 worker 后互相删对方的数据，它既是受害者也是加害者。把用例拆开不会让「文件级清理」获得文件级
+  作用域，这是并行改造最容易误判的一点。
 - **本机跑 E2E 前先确认 3100 空闲**：Playwright 只在 `webServer.url` 真能应答时才复用已有 server；
   端口被别的项目占着且应答不了时，它会试图自启、以 `EADDRINUSE` 退出，而**一条用例都没跑**。
   外层 shell 仍可能报 0——判定「跑过了」的依据是输出里的用例数，不是退出码。

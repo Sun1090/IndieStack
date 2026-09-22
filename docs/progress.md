@@ -1,3 +1,39 @@
+## 2026-09-22 — 并行基线首跑红了 4 条：逐条对着 artifact 归因，不猜（C02）
+
+- 里程碑 / 版本：关闭 v0.12.0 的 C02 的「可复跑」那一半，并给出首跑的实测结论。
+- 状态：PARTIAL（基线可复跑 ✅，全量并行可用 ✗——后者是新设计，不是改配置）。
+- 分支 / commit：`test/e2e-parallel-baseline-first-run`（基于 `3fe5d20`）。
+- 为什么做：PR #73 把基线接进 CI 之后，第一次真正跑起来（run `35727094401`，job `10674329401`，
+  12:25:42Z→12:29:18Z）就红了。红必须留下归因，否则下一次 dispatch 的人只会看到「并行不行」这四个字。
+- 完成内容：
+  1. **取证据**：workflow 日志端点反复失败，改从 artifact `playwright-parallel-baseline`（12,168 B）
+     里读 4 份 `error-context.md`。日志拿不到不等于测不出——报告里就有期望/实际值与页面快照。
+  2. **① `webhook-events.spec.ts:114`** 通知数 `toBe(1)` 实读 2；同一用例第 105 行「清空后 `toBe(0)`」是过的，
+     所以问题不在清理没做，而在「清理 → 断言」这段窗口不关门，别的 worker 在中间种了数据。
+  3. **② `notifications-realtime.spec.ts:53`** 等不到空态；快照里多出的那条标题是「E2E Push 种子通知」，
+     按字符串查到 `src/app/api/e2e/push-queue/route.ts:105`，即并行的 `push-retry.spec` 种的——
+     归因落到具体端点，而不是「被别人污染」。
+  4. **③④ `mail-flow.spec.ts`** 前两条（`:49` 收件箱 `total` 读到 0、`:187` 的 `email_attempts` poll
+     停在 0）。凶手在这个文件自己身上：顶层 `beforeAll`（第 27、30 行）与 `beforeEach`（第 41、44 行）
+     成对 DELETE `/api/e2e/email-inbox` 与 `/api/e2e/seed-notifications`，而 `fullyParallel` 下这类钩子
+     **每个 worker 各跑一次**，同文件三条用例被拆到不同 worker 后互相删数据。
+  5. **不夸大结论**：证据只指到 `notifications` 表与本地 email inbox 两处。`webhook_events`（去重断言全过）
+     和 `email_worker_runs`（读它的那条用例没红）从「四张表」的说法里划掉，只作为同类风险记着。
+  6. **顺手改掉 C03 的假前置**：roadmap 原文说那条 E2E 需要「Mock 的 MFA 状态可隔离」，属 C01 前置。
+     实测两处入口（`login-form.tsx:86～92` 密码、`:179～182` passkey）都不需要隔离；真阻塞是 mock 的
+     `signInWithPassword`（`src/lib/mock/index.ts:1289`）不返回 `user.factors`（真实 Supabase 会返回），
+     以及浏览器 store 挂在 `window` 上、整页导航即重置。
+- 变更文件：`docs/roadmap-0.12.0.md`（C02 首跑结论 + C03 阻塞重定）、`docs/testing.md`（并行钩子那条
+  反直觉结论）、`CHANGELOG.md`（Known Limitations：全量并行仍不可用）、本条目。
+- 验证命令与结果：文档门禁（`check:docs` / `check:changelog` / `check:bilingual-docs` /
+  `check:test-matrix` / `check:cron-contract`）与 `pnpm lint`、`pnpm type-check`、`pnpm test`、`pnpm build`；
+  本条目只改文档，默认 CI 的 2-shard E2E 不受影响，基线仍按每周一 07:30 UTC 复跑。
+- 阻塞 / 风险：并行真正可用需要按 worker 给 store 命名空间（`/api/e2e/*` 与 mock 客户端按 id 选 store），
+  是新设计；**不能**为了让基线绿而把运行时默认 store 改成请求级（C01 已论证那会重演 v0.5.0）。
+  回滚 = revert 本 commit（纯文档）。
+- 下一项：C03——把 `signInWithPassword` 的 `factors` 补成与真实 Supabase 同形，再写那条真走挑战流程的 E2E。
+- 更新时间：2026-09-22（UTC 13:20 前后）。
+
 ## 2026-09-22 — mock 的「进程全局状态」先测再改：21 个模块级镜像其实是死代码（C01）
 
 - 里程碑 / 版本：关闭 v0.12.0 的 C01，并把 C02 的前置认知写清。

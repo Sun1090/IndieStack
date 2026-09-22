@@ -243,6 +243,14 @@ All notable changes to IndieStack will be documented in this file.
   下一次部署之后，`pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 才是可用证据。
   非 Vercel 构建（本地、Docker）没有这两个环境变量，`commit` 恒为 `null`——这条链路的 commit 归属
   只在 Vercel 上成立，自建部署需要自己注入同名变量。
+- **E2E 全量并行仍不可用**：C02 的并行基线首跑（run `35727094401`）红 4 条，机制是同一条——
+  `next dev` 只有一个进程、一份默认 store，而 `fullyParallel` 把用例拆到不同 worker，于是彼此打断：
+  `webhook-events.spec.ts:114` 的通知数读到 2（预期 1），`notifications-realtime.spec.ts:53` 等不到
+  「暂无通知」空态（并行的 `push-retry.spec` 往同一张 `notifications` 表种了种子），`mail-flow.spec.ts`
+  的前两条被**本文件自己的**顶层清理打死——并行下 `beforeAll`/`beforeEach` 每个 worker 各跑一次，
+  同文件三条用例互相删数据。这不是改配置能解决的：默认 store 必须保持共享（它是假数据库，见 C01），
+  要并行得按 worker 给 store 命名空间。在此之前「并行全绿」不是本项目的验收条件，基线变红按测量记录，
+  默认 CI 仍是两个 shard 各单 worker。
 
 ## [0.11.0] — 2026-09-22
 
