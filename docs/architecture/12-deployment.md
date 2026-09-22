@@ -172,10 +172,10 @@ chore: 构建/工具
 
 `Production Smoke` workflow 提供两类无副作用证据：
 
-- `workflow_dispatch` 的手动 `smoke` 作业：发布负责人显式传入生产 URL、期望版本和超时，生成 `production-smoke.json` 并保留 30 天 artifact。
-- `schedule` 的定时 `smoke-main` 作业：每日 UTC 02:17 从 `package.json` 读取期望版本，探测固定生产 URL，发现生产部署落后于仓库版本时失败并保留同一证据文件。
+- `workflow_dispatch` 的手动 `smoke` 作业：发布负责人显式传入生产 URL、期望版本和超时，生成 `production-smoke.json` 并保留 30 天 artifact（`production-smoke-evidence`）。该作业带作业级 `if: github.event_name == 'workflow_dispatch'`——`on:` 的 `schedule` 作用于所有作业，而它的参数只来自 dispatch inputs，定时触发时 inputs 为空，作业会在参数解析上失败并从未访问生产（这条守卫由 `pnpm check:production-smoke` 的 `SMOKE_MANUAL_TRIGGER_GUARD_MISSING` 守住）。
+- `schedule` 的定时 `smoke-main` 作业：每日 UTC 02:17 从 `package.json` 读取期望版本，探测固定生产 URL，发现生产部署落后于仓库版本时失败，并把同一份证据文件保留为 **另一个名字**（`production-version-drift-evidence`）。两个作业在同一 run 里都上传时若用同一个 artifact 名，`gh run download -n` 只会留下后落地的那一份，发布证据的归属就不确定。
 
-定时检查只检测 drift，不能替代发布前的完整手工证据；发布仍必须取得目标版本的 6/6 通过记录，并在 `.github/RELEASE_CHECKLIST.md` 与 `docs/operations/production-smoke-v<version>.md` 中填写时间和证据路径。
+定时检查只检测 drift，不能替代发布前的完整手工证据；发布仍必须取得目标版本的 6/6 通过记录，并在 `.github/RELEASE_CHECKLIST.md` 与 `docs/operations/production-smoke-v<version>.md` 中填写时间和证据路径。**注意 `6/6` 证明不了 commit 归属**：`/api/health` 只暴露 `version`，同一版本号内的后续提交在生产上不可区分，因此「部署 commit 与验证 commit 相同」目前只能靠 Vercel 控制台侧的 deployment 记录证明。
 
 ## 文档站部署
 

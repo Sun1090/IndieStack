@@ -75,6 +75,19 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`Production Smoke` 的手动作业每天在空参数上失败，而该红的检查其实是绿的**：workflow 的 `on:`
+  同时声明 `workflow_dispatch` 与 `schedule`，触发器作用于**所有**作业，但手动 `smoke` 作业的生产 URL
+  与超时取自 `inputs.*`——定时触发时 `inputs` 为空，于是它每天以 `Error: --timeout-ms requires a value`
+  崩溃、从未访问过生产（2026-09-21T07:56Z 与 2026-09-22T07:41Z 两份日志完全一致），
+  而真正在报告版本漂移的是另一个作业 `smoke-main`，它当时已经因为生产部署了 `0.11.0` 而变绿。
+  红色作业与它一起出现，等于把「Production Smoke 失败」这句话变成没有指向的信号。
+  现在手动作业带 `if: github.event_name == 'workflow_dispatch'`，并新增两条契约规则把它钉住：
+  读取 `inputs.` 却没有作业级 `if:` 排除 schedule → `SMOKE_MANUAL_TRIGGER_GUARD_MISSING`；
+  每个作业的证据 artifact 名必须等于契约里的自己的名字 → `SMOKE_ARTIFACT_NAME_DRIFT`
+  （此前两个作业都上传成 `production-smoke-evidence`，一次 `workflow_dispatch` 会留下两份
+  `production-smoke.json`，实测 `gh run download -n production-smoke-evidence` 只保留后落地的那一份，
+  发布记录里的「artifact 指纹」因此不确定属于哪一轮）。四项变异核对：删掉 `if:` 行、把 `if:` 改成
+  `'schedule'`、删掉 artifact 名、把定时作业改回同名，均使 `pnpm check:production-smoke` 退出 1。
 - **文档不再复述会过期的数字（D04）**：`docs/testing.md` 里几处「某个规则文件有多少条单测」
   全部改为「纯函数，单测覆盖」，并把「本文不写用例条数」这条约定显式扩展到局部计数；
   覆盖率阈值不再抄在文档里（改指 `vitest.config.ts` 与 `pnpm test:coverage` 的输出）。同一次扫描里发现两处**已经错了**的陈述：`docs/testing.md` 与
@@ -151,6 +164,10 @@ All notable changes to IndieStack will be documented in this file.
   不会真的删号（Mock 的 `deleteUser` 是空操作，真实提交会清空共享 Mock 状态）。
   擦除语义由 Mock 镜像与 40 条契约测试保证，「先擦除、再删号」在生产数据上的验证仍依赖
   隔离账号的一次性演练。
+- **生产响应证明不了自己跑的是哪个 commit**：`/api/health` 只暴露 `version`，同一版本号内的后续提交
+  在生产上不可区分，而发布 runbook 的停止条件恰好是「无法证明部署 commit 与验证 commit 相同」。
+  6/6 冒烟通过因此只能证明「某个 0.11.0 构建是好的」。要把构建 SHA（Vercel 会注入
+  `VERCEL_GIT_COMMIT_SHA`）纳入健康响应并让 smoke 断言它，否则这条证据只能靠控制台截图。
 
 ## [0.11.0] — 2026-09-22
 
