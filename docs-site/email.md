@@ -35,6 +35,9 @@ Immediate delivery respects `shouldSendEmail()`. A successful send records the n
 sent; a failure leaves it queued for the digest worker. Other notification types remain in-app
 only in the current implementation.
 
+The queue predicate is `email_sent = false` **and** `is_read = false`, so reading a notification in
+app — one at a time or via "mark all read" — also takes it out of the email queue: mail for
+something the user already saw is never sent, and that row stops counting toward `email.backlog`.
 A send that succeeded while its receipt write failed is reported as its own event, not as a send
 failure: the message did leave, and the next digest run may send it again.
 
