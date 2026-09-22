@@ -194,7 +194,7 @@ E06 已完成（`provider-metrics.ts` 固化回退指标与「缺失变量签名
 96. J06 production smoke test
 97. J07 tag/release 自动化（完成：新增 `pnpm check:release-tag`，要求 `vX.Y.Z` 与 `package.json` 一致、CHANGELOG 存在带合法日期的非空版本章节，并从该章节生成 Release Notes；审计 `release.yml` 必须冻结安装、跑 `pnpm check:all`、以 `$GITHUB_REF_NAME` 校验标签、在创建 Release 前生成 notes 文件，且用 `gh release create --notes-file` 发布而不是 `--generate-notes`；顺带修正 `check:gates` 误把任意 workflow 的 `pnpm check:all` 当成覆盖聚合豁免门禁的接线判断，46 条标签策略单测 + 29 条门禁接线单测接入 `check:all` 与 CI）
 98. J08 发布后回滚演练
-99. J09 v0.6.0 退出报告（完成：`docs/operations/release-exit-report-v0.6.0.md`——100 项任务与 6 条退出标准逐条对回代码、门禁与执行记录，结论 90 达成 / 8 部分达成 / 2 未达成，并核对出「digest 错峰门控与每天一次的调度不兼容导致摘要邮件对除 UTC-1 外所有用户不投递」这一 P0；v0.6.0 当年是先发版、后补报告）
+99. J09 v0.6.0 退出报告（完成：`docs/operations/release-exit-report-v0.6.0.md`——100 项任务与 6 条退出标准逐条对回代码、门禁与执行记录，结论 91 达成 / 7 部分达成 / 2 未达成，并核对出「digest 错峰门控与每天一次的调度不兼容导致摘要邮件对除 UTC-1 外所有用户不投递」这一 P0；v0.6.0 当年是先发版、后补报告）
 100.  J10 v0.7.0 候选池评审（完成：任务名里的版本号已过期——v0.7.0 早在 2026-09-12 发布，候选池因此落在 `docs/roadmap-0.12.0.md`，20 项全部来自退出报告的部分达成/未达成项与生产证据缺口）
 
 ## 里程碑

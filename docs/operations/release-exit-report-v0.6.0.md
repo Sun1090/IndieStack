@@ -12,7 +12,7 @@
 
 ## 结论
 
-1. **任务池**：100 项中 **90 达成 / 8 部分达成 / 2 未达成**。未达成是 F01（Mock MFA 状态隔离）
+1. **任务池**：100 项中 **91 达成 / 7 部分达成 / 2 未达成**。未达成是 F01（Mock MFA 状态隔离）
    与 J08（发布后回滚演练）；部分达成集中在「接线做了、语义没做」与「文档没打标」两类。
 2. **退出标准 1–5 达成，标准 6 只达成一半**：生产 smoke 在 v0.6.0 真跑过（6/6，含可核对的
    Actions run 与 artifact 指纹），但**回滚演练至今没有任何一次执行记录**——每个版本的
@@ -79,13 +79,13 @@
 | B09 | 达成 | `src/lib/push-retry.ts`（`PUSH_MAX_ATTEMPTS` → dead/revoked + `push.delivery.dead`），`/api/cron/push-retry` 已调度 |
 | B10 | 达成 | `e2e/push-retry.spec.ts`（10 用例 / 30 断言）+ `e2e/notifications-realtime.spec.ts` + 迁移 `025` |
 
-### C. MFA 与认证安全（9 达成 / 1 部分）
+### C. MFA 与认证安全（10 达成）
 
 | # | 状态 | 证据 | 缺口 |
 | - | ---- | ---- | ---- |
 | C01 | 达成 | `src/lib/mock/index.ts:1390-1500` 的 enroll/challenge/verify/unenroll 状态机 + `mock.test.ts:329` | 隔离度见 F01（进程全局，非请求级） |
 | C02 | 达成 | `e2e/admin-contact-mfa.spec.ts:104`「开启 → 验证后显示已启用」 | - |
-| C03 | 部分达成 | `src/app/auth/mfa/page.tsx` + `login-form.tsx:92,182` + `login-form.test.tsx:192` | **挑战页本身零自动化覆盖**（无页面单测、无 E2E 走 `/auth/mfa`） |
+| C03 | 达成 | `src/app/auth/mfa/page.tsx` + `login-form.tsx:92,182` + **挑战页自身测试 `src/app/auth/mfa/page.test.tsx`（13 条，2026-09-22 由 v0.12.0 的 C03 补上）** | 仍缺一条端到端走 `/auth/mfa` 的 E2E |
 | C04 | 达成 | `src/lib/repositories/mfa-recovery-codes.ts`（listUnused/replace/consume）+ 两个 action 测试 | - |
 | C05 | 达成 | `hashRecoveryCode`（SHA-256，`actions/recovery-codes.ts:26`）+ 迁移 `013`/`022` | 明文只在 UI 单次展示，这一点无门禁守护 |
 | C06 | 达成 | `src/lib/auth/errors.ts:40-43` + `actions/login-attempts.ts`（邮箱 5 次 / IP 20 次每 15 分钟）+ `rate-limit.ts` | - |
@@ -224,7 +224,10 @@
 3. **生产 smoke 复跑**：v0.7.0–v0.11.0 的执行记录待补，v0.11.0 的有副作用场景需隔离账号。
 4. **F01/F02 mock 请求级隔离**：把 `createMockRequestStore` 真正接进 client/query/auth，
    再解锁 `fullyParallel`（F04）。
-5. **C03 挑战页测试**：`/auth/mfa` 页面本身目前没有自动化覆盖，可补组件测试 + 一条 E2E。
+5. ~~C03 挑战页测试~~ **已关闭（组件层）**：`src/app/auth/mfa/page.test.tsx` 13 条覆盖缺 factor、
+   输入门控、challenge/verify 失败与成功、redirect 消毒与恢复码分支；顺带发现并修掉了
+   「抛异常时按钮永久停在 `...`」的缺陷（异常路径原先不复位 `loading`），并用变异核对确认那两条
+   用例在还原生产代码后确实变红。剩一条端到端走 `/auth/mfa` 的 E2E 待补，它依赖 C01 的 Mock 隔离。
 6. **A02 孤岛 Server Action**：确认是保留为编程入口还是删除（删除需同步 service-role inventory、
    错误码门禁与文档）。
 7. **J01 的 CI 口径（核对后已关闭）**：客户端包体积基线 `check:bundle` 此前只在本地 `verify:build`

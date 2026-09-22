@@ -1,3 +1,43 @@
+## 2026-09-22 — MFA 挑战页第一次有自己的测试，顺手修掉「异常时按钮永久卡住」
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；v0.12.0 候选池的 C03（组件层已完成）。
+- 状态：DONE（异常兜底已修；`/auth/mfa` 的端到端用例仍缺，依赖 C01 的 Mock 隔离）。
+- 分支 / commit：`test/mfa-challenge-page`（基于 main `1c1c381`，即包体积门禁接进 CI 那条）。
+- 为什么做：退出报告把 C03 记为部分达成——`/auth/mfa` 挑战页**自身没有任何测试**
+  （只有 `login-form.test.tsx` 覆盖到「登录后跳来这里的决定」，以及 settings 的 enrollment E2E）。
+  这是认证链路上唯一一处「用户手输六位码换 aal2」的判定，出错方向是要么进不去、要么该拒的没拒。
+  写测试的过程本身也值回票价：它暴露了一个真实缺陷。
+- 完成内容：
+  1. `src/app/auth/mfa/page.test.tsx`（13 条）：缺 `factor` 参数（含空串）不渲染输入框只给回登录入口；
+     非数字被剔除且未满 6 位不放行提交；`challenge` 返回 error → `authMfaFailed` 提示且**不发 verify**、
+     不刷新会话、不跳转、按钮恢复可用；`verify` 返回 error → `authOtpExpired`，同样不动会话；
+     成功路径断言 `refreshSession()` + `logAuthEvent("auth.mfa_verified", {})` + 跳转 + `router.refresh()`；
+     `?redirect=` 走**真实的** `getSafeRedirect`（站外绝对 URL 与 `//evil.example` 都回落 dashboard）；
+     恢复码分支的切换/返回、纯空白不放行、兑换失败提示错误码、成功提示 `redeemed` 并引导重登。
+  2. **修掉抛异常导致的死锁**：`handleSubmit` / `handleRedeem` 原先只在「返回 error 对象」的分支里
+     `setLoading(false)`，而 supabase-js 断网/服务端错误时是**抛异常**、Server Action 也可能 reject，
+     于是异常路径下 `loading` 永不复位——按钮永久停在 `...` 且无任何提示，只能刷新页面。
+     改为 `try { … } catch { ta("authError") 提示 } finally { setLoading(false) }`。
+     异常没有 Supabase 的 `code`，所以能映射的只有通用文案；`check:action-errors` 一开始拦住了
+     「把 `error.message` 当文案」的写法（我最初试图把 message 塞进映射），改走静态 key 才通过——
+     这条门禁的判定在这里是对的，没有为它开例外。
+- 变更文件：5 个——新增 `src/app/auth/mfa/page.test.tsx`，修改 `src/app/auth/mfa/page.tsx`、
+  `CHANGELOG.md`、`docs/operations/release-exit-report-v0.6.0.md` / `docs/roadmap-0.6.0.md` /
+  `docs/roadmap-0.12.0.md` 的状态同步（C03 升为达成、汇总改为 91 达成 / 7 部分达成 / 2 未达成）、本条目。
+- 验证命令与结果：
+  - `npx vitest run src/app/auth` → 13 条通过；
+  - **变异核对**：`git stash push -- src/app/auth/mfa/page.tsx` 还原成修复前写法后重跑 →
+    恰好那 2 条异常用例变红、其余 11 条不受影响，随后 `git stash pop` 恢复；
+  - `pnpm check:action-errors` → `✅ 42 个错误码 × 2 个 locale，163 个前端文件无裸渲染`；
+  - `pnpm check:dynamic-keys`、`check:test-matrix` 各自通过；
+    `npx eslint src/app/auth/mfa --max-warnings 0` 与 `pnpm type-check` 退出码 0；
+  - `pnpm check:all` → `✅ 全部校验通过`。
+- 阻塞：无（此处不补 E2E：Mock 的 MFA 状态仍是进程全局，见 v0.12.0 的 C01）。
+- 风险 / 回滚：页面只加异常兜底与状态复位，成功/失败的既有分支语义不变（由 11 条原用例锁住）；
+  revert 本 commit 即回滚。
+- 下一项：C01（把 `createMockRequestStore` 接进 mock 的 client/query/auth，MFA 状态搬出进程全局），
+  它是 C02 并行基线与这条缺失 E2E 的共同前置。
+
 ## 2026-09-22 — 包体积基线接进 CI：顺手把「门禁怎么算已接线」这条规则修对
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
