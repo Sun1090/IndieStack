@@ -110,7 +110,11 @@ describe("inspectQueryErrorChannel()", () => {
     const sources = readQuerySources();
     const stats = collectErrorChannelCasts(sources);
     // 地板值：断言扫描真的读到了 awaited 查询结果，否则「零违规」只是没在看。
-    expect(stats.judged).toBeGreaterThanOrEqual(30);
+    // 挂在台账总数上而不是写死的数字——债务每还一处，这个下限应当自动跟着降，
+    // 一个「改进会让它红」的地板值迟早要学会被跳过。
+    expect(stats.judged).toBeGreaterThanOrEqual(
+      Object.values(ERROR_CHANNEL_EXEMPTIONS).reduce((total, entry) => total + entry.sites, 0),
+    );
     expect(stats.unparseable).toEqual([]);
     expect(inspectQueryErrorChannel(sources)).toEqual([]);
 
