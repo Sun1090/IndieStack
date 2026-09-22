@@ -19,11 +19,16 @@ export default async function AuditLogsLayout({ children }: { children: React.Re
     redirect(ROUTES.login);
   }
 
-  const { data: profile } = (await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single()) as { data: { role: string } | null };
+    .maybeSingle();
+
+  if (profileError) {
+    // 读不到角色不等于「不是 super_admin」：redirect 会把它答成一条权限拒绝。
+    throw new Error(`读取 super_admin 角色失败：${profileError.message}`);
+  }
 
   if (profile?.role !== "super_admin") {
     redirect(ROUTES.admin);
