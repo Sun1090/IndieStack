@@ -1,3 +1,50 @@
+## 2026-09-22 — J09 退出报告补上欠账：100 项逐条对回代码，顺带核对出摘要邮件不投递
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE（报告与下一版候选池已入库；`v0.6.0` 当年是**先发版后补报告**，这条就是那份欠账）。
+- 分支 / commit：`docs/exit-report-v0.6.0`（基于 main `333db59`，即上一条 digest 修复）。
+- 为什么做：`docs/operations/release-gap-audit-v0.6.0.md` 把 J09 记为「发布后生成」，
+  但 v0.6.0 当天就打了 tag（`git tag -l` 至今只有它），报告一直没写。roadmap 文件里
+  开头的进度汇总与 `（完成：…）` 标注从此再没人核对过——这正是「X 由 Y 守住」类断言最容易烂掉的地方。
+  所以这次不是补一份叙述性总结，而是**把 100 项与 6 条退出标准逐条对回代码、门禁与执行记录**。
+- 完成内容：
+  1. `docs/operations/release-exit-report-v0.6.0.md`：结论 89 达成 / 9 部分达成 / 2 未达成，
+     每项给出可复现来源（文件路径、`pnpm check:*`、CI run、演练记录）；6 条退出标准分别核对。
+     核对用了 5 个互不知情的只读子代理按域验证（要求「不信标注、去读代码」），
+     我自己的复核推翻/改写了其中 4 条判定（A09 的封面其实端到端在、A02 的 action 确实是孤岛、
+     E03 的调度接线达成但语义未达成、J06 的 smoke 在 v0.6.0 上真跑过）。
+  2. **最重要的发现是 P0**：digest 的错峰门控要求「用户本地小时恰好等于 8」，而 Hobby plan 下
+     `/api/cron/digest` 每天只有一个固定 UTC 时刻，实测只有 UTC-1 时区带命中——摘要邮件对
+     其余所有用户恒定不投递，且跳过分支不计数，表现为每轮 `pulled=N, sent=0` 的「成功」。
+     可见性与文档反话已在 PR #59 修（`cron.digest.deferred` + 告警规则 + 双语 docs-site 改写），
+     **投递语义本身等产品决策**，列为报告遗留项第一条。
+  3. 其余与代码相悖的文本一并记进报告：「F01–F10 已完成」而 F01 完全没落地、
+     「A01–A10 已完成」而 A09 附件无实现、H01 已达成却没打标、H08 的「保留期不会执行」已过期、
+     D02/D03 的白名单其实早已上线。
+  4. `docs/roadmap-0.6.0.md` 加**收口横幅**并给 6 条退出标准补当日证据（沿用 v0.5.0 的写法）；
+     历史快照文本不逐条追改，以报告为准。J09 / J10 两条目按文件既有格式打完成标记。
+  5. J10 收口为 `docs/roadmap-0.12.0.md`：20 项候选全部来自报告的部分达成/未达成项与生产证据缺口，
+     并按本次教训写明「状态只在退出报告里维护，roadmap 只写目标与验收口径」。
+- 变更文件：4 个——新增 `docs/operations/release-exit-report-v0.6.0.md`、`docs/roadmap-0.12.0.md`，
+  修改 `docs/roadmap-0.6.0.md`（收口横幅 + 退出标准证据 + J09/J10 标记）、本条目。
+- 验证命令与结果：
+  - 退出标准 1：`pnpm verify:build` 退出码 0（188 文件 / 2,132 用例、Bundle 2845.7 kB 在基线内）、
+    `pnpm test:coverage` → branches **91.64%**（阈值 90）；
+  - 退出标准 2：`main@75fae73` 四条 workflow 全部 `completed/success`
+    （CI `35681181712`、CodeQL `35681181671`、Secrets Scan `35681181693`、Security checks `35681181697`），
+    `pnpm audit --prod` → `No known vulnerabilities found`；
+  - 退出标准 5：`check:migrations` / `check:migration-history`（`33 local migrations applied`）/
+    `check:rls` / `check:release-docs`（v0.11.0, 7 artifacts）/ `check:production-smoke`（8 个工作流）各自实跑通过；
+  - 退出标准 6 的 smoke 证据**独立复核**：`gh run view 34681676184` → `completed success`、
+    headSha `16f3b756…`，与 `production-smoke-v0.6.0.md` 记录一致；回滚侧则确认
+    `rollback-runbook-v0.6.0.md:44-52` 与 v0.11.0 同节仍是空模板；
+  - 报告里的每条「未达成/部分达成」都给了可 grep 的来源，`pnpm check:all` → `✅ 全部校验通过`。
+- 阻塞：报告本身无阻塞。B 域（生产 smoke 复跑、回滚演练、隔离账号、云端演练）需外部权限，
+  已作为 v0.12.0 的前置风险写进新 roadmap。
+- 风险 / 回滚：纯文档；revert 本 commit 即回滚。报告不改写历史文本，只新增核对结论。
+- 下一项：v0.12.0 的 A01（digest 投递语义定案）需要产品决策，已把三条路线与代价写进报告遗留项；
+  在此之前继续做不依赖生产的 C 域（mock 请求级隔离 C01、`/auth/mfa` 覆盖 C03、`verify:build` 进 CI C04）。
+
 ## 2026-09-22 — 退出报告核对时发现：摘要邮件「已调度但从不投递」，先把静默变成可见
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
