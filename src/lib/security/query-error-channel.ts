@@ -99,20 +99,6 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
     reason:
       'debt (C08-b): `currentPlan = teamInfo?.plan ?? "free"` — a failed membership read shows the wrong billing tier.',
   },
-  "src/app/dashboard/notifications/page.tsx": {
-    sites: 1,
-    reason:
-      "debt (C08-b): `settings={profile?.notification_settings ?? {}}` renders every toggle as off, and saving persists that.",
-  },
-  "src/app/dashboard/profile/edit/page.tsx": {
-    sites: 1,
-    reason:
-      'debt (C08-b): the edit form prefills `""` / `UTC` / `en` from a failed read, so saving overwrites the real profile values.',
-  },
-  "src/app/dashboard/profile/page.tsx": {
-    sites: 1,
-    reason: "debt (C08-b): a failed profile read shows the role as `member` and fields as empty.",
-  },
   "src/lib/actions/api-keys.ts": {
     sites: 1,
     reason:
