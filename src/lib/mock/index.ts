@@ -1280,6 +1280,11 @@ export class MockSupabaseClient {
       const session = generateMockSession();
       return { data: { session }, error: null };
     },
+    // MFA 挑战页在 verify 之后 await 它来取回升级后的会话；mock 少一个方法就是
+    // 「验证码明明对了，页面却报通用登录失败」——见 e2e/mfa-challenge.spec.ts。
+    refreshSession: async () => {
+      return { data: { user: getMockUser(), session: generateMockSession() }, error: null };
+    },
     signOut: async () => {
       return { error: null };
     },
@@ -1287,7 +1292,16 @@ export class MockSupabaseClient {
       return { data: { user: getMockUser(), session: generateMockSession() }, error: null };
     },
     signInWithPassword: async () => {
-      return { data: { user: getMockUser(), session: generateMockSession() }, error: null };
+      // 真实 Supabase 在登录响应里带回 user.factors（含 status），登录表单据此判断要不要跳挑战页；
+      // 不带就等于 mock 模式下 MFA 那条分支永远走不到，E2E 也就进不了 /auth/mfa。
+      const factors = getMockMfaFactors(this.store).map((factor) => ({ ...factor }));
+      return {
+        data: {
+          user: { ...getMockUser(), factors },
+          session: generateMockSession(),
+        },
+        error: null,
+      };
     },
     signInWithOAuth: async () => {
       return { data: { provider: "github", url: "http://localhost:3000" }, error: null };
