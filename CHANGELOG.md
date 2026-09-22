@@ -225,6 +225,24 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **个人资料页与通知偏好页不再把一次读失败渲染成一份合法的默认值**（C08-b 第二批）：
+  `dashboard/profile/edit/page.tsx`、`dashboard/profile/page.tsx`、`dashboard/notifications/page.tsx`
+  三处的 `profiles` 读取原先写成 `(await …single()) as unknown as { data: … }`，既不看 `error`，
+  也用 `single()` 把「这个账户还没有 profiles 行」也当成异常路径。读失败时页面照常渲染：
+  编辑页把姓名、简介预填成空、时区预填成 `UTC`、语言预填成 `en`，通知页把每一个偏好开关渲染成「关」，
+  个人资料页把角色显示成 `member`。**用户看不出这是读取失败**，而编辑页和通知页更糟——它们是表单，
+  用户顺手点一次「保存」，就把真实的资料与偏好按这份假默认值写回数据库。
+  现在三处都改用 `maybeSingle()` 并真正读 `error`：缺行仍按空值渲染（那确实是合法状态），
+  读失败则抛出，由 `dashboard/error.tsx` 渲染可重试的错误页。
+  **用户可见的变化**：数据库抖动时这三页显示「出错了 + 重试」，而不是一份看起来正常的空白资料；
+  页面上的字全部走 `errors.errorBoundary.*` 翻译键，抛出的中文只进服务端日志。
+  每页两条用例（读失败必须抛、缺行必须仍能渲染），变异核对：三处 `if (profileError)` 逐个短路成
+  `if (false)`，各自只让对应那条红。渲染侧另外量过一遍：`e2e/a11y.spec.ts` +
+  `notifications-realtime.spec.ts` + `uploads.spec.ts`（这三份会真的走进
+  `/dashboard/notifications` 与 `/dashboard/profile/edit`）20/20 通过，Mock 客户端的
+  `maybeSingle()` 与真客户端同形，所以 `single()` → `maybeSingle()` 的切换没有把 E2E 变成另一套语义。
+  台账 19 → 16 处（debt 17 → 14）。
+
 - **项目读取失败不再被答成「项目不存在」「只有管理员能操作」，也不再悄悄抹掉 config**（C08-b 第一批）：
   `src/lib/actions/projects.ts` 里五处 awaited 查询——`createProject` / `deleteProject` / `updateProject`
   的成员身份读取、两处项目行读取，以及 `updateProject` 合并写入前读回来的那份 `config`——原先都不读

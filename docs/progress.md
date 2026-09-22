@@ -1262,3 +1262,36 @@
   `notifications/page.tsx:46` —— 同属「保存即覆盖真数据」，读完代码才发现它们和 config 是一族。
 - 更新时间：2026-09-23（UTC）。
 
+## 2026-09-23 — C08-b 第二批：三处「渲染成合法默认值」的读取改成显形失败
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 19 → 16 处，debt 17 → 14）。
+- 分支 / commit：`fix/c08b-prefill-overwrite`（栈在 #93 之上，#93 又栈在 #92 之上；三个 PR 合并后
+  GitHub 会依次把 base 接回 main）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这一批是三页一起动：它们的行为完全同型，而且都不是「显示空态」那么无害——
+  `profile/edit` 与 `notifications` 是**表单**，读失败时预填的是 `""` / `UTC` / `en` 与「所有开关为关」，
+  用户看不出异常、点一次保存就把真实资料与偏好写回数据库；`profile`（查看页）则把角色显示成 `member`。
+  同一处还把 `single()` 用错了：`select("*")` 之后 `.single()` 在**零行**时也返回 error，
+  于是「这个账户还没有 profiles 行」这个合法状态和「查询失败」被混成同一件事——
+  现在统一成 `maybeSingle()`：缺行按空值渲染，读失败抛出。
+- 做了什么：三处绑定 `error` 并在渲染前 `throw`，交给既有的 `src/app/dashboard/error.tsx`
+  （渲染 `errors.errorBoundary.*` 的翻译文案 + 重试按钮 + digest，不泄露抛出的中文）；
+  台账里三条随之下线，`check:query-errors` 先报三条 `EXEMPT_STALE`、删条目后才恢复绿——
+  这条链子中的一次都没少。
+- 验证：
+  - 每页 2 条用例（读失败必抛 / 缺行仍渲染），6 passed；变异核对 3 项：三处 `if (profileError)`
+    逐个短路成 `if (false)`，各自只让对应那条红。
+  - 渲染侧真实取证：`e2e/a11y.spec.ts` + `e2e/notifications-realtime.spec.ts` + `e2e/uploads.spec.ts`
+    → **20/20 通过**，这三份会真的访问 `/dashboard/notifications` 与 `/dashboard/profile/edit`，
+    证明 Mock 客户端的 `maybeSingle()` 与真客户端同形，切换没有把 E2E 变成另一套语义。
+  - `pnpm check:query-errors` → 358 文件 / 28 处 awaited 断言 / 台账 16 处；
+    `CI=true pnpm check:all` → **exit 0**（38 道门禁、202 个测试文件全过）；`pnpm build` → exit 0。
+  - 一条与本条改动无关但要记下的事实：栈在未完成 PR 之上的分支**不会触发 CI**——
+    `ci.yml` 的 `pull_request` 只在 base 为 `main|develop` 时跑。所以 #93 / #94 的页面上是零检查，
+    我在两处 PR 描述里都写明了「不是红了，是没接」，并把本地 `check:all` 的等价性（C04 之后同一份清单）
+    与结果一并贴出来。
+- 下一批（C08-b ③）：鉴权与所有权判定——`lib/uploads/service.ts` 三处（封面上传把角色读失败答成
+  `onlyAdminsCreateProject`）、`api/invitations/route.ts` 五处、`lib/actions/sessions.ts` 与
+  `lib/actions/api-keys.ts` 各一处。
+- 更新时间：2026-09-23（UTC）。
+
