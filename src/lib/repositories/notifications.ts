@@ -40,6 +40,17 @@ export const EMAIL_NOTIFICATION_TYPES = [
 ] as const satisfies readonly NotificationType[];
 
 /**
+ * 「待发队列」= 未标记已发送 + 未读 + 限定类型 + 未达死信门槛。
+ *
+ * 三个消费方（worker 拉取、积压计数、最老一条的年龄）必须整段一致，否则面板上报的年龄
+ * 说的就不是 worker 看到的那支队伍。Supabase 的查询链是逐列泛型的（`select("*")` 与
+ * `select("id", {head:true})` 返回不同类型），抽成一个共享函数会把类型压成第一张表，
+ * 所以这里只把最易漂移的死信条件收成常量，四段过滤各自写全，
+ * 一致性由 `notifications.test.ts` 的「同一段过滤」用例钉住。
+ */
+const EMAIL_DEAD_LETTER_FILTER = `metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`;
+
+/**
  * 待发邮件通知（未读 + 未标记已发送 + 限定类型），供邮件 worker 拉取。
  * 邮件失败重试计数（metadata.email_attempts）达到上限的死信不再进入队列（v0.5.0 A02）。
  */
@@ -54,7 +65,7 @@ export async function listUnsentEmailNotifications(
     .eq("email_sent", false)
     .eq("is_read", false)
     .in("type", [...types])
-    .or(`metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`)
+    .or(EMAIL_DEAD_LETTER_FILTER)
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
@@ -73,9 +84,29 @@ export async function countUnsentEmailNotifications(): Promise<number> {
     .eq("email_sent", false)
     .eq("is_read", false)
     .in("type", [...EMAIL_NOTIFICATION_TYPES])
-    .or(`metadata->>email_attempts.is.null,metadata->>email_attempts.lt.${EMAIL_MAX_ATTEMPTS}`);
+    .or(EMAIL_DEAD_LETTER_FILTER);
   if (error) throw new Error(error.message);
   return count ?? 0;
+}
+
+/**
+ * 最老一条待发通知的 `created_at`（A05 可观测）；队列为空时 null。
+ * 与 worker 拉取同序（`created_at` 升序），所以第一条就是「卡在队列头部最久」的那一条。
+ */
+export async function oldestUnsentEmailCreatedAt(): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("notifications")
+    .select("created_at")
+    .eq("email_sent", false)
+    .eq("is_read", false)
+    .in("type", [...EMAIL_NOTIFICATION_TYPES])
+    .or(EMAIL_DEAD_LETTER_FILTER)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as { created_at?: string }[];
+  return rows[0]?.created_at ?? null;
 }
 
 /** 已达到重试上限的死信通知，供运维查看与人工恢复。 */

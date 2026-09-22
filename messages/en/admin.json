@@ -16,7 +16,15 @@
       "adminsDesc": "System admins and super admins",
       "normalUsersDesc": "Regular users and viewers",
       "contactMessagesDesc": "Messages submitted via the public contact form",
-      "webhookEventsDesc": "Stripe webhook deliveries recorded"
+      "webhookEventsDesc": "Stripe webhook deliveries recorded",
+      "emailQueue": "Email Queue",
+      "emailQueueEmptyDesc": "No notifications are waiting to be emailed",
+      "emailQueueDesc": "Oldest item has waited {age}; {rounds, plural, one {# recent run} other {# recent runs}} pulled items but sent none",
+      "emailQueueStaleDesc": "Stuck: oldest item has waited {age}; {rounds, plural, one {# recent run} other {# recent runs}} pulled items but sent none",
+      "queueAgeMinutes": "{value, plural, one {# minute} other {# minutes}}",
+      "queueAgeHours": "{value, plural, one {# hour} other {# hours}}",
+      "queueAgeDays": "{value, plural, one {# day} other {# days}}",
+      "queueAgeUnknown": "an unknown time"
     },
     "roleDistribution": "Role Distribution",
     "roleDistributionDesc": "Platform user role distribution",

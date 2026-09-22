@@ -237,6 +237,6 @@ export function handler() { return createAdminClient(); }
     expect(inspectAdminClientBoundary(sourceFiles)).toEqual([]);
     expect(facts).toHaveLength(ADMIN_CLIENT_INVENTORY.length);
     // 预算式断言：新增 service-role 调用点必须同时更新清单、文档与本数字。
-    expect(facts.reduce((total, fact) => total + fact.calls.length, 0)).toBe(86);
+    expect(facts.reduce((total, fact) => total + fact.calls.length, 0)).toBe(88);
   });
 });

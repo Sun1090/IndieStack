@@ -374,13 +374,15 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
       "listUnsentEmailNotifications",
       "markEmailFailed",
       "markEmailSent",
+      "oldestUnsentEmailCreatedAt",
     ],
     tables: ["notifications"],
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
     trust: { kind: "server-internal", evidence: [] },
-    rationale: "Notification queue and delivery state are maintained by trusted server workers.",
+    rationale:
+      "Notification queue and delivery state are maintained by trusted server workers and read back by the admin overview panel.",
   },
   {
     file: "src/lib/repositories/profiles.ts",
@@ -496,13 +498,14 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
   {
     file: "src/lib/repositories/worker-runs.ts",
     surface: "data-access",
-    calls: ["recordWorkerRun"],
+    calls: ["listRecentEmailWorkerRuns", "recordWorkerRun"],
     tables: ["email_worker_runs"],
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
     trust: { kind: "server-internal", evidence: [] },
-    rationale: "Worker run telemetry is written by the cron worker through service_role.",
+    rationale:
+      "Worker run telemetry is written by the cron worker through service_role and read back by the admin overview panel.",
   },
   {
     file: "src/lib/storage/index.ts",

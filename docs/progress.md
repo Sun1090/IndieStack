@@ -650,3 +650,57 @@
   都记在 `docs/roadmap-0.12.0.md`：A05 的不可投递条目出队语义，与 A01 下新增的
   「`profiles.timezone` 失去唯一消费者，资料页却仍在要求填写」。两者都不阻塞 A04 与 C01。
 
+
+## 2026-09-23 — 先看清积压的形状，再决定怎么出队：管理面板补上待发队列三读数（A05 前半）
+
+- 里程碑 / 版本：v0.12.0 A05 的可观测那一半。
+- 状态：PARTIAL（面板读数 ✅；被跳过条目的出队语义 ✗，仍是等产品决策的那一条）。
+- 分支 / commit：`feat/admin-email-queue-observability`（基于 `e969035`）。
+- 为什么做：A05 的核对结论是「无邮箱 / 偏好全关两类条目永远出不了队，攒够 100 条后新通知再也拉不到」。
+  但出队语义有三种做法（复用死信、新增 `email_skipped_reason` 过滤列、拉取侧翻页跳过），三者都会改变
+  面板与既有指标口径，属于产品决策，不接受顺手用 `markEmailSent` 掩盖。而**在看清规模之前讨论它等于猜**——
+  今天没有任何一个读数能回答「队伍多大、最老一条卡多久、这种轮次出现过几次」。
+- 完成内容：
+  1. 纯规则模块 `src/lib/notifications/queue-diagnostics.ts`：`pending` / `oldestAgeMs` /
+     `emptySendRounds` / `stale`（48h = 两个日调度周期），外加年龄分档 `describePendingAge()`。
+     两条刻意的口径选择写进头部注释：① 空发送轮次**只数** `pulled>0 && sent===0 && failed===0`，
+     `failed>0` 已经由 A04 的跳过可见性与 `email_attempts` 表达，混进来会让「投递失败」和
+     「根本没有可投递对象」两种故障共用一个数字；② 分档只出数值与单位档，不拼字符串——
+     单位词属于文案，天档起点必须与 stale 阈值同刻度，否则会出现「显示 1 天却已经 stale」。
+  2. 仓储层：新增 `oldestUnsentEmailCreatedAt()`（与 worker 拉取同序、`limit 1`）与
+     `listRecentEmailWorkerRuns()`（默认 20 轮）。三处待发队列读法的**一致性是这条改动的全部价值**，
+     但 Supabase 的查询链逐列泛型，抽共享函数会把类型压成清单里的第一张表（`pnpm type-check` 当场报），
+     于是改成：四段过滤各处写全、只把死信条件收成 `EMAIL_DEAD_LETTER_FILTER` 常量，
+     再由测试钉「三个口径的过滤调用逐项相等」。
+  3. 面板：admin 概览页新增「邮件待发队列」卡片，值 = 条数，描述 = 最老一条年龄 + 空发送轮次，
+     stale 时换成带「已卡住」的另一个键。双语 `overview.stats.*` 新增 9 个键（含分钟/小时/天三档
+     与一个「未知时长」兜底，用于两条查询之间条目刚好被发走的竞态）。
+     读数拼装放在 `queue-observability.ts` 而不是组件里——`Date.now()` 写在 Server Component
+     体内被 `react-hooks/purity` 判为不纯（这条规则是对的：时钟不该在渲染里），而模块顶层取一次
+     又会让年龄从进程启动起就不动；拼装另外也只剩一处。
+  4. service-role 清单：两个新只读调用点，预算 86 → 88，`docs/db/security-audit.md` 的快照同步
+     （模块数不变，仍 31）。
+  5. 顺手修掉一个真实缺陷（另见 CHANGELOG Fixed）：`a11y.spec.ts` 的 `page.goto(pageInfo.path)` 与
+     `smoke.spec.ts` / `responsive.spec.ts` 的 7 处调用不带 `appUrl()`，靠 `baseURL` 解析＝并行时全打回
+     slot 0；C02 那条规则按字面量匹配，正好放过「路径装在变量里」。规则改为逐行看调用点。
+- 变更文件：25 个——`queue-diagnostics.ts` / `queue-observability.ts` 各带单测、
+  `repositories/notifications.ts` 与其单测、`repositories/worker-runs.ts` 与其单测、
+  `admin/page.tsx`、双语 `messages/admin.json`、`admin-client-boundary.ts` 与其测试、
+  `docs/db/security-audit.md`、`e2e-shard-policy.test.ts`、`docs/testing.md`、
+  `e2e/admin-contact-mfa.spec.ts`、`e2e/a11y.spec.ts`、`e2e/smoke.spec.ts`、`e2e/responsive.spec.ts`、
+  CHANGELOG、`roadmap-0.12.0.md`、双语 `docs-site/email.md` 与本条目。
+- 验证命令与结果：
+  - 变异核对（新断言逐条「故意做坏」）：纯模块 7 项（去掉 `pending>0` 前置、把 `failed>0` 混进空发送、
+    `>=`→`>`、去掉负数钳制、小时档改 24h、`null`→`0 分钟`、天档四舍五入）全红；
+    仓储 7 项（最老一条忘掉共享过滤 / 去掉 order / 去掉 `?? null`、三列 `select`→`*`、
+    排序反向、缺列不补 0、默认 limit 改 5）全红；
+    口径一致 4 项（任一消费方少一段 `.eq/.in/.or`、最老一条少 `.limit(1)`）全红；
+    组装 4 项（`nowMs` 写死 0、丢掉 recentRuns、丢掉 oldestCreatedAt、pending 硬编码 0）全红；
+    隔离规则 4 项（变量式 goto、裸相对 request、裸相对字面量、写死 3100）全红且 `appUrl()` 对照组绿。
+  - `CI=true pnpm test` → 全绿（新增 20 条：纯模块 11 + 读数组装 2 + 通知仓储 4 + 运行记录仓储 3）。
+  - `E2E_BASE_PORT=3101 pnpm test:e2e e2e/admin-contact-mfa.spec.ts -g "待发队列"` → **1 passed**；
+    把卡片值改成 `pending + 2` 复跑 → **1 failed**，证明这条 E2E 抓得住数字口径。
+- 风险 / 回滚：面板每次打开多两条只读查询（`count head` + `limit 1` + `limit 20`），量级可忽略；
+  不改任何发送/出队行为，生产队列语义与改动前完全一致。回滚 = revert 本分支的两个 commit。
+- 下一项：A05 的后半（出队语义）等产品决策；A01 剩下的 `profiles.timezone`、C06 的两条孤儿 Server
+  Action 同样等决策。可继续自主推进的是 C04 余下部分与文档事实门禁的收尾。

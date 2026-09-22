@@ -15,7 +15,8 @@ import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { countContactMessages } from "@/lib/repositories/contact-messages";
 import { countWebhookEvents } from "@/lib/repositories/webhook-events";
-import { Users, Activity, Shield, AlertTriangle, Mail, Webhook } from "lucide-react";
+import { readEmailQueueDiagnostics } from "@/lib/notifications/queue-observability";
+import { describePendingAge, type PendingAgeParts } from "@/lib/notifications/queue-diagnostics";import { Users, Activity, Shield, AlertTriangle, Mail, Webhook, Inbox } from "lucide-react";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin");
@@ -61,10 +62,21 @@ export default async function AdminPage() {
     });
   }
 
-  const [messagesTotal, webhookTotal] = await Promise.all([
+  const [messagesTotal, webhookTotal, emailQueue] = await Promise.all([
     countContactMessages(),
     countWebhookEvents(),
+    // A05：出队语义还没定，但这三个数必须先看得见——队列规模、最老一条卡了多久、
+    // 以及「拉到东西却一封没发出去」的轮次。跳过条目的原因（无邮箱 / 偏好全关）由
+    // `cron.digest.skipped` 指标表达，这里只报后果。
+    readEmailQueueDiagnostics(),
   ]);
+  const queueAge = describePendingAge(emailQueue.oldestAgeMs);
+  const queueAgeLabel = (parts: PendingAgeParts | null): string => {
+    if (parts === null) return t("overview.stats.queueAgeUnknown");
+    if (parts.unit === "days") return t("overview.stats.queueAgeDays", { value: parts.value });
+    if (parts.unit === "hours") return t("overview.stats.queueAgeHours", { value: parts.value });
+    return t("overview.stats.queueAgeMinutes", { value: parts.value });
+  };
 
   const statsCards = [
     {
@@ -102,6 +114,23 @@ export default async function AdminPage() {
       value: webhookTotal,
       desc: t("overview.stats.webhookEventsDesc"),
       icon: Webhook,
+    },
+    {
+      title: t("overview.stats.emailQueue"),
+      value: emailQueue.pending,
+      desc:
+        emailQueue.pending === 0
+          ? t("overview.stats.emailQueueEmptyDesc")
+          : emailQueue.stale
+            ? t("overview.stats.emailQueueStaleDesc", {
+                age: queueAgeLabel(queueAge),
+                rounds: emailQueue.emptySendRounds,
+              })
+            : t("overview.stats.emailQueueDesc", {
+                age: queueAgeLabel(queueAge),
+                rounds: emailQueue.emptySendRounds,
+              }),
+      icon: Inbox,
     },
   ];
 

@@ -19,6 +19,7 @@ import {
   markNotificationRead,
   createNotification,
   listUnsentEmailNotifications,
+  oldestUnsentEmailCreatedAt,
   markEmailSent,
   markEmailFailed,
   listDeadLetterNotifications,
@@ -228,6 +229,51 @@ describe("countUnsentEmailNotifications()", () => {
       dbClientMock(() => chainMock({ error: { message: "db" } })),
     );
     await expect(countUnsentEmailNotifications()).rejects.toThrow("db");
+  });
+});
+
+/** 待发队列的过滤条件走这三个方法；select/order/limit 允许各自不同。 */
+function filterCalls(chain: ReturnType<typeof chainMock>) {
+  const spied = chain as unknown as Record<string, { mock: { calls: unknown[][] } }>;
+  return ["eq", "in", "or"].map((method) => spied[method].mock.calls);
+}
+
+describe("oldestUnsentEmailCreatedAt()", () => {
+  it("取最老一条：按 created_at 升序只看第一条", async () => {
+    const chain = chainMock({ data: [{ created_at: "2026-09-20T00:00:00.000Z" }] });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await expect(oldestUnsentEmailCreatedAt()).resolves.toBe("2026-09-20T00:00:00.000Z");
+    expect(chain.order).toHaveBeenCalledWith("created_at", { ascending: true });
+    expect(chain.limit).toHaveBeenCalledWith(1);
+  });
+
+  it("队列为空时没有年龄可报", async () => {
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chainMock({ data: [] })) });
+    await expect(oldestUnsentEmailCreatedAt()).resolves.toBeNull();
+  });
+
+  it("数据库错误抛错", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(oldestUnsentEmailCreatedAt()).rejects.toThrow("db");
+  });
+
+  it("拉取、计数、最老一条走的是同一段过滤（面板说的必须就是 worker 那支队）", async () => {
+    const query = [
+      () => listUnsentEmailNotifications(),
+      () => countUnsentEmailNotifications(),
+      () => oldestUnsentEmailCreatedAt(),
+    ];
+    const calls: unknown[][] = [];
+    for (const runQuery of query) {
+      const chain = chainMock({ data: [], count: 0 });
+      createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+      await runQuery();
+      calls.push(filterCalls(chain));
+    }
+    expect(calls[1]).toEqual(calls[0]);
+    expect(calls[2]).toEqual(calls[0]);
   });
 });
 

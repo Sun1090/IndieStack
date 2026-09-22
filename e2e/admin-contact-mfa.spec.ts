@@ -80,6 +80,54 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     expect(cardCount).toBeGreaterThan(0);
   });
 
+  /**
+   * A05：面板上的「邮件待发队列」必须就是 worker 看到的那支队伍。
+   *
+   * 清空后种 3 条队列内类型（`payment_succeeded`）+ 2 条队列外类型（`system`）：
+   * 种子端点回读的是「未发送未读」的全部 5 条（它不按类型过滤），卡片必须只报 3。
+   * 两头数字不一样才是这条用例的价值——只断言「渲染了一个数」的话，
+   * 类型列表写错、忘掉了死信过滤都能照样通过。
+   */
+  test("admin 概览页的待发队列数字与队列本身一致", async ({ page, request }) => {
+    const headers = { authorization: `Bearer ${E2E_BEARER}` };
+    const seedJson = { ...headers, "content-type": "application/json" };
+    await request.delete(`${appUrl()}/api/e2e/seed-notifications`, { headers });
+    for (const [count, type] of [
+      [3, "payment_succeeded"],
+      [2, "system"],
+    ] as const) {
+      const seeded = await request.post(`${appUrl()}/api/e2e/seed-notifications`, {
+        headers: seedJson,
+        data: { count, type },
+      });
+      expect(seeded.ok()).toBeTruthy();
+    }
+    const readBack = await request.get(`${appUrl()}/api/e2e/seed-notifications`, { headers });
+    expect(readBack.ok()).toBeTruthy();
+    const { total } = (await readBack.json()) as { total: number };
+    expect(total).toBe(5);
+
+    await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
+    await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
+    await page.locator("input[type=password]").first().fill("password123");
+    await page.getByRole("button", { name: /sign in|登录/i }).click();
+    await page.waitForURL("**/dashboard", { timeout: 15_000 });
+
+    const response = await page.goto(`${appUrl()}/dashboard/admin`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    expect(response?.status()).toBe(200);
+
+    const queueCard = page
+      .getByRole("heading", { name: /email queue|邮件待发队列/i })
+      .locator("xpath=ancestor::div[contains(@class,'bg-card')][1]");
+    await expect(queueCard).toBeVisible();
+    await expect(queueCard.getByText("3", { exact: true })).toBeVisible();
+    // 有积压时卡片说的是「卡了多久 + 几轮空发送」，不是另一句泛泛的统计文案
+    await expect(queueCard.getByText(/oldest item has waited|最老一条已等待/i)).toBeVisible();
+  });
+
   test("admin/users 用户列表页可达并渲染用户行", async ({ page }) => {
     await page.goto(`${appUrl()}/auth/login`, { timeout: 60_000 });
     await page.locator("input[type=email]").first().fill(MOCK_EMAIL);

@@ -6,6 +6,26 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **管理面板终于看得见邮件待发队列的形状**（A05 前半）：新增 `src/lib/notifications/queue-diagnostics.ts`
+  ——纯规则，四件事：队列有多少条、最老一条卡了多久、最近有几轮「拉到东西却一封没发出去」、
+  以及超过 48h（两个日调度周期）算不算卡住；admin 概览页多一张「邮件待发队列」卡片。
+  先做可观测的理由写在模块头部：**在看清规模之前讨论出队语义等于猜**。偏好全关 / 无邮箱这两类
+  被跳过的条目仍然永远出不了队列，本条**不改变任何发送行为**，出队语义仍待拍板。
+  口径一致性是这里唯一真正要紧的东西：面板上报的年龄必须说的是 worker 那支队伍。
+  `repositories/notifications.ts` 里拉取、积压计数、`oldestUnsentEmailCreatedAt()`（新增）读同一段过滤，
+  但 Supabase 的查询链是逐列泛型的——`select("*")` 与 `select("id", {head:true})` 返回不同类型，
+  抽成一个共享函数会把类型压成清单里的第一张表（`pnpm type-check` 当场报出来），所以三处各自写全
+  四段过滤，只把最易漂移的死信条件收成常量，一致性交给 `notifications.test.ts` 一条
+  「三个口径的过滤调用逐项相等」的用例。变异核对：任何一处少一段 `.eq/.in/.or`、
+  或者最老一条少了 `.limit(1)`，该用例红。新增 `listRecentEmailWorkerRuns()`（默认 20 轮）读
+  `email_worker_runs`；service-role 清单因此 86 → 88 个调用点（模块数不变），
+  `docs/db/security-audit.md` 的快照同步。年龄分档留在纯模块里（分钟/小时/天，天档起点就是 stale
+  阈值，否则会出现「显示 1 天却已经 stale」），单位词交给 `messages/{en,zh-CN}/admin.json`。
+  读数拼装放在 `src/lib/notifications/queue-observability.ts` 而不是组件里：`Date.now()` 写在
+  Server Component 体内会被 `react-hooks/purity` 拦下，而把它挪到模块顶层又会让年龄从进程启动起就不动。
+  E2E 收口：admin 概览页种 3 条队列内类型 + 2 条队列外类型，卡片必须报 **3**，而种子端点按
+  「未发送未读」回读到的是 5——两个数字不一样才是这条用例的意义，只断言「渲染了一个数」的话，
+  类型列表写错、忘掉死信过滤都能照样通过。
 - **Mock 客户端的 auth 表面积从此要覆盖应用真正调用的方法**：新增 `src/lib/mock/auth-surface.test.ts`，
   扫 `src/**` 里的 `<client>.auth.<路径>(` 调用点（指标名之类的字符串不算，抽取靠「必须是调用」这一形状），
   逐个对回 `new MockSupabaseClient().auth` 的真实对象形状，缺哪一段就报「哪个文件 → auth.xxx（缺 xxx）」。

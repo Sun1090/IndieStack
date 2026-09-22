@@ -16,7 +16,15 @@
       "adminsDesc": "系统管理员和超级管理员",
       "normalUsersDesc": "普通用户和只读用户",
       "contactMessagesDesc": "通过公开联系表单提交的消息",
-      "webhookEventsDesc": "已记录的 Stripe webhook 投递事件"
+      "webhookEventsDesc": "已记录的 Stripe webhook 投递事件",
+      "emailQueue": "邮件待发队列",
+      "emailQueueEmptyDesc": "没有等待发送邮件的通知",
+      "emailQueueDesc": "最老一条已等待 {age}；最近 {rounds} 轮拉到条目却一封未发",
+      "emailQueueStaleDesc": "已卡住：最老一条已等待 {age}；最近 {rounds} 轮拉到条目却一封未发",
+      "queueAgeMinutes": "{value} 分钟",
+      "queueAgeHours": "{value} 小时",
+      "queueAgeDays": "{value} 天",
+      "queueAgeUnknown": "未知时长"
     },
     "roleDistribution": "角色分布",
     "roleDistributionDesc": "平台用户角色占比",
