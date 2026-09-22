@@ -37,6 +37,10 @@ describe("E2E shard policy", () => {
     );
     expect(config).toContain("workers: SERVERS");
     expect(config).toContain("Array.from({ length: SERVERS }");
+    // 并行模式下第一个用例本来要为每台服务器付 `next dev` 的按路由冷编译钱，
+    // 两轮复跑里红的就是它；预热只在 E2E_SERVERS>1 时生效，不拖慢串行 CI。
+    expect(config).toContain('globalSetup: "./e2e/support/warm-up.ts"');
+    expect(read("e2e/support/warm-up.ts")).toContain("if (SERVERS < 2) return;");
   });
 
   it("地址一律走 appUrl()，spec 里不留固定端口和裸相对导航", () => {

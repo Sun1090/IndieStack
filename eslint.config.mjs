@@ -9,6 +9,9 @@ const eslintConfig = defineConfig([
   {
     ignores: [
       ".next/**",
+      // 并行 E2E 的每台 dev server 有自己的 distDir（见 playwright.config.ts 的 NEXT_DIST_DIR），
+      // 里面是 Next 生成的 chunk，和被忽略的 .next 是同一类东西。
+      ".next-e2e-*/**",
       "dist/**",
       "out/**",
       "node_modules/**",
