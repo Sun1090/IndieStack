@@ -61,7 +61,10 @@
 
 ### B. 发布证据闭环（来自 J06 / J08 / E09）
 
-6. B01 （**2026-09-22 已完成**：生产构建配额恢复、`main` 已部署，`/api/health` 返回 `version=0.11.0`。
+6. B01 （**2026-09-22 已完成**：无副作用冒烟取到本地与 CI 两份证据，`/api/health` 返回
+   `version=0.11.0`。注意这条**不**等于「`main` 已部署」——生产当时停在 `a322a4e`，
+   构建身份的判定改走部署记录与 `commit` 字段，见 `docs/operations/production-smoke-v0.11.0.md`
+   的「冷启动与部署配额」。
    本地 `pnpm smoke:production --expected-version 0.11.0` 与 CI `workflow_dispatch` run `35702965727`
    各取一次 6/6，状态码、header 快照、JSON 与 artifact 指纹已写进
    `docs/operations/production-smoke-v0.11.0.md`；定时 run `35700843878` 的 `smoke-main` 同步转绿。

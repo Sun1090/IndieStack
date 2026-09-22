@@ -103,6 +103,23 @@ README 与 `RELEASE_CHECKLIST` 接线；本地 `pnpm check:release-docs` / `chec
   这一版已部署的构建不上报它，而本文件的停止条件正是「无法证明部署 commit 与验证 commit 相同」。
   在这之前打 tag 等于把一个无法归属的构建说成发布制品。下一次部署带上该字段后，
   用 `pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 就能把这条补齐。
+  在 `commit` 字段上生产**之前**，身份仍然有一条不需要 Vercel 权限的权威证据：GitHub 的部署记录
+  （Vercel 的 GitHub App 会写进来）。两步，实测可用：
+
+  ```bash
+  # 1) 最近一条生产部署：环境名必须**精确等于**本项目，用前缀匹配会把
+  #    `Production – indie-stack-docs-site`（另一个项目）一起捞进来，得出错的结论
+  gh api "repos/<owner>/<repo>/deployments?per_page=12" \
+    --jq '[.[] | select(.environment=="Production – indie-stack")][0]
+          | "\(.id) \(.sha[0:7]) \(.created_at)"'
+  # 2) 再查这条的状态：只有 `success` 才算已部署
+  gh api "repos/<owner>/<repo>/deployments/<ID>/statuses" --jq '.[0].state'
+  ```
+
+  两个坑：**被限流的推送根本不会产生生产部署记录**（所以「记录里没有这个 commit」就是没部署的证据，
+  而不是等会儿会补上）；记录存在也**不等于**构建成功，状态必须单独查。
+  它给的是「哪一个 commit 被部署了」，而 `/api/health` 给的是「正在服务的那个构建自报什么版本」——
+  两者可以互相印证，但**都不能**由 `version` 数字推出「当前 `main` 已落地」。
 - **账户删除端到端演练未执行**（差异 2）。这是本版本唯一的不可逆面，缺它就没有发布证据；
   需要一个可牺牲的测试账号，不接受用真实用户数据代跑。
 - **回滚探针未演练**：需要 Vercel dashboard 的 deployment 切换权限。
