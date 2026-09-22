@@ -87,9 +87,11 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
       "cron.retention.completed",
       "cron.retention.failed",
       "cron.retention.cleanup_failed",
+      "storage.orphan.objects",
+      "storage.orphan.unowned",
     ],
     cadence:
-      "每天 05:00 UTC 执行全部保留期清理函数；取代未安装的 pg_cron 周调度，且与其并存时保持幂等",
+      "每天 05:00 UTC 执行全部保留期清理函数，并只读巡检存储孤儿；取代未安装的 pg_cron 周调度，且与其并存时保持幂等",
   },
 ];
 

@@ -19,6 +19,12 @@ All notable changes to IndieStack will be documented in this file.
   调度了没登记、指标没写进告警文档都会失败）；`src/lib/repositories/retention.test.ts` 把清理清单与
   `RETENTION_POLICIES` 双向钉死，新增保留策略忘记接调度会直接失败。service-role 边界相应扩大到
   32 个模块 / 87 个调用点 / 10 个 RPC，已在 `docs/db/security-audit.md` 与清单里登记。
+- **孤儿巡检不再只靠人记得跑**：`/api/cron/retention` 每轮顺带调用一次 `find_orphan_upload_objects()`，
+  产出 `storage.orphan.objects` 与 `storage.orphan.unowned` 两个计数——后者就是「上传者账户已删除、
+  对象还在 bucket 里公开可读」的隐私面。033 与 `erasure.ts` 的注释一直写着失败删除「可被发现并补删」，
+  但那之前只有一个人手动的 `pnpm audit:storage-orphans`，没人跑就等于没这条链路；完整清单仍由该命令提供。
+  巡检是只读的，失败既不拖垮保留期那一轮，也不会被报成「零孤儿」：响应里 `orphans` 为 `null`，
+  且 `cron.retention.completed` 干脆不带 `orphans` 维度——缺失才是真的缺失。
 
 ### Fixed
 

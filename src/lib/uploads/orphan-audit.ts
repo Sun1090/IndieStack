@@ -10,6 +10,10 @@
  * 汇总刻意把 **owner_id 为空** 的行单列：那表示上传者账户已经删除，而对象还在
  * bucket 里公开可读。这是隐私面而不是容量问题，所以它排在总字节数前面。
  *
+ * 消费方有两个：`pnpm audit:storage-orphans`（按需取完整清单），以及
+ * `/api/cron/retention` 每天顺带的只读巡检——后者只用 `summarizeOrphans` 的
+ * `count` / `unowned` 两个数产指标，不落清单。
+ *
  * 边界（写在这里，不要靠猜）：RPC 的真相来源是 `upload_objects`，因此只能发现
  * 「有元数据行、无业务引用」的对象。031 之前直接写入 bucket、从未落过元数据的
  * 存量对象不在清单里，需要 provider 侧 `list()` 与数据库做集合差才能发现。

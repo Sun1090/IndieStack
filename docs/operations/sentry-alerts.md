@@ -61,6 +61,8 @@
 | `cron.retention.completed` | `ms` | `ran`, `failed` | 每轮 retention 结束（含部分失败），`ran`/`failed` 是清理函数的成功/失败个数 |
 | `cron.retention.cleanup_failed` | `count` | `cleanup_function` | 单个保留期清理函数失败，其余函数继续执行 |
 | `cron.retention.failed` | `count` | `error_type` | 每轮 retention 未处理异常 |
+| `storage.orphan.objects` | `count` | 无 | 每轮 retention 顺带的只读孤儿巡检：`status='active'` 且已无任何业务引用的托管对象数 |
+| `storage.orphan.unowned` | `count` | 无 | 同上其中**上传者账户已删除**的部分——这是隐私面（对象仍公开可读），不是容量问题 |
 | `ops.supabase.restore` | `count` | `action`, `projectStatus` | 每轮兜底恢复检查结束；`action` ∈ `noop`/`restore`/`wait`/`escalate`/`skipped`，每个终态恰好一条 `value=1` 样本（`projectStatus` 未知时为 `unknown`） |
 
 两层上传指标分工明确：`storage.upload.completed` 只覆盖 provider 的对象写入，反映 OSS/Supabase 自身健康度；
@@ -80,7 +82,7 @@
 |---|---|---|---|
 | `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，按用户本地时间错峰发送摘要；Vercel Hobby 每天最多一次 | `cron.digest.failed`、`email.backlog` |
 | `/api/cron/push-retry` | `0 22 * * *` | 每天 22:00 UTC 重试待投递 Push 并清理保留期外的终态行；Vercel Hobby 每天最多一次 | `cron.push-retry.failed`、`push.backlog` |
-| `/api/cron/retention` | `0 5 * * *` | 每天 05:00 UTC 逐个执行迁移里定义的保留期清理函数（不依赖 pg_cron）；Vercel Hobby 每天最多一次 | `cron.retention.failed`、`cron.retention.cleanup_failed` |
+| `/api/cron/retention` | `0 5 * * *` | 每天 05:00 UTC 逐个执行迁移里定义的保留期清理函数（不依赖 pg_cron），并顺带只读巡检存储孤儿；Vercel Hobby 每天最多一次 | `cron.retention.failed`、`cron.retention.cleanup_failed`、`storage.orphan.unowned` |
 
 平台级调度不走 worker 契约（无队列、无 worker 指标），在注册表里显式豁免：
 `/api/health`（`0 2 * * *` 保活）与 `/api/ops/supabase-restore`（`0 4 * * *` 兜底恢复）。
@@ -109,6 +111,8 @@
 | Push 队列清理失败 | `push.queue.prune_failed > 0`，15 分钟窗口 | 检查 Supabase 删除权限、连接与表锁；投递不受影响但队列会继续增长 |
 | 保留期清理部分失败 | `cron.retention.cleanup_failed > 0`，24 小时窗口 | 按 `cleanup_function` 定位是哪张表：查 service_role 执行权限与连接；其余表照常清理，过期行留到下一轮 |
 | 保留期清理整轮失败 | `cron.retention.failed > 0`，或 `/api/cron/retention` 在平台调度记录里返回 500，立即 | 保留期已全面不生效（隐私承诺开始失真）：查 Supabase 连接、迁移是否应用、028/032 的撤权是否变更 |
+| 存储孤儿出现 | `storage.orphan.objects > 0`，24 小时窗口 | 跑 `pnpm audit:storage-orphans`（只读）取清单，按 bucket 分组与最老天数判断是否需要补删 |
+| 已删账户的对象仍公开可读 | `storage.orphan.unowned > 0`，立即 | 隐私面而非容量面：账户删了、对象还在 bucket。先回溯删号时的 provider 删除失败日志，再补删该清单 |
 | 兜底恢复执行 | `ops.supabase.restore{action="restore"} > 0`，立即 | 记录恢复时刻；再回溯保活为何失效（`/api/health`、GitHub Actions 探测是否中断） |
 | 兜底层需要人工介入 | `ops.supabase.restore{action="escalate"} > 0`，立即 | 状态查询失败 / 恢复调用失败 / 不可恢复状态；按 `projectStatus` 与结构化错误日志定位 |
 | 兜底恢复被跳过 | `ops.supabase.restore{action="skipped"} > 0`，立即 | 生产环境缺 `SUPABASE_ACCESS_TOKEN` 或 `SUPABASE_PROJECT_REF`/`NEXT_PUBLIC_SUPABASE_URL`，兜底层已静默失效 |
