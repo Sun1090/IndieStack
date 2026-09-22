@@ -96,9 +96,9 @@
     各自计数、`listFactors` 返回副本），并在 `docs/architecture/13-mock-system.md` 写清
     「默认 store 是假数据库，运行时故意共享」这条边界——把它改成请求级会重演 v0.5.0 的
     「Action 写进去、RSC 读不到」
-12. C02 （**2026-09-22 部分完成：基线可复跑 ✅，全量并行可用 ✗**）`.github/workflows/e2e-parallel.yml`
-    已落地——`PW_FULLY_PARALLEL=true`、一个 dev server、全量（不带 `--shard`）、强制 `--retries=0`，
-    手动触发 + 每周一 `30 7 * * 1`。F04 欠的「可复跑」这一半已经还上。
+12. C02 （**2026-09-22 部分完成：基线可复跑 ✅，共享状态冲突已消除 ✅，全量并行仍不可用 ✗**）
+    `.github/workflows/e2e-parallel.yml` 已落地——`PW_FULLY_PARALLEL=true`、全量（不带 `--shard`）、
+    强制 `--retries=0`，手动触发 + 每周一 `30 7 * * 1`。F04 欠的「可复跑」这一半已经还上。
     **首跑红了**（run `35727094401`，12:25:42Z→12:29:18Z，job `10674329401`），4 条 spec 失败，
     机制是同一条：`next dev` 只有**一个**进程、一份 `MOCK_GLOBAL`，而 `fullyParallel` 连同一个文件里
     的用例都会拆到不同 worker，于是彼此打断——
@@ -115,13 +115,22 @@
     被拆到不同 worker 后，彼此的清理删光了对方刚种下的数据，它既是受害者也是加害者。
     证据指到的共享状态只有两处：`notifications` 表与本地 email inbox。`webhook_events`（去重断言全过）
     和 `email_worker_runs`（读它的那条失败路径用例没红）这次不在证据里，只是同类风险。
-    **剩下的那一半是新设计，不是改配置**：E2E 需要按 worker 给 store 命名空间（每个 worker 带一个 id，
-    `/api/e2e/*` 与 mock 客户端按 id 选 store），否则「并行」与「共享假数据库」在单个 dev server
-    进程里天然互斥。
-    默认 CI 仍是 2 个 shard、内部单 worker，全绿，不受这条红影响；也**不要**为了让基线变绿
+    **隔离已经做掉，走的是进程边界而不是 store 命名空间**（PR #77）：既然默认 store 是**进程级**的，
+    就让并行单位与进程单位对齐——`E2E_SERVERS=N` 起 N 台 `next dev`，`workers` 直接等于 N，
+    spec 侧所有应用地址走 `e2e/support/base-url.ts` 的 `appUrl()`（按 `TEST_WORKER_INDEX` 选端口）。
+    两台服务器要各自的 `NEXT_DIST_DIR`：Next 用 `<distDir>/dev/lock` 判断「这个工作副本已经有一个
+    dev server」，同一份源码上第二台会直接退出 1。代价是 `next.config.ts` 多一个 distDir 开关，
+    换来的是那 4 条按机制必然复现的冲突全部消失。
+    **两轮复跑**（同一 ref `30ec139`）：run `35742942744` = 106 passed / 1 failed，
+    run `35744080784` = 105 passed / 2 failed，三轮里红的分别是 `uploads`（登录导航 15s 超时）、
+    `smoke`（`page.goto` 60s 超时 + `ERR_ABORTED`）、`webhook-events`（同一个 event id 的第二次投递
+    没被认成 duplicate）。**没有一条是上一轮那类「别人往我表里种数据」**，而且三条各不相同、
+    换个 runner 就换一批——剩下挡住「并行全绿」的是 `next dev` 的冷编译与同进程多 worker
+    拆进程（route handler 换了进程，dedupe 记录自然看不见），不是 mock 的共享状态。
+    默认 CI 的 2 个 shard 仍然全绿，不受这条红影响；也**不要**为了让基线变绿
     把运行时的默认 store 改成请求级（见 C01 与 `docs/architecture/13-mock-system.md`）。
     退出标准第 3 条里的「C02 完成」按这条的口径判定：**有可复跑的运行记录只是下限，
-    并行全绿才算完成**
+    并行全绿才算完成**；下一块要啃的是冷编译/多进程，不是 store
 13. C03 （**2026-09-22 已完成**：组件层 13 条 + 真走一遍挑战流程的 E2E `e2e/mfa-challenge.spec.ts` 3 条）
     原文把它挂在「Mock 的 MFA 状态在 E2E 之间可隔离」上是错的，那是 C01 的前置，与这条无关。
     实测的阻塞有三处，都在仓库内，也都在这次改掉了：

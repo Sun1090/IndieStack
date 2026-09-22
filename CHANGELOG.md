@@ -32,6 +32,18 @@ All notable changes to IndieStack will be documented in this file.
   通用规则：**全仓库任意两个作业不得写同名 artifact**（变异核对：删 `PW_FULLY_PARALLEL` 环境、
   加 `pull_request` 触发、把 `pnpm test:e2e` 改成带 `--shard`、把 artifact 名改成与 ci.yml 重名，
   分别让对应断言变红）。
+- **并行 E2E 的隔离边界落在 worker 上**（C02 第二半）：`PW_FULLY_PARALLEL=true` 现在按
+  `E2E_SERVERS` 起**同样数量**的 dev server，`workers` 取同一个值，即一个 worker 一台服务器。
+  共享默认 store 是刻意的（假数据库，C01 已论证不能改成请求级），所以进程级的状态只能靠进程边界隔离。
+  `next dev` 用 `<distDir>/dev/lock` 判断「这个工作副本已经有一个 dev server」，同一份源码起第二台会
+  直接退出 1，因此 `next.config.ts` 支持 `NEXT_DIST_DIR`，每台服务器用 `.next-e2e-<slot>`——名字按
+  slot 而不是端口编，否则每换一个 `E2E_BASE_PORT` 都会让 Next 往 `tsconfig.json` 追加一组新路径，
+  而它写进去的不会自己回收。配套：spec 里的应用地址统一走 `e2e/support/base-url.ts` 的 `appUrl()`
+  （按 `TEST_WORKER_INDEX` 选端口），50 处 `${APP_URL}` 与 58 处裸相对 `page.goto` 清完；
+  `waitForURL("**/…")`、`page.route("**/…")` 这类与端口无关的 glob 保持相对形式。
+  两条新契约由 `e2e-shard-policy` 钉住：`workers` 必须等于服务器数；spec 里不得出现 `localhost:3100`
+  或裸相对 `page.goto`。附带收益：本机 3100 被别的项目占用时，`E2E_BASE_PORT=3101 pnpm test:e2e`
+  就能跑，不用改任何被测文件。
 - **文档里的调度事实从此要对得上仓库**（D01）：`pnpm check:cron-contract` 多一条规则，扫
   `docs-site/**` 与 `docs/**`（带日期的快照除外：发布页、runbook、roadmap 记录的是当时的事实，
   改它们等于伪造证据），把合法的 5 字段 cron 表达式与 `/api/cron/*` 路径逐个对回
@@ -270,14 +282,18 @@ All notable changes to IndieStack will be documented in this file.
   下一次部署之后，`pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 才是可用证据。
   非 Vercel 构建（本地、Docker）没有这两个环境变量，`commit` 恒为 `null`——这条链路的 commit 归属
   只在 Vercel 上成立，自建部署需要自己注入同名变量。
-- **E2E 全量并行仍不可用**：C02 的并行基线首跑（run `35727094401`）红 4 条，机制是同一条——
+- **E2E 全量并行仍不算可用，但挡住它的已经不是共享状态**：C02 的并行基线首跑（run
+  `35727094401`）红 4 条，机制是同一条——
   `next dev` 只有一个进程、一份默认 store，而 `fullyParallel` 把用例拆到不同 worker，于是彼此打断：
   `webhook-events.spec.ts:114` 的通知数读到 2（预期 1），`notifications-realtime.spec.ts:53` 等不到
   「暂无通知」空态（并行的 `push-retry.spec` 往同一张 `notifications` 表种了种子），`mail-flow.spec.ts`
   的前两条被**本文件自己的**顶层清理打死——并行下 `beforeAll`/`beforeEach` 每个 worker 各跑一次，
-  同文件三条用例互相删数据。这不是改配置能解决的：默认 store 必须保持共享（它是假数据库，见 C01），
-  要并行得按 worker 给 store 命名空间。在此之前「并行全绿」不是本项目的验收条件，基线变红按测量记录，
-  默认 CI 仍是两个 shard 各单 worker。
+  同文件三条用例互相删数据。这类冲突已随「一个 worker 一台 dev server」消失（见上面的 Added）。
+  同一 ref 复跑两轮：106/107 与 105/107，红的是 `uploads`（登录导航 15s 超时）、`smoke`
+  （`page.goto` 60s 超时）、`webhook-events`（同一 event id 的第二次投递没被认成 duplicate）——
+  三条各不相同，形状是 `next dev` 的冷编译与「route handler 被拆到另一个进程」，不是并发写同一份表。
+  在此之前「并行全绿」不作为验收条件；基线变红按测量记录，默认 CI 仍是两个 shard 各单 worker。
+  仍然禁止为了让它绿而把 mock 的运行时默认 store 改成请求级（那是假数据库，见 C01）。
 
 ## [0.11.0] — 2026-09-22
 

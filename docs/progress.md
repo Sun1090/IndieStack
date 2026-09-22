@@ -32,6 +32,48 @@
 - 下一项：C02 的第二半（按 worker 给 store 命名空间）或 C04 剩余部分。
 - 更新时间：2026-09-22（UTC 13:55 前后）。
 
+## 2026-09-22 — 并行 E2E 的隔离边界落在 worker 上：共享状态冲突清零，剩下的不是它（C02）
+
+- 里程碑 / 版本：v0.12.0 的 C02 第二半。
+- 状态：PARTIAL——共享状态冲突已消除 ✅，「并行全绿」仍 ✗，且挡住它的东西换了（见验证）。
+- 分支 / commit：`test/e2e-per-worker-servers`（PR #77，基于 `27165f2`）。
+- 为什么做：上一条目记下首跑 4 条红的机制是「一个 next 进程、一份 MOCK_GLOBAL」。C01 已经论证默认
+  store 不能改成请求级，那么并行的隔离只剩一条路：让并行单位与进程单位对齐。
+- 完成内容：
+  1. `PW_FULLY_PARALLEL=true` 时按 `E2E_SERVERS` 起 N 台 dev server，`workers = N`，一个 worker 一台。
+  2. **卡点在 Next 自己**：`next dev` 用 `<distDir>/dev/lock` 判断「这个工作副本已经有一个 server」，
+     同一份源码起第二台直接退出 1（第一次并行尝试就是这么死的，不是端口冲突）。于是 `next.config.ts`
+     支持 `NEXT_DIST_DIR`，每台服务器 `.next-e2e-<slot>`。
+  3. distDir 名字**按 slot 编而不是按端口**：Next 会把 `<distDir>/types/**` 追加进 `tsconfig.json`
+     且从不回收——按端口编就是每换一次 `E2E_BASE_PORT` 就往 tsconfig 里堆一组死路径（本机实测堆出 6 行）。
+  4. spec 侧：新增 `e2e/support/base-url.ts` 的 `appUrl()`（读 `TEST_WORKER_INDEX`），50 处
+     `${APP_URL}` 与 58 处裸相对 `page.goto` 全部改走它。裸相对路径以前是「约定」，现在是错的：
+     `use.baseURL` 是全局的，会把并发的 worker 全指回 slot 0。
+  5. 契约跟上：`e2e-shard-policy` 新增「`workers` 等于服务器数」与「spec 里不得出现 localhost:3100 /
+     裸相对 goto」两条；并行 workflow 的作业名与环境变量同步改写。
+- 变更文件：`playwright.config.ts`、`next.config.ts`、`.gitignore`、`e2e/support/base-url.ts`（新增）、
+  15 个 `e2e/*.spec.ts`、`e2e-shard-policy.test.ts`、`.github/workflows/e2e-parallel.yml`、
+  `docs/testing.md`、`docs-site/mock.md` + `docs-site/zh-CN/mock.md`、`docs/roadmap-0.12.0.md`、
+  `CHANGELOG.md`、`docs/operations/release-exit-report-v0.6.0.md`（C03 那格过期）、本条目。
+- 验证命令与结果：
+  - `pnpm lint` / `type-check` / `test`（194 文件 / 2218 用例）/ `build` **逐个取真实退出码**全 0
+    （第一次用 `| tail` 把失败吞了，教训重演一次）；文档门禁 7 项全 0。
+  - CI 常规路径在本 ref 上全绿：`E2E shard 1`、`E2E shard 2`、`E2E (Playwright)`、Unit、Build、
+    Lint & Type Check 全 pass，只有两个 Vercel 检查因项目配额红。
+  - **并行基线两轮**（同一 ref `30ec139`，手动 dispatch）：run `35742942744` = 106 passed / 1 failed；
+    run `35744080784` = 105 passed / 2 failed（用例总数 107，与本机 `playwright test --list` 一致）。
+    红的分别是 `uploads`（登录后 `waitForURL` 15s）、`smoke`（`page.goto` 60s + `ERR_ABORTED`）、
+    `webhook-events`（同 id 第二次投递未认 duplicate）。三条各不相同、且都不是上一轮那类
+    「别人往我表里种数据」——共享状态冲突清零，剩下的是 `next dev` 冷编译与 route handler 被拆到
+    另一进程（dedupe 记录随进程消失）。
+  - 本机 `E2E_SERVERS=3` 那轮 20 红 / 14 条是 60s 超时：一台笔记本上三份冷编译互相抢 CPU，
+    这个数只能证明「本机不是测并行的地方」，没有拿它下任何结论。
+- 阻塞 / 风险：C02 的「并行全绿」仍不成立，下一块要啃的是冷编译/多进程而不是 store；本 PR 不声称
+  达成退出标准第 3 条。风险是有人把这三条红重新解释成共享状态冲突——归因写在 roadmap C02。
+  回滚 = revert 两个 commit（地址约定要一起回退，否则 spec 又写死端口）。
+- 下一项：并行全绿需要处理冷编译（预热或超时预算），或按配额窗口复跑取第三轮证据。
+- 更新时间：2026-09-22（UTC 15:20 前后）。
+
 ## 2026-09-22 — MFA 挑战流程在 mock 里根本走不完：三处缺口，E2E 一撞就现形（C03）
 
 - 里程碑 / 版本：关闭 v0.12.0 的 C03。
