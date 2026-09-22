@@ -214,21 +214,25 @@ RLS 只约束 `anon` / `authenticated`；`service_role` 带 `BYPASSRLS`，因此
 pnpm check:supabase-security
 # ✅ Supabase security audit passed: 33 migrations, 20 public tables,
 #    server-only service role checks, 39 effective RLS policies,
-#    31 classified service-role call sites
+#    32 classified service-role call sites
 ```
 
 ### 清点结果
 
-**31 个模块 / 88 个调用点**（本表是清点快照，会随清单变化过期；数字与门禁输出不一致时以
+**32 个模块 / 89 个调用点**（本表是清点快照，会随清单变化过期；数字与门禁输出不一致时以
 `pnpm check:supabase-security` 与 `src/lib/security/admin-client-boundary.ts` 为准），
-按 surface 与信任依据分布（2026-09-23：A05 给管理面板加了两个只读口径
+按 surface 与信任依据分布（2026-09-23：`teams.member_count` 的重算从 Action / Route 里收进
+`src/lib/repositories/teams.ts`（`syncTeamMemberCount`），模块 31 → 32、`data-access` 15 → 16、
+调用点 88 → 89——四段重算收进一个仓储模块，总数反而 +1 是因为邀请分支的计数原本走**用户作用域**
+客户端（RLS 下只数得到自己可见的行）、写回却由 service_role 完成，现在两步都归到同一条 service_role 链上；
+上一次是 2026-09-23 的 A05 给管理面板加了两个只读口径
 （`oldestUnsentEmailCreatedAt`、`listRecentEmailWorkerRuns`），调用点 86 → 88，模块数不变；
-上一次是 2026-09-22 随 digest 错峰门控删除，
+再上次是 2026-09-22 随 digest 错峰门控删除，
 `/api/e2e/profile-timezone` 从清单移除，`e2e-mock-route` 6 → 5、模块 32 → 31、调用点 87 → 86）：
 
 | surface | 模块数 | 信任依据（trust kind） | 说明 |
 |---|---:|---|---|
-| `data-access` | 15 | `server-internal` | 仓储层，授权由调用方保证 |
+| `data-access` | 16 | `server-internal` | 仓储层，授权由调用方保证 |
 | `e2e-mock-route` | 5 | `mock-bearer` | 仅 mock 模式，需 bearer token |
 | `server-action` | 3 | `role` / `session` | Server Action 入口 |
 | `request-handler` | 1 | `role` | Route Handler 入口 |
@@ -238,7 +242,7 @@ pnpm check:supabase-security
 | `auth-bridge` | 1 | `caller-validated` | 调用方校验 WebAuthn 断言 |
 | `server-internal` | 2 | `server-internal` / `caller-validated` | 服务端通知辅助函数与账户删除编排 |
 | `storage-adapter` | 1 | `server-internal` | 固定 `avatars` bucket |
-| **合计** | **31** | 15 个模块带字面量授权证据 | **88 个调用点** |
+| **合计** | **32** | 15 个模块带字面量授权证据 | **89 个调用点** |
 
 被 service_role 触达的表面：15 张表、1 个 bucket（`avatars`）、10 个 RPC
 （`claim_webhook_event`，见 [webhook-idempotency.md](./webhook-idempotency.md)；

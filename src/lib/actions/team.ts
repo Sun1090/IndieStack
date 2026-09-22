@@ -7,6 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { findUserIdByEmail } from "@/lib/repositories/profiles";
+import { syncTeamMemberCount } from "@/lib/repositories/teams";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createTeamSchema,
@@ -181,16 +182,14 @@ export async function inviteMember(input: InviteMemberInput): Promise<ActionResu
     return fail("databaseError");
   }
 
-  // Recalculate member count instead of trusting a cached value
-  const { count } = await admin
-    .from("team_members")
-    .select("*", { count: "exact", head: true })
-    .eq("team_id", team.id);
-
-  await admin
-    .from("teams")
-    .update({ member_count: count ?? 1 })
-    .eq("id", team.id);
+  // 重算派生缓存；读不到数字就保持旧值，不写一个猜出来的数（见 repositories/teams.ts）
+  const synced = await syncTeamMemberCount(team.id);
+  if (synced !== "synced") {
+    await logActionError(
+      `[inviteMember] 成员已加入，但 teams.member_count 未更新（${synced}）：面板上的人数会偏旧`,
+      new Error("member_count_sync_failed"),
+    );
+  }
 
   revalidatePath(ROUTES.dashboardTeam);
   return ok();
@@ -252,16 +251,14 @@ export async function removeMember(memberId: string): Promise<ActionResult> {
     return fail("databaseError");
   }
 
-  // Recalculate member count after deletion
-  const { count } = await admin
-    .from("team_members")
-    .select("*", { count: "exact", head: true })
-    .eq("team_id", team.id);
-
-  await admin
-    .from("teams")
-    .update({ member_count: count ?? 0 })
-    .eq("id", team.id);
+  // 重算派生缓存；读不到数字就保持旧值（成员已经移走了，写 0 会把整队人抹掉）
+  const synced = await syncTeamMemberCount(team.id);
+  if (synced !== "synced") {
+    await logActionError(
+      `[removeMember] 成员已移除，但 teams.member_count 未更新（${synced}）：面板上的人数会偏新`,
+      new Error("member_count_sync_failed"),
+    );
+  }
 
   revalidatePath(ROUTES.dashboardTeam);
   return ok();

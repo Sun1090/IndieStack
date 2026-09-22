@@ -7,18 +7,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ROUTES } from "@/lib/constants";
 
-const { createClientMock, createAdminClientMock, findUserIdByEmailMock, revalidatePathMock } =
+const { createClientMock, createAdminClientMock, findUserIdByEmailMock, revalidatePathMock, logActionErrorMock } =
   vi.hoisted(() => ({
     createClientMock: vi.fn(),
     createAdminClientMock: vi.fn(),
     findUserIdByEmailMock: vi.fn(),
     revalidatePathMock: vi.fn(),
+    logActionErrorMock: vi.fn(async () => {}),
   }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 vi.mock("@/lib/repositories/profiles", () => ({ findUserIdByEmail: findUserIdByEmailMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
+vi.mock("@/lib/api-log", () => ({ logActionError: logActionErrorMock }));
 
 import { getCurrentTeam, createTeam, inviteMember, removeMember, updateMemberRole } from "./team";
 
@@ -409,7 +411,7 @@ describe("removeMember()", () => {
     await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "databaseError" });
   });
 
-  it("成功：删除并重算 member_count（count 缺失回退 0）", async () => {
+  it("重算读不到数字时：成员仍然移除成功，但必须上报「计数没更新」", async () => {
     createClientMock.mockResolvedValue(
       buildClient({
         queries: {
@@ -427,14 +429,18 @@ describe("removeMember()", () => {
           team_members: [
             { maybeSingle: { data: { role: "member" }, error: null } },
             { resolve: { error: null } }, // delete
-            { resolve: { count: null } }, // count 为 null → count ?? 0
+            { resolve: { count: null } }, // 重算读不到数字 → 不写，交给上报
           ],
-          teams: [{ resolve: { error: null } }], // update member_count
         },
       }),
     );
     await expect(removeMember("m1")).resolves.toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardTeam);
+    // 一枚过期的数字可以接受，静默不行：这里不报，运维就永远不知道面板在骗人
+    expect(logActionErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("member_count 未更新（count-failed）"),
+      expect.objectContaining({ message: "member_count_sync_failed" }),
+    );
   });
 });
 
