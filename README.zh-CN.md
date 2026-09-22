@@ -141,7 +141,7 @@ src/
 | `pnpm check:migrations`           | 校验迁移不可变校验和与命名/顺序规则                 |
 | `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加）                |
 | `pnpm check:migration-history`    | 比对本地 Supabase 迁移历史（需 `supabase start`）   |
-| `pnpm test`                       | Vitest 单元 + 组件测试（106 个文件 / 1,034 个测试） |
+| `pnpm test`                       | Vitest 单元 + 组件测试（node + jsdom 双项目） |
 | `pnpm test:e2e`                   | Playwright E2E 冒烟测试                             |
 | `pnpm test:visual`                | 对比 Linux Chromium 视觉回归基线                    |
 | `pnpm verify:build`               | 完整本地发布门禁：检查、测试、bundle 与生产构建     |
@@ -153,7 +153,7 @@ src/
 
 ## 测试
 
-- **单元/组件**：Vitest 双项目（node + jsdom），核心逻辑覆盖率门禁 ≥90%。
+- **单元/组件**：Vitest 双项目（node + jsdom）；核心逻辑覆盖率阈值由 `pnpm test:coverage` 强制，定义在 `vitest.config.ts`。
 - **E2E**：Playwright 冒烟测试（`pnpm test:e2e`，本地 Mock 模式无需 Supabase）。
 - **视觉回归**：关键公共页面的 Linux Chromium 基线（`pnpm test:visual`）。
 - **数据库身份矩阵**：`pnpm smoke:supabase-identity` 在真实本地/staging Supabase 上验证 RLS 与 Storage。

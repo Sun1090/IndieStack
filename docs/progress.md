@@ -1,3 +1,36 @@
+## 2026-09-22 — 文档数字要么有来源，要么删掉：易漂移计数退出文档，其余逐条对回
+
+- 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。
+- 状态：DONE。
+- 分支 / commit：`docs/remove-volatile-test-counts`（基于 main `74da81d`）。
+- 完成内容：
+  1. **先测再说**：`pnpm test` → 186 文件 / 2,119 用例（node 154/1,967 + jsdom 32/152）；
+     `playwright test --list` → 101 条 / 13 文件，`--shard=1/2` 60 条 9 文件、`--shard=2/2` 41 条 4 文件；
+     `vitest.config.ts` 阈值 statements 91 / branches 90 / functions 93 / lines 92；provider 注册表
+     11 组键、去重后 29 个变量；`check:states` 133 个应用层文件；`check:provider-docs` 输出 29；
+     `check:mock-docs` 输出 18 张表。
+  2. **纠正本文件上一条测量错误**：早前条目记「roadmap J02 的『86 条 E2E』实测 83」——83 是错的，
+     当前 `--list` 是 101 条 / 13 个文件。
+  3. **把没有门禁守着的计数从文档里删掉**，而不是再抄一份当前值：README 与 README.zh-CN 的
+     `pnpm test` 行不再写文件/用例数；docs-site 双语 introduction 删掉「270+ tests」（实际差约 8 倍）；
+     `docs/testing.md` 金字塔删掉「62 用例 / 300+」并写明「本文不写用例条数，事实在
+     `pnpm test` 与 `pnpm exec playwright test --list` 里」；shard 那条也不再写「86 条（46 / 40）」——
+     每片多少条由 Playwright 运行时决定，文档只留 `e2e-shard-policy.test.ts` 真正守住的那部分策略。
+  4. **仍然写着的声明逐条对回真实来源**：覆盖率阈值改成配置真实值（原「≥90%」把 91/93/92 三条地板
+     都说低了）；v0.11.0 release notes 的 provider 环境变量 28 → 29；`gate-wiring`「28 条单测」→ 29；
+     `security-config`「专项测试 54 条」无法从任何文件组合归因，改为按文件登记（31 + 5）。
+  5. **验真之后保留原样的**：`tokens`「28 条」= `tokens.test.ts` 20 + `design-token-check.test.ts` 8；
+     `native-theme`「24 条」= 16 + 8；trace「58 条」= 11 + 5 + 3 + 18 + 6 + 15 恰好吻合；
+     mock 指南「18 张表」与 `check:mock-docs` 输出一致。`agents/05-test-engineer.md` 的规模表本来就带
+     「数据截至」+「完整清单以 `pnpm test` 输出为准」的约定，按同一约定刷新为 186 / 2,119 与 smoke 25 条。
+- 变更文件：10 个——README ×2、docs-site introduction ×2、docs-site v0.11.0 ×2、`docs/testing.md`、
+  `agents/05-test-engineer.md`、`CHANGELOG.md`、`docs/progress.md`。
+- 验证命令与结果：`pnpm check:all` → `✅ 全部校验通过`；`pnpm -C docs-site build` → 通过；
+  `pnpm test` → 186 文件 / 2,119 用例；`pnpm lint` / `pnpm type-check` 干净。
+- 阻塞：无。
+- 风险 / 回滚：纯文档，不改任何运行行为；revert 即回滚。
+- 下一项：文档里还有一类同样没有来源的断言——「X 由 Y 门禁守住」的接线说明；按这条的验真方法继续。
+
 ## 2026-09-22 — 主题切换 E2E 的 hydration 竞态：CI 红的是用例写法，不是产品
 
 - 里程碑 / 版本：v0.11.0 之后的 `[Unreleased]`；生产仍 `0.10.0`（缺 Vercel build 配额）。

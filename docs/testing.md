@@ -5,20 +5,24 @@
 ## 测试金字塔
 
 ```
-      E2E（Playwright，62 用例）        ← 关键路径冒烟
+      E2E（Playwright）                 ← 关键路径冒烟
     ┌──────────────────────────┐
    │ 组件测试（jsdom + Testing Library）│ ← 交互组件
   │──────────────────────────────│
- │ 单元测试（Vitest node 环境，300+）  │ ← actions/工具/守卫
+ │ 单元测试（Vitest node 环境）        │ ← actions/工具/守卫
 └────────────────────────────────┘
 ```
+
+本文**不写用例条数**：条数每加一次测试就会变，写进文档就一定追不上——README 的 `pnpm test` 行写下时是
+准确的（进度日志里记着当天的 106 文件 / 1,034 用例），之后用例翻了一倍，它就一直是旧的。当前数量以
+`pnpm test` 与 `pnpm exec playwright test --list` 的输出为准。
 
 ## 命令
 
 | 命令                                 | 说明                                                                            |
 | ------------------------------------ | ------------------------------------------------------------------------------- |
 | `pnpm test`                          | 全部单元+组件测试                                                               |
-| `pnpm test:coverage`                 | 含覆盖率报告（核心逻辑门禁 ≥90%）                                               |
+| `pnpm test:coverage`                 | 含覆盖率报告（核心逻辑阈值见下方「覆盖率门禁」）                                   |
 | `pnpm test:e2e`                      | Playwright 冒烟（自动起 Mock dev server）                                       |
 | `pnpm test:visual`                   | 对比 Linux Chromium 视觉基线（CI 自动执行）                                     |
 | `pnpm test:visual:update`            | 在 Linux 容器中更新视觉基线，不从 macOS 直接生成                                |
@@ -54,16 +58,18 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 
 ## 覆盖率门禁
 
-`src/lib/**`（除 mock/stripe/supabase 客户端胶水层）：
-statements/functions/lines ≥ 90%，branches ≥ 90%。CI 强制。
+`src/lib/**`（除 mock/stripe/supabase 客户端胶水层）的阈值来自 `vitest.config.ts` 的
+`coverage.thresholds`，CI 用 `pnpm test:coverage` 强制：statements 91、branches 90、
+functions 93、lines 92。调整阈值改配置即可，本文这段只是当前值的快照。
 
 ## E2E
 
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
 - 默认单 worker 串行执行，避免多个 spec 通过同一个 dev server 互相清理/覆盖可变 Mock 状态；仅隔离实验可设置 `PW_FULLY_PARALLEL=true`
 - CI 使用 **Playwright shard 隔离并行**：`E2E (Playwright)` job 的 `[1, 2]` matrix 各自启动独立 dev server，
-  在 job 内继续单 worker；因此跨 shard 不共享 Mock 状态，86 条 E2E 由两个 job 分担（46 / 40），而不是在
-  同一条进程里提高 worker 数。视觉基线只有 4 条且必须单 worker，不做 shard，只在 shard 1 运行一次。
+  在 job 内继续单 worker；因此跨 shard 不共享 Mock 状态，全部 E2E 由两个 job 分担（具体条数由
+  `--shard` 在运行时划分，随用例增减），而不是在同一条进程里提高 worker 数。视觉基线必须单 worker，
+  不做 shard，只在 shard 1 运行一次。
 - 上述策略由 `src/lib/testing/e2e-shard-policy.test.ts` 读取 workflow/config 做回归；如果移除 shard、把
   `PW_FULLY_PARALLEL` 改成默认开启，或让两个 job 上传同名 artifact，Vitest 会失败。
 - E2E 跑在 `next dev` 上：首屏 HTML 服务端就渲染好了，但 React 要等冷编译 + hydration 才挂上事件监听。
@@ -263,7 +269,7 @@ Lint & Type Check job 均会执行。门禁只验证治理结构和引用完整�
 
 当前豁免只有三条，且都写明替代覆盖方式：`check:migration-history`（需要本地 Supabase）、
 `check:bundle`（需要完整生产构建）、`check:perf`（本地需要 `.next` 产物，CI 由 Build job 执行）。
-规则实现位于 `src/lib/release/gate-wiring.ts`（纯函数，28 条单测），IO/CLI 位于
+规则实现位于 `src/lib/release/gate-wiring.ts`（纯函数，29 条单测），IO/CLI 位于
 `scripts/lib/gate-wiring-check.js`，由 `scripts/check-gates.js` 经 Node 原生 type stripping 调用；
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明门禁被接线，不证明门禁本身的强度。
 
@@ -434,7 +440,9 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 除静态仓库检查外，它还会校验 `secrets-scan.yml`、`security-config.yml`、`codeql.yml` 和 `dependabot.yml` 的关键扫描配置没有漂移，包括 PR/main/develop 触发、gitleaks/codeql action 版本、full git history、只读权限、定时依赖审计、security-extended 查询和 Dependabot 的 npm/GitHub Actions 跟踪。依赖审计读取 `pnpm audit --json`，high/critical 任一大于 0 即失败；输入缺失、不可读或 JSON 形状异常时 fail-closed。
 
-规则实现位于 `src/lib/security/security-config.ts`（纯函数），IO/CLI 位于 `scripts/lib/security-config-check.js`，由 `scripts/check-security-config.js` 经 Node 原生 type stripping 调用。专项测试 54 条覆盖策略函数与 CLI 退出码；`pnpm check:all`、CI Lint & Type Check job 和独立的 `Security and configuration checks` workflow 均会执行。该门禁只证明当前工作树和扫描配置满足策略，不替代 gitleaks 对历史提交的扫描，也不证明历史中不存在已泄露密钥。
+规则实现位于 `src/lib/security/security-config.ts`（纯函数），IO/CLI 位于 `scripts/lib/security-config-check.js`，由 `scripts/check-security-config.js` 经 Node 原生 type stripping 调用。专项测试覆盖策略函数与 CLI 退出码：
+`src/lib/security/security-config.test.ts`（31 条）与 `security-config-check.test.ts`（5 条）；
+`pnpm check:all`、CI Lint & Type Check job 和独立的 `Security and configuration checks` workflow 均会执行。该门禁只证明当前工作树和扫描配置满足策略，不替代 gitleaks 对历史提交的扫描，也不证明历史中不存在已泄露密钥。
 
 ## 请求链路追踪覆盖门禁（E02）
 
