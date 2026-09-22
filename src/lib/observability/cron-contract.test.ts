@@ -280,6 +280,24 @@ describe("auditCronContract", () => {
     expect(codes(baseInput({ operationsDoc: doc }))).toContain("CRON_METRIC_UNDOCUMENTED");
   });
 
+  it("指标只在散文里提过一次不算登记（这条规则的牙齿）", () => {
+    const doc = DOC.replace(
+      "| email.backlog | count | 无 |",
+      "> 说明：`email.backlog` 每轮 digest 开始时上报，但没有表行。",
+    );
+    expect(auditCronContract(baseInput({ operationsDoc: doc })).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "CRON_METRIC_UNDOCUMENTED", subject: "email.backlog" }),
+      ]),
+    );
+  });
+
+  it("带反引号的表行算登记：真实文档的写法必须被接受", () => {
+    const backticked = DOC.replace(/^\| ([a-z0-9_.-]+) \|/gm, "| `$1` |");
+    expect(backticked).not.toBe(DOC);
+    expect(codes(baseInput({ operationsDoc: backticked }))).toEqual([]);
+  });
+
   it("401 分支未上报拒绝指标时报警", () => {
     const source = ROUTE_SOURCE.replace('recordCronRejected("digest", "invalid_credentials");', "");
     expect(codes(baseInput({ sources: { [WORKER.routeFile]: source } }))).toContain(

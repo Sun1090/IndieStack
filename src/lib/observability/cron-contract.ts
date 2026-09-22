@@ -445,6 +445,19 @@ export function exportsMethod(source: string, method: CronMethod): boolean {
   return new RegExp(`export\\s+(?:async\\s+)?function\\s+${method}\\b`).test(source);
 }
 
+/**
+ * 指标是否真的登记在告警文档的指标表里。
+ *
+ * 「在文档某处出现过」不是这条规则要的不变量：一个指标名可以在别的表的说明里提一次就永久免检，
+ * 指标表那一行被删掉时门禁照样全绿——2026-09-23 就是这样丢过 `cron.digest.failed` 那一行，
+ * 而它当时仍出现在调度表和告警规则里。所以只认**表行首格**，反引号可选（真实文档带反引号，
+ * 测试 fixture 不带）。
+ */
+export function documentsMetric(doc: string, metric: string): boolean {
+  const escaped = metric.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^\\|\\s*\`?${escaped}\`?\\s*\\|`, "m").test(doc);
+}
+
 function push(
   issues: CronContractIssue[],
   code: CronContractIssueCode,
@@ -533,8 +546,13 @@ function auditWorkerObservability(
         `路由未上报 ${metric}，该 worker 的轮次在指标上不可见`,
       );
     }
-    if (!operationsDoc.includes(metric)) {
-      push(issues, "CRON_METRIC_UNDOCUMENTED", metric, `告警文档未登记指标 ${metric}`);
+    if (!documentsMetric(operationsDoc, metric)) {
+      push(
+        issues,
+        "CRON_METRIC_UNDOCUMENTED",
+        metric,
+        `告警文档的指标表里没有 ${metric} 那一行（在别的表或散文里提过一次不算登记）`,
+      );
     }
   }
 
