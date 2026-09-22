@@ -1,3 +1,39 @@
+## 2026-09-22 — mock 的「进程全局状态」先测再改：21 个模块级镜像其实是死代码（C01）
+
+- 里程碑 / 版本：关闭 v0.12.0 的 C01，并把 C02 的前置认知写清。
+- 状态：DONE。
+- 分支 / commit：`feat/mock-request-isolation`（基于 PR #71 合并后的 main `7e07fe7`）。
+- 为什么做：roadmap 的 C01 与 v0.6.0 退出报告的 F01 都说「MFA 的 `_mockMfaFactors` /
+  `_mockMfaChallenges` 仍是进程全局，且没有任何 MFA 隔离测试」，并要求「把 `createMockRequestStore`
+  真正接进 client/query/auth（第二阶段）」。动手前先测，三点都不成立。
+- 完成内容：
+  1. **接线早就在**：`from()` → `new MockQueryBuilder(table, "*", this.store)`、`rpc()` 传
+     `this.store`、整个 `auth.mfa.*` 用 `this.store`。没有「第二阶段」可开工。
+  2. **那两个变量不承载状态**：脚本判定 21 个 `_mock*` 模块级变量全部**只写不读**
+     （`let` 声明 21 + reset 21 + `= cached` 21 + `= fresh` 21 = 84 行）。真正的进程级状态只有一份，
+     就是默认 store `MOCK_GLOBAL`。整体删除，store 自此是唯一来源。
+  3. **MFA 隔离测试已有 enroll/list 一条**（「没有任何 MFA 隔离测试」同样过期），缺的是会真正藏 bug
+     的那几面，补 4 条：共享 store 的跨 client 可见性（Server Action 写→RSC 读的假数据库契约）、
+     challenge 失败计数与锁定跨 store 不串（两侧 id 形状相同，测的就是「按 id 找人」不跨 store）、
+     同一 store 内两个 challenge 各自计数、`listFactors` 返回副本。
+  4. **定住那条容易被「顺手优化」的设计边界**：运行时默认共享 `MOCK_GLOBAL` 是刻意的，改成请求级会
+     重演 v0.5.0 的「Action 写进去、RSC 读不到」。理由与证伪方法写进架构文档的状态模型一节。
+- 变更文件：`src/lib/mock/index.ts`（-84）、`src/lib/mock.test.ts`（+4 条）、
+  `docs/architecture/13-mock-system.md`（状态模型重写：store 是唯一来源 + 为什么运行时共享 +
+  拓扑图两个节点改名）、`docs/roadmap-0.12.0.md`（C01 按实测重定范围、C02 补前置认知、
+  退出标准第 3 条改口径）、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`pnpm type-check` → 0（若某个镜像真被读过，删除会当场被 tsc 拒绝）；
+  `npx vitest run src/lib/mock --project node` → 4 文件 / 86 通过（新增前 82）；
+  `check:mock-docs` / `check:docs` / `check:test-matrix` / `check:changelog` / `check:bilingual-docs` /
+  `check:gates` / `check:adr` 全 ✅；`pnpm lint` → 0。
+  变异核对（跑完还原，`git diff --numstat` 确认只剩预期的 0/84）：
+  ① `getMockMfaFactors` 的读改回 `MOCK_GLOBAL` → `5 failed | 7 passed`，红的正是隔离与共享两组；
+  ② 去掉 `listFactors` 的 `{...factor}` 拷贝 → 恰好 `listFactors 返回副本` 一条失败。
+- 阻塞 / 风险：无外部依赖。风险是有人把「请求级隔离」再当成目标重做一遍——架构文档与 roadmap C02
+  现在都写明共享默认 store 是设计。回滚 = revert 本 commit（镜像会回来，但没有人读它们）。
+- 下一项：C02（CI 里跑一次全量 `PW_FULLY_PARALLEL` 的可复跑并行基线）。
+- 更新时间：2026-09-22（UTC 12:40 前后）。
+
 ## 2026-09-22 — `pnpm audit` 的偶发红改成分得清「网络」还是「仓库」
 
 - 里程碑 / 版本：v0.12.0 的 C 域（CI/门禁可靠性），承接上一条目点名的下一项。
