@@ -2,7 +2,8 @@
 
 /**
  * 全部标为已读按钮
- * 调用 Server Action 批量更新，成功后 toast 提示（页面经 revalidatePath 自动刷新）
+ * 调用 Server Action 批量更新，成功与失败都要 toast（页面经 revalidatePath 自动刷新）：
+ * 失败时什么都不说，用户看到的就是「点了、没反应」，只能反复点。
  */
 
 import { useState, useTransition } from "react";
@@ -18,6 +19,8 @@ interface MarkAllReadButtonProps {
 
 export function MarkAllReadButton({ unreadCount }: MarkAllReadButtonProps) {
   const t = useTranslations("dashboard");
+  const tc = useTranslations("common");
+  const ta = useTranslations("actions");
   const [pending, startTransition] = useTransition();
 
   if (unreadCount === 0) return null;
@@ -27,6 +30,8 @@ export function MarkAllReadButton({ unreadCount }: MarkAllReadButtonProps) {
       const result = await markAllNotificationsRead();
       if (result.ok) {
         toast({ title: t("notifications.list.markAllRead") });
+      } else {
+        toast({ title: tc("error"), description: ta(result.error), variant: "destructive" });
       }
     });
   }

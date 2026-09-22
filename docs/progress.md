@@ -972,4 +972,33 @@
 - 下一项：审计剩下的第 2 条（`countUnreadNotifications` / `markAllNotificationsRead` 把 `error` 丢掉，
   与同文件 `:196` 的规矩自相矛盾），随后是 `teams.member_count` 的 `?? 1` 造数、Stripe webhook 给解析不出
   团队的行记 `processed`、注销时丢掉擦除结果。
+## 2026-09-23 — 未读角标与「全部已读」不再把数据库故障说成「一切已读」
+
+- 里程碑 / 版本：v0.12.0；通知链路审计的第 2 条（#36）。
+- 状态：DONE。
+- 分支 / commit：`fix/notification-error-surface`（基于 `9c9024a`，与 #86 的 digest 分支互不相干）。
+- 为什么做：`repositories/notifications.ts` 自己写着规矩（`:194` 的注释：「查询失败抛错（调用方展示
+  错误态），不再吞错回空数组」——那是 v0.x 一次专项收口的产物），`listRecentNotifications` 与
+  `markNotificationRead` 都照做，只有 `countUnreadNotifications`（`:211`）和 `markAllNotificationsRead`
+  （`:222`）把 `error` 解构时直接丢掉。后果不是「少个数字」：故障时未读数是 0，于是侧边栏角标消失、
+  「全部已读」按钮**根本不渲染**；批量标记失败返回的 `0` 与「确实没有未读」在调用方看来是同一个值。
+  Action 层的 `fail("databaseError")` 和它的测试一直在，但仓库永远不抛，那条兜底分支从没被真实走到过。
+- 完成内容：
+  1. 两个仓库函数改为 `if (error) throw new Error(error.message)`，其余返回值不变。
+  2. `MarkAllReadButton`：`result.ok === false` 时过去什么都不做（用户视角＝「点了没反应」，只能反复点），
+     现在按 `RemoveMemberButton` / 各表单的既有规矩弹 destructive toast。复用 `common.error` +
+     `actions.databaseError`，**不新增文案键**（`databaseError` 在 en/zh-CN 都已存在，翻译对称门禁不动）。
+  3. 测试：仓库 2 条（两个函数各自「失败必须抛，而不是回一个看着像成功的数字」）、组件 3 条
+     （未读为 0 不渲染 / 成功提示 / 失败必须说话）——该组件此前零覆盖。
+- 变更文件：`src/lib/repositories/notifications.ts`、`src/lib/repositories/notifications.test.ts`、
+  `src/components/dashboard/mark-all-read-button.tsx`、`mark-all-read-button.test.tsx`（新增）、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：`npx vitest run src/lib/repositories/notifications.test.ts
+  src/lib/actions/notifications.test.ts src/components/dashboard/mark-all-read-button.test.tsx`
+  → 3 文件 / 47 通过；变异核对 `/tmp/mutate-notify.py`：4 项探针全部被抓（两处退回吞错、
+  删掉失败 `else`、把成功提示也改成 destructive），两个源文件在 `finally` 里还原并逐字节比对通过；
+  全量 `CI=true pnpm check:all` / `pnpm verify:build` 结果见本条 commit 之后。
+- 阻塞 / 风险 / 回滚：不改队列过滤、不改 schema、不改发送条件；用户能感知的变化只有一条——
+  以前静默失败的「全部已读」现在会报错。回滚 = revert 本 commit。
+- 下一项：#35 `teams.member_count` 的 `count ?? 1` / `?? 0` 造数（同一家族：把「不知道」写成「是 0/1」）。
 

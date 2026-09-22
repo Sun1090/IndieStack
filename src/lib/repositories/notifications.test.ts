@@ -62,6 +62,11 @@ describe("countUnreadNotifications()", () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chainMock({})));
     await expect(countUnreadNotifications("u1")).resolves.toBe(0);
   });
+
+  it("查询失败抛错，而不是把故障读成「0 条未读」", async () => {
+    createClientMock.mockResolvedValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
+    await expect(countUnreadNotifications("u1")).rejects.toThrow("db");
+  });
 });
 
 describe("markAllNotificationsRead()", () => {
@@ -75,6 +80,11 @@ describe("markAllNotificationsRead()", () => {
   it("无更新行返回 0", async () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chainMock({})));
     await expect(markAllNotificationsRead("u1")).resolves.toBe(0);
+  });
+
+  it("更新失败抛错，而不是报「0 条已读」这种看着像成功的数字", async () => {
+    createClientMock.mockResolvedValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
+    await expect(markAllNotificationsRead("u1")).rejects.toThrow("db");
   });
 });
 

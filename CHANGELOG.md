@@ -230,6 +230,18 @@ All notable changes to IndieStack will be documented in this file.
   变异核对 = 删掉 `cron.digest.failed` 那一行 → 门禁红并点名该指标（旧规则下同一变异是绿的）。
   规则侧 2 条新用例：一条把指标只写在散文里，必须红；一条把整张表改成带反引号的写法，必须绿
   （不给探测器一个它必须标的输入，就等于没测）。
+- **「全部已读」失败不再长得像成功**：`repositories/notifications.ts` 的 `countUnreadNotifications()`
+  与 `markAllNotificationsRead()` 只取 `{count}` / `{data}`，把 `error` 丢掉后返回 `count ?? 0` /
+  `data?.length ?? 0`——一次数据库故障因此读成「0 条未读」（角标消失、按钮根本不渲染），而批量标记失败
+  返回的 `0` 既可能是「确实没有未读」也可能是「一条都没改成」。同文件的 `listRecentNotifications()`
+  早就写了规矩（「查询失败抛错，不再吞错回空数组」）、`markNotificationRead()` 也照做，只有这两条没有。
+  现在两者都抛错。Server Action 那层早就有 `try/catch → fail("databaseError")`，Action 测试也覆盖了
+  拒绝路径——只是仓库永远不抛，那条分支从来没被真实触发过，所以「已有兜底」是纸面上的。
+  前端一并补上：`MarkAllReadButton` 过去在 `result.ok === false` 时什么都不做，用户看到的就是
+  「点了、没反应」，只能反复点；现在与 `RemoveMemberButton` 等组件同规矩地弹 destructive toast
+  （复用 `common.error` + `actions.databaseError`，不新增文案）。
+  仓库 2 条 + 组件 3 条新用例（该组件此前零覆盖）；变异核对 4 项全部被抓（两处退回吞错、删掉失败
+  `else` 分支、把成功提示也改成 destructive），源文件逐字节还原。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
   `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
   `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是
