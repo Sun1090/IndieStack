@@ -43,8 +43,7 @@
 |---|---|---|---|
 | `email.send.completed` | `ms` | `provider`, `outcome`, `status`, `reason` | 每次 Resend 调用结束；provider 未配置时不发起请求，立即以 `reason=not-configured` 结束 |
 | `email.backlog` | `count` | 无 | 每轮 digest 开始 |
-| `cron.digest.deferred` | `count` | 无 | 每轮 digest 结束；被错峰窗口跳过、本轮不发送的通知条数 |
-| `cron.digest.completed` | `ms` | `pulled`, `sent`, `groups`, `failed`, `deferred` | 每轮 digest 成功结束（含空队列） |
+| `cron.digest.completed` | `ms` | `pulled`, `sent`, `groups`, `failed` | 每轮 digest 成功结束（含空队列） |
 | `cron.digest.failed` | `count` | `error_type` | 每轮 digest 未处理异常 |
 | `cron.auth.rejected` | `count` | `worker`, `reason` | 任一 cron worker 返回 401（`secret_unconfigured` / `missing_credentials` / `invalid_credentials`） |
 | `storage.upload.completed` | `ms` | `provider`, `outcome` | 每次对象写入结束 |
@@ -81,7 +80,7 @@
 
 | 路径 | 调度（UTC） | 语义 | 失败告警 |
 |---|---|---|---|
-| `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，只向**本地时刻恰为 08:00** 的用户发送；Vercel Hobby 每天最多一次，因此除 UTC-1 时区带外的条目每轮被跳过（见 `cron.digest.deferred`） | `cron.digest.failed`、`cron.digest.deferred`、`email.backlog` |
+| `/api/cron/digest` | `0 9 * * *` | 每天 09:00 UTC 拉取待发邮件，给每个有待发通知的用户发一封摘要；发送时刻固定，不随用户时区（错峰门控已于 2026-09-22 移除） | `cron.digest.failed`、`email.backlog` |
 | `/api/cron/push-retry` | `0 22 * * *` | 每天 22:00 UTC 重试待投递 Push 并清理保留期外的终态行；Vercel Hobby 每天最多一次 | `cron.push-retry.failed`、`push.backlog` |
 | `/api/cron/retention` | `0 5 * * *` | 每天 05:00 UTC 逐个执行迁移里定义的保留期清理函数（不依赖 pg_cron），并顺带只读巡检存储孤儿；Vercel Hobby 每天最多一次 | `cron.retention.failed`、`cron.retention.cleanup_failed`、`storage.orphan.unowned` |
 
@@ -99,7 +98,6 @@
 |---|---|---|
 | Digest 连续失败 | `cron.digest.failed > 0`，5 分钟窗口 | 立即排查 cron 鉴权、Supabase 与邮件 provider |
 | 邮件积压 | `email.backlog > 500`，连续 3 轮或 15 分钟 | 检查 worker、provider 限流与死信增长 |
-| 摘要全部落在错峰窗口外 | `cron.digest.deferred` 等于本轮 `pulled` 且 `sent=0`，连续 2 轮 | 平台 cron 每天只跑一次，只能命中「本地 08:00 恰好在该 UTC 时刻」的时区带；持续成立说明当前调度与错峰门控不匹配，见 `docs-site/email.md` 的窗口说明与退出报告遗留项 |
 | 邮件失败率 | `email.send.completed{outcome=failure}` 占比 > 2%，10 分钟且样本 ≥20 | 检查 Resend 状态与响应码 |
 | 邮件 provider 未配置 | `email.send.completed{reason="not-configured"} > 0`，15 分钟窗口 | 补部署环境的 `RESEND_API_KEY`；该类样本不带 `status`，说明请求根本没发出去 |
 | provider 写入失败率 | `storage.upload.completed{outcome=failure}` 占比 > 5%，15 分钟且样本 ≥20 | 检查 Storage 权限、配额与 provider 状态 |
@@ -122,7 +120,7 @@
 
 去重规则：
 
-- `cron.digest.completed`、`cron.digest.deferred`、`email.backlog`、`cron.digest.failed`、`push.backlog` 和
+- `cron.digest.completed`、`email.backlog`、`cron.digest.failed`、`push.backlog` 和
   `cron.push-retry.completed|failed` 每轮最多一条；`push.queue.pruned` 每轮按 `status` 最多两条，
   不要按删除行数放大告警。
 - `cron.auth.rejected` 按 `worker + reason` 聚合，且设置 15 分钟抑制窗口：该计数在鉴权失败时

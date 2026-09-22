@@ -288,7 +288,7 @@ describe("真实仓库与 CLI", () => {
     const report = auditMockDocs(buildSnapshot());
     expect(report.issues).toEqual([]);
     expect(report.tables.length).toBeGreaterThanOrEqual(18);
-    expect(report.endpoints.length).toBeGreaterThanOrEqual(9);
+    expect(report.endpoints.length).toBeGreaterThanOrEqual(8);
   });
 
   it("buildSnapshot 读取三份文档与全部 E2E 路由", () => {

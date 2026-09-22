@@ -125,17 +125,6 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rationale: "Mock-only E2E read endpoint for digest worker run records.",
   },
   {
-    file: "src/app/api/e2e/profile-timezone/route.ts",
-    surface: "e2e-mock-route",
-    calls: ["PATCH"],
-    tables: ["profiles"],
-    rpc: [],
-    storageBuckets: [],
-    authAdmin: [],
-    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", "E2E_BEARER_TOKEN"] },
-    rationale: "Mock-only E2E timezone fixture for deterministic digest-hour assertions.",
-  },
-  {
     file: "src/app/api/e2e/push-queue/route.ts",
     surface: "e2e-mock-route",
     calls: [

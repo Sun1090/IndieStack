@@ -34,25 +34,20 @@ CRON_SECRET=replace-with-a-random-secret
 
 ## Digest Worker
 
-`POST /api/cron/digest` 每轮最多拉取 100 条待发通知，按用户分组并按用户时区错峰，只向本地时间
-08:00 的用户发送。时区缺失或非法时回退到 `Asia/Shanghai`。实时发送失败和尚未发送的通知都由
-该 worker 继续处理。
+`POST /api/cron/digest` 每轮最多拉取 100 条待发通知，按用户分组并按该用户的邮件偏好过滤，
+每人发一封摘要。实时发送失败和尚未发送的通知都由该 worker 继续处理。
 
 Worker 会折叠大量同类型通知并限制正文明细数量，避免邮件随队列无限膨胀；同时输出积压量和运行
 指标供运维监控。
 
-错峰是按用户判断的：`isDigestHour` 把用户的本地小时与 `DIGEST_LOCAL_HOUR`（8）比较，时区缺失或
-非法时回退到 `Asia/Shanghai`，因此每个用户只在自己本地时间 08:00 的那一个小时里被发送。
+摘要的投递语义是**每轮每人一封，只要队列里有待发内容**。它刻意不再追求「贴着用户本地早晨发送」：
+Hobby plan 下每个 cron 路径每天最多运行一次，一个固定的 UTC 时刻（`0 9 * * *`）只可能落在某一个时区
+的早晨——2026-09-22 之前这条路由要求「用户本地小时恰好等于 8」，结果 UTC-1 时区带之外的通知会永远
+停在队列里。调度登记在 `vercel.json`，注册表、平台调度与 `docs/operations/sentry-alerts.md` 三者的
+一致性由 `pnpm check:cron-contract` 守住。
 
-`vercel.json` 用 Vercel Cron 每天 09:00 UTC 调度一次 `POST /api/cron/digest`（`0 9 * * *`），
-注册表、平台调度与 `docs/operations/sentry-alerts.md` 三者由 `pnpm check:cron-contract`
-守住。Hobby plan 下每个路径每天最多运行一次，所以这里能拿到的只有**一个固定的 UTC 时刻**——
-而它只落在一个时区带（UTC-1）的本地 08:00 窗口里。其余用户每一轮都被跳过，他们排队的通知第二天
-仍会被重新拉取。
-
-这种失败被刻意做成可见而不是静默：`cron.digest.deferred` 每轮记录被窗口跳过的条数，`email.backlog`
-继续累计这些条数，而 `sentry-alerts.md` 为「拉到了却没发出去」登记了告警规则。用外部调度器更频繁地调用同一个端点
-（例如逐小时）即可恢复本地早晨发送的行为，无需改代码；而放宽窗口或按时区带增加调度，仍是待定的产品决策。
+如果将来确实需要按本地早晨投递，那要再加一条 cron 路径（或外部逐小时调度器），而不是放宽这个门控；
+该权衡记录在 `docs/roadmap-0.12.0.md` 里。
 
 ## 偏好与重试
 

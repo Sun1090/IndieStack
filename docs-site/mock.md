@@ -167,7 +167,6 @@ mode and requires `Authorization: Bearer <E2E_BEARER_TOKEN>` unless noted.
 | `/api/e2e/email-worker-runs` | GET | Inspect worker run rows written by cron handlers |
 | `/api/e2e/webhook-events` | GET, DELETE | Inspect/clear claimed webhook events |
 | `/api/e2e/contact-messages` | GET, POST, DELETE | Inspect/clear contact-form submissions |
-| `/api/e2e/profile-timezone` | PATCH | Force the mock profile timezone for timezone-sensitive specs |
 
 Reserved push endpoints use `E2E_PUSH_ENDPOINT_BASE`:
 

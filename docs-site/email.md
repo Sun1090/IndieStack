@@ -38,29 +38,22 @@ only in the current implementation.
 ## Digest Worker
 
 `POST /api/cron/digest` processes up to 100 queued notifications per run. It groups them by user,
-checks the user's timezone, and sends only when the user's local time is 08:00. A missing or invalid
-timezone falls back to `Asia/Shanghai`. Immediate-send failures and queued items are retried by this
-worker.
+applies that user's email preferences, and sends one digest per user. Immediate-send failures and
+items left in the queue are retried by this worker.
 
 The worker can fold large groups and caps the visible digest details, keeping the message size
 bounded. It also emits backlog and worker metrics for operational monitoring.
 
-The window is per user: `isDigestHour` compares the user's local hour with `DIGEST_LOCAL_HOUR` (8),
-falling back to `Asia/Shanghai` when the timezone is missing or invalid, so a user is only sent a
-digest during the hour when their own clock reads 08:00.
+Digest delivery is **one email per run, per user, with something queued**. It deliberately does not
+try to hit each user's local morning: on the Hobby plan a cron path can run at most once a day, so a
+single fixed UTC instant (`0 9 * * *`) can only fall inside one timezone's morning — before 2026-09-22
+this route gated on "the user's local hour is exactly 08:00", which meant notifications stayed queued
+forever for everyone outside the UTC-1 band. `vercel.json` registers the schedule and
+`pnpm check:cron-contract` keeps the registry, the platform schedule and
+`docs/operations/sentry-alerts.md` in sync.
 
-`vercel.json` schedules `POST /api/cron/digest` with Vercel Cron once a day at 09:00 UTC
-(`0 9 * * *`), and `pnpm check:cron-contract` keeps the registry, the platform schedule and
-`docs/operations/sentry-alerts.md` in sync. On the Hobby plan a path cannot run more than once a
-day, so one fixed UTC instant is the only trigger available here —
-and it lands inside the local 08:00 window of exactly one timezone band (UTC-1). Users elsewhere are
-skipped on every run, and their queued notifications keep being pulled again the next day.
-
-That failure is deliberately observable rather than silent: `cron.digest.deferred` counts the items
-skipped by the window each round, `email.backlog` keeps counting them, and `sentry-alerts.md`
-registers a rule for the case where a round pulls items but sends none. Calling the same endpoint from an external scheduler more often
-(e.g. hourly) restores the local-morning behaviour without code changes; widening the window or
-adding timezone-band schedules is still an open product decision.
+If a user's local-morning delivery matters again, that needs a second cron path (or an external
+hourly scheduler) rather than a looser gate; the trade-off is recorded in `docs/roadmap-0.12.0.md`.
 
 ## Preferences and Retries
 

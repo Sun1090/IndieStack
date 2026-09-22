@@ -161,7 +161,6 @@ curl -X POST http://localhost:3000/api/e2e/mock-reset \
 | `/api/e2e/email-worker-runs` | GET | 检查 cron 处理器写入的 worker run |
 | `/api/e2e/webhook-events` | GET, DELETE | 检查/清空已占位的 webhook 事件 |
 | `/api/e2e/contact-messages` | GET, POST, DELETE | 检查/清空联系表单提交 |
-| `/api/e2e/profile-timezone` | PATCH | 强制 Mock 资料时区，供时区相关 spec 使用 |
 
 Push 保留端点基于 `E2E_PUSH_ENDPOINT_BASE`：
 

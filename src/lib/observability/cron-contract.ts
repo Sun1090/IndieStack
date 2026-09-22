@@ -59,10 +59,10 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     routeFile: "src/app/api/cron/digest/route.ts",
     methods: ["POST"],
     schedule: "0 9 * * *",
-    metrics: ["email.backlog", "cron.digest.deferred", "cron.digest.completed", "cron.digest.failed"],
-    // cadence 要如实写出窗口限制：每天一个固定 UTC 时刻只能命中本地 08:00 的那一个时区带，
-    // 其余用户每轮被跳过（计入 cron.digest.deferred）。投递语义待产品决策，见 docs/roadmap-0.12.0.md 的 A01。
-    cadence: "每天 09:00 UTC 拉取一次，只向本地时刻恰为 08:00 的用户发送；每天一次的调度意味着其余时区的条目每轮被跳过",
+    metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
+    // 2026-09-22 去掉本地 08:00 错峰门控：Hobby 每天只能调度一次，那个条件让除 UTC-1 外的
+    // 用户永远收不到摘要。现在的语义就是一天一封、在调度时刻送达，不贴合用户本地时区。
+    cadence: "每天 09:00 UTC 拉取一次，给每个有待发邮件通知的用户发一封摘要（发送时刻不随用户时区变化）",
   },
   {
     id: "push-retry",

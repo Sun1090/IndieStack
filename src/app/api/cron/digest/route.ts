@@ -1,12 +1,14 @@
 /**
  * 通知邮件 Worker（cron）
- * 由 Vercel Cron 每天 09:00 UTC 调度（见 `vercel.json` 与注册表；Hobby 每日最多一次
- * `src/lib/observability/cron-contract.ts`）；拉取待发邮件通知，按用户偏好与时区过滤后统一发送。
+ * 由 Vercel Cron 每天 09:00 UTC 调度（见 `vercel.json` 与 `src/lib/observability/cron-contract.ts`）；
+ * 拉取待发邮件通知，按用户偏好分组后每人一封摘要发出。
  *
  * POST /api/cron/digest
  * Header: x-cron-secret = ***.CRON_SECRET
  *
- * v0.5.0：按用户时区错峰——仅发送处于本地 08:00 的用户；当前 Hobby 每日 09:00 UTC 调度，时区命中由下一次可调度时间兜底；
+ * 2026-09-22 去掉「本地时刻恰为 08:00 才发」的错峰门控：Hobby plan 每路径每天只能调度一次，
+ * 一个固定 UTC 时刻不可能落进所有人的早晨，那道门控的实际效果是让除 UTC-1 时区带外的用户
+ * 永远收不到摘要。现在的语义是**一天一封、在调度时刻送达**，发送时刻不再贴合本地时区。
  * 单用户发送失败累加重试计数，达到上限由拉取侧死信过滤，不阻断整轮。
  */
 
@@ -16,7 +18,6 @@ import { logApiError } from "@/lib/api-log";
 import { shouldSendEmail } from "@/lib/notification-prefs";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { recordCronRejected } from "@/lib/cron-metrics";
-import { isDigestHour } from "@/lib/email-digest";
 import { renderEmailHtml } from "@/lib/email-template";
 import { sendResendEmail } from "@/lib/email-send";
 import {
@@ -31,14 +32,12 @@ import { recordWorkerRun } from "@/lib/repositories/worker-runs";
 import { trackEvent, flushEvents } from "@/lib/appark";
 import { recordMetric } from "@/lib/metrics";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isMockEnabled } from "@/lib/mock";
 import type { Database } from "@/lib/supabase/database.types";
 
 export const dynamic = "force-dynamic";
 
 type ProfileRow = {
   email: string | null;
-  timezone: string | null;
   notification_settings: Database["public"]["Tables"]["profiles"]["Row"]["notification_settings"];
 };
 
@@ -48,13 +47,12 @@ async function getProfiles(emails: Map<string, ProfileRow>): Promise<void> {
   const userIds = Array.from(emails.keys());
   const { data, error } = await admin
     .from("profiles")
-    .select("id,email,notification_settings,timezone")
+    .select("id,email,notification_settings")
     .in("id", userIds);
   if (error) throw error;
   for (const row of data ?? []) {
     emails.set(String((row as { id?: string }).id), {
       email: (row as { email?: string | null }).email ?? null,
-      timezone: (row as { timezone?: string | null }).timezone ?? null,
       notification_settings: (row as { notification_settings?: Database["public"]["Tables"]["profiles"]["Row"]["notification_settings"] }).notification_settings ?? null,
     });
   }
@@ -97,21 +95,14 @@ async function recordFailedRun(startedAt: number, error: unknown): Promise<void>
 async function runDigest(
   siteUrl: string,
   notifications: Notification[],
-  now: Date,
-  forceDigestHour = false,
-): Promise<{
-  sent: number;
-  groups: number;
-  failed: number;
-  deferred: number;
-}> {
+): Promise<{ sent: number; groups: number; failed: number }> {
   const byUser = new Map<string, Notification[]>();
   const profiles = new Map<string, ProfileRow>();
   for (const n of notifications) {
     const key = n.user_id;
     if (!byUser.has(key)) byUser.set(key, []);
     byUser.get(key)?.push(n);
-    profiles.set(key, { email: null, timezone: null, notification_settings: null });
+    profiles.set(key, { email: null, notification_settings: null });
   }
 
   await getProfiles(profiles);
@@ -119,17 +110,13 @@ async function runDigest(
   let sent = 0;
   let groups = 0;
   let failed = 0;
-  let deferred = 0;
   for (const [userId, items] of byUser) {
     const profile = profiles.get(userId);
+    // 没有邮箱就没有可投递目标。这类条目既不发送也不累加 `email_attempts`，因此永远留在队列里：
+    // 靠 `email.backlog` 可见，但同时长期占住按 `created_at` 升序的前 100 条拉取窗口
+    // （偏好全关时实时通道 `email-notify.ts:91` 同样早退，所以条目会持续积累）——
+    // 让跳过的条目真正出队属于 v0.12.0 的 A05，不要在这里用 `markEmailSent` 假装发过。
     if (!profile?.email) continue;
-    // A04 错峰：仅发送处于本地 digest 时刻的用户，未配置/非法时区回退默认时区
-    if (!forceDigestHour && !isDigestHour(profile.timezone, now)) {
-      // 错峰门控跳过的条数必须可见：平台 cron 每天只跑一次，命中不了用户本地 08:00 的人
-      // 会永远停在「已拉取但从不发送」，只报 sent=0 看不出是窗口问题还是队列问题。
-      deferred += items.length;
-      continue;
-    }
 
     const prefs = (profile.notification_settings ?? {}) as Parameters<typeof shouldSendEmail>[0];
     const filtered = items.filter((n) => shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]));
@@ -151,7 +138,7 @@ async function runDigest(
     sent += filtered.length;
   }
 
-  return { sent, groups, failed, deferred };
+  return { sent, groups, failed };
 }
 
 export async function POST(request: NextRequest) {
@@ -163,14 +150,6 @@ export async function POST(request: NextRequest) {
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  // 仅供本地 mock E2E：必须同时满足 mock 模式、E2E bearer 与显式 header，
-  // 不改变生产 cron 的真实时区门控。
-  const forceDigestHour =
-    isMockEnabled &&
-    request.headers.get("x-e2e-force-digest") === "true" &&
-    request.headers.get("authorization") === `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}`;
-  // 经 Date.now 取当前时间，便于测试以 Date.now spy 固定错峰门控的时钟
-  const now = new Date(Date.now());
   // 整轮耗时：包含积压查询与拉取，口径与 push-retry worker 一致
   const startedAt = Date.now();
 
@@ -193,12 +172,12 @@ export async function POST(request: NextRequest) {
       await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs });
       recordMetric("cron.digest.completed", durationMs, {
         unit: "ms",
-        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0, deferred: 0 },
+        attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
       });
-      return jsonNoStore({ sent: 0, groups: 0, failed: 0, deferred: 0 });
+      return jsonNoStore({ sent: 0, groups: 0, failed: 0 });
     }
 
-    const result = await runDigest(siteUrl, notifications, now, forceDigestHour);
+    const result = await runDigest(siteUrl, notifications);
     const durationMs = Date.now() - startedAt;
     // C02 运行记录：落表失败不影响发送结果返回
     try {
@@ -212,9 +191,6 @@ export async function POST(request: NextRequest) {
     } catch (metricsError) {
       await logApiError("[Cron Digest] 运行记录写入失败", metricsError);
     }
-    // 错峰窗口跳过条数单独成指标：`pulled>0` 而 `sent=0` 时，用它区分「窗口没命中」与
-    // 「真的没有可发内容」。平台 cron 每天只跑一次，命中不了用户本地 08:00 的人会长期停在前者。
-    recordMetric("cron.digest.deferred", result.deferred, { unit: "count" });
     // APM 关键流程埋点（C01）：cron 运行指标上报后尽力 flush
     recordMetric("cron.digest.completed", durationMs, {
       unit: "ms",

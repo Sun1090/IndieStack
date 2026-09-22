@@ -17,19 +17,41 @@
 
 ### A. 通知投递语义（P0，来自 E03 与退出报告遗留项 1）
 
-1. A01 digest 投递语义定案（需产品决策，三选一已在退出报告列出：放宽窗口 / 按时区带多条调度 /
-   外部逐小时调度器）。验收：决策写进 `docs-site/{,zh-CN/}email.md` 与 `docs/db/retention.md`
-   同级的运维说明，并给出**一条能证明「非 UTC-1 用户真的收到」的**执行证据
-2. A02 按定案实现窗口或多调度，并把 `cron.digest.deferred` 从「能看到」变成「正常运行为 0」
+1. A01 （**2026-09-22 已定案并完成**：用户选「放宽窗口、接受一天一封」。`isDigestHour` 门控与
+   `DIGEST_LOCAL_HOUR`/`DIGEST_DEFAULT_TIMEZONE` 已删除，语义为每轮每人一封、固定 09:00 UTC 发送；
+   双语 `docs-site/email.md` 与 `docs/design/email-templates.md` 已按新语义改写，
+   回归钉子是「上海/纽约/圣保罗同一时刻各收到一封」那条路由测试）
+   - **这条留下的新决策**：`profiles.timezone` 从此**没有任何功能性消费者**——digest 不再读它，
+     全仓剩下的引用只有资料页展示与编辑（`dashboard/profile/page.tsx:98`、
+     `dashboard/profile/edit/page.tsx:35,60`、`components/forms/profile-edit-form.tsx:65`）、
+     写入校验（`api/user/route.ts:29`、`lib/actions/profile.ts:32`）和完整度计分
+     （`profile-completeness-card.tsx:18`）。也就是说用户仍被要求填一个**当前什么都不影响**的字段。
+     要么在文档与 UI 上说明它只是偏好，要么删掉这条链路——属产品决策，不与其他条目耦合
+2. A02 （随 A01 完成：门控既然移除，临时指标 `cron.digest.deferred` 已删除，注册表回到 14 个指标；
+   若将来重新引入任何「按条件跳过」的门控，必须同时带回对应的可见性指标与告警规则）
 3. A03 （2026-09-22 已核对，**push 链路没有同型缺陷**）：`src/lib/push-retry.ts` 与
    `src/app/api/cron/push-retry/route.ts` 里没有任何按小时/时区的门控（`grep -n "hour\|timezone\|local"`
    无命中），出队条件是单调的 `next_attempt_at <= now`（`repositories/push-delivery-attempts.ts:104`，
    按 `next_attempt_at` 升序取 50 条），到点的行不会因为调度时刻而永远落在窗口外；
    失败侧另有 `PUSH_MAX_ATTEMPTS` → `dead`/`revoked` 与 `push.delivery.dead`、`push.backlog` 兜底。
    **仍需盯的是 digest（A01）而不是这里**，本条按已完成收口
-4. A04 为 A01 的定案补契约：新增纯函数规则（`src/lib/**`）+ 门禁或单测，使「窗口与调度不匹配」
-   这类配置错误在 PR 阶段失败，而不是靠看板发现
-5. A05 死信与积压的可操作路径：admin 面板能看到被窗口挡住的队列规模与最早一条的年龄
+4. A04 补契约（A01 的教训泛化）：任何 cron worker 路由里**按用户条件跳过投递**的分支，
+   都必须同时上报一个跳过计数指标——新增纯函数规则（`src/lib/**`）+ 接进 `check:cron-contract`，
+   使「静默不投递」在 PR 阶段就失败，而不是靠看板发现
+5. A05 死信与积压的可操作路径：admin 面板能看到未发送队列的规模、最早一条的年龄，
+   以及「有队列但整轮 `sent=0`」的轮次（原因只会是无邮箱或偏好全关，两者都该看得见）。
+   **2026-09-22 核对时补一条更要紧的事实**：被跳过的条目**永远出不了队列**——
+   两个 skip 分支（`cron/digest/route.ts` 的 `!profile?.email` 与偏好过滤后 `filtered.length === 0`）
+   都不调用 `markEmailSent`，也不调用 `markEmailFailed`，所以 `metadata.email_attempts` 不增长、
+   达不到 `EMAIL_MAX_ATTEMPTS`（`repositories/notifications.ts:31`）的死信门槛；
+   实时通道 `email-notify.ts:90-91` 对同样两种情况也是早退，条目会持续产生。
+   后果：`listUnsentEmailNotifications` 是 `created_at` 升序 + `limit 100`
+   （`repositories/notifications.ts:46-59`），这些永久不可投递的行会一直占住最前面的名额，
+   攒够 100 条之后**新产生的、可投递的通知再也拉不到**，表现为每天 `pulled=100, sent=0`
+   且 `email.backlog` 单调增长（阈值 500 的告警只说明规模、不说明原因）。
+   本条因此包含一个决策：偏好关闭/无邮箱的行应当以什么语义出队
+   （复用死信、新增 `email_skipped_reason` 过滤，还是拉取侧翻页跳过），
+   三者都会改变 admin 面板与既有指标口径，不接受顺手用 `markEmailSent` 掩盖
 
 ### B. 发布证据闭环（来自 J06 / J08 / E09）
 
@@ -81,7 +103,8 @@
 
 ## 退出标准（全部满足方可发布 v0.12.0）
 
-1. A01–A04 完成，且 `cron.digest.deferred` 在一个真实调度周期内为 0（或有明确豁免记录）。
+1. A01–A04 完成（A01/A02 已于 2026-09-22 收口）：摘要在真实调度周期内每人至多一封、
+   且 `sent=0 而 pulled>0` 的轮次要么为 0、要么有明确解释；跳过类分支一律带可见性指标。
 2. B01、B02 有执行记录（UTC 时间、命令、状态码、artifact 指纹或 deployment id），
    「演练记录」小节不再是空模板。
 3. C01、C02 完成：MFA mock 不再依赖进程全局，且 CI 里有一份全量并行的运行记录。
