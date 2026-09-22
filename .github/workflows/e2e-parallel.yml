@@ -59,8 +59,11 @@ jobs:
       - name: Report the planned suite
         run: pnpm exec playwright test --list | tail -n 1
 
+      # `--retries=0` 是这条基线成立的前提：ci.yml 里 CI 默认 retries=2，而共享 Mock 状态的
+      # 竞争正是「第一次红、重跑绿」的那种失败。带着重试跑并行，测出来的绿是假的。
+      # 所以这里刻意关掉重跑——红了就按报告去认是哪一份共享状态在打架。
       - name: Run the full suite in parallel
-        run: pnpm test:e2e
+        run: pnpm test:e2e --retries=0
 
       # 成功也要留报告：这条基线的价值在于「哪一轮真的全绿过、多少用例、多久」。
       - name: Upload Playwright report

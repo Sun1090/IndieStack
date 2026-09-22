@@ -68,7 +68,9 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 - 默认单 worker 串行执行，避免多个 spec 通过同一个 dev server 互相清理/覆盖可变 Mock 状态；仅隔离实验可设置 `PW_FULLY_PARALLEL=true`
 - **全量并行的可复跑基线**：`.github/workflows/e2e-parallel.yml`（手动 `workflow_dispatch` +
   每周一 07:30 UTC 定时，`30 7 * * 1`）在一个 dev server 上让 Playwright 自己开多 worker 跑**全量**
-  （不带 `--shard`）。它是测量不是门禁：不在必需检查里、`ci.yml` 也不依赖它，红了的含义是
+  （不带 `--shard`），并强制 `--retries=0`——CI 默认 `retries: 2`，而共享 Mock 状态的竞争恰好是
+  「第一次红、重跑绿」的那类失败，带着重试测出来的并行全绿是假的。
+  **它是测量，不是门禁**：不在必需检查里、`ci.yml` 也不依赖它，红了的含义是
   「并行基线有共享状态冲突，请按报告记下具体是哪一份状态」，而不是「这个 PR 不能合」。
   默认 CI 的 `[1, 2]` shard 分片各自独立 dev server，测的是分片是否正确，**测不出**并发冲突，
   两者互补，不能互相替代。`src/lib/testing/e2e-shard-policy.test.ts` 钉住：全量（无 `--shard`）、

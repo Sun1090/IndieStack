@@ -8,7 +8,8 @@ All notable changes to IndieStack will be documented in this file.
 
 - **全量并行的 E2E 基线从此可复跑**（C02）：新增 `.github/workflows/e2e-parallel.yml`，用
   `PW_FULLY_PARALLEL=true` 在**一个** dev server 上跑**全量** E2E（刻意不带 `--shard`），
-  手动 `workflow_dispatch` 与每周一 `30 7 * * 1`（07:30 UTC）各一次。F04 留下的问题从来不是
+  手动 `workflow_dispatch` 与每周一 `30 7 * * 1`（07:30 UTC）各一次，并强制 `--retries=0`：
+  CI 默认重跑 2 次，而共享状态的竞争正是「第一次红、重跑就绿」那一类——带着重试测出的并行全绿是假的。F04 留下的问题从来不是
   「没有并行开关」——开关一直有——而是「那句 31/31 通过是一次再也复现不了的实验」。
   这条把它变成有固定触发点、报告留档（`if: always()`，成功也留）的测量。
   **它是测量，不是门禁**：不接 `pull_request`/`push`、不在必需检查里、`ci.yml` 也不依赖它；
