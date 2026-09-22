@@ -772,3 +772,25 @@
   Action 等产品决策；B02–B05 与 C05 要外部权限）。生产仍停在 `0.11.0` 且 `/api/health` 不报 `commit`
   （2026-09-22T17:00Z 实测），因此 `smoke:production --expected-commit` 依旧无法闭环——Vercel 侧
   「Deployment rate limited — retry in 24 hours」是平台限制，按既定口径忽略，不绕开任何门禁。
+
+## 2026-09-23 — 三个 patch 依赖落地，peer 冲突确认是存量而不是新伤
+
+- 里程碑 / 版本：v0.12.0 期间的依赖维护（不改功能面）。
+- 状态：DONE。
+- 分支 / commit：`chore/stabilize-patch-deps`。
+- 完成内容：`@sentry/nextjs` 10.75.0→10.75.1、`@tanstack/react-query` 5.103.1→5.103.2、
+  `next-intl` 4.14.5→4.14.6，同一 caret 范围内的 patch 版本，package.json 的下限随之上移。
+  三个 major 级 dev 依赖（`@types/node` 26、`eslint` 10、`typescript` 7）**刻意不动**：
+  它们要的是单独的迁移评估，不是顺手 `update`。
+- 一条需要记下的核对：`pnpm install` 报 `@docsearch/react@3.8.2` 要求 `react <19`。
+  先怀疑是这次引入的，回去查 `git show main:pnpm-lock.yaml` —— 该包在 main 的锁文件里已有 3 处，
+  属 VitePress 搜索链路的**存量** peer 冲突，与本次三个包无关，也不该靠降 React 去「修」。
+- 验证命令与结果：
+  - `CI=true pnpm verify:build` → exit 0（196 文件全绿、`Bundle 2846.3 kB / 基线 2733.8 kB` 在范围内、
+    生产构建 Compiled successfully）；
+  - `E2E_BASE_PORT=3101 pnpm test:e2e` → **108 passed**（next-intl 是这次唯一会动到运行时 i18n 的包，
+    构建只能证明 `MISSING_MESSAGE`，浏览器侧要真跑）；
+  - `pnpm audit --audit-level high --registry=https://registry.npmjs.org` → `No known vulnerabilities found`
+    （镜像源没有 audit 端点，必须显式指公有源，否则读到的「零漏洞」是假的）。
+- 风险 / 回滚：patch 版本、行为面为零；回滚 = revert 本 commit（锁文件与 package.json 一起回去）。
+- 下一项：等依赖审计与通知链路审计的结果，按发现修复。
