@@ -40,9 +40,11 @@ export interface RetentionPolicy {
 /**
  * 全部 SQL 侧保留策略。
  *
- * 调度依赖 pg_cron：迁移用 `if exists (select 1 from pg_extension ...)` 守卫，
- * 未安装扩展的环境（含当前云端项目）会跳过调度，此时保留期**并不生效**，
- * 需要运维在 Supabase Dashboard 启用扩展后重放调度。`docs/db/retention.md` 记录了这一点。
+ * `schedule` 描述的是**迁移里那份 pg_cron 注册**，不是保留期的唯一执行途径：pg_cron 未安装的
+ * 环境（含当前云端项目）会跳过那段守卫式调度，此时由 `/api/cron/retention` 每天用 service_role
+ * 逐个调用同一批 `cleanupFunction` 来兑现保留期（见 `src/lib/repositories/retention.ts`）。
+ * 两条链路跑的是同一个 `now() - <retentionDays>` 条件，同时存在也只是幂等重复。
+ * `docs/db/retention.md` 记录了这套关系。
  */
 export const RETENTION_POLICIES: readonly RetentionPolicy[] = [
   {

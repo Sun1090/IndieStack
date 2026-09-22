@@ -17,7 +17,7 @@
  *
  * 规则只判断调度与指标是否接线，不判断 worker 的业务逻辑是否正确。
  * 调度表达式校验器是手写的最小实现（5 字段：分 时 日 月 周），
- * 引入 `cron-parser` 之类的依赖对「只校验仓库里 4 条固定表达式」来说不划算。
+ * 引入 `cron-parser` 之类的依赖对「只校验注册表里这几条固定表达式」来说不划算。
  */
 
 /** 鉴权拒绝计数指标：所有 cron worker 的 401 分支都必须上报。 */
@@ -30,7 +30,7 @@ export const CRON_ROUTE_DIRECTORY = "src/app/api/cron";
 export const CRON_OPERATIONS_DOC = "docs/operations/sentry-alerts.md";
 
 /** worker 标识：作为 `cron.auth.rejected` 的维度，禁止含用户或环境数据。 */
-export type CronWorkerId = "digest" | "push-retry";
+export type CronWorkerId = "digest" | "push-retry" | "retention";
 
 export type CronMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -76,6 +76,20 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
       "cron.push-retry.failed",
     ],
     cadence: "每天 22:00 UTC 重试一次待投递 Push 并执行保留策略清理",
+  },
+  {
+    id: "retention",
+    path: "/api/cron/retention",
+    routeFile: "src/app/api/cron/retention/route.ts",
+    methods: ["POST"],
+    schedule: "0 5 * * *",
+    metrics: [
+      "cron.retention.completed",
+      "cron.retention.failed",
+      "cron.retention.cleanup_failed",
+    ],
+    cadence:
+      "每天 05:00 UTC 执行全部保留期清理函数；取代未安装的 pg_cron 周调度，且与其并存时保持幂等",
   },
 ];
 

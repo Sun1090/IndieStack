@@ -82,6 +82,9 @@ functions 93、lines 92。调整阈值改配置即可，本文这段只是当前
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围
 - 语言切换同时覆盖 Cookie 持久化与键盘操作：Tab 聚焦触发按钮、Enter 打开菜单、`aria-current` 标识当前语言、Escape 关闭并归还焦点
+- `e2e/retention.spec.ts` 只打 `/api/cron/retention` 的**入口**：401 归因、错误 secret 不回显、
+  带凭据时路由可达且响应只有脱敏计数。它证明部署里没有 404——`check:cron-contract` 能证明文件存在、
+  已调度、指标接线，但看不见运行时 404。mock 模式不执行 SQL，所以本文件不证明过期行真被删掉
 - 通知 Realtime 的 Mock 测试在服务端 seed 后派发 `indiestack:mock-realtime` 事件；测试覆盖 event/schema/table/user filter 契约、合并刷新和无需 reload 的 UI 更新
 - Push 持久化重试链路由 `e2e/push-retry.spec.ts` 驱动真实 `/api/cron/push-retry`：mock 模式下
   `src/lib/mock/push-transport.ts` 只替换 `web-push` 的底层 HTTP 传输（保留端点 `/ok`、`/transient`、

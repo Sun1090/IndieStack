@@ -3,25 +3,27 @@
 > v0.4.0 D05 建立，v0.8.x 补齐 Push 队列与邮件 worker 运行记录（迁移 `027`），
 > H08 补齐 API 使用记录、已删除上传元数据、已处理联系内容的保留期，
 > 以及账户删除时的个人数据擦除（迁移 `032`）。
-> 定时清理分两条链路：SQL 侧靠 pg_cron（迁移 `003` / `014` / `027` / `032`，守卫式调度，
-> pg_cron 未安装的环境自动跳过，生产需在 Supabase Dashboard 确认扩展已启用）；
-> 应用侧靠 cron worker 自身每轮回调（`/api/cron/push-retry`，无需 pg_cron）。
+> 定时清理分两条链路：**执行**由平台 cron worker 负责（`/api/cron/retention`，每天 05:00 UTC，
+> 用 service_role 逐个调用迁移 `003` / `014` / `027` / `032` 里已定义的清理函数，不依赖 pg_cron）；
+> 迁移里那组 pg_cron 周调度（`04:00`–`05:00` 错峰）仍是同一批 SQL 的另一个调度器，
+> 启用后与平台 worker 并存也只是重复执行同一条件、结果幂等。
+> Push 队列由 `/api/cron/push-retry` 自己每轮清理（见下表）。
 > 擦除不是定时任务：`erase_user_data()` 在删号前由应用侧同步调用。
 
 | 数据                                     | 保留期                                                  | 机制                                                        | 调度                    |
 | ---------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- | ----------------------- |
-| notifications（已读）                    | 90 天                                                   | `cleanup_old_notifications()`（003 建）                     | 每周日 04:00            |
+| notifications（已读）                    | 90 天                                                   | `cleanup_old_notifications()`（003 建）                     | 每天 05:00（`/api/cron/retention`） |
 | notifications（未读）                    | 永久（用户手动标已读后进入 90 天窗口）                  | 同上                                                        | 同上                    |
-| webhook_events（全部状态）               | 90 天                                                   | `cleanup_old_webhook_events()`（014 建）                    | 每周日 04:00            |
-| email_worker_runs（digest 运行记录）     | 90 天                                                   | `cleanup_old_email_worker_runs()`（027 建）                 | 每周日 04:15            |
+| webhook_events（全部状态）               | 90 天                                                   | `cleanup_old_webhook_events()`（014 建）                    | 每天 05:00（`/api/cron/retention`） |
+| email_worker_runs（digest 运行记录）     | 90 天                                                   | `cleanup_old_email_worker_runs()`（027 建）                 | 每天 05:00（`/api/cron/retention`）            |
 | push_delivery_attempts（`sent`）         | 7 天                                                    | `prunePushDeliveryAttempts()`（应用侧，worker 每轮调用）    | 每天一次（cron 路由） |
 | push_delivery_attempts（`dead`）         | 30 天                                                   | 同上                                                        | 同上                    |
 | push_delivery_attempts（`pending`）      | 永久（失败重试的上限由 `attempt_count` + 死信状态约束） | 永不被清理（清理只按 `sent`/`dead` 状态与时间窗删除）       | —                       |
 | audit_logs                               | 永久（合规需要，删改走变更流程；账户删除时匿名化）      | 无自动清理；`erase_user_data()`（032）在删号前剔除身份连接            | —                       |
-| contact_messages（`resolved`）             | 365 天                                                  | `cleanup_resolved_contact_messages()`（032 建）                        | 每周日 05:00            |
+| contact_messages（`resolved`）             | 365 天                                                  | `cleanup_resolved_contact_messages()`（032 建）                        | 每天 05:00（`/api/cron/retention`）            |
 | contact_messages（`new` / `in_progress`）  | 永久（未处理的求助不能被定时删掉）                      | 无自动清理（清理语句按状态过滤，永不含这两个状态）                     | —                       |
-| api_usage                                  | 90 天                                                   | `cleanup_old_api_usage()`（032 建）                                    | 每周日 04:30            |
-| upload_objects（`deleted`）                | 30 天                                                   | `prune_deleted_upload_objects()`（032 建）                              | 每周日 04:45            |
+| api_usage                                  | 90 天                                                   | `cleanup_old_api_usage()`（032 建）                                    | 每天 05:00（`/api/cron/retention`）            |
+| upload_objects（`deleted`）                | 30 天                                                   | `prune_deleted_upload_objects()`（032 建）                              | 每天 05:00（`/api/cron/retention`）            |
 | upload_objects（`active`）                 | 永久（对象是否应存在的唯一依据，删了就找不到孤儿）      | 无自动清理                                                             | —                       |
 
 ## 账户删除时的个人数据擦除（H08）
@@ -68,10 +70,10 @@
   `notifications(created_at)`、`push_delivery_attempts(status, sent_at / last_attempt_at)`、
   `api_usage(created_at)`（既有）、032 的两个局部索引。
 
-## ⚠️ pg_cron 未安装时保留期并不生效
+## 保留期由平台 worker 执行，不再依赖 pg_cron
 
-所有 SQL 侧调度都写成 `if exists (select 1 from pg_extension where extname = 'pg_cron')`，
-未安装扩展的环境会**静默跳过**——迁移照样成功、`check:migrations` 照样通过、
+历史上这些清理只有 SQL 侧调度，且都写成 `if exists (select 1 from pg_extension where extname = 'pg_cron')`
+的守卫形式——未安装扩展的环境会**静默跳过**：迁移照样成功、`check:migrations` 照样通过、
 `/api/health` 也不会报错，但保留期一行都不会删。
 
 2026-09-21 复核：本地开发库与云端项目 `ntqggnztzvoavjbiillb` 的 `pg_extension`
@@ -79,20 +81,27 @@
 **没有 `pg_cron`**，因此 `cron.job` 关系根本不存在，本文登记的每周清理在实际数据库里
 从未执行过。`032` 之前只有 `docs` 里那句「生产需确认扩展已启用」，没有任何证据说明它做没做。
 
-- 账户删除的 `erase_user_data()` 由应用侧同步调用，**不受 pg_cron 缺失影响**；
-- 受影响的只有上表的定时保留期，需要在 Supabase Dashboard → Database → Extensions
-  启用 `pg_cron` 后，重放调度（`supabase db reset` 或手工执行迁移里的 `do $do$` 块）才会注册。
-- 启用需要云端项目权限，属于运维动作，不由仓库门禁自动完成；下表用于每次复核留证。
+现在的执行者是 `/api/cron/retention`（每天 05:00 UTC，登记在 `src/lib/observability/cron-contract.ts`
+并由 `pnpm check:cron-contract` 校验接线）：它用 service_role 逐个调用同一批迁移函数。于是
+
+- 保留期不再要求任何人去 Dashboard 装扩展；删除逻辑仍然只有迁移 SQL 一个事实源；
+- 迁移里的 pg_cron 周调度保持原样（迁移不可改写）。日后若启用扩展，两条链路跑的都是
+  `now() - <retention>` 这同一组条件，重复执行幂等；
+- 单个函数失败只影响那张表：上报 `cron.retention.cleanup_failed{cleanup_function}` 后继续下一个，
+  只有全部失败才让整轮返回 500——否则平台调度记录会显示成功，而过期数据一直在堆积；
+- 账户删除的 `erase_user_data()` 仍由删号流程同步调用，与这两条链路都无关。
 
 ## 运维检查
 
+保留期的执行者是 `/api/cron/retention`：要确认它真的在跑，看平台 Cron Jobs 的调用记录，
+以及 `cron.retention.completed` 是否每天有一条样本（部分失败看 `cron.retention.cleanup_failed`）。
+下面的 SQL 用于核对权限收口，以及（可选的）pg_cron 注册。
+
 ```sql
--- 先确认扩展真的装了（返回 0 行 = 没装 = 下面所有调度都不存在，保留期不生效）
+-- pg_cron 现在只是第二个可选调度器：返回 0 行不代表保留期失效，只代表迁移里那组周调度没注册
 select extname from pg_extension where extname = 'pg_cron';
 
--- 确认调度存在（应看到 cleanup-old-notifications / cleanup-old-webhook-events /
--- cleanup-old-email-worker-runs / cleanup-old-api-usage /
--- prune-deleted-upload-objects / cleanup-resolved-contact-messages 六个任务）
+-- 若确实启用了 pg_cron，应看到这六个任务；未启用时 0 行是正常的
 select jobname, schedule, active from cron.job order by jobname;
 
 -- 确认清理函数没有对匿名/登录用户开放（应全部为 f，service_role 为 t）

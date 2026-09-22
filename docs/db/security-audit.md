@@ -11,12 +11,12 @@
 - 每个 `createAdminClient()` 调用点是否都已分类并保留授权证据（见 service_role 最小权限清单）；
 - 每张 `public` 表是否都已**分类**（见下一节 RLS 全表回归）。
 
-## 静态审计状态（2026-09-13）
+## 静态审计状态（2026-09-13；service-role 清点更新至 2026-09-22）
 
 `pnpm check:supabase-security` 通过：33 个迁移、20 张 public 表、39 条生效 RLS policy、
 Storage bucket 策略（应用引用的每个 bucket 都已登记、由迁移建行，且有按租户收敛的生效策略）、
 `SECURITY DEFINER` 执行权限、客户端写入策略、service-role 客户端边界与
-31 个已分类的 service-role 调用点（86 个调用点）均通过。迁移
+32 个已分类的 service-role 调用点（87 个调用点）均通过。迁移
 `024_storage_avatars_policies.sql` 已将 `avatars` bucket（公共读）及按 `auth.uid()` 前缀
 约束的 INSERT/UPDATE/DELETE policy 纳入版本控制；bucket 清单、规则与运行时核对见
 [docs/db/storage-policy-audit.md](storage-policy-audit.md)。
@@ -217,11 +217,11 @@ pnpm check:supabase-security
 
 ### 清点结果
 
-**31 个模块 / 86 个调用点**，按 surface 与信任依据分布：
+**32 个模块 / 87 个调用点**，按 surface 与信任依据分布：
 
 | surface | 模块数 | 信任依据（trust kind） | 说明 |
 |---|---:|---|---|
-| `data-access` | 14 | `server-internal` | 仓储层，授权由调用方保证 |
+| `data-access` | 15 | `server-internal` | 仓储层，授权由调用方保证 |
 | `e2e-mock-route` | 6 | `mock-bearer` | 仅 mock 模式，需 bearer token |
 | `server-action` | 3 | `role` / `session` | Server Action 入口 |
 | `request-handler` | 1 | `role` | Route Handler 入口 |
@@ -231,13 +231,17 @@ pnpm check:supabase-security
 | `auth-bridge` | 1 | `caller-validated` | 调用方校验 WebAuthn 断言 |
 | `server-internal` | 2 | `server-internal` / `caller-validated` | 服务端通知辅助函数与账户删除编排 |
 | `storage-adapter` | 1 | `server-internal` | 固定 `avatars` bucket |
-| **合计** | **31** | 15 个模块带字面量授权证据 | **86 个调用点** |
+| **合计** | **32** | 15 个模块带字面量授权证据 | **87 个调用点** |
 
-被 service_role 触达的表面：15 张表、1 个 bucket（`avatars`）、4 个 RPC
+被 service_role 触达的表面：15 张表、1 个 bucket（`avatars`）、10 个 RPC
 （`claim_webhook_event`，见 [webhook-idempotency.md](./webhook-idempotency.md)；
 `erase_user_data`，删号前的个人数据擦除，见 [retention.md](./retention.md)；
 `list_user_objects_for_erasure` 与 `find_orphan_upload_objects`，删号前的对象枚举与孤儿审计，
-见 [storage-policy-audit.md](./storage-policy-audit.md)），
+见 [storage-policy-audit.md](./storage-policy-audit.md)；
+以及 `/api/cron/retention` 每轮逐个调用的 6 个保留期清理函数
+`cleanup_old_notifications` / `cleanup_old_webhook_events` / `cleanup_old_email_worker_runs` /
+`cleanup_old_api_usage` / `prune_deleted_upload_objects` / `cleanup_resolved_contact_messages`，
+全部 `security definer` + 空 `search_path`，见 [retention.md](./retention.md)），
 以及 5 个 `auth.admin` 方法（`deleteUser` / `generateLink` / `getUserById` /
 `listFactors` / `deleteFactor`）。`auth.admin` 与跨用户写入是这条清单里权限最高的操作，
 都应保持"入口即校验"。账户删除链路因此被拆成
