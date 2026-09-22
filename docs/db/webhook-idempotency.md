@@ -30,6 +30,8 @@ POST /api/webhooks/stripe
   │    └─ duplicate → 200 {received:true,duplicate:true}，不执行任何副作用
   ├─ 副作用抛错                                 → 标记 failed + 500（Stripe 重试可重新占位）
   └─ 副作用成功                                 → 标记 processed/skipped
+       │  （processed = 计费状态真的写了一行；订阅事件解析不出 team_id 时一行都没写，
+       │   只能算 skipped——重复投递两者都判 duplicate，所以这条区分不改变重放行为）
        └─ 落状态失败                            → 仅记日志，仍回 200
 ```
 
