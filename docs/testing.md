@@ -66,6 +66,17 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
 - 默认单 worker 串行执行，避免多个 spec 通过同一个 dev server 互相清理/覆盖可变 Mock 状态；仅隔离实验可设置 `PW_FULLY_PARALLEL=true`
+- **全量并行的可复跑基线**：`.github/workflows/e2e-parallel.yml`（手动 `workflow_dispatch` +
+  每周一 07:30 UTC 定时，`30 7 * * 1`）在一个 dev server 上让 Playwright 自己开多 worker 跑**全量**
+  （不带 `--shard`）。它是测量不是门禁：不在必需检查里、`ci.yml` 也不依赖它，红了的含义是
+  「并行基线有共享状态冲突，请按报告记下具体是哪一份状态」，而不是「这个 PR 不能合」。
+  默认 CI 的 `[1, 2]` shard 分片各自独立 dev server，测的是分片是否正确，**测不出**并发冲突，
+  两者互补，不能互相替代。`src/lib/testing/e2e-shard-policy.test.ts` 钉住：全量（无 `--shard`）、
+  不接 `pull_request`/`push`、报告即使通过也留档，以及 artifact 名字全局唯一（#68 的教训：
+  两个作业写同一个名字，后跑的把先跑的悄悄盖掉，「证据」就变成另一件事了）。
+- **本机跑 E2E 前先确认 3100 空闲**：Playwright 只在 `webServer.url` 真能应答时才复用已有 server；
+  端口被别的项目占着且应答不了时，它会试图自启、以 `EADDRINUSE` 退出，而**一条用例都没跑**。
+  外层 shell 仍可能报 0——判定「跑过了」的依据是输出里的用例数，不是退出码。
 - CI 使用 **Playwright shard 隔离并行**：`E2E (Playwright)` job 的 `[1, 2]` matrix 各自启动独立 dev server，
   在 job 内继续单 worker；因此跨 shard 不共享 Mock 状态，全部 E2E 由两个 job 分担（具体条数由
   `--shard` 在运行时划分，随用例增减），而不是在同一条进程里提高 worker 数。视觉基线必须单 worker，

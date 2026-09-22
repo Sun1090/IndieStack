@@ -6,6 +6,18 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **全量并行的 E2E 基线从此可复跑**（C02）：新增 `.github/workflows/e2e-parallel.yml`，用
+  `PW_FULLY_PARALLEL=true` 在**一个** dev server 上跑**全量** E2E（刻意不带 `--shard`），
+  手动 `workflow_dispatch` 与每周一 `30 7 * * 1`（07:30 UTC）各一次。F04 留下的问题从来不是
+  「没有并行开关」——开关一直有——而是「那句 31/31 通过是一次再也复现不了的实验」。
+  这条把它变成有固定触发点、报告留档（`if: always()`，成功也留）的测量。
+  **它是测量，不是门禁**：不接 `pull_request`/`push`、不在必需检查里、`ci.yml` 也不依赖它；
+  变红的含义是「按报告记下哪一份共享状态冲突」，禁止为了让它绿而把 mock 的运行时默认 store
+  改成请求级。默认 CI 的 shard 各自独立 dev server、内部单 worker，本来就测不出并发冲突，
+  两套互补。`src/lib/testing/e2e-shard-policy.test.ts` 钉住这些性质，并把 #68 的教训推广成一条
+  通用规则：**全仓库任意两个作业不得写同名 artifact**（变异核对：删 `PW_FULLY_PARALLEL` 环境、
+  加 `pull_request` 触发、把 `pnpm test:e2e` 改成带 `--shard`、把 artifact 名改成与 ci.yml 重名，
+  分别让对应断言变红）。
 - **文档里的调度事实从此要对得上仓库**（D01）：`pnpm check:cron-contract` 多一条规则，扫
   `docs-site/**` 与 `docs/**`（带日期的快照除外：发布页、runbook、roadmap 记录的是当时的事实，
   改它们等于伪造证据），把合法的 5 字段 cron 表达式与 `/api/cron/*` 路径逐个对回

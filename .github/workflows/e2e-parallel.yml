@@ -1,0 +1,74 @@
+name: E2E parallel baseline
+
+## 用途：把「全量并行」变成可复跑的现实基线，而不是 F04 档案里的一次历史实验（C02）。
+## 默认 CI 跑的是 2 个 shard、每个 shard 内部单 worker（见 ci.yml 的 e2e job）——那测的是
+## 分片是否正确，测不出「多个 spec 同时用同一份可变 Mock 状态会怎样」。
+## 这里用 PW_FULLY_PARALLEL=true 让 Playwright 自己在**一个** dev server 上开多 worker。
+##
+## 本 workflow 不在任何 PR 的必需检查里，也不被 ci.yml 依赖：它变红的含义是
+## 「并行基线存在共享状态冲突，请按报告记下具体是哪一份状态」，不是「这个 PR 不能合」。
+## 因此禁止为了让它变绿而把 mock 的运行时默认 store 改成请求级——那是 v0.5.0
+## 「Action 写进去、RSC 读不到」的回归，理由见 docs/architecture/13-mock-system.md。
+##
+## 时间选择：周一 07:30 UTC —— 06:00 的 CodeQL（同为每周一）与每天 09:00 的 digest 之间，
+## 仓库里没有任何其它调度。挑空档不是为了省机器，是为了「这一轮红了」能对应到单一触发源。
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  parallel:
+    name: Fully parallel E2E on one dev server
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PW_FULLY_PARALLEL: "true"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # 先打印本次要跑多少用例：并行基线的结论只有在「跑的是同一批用例」时才可比较。
+      # 数量以这一行输出为准，文档里不复述（它会随用例增减而漂移）。
+      - name: Report the planned suite
+        run: pnpm exec playwright test --list | tail -n 1
+
+      - name: Run the full suite in parallel
+        run: pnpm test:e2e
+
+      # 成功也要留报告：这条基线的价值在于「哪一轮真的全绿过、多少用例、多久」。
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright-parallel-baseline
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
