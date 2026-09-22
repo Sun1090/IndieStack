@@ -90,8 +90,13 @@
 
 17. D01 把 docs-site 里**可机器核对的事实**纳入门禁：cron 路径与调度表达式、环境变量名、
     表名/迁移号。做法是给 `check:cron-contract` 增加「文档来源」参数，而不是新造一个门禁
-18. D02 双语一致性最小检查：同一章节的 EN/zh 若都提到某个 `HH:MM UTC` 或 cron 表达式，两者必须一致
-    （v0.6.0 的 I01 正是因为 EN 写「hourly」、zh 写「每天 09:00 UTC」而长期无人发现）
+18. D02 （**2026-09-22 已完成**）双语一致性最小检查：同一页面的 EN/zh 若提到 cron 表达式或
+    `HH:MM UTC` 时刻，两边集合必须完全相等（一边提到一边没有也算失败）。落地为
+    `pnpm check:bilingual-docs`（规则 `src/lib/docs/bilingual-facts.ts` + IO + CI/check:all 接线）。
+    接线时当场查出三处存量漂移并修掉：`docs-site/web-push.md` 英文版的「every 15 minutes」
+    （`vercel.json` 早于 2026-09-21 改为 `0 22 * * *`）、`docs-site/v0.8.0.md` 双语互相矛盾、
+    中文版缺 cron 表达式。故意不比对文案（"hourly" vs「每小时」这类同义表达经实测误报率高，
+    会把门禁退化成翻译质量检查），只比对结构化事实
 19. D03 补 `docs/operations/release-gap-audit-v0.11.0.md`（该系列在 v0.10.0 之后断了），
     并把退出报告的核对方法写成模板，供后续版本复用
 20. D04 清除剩余文档里的易漂移数字（F09 覆盖率基线、G02 token 数、G04/H05 的测试条数等），

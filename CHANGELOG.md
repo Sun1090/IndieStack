@@ -6,6 +6,16 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **双语页从此必须说同一个调度事实**：新增 `pnpm check:bilingual-docs`
+  （规则本体 `src/lib/docs/bilingual-facts.ts`，IO `scripts/lib/bilingual-docs-check.js`，
+  已接进 `check:all` 与 CI）。逐页比对 `docs-site/<page>.md` 与 `docs-site/zh-CN/<page>.md`
+  里可机器核对的**结构化调度事实**——5 字段 cron 表达式与 `HH:MM UTC` 时刻；两边集合必须完全相等，
+  「一边提到一边没有」同样失败，因为只改一种语言正是漂移的发生方式。cron 合法性复用
+  `isValidCronSchedule`，避免把散文里的数字串当成表达式；找不到配对、英文页缺中文同名页、
+  文档内容为空都是失败封闭（`DOC_NO_PAIRS` / `DOC_PAIR_MISSING` / `DOC_SOURCE_EMPTY`）。
+  规则 13 条 + IO 6 条；变异核对：把中文版 `0 9 * * *` 改成 `0 5 * * *` →
+  `❌ [DOC_CRON_MISMATCH] docs-site/email.md cron 表达式与中文版不一致：缺少 0 9 * * *；多出 0 5 * * *`。
+  接线时核对面：27 对文档 / 7 个 cron 表达式 / 3 个 UTC 时刻（数量以命令输出为准，文档不复述）。
 - **「按用户条件跳过投递」从此必须有计数，否则 PR 就红**：新增
   `src/lib/observability/cron-skip-coverage.ts`，用 TypeScript 解析器核对每个 cron worker 路由里
   **带条件的 `continue`** 是否留下计数证据——上报该 worker 注册过的 skip 指标（且带 `reason` 维度），
@@ -65,6 +75,13 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **英文版仍在教一种平台不允许的调度**：`docs-site/web-push.md` 写着
+  `/api/cron/push-retry`「scheduled every 15 minutes in `vercel.json`」，而该表达式在
+  2026-09-21（PR #32）就被改成 `0 22 * * *`——Hobby plan 每个路径每天最多一次，`*/15 * * * *`
+  如今会被平台拒绝部署。按代码事实改写，并给中文版补上 `0 22 * * *`（它此前只写「每天 22:00 UTC」，
+  两边引用粒度不同）。`docs-site/v0.8.0.md` 双语同样对齐：历史发布页保留 v0.8.0 当时的
+  「每 15 分钟」事实，但两边都加同一条带日期勘误，说明现行调度与它为何不同。
+  这三处都是新门禁 `pnpm check:bilingual-docs` 接线时当场量出来的存量漂移。
 - **MFA 挑战页在请求抛异常时把用户永久卡在 `...`**：`src/app/auth/mfa/page.tsx` 的
   `handleSubmit` / `handleRedeem` 只在「返回 error 对象」的分支里复位 `loading`，而 supabase-js
   在断网或服务端错误时是**抛异常**、Server Action 也可能 reject——异常直接绕过 `setLoading(false)`，

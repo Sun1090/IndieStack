@@ -76,8 +76,9 @@ Set `pushNotifications: false` to disable all browser push without affecting in-
   2 minutes.
 - A delivery is attempted at most 3 times including the immediate send. The third failure becomes a
   `dead` row with `failure_code=max-attempts` and is no longer pulled by the worker.
-- The worker processes up to 50 due rows per invocation. `/api/cron/push-retry` is scheduled every
-  15 minutes in `vercel.json` and requires the same `CRON_SECRET` as `/api/cron/digest`.
+- The worker processes up to 50 due rows per invocation. `/api/cron/push-retry` is scheduled once a
+  day at 22:00 UTC in `vercel.json` (`0 22 * * *`; Vercel Hobby allows at most one run per path per
+  day) and requires the same `CRON_SECRET` as `/api/cron/digest`.
 - A missing subscription row, a browser that disabled push in the meantime, or a notification row
   that no longer exists moves the attempt to the dead-letter queue without another transport call.
 - Dead letters are retained for operator inspection through
