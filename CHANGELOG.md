@@ -34,6 +34,9 @@ All notable changes to IndieStack will be documented in this file.
   `docs/db/retention.md` 的演练记录里。同一份记录还有一次**关掉 mock** 的整链路验证：用本地栈凭据起
   dev server、真实播种两条行（91 天 / 89 天）后打 `POST /api/cron/retention`，得到
   `{"ran":6,"failed":0,…}`、91 天那条消失、89 天那条留下，未携带与错误凭据各自 401。
+  失败路径同样在真库里演练过：收回 `cleanup_old_api_usage()` 的 `EXECUTE` 后整轮返回
+  `{"ran":5,"failed":1,…}`（HTTP 仍是 200），另两张表的过期行照常删除，恢复授权后下一轮把残留那条补删掉，
+  且 `cron.retention.cleanup_failed{cleanup_function}` 与 `permission denied` 日志都真实落到了输出里。
 
 ### Fixed
 
