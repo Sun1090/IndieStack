@@ -444,6 +444,12 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 `pnpm check:security` 是仓库级安全配置门禁：读取 git 索引并拒绝被跟踪的 `.env*`（`.env.example` 除外）和私钥类文件；检查已有环境文件权限不得宽于 `0600`；拒绝 `.env.development` 中的服务端密钥；扫描带真实 `"use client"` 指令的源码，拦截 `process.env.X` / `process.env["X"]` 形式的服务端变量泄漏（包含 `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`）；要求所有 workflow 显式声明 permissions 且禁止 `write-all`。
 
+依赖审计这一段现在会区分两件完全不同的事：`pnpm audit --json` 在注册表请求失败时退出码为 1，并打印
+`{"error":{"code":"pnpm","message":"fetch failed"}}`——合法 JSON、只是没有 `metadata`。过去两种情况都报
+`report is missing metadata`，于是「网络抖了一下」看起来像「仓库配置坏了」，而正确的响应其实是重跑。
+现在前者报 `advisory request failed (code=…, message=…)`，后者把实际拿到的顶层键一并列出。
+**两种都仍然失败封闭**：读不到审计结果不等于没有漏洞，也永远不该靠放宽审计强度让它变绿。
+
 除静态仓库检查外，它还会校验 `secrets-scan.yml`、`security-config.yml`、`codeql.yml` 和 `dependabot.yml` 的关键扫描配置没有漂移，包括 PR/main/develop 触发、gitleaks/codeql action 版本、full git history、只读权限、定时依赖审计、security-extended 查询和 Dependabot 的 npm/GitHub Actions 跟踪。依赖审计读取 `pnpm audit --json`，high/critical 任一大于 0 即失败；输入缺失、不可读或 JSON 形状异常时 fail-closed。
 
 规则实现位于 `src/lib/security/security-config.ts`（纯函数），IO/CLI 位于 `scripts/lib/security-config-check.js`，由 `scripts/check-security-config.js` 经 Node 原生 type stripping 调用。专项测试覆盖策略函数与 CLI 退出码：

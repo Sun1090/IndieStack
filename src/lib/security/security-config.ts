@@ -217,10 +217,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * 报告读不懂时，把「到底拿到了什么」写进结论。
+ *
+ * `pnpm audit --json` 在注册表请求失败时退出码为 1，并打印
+ * `{"error":{"code":"pnpm","message":"fetch failed"}}`——它同样是合法 JSON，只是没有
+ * `metadata`。笼统地报「report is missing metadata」会让人去查仓库配置，而真正该做的是重跑。
+ * 两种情况都仍然失败封闭：读不到审计结果不等于没有漏洞。
+ */
+function describeUnreadableReport(report: Record<string, unknown>): string {
+  const error = report.error;
+  if (isRecord(error)) {
+    const code = typeof error.code === "string" ? error.code : "unknown";
+    const message = typeof error.message === "string" ? error.message : "(empty)";
+    return `pnpm audit: advisory request failed (code=${code}, message=${message})`;
+  }
+  const keys = Object.keys(report).sort().join(", ") || "(none)";
+  return `pnpm audit: report is missing metadata (top-level keys: ${keys})`;
+}
+
 export function inspectAuditReport(report: unknown): AuditVulnerabilityCounts | string[] {
   if (!isRecord(report)) return ["pnpm audit: report must be a JSON object"];
   const metadata = report.metadata;
-  if (!isRecord(metadata)) return ["pnpm audit: report is missing metadata"];
+  if (!isRecord(metadata)) return [describeUnreadableReport(report)];
   const vulnerabilities = metadata.vulnerabilities;
   if (!isRecord(vulnerabilities)) return ["pnpm audit: report is missing vulnerability counts"];
 
