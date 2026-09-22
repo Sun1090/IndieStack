@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createMockSupabaseClient,
+  createMockRequestStore,
   resetMockCache,
   getMockUploadFailNext,
   setMockUploadFailNext,
@@ -471,6 +472,80 @@ describe("Mock MFA 状态机", () => {
 
     resetMockCache();
     expect((await createMockSupabaseClient().auth.mfa.listFactors()).data.totp).toHaveLength(0);
+  });
+
+  it("同一个 store 的两个 client 共享 MFA 状态（假数据库契约）", async () => {
+    // Server Action 与随后的 RSC 读取分属不同 chunk 的两次构造，靠的是共享 store，
+    // 不是模块级变量。删掉这条就等于允许把 mock 改回「每个 client 一份私有数据」，
+    // 那会重新制造 v0.5.0 F02 的「写进去了、读不到」。
+    const store = createMockRequestStore();
+    const writer = createMockSupabaseClient({ store });
+    const reader = createMockSupabaseClient({ store });
+
+    const enrolled = await writer.auth.mfa.enroll({ factorType: "totp", friendlyName: "共享设备" });
+    const factorId = enrolled.data?.id ?? "";
+    await writer.auth.mfa.challengeAndVerify({ factorId, code: "123456" });
+
+    const listed = (await reader.auth.mfa.listFactors()).data.totp;
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ id: factorId, status: "verified" });
+  });
+
+  it("challenge 的失败计数与锁定是 store 私有的", async () => {
+    const first = createMockSupabaseClient({ store: createMockRequestStore() });
+    const second = createMockSupabaseClient({ store: createMockRequestStore() });
+    const open = async (client: ReturnType<typeof createMockSupabaseClient>) => {
+      const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+      const factorId = enrolled.data?.id ?? "";
+      await client.auth.mfa.challengeAndVerify({ factorId, code: "123456" });
+      const challenge = await client.auth.mfa.challenge({ factorId });
+      return { factorId, challengeId: challenge.data?.id ?? "" };
+    };
+    const a = await open(first);
+    const b = await open(second);
+
+    // 两个 store 各自 enroll 出来的 id 形状相同（同一毫秒、长度都是 1），
+    // 所以这里真正在测的是「按 id 找人」不会跨 store 命中。
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await first.auth.mfa.verify({ factorId: a.factorId, challengeId: a.challengeId, code: "000000" });
+    }
+    await expect(
+      first.auth.mfa.verify({ factorId: a.factorId, challengeId: a.challengeId, code: "123456" }),
+    ).resolves.toEqual({ error: { message: "Too many MFA attempts" } });
+
+    await expect(
+      second.auth.mfa.verify({ factorId: b.factorId, challengeId: b.challengeId, code: "123456" }),
+    ).resolves.toEqual({ error: null });
+  });
+
+  it("同一 store 内两个 challenge 各自计数，锁一个不影响另一个", async () => {
+    const client = createMockSupabaseClient({ store: createMockRequestStore() });
+    const enrolled = await client.auth.mfa.enroll({ factorType: "totp" });
+    const factorId = enrolled.data?.id ?? "";
+    await client.auth.mfa.challengeAndVerify({ factorId, code: "123456" });
+    const first = await client.auth.mfa.challenge({ factorId });
+    const second = await client.auth.mfa.challenge({ factorId });
+    const firstId = first.data?.id ?? "";
+    const secondId = second.data?.id ?? "";
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await client.auth.mfa.verify({ factorId, challengeId: firstId, code: "000000" });
+    }
+    await expect(
+      client.auth.mfa.verify({ factorId, challengeId: firstId, code: "123456" }),
+    ).resolves.toEqual({ error: { message: "Too many MFA attempts" } });
+    await expect(
+      client.auth.mfa.verify({ factorId, challengeId: secondId, code: "123456" }),
+    ).resolves.toEqual({ error: null });
+  });
+
+  it("listFactors 返回副本，调用方改不动 store 里的因子状态", async () => {
+    const client = createMockSupabaseClient({ store: createMockRequestStore() });
+    await client.auth.mfa.enroll({ factorType: "totp" });
+    const listed = (await client.auth.mfa.listFactors()).data.totp;
+
+    listed[0].status = "verified";
+    expect((await client.auth.mfa.listFactors()).data.totp[0].status).toBe("unverified");
   });
 });
 

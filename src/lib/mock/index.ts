@@ -87,25 +87,6 @@ export function createMockSupabaseClient(options: { store?: MockStore } = {}) {
 /**
  * 内部状态：缓存生成的 mock 数据，在一次请求内保持一致
  */
-let _mockUser: ReturnType<typeof generateMockUser> | null = null;
-let _mockProfile: ReturnType<typeof generateMockProfile> | null = null;
-let _mockTeam: ReturnType<typeof generateMockTeam> | null = null;
-let _mockProfiles: ReturnType<typeof generateMockProfile>[] | null = null;
-let _mockTeams: ReturnType<typeof generateMockTeam>[] | null = null;
-let _mockMembers: ReturnType<typeof generateMockTeamMembersWithProfiles> | null = null;
-let _mockProjects: ReturnType<typeof generateMockProjects> | null = null;
-let _mockNotifications: ReturnType<typeof generateMockNotifications> | null = null;
-let _mockAuditLogs: ReturnType<typeof generateMockAuditLogs> | null = null;
-let _mockApiUsage: ReturnType<typeof generateMockApiUsageRows> | null = null;
-let _mockUserSessions: ReturnType<typeof generateMockUserSessions> | null = null;
-let _mockApiKeys: ReturnType<typeof generateMockApiKeys> | null = null;
-let _mockWorkerRuns: Record<string, unknown>[] | null = null;
-let _mockMarketingSubscriptions: Record<string, unknown>[] | null = null;
-let _mockContactMessages: ReturnType<typeof generateMockContactMessages> | null = null;
-let _mockWebhookEvents: Record<string, unknown>[] | null = null;
-let _mockPushDeliveryAttempts: Record<string, unknown>[] | null = null;
-let _mockPushSubscriptions: Record<string, unknown>[] | null = null;
-let _mockUploadObjects: Record<string, unknown>[] | null = null;
 type MockMfaChallenge = {
   id: string;
   factor_id: string;
@@ -120,43 +101,18 @@ type MockMfaFactor = {
   friendly_name: string;
   created_at: string;
 };
-let _mockMfaFactors: MockMfaFactor[] | null = null;
-let _mockMfaChallenges: MockMfaChallenge[] | null = null;
 
 /** 重置缓存的 mock 数据（可用于测试或刷新） */
 export function resetMockCache() {
-  _mockUser = null;
-  _mockProfile = null;
-  _mockTeam = null;
-  _mockProfiles = null;
-  _mockTeams = null;
-  _mockMembers = null;
-  _mockProjects = null;
-  _mockNotifications = null;
-  _mockAuditLogs = null;
-  _mockApiUsage = null;
-  _mockUserSessions = null;
-  _mockApiKeys = null;
-  _mockWorkerRuns = null;
-  _mockMarketingSubscriptions = null;
-  _mockContactMessages = null;
-  _mockWebhookEvents = null;
-  _mockPushDeliveryAttempts = null;
-  _mockPushSubscriptions = null;
-  _mockUploadObjects = null;
-  _mockMfaFactors = null;
-  _mockMfaChallenges = null;
   mockCacheClear();
 }
 
 function getMockUser() {
   const cached = mockCacheGet<ReturnType<typeof generateMockUser>>("User");
   if (cached) {
-    _mockUser = cached;
     return cached;
   }
   const fresh = generateMockUser();
-  _mockUser = fresh;
   mockCacheSet("User", fresh);
   return fresh;
 }
@@ -164,11 +120,9 @@ function getMockUser() {
 function getMockProfile() {
   const cached = mockCacheGet<ReturnType<typeof generateMockProfile>>("Profile");
   if (cached) {
-    _mockProfile = cached;
     return cached;
   }
   const fresh = generateMockProfile();
-  _mockProfile = fresh;
   mockCacheSet("Profile", fresh);
   return fresh;
 }
@@ -176,11 +130,9 @@ function getMockProfile() {
 function getMockTeam() {
   const cached = mockCacheGet<ReturnType<typeof generateMockTeam>>("Team");
   if (cached) {
-    _mockTeam = cached;
     return cached;
   }
   const fresh = generateMockTeam();
-  _mockTeam = fresh;
   mockCacheSet("Team", fresh);
   return fresh;
 }
@@ -188,7 +140,6 @@ function getMockTeam() {
 function getMockProfiles(): ReturnType<typeof generateMockProfile>[] {
   const cached = mockCacheGet<ReturnType<typeof getMockProfiles>>("Profiles");
   if (cached) {
-    _mockProfiles = cached;
     return cached;
   }
   // 主用户 + 9 个不同 id/email 的成员（真实 profiles 表 id/email 唯一；
@@ -203,7 +154,6 @@ function getMockProfiles(): ReturnType<typeof generateMockProfile>[] {
       }),
     ),
   ];
-  _mockProfiles = fresh;
   mockCacheSet("Profiles", fresh);
   return fresh;
 }
@@ -211,11 +161,9 @@ function getMockProfiles(): ReturnType<typeof generateMockProfile>[] {
 function getMockTeams(): ReturnType<typeof generateMockTeam>[] {
   const cached = mockCacheGet<ReturnType<typeof getMockTeams>>("Teams");
   if (cached) {
-    _mockTeams = cached;
     return cached;
   }
   const fresh = [getMockTeam()];
-  _mockTeams = fresh;
   mockCacheSet("Teams", fresh);
   return fresh;
 }
@@ -223,11 +171,9 @@ function getMockTeams(): ReturnType<typeof generateMockTeam>[] {
 function getMockMembers() {
   const cached = mockCacheGet<ReturnType<typeof generateMockTeamMembersWithProfiles>>("Members");
   if (cached) {
-    _mockMembers = cached;
     return cached;
   }
   const fresh = generateMockTeamMembersWithProfiles();
-  _mockMembers = fresh;
   mockCacheSet("Members", fresh);
   return fresh;
 }
@@ -235,11 +181,9 @@ function getMockMembers() {
 function getMockProjects() {
   const cached = mockCacheGet<ReturnType<typeof generateMockProjects>>("Projects");
   if (cached) {
-    _mockProjects = cached;
     return cached;
   }
   const fresh = generateMockProjects();
-  _mockProjects = fresh;
   mockCacheSet("Projects", fresh);
   return fresh;
 }
@@ -247,11 +191,9 @@ function getMockProjects() {
 function getMockNotifications() {
   const cached = mockCacheGet<ReturnType<typeof generateMockNotifications>>("Notifications");
   if (cached) {
-    _mockNotifications = cached;
     return cached;
   }
   const fresh = generateMockNotifications();
-  _mockNotifications = fresh;
   mockCacheSet("Notifications", fresh);
   return fresh;
 }
@@ -259,11 +201,9 @@ function getMockNotifications() {
 function getMockAuditLogs() {
   const cached = mockCacheGet<ReturnType<typeof generateMockAuditLogs>>("AuditLogs");
   if (cached) {
-    _mockAuditLogs = cached;
     return cached;
   }
   const fresh = generateMockAuditLogs();
-  _mockAuditLogs = fresh;
   mockCacheSet("AuditLogs", fresh);
   return fresh;
 }
@@ -271,11 +211,9 @@ function getMockAuditLogs() {
 function getMockApiUsage() {
   const cached = mockCacheGet<ReturnType<typeof generateMockApiUsageRows>>("ApiUsage");
   if (cached) {
-    _mockApiUsage = cached;
     return cached;
   }
   const fresh = generateMockApiUsageRows();
-  _mockApiUsage = fresh;
   mockCacheSet("ApiUsage", fresh);
   return fresh;
 }
@@ -283,11 +221,9 @@ function getMockApiUsage() {
 function getMockUserSessions() {
   const cached = mockCacheGet<ReturnType<typeof generateMockUserSessions>>("UserSessions");
   if (cached) {
-    _mockUserSessions = cached;
     return cached;
   }
   const fresh = generateMockUserSessions();
-  _mockUserSessions = fresh;
   mockCacheSet("UserSessions", fresh);
   return fresh;
 }
@@ -295,11 +231,9 @@ function getMockUserSessions() {
 function getMockApiKeys() {
   const cached = mockCacheGet<ReturnType<typeof generateMockApiKeys>>("ApiKeys");
   if (cached) {
-    _mockApiKeys = cached;
     return cached;
   }
   const fresh = generateMockApiKeys();
-  _mockApiKeys = fresh;
   mockCacheSet("ApiKeys", fresh);
   return fresh;
 }
@@ -307,11 +241,9 @@ function getMockApiKeys() {
 function getMockWorkerRuns(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>(store, "WorkerRuns");
   if (cached) {
-    _mockWorkerRuns = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
-  _mockWorkerRuns = fresh;
   mockCacheSet(store, "WorkerRuns", fresh);
   return fresh;
 }
@@ -319,11 +251,9 @@ function getMockWorkerRuns(store: MockStore = MOCK_GLOBAL): Record<string, unkno
 function getMockWebhookEvents(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>(store, "WebhookEvents");
   if (cached) {
-    _mockWebhookEvents = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
-  _mockWebhookEvents = fresh;
   mockCacheSet(store, "WebhookEvents", fresh);
   return fresh;
 }
@@ -432,11 +362,9 @@ function listMockOrphanObjects(): { data: unknown; error: unknown } {
 
 function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {  const cached = mockCacheGet<Record<string, unknown>[]>(store, "MarketingSubscriptions");
   if (cached) {
-    _mockMarketingSubscriptions = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
-  _mockMarketingSubscriptions = fresh;
   mockCacheSet(store, "MarketingSubscriptions", fresh);
   return fresh;
 }
@@ -444,11 +372,9 @@ function getMockMarketingSubscriptions(store: MockStore = MOCK_GLOBAL): Record<s
 function getMockPushDeliveryAttempts(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>(store, "PushDeliveryAttempts");
   if (cached) {
-    _mockPushDeliveryAttempts = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
-  _mockPushDeliveryAttempts = fresh;
   mockCacheSet(store, "PushDeliveryAttempts", fresh);
   return fresh;
 }
@@ -457,11 +383,9 @@ function getMockPushDeliveryAttempts(store: MockStore = MOCK_GLOBAL): Record<str
 function getMockPushSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>(store, "PushSubscriptions");
   if (cached) {
-    _mockPushSubscriptions = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
-  _mockPushSubscriptions = fresh;
   mockCacheSet(store, "PushSubscriptions", fresh);
   return fresh;
 }
@@ -470,11 +394,9 @@ function getMockPushSubscriptions(store: MockStore = MOCK_GLOBAL): Record<string
 function getMockUploadObjects(store: MockStore = MOCK_GLOBAL): Record<string, unknown>[] {
   const cached = mockCacheGet<Record<string, unknown>[]>(store, "UploadObjects");
   if (cached) {
-    _mockUploadObjects = cached;
     return cached;
   }
   const fresh: Record<string, unknown>[] = [];
-  _mockUploadObjects = fresh;
   mockCacheSet(store, "UploadObjects", fresh);
   return fresh;
 }
@@ -482,11 +404,9 @@ function getMockUploadObjects(store: MockStore = MOCK_GLOBAL): Record<string, un
 function getMockMfaChallenges(store: MockStore = MOCK_GLOBAL): MockMfaChallenge[] {
   const cached = mockCacheGet<MockMfaChallenge[]>(store, "MfaChallenges");
   if (cached) {
-    _mockMfaChallenges = cached;
     return cached;
   }
   const fresh: MockMfaChallenge[] = [];
-  _mockMfaChallenges = fresh;
   mockCacheSet(store, "MfaChallenges", fresh);
   return fresh;
 }
@@ -494,11 +414,9 @@ function getMockMfaChallenges(store: MockStore = MOCK_GLOBAL): MockMfaChallenge[
 function getMockMfaFactors(store: MockStore = MOCK_GLOBAL): MockMfaFactor[] {
   const cached = mockCacheGet<MockMfaFactor[]>(store, "MfaFactors");
   if (cached) {
-    _mockMfaFactors = cached;
     return cached;
   }
   const fresh: MockMfaFactor[] = [];
-  _mockMfaFactors = fresh;
   mockCacheSet(store, "MfaFactors", fresh);
   return fresh;
 }
@@ -506,11 +424,9 @@ function getMockMfaFactors(store: MockStore = MOCK_GLOBAL): MockMfaFactor[] {
 export function getMockContactMessages() {
   const cached = mockCacheGet<ReturnType<typeof generateMockContactMessages>>("ContactMessages");
   if (cached) {
-    _mockContactMessages = cached;
     return cached;
   }
   const fresh = generateMockContactMessages();
-  _mockContactMessages = fresh;
   mockCacheSet("ContactMessages", fresh);
   return fresh;
 }

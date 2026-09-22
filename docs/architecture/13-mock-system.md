@@ -15,8 +15,8 @@ graph TD
         Config["开启判断<br/>src/lib/mock/config.ts<br/>isMockEnabled / shouldUseMock()"]
         MockClient["Mock Supabase 客户端<br/>createMockSupabaseClient()"]
         MockData["Mock 数据生成<br/>@faker-js/faker"]
-        Cache["进程级缓存<br/>globalThis.__indiestackMockCache__"]
-        ReqStore["请求级作用域<br/>createMockRequestStore()"]
+        Cache["默认 store（进程级）<br/>globalThis.__indiestackMockCache__"]
+        ReqStore["注入的私有 store<br/>createMockRequestStore()"]
     end
 
     subgraph RealSystem["真实系统"]
@@ -106,24 +106,33 @@ graph LR
 
 ```mermaid
 flowchart TD
-    Request["请求进入"] --> Check{"进程级缓存<br/>globalThis 中已有数据?"}
-    Check -->|否| Generate["生成 Mock 数据<br/>并写入模块级缓存"]
-    Check -->|是| UseCache["使用缓存数据"]
-    Generate --> Return["返回 Mock 数据"]
+    Request["请求进入"] --> Which{"用哪个 store?"}
+    Which -->|默认| Global["MOCK_GLOBAL<br/>globalThis.__indiestackMockCache__"]
+    Which -->|构造时注入| Scope["createMockRequestStore()<br/>私有作用域"]
+    Global --> Check{"该 store 里已有这张表?"}
+    Scope --> Check
+    Check -->|否| Generate["生成 Mock 数据<br/>写回同一个 store"]
+    Check -->|是| UseCache["复用 store 里的数据"]
+    Generate --> Return["返回数据"]
     UseCache --> Return
-    Return --> Isolated{"需要请求级隔离?"}
-    Isolated -->|是| Scope["createMockRequestStore()<br/>私有 Map 作用域"]
-    Isolated -->|否| Shared["共享进程级缓存"]
-    Shared --> Reset["resetMockCache()<br/>或 POST /api/e2e/mock-reset"]
 ```
 
-- **进程级缓存**：模块级缓存镜像到 `globalThis.__indiestackMockCache__`。该跳板是必要的，
-  Next.js dev 与生产构建都会把 Mock 模块拆成多个 chunk，缺少它时 RSC / 路由处理里的写入
-  在后续 Server Action 中不可见（v0.5.0 实际踩到的跨 chunk 问题）。
-- **重置**：`resetMockCache()` 清空全部缓存列表、Mock 用户/会话与 MFA 状态；
-  运行中的 dev server 可以调用 `POST /api/e2e/mock-reset`（需要 `E2E_BEARER_TOKEN`）。
-- **请求级隔离**：并行 spec 或并发场景测试使用 `createMockRequestStore()` 创建私有
-  `Map` 作用域并注入客户端，避免共享可变状态互相覆盖。
+- **store 是唯一的状态来源**：`MockStore` 就是一个对象，读与写都经过它，默认值是挂在
+  `globalThis.__indiestackMockCache__` 上的那一份。这个跳板是必要的——Next.js dev 与生产构建都会把
+  Mock 模块拆成多个 chunk，缺少它时 RSC / 路由处理里的写入在后续 Server Action 中不可见
+  （v0.5.0 实际踩到的跨 chunk 问题）。**模块级不再有 `_mock*` 变量**：曾有 21 个与 store 并行的
+  模块级「镜像」，实测全部只被写入、从不被读取——它们不是第二份状态，而是死代码，已整体删除。
+  留着真正的害处是让「MFA 状态还是进程全局」这类判断看起来有依据（v0.6.0 退出报告的 F01 正是
+  这么写的），而决定隔离边界的一直只有 store。
+- **重置只针对默认 store**：`resetMockCache()` 清空 `MOCK_GLOBAL`（含 MFA 状态与失败注入计数）；
+  注入出去的私有 store 由调用方自行丢弃。运行中的 dev server 可以调用
+  `POST /api/e2e/mock-reset`（需要 `E2E_BEARER_TOKEN`）。
+- **请求级隔离是给测试用的，不是运行时的默认形态**：并行 spec 与并发场景测试用
+  `createMockRequestStore()` 造私有作用域并注入客户端，避免共享可变状态互相覆盖。
+  运行时**故意**共享默认 store：Server Action 写入、紧接着的 RSC 读取必须在同一份「假数据库」上
+  看得见彼此，那正是上面跨 chunk 一条的内容；把它当成「顺手改成请求级」的优化，就会重演 v0.5.0 的
+  「写进去了、读不到」。这条边界是可证伪的：`src/lib/mock.test.ts` 里让 MFA 的 getter 改回读
+  `MOCK_GLOBAL`，隔离与共享两组断言会同时变红。
 - 仓库不使用 file-backed fixture 作为运行时数据源，原因见 `docs/testing.md`（F02/F03）。
 
 ## 接入点
