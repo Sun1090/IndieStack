@@ -1120,3 +1120,36 @@
   `deleteAccountWithData` 内部写进 `account.deleted` 审计行的 metadata（`deletion.ts:47-60`）。
   刻意保留的两类失败（provider 删对象失败、审计补记失败）都写在模块头部，且前者仍会被
   孤儿清单发现。审计记录的这一条是**误报**，按「先核对再动手」的规矩关掉。
+
+## 2026-09-23 — 五个 PR 全部合并回 main，把上面几条欠的「commit 之后补记」落成数字
+
+- 里程碑 / 版本：v0.12.0；本轮「记录说假话」家族的收口。
+- 状态：DONE。分支：`docs/record-merged-verification`（本条目所在 PR）。
+- 合并顺序与结果（全部走 PR，`--rebase --delete-branch`，无 merge commit、无 force push 到 main）：
+  #86 digest 轮次记录 + `check:cron-contract` 指标表行牙齿（`a85f892` + `a6dbeaf`）、
+  #87 未读数与「全部已读」抛错（`235c85c`）、#88 `teams.member_count` 不猜数（`c818683`）、
+  #89 Stripe 事件 `skipped` / 回退查询抛错（`d0735fa` + `39c5149`）、#90 邀请链三处答错话（`a8f8331`）。
+  合并后 `main` = `a8f8331`，远端只剩 `main`，本地只剩 `main`（另有一个内容已在上游的历史分支
+  `docs/boundaries` 经 `git cherry` 确认为 `-` 后删除）。
+- 上面几条各自写过「全量 check:all 见 commit 之后补记」，此处一次落账。口径要说准：
+  **本地在 rebase 到当时 main 之后重跑过全量门禁的**是 #87（2279 用例）、#88（2284）、#90（2288），
+  均 exit 0；#86 与 #89 的 rebase 后验证来自 GitHub 端同一条 `pnpm check:all`（C04 之后 CI 与本地
+  是同一份清单）。五个 PR 的 `Lint & Type Check` / `Unit Tests` / `Build` / `E2E shard 1+2` /
+  `E2E (Playwright)` / `Build Docs Site` / `security-config` / CodeQL / Detect Secrets 全绿；
+  合并后的最终状态在本地重跑：`CI=true pnpm check:all` → **exit 0，199 文件 / 2291 用例，✅ 全部校验通过**。
+- 一件方法上的事，记下来免得下次重新推：五个分支都往 `CHANGELOG.md` 的 `### Fixed` 顶部和
+  `docs/progress.md` 末尾同一个位置追加，因此 `gh pr update-branch --rebase` 必然报
+  `RebaseConflictError`。解法是**只删三行冲突标记**（两侧都是新增条目，「都保留」就是完整解），
+  `git add -A` → `GIT_EDITOR=true git rebase --continue` → 重跑门禁 → `git push --force-with-lease`
+  （仅限自己的 PR 传输分支）。代码文件多半能自动合并，但**必须再跑一次测试**证明语义没打架：
+  #88 改 `inviteMember` 的尾巴、#90 改它的头，git 合上了，是 49 条用例绿才确认 coherent。
+- 仍未闭环的（按性质分）：
+  1. 等用户拍板：A05 出队语义（含 `is_read` 那条静默出队、以及邮件要不要行龄上界）、
+     A01 `profiles.timezone` 去留、C06 `actions/uploads.ts` 两个孤儿 Server Action。
+  2. 等外部权限：B02 回滚演练、B03 擦除演练、B04 云端 Supabase 演练、B05 provider/事故演练、
+     C05 provider 侧 `list()` 对账、digest 生产一轮观察、task #28 生产冒烟
+     （Vercel 仍是 `Deployment rate limited — retry in 24 hours`，5 个 PR 的 Vercel 检查全红即此因，
+     按既定口径忽略、不绕过）。
+  3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
+     （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
+- 更新时间：2026-09-23（UTC 22:10 前后）。
