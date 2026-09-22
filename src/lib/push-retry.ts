@@ -3,7 +3,9 @@
  *
  * 从 `push_delivery_attempts` 拉取到期的 pending 行，按端点重试投递：
  *   - 成功            → sent
- *   - 瞬时失败        → 累加 attempt_count，按指数退避重排；达到上限转死信
+ *   - 瞬时失败        → 累加 attempt_count，按指数退避重排；达到上限或超过行龄上界转死信
+ *     （行龄上界 `PUSH_RETRY_MAX_AGE_MS` 是重试的绝对终止条件：计数器只有在重排回执写成功时
+ *      才会前进，写失败时它是冻结的，见 `exceededMaxAge`）
  *   - 订阅不存在      → dead（subscription-missing）并计入失效端点
  *   - HTTP 404/410    → dead（subscription-gone）并撤销本地订阅
  *   - 用户关闭 Push    → dead（push-disabled，不再打扰已退订用户）
@@ -20,6 +22,7 @@ import {
 } from "@/lib/push-provider";
 import {
   PUSH_MAX_ATTEMPTS,
+  PUSH_RETRY_MAX_AGE_MS,
   markPushDeliveryDead,
   markPushDeliveryRetry,
   markPushDeliverySent,
@@ -123,6 +126,19 @@ function attemptCountFor(attempt: PushDeliveryAttempt): number {
   return attempt.attempt_count + 1;
 }
 
+/**
+ * 这一行是否已经老到不该再排下一次重试。
+ *
+ * 上限只认 `created_at`：它是入队时定死的事实，不像 `attempt_count` / `next_attempt_at`
+ * 那样要等一次成功的写入才会前进。`created_at` 解析不出来时按「未超时」处理，让计数器上限
+ * 继续做主界——宁可不收紧，也不能因为一个时间戳解析问题把还能送的行判成死信。
+ */
+function exceededMaxAge(attempt: PushDeliveryAttempt, at: Date): boolean {
+  const createdAt = Date.parse(attempt.created_at ?? "");
+  if (!Number.isFinite(createdAt)) return false;
+  return at.getTime() - createdAt > PUSH_RETRY_MAX_AGE_MS;
+}
+
 /** 统一的死信回执 + 计数指标，避免每条分支重复 try/catch */
 async function finishDead(
   context: RetryContext,
@@ -171,7 +187,7 @@ async function handleGoneEndpoint(
   );
 }
 
-/** 瞬时失败：未达上限则退避重排，达到上限转死信 */
+/** 瞬时失败：未达上限则退避重排，达到上限或超过行龄上界转死信 */
 async function scheduleRetry(
   context: RetryContext,
   attempt: PushDeliveryAttempt,
@@ -179,11 +195,18 @@ async function scheduleRetry(
   attemptCount: number,
   at: Date,
 ): Promise<PushRetryOutcome> {
-  if (attemptCount >= PUSH_MAX_ATTEMPTS) {
+  // 先判行龄再判计数：计数器本身要靠这次重排回执写进去，上一轮写失败时它是冻结的；
+  // 只有 `created_at` 这条界是写失败也拖不住的。
+  const expired = exceededMaxAge(attempt, at);
+  if (expired || attemptCount >= PUSH_MAX_ATTEMPTS) {
     await finishDead(
       context,
       attempt,
-      { attemptCount, failureCode: "max-attempts", error: failureMessage(error) },
+      {
+        attemptCount,
+        failureCode: expired ? "max-age" : "max-attempts",
+        error: failureMessage(error),
+      },
       at,
     );
     return "dead";
@@ -202,7 +225,19 @@ async function scheduleRetry(
       at,
     );
   } catch (markError) {
-    await context.reportError("[Push Retry] 重试回执写入失败", markError);
+    // 行仍是 pending、`next_attempt_at` 也停在过去的时刻，所以下一轮它确实还会被拉到——
+    // 「retried」没有说谎；说谎的是退避与计数，它们没被写进去。这条指标就是为了让这件事可见：
+    // 没有它，一个持续失败的回执写入会让同一批行天天占据按 `next_attempt_at` 升序的队首，
+    // 而看板上只看到「一切正常地在重试」。
+    context.emitMetric("push.delivery.retry_failed", 1, {
+      unit: "count",
+      attributes: { reason: pushFailureReason(error), channel: "push" },
+    });
+    await context.reportError(
+      "[Push Retry] 投递失败且重试回执写入失败（行仍待下一轮，退避与计数未推进）",
+      markError,
+    );
+    return "retried";
   }
   await context.reportError("[Push Retry] 投递失败，已安排重试", error);
   return "retried";

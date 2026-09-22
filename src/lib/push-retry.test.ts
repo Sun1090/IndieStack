@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runPushRetry, type PushRetryDependencies } from "./push-retry";
-import { PUSH_BACKOFF_BASE_MS, PUSH_MAX_ATTEMPTS, type PushDeliveryAttempt } from "./repositories/push-delivery-attempts";
+import { PUSH_BACKOFF_BASE_MS, PUSH_MAX_ATTEMPTS, PUSH_RETRY_MAX_AGE_MS, type PushDeliveryAttempt } from "./repositories/push-delivery-attempts";
 import type { Notification } from "./repositories/notifications";
 import type { PushProvider } from "./push-provider";
 import type { PushSubscriptionRecord } from "./repositories/push-subscriptions";
@@ -145,6 +145,81 @@ describe("runPushRetry", () => {
       unit: "count",
       attributes: { reason: "max-attempts", channel: "push" },
     });
+  });
+
+  it("dead-letters by age instead of trusting a counter that a failed write froze", async () => {
+    // attempt_count 停在 0：上一次重排回执就没写进去，所以计数器永远不会到上限。
+    const send = vi.fn().mockRejectedValue(new Error("network"));
+    const d = deps({
+      createProvider: () => ({ name: "web-push", configured: true, send }),
+      listDue: async () => [
+        attemptRow({
+          attempt_count: 0,
+          created_at: new Date(NOW.getTime() - PUSH_RETRY_MAX_AGE_MS - 60_000).toISOString(),
+        }),
+      ],
+    });
+    const result = await runPushRetry(d);
+    expect(result).toEqual({ pulled: 1, sent: 0, retried: 0, dead: 1, revoked: 0 });
+    expect(d.markDead).toHaveBeenCalledWith(
+      "n1",
+      subscription.endpoint,
+      { attemptCount: 1, failureCode: "max-age", error: "network" },
+      NOW,
+    );
+    expect(d.markRetry).not.toHaveBeenCalled();
+  });
+
+  it("keeps retrying a young row that is nowhere near the age ceiling", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("network"));
+    const d = deps({
+      createProvider: () => ({ name: "web-push", configured: true, send }),
+      listDue: async () => [
+        attemptRow({
+          created_at: new Date(NOW.getTime() - PUSH_RETRY_MAX_AGE_MS + 60_000).toISOString(),
+        }),
+      ],
+    });
+    const result = await runPushRetry(d);
+    expect(result).toEqual({ pulled: 1, sent: 0, retried: 1, dead: 0, revoked: 0 });
+    expect(d.markDead).not.toHaveBeenCalled();
+    expect(d.markRetry).toHaveBeenCalled();
+  });
+
+  it("never lets an unparseable created_at turn a live row into a dead letter", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("network"));
+    const d = deps({
+      createProvider: () => ({ name: "web-push", configured: true, send }),
+      listDue: async () => [attemptRow({ created_at: "not-a-timestamp" })],
+    });
+    const result = await runPushRetry(d);
+    expect(result).toEqual({ pulled: 1, sent: 0, retried: 1, dead: 0, revoked: 0 });
+    expect(d.markDead).not.toHaveBeenCalled();
+  });
+
+  it("reports a retry receipt that could not be written, without claiming the schedule advanced", async () => {
+    const send = vi.fn().mockRejectedValue(Object.assign(new Error("boom"), { statusCode: 503 }));
+    const reportError = vi.fn().mockResolvedValue(undefined);
+    const d = deps({
+      createProvider: () => ({ name: "web-push", configured: true, send }),
+      markRetry: vi.fn().mockRejectedValue(new Error("update denied")),
+      reportError,
+    });
+    const result = await runPushRetry(d);
+    // 行仍是 pending、下一轮还会被拉到，所以 retried 不算谎话；说谎的是退避与计数。
+    expect(result).toEqual({ pulled: 1, sent: 0, retried: 1, dead: 0, revoked: 0 });
+    expect(d.recordMetric).toHaveBeenCalledWith("push.delivery.retry_failed", 1, {
+      unit: "count",
+      attributes: { reason: "http-503", channel: "push" },
+    });
+    expect(d.markDead).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(
+      "[Push Retry] 投递失败且重试回执写入失败（行仍待下一轮，退避与计数未推进）",
+      expect.objectContaining({ message: "update denied" }),
+    );
+    // 两句文案互斥：写了「已安排重试」就等于宣布一个没发生的排程。
+    const logged = reportError.mock.calls.map((call) => call[0]);
+    expect(logged).not.toContain("[Push Retry] 投递失败，已安排重试");
   });
 
   it("revokes the local subscription when the push service reports 410", async () => {

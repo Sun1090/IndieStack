@@ -76,6 +76,11 @@ Set `pushNotifications: false` to disable all browser push without affecting in-
   2 minutes.
 - A delivery is attempted at most 3 times including the immediate send. The third failure becomes a
   `dead` row with `failure_code=max-attempts` and is no longer pulled by the worker.
+- Row age is a second, absolute ceiling: anything still pending 7 days (`PUSH_RETRY_MAX_AGE_MS`)
+  after it was enqueued becomes `dead` with `failure_code=max-age`. The reason both bounds exist is
+  that the attempt counter only advances when the reschedule receipt is written — if that write
+  keeps failing, the row stays due with a frozen counter and would otherwise be retried forever at
+  the head of the queue. `created_at` is the one limit a failed write cannot freeze.
 - The worker processes up to 50 due rows per invocation. `/api/cron/push-retry` is scheduled once a
   day at 22:00 UTC in `vercel.json` (`0 22 * * *`; Vercel Hobby allows at most one run per path per
   day) and requires the same `CRON_SECRET` as `/api/cron/digest`.
@@ -99,7 +104,9 @@ Set `pushNotifications: false` to disable all browser push without affecting in-
   as `not-configured`, `subscription-gone`, `timeout`, or `http-*`. `push.endpoint.revoked` and
   `push.delivery.dead` classify cleanup and dead-letter reasons. `push.backlog` reports pending
   rows, `push.queue.pruned` reports terminal-row cleanup by `status` and `retention_days`,
-  `push.queue.prune_failed` reports cleanup failures, and `cron.push-retry.completed` /
+  `push.queue.prune_failed` reports cleanup failures, `push.delivery.retry_failed` marks a transient
+  failure whose reschedule receipt could not be written (counter and backoff did not advance), and
+  `cron.push-retry.completed` /
   `cron.push-retry.failed` report worker health.
 
 ## Verification

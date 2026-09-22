@@ -53,7 +53,8 @@
 | `push.send.completed` | `count` | `provider`, `status_code` | 每次 Web Push 传输成功 |
 | `push.send.failed` | `count` | `provider`, `reason` | Web Push 未配置或适配器不可用 |
 | `push.endpoint.revoked` | `count` | `reason`, `channel` | 404/410 或订阅记录缺失导致端点撤销 |
-| `push.delivery.dead` | `count` | `reason`, `channel` | 单条 Push 投递进入死信 |
+| `push.delivery.dead` | `count` | `reason`, `channel` | 单条 Push 投递进入死信（`reason` ∈ `max-attempts` / `max-age` / `subscription-gone` / `subscription-missing` / `notification-missing` / `push-disabled`） |
+| `push.delivery.retry_failed` | `count` | `reason`, `channel` | 投递失败之后**重排回执也没写进去**：行仍是 `pending`，但 `attempt_count` 与 `next_attempt_at` 都没推进，下一轮它还会被拉到队首（`reason` 是那次投递失败的原因） |
 | `push.backlog` | `count` | 无 | 每轮 push-retry cron 开始 |
 | `push.queue.pruned` | `count` | `status`, `retention_days` | 每轮 push-retry 清理过期 `sent` / `dead` 行 |
 | `push.queue.prune_failed` | `count` | `error_type` | 每轮 push-retry 保留策略清理失败 |
@@ -110,6 +111,7 @@
 | Push 队列积压 | `push.backlog > 500`，连续 3 轮或 15 分钟 | 检查 push service、worker 执行时长和死信增长 |
 | Push 失效端点激增 | `push.endpoint.revoked > 10`，1 小时窗口 | 检查浏览器订阅生命周期与 push service 状态码 |
 | Push 死信激增 | `push.delivery.dead > 20`，1 小时窗口 | 按 `reason` 区分瞬时上游故障与永久配置问题 |
+| Push 重排回执写失败 | `push.delivery.retry_failed > 0`，15 分钟窗口 | 投递已失败、且 `attempt_count` 与 `next_attempt_at` 都没前进：同一批行会反复占住按到期时间升序拉取的队首。查 Supabase 写权限与连接；行龄超过 7 天由 `max-age` 兜底进死信，所以队列不会无限膨胀，但这几天里它是堵住的 |
 | Push 队列清理失败 | `push.queue.prune_failed > 0`，15 分钟窗口 | 检查 Supabase 删除权限、连接与表锁；投递不受影响但队列会继续增长 |
 | 保留期清理部分失败 | `cron.retention.cleanup_failed > 0`，24 小时窗口 | 按 `cleanup_function` 定位是哪张表：查 service_role 执行权限与连接；其余表照常清理，过期行留到下一轮 |
 | 保留期清理整轮失败 | `cron.retention.failed > 0`，或 `/api/cron/retention` 在平台调度记录里返回 500，立即 | 保留期已全面不生效（隐私承诺开始失真）：查 Supabase 连接、迁移是否应用、028/032 的撤权是否变更 |

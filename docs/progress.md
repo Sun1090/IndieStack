@@ -878,3 +878,52 @@
 - 下一项：v0.12.0 池内仍需外部权限的条目（B02–B05、C05、digest 生产复验）不变；A05 出队口径与 A01
   `profiles.timezone` 去留等用户拍板。可选跟进（本轮刻意不做）：让 Mock 客户端对未知排序/过滤列**报错**
   而不是静默 no-op，那样运行期也有一道防线，但会牵动所有 e2e 桩数据的列形状，需要单独一轮。
+
+## 2026-09-23 — Push 重试的上界不能只长在一个「写成功才会前进」的计数器上
+
+- 里程碑 / 版本：v0.12.0 A 域（投递语义）的缺陷收口，并更正 roadmap A03 的结论范围。
+- 状态：DONE ✅。
+- 分支 / commit：`fix/push-retry-age-ceiling`（基于 `2ccd25f`）。
+- 为什么做：上一轮通知链路审计留下的待设计项（当时记在 progress「下一项」里）。核对下来它不是
+  「补一句日志」能了结的：`scheduleRetry` 唯一的终止条件是 `attempt_count >= PUSH_MAX_ATTEMPTS`，
+  而这个计数器只有 `markPushDeliveryRetry` **写成功**才会前进。写失败时旧代码只上报一句
+  「重试回执写入失败」然后照样 `return "retried"`——行仍 `pending`、`next_attempt_at` 停在过去的时刻、
+  计数冻结，下一轮它又被 `next_attempt_at` 升序拉到队首，永远到不了上限。单轮预算 50 条，
+  所以一行毒记录可以长期占住队首，而看板上表现为「一切正常地在重试」。
+- 完成内容：
+  1. 绝对上界 `PUSH_RETRY_MAX_AGE_MS`（7 天）：超龄的行直接 `dead` + `failure_code=max-age`。
+     判定只认 `created_at`——它是入队时定死的事实，写失败拖不住它；`created_at` 解析不出来时按
+     「未超时」处理，宁可不收紧也不因为一个时间戳问题把还能送的行判死。
+     7 天而非「退避总和」：worker 每天 22:00 UTC 才跑一轮，健康路径上 3 次尝试本来就要跨三天。
+  2. 回执写失败不再静默：新增 `push.delivery.retry_failed`（`reason` = 那次投递失败的原因），
+     日志改成「投递失败且重试回执写入失败（行仍待下一轮，退避与计数未推进）」，并与
+     「投递失败，已安排重试」互斥（catch 里直接 return，不再落到那句成功排程的文案）。
+     计数口径保留 `retried`：这一行确实下一轮还会被拉，说谎的是退避与计数，那交给指标而不是改响应形状。
+  3. 种子端点 `/api/e2e/push-queue` 新增 `createdAtOffsetMs`，E2E 补一条「8 天前入队、
+     `attempt_count=0` → 死信 `max-age`」。
+  4. 文档：`docs/operations/sentry-alerts.md` 登记指标 + 告警行（并补全 `push.delivery.dead` 的
+     `reason` 取值）；`docs-site/web-push.md` 双语补上两道界的分工；roadmap A03 更正结论范围——
+     「push 没有同型缺陷」只对小时门控成立，同时记下邮件侧核对结果：`markEmailFailed` 不吞错，
+     整轮会 500，是**响亮地**卡住，缺的是 A05 的出队口径而不是一个上界。
+- 变更文件：11 个——`push-retry.ts`、`repositories/push-delivery-attempts.ts`、`push-retry.test.ts`、
+  `e2e/push-queue/route.ts`、`e2e/push-retry.spec.ts`、`sentry-alerts.md`、`docs-site/web-push.md` 双语、
+  `docs/roadmap-0.12.0.md`、CHANGELOG、本条目。
+- 验证命令与结果：
+  - `npx vitest run src/lib/push-retry.test.ts` → 16 passed（新增 4 条：超龄死信 / 年轻行照旧重试 /
+    `created_at` 读不出来时不收紧 / 回执写失败的指标与互斥文案）。
+  - 变异核对 10 项全部被抓（去掉年龄判定、恒判超时、NaN 判超时、上界错写成退避封顶、`max-age` 降级回
+    `max-attempts`、不报指标、指标维度写死、日志文案改回含糊、catch 里不再 return、整段退回旧写法）。
+  - E2E 层单独变异：移除年龄判定后跑 `e2e/push-retry.spec.ts` → `行龄超过上界…` 那条**红**
+    （串行模式 1 failed / 5 passed），恢复源文件后与备份逐字节比对一致，再跑 → 11 passed。
+  - `pnpm test:e2e`（全量）→ **109 passed**；`CI=true pnpm check:all` → 全部校验通过；`pnpm build` → 编译通过。
+  - 顺带修掉两处本次改动暴露的 lint 问题：`/api/e2e/push-queue` 的 POST 因为多一个默认值分支顶到
+    complexity 16（把种子行拼成 `attemptSeedRow()`），以及 C07 规则文件里三处 `max-depth` 告警
+    （拆成 `knownTableFromCall` / `chainColumnChecks`）。后者在重构后重跑变异时还量出一个真洞：
+    未知表的链若被计入 `fromCalls`，「什么都没判就报 VACUOUS」这条封闭的前提会被放宽，已补断言钉住。
+- 阻塞 / 风险 / 回滚：不改发送条件、不改队列过滤、不改 schema；只给「已经失败的行」加一个终止时刻与一条指标。
+  风险一侧：7 天内一直失败且始终写不进计数的行会在第 7 天被判死而不是继续尝试——这正是目的，但如果
+  将来把 worker 调度加密（不再每天一轮），这个常数需要重新按「几轮 × 间隔」核对，别按天数拍。
+  回滚 = revert 本 commit（两个 commit 可分别 revert：`481f357` 是 C07 的重构跟进）。
+- 下一项：v0.12.0 池内可自主执行的条目已清空，剩余项分别等用户拍板（A05 出队口径、A01 `profiles.timezone`
+  去留、C06 两个孤儿 Server Action）与外部权限（B02–B05、C05、digest 生产复验、task #28 的生产冒烟）。
+  下一轮优先做「再量一次缺陷」而不是等大任务。
