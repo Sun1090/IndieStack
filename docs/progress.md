@@ -1216,6 +1216,16 @@
   而 `actUntilVisible` 的语义是「结果没出现就重点一次」——在「第一次已发出、结果还在路上」的窗口里
   会被点第二次。**先定幂等性，再谈重试**；那几处要的是别的机制（拿一次客户端校验的反应当
   hydration 屏障，或断言「本轮只提交一次」），不在本次顺手铺开。
+- 上面那三处的后续处置，两条跟进记在这里免得读成「没人管」：
+  - 「联系表单提交」已由 **PR #119** 用另一种机制解决——判据从「字段清空」换成「收到一次带
+    `next-action` 头的 Server Action 请求」（`actUntilServerAction`）。理由是量出来的：hydration
+    之前那一次点击由浏览器自己完成提交，字段同样清空，旧判据是**假绿**。
+    sign-in ×5 与 MFA 验证码提交仍按本条的理由留着。
+  - 本 PR 修的两个位置，后来在 **#119 的 tip**（基在 #115、**不含本 PR**）上拿到了「不修会怎样」的
+    直接证据：那里跑了 5 次并行基线（`E2E_SERVERS=3 --retries=0`，含一次旧 4 条预热的对照），
+    `responsive.spec.ts:92` 红了 **3 次**、`:62` 红 1 次——全是本 PR 包过的两个点按；
+    唯一一次全绿是那轮 `.next-e2e-*` 已经热着。CI 从没在本 PR 的 SHA 上跑过 E2E（base 不是 main），
+    所以这是目前唯一一份复现证据——它支持的不是「#117 更快」，而是「不合就会继续随机红」。
 - 覆盖 / 验证：`--repeat-each=4` 跑 `responsive` + `admin-contact-mfa` → **76 passed / 0 failed**；
   探针两处红→绿的变化记在上面，脚本已删（`git status` 干净后才提交）；
   `pnpm -s lint` / `pnpm -s type-check` → exit 0；`CI=true pnpm check:all` → exit 0；
