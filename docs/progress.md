@@ -1799,3 +1799,29 @@
 - 下一批：`settings/page.tsx` 2 处（资料 + 设备列表），然后 `api/e2e/push-queue` 2 处，
   最后处理 `permission-gate.tsx` 的 `justified` 豁免与接线。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-c 第七批：设置页的会话列表（可吊销的那一张）
+
+- 里程碑 / 版本：v0.12.0 / C08-c 清偿（#42 的后半）。
+- 分支 / commit：`fix/c08c-settings-reads`（栈在 #110 之上）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这一处不只是显示错误：设备那一栏是**可吊销列表**。读失败会渲染成「只有当前这台设备」，
+  用户以为没有别的登录要收掉；而认不出「哪台是当前」时，每台都带着吊销入口——
+  点错自己的那台就把自己踢下线。两个方向都不是「数字难看一点」，是会做出不可逆动作。
+- 改法：`profiles` 与 `user_sessions` 两处绑 `error` 并在渲染前抛；`auth.getSession()` 同批绑上
+  （它不在 C08-c 的计数里，但失败方向一样）。`.single()` → `.maybeSingle()`，
+  「确实没有其它设备」这条合法分支保留。
+- 抽出 `readDeviceList()`：加进守卫后 `SettingsPage` 的 `complexity` 到 17（上限 15），
+  这条门禁第三次在同一族改动里说话（#96 checkout、#109 checkout、这里）。
+  顺带去掉一处双重 cast——链变成局部 const 之后 `sessions ?? []` 自己就是 `Row[]`，
+  断言不再被需要；这种「加了守卫反而不需要 cast」是本族改动里少见的净赚。
+- 覆盖：6 条用例（这个页面此前零单测）。正向那条钉的是**方向**：
+  当前设备只以文本出现、不带 `sessionId` prop，另一台正好相反——E4（当前会话识别写成 null）
+  就是被这条杀死的。桩继续用「`.single()` 撞 null 行 = 真错误」的忠实语义（第三处）。
+- 验证：`pnpm -s lint` / `pnpm -s type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**（38 道门禁）；
+  `pnpm build` → exit 0。变异核对 **E1–E7 全部被杀死且红在该判据上**。
+- 数字同步：`--unbound` 6 → **4 处**——只剩 `api/e2e/push-queue`(2) 与
+  `permission-gate.tsx`(2，`justified`)；`check:query-errors` 的 awaited 断言降到 3 处。
+  **C08-c 的 debt 到下一批就清零**，之后是把判据接进门禁（排在 `justified` 豁免落地之后）。
+- 下一批：`api/e2e/push-queue` 那 2 处（E2E 专用的观测路由，读失败会让「队列里没有待发」成为假答案）。
+- 更新时间：2026-09-23（UTC）。

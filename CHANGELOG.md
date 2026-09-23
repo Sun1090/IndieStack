@@ -244,6 +244,21 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **设置页的设备列表不再把读失败显示成「只有当前这台设备」**（C08-c 第七批）：
+  `settings/page.tsx` 两处读取（`profiles`、`user_sessions`）都不看 `error`，
+  读失败时那张**可吊销的会话列表**渲染成空/只剩一台——用户以为没有别的登录要收掉。
+  认不出「哪台是当前设备」时同样危险：列表每台都带吊销入口，用户会把自己正用的那台点掉。
+  现在两处各绑 `error`，在渲染前抛出；两处 `.single()`→`.maybeSingle()` 与「确实没有其它设备」
+  这条合法分支各自有用例钉住。抽出 `readDeviceList()`（加进守卫后 `SettingsPage` 的
+  `complexity` 到 17 > 15，这条门禁又在说「这个函数已经在做第二件事」），顺带去掉一处
+  为了取 `Row[]` 而写的双重断言——链现在是局部 const，类型能推出来，不再需要 cast。
+  新增 6 条用例；**正向用例钉的是方向**：当前那台只以文本出现、不带 `sessionId` prop，
+  另一台正好相反（E4「当前会话识别写成 null」就是被这条杀死的）。
+  变异核对 7 项（E1–E7）全部被杀死：删三条守卫、当前会话识别失效、
+  把合法空列表当故障、把真缺资料行当故障、退回 `.single()`。
+  规模同步：`--unbound` 6 → **4 处**（只剩 `api/e2e/push-queue` 2 与 `permission-gate` 2 处 `justified`）；
+  `check:query-errors` 的 awaited 断言数降到 **3 处**。
+
 - **仪表盘第一屏不再把读失败渲染成一整屏合法的 0**（C08-c 第六批）：
   `dashboard/page.tsx` 六处读取（资料、团队归属、项目数、API 调用数、会话数、最近通知）
   原先两处明写 `error: null`、四处压根不绑 `error`。于是一次抖动显示成
