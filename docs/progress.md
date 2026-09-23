@@ -1,53 +1,3 @@
-## 2026-09-23 — 退订链接的 7 天有效期：合规出口不能带时间窗
-
-- 里程碑 / 版本：v0.12.0 A05（营销邮件独立通道）的缺陷收口；合规面。
-- 状态：DONE，**PR #123**（base `main`；与 #121 / #122 无代码重叠，只共用 CHANGELOG / progress 头部）。
-- 分支 / commit：`fix/marketing-unsubscribe-expiry`（基于 `origin/main` `ad4b029`），`b1a26d4` + 门禁数字 commit。
-- 为什么做：接着 #122 那条覆盖率线索往下走。`src/lib/repositories/marketing.ts` 在 C08 栈尖上
-  分支覆盖 77%，未覆盖语句是 72/77/112/124 四处 `throw`。读过去时看到的不是覆盖率问题，是
-  `updateStatusByToken()` 把 `.gt("token_expires_at", now)` 同时压在确认和退订两条路上。
-- 缺陷链条（逐环对过代码，不是推测）：
-  1. `token_expires_at` 只在 `upsertPendingSubscription()` 写入一次：`Date.now() + 7 天`（`marketing.ts:65`）；
-  2. 确认成功的 `updateStatusByToken(token,"subscribed")` **不刷新**它（只写 `status/updated_at/confirmed_at`）；
-  3. 于是第 8 天起，一条 `subscribed` 的行仍会被 `.gt` 判成不命中 → `false` → 路由 404 `Invalid token`
-     （`src/app/api/marketing/unsubscribe/route.ts:26`）；
-  4. 而 `sendMarketingEmail()` 的页脚恒挂 `unsubscribeUrl(token)`（`email-marketing.ts:46`）——
-     邮件继续寄，唯一的退订出口变成 404。设计文档 A05 段自己把它称作「合规链接」。
-  为什么没被人发现：`docs-site/email.md` 原话是「Tokens are stored as SHA-256 digests and expire after
-  7 days」，没说这条有效期管谁——**实现是照着这句无差别实现的**。路由测试把仓库整个 mock 掉，
-  也不看查询条件。
-- 完成内容：
-  1. 有效期只约束确认；退订不看它。token 轮换的约束（`token_hash` 必须命中）一字未动，
-     所以「旧链接失效」的语义仍在——失效的原因是键名换了，不是日子到了。
-  2. 顺带修正的覆盖面：`token_expires_at` 为 `null` 的历史行原本 `.gt` 永不命中（= 永远退不了），
-     现在能退。
-  3. 用例打在**查询构造**上而不是 mock 的结果上（`marketing.test.ts` 10 → 11 条）：确认必须带
-     `.gt("token_expires_at", …)`，退订必须不带。
-  4. 文档三处同口径：`docs-site/email.md` + `docs-site/zh-CN/email.md` 那条有效期说明改写，
-     `docs/design/email-templates.md` 的 A05 段新增一条判据（下次实现者读得到「管谁」）。
-- 变更文件：`src/lib/repositories/marketing.ts`、`src/lib/repositories/marketing.test.ts`、
-  `docs-site/email.md`、`docs-site/zh-CN/email.md`、`docs/design/email-templates.md`、
-  `CHANGELOG.md`、本条目。
-- 验证命令与结果：
-  - 先红：修之前新用例报 `expected "vi.fn()" to not be called at all, but actually been called 1 times`；
-  - 变异两个方向：折叠成「两条路都判过期」→ 同一条断言红；折叠成「两条路都不判」→
-    `expected ... to be called with arguments: ['token_expires_at', Any<String>] / Number of calls: 0` 红；
-  - `vitest run src/lib/repositories/marketing.test.ts` → **11 passed**；`pnpm -s type-check` → 0；
-  - 本机 push 前全量：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
-    **199 files / 2292 tests passed**；`CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
-- 阻塞 / 风险：真实库里是否真有人被影响，取决于有没有人在跑 `listSubscribedEmails()`——
-  本仓内没有任何调用方（它是模板交给用户的发送入口，`admin-client-boundary` 已登记），
-  所以这条的严重性是「模板交付的合规语义」而不是「当前实例正在漏发」。
-  刻意没动的相邻一项：凭旧 token 仍可把已退订的行确认回 `subscribed`（要持有发给本人的那封邮件，
-  不是攻击面；改它属于产品口径，留给用户拍板）。
-- 顺手核对的阴性结果（另一条覆盖率线索，记下来免得再量一遍）：`repositories/upload-objects.ts`
-  未覆盖语句是 `listOrphanObjects()` 的那行 `throw`；读过去时怀疑 `toOwned()` 的
-  `row.referenced === true` 是**失效方向朝开**——RPC 若返回 `null` 引用状态就会被当成「没引用」而删掉。
-  对着迁移 033 的 SQL 核过：`upload_object_is_referenced()` 是 `select exists(...) or exists(...)`，
-  `EXISTS` 永不为 null，`p_object_key` 为 null 时也只会让两个 `exists` 都落 false，
-  所以那条 `=== true` 写的就是它需要的东西，**不是缺陷**，不改代码。
-
-
 ## 2026-09-22 — 把「mock 少一个方法」变成一条会点名的自检（PR #74 的后续）
 
 - 里程碑 / 版本：v0.12.0 C03 的收尾，外加一条新发现的失效模式。
@@ -1203,3 +1153,52 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 退订链接的 7 天有效期：合规出口不能带时间窗
+
+- 里程碑 / 版本：v0.12.0 A05（营销邮件独立通道）的缺陷收口；合规面。
+- 状态：DONE，**PR #123**（base `main`；与 #121 / #122 无代码重叠，只共用 CHANGELOG / progress 头部）。
+- 分支 / commit：`fix/marketing-unsubscribe-expiry`（基于 `origin/main` `ad4b029`），`b1a26d4` + 门禁数字 commit。
+- 为什么做：接着 #122 那条覆盖率线索往下走。`src/lib/repositories/marketing.ts` 在 C08 栈尖上
+  分支覆盖 77%，未覆盖语句是 72/77/112/124 四处 `throw`。读过去时看到的不是覆盖率问题，是
+  `updateStatusByToken()` 把 `.gt("token_expires_at", now)` 同时压在确认和退订两条路上。
+- 缺陷链条（逐环对过代码，不是推测）：
+  1. `token_expires_at` 只在 `upsertPendingSubscription()` 写入一次：`Date.now() + 7 天`（`marketing.ts:65`）；
+  2. 确认成功的 `updateStatusByToken(token,"subscribed")` **不刷新**它（只写 `status/updated_at/confirmed_at`）；
+  3. 于是第 8 天起，一条 `subscribed` 的行仍会被 `.gt` 判成不命中 → `false` → 路由 404 `Invalid token`
+     （`src/app/api/marketing/unsubscribe/route.ts:26`）；
+  4. 而 `sendMarketingEmail()` 的页脚恒挂 `unsubscribeUrl(token)`（`email-marketing.ts:46`）——
+     邮件继续寄，唯一的退订出口变成 404。设计文档 A05 段自己把它称作「合规链接」。
+  为什么没被人发现：`docs-site/email.md` 原话是「Tokens are stored as SHA-256 digests and expire after
+  7 days」，没说这条有效期管谁——**实现是照着这句无差别实现的**。路由测试把仓库整个 mock 掉，
+  也不看查询条件。
+- 完成内容：
+  1. 有效期只约束确认；退订不看它。token 轮换的约束（`token_hash` 必须命中）一字未动，
+     所以「旧链接失效」的语义仍在——失效的原因是键名换了，不是日子到了。
+  2. 顺带修正的覆盖面：`token_expires_at` 为 `null` 的历史行原本 `.gt` 永不命中（= 永远退不了），
+     现在能退。
+  3. 用例打在**查询构造**上而不是 mock 的结果上（`marketing.test.ts` 10 → 11 条）：确认必须带
+     `.gt("token_expires_at", …)`，退订必须不带。
+  4. 文档三处同口径：`docs-site/email.md` + `docs-site/zh-CN/email.md` 那条有效期说明改写，
+     `docs/design/email-templates.md` 的 A05 段新增一条判据（下次实现者读得到「管谁」）。
+- 变更文件：`src/lib/repositories/marketing.ts`、`src/lib/repositories/marketing.test.ts`、
+  `docs-site/email.md`、`docs-site/zh-CN/email.md`、`docs/design/email-templates.md`、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 先红：修之前新用例报 `expected "vi.fn()" to not be called at all, but actually been called 1 times`；
+  - 变异两个方向：折叠成「两条路都判过期」→ 同一条断言红；折叠成「两条路都不判」→
+    `expected ... to be called with arguments: ['token_expires_at', Any<String>] / Number of calls: 0` 红；
+  - `vitest run src/lib/repositories/marketing.test.ts` → **11 passed**；`pnpm -s type-check` → 0；
+  - 本机 push 前全量：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
+    **199 files / 2292 tests passed**；`CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
+- 阻塞 / 风险：真实库里是否真有人被影响，取决于有没有人在跑 `listSubscribedEmails()`——
+  本仓内没有任何调用方（它是模板交给用户的发送入口，`admin-client-boundary` 已登记），
+  所以这条的严重性是「模板交付的合规语义」而不是「当前实例正在漏发」。
+  刻意没动的相邻一项：凭旧 token 仍可把已退订的行确认回 `subscribed`（要持有发给本人的那封邮件，
+  不是攻击面；改它属于产品口径，留给用户拍板）。
+- 顺手核对的阴性结果（另一条覆盖率线索，记下来免得再量一遍）：`repositories/upload-objects.ts`
+  未覆盖语句是 `listOrphanObjects()` 的那行 `throw`；读过去时怀疑 `toOwned()` 的
+  `row.referenced === true` 是**失效方向朝开**——RPC 若返回 `null` 引用状态就会被当成「没引用」而删掉。
+  对着迁移 033 的 SQL 核过：`upload_object_is_referenced()` 是 `select exists(...) or exists(...)`，
+  `EXISTS` 永不为 null，`p_object_key` 为 null 时也只会让两个 `exists` 都落 false，
+  所以那条 `=== true` 写的就是它需要的东西，**不是缺陷**，不改代码。
