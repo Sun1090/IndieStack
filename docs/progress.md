@@ -1270,6 +1270,12 @@
   `docs-site/scripts.md`、`docs-site/testing.md` × 两个语言、`CHANGELOG.md`、`docs/progress.md`。
   真跑模拟时只有后两个文档尾巴冲突，`package.json` 与 `check-all.sh` 被 git 自动合掉了——
   **自动合掉不等于对**：合并后跑一次 `pnpm check:gates`，它重算门禁接线，漏接或重接都会红。
-- 新增一条 retarget 边：#124 目前对它的 base（#122 的分支）报 **CONFLICTING**，起因是今天两边
-  各自搬过一次 `docs/progress.md` 的同一段（不是代码分叉）。#122 落地后
-  `gh pr edit 124 --base main`，再按上面那条命令重看一次 retarget 清单。
+- retarget 已执行（写上面那条时它还是一条待办）：#124 对它的 base（#122 的分支）报过 **CONFLICTING**，
+  起因是今天两边各自搬过一次 `docs/progress.md` 的同一段，不是代码分叉。改指前量了两边：
+  `git merge-tree --write-tree origin/main fix/passkey-delete-reports-actual-work` → **0 冲突**；
+  `git merge-tree --write-tree origin/fix/passkey-uncaught-reads <#124 tip>` → 唯一冲突文件就是
+  `docs/progress.md`，`webauthn.test.ts` **没有**进冲突列表（#124 是从 #122 的 tip `eec9e44` 长出来的，
+  那一段早就合过一次）。所以上面「独立基于 main 会留下一个必然冲突的重写、因此叠一层」那句理由**不成立**，
+  原文照留，用来记下这次判断被自己的测量推翻。已 `gh pr edit 124 --base main`，GitHub 现在报
+  **MERGEABLE**，那 5 个必需作业会在 `14cf8bd` 上真跑一遍；PR 正文和 #124 的条目都已同步改过。
+  队列因此回到 **0 个 CONFLICTING**。
