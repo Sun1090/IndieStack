@@ -1198,7 +1198,9 @@
 ## 2026-09-23 — #51：两个移动端菜单按钮的 hydration 抢跑（量过才包，没量的地方说清楚）
 
 - 里程碑 / 版本：v0.12.0 / C 域（E2E 稳定性），`actUntilVisible` 的第二批调用方。
-- 分支 / PR：`fix/e2e-hydration-sites`（栈在 #115 之上——共享的 helper 还没合）。
+- 分支 / PR：`fix/e2e-hydration-sites` → **PR #117**（栈在 #115 之上——共享的 helper 还没合，
+  所以它不能直接基在 main 上。合并顺序见「待合 PR 的合并顺序与 CI 证据范围」那条：先 #115 落 main，
+  再把本 PR 的 base 改成 main）。
 - 状态：DONE（PR 待 review 合并）。
 - 先量再改。临时探针（`page.route` 把 `script` 统一延后 3s，跑完即删）逐个试了 4 个点：
   - 页头汉堡、仪表盘抽屉触发器：**点一次而菜单不出现**，两处都成立 → 这两个位置今天就在掷骰子，
