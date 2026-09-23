@@ -33,7 +33,8 @@
   - 变异两个方向：折叠成「两条路都判过期」→ 同一条断言红；折叠成「两条路都不判」→
     `expected ... to be called with arguments: ['token_expires_at', Any<String>] / Number of calls: 0` 红；
   - `vitest run src/lib/repositories/marketing.test.ts` → **11 passed**；`pnpm -s type-check` → 0；
-  - 全量（lint / test / `CI=true check:all` / build）在 push 前跑，数字见 PR 描述。
+  - 本机 push 前全量：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
+    **199 files / 2292 tests passed**；`CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
 - 阻塞 / 风险：真实库里是否真有人被影响，取决于有没有人在跑 `listSubscribedEmails()`——
   本仓内没有任何调用方（它是模板交给用户的发送入口，`admin-client-boundary` 已登记），
   所以这条的严重性是「模板交付的合规语义」而不是「当前实例正在漏发」。
