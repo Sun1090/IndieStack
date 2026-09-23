@@ -21,6 +21,7 @@
   "authWeakPassword": "密码强度不足，请使用至少 8 位字符",
   "checkoutError": "创建结账会话失败，请稍后重试",
   "checkoutFailed": "创建结账会话失败",
+  "checkoutUnavailable": "暂时无法确认你团队的当前订阅，本次没有发起结账，请稍后重试。",
   "currentPasswordIncorrect": "当前密码不正确",
   "databaseError": "数据库操作失败，请稍后重试",
   "fileRequired": "请选择要上传的文件。",

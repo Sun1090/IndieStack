@@ -21,6 +21,7 @@
   "authWeakPassword": "Password is too weak. Use at least 8 characters.",
   "checkoutError": "Failed to create checkout session. Please try again.",
   "checkoutFailed": "Failed to create checkout session",
+  "checkoutUnavailable": "We could not confirm your team's current subscription, so no checkout was started. Please try again.",
   "currentPasswordIncorrect": "Current password is incorrect",
   "databaseError": "Database operation failed. Please try again later.",
   "fileRequired": "Please select a file to upload.",
