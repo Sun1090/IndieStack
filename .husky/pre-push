@@ -1,3 +1,5 @@
-# 推送前强制验证（AGENTS.md 规则）：lint + type-check + test + build
-# one-shot 口径 pnpm verify:build；build 会捕获 i18n 缺键 / SSG 错误——type-check/lint 无法发现
+#!/bin/sh
+# 推送前强制验证（AGENTS.md 的 ⛔ 规则）：lint + type-check + 单测 + 生产构建。
+# 一键等价 `pnpm verify:build`；build 是唯一能捕获 next-intl 缺键 / SSG 错误的关口，
+# lint 与 type-check 都看不见它。临时跳过用标准的 `git push --no-verify`。
 pnpm verify:build
