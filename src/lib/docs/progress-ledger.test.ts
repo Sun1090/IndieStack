@@ -72,6 +72,18 @@ describe("auditProgressLedger()", () => {
     expect(codes(`${entry("2026-09-22", "旧")}${entry("2026-09-23", "新")}`)).toEqual([]);
   });
 
+  it("日期倒序的失败信息把两种成因的处置动作都写出来", () => {
+    const report = auditProgressLedger(`${entry("2026-09-23", "新")}${entry("2026-09-22", "旧")}`);
+    const message =
+      report.issues.find((item) => item.code === "date-out-of-order")?.message ?? "";
+    // 成因一：条目插错了位置。
+    expect(message).toContain("追加在文件末尾");
+    // 成因二：解决 docs/progress.md 冲突时两块都留，内容没丢但顺序坏了——这一步只在台账里写过，
+    // 看到红灯的人手上没有它，所以它必须在信息里；删掉下面两条断言之外的任何东西都不算修好。
+    expect(message).toContain("按日期稳定排序");
+    expect(message).toContain("不要删掉其中一条");
+  });
+
   it("同日多条不算倒序", () => {
     expect(codes(`${entry("2026-09-23", "A")}${entry("2026-09-23", "B")}`)).toEqual([]);
   });

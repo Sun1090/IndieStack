@@ -650,55 +650,6 @@
   都记在 `docs/roadmap-0.12.0.md`：A05 的不可投递条目出队语义，与 A01 下新增的
   「`profiles.timezone` 失去唯一消费者，资料页却仍在要求填写」。两者都不阻塞 A04 与 C01。
 
-## 2026-09-23 — RLS 静默过滤不等于成功：删掉一条不存在的通行密钥也被报成「已删除」
-
-- 里程碑 / 版本：v0.12.0 C08 的下游判据（「0 行受影响」不是「做到了」）；凭据管理面。
-- 状态：DONE，**PR #124**（base = #122 的分支，见「风险」）。
-- 分支 / commit：`fix/passkey-delete-reports-actual-work`（基于 `origin/fix/passkey-uncaught-reads` = PR #122 tip `eec9e44`），`b82345f` + 门禁数字 commit。
-  base 是 topic 分支 ⇒ `ci.yml` 的 5 个必需作业不在本 SHA 上跑（判据见上面 #118 那篇），已在 PR 里写明
-  「本机全量是这条 SHA 目前唯一的证据」；#122 合并后需 `gh pr edit 124 --base main` 让必需 CI 真的跑一遍。
-- 为什么做：还是顺着 #122 那条覆盖率线索。`src/lib/actions/passkey.ts` 在 C08 栈尖上是
-  **14% 语句覆盖**——整个 action 只有一行 `await deleteMyCredential(id)` 被读过一次，
-  `catch`、`revalidatePath`、`ok()` 全没被任何用例经过。先量了一下这有多没人看着：
-  把 `deletePasskey` 的函数体换成无条件 `return ok()`（连仓储都不调）后跑全量，
-  **199 files / 2291 tests 全过**。这条 action 是设置页上「凭据已移除」的确认。
-- 缺陷：`deleteMyCredential()` 只看 `error`。迁移 019 的
-  `users_delete_own_passkeys ... using (auth.uid() = user_id)` 对不匹配的行是**静默过滤**：
-  0 行受影响、`error` 为 `null`。所以「删掉了自己的那条」和「那条是别人的 / 早就不在了」
-  在调用方看来越同，`deletePasskey` 于是回 `ok()` 并 `revalidatePath`，UI 报「已移除」，
-  而凭据其实还在。判据仓库早就立过：#102（未合）把 `revokeApiKey` 从同形缺陷里救出来用的是
-  同一个形状——`.select("id")` 数受影响行；`marketing.updateStatusByToken` 也是这个形状。
-- 完成内容：
-  1. `deleteMyCredential(id): Promise<boolean>`：`.delete().eq("id", id).select("id")`，
-     error 仍抛（保持 #122 那条契约），`data` 长度为 0 → `false`。
-  2. `deletePasskey`：`false` → `fail("passkeyNotFound")` 且**不** `revalidatePath`；抛错仍
-     `databaseError`。新码 `passkeyNotFound` 同步进 `messages/en/actions.json` 与
-     `messages/zh-CN/actions.json`（中文按既有术语用「通行密钥」，措辞对齐 `sessionNotFound`）。
-  3. 测试：新建 `src/lib/actions/passkey.test.ts`（3 条：成功 / 0 行 / 抛错，各自钉
-     `revalidatePath` 是否发生）；`webauthn.test.ts` 的删除段从 1 条扩到 3 条，
-     其中一条断言 `.select("id")` 真的在链上——少了它，「删掉了」和「一行都没匹配上」不可区分。
-- 变更文件：`src/lib/repositories/webauthn.ts`、`src/lib/actions/passkey.ts`、
-  `src/lib/actions/passkey.test.ts`（新增）、`src/lib/repositories/webauthn.test.ts`、
-  `messages/en/actions.json`、`messages/zh-CN/actions.json`、`CHANGELOG.md`、本条目。
-- 验证命令与结果：
-  - 变异：action 里不读受影响行（等价 main 上的行为）→ `expected { ok: true } to deeply equal
-    { ok: false, error: 'passkeyNotFound' }`；跑完从 `/tmp/act2.bak` 还原并 `cmp` 确认；
-  - `vitest run src/lib/actions/passkey.test.ts src/lib/repositories/webauthn.test.ts` → **15 passed**；
-  - 本机 push 前全量：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
-    **200 files / 2301 tests passed**（base #122 上是 2297，本条 +3 action +1 仓储用例）；
-    `CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
-- 阻塞 / 风险：
-  - **base 是 #122**：同一批测试文件（`webauthn.test.ts`）两条 PR 都要改，独立基于 main 会留下一个
-    重写同一段的合并冲突；叠在 #122 之后可以让账保持单调。代价是本 PR 的 diff 含 #122 的 4 个 commit，
-    且 #122 合并后要 `gh pr edit <本PR> --base main` 重新指回 main（判据见 #118 那篇）。
-  - mock 模式没有 `webauthn_credentials` 这张表（`src/lib/mock` 里查无此表），E2E 也不碰 passkey，
-    所以「0 行 → passkeyNotFound」在 mock 下不可达；这是既有的覆盖面缺口，不是本条引入的。
-    真要覆盖它得先给 mock 补表数据 + 让 delete 回受影响行（PostgREST 的 `RETURNING` 口径），
-    那是另一件事，本条不顺手做。
-- 下一项：`src/lib/actions/admin.ts` 的 `listAdminUsersPage`（C08 栈尖上 79-89 行整段未执行、
-  且没有任何用例提到它）。它和 #93–#114 那条栈改同一个 `admin.test.ts`，所以**等那条栈落地之后再补**，
-  否则只是给评审多加一处必冲突的文件。
-
 ## 2026-09-23 — 先看清积压的形状，再决定怎么出队：管理面板补上待发队列三读数（A05 前半）
 
 - 里程碑 / 版本：v0.12.0 A05 的可观测那一半。
@@ -2176,7 +2127,15 @@
   那种顺序错误静态检不出来，只能靠 review；本门禁覆盖的是当天真发生过的那两类。
 - 下一件：#44 后半（结账 / 分析路由的守卫状态映射）仍等 #92 + #96 落地；
   #96 与长栈 #103 撞代码这件事已写进 #118 那条的模拟小节。
-- 更新时间：2026-09-23（UTC 21:20 前后）。
+- 补记（2026-09-24，同一件工作的增量，所以写在本条里而不是新开一条）：这道门禁第一次用在真实合并上，
+  暴露的不是它漏报，而是**它的输出不够用**。#118 那次把 19 个 open PR 的栈尖按编号合成一份模拟 main，
+  红的就是 `date-out-of-order`：按台账写好的解法「两块都留」解决 `docs/progress.md` 之后，内容一条没丢、
+  顺序坏了，而「合并后要按日期稳定排序」这一步当时只写在台账里，不在红灯上——看到红灯的人手上没有它。
+  于是把处置动作写进失败信息（这个 code 有两种成因：条目插错位置 / 冲突解完没排序），
+  并新增 1 条单测钉住这段文字，`CHANGELOG.md` 那条里的「14 项单测」同步改成 15。
+  复跑：`vitest run src/lib/docs/progress-ledger.test.ts` 15 passed；变异核对——把信息里的
+  「按日期稳定排序」删掉 → 新增那条红，确认这条断言是可失败的。
+- 更新时间：2026-09-23（UTC 21:20 前后），补记 2026-09-24。
 
 ## 2026-09-24 — 队列涨到 40 个 PR，把 #131 的合并拓扑量完
 
@@ -3444,4 +3403,3 @@
   之后），`scripts/*.sh` 里的管道都在 `set -euo pipefail` 下或只用于 `du | cut` 这类取值；
   也就是说「把真实命令的退出码换成报表脚本的退出码」这个形态在本仓库只有 `check:bundle` 一处，已修。
 - 更新时间：2026-09-24（UTC 07:00 前后）。
-
