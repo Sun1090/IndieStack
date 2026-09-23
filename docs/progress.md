@@ -1153,3 +1153,45 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 预热清单与 spec 实际导航目标对账：4 条 vs 16 条（#55 #56）
+
+- 里程碑 / 版本：v0.12.0 / C 域（并行基线可信度），C02 的后半。
+- 分支 / PR：`chore/e2e-warm-route-inventory`（基在 main `ad4b029`，停在 ready-for-review；
+  base 是 main ⇒ CI 会真跑 E2E）。
+- 状态：DONE（PR 待 review 合并）。
+- 起因是 #119 跑全量并行基线时顺手看了一眼 `warm-up.ts`：清单是
+  `["/", "/auth/login", "/dashboard", "/dashboard/settings"]` 四行手抄的字面量。
+  而 C02 记录过的红正是「第一个打到某台服务器的用例付冷编译」——那么清单有没有覆盖 spec 真正去的页面，
+  就是个可以静态量出来的问题。
+- 量法与读数：解析 `e2e/*.spec.ts` 里 `${appUrl()}<path>` 的尾巴，排除 `/api/*`、含 `${}` 的动态段、
+  404 探针与 `waitForURL` 的 glob → **16 条被导航的路由**，清单只有 4 条。
+  12 条页面的冷编译一直记在「恰好第一个打到它的那条用例」头上。
+- 两个支撑口径也是量的，不是推的：
+  - mock 模式下未登录 GET `/dashboard/**` 返回 **200**（不是 307 回登录页）——所以预热真的编译到页面本身。
+    这条如果不量，整个预热机制可能只是在预热登录页。
+  - 未预热的路由首次命中约 1.2s（`/pricing`，日志里 `next.js: 1215ms`）；16 条一起预热实测 12–30s。
+- 落成一份会自己对账的清单，而不是又一次手抄：`src/lib/testing/e2e-warm-routes.ts` 是唯一来源，
+  `warm-up.ts` 只做逐台逐条 GET；单测双向核对（`E2E_WARM_MISSING` / `E2E_WARM_STALE`），
+  读不到 spec 与一条都没解析到各自失败封闭。真实仓库那条用例同时是解析器的射程证明（16 > 9）。
+- **收益这次没能证成，说清楚**：三次清空 `.next-e2e-*` 的冷启动（`--retries=0`、3 台）分别红
+  2 条（旧清单，串行）、4 条（新清单，并发）、2 条（新清单，串行），每次受害者都不同，
+  其中 `responsive.spec.ts:92` 的移动端抽屉正是 #117 在修的位置——本机并行冷启动的噪声比这次改动的
+  效果大。要判收益得看 CI 的每周并行基线（`e2e-parallel.yml`），不是我这台机器。
+- 于是**没有**顺手并发化预热：那次对照跑把「清单 4→16」和「3 台并发预热」一起改了，结果多出 3 条
+  登录导航超时，两个变量没能分离。调度保持原样，函数头部把这条教训写死，免得下次有人「优化」回去。
+  一次跑完还留了个尾巴：`next dev` 会往 `tsconfig.json` 的 `include` 追加它自己的 dist 路径且不回收
+  （配置文件注释里早就写了），探针服务器停了之后手工 revert 那两行。
+- 覆盖 / 验证：`vitest run src/lib/testing/e2e-warm-routes.test.ts` → 12 passed；
+  变异核对：放松 `/api/` 排除或 404 豁免 → 3 红（并实测混进 13 条 api + 1 条哨兵，30 条总数），
+  把对账函数改成直接返回空 → 4 红；分支 tip 上 `pnpm -s lint` / `pnpm -s type-check` /
+  `CI=true pnpm check:all` / `pnpm -s test`（**200 文件全绿**，比 main 多一个测试文件）/
+  `pnpm -s test:coverage` / `pnpm build` → 全部 exit 0，覆盖率
+  `97.19 / 91.97 / 97.86 / 98.24`（地板 91 / 90 / 93 / 92，branches 离地板只剩两点，这条也顺手量了）。三次冷启动并行基线的用例数分别是
+  111、109、111 passed / 113 条总数（串行模式下 warm-up 早退，不影响默认 CI 路径）。
+- 变更文件：`src/lib/testing/e2e-warm-routes.ts`（新）、`src/lib/testing/e2e-warm-routes.test.ts`（新）、
+  `e2e/support/warm-up.ts`、`docs/testing.md`、`CHANGELOG.md`、`docs/progress.md`。
+- 风险 / 回滚：预热清单变长只影响 `E2E_SERVERS>1` 的基线作业；默认 CI 路径（串行 + 2 shard）行为不变。
+  revert 即回滚。与 #115/#117/#119 只可能在 `CHANGELOG.md` / `docs/progress.md` / `docs/testing.md` 尾部相遇。
+- 下一件：等 CI 的每周并行基线给收益数字；那之前不再加 E2E 计时类的猜测性改动。
+- 更新时间：2026-09-23（UTC）。
