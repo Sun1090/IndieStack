@@ -70,11 +70,6 @@ export interface ErrorChannelExemption {
  * permanent waiver list.
  */
 export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemption>> = {
-  "src/app/api/invitations/route.ts": {
-    sites: 5,
-    reason:
-      "debt (C08-b): invitation accept/revoke reads answer `No team found`, `Member not found` or `Only team admins …` to a failed read, and the already-a-member probe lets a duplicate invite through.",
-  },
   "src/lib/uploads/service.ts": {
     sites: 3,
     reason:

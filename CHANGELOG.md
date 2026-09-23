@@ -225,6 +225,27 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **团队邀请链上的每一次读取故障，不再被答成一条关于权限或注册状态的事实**（C08-b 第三批）：
+  `src/app/api/invitations/route.ts` 里五处 `(await …) as unknown as { data: … }` 断言（发起人的团队归属、
+  他在该团队的角色、对方是否已是成员、被移除的成员行、操作人角色）全部改为绑定 `error`，读失败时记日志并回
+  **503 + 一句「…请重试」**；顺带收掉同一条链上**门禁看不见的两处**（那两处没有类型断言，只是解构时没取
+  `error`）：`GET` 的团队成员身份校验原先顺着 `!membership` 长成 403 `Forbidden`——一次数据库抖动就把一个
+  权限从未变过的人挡在团队外，而他该做的只是再点一次；`POST` 按邮箱查 `profiles` 那处把读失败答成
+  「User not found. They need to register first.」，于是用户被劝着让对方去注册，而真正发生的是一次抖动。
+  `.limit(1).single()` 一并改成 `maybeSingle()`：`single()` 在**零行**时也返回 error，把「这个用户没有团队」
+  这种合法状态和读取故障压成同一个形状。现在缺行仍是 404 `No team found`、确实非管理员仍是 403、
+  确实已是成员仍是 409——**故障与合法状态的区分**是这一条的全部内容。
+  一处写进台账的理由是错的，顺手改对：它说「已是成员」探针失败会放过重复邀请，实际不会——
+  `team_members` 上有 `unique(team_id, user_id)`（迁移 001），读失败的后果是撞约束后一个与真实原因无关的
+  500，仍然是「把故障说成别的东西」，但严重性不同。
+  该路由此前**零单测**，补 15 条：每条「读失败必须 503」都配一条「合法状态必须仍是 404/403/409」当反向证据
+  （否则 503 可以靠把所有读取都判成失败来骗过测试），另钉一条邮箱小写归一（大小写不同就查不到已有账号）与
+  一条「缺 `id` 时 400 且一次读取都不发生」。变异核对 10 项（Z1–Z10）逐项红且只红对应那条。
+  响应文案沿用该文件既有的裸英文句子——**判据在消费方**：`grep` 过全仓库，`/api/invitations` 在仓库内没有
+  前端调用方（团队页走 Server Actions），没有 `t(payload.error)` 就不需要 i18n 键。
+  台账 16 → 11 处（debt 14 → 9，另 2 处为 `justified`）；`eslint` 复杂度豁免名单里该文件的 `POST`
+  从 17 涨到 21（上限 30），本次不新增豁免。
+
 - **个人资料页与通知偏好页不再把一次读失败渲染成一份合法的默认值**（C08-b 第二批）：
   `dashboard/profile/edit/page.tsx`、`dashboard/profile/page.tsx`、`dashboard/notifications/page.tsx`
   三处的 `profiles` 读取原先写成 `(await …single()) as unknown as { data: … }`，既不看 `error`，

@@ -244,17 +244,25 @@
     **2026-09-23 已完成**：三处的 `profiles` 读取改用 `maybeSingle()` 并真正读 `error`，
     读失败抛给错误边界；缺行仍按空值渲染（那是合法状态），表单不再拿假默认值等人保存；
     ② 鉴权与所有权判定（`lib/uploads/service.ts` 封面上传把角色读失败答成 `onlyAdminsCreateProject`、
-    `api/invitations/route.ts` 五处、`lib/actions/sessions.ts` 把读失败答成 `sessionNotFound`、
+    ~~`api/invitations/route.ts` 五处~~ —— **2026-09-23 已完成**：五处断言全部改为绑定 `error`，
+    顺带收掉同一条链上门禁看不见的两处（GET 的成员身份校验、POST 按邮箱查 profiles），
+    见 progress 同日条目；`src/app/api/invitations/route.ts` 此前**零单测**，补了 15 条）、
+    `lib/actions/sessions.ts` 把读失败答成 `sessionNotFound`、
     `lib/actions/api-keys.ts` 让「密钥不存在」与「读失败」共用一个 `databaseError`）；
     ③ 页面读数（`dashboard/team/page.tsx` 渲染成「你还没有团队」、`dashboard/billing/page.tsx`
-    把套餐显示成 `free`、`dashboard/profile/page.tsx` 把角色显示成 `member`）。
+    把套餐显示成 `free`、~~`dashboard/profile/page.tsx` 把角色显示成 `member`~~ ——
+    **2026-09-23 第二批已随 ① 一起收掉**，它在 ① 与 ③ 里被列了两次，是同一处读取）。
     每清一处必须同时下调台账数字，否则 `QUERY_ERROR_CHANNEL_EXEMPT_STALE` 会红。
-    当前台账 16 处 = 14 处 debt + 2 处 justified
+    台账规模以 `pnpm check:query-errors` 的输出为准——这里原先每清一批就要手写一次数字，
+    按 D04 口径不再抄
 20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的），
     接线时按同一套 AST 实测到 12 处：`api/e2e/push-queue/route.ts:86,230`、`api/invitations/route.ts:56,166`、
     `api/stripe/checkout/route.ts:58,68`、`api/webhooks/stripe/route.ts:256,263`、
     `dashboard/admin/page.tsx:47,50,53`、`dashboard/team/page.tsx:110`。C08 看不见它们（判据是断言），
-    要么把门禁扩成「awaited 查询结果必须绑定 `error` 或使用它」，要么单独一条——扩之前先量误报
+    要么把门禁扩成「awaited 查询结果必须绑定 `error` 或使用它」，要么单独一条——扩之前先量误报。
+    上面那份是**接线时的快照**，此后有两处已随别的 PR 消失：`api/invitations/route.ts:56,166`
+    （C08-b 第三批，与那五处断言一起收掉）与 `api/stripe/checkout/route.ts:58,68`（PR #96 的
+    `readCheckoutScope`）。开工前按当前代码重量，不要照这份清单点名
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 

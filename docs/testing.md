@@ -556,10 +556,11 @@ const { data: profile } = (await supabase
 - 扫不到文件报 `QUERY_ERROR_CHANNEL_NO_SOURCES`，文件全空报 `QUERY_ERROR_CHANNEL_SOURCE_EMPTY`，
   扫到了文件却一处 awaited 查询结果都没判到报 `QUERY_ERROR_CHANNEL_VACUOUS`。
 
-数字是**鉴权那几处修完之后**再量的（`node --experimental-strip-types scripts/lib/query-error-channel-check.js`）：
-`src/**` 358 个非测试文件里 37 处 awaited 查询结果断言，其中 22 处抹掉 `error`，分布在 12 个文件——
-这 22 处全部进台账（`guards.ts` 两处、两个 admin 布局与 `actions/admin.ts` 各一处已在本 PR 修掉，
-不在其中）。门禁先落地是为了**止住新增**，不是为了宣称问题已清完；清偿顺序写在 roadmap C08-b。
+规模**不在这里抄数字**——台账会随清偿一处处变小，把计数抄进文档就是造一条会过期的断言（v0.12.0 D04）。
+现量用 `node --experimental-strip-types scripts/lib/query-error-channel-check.js`（输出即「文件数 / awaited
+断言数 / 台账数」），逐条债务读 `src/lib/security/query-error-channel.ts` 里的 `ERROR_CHANNEL_EXEMPTIONS`，
+每条都写明「这一处把读失败答成了什么事实」；清偿顺序与已完成部分写在 roadmap C08-b。
+门禁先落地是为了**止住新增**，不是为了宣称问题已清完。
 
 **不在门禁内**：解构时压根不取 `error`（`const { data } = await supabase.from(...)`，接线时实测有一批，
 清单记在 `docs/progress.md` 的 C08 条目里）与 `.single()` 的「零行即错误」语义。前者不看断言就看不到，
