@@ -52,6 +52,27 @@ describe("logAuthEvent()", () => {
     );
   });
 
+  it("会话读不到时审计照写，但标上 sessionReadFailed，与「本来就没有会话」区分", async () => {
+    createClientMock.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: { message: "Auth retry-failed fetch" },
+        }),
+      },
+    });
+    await expect(logAuthEvent("auth.login_failed", { email: "x@y.com" })).resolves.toEqual({
+      ok: true,
+    });
+    expect(appendAuditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: null,
+        entityId: null,
+        metadata: expect.objectContaining({ email: "x@y.com", sessionReadFailed: true }),
+      }),
+    );
+  });
+
   it("限频时跳过写入仍返回 ok", async () => {
     rateLimitCheckMock.mockResolvedValue({ allowed: false, remaining: 0, resetIn: 1000 });
     mockUser({ id: "u1" });
