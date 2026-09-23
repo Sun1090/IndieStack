@@ -1270,8 +1270,11 @@
     祖先 `eec9e44` 多一个搬运 commit）之后，本 PR 就只剩自己的 4 个 commit。顺序判据在 #118 那篇。
   - mock 模式没有 `webauthn_credentials` 这张表（`src/lib/mock` 里查无此表），E2E 也不碰 passkey，
     所以「0 行 → passkeyNotFound」在 mock 下不可达；这是既有的覆盖面缺口，不是本条引入的。
-    真要覆盖它得先给 mock 补表数据 + 让 delete 回受影响行（PostgREST 的 `RETURNING` 口径），
-    那是另一件事，本条不顺手做。
+    真要覆盖它得先给 mock 补表数据 + 让 delete 回受影响行（PostgREST 的 `RETURNING` 口径）。
+    **2026-09-23 量过成本，别按「补张表」估**：mock 是 1595 行手写查询层（`from()` 在
+    `src/lib/mock/index.ts:1521`、`delete()` 在 `:714`），补表只是小的那一半；真正拦住的是注册仪式——
+    `@simplewebauthn/server` 要验 clientDataJSON/authData（本条 #121 已读过它对 `origin` 用严格相等比较），
+    E2E 里没有真 authenticator，所以得引入可注入的验证桩或让 mock 客户端接进 E2E。那是独立一件大事。
 - 下一项：`src/lib/actions/admin.ts` 的 `listAdminUsersPage`（C08 栈尖上 79-89 行整段未执行、
   且没有任何用例提到它）。它和 #93–#114 那条栈改同一个 `admin.test.ts`，所以**等那条栈落地之后再补**，
   否则只是给评审多加一处必冲突的文件。
