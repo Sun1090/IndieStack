@@ -1156,23 +1156,31 @@
 
 ## 2026-09-23 — 待合 PR 的合并顺序与 CI 证据范围：长栈会把 commit 留在 main 之外
 
-- 里程碑 / 版本：v0.12.0；本轮不改代码，只回答「这 26 个 PR 怎么合才真的进 main」。
+- 里程碑 / 版本：v0.12.0；本轮不改代码，只回答「这些 PR 怎么合才真的进 main」。
+  口径截至 2026-09-23 08:40Z 的复扫：**28 个 open PR（#92–#119）**。
 - 分支 / PR：`docs/pr-merge-order` → **PR #118**（基在 main `ad4b029`，停在 ready-for-review；
-  因为 base 是 main，CI 会真跑——这正是上面「事实二」里那 20 个 PR 拿不到的东西）。
+  因为 base 是 main，CI 会真跑——这正是上面「事实二」里那 21 个 PR 拿不到的东西）。
 - 状态：DONE（PR 待 review 合并）。
 - 量法（全部可复跑）：`gh pr list --state open --json number,baseRefName,headRefName,mergeable,mergeStateStatus`、
   逐个 `gh pr checks`、`gh api repos/…/branches/main/protection`、`git show <ref>:scripts/check-all.sh`。
-- 事实一：**26 个 PR（#92–#117）全部 `MERGEABLE`，全部 `UNSTABLE`**。`UNSTABLE` 的语义是
+- 事实一：**28 个 PR（#92–#119）全部 `MERGEABLE`，全部 `UNSTABLE`**。`UNSTABLE` 的语义是
   「必需检查全过、有非必需检查红着」，而红的只有两个 Vercel 部署检查（配额，按既定口径忽略）。
   main 的必需上下文一共 7 个：`Lint & Type Check` / `Build` / `Build Docs Site` /
   `E2E (Playwright)` / `security-config` / `Analyze (javascript-typescript)` / `Detect Secrets`；
   Vercel 不在其中 → **平台的部署限制不挡合并**。保护规则 `required_pull_request_reviews: null`，
   也没有「必须与 base 同步」，所以合并只等 CI。
-- 事实二（开这个 PR 的原因）：拓扑不是一条链，而是**一条 20 个 PR 的长栈 + 6 个独立 PR + 1 个两级小栈**。
-  每个栈内 PR 的 base 都是前一个的 head 分支，只有栈底 #92 基在 main：
+- 事实二（开这个 PR 的原因）：拓扑不是一条链，而是**一条 20 个 PR 的长栈 + 6 个基在 main 的独立 PR
+  + 2 个基在 #115 上的 PR**。每个长栈 PR 的 base 都是前一个的 head 分支，只有栈底 #92 基在 main：
   `#92 → #93 → #94 → #98 → #99 → #100 → #101 → #102 → #103 → #104 → #105 → #106 → #107 → #108 →
-  #109 → #110 → #111 → #112 → #113 → #114`；独立基在 main 的是 #95、#96、#97、#115、#116；
-  #117 基在 #115 的 head 上（它用 #115 引入的 `e2e/support/hydrated.ts`）。
+  #109 → #110 → #111 → #112 → #113 → #114`；基在 main 的是 #95、#96、#97、#115、#116 与本 PR #118；
+  #117 与 #119 基在 #115 的 head 上（都用 #115 引入的 `e2e/support/hydrated.ts`）。
+- 文件重叠是量过的（`git diff --name-only origin/main…<branch>` 求交集）：
+  #119 与长栈的交集**只有文档**（`CHANGELOG.md`、`docs/testing.md`、`docs-site/scripts.md` 双语、
+  `docs/progress.md`）——它改的 18 个表单组件、`src/lib/ui/form-field-rules.ts`、`scripts/lib/` 与三条
+  e2e 文件，长栈一个都没碰。#117 与 #119 的真实交集是 `e2e/admin-contact-mfa.spec.ts`
+  （#117 改 MFA 段的两处点按，#119 改 contact 段的提交判据，不同段落）加那几处文档尾巴；
+  `e2e/support/hydrated.ts` 只有 #119 在往里加函数。
+  结论：**#119 可以在这条栈的几乎任何位置落地**，代价只是文档尾部解一次冲突。
 - **按编号顺序直接点合并，会把 #93–#114 的工作留在 main 之外**：#92 落地后
   `feat/gate-query-error-channel` 与 main 打平，此时把 #93 合进那条分支，main 拿不到它的 commit，
   而那条分支上已经没有任何 PR 通向 main；往后 19 个依次同理。更糟的是它**不报错**——
@@ -1181,9 +1189,9 @@
   1. `gh pr edit <N> --base main` —— 前驱刚进 main，这一刻它的 diff 恰好等于自己那几个 commit；
   2. 等它自己的 CI 跑完再合。
   顺带解决第二个缺口：`ci.yml` 的触发条件是 `pull_request: branches: [main, develop]`，
-  **base 不是 main 的那 20 个 PR（长栈里除 #92 外的 19 个，加 #117）从来没跑过 CI**——
+  **base 不是 main 的那 21 个 PR（长栈里除 #92 外的 19 个，加 #117、#119）从来没跑过 CI**——
   它们头上只有 `security-config` 与 `Detect Secrets`（来自别的 workflow）加 Vercel，
-  5 个必需 CI 检查不是「过了」而是「根本没上报」。这 20 个 PR 现有的证据是本地在每个 SHA 上跑的全套
+  5 个必需 CI 检查不是「过了」而是「根本没上报」。这 21 个 PR 现有的证据是本地在每个 SHA 上跑的全套
   门禁（逐条写在各自条目里，口径见下）；retarget 之后 CI 会在同一个 SHA 上真跑一遍，含 E2E 分片。
 - 本地证据的确切口径，别写成做不到的事：`CI=true pnpm check:all` 在长栈的 tip
   （`fix/c08-gate-range-holes`）跑过、exit 0，那是**整条栈叠加之后**的状态；
@@ -1196,7 +1204,8 @@
   只删三行冲突标记（两侧都是新增条目，「都保留」就是完整解）→ `git add -A` →
   `GIT_EDITOR=true git rebase --continue` → 重跑门禁 → `git push --force-with-lease`
   （仅限自己的 PR 传输分支）。
-- 顺序建议：先长栈 20 个（一次一个，每个先 retarget），再 #96、#97、#115 → #117、#116。
+- 顺序建议：先长栈 20 个（一次一个，每个先 retarget），再 #96、#97、#115 → #117、#119（两个都得等
+  #115 落地，retarget 后各自跑一遍 CI）、#116、#118。
   #95 单独说一句：它是纯 progress 记录，其中「12 处就是 C08-c 的全部工作量」是**那版计数器的读数**，
   #106 补上三类写法盲区后重测，实际清单比它长（#112 把 debt 清完，台账只剩 `justified`）。
   想留完整日志就先合（后面的条目带着修正），不想再发一份过期数字就关掉——修正版在长栈的条目里已有。
