@@ -66,14 +66,13 @@ export async function updateNotificationSettings(formData: FormData) {
     return fail("invalidSettings");
   }
 
-  const { error } = await supabase
-    .from("profiles")
-    // @ts-ignore - Supabase update type inference limitation
-    .update({
-      notification_settings: validated.data,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", user.id);
+  // 同 profile.ts：载荷标注成生成的 Update 类型，写错的列名要在编译期红，而不是靠真库报错。
+  const updateData: Database["public"]["Tables"]["profiles"]["Update"] = {
+    notification_settings: validated.data,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("profiles").update(updateData).eq("id", user.id);
 
   if (error) {
     await logActionError("[updateSettings] 保存设置失败", error);

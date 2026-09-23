@@ -6,6 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/database.types";
 import { profileSettingsSchema } from "@/lib/validations/profile";
 import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
@@ -36,17 +37,16 @@ export async function updateProfileSettings(formData: FormData) {
     return fail(parsed.error.issues[0]?.message ?? "invalidInput");
   }
 
-  const { error } = await supabase
-    .from("profiles")
-    // @ts-ignore - Supabase update type inference limitation
-    .update({
-      full_name: parsed.data.fullName,
-      bio: parsed.data.bio ?? null,
-      timezone: parsed.data.timezone ?? null,
-      language: parsed.data.language ?? null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", user.id);
+  // 载荷标注成生成的 Update 类型：写错的列名从「只有打到真库才现形」变成编译错误。
+  const updateData: Database["public"]["Tables"]["profiles"]["Update"] = {
+    full_name: parsed.data.fullName,
+    bio: parsed.data.bio ?? null,
+    timezone: parsed.data.timezone ?? null,
+    language: parsed.data.language ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("profiles").update(updateData).eq("id", user.id);
 
   if (error) {
     await logActionError("[updateProfileSettings] 更新资料设置失败", error);
