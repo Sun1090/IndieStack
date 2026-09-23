@@ -108,8 +108,10 @@ README 与 `RELEASE_CHECKLIST` 接线；本地 `pnpm check:release-docs` / `chec
 
   ```bash
   # 1) 最近一条生产部署：环境名必须**精确等于**本项目，用前缀匹配会把
-  #    `Production – indie-stack-docs-site`（另一个项目）一起捞进来，得出错的结论
-  gh api "repos/<owner>/<repo>/deployments?per_page=12" \
+  #    `Production – indie-stack-docs-site`（另一个项目）一起捞进来，得出错的结论。
+  #    `per_page` 也不能小：PR 预览部署同样写进部署记录，且数量远超生产，
+  #    实测 `per_page=20` 里一条生产记录都没有——那看起来就像「从未部署过生产」。
+  gh api "repos/<owner>/<repo>/deployments?per_page=100" \
     --jq '[.[] | select(.environment=="Production – indie-stack")][0]
           | "\(.id) \(.sha[0:7]) \(.created_at)"'
   # 2) 再查这条的状态：只有 `success` 才算已部署
@@ -120,6 +122,16 @@ README 与 `RELEASE_CHECKLIST` 接线；本地 `pnpm check:release-docs` / `chec
   而不是等会儿会补上）；记录存在也**不等于**构建成功，状态必须单独查。
   它给的是「哪一个 commit 被部署了」，而 `/api/health` 给的是「正在服务的那个构建自报什么版本」——
   两者可以互相印证，但**都不能**由 `version` 数字推出「当前 `main` 已落地」。
+
+  **2026-09-24 用同一套读法复测，前置②的成因已经收窄成一句话**：最近一条生产部署仍是 `a322a4e` @
+  `2026-09-22T08:56:51Z`，而给 `/api/health` 加上 `commit` 的 #69 合并于 `2026-09-22T09:31:13Z`——
+  **部署比那次合并早 34 分钟**，所以生产自报不了 commit；直读 `/api/health` 证实键集合里没有 `commit`
+  （`version` 仍是 `0.11.0`）。配额此刻对 `indie-stack` 项目是开的（PR #131 的 `Vercel – indie-stack` 检查
+  在 `033bfb6` 上 pass，对应预览部署记录 `2026-09-23T18:41:54Z`；同一条 PR 的 docs-site 检查仍 fail，
+  再次证明限流按项目计），并且重跑了一次无副作用冒烟：run `35905536165`（18:53:38Z）**6/6 passed**，
+  health 那一行自报 `version=0.11.0, commit=unknown`。结论：②现在只差「`main` 的一次新构建真的上生产」，
+  而仓库侧没有任何不推 `main` 就能触发生产部署的办法（本机无 Vercel 权限，不能从 dashboard redeploy）——
+  差的就是那一次合并。
 - **账户删除端到端演练未执行**（差异 2）。这是本版本唯一的不可逆面，缺它就没有发布证据；
   需要一个可牺牲的测试账号，不接受用真实用户数据代跑。
 - **回滚探针未演练**：需要 Vercel dashboard 的 deployment 切换权限。
