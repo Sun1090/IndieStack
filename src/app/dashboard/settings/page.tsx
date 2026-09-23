@@ -36,6 +36,42 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("settings.metaTitle"), description: t("settings.metaDesc") };
 }
 
+/**
+ * 读「最近 20 台设备」与「哪一台是当前这台」。
+ *
+ * 抽出来是因为这两件事必须一起成立：列表里每台都可吊销，而认不出当前设备时
+ * 把标记留空就等于递给用户一把可能砍到自己会话的刀——所以要么两个都拿到，要么在渲染前抛。
+ * （`SettingsPage` 原本还要自己拆 `Promise.all` 的两个结果，complexity 也因此越线。）
+ */
+async function readDeviceList(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+): Promise<{
+  rows: Database["public"]["Tables"]["user_sessions"]["Row"][];
+  currentSessionId: string | null;
+}> {
+  const [{ data: sessions, error: sessionsError }, { data: sessionData, error: sessionError }] =
+    await Promise.all([
+      supabase
+        .from("user_sessions")
+        .select("*")
+        .eq("user_id", userId)
+        .order("last_seen_at", { ascending: false })
+        .limit(20),
+      supabase.auth.getSession(),
+    ]);
+  if (sessionsError) {
+    throw new Error(`读取登录设备失败：${sessionsError.message}`);
+  }
+  if (sessionError) {
+    throw new Error(`读取当前会话失败：${sessionError.message}`);
+  }
+  return {
+    rows: sessions ?? [],
+    currentSessionId: sessionIdFromAccessToken(sessionData?.session?.access_token ?? ""),
+  };
+}
+
 export default async function SettingsPage() {
   const supabase = await createClient();
   const tc = await getTranslations("common");
@@ -44,28 +80,19 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
 
-  const { data: profile } = (await supabase
+  // 断言里明写 `error: null`＝断言「这次查询不可能出错」。这里的后果是一张可点的列表：
+  // 设备那一栏读失败会渲染成「你只有当前这台设备」，用户于是以为没有别的登录要收掉。
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single()) as unknown as {
-    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
-    error: null;
-  };
+    .maybeSingle();
+  if (profileError) {
+    throw new Error(`读取个人资料失败：${profileError.message}`);
+  }
 
   // D02 设备列表：最近 20 台设备（含当前），配合 revokeSession 吊销
-  const [{ data: sessions }, { data: sessionData }] = await Promise.all([
-    supabase
-      .from("user_sessions")
-      .select("*")
-      .eq("user_id", user!.id)
-      .order("last_seen_at", { ascending: false })
-      .limit(20),
-    supabase.auth.getSession(),
-  ]);
-  const currentSessionId = sessionIdFromAccessToken(sessionData?.session?.access_token ?? "");
-  const deviceRows = (sessions ??
-    []) as unknown as Database["public"]["Tables"]["user_sessions"]["Row"][];
+  const { rows: deviceRows, currentSessionId } = await readDeviceList(supabase, user!.id);
   const locale = await getLocale();
   const passkeyCredentials = features.passkey ? await listMyCredentials() : [];
 
