@@ -1,8 +1,8 @@
 ## 2026-09-23 — 退订链接的 7 天有效期：合规出口不能带时间窗
 
 - 里程碑 / 版本：v0.12.0 A05（营销邮件独立通道）的缺陷收口；合规面。
-- 状态：DONE，已开 PR。
-- 分支 / commit：`fix/marketing-unsubscribe-expiry`（基于 `origin/main` `ad4b029`）。
+- 状态：DONE，**PR #123**（base `main`；与 #121 / #122 无代码重叠，只共用 CHANGELOG / progress 头部）。
+- 分支 / commit：`fix/marketing-unsubscribe-expiry`（基于 `origin/main` `ad4b029`），`b1a26d4` + 门禁数字 commit。
 - 为什么做：接着 #122 那条覆盖率线索往下走。`src/lib/repositories/marketing.ts` 在 C08 栈尖上
   分支覆盖 77%，未覆盖语句是 72/77/112/124 四处 `throw`。读过去时看到的不是覆盖率问题，是
   `updateStatusByToken()` 把 `.gt("token_expires_at", now)` 同时压在确认和退订两条路上。
@@ -40,6 +40,12 @@
   所以这条的严重性是「模板交付的合规语义」而不是「当前实例正在漏发」。
   刻意没动的相邻一项：凭旧 token 仍可把已退订的行确认回 `subscribed`（要持有发给本人的那封邮件，
   不是攻击面；改它属于产品口径，留给用户拍板）。
+- 顺手核对的阴性结果（另一条覆盖率线索，记下来免得再量一遍）：`repositories/upload-objects.ts`
+  未覆盖语句是 `listOrphanObjects()` 的那行 `throw`；读过去时怀疑 `toOwned()` 的
+  `row.referenced === true` 是**失效方向朝开**——RPC 若返回 `null` 引用状态就会被当成「没引用」而删掉。
+  对着迁移 033 的 SQL 核过：`upload_object_is_referenced()` 是 `select exists(...) or exists(...)`，
+  `EXISTS` 永不为 null，`p_object_key` 为 null 时也只会让两个 `exists` 都落 false，
+  所以那条 `=== true` 写的就是它需要的东西，**不是缺陷**，不改代码。
 
 
 ## 2026-09-22 — 把「mock 少一个方法」变成一条会点名的自检（PR #74 的后续）
