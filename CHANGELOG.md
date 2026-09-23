@@ -225,6 +225,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`/api/analytics` 不再把守卫读不到说成「你没登录」**（C08 的邻居 #44 的前半）：
+  该路由原先对 `safelyRequireAuth()` 的**任何**失败都回 401，而 #92 之后守卫会区分出
+  `SERVICE_UNAVAILABLE`（权限校验自己读不到那一行）。401 的语义是「凭证无效」，客户端据此清会话跳登录页
+  ——而重新登录并不会让那次读取成功。现在走 `guardHttpStatus(auth.error)`（401 / 403 / **503**）。
+  新增两条用例：UNAUTHORIZED 仍 401、SERVICE_UNAVAILABLE 是 503；桩只替 `safelyRequireAuth`，
+  `guardHttpStatus` 用模块导出的真版本（在测试里重写一遍映射等于把实现抄成断言）。
+  变异核对 2 项：退回写死 401 红在 503 那条，写死 503 红在 401 那条。
+  仓库内的消费方 `dashboard/analytics/analytics-page.tsx` 不按状态码分支（`!response.ok` 一律走
+  `useQuery` 的错误态），所以这条改的是**模板对外 API 的语义正确性**，不是界面行为。
+  `stripe/checkout` 的同半边在 #96 那条分支上一并处理（它已经在改这个路由）。
+
 - **API 密钥的两个动作不再报告它们没做到的事**：
   `deactivateApiKey` 原先不接 `update` 影响的行数（`update` 只在报错时给 `error`，0 行时它是 `null`），
   于是 `revokeApiKey` 对「吊销一个不存在（或被 RLS 挡掉）的密钥」照样回 `ok()`，UI 显示「已吊销」。

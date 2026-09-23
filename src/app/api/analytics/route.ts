@@ -10,7 +10,7 @@ import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/rate-limit";
-import { safelyRequireAuth } from "@/lib/auth/guards";
+import { safelyRequireAuth, guardHttpStatus } from "@/lib/auth/guards";
 import { logApiError } from "@/lib/api-log";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +41,12 @@ export async function GET(request: NextRequest) {
   // 权限校验
   const auth = await safelyRequireAuth();
   if (!auth.success) {
-    return jsonNoStore({ error: auth.error.message }, { status: 401 });
+    // 守卫自己读不到（`SERVICE_UNAVAILABLE`）不能回 401：401 说的是「你没登录」，
+    // 客户端据此清掉会话去重新登录，而重新登录并不会让那次读取成功。
+    return jsonNoStore(
+      { error: auth.error.message },
+      { status: guardHttpStatus(auth.error) },
+    );
   }
   const userId = auth.data.id;
 
