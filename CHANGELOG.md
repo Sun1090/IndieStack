@@ -244,6 +244,19 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **E2E 种子端点不再抹掉它没读到的偏好**（C08-c 第八批，**非 `justified` 的读数到此清零**）：
+  `api/e2e/push-queue` 的 `setPushPreference` 读的是**要被自己覆盖的那一列**——
+  `notification_settings` 是一个装着多种偏好的 JSON 列，读失败时 `current` 落成 `{}`，
+  紧接着那句 update 就把用户其余偏好全部抹掉、只留下 push。现在读不到就抛，且新增的用例
+  断言的是**没有发出 `profiles` 的 update**（状态码证明不了「没覆盖」）。
+  同文件的 GET 里，投递记录那条查询绑了 `error`、订阅那条没有——于是「订阅读不到」和
+  「用户确实没有订阅」在 spec 里长得一模一样，测试会拿一份假的观察去断言真实行为。现在两条都 500。
+  这个端点此前零单测，补 6 条；变异核对 5 项（F1–F5）全部被杀死：删两处守卫、
+  把「确实没有偏好行」「确实没有订阅」两条合法分支说成故障、以及删掉原先那条已存在的守卫。
+  规模同步：`--unbound` 4 → **2 处**，且剩下的两处都是 `permission-gate.tsx` 的 `justified`
+  （客户端组件读角色失败时故意回落到最低权限）——**C08-c 的 debt 到此清零**，
+  下一步是按 roadmap 的排好的顺序把判据接进 `check:query-errors`。
+
 - **设置页的设备列表不再把读失败显示成「只有当前这台设备」**（C08-c 第七批）：
   `settings/page.tsx` 两处读取（`profiles`、`user_sessions`）都不看 `error`，
   读失败时那张**可吊销的会话列表**渲染成空/只剩一台——用户以为没有别的登录要收掉。
