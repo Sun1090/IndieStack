@@ -71,6 +71,8 @@ const ERROR_STATUS: Record<string, number> = {
   rateLimited: 429,
   uploadCancelled: 408,
   uploadFailed: 500,
+  // 授权判定所需的那一行读不到：不是「没权限」也不是「项目不存在」，是一次可重试的故障。
+  uploadUnavailable: 503,
 };
 
 export function uploadErrorStatus(error: string): number {

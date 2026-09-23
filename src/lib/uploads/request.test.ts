@@ -75,6 +75,8 @@ describe("错误映射", () => {
     ["rateLimited", 429],
     ["uploadCancelled", 408],
     ["uploadFailed", 500],
+    // 读不到授权判定所需的那一行：可重试，不是「服务器坏了」也不是「没权限」
+    ["uploadUnavailable", 503],
     ["unknown", 500],
   ])("%s -> %i", (error, status) => {
     expect(uploadErrorStatus(error)).toBe(status);
