@@ -1157,7 +1157,7 @@
 ## 2026-09-23 — 结账路由的两道门禁读取从 fail-open 改成 fail closed
 
 - 里程碑 / 版本：v0.12.0；来源是 C08-c 的前置测量（PR #95 的 progress 条目），不是门禁抓到的。
-- 分支 / commit：`fix/checkout-guard-fail-closed`（基于 `main`，与 #92~#95 那条栈无关）。
+- 分支 / commit：`fix/checkout-guard-fail-closed`（基于 `main`，与 #92~#95 那条栈无关）→ **PR #96**。
 - 状态：DONE（PR 待 review 合并）。
 - 为什么这一条值得单独做：`POST /api/stripe/checkout` 的两道**安全检查**都建立在一次查询上——
   当前用户属于哪个团队、该团队是否已有 `active`/`trialing` 订阅。两处都写成
