@@ -73,21 +73,32 @@ export async function upsertPendingSubscription(
   return data as MarketingSubscription;
 }
 
+/**
+ * 确认与退订共用一次「按 token 改状态」。
+ *
+ * `token_expires_at` 只在写入 pending 时算过一次（7 天），确认成功**不会**刷新它。
+ * 所以这条有效期能约束的只有「这次 double opt-in 请求还算不算数」——它绝不能约束退订：
+ * 一旦这里也判过期，订阅满 7 天的收件人会在每一封后续营销邮件里拿到一个必然 404 的
+ * 退订链接，而邮件还在继续寄——那条页脚是本仓库自己写的「合规链接」，出口不能有时间窗。
+ * 旧 token 也不能伤害别人：token 每次重新开关都会轮换，`token_hash` 对不上就是命中不了。
+ */
 async function updateStatusByToken(token: string, status: MarketingSubscriptionStatus): Promise<boolean> {
   if (typeof token !== "string" || token.length < 16 || token.length > 256) return false;
   const admin = createAdminClient();
   const now = new Date().toISOString();
-  const base = admin.from("marketing_subscriptions");
   const update = {
     status,
     updated_at: now,
     ...(status === "subscribed" ? { confirmed_at: now } : {}),
   };
-  const hashed = await base
+  const byToken = admin
+    .from("marketing_subscriptions")
     .update(update)
-    .eq("token_hash", hashSubscriptionToken(token))
-    .gt("token_expires_at", now)
-    .select("id");
+    .eq("token_hash", hashSubscriptionToken(token));
+  const hashed = await (status === "unsubscribed"
+    ? byToken
+    : byToken.gt("token_expires_at", now)
+  ).select("id");
   if (hashed.error) throw new Error(hashed.error.message);
   return (hashed.data ?? []).length > 0;
 }
@@ -97,7 +108,7 @@ export async function confirmSubscription(token: string): Promise<boolean> {
   return updateStatusByToken(token, "subscribed");
 }
 
-/** 退订（公开路由凭 token 调用）；token 无效或过期返回 false */
+/** 退订（公开路由凭 token 调用）；token 轮换过才对不上，**过期不影响**——退订出口不设时间窗 */
 export async function unsubscribeByToken(token: string): Promise<boolean> {
   return updateStatusByToken(token, "unsubscribed");
 }
