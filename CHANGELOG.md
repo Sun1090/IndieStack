@@ -47,6 +47,24 @@ All notable changes to IndieStack will be documented in this file.
   崩在中途没走到还原，把 `collectQueryFacts` 里的那处豁免静默吃掉而门禁全绿——补了一条「桶名与表名同名」
   的用例，现在它必须由那条用例红。
   CI 不需要单独接线：`ci.yml` 的静态作业跑 `pnpm check:all`（C04），新门禁进聚合入口即进 CI。
+### Added
+
+- **C08 的邻居缺陷现在可以量了（先量，不先接门禁）**：`query-error-channel` 多了一条纯规则
+  `collectUnboundErrorChannels` / `summarizeUnboundErrorChannels`，配合
+  `node --no-warnings --experimental-strip-types scripts/lib/query-error-channel-check.js --unbound`
+  打印「解构 awaited 查询结果时压根不绑 `error`」的清单与语法诊断跳过数。它判的不是断言
+  （C08 那条判据看不见没有断言的写法），而是 `error` 从来没进作用域。
+  重量结果记在 roadmap C08-c（358 文件 / 160 处解构 / 23 处不绑 / 0 个文件跳过），
+  抽样逐行看过 5 处，**误报 0**——全是同一个方向：读失败长成「没有这个团队 / 0 个用户 /
+  这个人不是管理员 / 这张发票没有归属」。
+  报告刻意说明三条盲区：`Promise.all` 里的查询链、非字面量表名的链，以及
+  「绑了 `error` 却从不使用」那一档**没测**——判它需要作用域分析，全文数同名标识符会把
+  `catch (error)` 一起数进去，那是个只会漏报的假指标，而一个只会漏报的计数比没有计数更糟。
+  接进门禁排在清偿之后（理由写在 roadmap C08-c：刚落地就要求全库加豁免的门禁，教人的是绕过它）。
+  新增 8 条单测（含一条打在真实仓库上的非空洞断言：两侧都必须量到、跳过数必须为 0），
+  变异核对 4 项（V1–V4）：判断恒真、只认本地变量名不认属性名（改名绑定会漏）、
+  语法诊断文件不计数、去掉 `await` 要求（builder 断言被误伤）——逐项都让对应用例红。
+
 - **管理面板终于看得见邮件待发队列的形状**（A05 前半）：新增 `src/lib/notifications/queue-diagnostics.ts`
   ——纯规则，四件事：队列有多少条、最老一条卡了多久、最近有几轮「拉到东西却一封没发出去」、
   以及超过 48h（两个日调度周期）算不算卡住；admin 概览页多一张「邮件待发队列」卡片。

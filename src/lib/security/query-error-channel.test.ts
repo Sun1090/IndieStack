@@ -10,7 +10,9 @@ import { describe, expect, it } from "vitest";
 import {
   ERROR_CHANNEL_EXEMPTIONS,
   collectErrorChannelCasts,
+  collectUnboundErrorChannels,
   inspectQueryErrorChannel,
+  summarizeUnboundErrorChannels,
   type QueryErrorChannelSource,
 } from "./query-error-channel";
 
@@ -189,3 +191,105 @@ function readQuerySources(): QueryErrorChannelSource[] {
     content: fs.readFileSync(path.join(REPO_ROOT, file), "utf8"),
   }));
 }
+
+describe("collectUnboundErrorChannels()（C08-c 测量，不是门禁）", () => {
+  const src = (body: string): { file: string; content: string }[] => [
+    { file: "src/lib/probe.ts", content: body },
+  ];
+
+  it("解构时压根不取 error 的那一处要被量到", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(`
+          async function read(supabase: any) {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", 1);
+            return profile;
+          }
+        `),
+      ),
+    );
+    expect(summary.total).toBe(1);
+    expect(summary.unbound).toHaveLength(1);
+    expect(summary.unbound[0]).toMatchObject({ source: "profiles", bindsError: false });
+  });
+
+  it("绑了 error 的不算，改名绑的也不算", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(`
+          async function read(supabase: any) {
+            const { data, error } = await supabase.from("profiles").select("role");
+            const { data: other, error: boom } = await supabase.from("teams").select("plan");
+            if (boom) return null;
+            return error ? null : other ?? data;
+          }
+        `),
+      ),
+    );
+    expect(summary.total).toBe(2);
+    expect(summary.unbound).toHaveLength(0);
+  });
+
+  it("断言里带着 error 也算绑了通道的那一侧：这里判的是解构，不是断言", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(`
+          async function read(supabase: any) {
+            const { data } = (await supabase.from("profiles").select("role")) as {
+              data: unknown;
+              error: null;
+            };
+            return data;
+          }
+        `),
+      ),
+    );
+    expect(summary.unbound).toHaveLength(1);
+  });
+
+  it("`.rpc()` 的链同样在射程内，表名取字面量参数", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(src(`const { data } = await supabase.rpc("ping");`)),
+    );
+    expect(summary.unbound[0]).toMatchObject({ source: "ping" });
+  });
+
+  it("未 await 的构造器断言不算——那是给 builder 定形状", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(`const query = supabase.from("contact_messages").select("*") as unknown as Chain;`),
+      ),
+    );
+    expect(summary.total).toBe(0);
+  });
+
+  it("已知盲区要如实是盲区：Promise.all 里的查询链判不到", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(`const [{ data }] = await Promise.all([supabase.from("profiles").select("role")]);`),
+      ),
+    );
+    expect(summary.total).toBe(0);
+  });
+
+  it("解析不动的文件计入 skipped，而不是安静地贡献 0 处", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(src(`const { data } = await supabase.from("profiles") as`)),
+    );
+    expect(summary.skippedUnparseable).toBe(1);
+  });
+
+  it("真实仓库里这条规则不是空转，且两侧都有量到", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(readQuerySources()),
+    );
+    expect(summary.total).toBeGreaterThan(0);
+    expect(summary.unbound.length).toBeGreaterThan(0);
+    // 「绑了的」比「没绑的」多，才说明这条规则不是在把全库一锅端
+    expect(summary.total - summary.unbound.length).toBeGreaterThan(summary.unbound.length);
+    expect(summary.skippedUnparseable).toBe(0);
+  });
+});

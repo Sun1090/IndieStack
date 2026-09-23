@@ -263,14 +263,30 @@
     台账规模以 `pnpm check:query-errors` 的输出为准——这里原先每清一批就要手写一次数字，
     按 D04 口径不再抄。**注意范围**：本条清完只说明「断言抹掉 `error`」这一类没有了，
     不等于「解构时压根不取 `error`」那一类（C08-c，见下条）也没有了
-20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的），
-    接线时按同一套 AST 实测到 12 处：`api/e2e/push-queue/route.ts:86,230`、`api/invitations/route.ts:56,166`、
-    `api/stripe/checkout/route.ts:58,68`、`api/webhooks/stripe/route.ts:256,263`、
-    `dashboard/admin/page.tsx:47,50,53`、`dashboard/team/page.tsx:110`。C08 看不见它们（判据是断言），
-    要么把门禁扩成「awaited 查询结果必须绑定 `error` 或使用它」，要么单独一条——扩之前先量误报。
-    上面那份是**接线时的快照**，此后有两处已随别的 PR 消失：`api/invitations/route.ts:56,166`
-    （C08-b 第三批，与那五处断言一起收掉）与 `api/stripe/checkout/route.ts:58,68`（PR #96 的
-    `readCheckoutScope`）。开工前按当前代码重量，不要照这份清单点名
+20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的）。
+    **2026-09-23 已按当前代码重量**（`node --no-warnings --experimental-strip-types
+    scripts/lib/query-error-channel-check.js --unbound`，规则在
+    `src/lib/security/query-error-channel.ts` 的 `collectUnboundErrorChannels`，8 条单测覆盖）：
+    358 个文件里 **160 处** awaited 查询结果的解构绑定，其中 **23 处压根不绑 `error`**，
+    0 个文件因语法诊断被跳过。抽样逐行看过 5 处（`actions/team.ts:36`、`dashboard/page.tsx:44`、
+    `admin/page.tsx:47`、`permission-gate.tsx:86`、`webhooks/stripe/route.ts:256`），
+    **误报 0**：全是同一个方向——读失败长成「没有这个团队 / 0 个用户 / 这个人不是管理员 /
+    这张发票没有归属」。其中 `permission-gate.tsx` 那 2 处与 C08 的 `justified` 是同一理由
+    （客户端组件无法 5xx），门禁必须留同样的豁免。
+    接线时那份「12 处」清单是单行 grep 时代的产物，**已作废**（重量 23 处，且旧清单里的
+    `api/invitations/route.ts` 两处与 `api/stripe/checkout/route.ts` 两处已随别的 PR 消失）。
+    新量出的一个副产品写进 #49：`keepsErrorChannel()` 现在把「断言类型里带 `error:` 成员」一律当
+    合规放行，所以 `as { data: X; error: null }`（明写「error 恒为 null」）它是瞎的——
+    与「抹掉 `error`」是同一句谎，只是换了拼写。**这条的规模目前还没有可信数字**：
+    先用 `grep "error: null;"` 数出「5 处」，但那个数不可信——分号漏掉了单行写法
+    `error: null };`（`actions/team.ts` 实际出现 7 次，而它在上面那 23 处里只占 6 处）。
+    #49 判据要按 AST 重量，不要照这份 grep 开工。
+    **落地顺序**（不再改）：先按影响面清这 23 处（同 C08-b 的做法：一次一批、每批自带用例与变异核对），
+    清到只剩 `justified` 那 2 处时再把判据接进 `check:query-errors`——
+    一个刚落地就要求全库加豁免的门禁，教人的是绕过它而不是尊重它。
+    已知盲区必须在报告里如实出现：`Promise.all` 里的查询链（初始化表达式不是查询链）、
+    非字面量表名的链，以及「绑了 `error` 却从不使用」那一档（判它需要作用域分析；
+    全文数同名标识符会把 `catch (error)` 一起数进去，是个只会漏报的假指标，**刻意没测**）
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 

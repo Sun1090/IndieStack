@@ -566,6 +566,18 @@ const { data: profile } = (await supabase
 清单记在 `docs/progress.md` 的 C08 条目里）与 `.single()` 的「零行即错误」语义。前者不看断言就看不到，
 是本门禁的邻居而非子集；后者由调用方的 `error` 处理决定，属于 Code Reviewer 的检查项。
 
+邻居那条（C08-c）**已经能量，但还不是门禁**：
+
+```bash
+node --no-warnings --experimental-strip-types scripts/lib/query-error-channel-check.js --unbound
+```
+
+它打印「解构 awaited 查询结果时压根不绑 `error`」的清单，以及因语法诊断被跳过的文件数
+（跳过不为 0 时整份报告不可信）。判据与盲区写在 `collectUnboundErrorChannels` 的注释里，
+其中三条要记住：`Promise.all` 里的查询链不在射程内、非字面量表名的链不在射程内、
+「绑了 `error` 却从不使用」那一档**刻意没测**（要作用域分析，全文数同名标识符会把 `catch (error)`
+也算进去，是个只会漏报的假指标）。什么时候接进门禁、以及为什么排在清偿之后，写在 roadmap C08-c。
+
 ## 依赖与 secrets 扫描门禁（H10）
 
 `pnpm check:security` 是仓库级安全配置门禁：读取 git 索引并拒绝被跟踪的 `.env*`（`.env.example` 除外）和私钥类文件；检查已有环境文件权限不得宽于 `0600`；拒绝 `.env.development` 中的服务端密钥；扫描带真实 `"use client"` 指令的源码，拦截 `process.env.X` / `process.env["X"]` 形式的服务端变量泄漏（包含 `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`）；要求所有 workflow 显式声明 permissions 且禁止 `write-all`。
