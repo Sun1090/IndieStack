@@ -234,7 +234,9 @@ All notable changes to IndieStack will be documented in this file.
   变异核对 2 项：退回写死 401 红在 503 那条，写死 503 红在 401 那条。
   仓库内的消费方 `dashboard/analytics/analytics-page.tsx` 不按状态码分支（`!response.ok` 一律走
   `useQuery` 的错误态），所以这条改的是**模板对外 API 的语义正确性**，不是界面行为。
-  `stripe/checkout` 的同半边在 #96 那条分支上一并处理（它已经在改这个路由）。
+  `stripe/checkout` 的同半边**做不了**，不是没做：它需要 #92 的 `guardHttpStatus` 会返回 503
+  （那条分支上这个函数只有 401 / 403），又需要 #96 对这个路由的改写先落地——两边都是未合并的 PR，
+  所以登记为 #44 的剩余部分，等两者合并后单独处理。
 
 - **API 密钥的两个动作不再报告它们没做到的事**：
   `deactivateApiKey` 原先不接 `update` 影响的行数（`update` 只在报错时给 `error`，0 行时它是 `null`），
