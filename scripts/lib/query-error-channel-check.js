@@ -10,7 +10,9 @@ import { fileURLToPath } from "node:url";
 import {
   ERROR_CHANNEL_EXEMPTIONS,
   collectErrorChannelCasts,
+  collectUnboundErrorChannels,
   inspectQueryErrorChannel,
+  summarizeUnboundErrorChannels,
 } from "../../src/lib/security/query-error-channel.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -82,7 +84,53 @@ export function runQueryErrorChannelCheck(repoRoot = REPO_ROOT) {
   return 0;
 }
 
+/**
+ * C08-c 的**测量**模式（`--unbound`）：打印「解构 awaited 查询结果时压根不取 `error`」的分布。
+ * 它不是门禁——判据还没经过误报测量，先把数量与清单摆出来（D01 口径）。
+ * 退出码：0 = 量到了东西；1 = 读不到源码或一条都没判到（一份空洞的测量报告比没有更糟）。
+ */
+export function runUnboundErrorChannelReport(repoRoot = REPO_ROOT) {
+  let sources;
+  try {
+    sources = buildSources(repoRoot);
+  } catch (error) {
+    console.error(`\u274c 无法读取待扫描源码：${error.message}`);
+    return 1;
+  }
+
+  const summary = summarizeUnboundErrorChannels(collectUnboundErrorChannels(sources));
+  if (summary.total === 0) {
+    console.error(
+      `\u274c 一处 awaited 查询结果的解构都没判到（${sources.length} 个文件）：测量本身失效了`,
+    );
+    return 1;
+  }
+
+  const line = (site) => `   ${site.file}:${site.line}  ${site.source}`;
+  console.log(
+    `C08-c 测量：${sources.length} 个文件 / ${summary.total} 处 awaited 查询结果的解构绑定`,
+  );
+  console.log(`\n\u2460 压根没绑 error（${summary.unbound.length} 处）：`);
+  for (const site of summary.unbound) console.log(line(site));
+  if (summary.skippedUnparseable > 0) {
+    console.log(
+      `\n\u26a0 ${summary.skippedUnparseable} 个文件因语法诊断被跳过，上面的数字对它们不适用`,
+    );
+  }
+  console.log(
+    "\n盲区（不在射程内，别把这份清单当全量）：`Promise.all` 里的查询链、非字面量表名的链，" +
+      "以及「绑了 `error` 却从不使用」那一档（需要作用域分析，没测）。",
+  );
+  return 0;
+}
+
 const invokedAsScript = process.argv[1]
   ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
   : false;
-if (invokedAsScript) process.exitCode = runQueryErrorChannelCheck(process.argv[2] ?? REPO_ROOT);
+if (invokedAsScript) {
+  const args = process.argv.slice(2);
+  const repoRoot = args.find((arg) => !arg.startsWith("--")) ?? REPO_ROOT;
+  process.exitCode = args.includes("--unbound")
+    ? runUnboundErrorChannelReport(repoRoot)
+    : runQueryErrorChannelCheck(repoRoot);
+}

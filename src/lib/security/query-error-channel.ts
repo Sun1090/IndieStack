@@ -294,3 +294,126 @@ function countByFile(sites: readonly { file: string }[]): Map<string, number> {
   }
   return perFile;
 }
+
+/* ============================================================
+ * C08-c 测量：解构 awaited 查询结果时压根不取 `error`
+ *
+ * 这是 C08 的**邻居**而不是子集：上面那条规则判的是断言（类型上宣称不会有 error），
+ * 这一条判的是解构（`const { data } = await supabase.from(...)`）——`error` 从来没被绑进
+ * 作用域，所以没有任何断言可看，上面的门禁对着它一直是绿的。
+ *
+ * **这一版只做测量，不做门禁**（D01 口径：先量到误报，才有依据把判据收紧）。
+ * 已知盲区一并写在这里，免得这份报告被读成「全库只有这些」：
+ * - `const [a] = await Promise.all([supabase.from(...)])`：初始化表达式是 `Promise.all`，
+ *   不是查询链，整条都不在射程内；
+ * - 「绑了 `error` 却从不使用」**故意没有测**：判它要做作用域分析，而全文数同名标识符会把
+ *   `catch (error)` 一起数进去，得到一个只会漏报的假指标——一个只会低估的计数比没有计数更糟。
+ * ============================================================ */
+
+/** 一处 awaited 查询结果的解构读数。 */
+export interface UnboundQueryRead {
+  file: string;
+  line: number;
+  /** 链根上的 `.from("<表>")` / `.rpc("<函数>")` 名字，用来说清楚读的是什么。 */
+  source: string;
+  /** 解构里有没有绑定 `error`（含 `{ error: e }` 这种改名）。 */
+  bindsError: boolean;
+}
+
+/** 沿调用链走到根上的 `.from()` / `.rpc()`，取它的字面量参数。 */
+function queryChainRoot(node: ts.Node): string | undefined {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (
+      ts.isCallExpression(current) &&
+      ts.isPropertyAccessExpression(current.expression) &&
+      QUERY_METHODS.has(current.expression.name.text)
+    ) {
+      const first = current.arguments[0];
+      if (first && ts.isStringLiteral(first)) return first.text;
+      return "<非字面量>";
+    }
+    current = ts.isCallLikeExpression(current)
+      ? (current as ts.CallExpression).expression
+      : ts.isPropertyAccessExpression(current)
+        ? current.expression
+        : undefined;
+  }
+  return undefined;
+}
+
+/** `{ data, error: e }` 里绑没绑 `error`，看的是**属性名**而不是本地变量名。 */
+function bindsErrorChannel(pattern: ts.ObjectBindingPattern): boolean {
+  return pattern.elements.some(
+    (element) =>
+      ts.isBindingElement(element) &&
+      (element.propertyName ? element.propertyName.getText() : element.name.getText()).trim() ===
+        "error",
+  );
+}
+
+/**
+ * 收集一批源文件里所有 awaited 查询结果的解构绑定。
+ *
+ * 返回值带上**被跳过的文件清单**而不是一个数字：一份「全库 12 处」的报告，
+ * 如果有 3 个文件根本没被读，那 12 就是假的。
+ */
+export function collectUnboundErrorChannels(sources: readonly QueryErrorChannelSource[]): {
+  sites: UnboundQueryRead[];
+  skippedUnparseable: string[];
+} {
+  const sites: UnboundQueryRead[] = [];
+  const skippedUnparseable: string[] = [];
+
+  for (const source of sources) {
+    const parsed = ts.createSourceFile(source.file, source.content, ts.ScriptTarget.Latest, true);
+    if (
+      ((parsed as unknown as { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [])
+        .length > 0
+    ) {
+      // 解析不动的文件在测量里跳过，但必须出现在报告里：贡献 0 处不等于干净。
+      skippedUnparseable.push(source.file);
+      continue;
+    }
+
+    const visit = (node: ts.Node): void => {
+      if (ts.isVariableDeclaration(node) && node.initializer && ts.isObjectBindingPattern(node.name)) {
+        const awaited = unwrapAwait(node.initializer);
+        const root = awaited && isQueryChain(awaited) ? queryChainRoot(awaited) : undefined;
+        if (awaited && root) {
+          sites.push({
+            file: source.file,
+            line: parsed.text.slice(0, node.getStart()).split("\n").length,
+            source: root,
+            bindsError: bindsErrorChannel(node.name),
+          });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+
+    visit(parsed);
+  }
+
+  return { sites, skippedUnparseable };
+}
+
+/** 测量报告用的分档。 */
+export interface UnboundErrorChannelSummary {
+  total: number;
+  /** `const { data } = await …`：错误通道压根没进作用域。 */
+  unbound: UnboundQueryRead[];
+  /** 因为语法诊断而被跳过的**文件数**——不为 0 时整份报告不可信。 */
+  skippedUnparseable: number;
+}
+
+export function summarizeUnboundErrorChannels(collected: {
+  sites: readonly UnboundQueryRead[];
+  skippedUnparseable: readonly string[];
+}): UnboundErrorChannelSummary {
+  return {
+    total: collected.sites.length,
+    unbound: collected.sites.filter((site) => !site.bindsError),
+    skippedUnparseable: collected.skippedUnparseable.length,
+  };
+}
