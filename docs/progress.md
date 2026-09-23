@@ -1,8 +1,10 @@
 ## 2026-09-23 — RLS 静默过滤不等于成功：删掉一条不存在的通行密钥也被报成「已删除」
 
 - 里程碑 / 版本：v0.12.0 C08 的下游判据（「0 行受影响」不是「做到了」）；凭据管理面。
-- 状态：DONE，已开 PR（base 是 #122 的分支，见下）。
-- 分支 / commit：`fix/passkey-delete-reports-actual-work`（基于 `origin/fix/passkey-uncaught-reads` = PR #122 tip `eec9e44`）。
+- 状态：DONE，**PR #124**（base = #122 的分支，见「风险」）。
+- 分支 / commit：`fix/passkey-delete-reports-actual-work`（基于 `origin/fix/passkey-uncaught-reads` = PR #122 tip `eec9e44`），`b82345f` + 门禁数字 commit。
+  base 是 topic 分支 ⇒ `ci.yml` 的 5 个必需作业不在本 SHA 上跑（判据见上面 #118 那篇），已在 PR 里写明
+  「本机全量是这条 SHA 目前唯一的证据」；#122 合并后需 `gh pr edit 124 --base main` 让必需 CI 真的跑一遍。
 - 为什么做：还是顺着 #122 那条覆盖率线索。`src/lib/actions/passkey.ts` 在 C08 栈尖上是
   **14% 语句覆盖**——整个 action 只有一行 `await deleteMyCredential(id)` 被读过一次，
   `catch`、`revalidatePath`、`ok()` 全没被任何用例经过。先量了一下这有多没人看着：
