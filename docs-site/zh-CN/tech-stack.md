@@ -75,7 +75,8 @@ Appark 通过轻量封装接入 checkout/cron 等服务端路径；未同时配�
 
 ## 版本管理
 
-- **代码质量**: ESLint（Next.js 规则集）+ Prettier + husky（pre-commit + commit-msg hooks）
-- **提交规范**: Conventional Commits（`feat`/`fix`/`docs`/`chore`/`refactor`/`test`）
+- **代码质量**: ESLint（Next.js 规则集）+ Prettier
+- **Git Hooks**: `.husky/pre-push` → `pnpm verify:build`，安装时由 `scripts/install-hooks.sh` 接入
+- **提交规范**: Conventional Commits（`feat`/`fix`/`docs`/`chore`/`refactor`/`test`），靠 review 把关——本仓库没有装 commitlint
 - **分支策略**: `main`（生产）→ `develop`（开发）→ `feature/*`（功能分支）
 - **CI 流水线**: PR → lint + type-check + test → merge → auto deploy

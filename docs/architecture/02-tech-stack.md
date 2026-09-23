@@ -186,8 +186,8 @@ graph LR
 | pnpm | 包管理（workspace 模式） |
 | ESLint 9 | 代码规范（eslint-config-next） |
 | Prettier | 代码格式化（含 tailwindcss 插件） |
-| Husky + lint-staged | Git 提交前钩子 |
-| commitlint | 提交消息规范 |
+| `.husky/pre-push` + `scripts/install-hooks.sh` | 推送前钩子（`pnpm verify:build`），`pnpm install` 时接入 |
+| `pnpm check:hooks` | 校验钩子引用的脚本/二进制/安装入口都真实存在 |
 | Vitest 4 | 单元测试 |
 | @faker-js/faker | Mock 数据生成 |
 | TypeScript 5.7 | 类型检查（strict 模式） |
