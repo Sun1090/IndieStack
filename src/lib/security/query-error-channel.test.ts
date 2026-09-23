@@ -266,21 +266,139 @@ describe("collectUnboundErrorChannels()（C08-c 测量，不是门禁）", () =>
     expect(summary.total).toBe(0);
   });
 
-  it("已知盲区要如实是盲区：Promise.all 里的查询链判不到", () => {
+  it("`await` 必须在位：解构一个还没执行的 builder 不是「抹掉 error」，是另一回事", () => {
     const summary = summarizeUnboundErrorChannels(
       collectUnboundErrorChannels(
-        src(`const [{ data }] = await Promise.all([supabase.from("profiles").select("role")]);`),
+        src(`async function read(supabase: any) { const { data } = supabase.from("profiles").select("role"); return data; }`),
       ),
     );
     expect(summary.total).toBe(0);
   });
 
-  it("已知盲区要如实是盲区：条件表达式包住的链也判不到（清项目页时撞出来的）", () => {
+  it("条件表达式包住的链同样判得到（清项目页时这一类是漏掉的）", () => {
     const summary = summarizeUnboundErrorChannels(
       collectUnboundErrorChannels(
         src(
-          `const { data } = ok ? await supabase.from("projects").select("*") : { data: [], error: null };`,
+          `async function read(supabase: any, ok: boolean) {
+            const { data } = ok ? await supabase.from("projects").select("*") : { data: [], error: null };
+            return data;
+          }`,
         ),
+      ),
+    );
+    expect(summary.total).toBe(1);
+    expect(summary.unbound[0]).toMatchObject({ source: "projects", bindsError: false });
+  });
+
+  it("两支都是链时按两条读取判，绑了 error 的两支都不算抹除", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(
+          `async function read(supabase: any, ok: boolean) {
+            const { data, error } = ok
+              ? await supabase.from("projects").select("*")
+              : await supabase.from("archived_projects").select("*");
+            return error ? null : data;
+          }`,
+        ),
+      ),
+    );
+    expect(summary.total).toBe(2);
+    expect(summary.unbound).toHaveLength(0);
+  });
+
+  it("await 落在括号外时也认：`await (cond ? chainA : chainB)`", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(
+          `async function read(supabase: any, ok: boolean) {
+            const { data } = await (ok ? supabase.from("projects").select("*") : supabase.from("teams").select("*"));
+            return data;
+          }`,
+        ),
+      ),
+    );
+    expect(summary.total).toBe(2);
+    expect(summary.unbound).toHaveLength(2);
+  });
+
+  it("非字面量表名在射程内，只是标成 `<非字面量>`", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(`async function read(supabase: any, TABLE: string) { const { data } = await supabase.from(TABLE).select("*"); return data; }`),
+      ),
+    );
+    expect(summary.unbound[0]).toMatchObject({ source: "<非字面量>", bindsError: false });
+  });
+
+  it("`Promise.all` + 数组解构：按下标配对，只判对象解构的元素", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(
+          `async function read(supabase: any) {
+            const [{ data: sessions }, { data: s2, error }, [nested]] = await Promise.all([
+              supabase.from("user_sessions").select("*"),
+              supabase.from("auth_sessions").select("*"),
+              supabase.from("profiles").select("role"),
+            ]);
+            return [sessions, s2, error, nested];
+          }`,
+        ),
+      ),
+    );
+    // 第三条的元素是数组解构，`error` 还挂在外层结果上，不在这一族的射程内（那是「绑了不用」那一档）
+    expect(summary.total).toBe(2);
+    expect(summary.unbound).toHaveLength(1);
+    expect(summary.unbound[0]).toMatchObject({ source: "user_sessions", bindsError: false });
+  });
+
+  it("配对是按下标的，不是「这条解构附近有条链」", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(
+          `async function read(supabase: any) {
+            const [{ data: a }, , { data: b }] = await Promise.all([
+              supabase.from("user_sessions").select("*"),
+              supabase.from("ignored_middle").select("*"),
+              supabase.from("auth_sessions").select("*"),
+            ]);
+            return [a, b];
+          }`,
+        ),
+      ),
+    );
+    expect(summary.total).toBe(2);
+    expect(summary.unbound.map((site) => site.source)).toEqual(["user_sessions", "auth_sessions"]);
+  });
+
+  it("元素上再盖一层断言的链同样算一条读取（`error` 依旧没进作用域）", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(
+          `async function read(supabase: any) {
+            const [{ data: notifications }] = await Promise.all([
+              supabase.from("notifications").select("*").limit(5) as unknown as { data: Row[] | null },
+            ]);
+            return notifications;
+          }`,
+        ),
+      ),
+    );
+    expect(summary.total).toBe(1);
+    expect(summary.unbound[0]).toMatchObject({ source: "notifications", bindsError: false });
+  });
+
+  it("射程外只剩这几种：未 await 的三元、`Promise.allSettled`、`Promise.all` 之外的 helper", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(`
+          async function read(supabase: any, ok: boolean) {
+            const a = ok ? supabase.from("projects").select("*") : supabase.from("teams").select("*");
+            const [{ data: b }] = await Promise.allSettled([supabase.from("profiles").select("role")]);
+            const [{ data: c }] = await Promise.all([ok ? supabase.from("teams").select("plan") : null]);
+            return { a, b, c };
+          }
+        `),
       ),
     );
     expect(summary.total).toBe(0);
