@@ -19,12 +19,32 @@ const mockState = vi.hoisted(() => ({
   /** 两条读取各自的「故障」与「合法空结果」必须能分开注入，所以各一个 error 开关。 */
   headError: null as { message: string } | null,
   rowsError: null as { message: string } | null,
+  /** 守卫失败时抛的是哪一种 AuthGuardError —— 决定状态码的是它的 `code`，不是文案。 */
+  authError: null as { message: string; code: string } | null,
 }));
 
-vi.mock("@/lib/auth/guards", () => ({
-  safelyRequireAuth: async () =>
-    mockState.authSuccess ? { success: true, data: { id: mockState.userId } } : { success: false, error: { message: "Not authenticated" } },
-}));
+// 只替 `safelyRequireAuth`，`guardHttpStatus` 用真的那个：状态码映射本身就是被测的东西，
+// 在测试里重写一遍等于把实现抄成断言。
+vi.mock("@/lib/auth/guards", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/guards")>();
+  return {
+    ...actual,
+    safelyRequireAuth: async () =>
+      mockState.authSuccess
+        ? { success: true, data: { id: mockState.userId } }
+        : {
+            success: false,
+            error: new actual.AuthGuardError(
+              mockState.authError?.message ?? "x",
+              (mockState.authError?.code ?? "UNAUTHORIZED") as
+                | "UNAUTHORIZED"
+                | "FORBIDDEN"
+                | "NOT_FOUND"
+                | "SERVICE_UNAVAILABLE",
+            ),
+          },
+  };
+});
 
 function makeDetailChain() {
   const chain = {
@@ -70,13 +90,24 @@ beforeEach(() => {
   headCountChain.count = 0;
   mockState.headError = null;
   mockState.rowsError = null;
+  mockState.authError = null;
 });
 
 describe("GET /api/analytics", () => {
   it("未认证返回 401", async () => {
     mockState.authSuccess = false;
+    mockState.authError = { message: "请先登录后再访问此页面", code: "UNAUTHORIZED" };
     const res = await GET(new NextRequest("http://localhost/api/analytics"));
     expect(res.status).toBe(401);
+  });
+
+  it("守卫读不到时是 503，不是「你没登录」", async () => {
+    mockState.authSuccess = false;
+    mockState.authError = { message: "权限校验暂时不可用，请稍后重试", code: "SERVICE_UNAVAILABLE" };
+    const res = await GET(new NextRequest("http://localhost/api/analytics"));
+    expect(res.status).toBe(503);
+    // 401 会让客户端清掉会话去重新登录，而重新登录并不会让那次读取成功
+    await expect(res.json()).resolves.toMatchObject({ error: expect.any(String) });
   });
 
   it("range 钳制到 1-90 区间并回显", async () => {

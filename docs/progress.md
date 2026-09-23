@@ -1548,3 +1548,28 @@
 - 下一件：C08-c 重量（#42，debt 已清零，判据要扩成「awaited 查询结果必须绑定并使用 `error`」，
   扩之前先量误报）；#44 剩下那半边（analytics/checkout 的 guard 失败映射成真实状态）。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — #44 前半：`/api/analytics` 把守卫故障与「没登录」分开
+
+- 里程碑 / 版本：v0.12.0 / #44（C08 的邻居，不在台账里）。
+- 分支 / commit：`fix/guard-status-mapping`（栈在 #102 之上）。
+- 状态：DONE（PR 待 review 合并）。**只做 analytics 这一半**，而且 checkout 那半边是**真做不了**
+  不是没做：它同时需要 #92 的 `guardHttpStatus` 会返回 503（PR #96 那条分支上这个函数只有 401 / 403，
+  已 `git show` 核过：`SERVICE_UNAVAILABLE` 在该分支出现 0 次），又需要 #96 对这个路由的改写先落地。
+  两边都是未合并的 PR，所以那半边留在 #44 里，等两者合并后单独处理——原先我写的计划是
+  「作为一个 commit 追加到 #96」，量过依赖之后作废：那条分支上没有 503 可映射。
+- 问题：`safelyRequireAuth()` 的失败原先一律回 401。#92 之后守卫能区分 `SERVICE_UNAVAILABLE`
+  （权限校验自己没读到那一行）与 `UNAUTHORIZED`，而 401 的语义是「凭证无效」——客户端据此清掉会话
+  跳登录页，重新登录却并不会让那次读取变好。这正是 #92 在 `guards.ts` 里改掉的那个方向，
+  只是当时没往调用方的状态码看。
+- 做了什么：改用 `guardHttpStatus(auth.error)`（401 / 403 / 503），与 invitations 等路由一致。
+  测试桩刻意只替 `safelyRequireAuth`，`guardHttpStatus` 用模块真实导出——映射本身就是被测对象，
+  在测试里再写一遍就是把实现抄成断言（用 `importOriginal` 展开）。
+- 验证：`pnpm lint` / `pnpm type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**（38 门禁 / 208 文件）；
+  `pnpm build` → exit 0；`route.test.ts` 8 passed（+2 条）。变异核对 2 项：写死 401 红在 503 那条，
+  写死 503 红在 401 那条——两个方向都必须钉住，否则「一律报错」也能过。
+- 诚实的范围说明：仓库内的消费方 `dashboard/analytics/analytics-page.tsx` **不按状态码分支**
+  （`!response.ok` 一律进 `useQuery` 错误态），所以这条改的是模板对外 API 的语义正确性，
+  不是界面行为；给模板用户写 SDK 时，401 与 503 的差别是他们要不要清会话的依据。
+- 下一件：#44 剩下的 checkout 半边阻塞在 #92 + #96 合并；不阻塞的下一步是重新量 C08-c（#42）。
+- 更新时间：2026-09-23（UTC）。
