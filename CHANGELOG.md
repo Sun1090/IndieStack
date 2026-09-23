@@ -6,6 +6,19 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **预热的路由清单从此有人对账**（并行基线 / C02 的后半）：`src/lib/testing/e2e-warm-routes.ts` 成为
+  `globalSetup` 预热清单的唯一来源，`e2e/support/warm-up.ts` 只剩「逐台、一台内逐条 GET」。
+  新增的 `e2e-warm-routes.test.ts` 从 `e2e/*.spec.ts` 静态读出**实际被导航到**的路由
+  （`${appUrl()}<path>` 的尾巴；`/api/*`、含 `${}` 的动态段、404 探针与 `waitForURL` 的 glob 排除），
+  与清单双向对账：`E2E_WARM_MISSING`（漏预热）与 `E2E_WARM_STALE`（清单腐烂）都红，读不到 spec
+  或一条都没解析到各自失败封闭。第一次对账量出 **4 条预热 vs 16 条被导航**——12 条页面路由的冷编译
+  一直由「恰好第一个打到它的那条用例」付账，而 C02 记的那批红（`uploads` 登录后 `waitForURL` 15s、
+  `smoke` 的 `page.goto` 60s）正是这个形状。支撑口径也是量出来的：mock 模式下未登录 GET
+  `/dashboard/**` 返回 200 而不是 307，所以预热真的编译到页面本身；未预热路由首次命中约 1.2s
+  （`/pricing`，`next.js: 1215ms`）。**本机没能为收益作证**：三次清空 `.next-e2e-*` 的冷启动分别
+  红 2、2、4 条，每次受害者都不同（`responsive` 的移动端抽屉正是 #117 在修的位置），噪声大于本次
+  改动的效果——结论留给 CI 的每周并行基线。调度也刻意保持原来的串行：一次对照里把「清单 4→16」和
+  「3 台并发预热」一起改了，结果多出 3 条登录导航超时，两个变量没能分离。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
