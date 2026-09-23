@@ -247,6 +247,12 @@ All notable changes to IndieStack will be documented in this file.
   已登记为 roadmap C09，本条只收口守卫层这一个入口——它覆盖了 `requireAuth/Role/Permission`
   与三个 `safely*` 变体的全部消费者。
 
+- **审计表不再把「读不到会话」写成「本来就没有会话」**（C09）：`logAuthEvent` 过去用
+  `user?.id ?? null` 落库，于是 Auth 服务一次抖动写出的行，与失败登录（那时确实还没有 session）
+  写出的行在 `user_id` 这一列上**完全同形**——而取证时这是两件相反的事：前者是链条断了一截。
+  现在绑定 `error` 并在 metadata 里打 `sessionReadFailed: true`；审计照写、不阻断登录流程，
+  **不加列也不做迁移**（审计表是既有的 append-only 面），约定写进 roadmap C09。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

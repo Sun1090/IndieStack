@@ -72,15 +72,18 @@ export async function logAuthEvent(
     if (!limits.allowed) return { ok: true };
 
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data, error: sessionError } = await supabase.auth.getUser();
     await appendAuditLog({
-      userId: user?.id ?? null,
+      userId: data.user?.id ?? null,
       action,
       entityType: "auth",
-      entityId: user?.id ?? null,
-      metadata: redactAuthAuditMetadata(metadata),
+      entityId: data.user?.id ?? null,
+      // 「读不到会话」和「本来就没有会话」（失败登录时还没有 session）在 `user_id` 这一列上
+      // 长得一模一样，而对审计读者这是两件相反的事：前者是取证链断了一截。用 metadata 标出来——
+      // 不加列、不动迁移，审计表是既有的 append-only 面。
+      metadata: redactAuthAuditMetadata(
+        sessionError ? { ...metadata, sessionReadFailed: true } : metadata,
+      ),
     });
   } catch (error) {
     await logActionError("[logAuthEvent] 审计写入失败", error);
