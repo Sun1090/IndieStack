@@ -303,6 +303,8 @@
     结账两处回 503 + `checkoutUnavailable`——那两处的故障方向是**放行**，会重复购买）。
     剩下 11 处：`dashboard/page.tsx`(5) → `settings/page.tsx`(2) → `api/e2e/push-queue`(2)，
     最后 `permission-gate.tsx`(2) 按 `justified` 处理。清完才接门禁。
+    **2026-09-23 续：`dashboard/page.tsx`(5) 也清完，剩 6 处** —— `settings/page.tsx`(2)、
+    `api/e2e/push-queue`(2)、`permission-gate.tsx`(2 处 `justified`)。
     一个已确认、留给 #49 的洞：`dashboard/page.tsx:75` 那条 `as unknown as { data: … }`
     是**断言抹掉 `error`**（C08 那一族的正主），但 C08 门禁要求断言外面套 `await`，
     而这里的 `await` 落在 `Promise.all` 上——所以它只对 C08-c 可见，对门禁不可见。

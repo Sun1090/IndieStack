@@ -1770,3 +1770,32 @@
 - 下一批：`dashboard/page.tsx` 的 5 处（其中 4 处是 `Promise.all` 的计数读数，
   计数器修好之后才第一次被看见）。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-c 第六批：仪表盘第一屏的六个数字
+
+- 里程碑 / 版本：v0.12.0 / C08-c 清偿（#42 的后半）。
+- 分支 / commit：`fix/c08c-dashboard-reads`（栈在 #109 之上）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这一屏要紧：它是多数用户进来看到的第一屏。六处读取里两处明写 `error: null`、
+  四处压根不绑 `error`，一次抖动就渲染成「0 个项目 / 0 次调用 / 0 个会话 / 没有通知 / 套餐 free」——
+  每个数字都像刚初始化的实例，没有一个字提示「我们没读到」。
+- 改法：六处各自在渲染前 `throw`（交给 `dashboard/error.tsx` 的重试入口）；两处 `.single()`
+  换 `.maybeSingle()`（否则真缺行会以 PGRST116 的形式被当成故障）。
+  「没有归属」（个人用户，根本不查 projects）与「跑完了、计数就是 0」这两条合法分支各自有用例钉住。
+- **唯一故意留下的那条断言**：最近通知。`Promise.all` 里混了 `{ count, error }` 字面量分支之后
+  链的类型合不起来，删掉断言 `notifications` 就变 `any`（TS7006 直接挡在那里）。
+  它和删掉的那几条的差别不是形式：它写着 `error: { message: string } | null`，
+  说的是「错误可能存在，而下面真的会去看」。
+- 桩的忠实性这次是**直接带上**的：`terminal("single")` 撞 null 行返回错误（#107 立的规则，第二处）。
+  于是 D8（从 maybeSingle 退回 single）当场红。
+- 覆盖：10 条用例（这个页面此前零单测）；变异核对 **D1–D9 全部被杀死**：删五条守卫、
+  把合法空分支说成故障、数字写死成 0、退回 `.single()`、把真缺资料行当故障。
+  一个形状教训：`textsOf` 必须走 props——`stats` 是 `<StatsCard value={…} />`，
+  只走 `children` 时三个统计数一个都断不到，第一版是红在 `'Ada'` 上才暴露的。
+- 数字同步：`--unbound` 11 → **6 处**（`settings/page.tsx` 2、`api/e2e/push-queue` 2、
+  `permission-gate.tsx` 2 处 `justified`）。C08 门禁那边：`error: null` 那两条断言随本批消失。
+- 验证：`pnpm -s lint` / `pnpm -s type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**（38 道门禁）；
+  `pnpm build` → exit 0。
+- 下一批：`settings/page.tsx` 2 处（资料 + 设备列表），然后 `api/e2e/push-queue` 2 处，
+  最后处理 `permission-gate.tsx` 的 `justified` 豁免与接线。
+- 更新时间：2026-09-23（UTC）。
