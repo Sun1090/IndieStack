@@ -1224,10 +1224,11 @@
 ## 2026-09-23 — RLS 静默过滤不等于成功：删掉一条不存在的通行密钥也被报成「已删除」
 
 - 里程碑 / 版本：v0.12.0 C08 的下游判据（「0 行受影响」不是「做到了」）；凭据管理面。
-- 状态：DONE，**PR #124**（base = #122 的分支，见「风险」）。
-- 分支 / commit：`fix/passkey-delete-reports-actual-work`（基于 `origin/fix/passkey-uncaught-reads` = PR #122 tip `eec9e44`），`b82345f` + 门禁数字 commit。
-  base 是 topic 分支 ⇒ `ci.yml` 的 5 个必需作业不在本 SHA 上跑（判据见上面 #118 那篇），已在 PR 里写明
-  「本机全量是这条 SHA 目前唯一的证据」；#122 合并后需 `gh pr edit 124 --base main` 让必需 CI 真的跑一遍。
+- 状态：DONE，**PR #124**（base = `main`；开 PR 时指的是 #122 的分支，2026-09-23 改指 main，理由见「风险」）。
+- 分支 / commit：`fix/passkey-delete-reports-actual-work`（历史含 #122 到 `eec9e44` 的 5 个 commit，加本条的
+  `b82345f` 与 3 条 progress commit），tip `59b55db`。
+  base 曾经是 topic 分支 ⇒ `ci.yml` 的 5 个必需作业不在本 SHA 上跑（判据见上面 #118 那篇），当时 PR 里写的是
+  「本机全量是这条 SHA 目前唯一的证据」；改指 main 之后必需 CI 会在本 SHA 上跑，那句话只对改指之前成立。
 - 为什么做：还是顺着 #122 那条覆盖率线索。`src/lib/actions/passkey.ts` 在 C08 栈尖上是
   **14% 语句覆盖**——整个 action 只有一行 `await deleteMyCredential(id)` 被读过一次，
   `catch`、`revalidatePath`、`ok()` 全没被任何用例经过。先量了一下这有多没人看着：
@@ -1259,9 +1260,14 @@
     **200 files / 2301 tests passed**（base #122 上是 2297，本条 +3 action +1 仓储用例）；
     `CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
 - 阻塞 / 风险：
-  - **base 是 #122**：同一批测试文件（`webauthn.test.ts`）两条 PR 都要改，独立基于 main 会留下一个
-    重写同一段的合并冲突；叠在 #122 之后可以让账保持单调。代价是本 PR 的 diff 含 #122 的 4 个 commit，
-    且 #122 合并后要 `gh pr edit <本PR> --base main` 重新指回 main（判据见 #118 那篇）。
+  - **base 从 #122 改指 main**：改指前先量了两边——`git merge-tree --write-tree origin/main HEAD` 返回
+    **0 冲突**，而对 base（#122 分支 tip `fabebe2`）唯一的冲突文件是 `docs/progress.md` 本身：#122 搬自己条目
+    用 `fabebe2`，我这边搬 #122+#124 两条用 `59b55db`，两边改了同一段尾部。也就是说 CONFLICTING 是我自己
+    那两条搬运 commit 造出来的记账冲突，不是代码冲突，而 GitHub 上挂着 CONFLICTING 会让评审以为动不了。
+    改指 main 后 `gh pr view 124` 报 **MERGEABLE**。
+  - 代价：本 PR 的历史含 #122 的 5 个 commit，所以 base=main 时 diff 里会一并出现 #122 的
+    `auth-verify/route.ts`、`register-options/route.ts`；**#122 先落地**（它的 tip 是 `fabebe2`，比我这条的
+    祖先 `eec9e44` 多一个搬运 commit）之后，本 PR 就只剩自己的 4 个 commit。顺序判据在 #118 那篇。
   - mock 模式没有 `webauthn_credentials` 这张表（`src/lib/mock` 里查无此表），E2E 也不碰 passkey，
     所以「0 行 → passkeyNotFound」在 mock 下不可达；这是既有的覆盖面缺口，不是本条引入的。
     真要覆盖它得先给 mock 补表数据 + 让 delete 回受影响行（PostgREST 的 `RETURNING` 口径），
