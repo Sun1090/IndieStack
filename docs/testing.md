@@ -119,7 +119,13 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
   控制台零报错"，很容易被误判成产品 Bug。所以依赖客户端事件的用例必须重试「动作 + 断言」整体，而不是
   只重试断言（`e2e/keyboard.spec.ts` 的 `retry()`、`e2e/theme.spec.ts` 的 `toggleThemeTo()` 都是这个形状）；
   对「切换」型按钮，每一轮重试要先读当前状态再决定点不点，否则第二次点击会把已经切好的值翻回去。
-  本机复现：CDP `Emulation.setCPUThrottlingRate`（`rate: 25`）后 reload 并立刻点击，慢 runner 上必现。
+  新写的用例直接用共享版 `e2e/support/hydrated.ts` 的 `actUntilVisible(act, result)`：它把「先看结果、
+  缺了才动」固化成一个函数，`e2e/account-deletion.spec.ts` 就是它的第一批调用方（那文件的
+  `input.fill()` 曾以 1/6 的概率卡在 60s 超时，报错只有一句 `waiting for getByRole('textbox')`）。
+  本机复现有两条路：CDP `Emulation.setCPUThrottlingRate`（`rate: 25`）后 reload 并立刻点击；
+  或者按 `e2e/hydrated-click.spec.ts` 那样 `page.route` 把 `resourceType === "script"` 的请求统一
+  延后 3 秒——后者更确定，而且它同时放着两条用例：一条证明「点一次确实会被吞」，
+  一条证明「`actUntilVisible` 救得回来」。只留前一条的话，删掉重试也没人发现。
 - 新页面至少加一条"可渲染"断言到 `e2e/smoke.spec.ts`
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围

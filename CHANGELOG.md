@@ -204,6 +204,25 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`account-deletion` 的间歇红不是产品 Bug，是用例在和 hydration 抢跑**：那条「短语输错由服务端拒绝」
+  以约 1/6 的概率卡满 60s，报错只有一句 `waiting for getByRole('textbox')`。危险区域的入口按钮是
+  服务端渲染的，`toBeVisible()` 在 React 挂上 `onClick` 之前就已通过，那一次 click 被静默丢弃，
+  表单于是永远不等出来——而同样的点按在隔壁用例里就是过的，看起来像「删除功能坏了」。
+  （发现过程：给 C08-c 那批页面改动跑全量 E2E 时撞上——那 8 个 PR 是栈上的 PR，CI 只给了它们两三个
+  检查，E2E 从没在它们的头上跑过。）修法用仓库里已确立的形状（`theme.spec.ts` 的 `toggleThemeTo()`、
+  `keyboard.spec.ts` 的 `retry()`）：重试的必须是「先看结果、缺了才动」的**整个判断**，不是只重试断言；
+  这次把它收成共享的 `e2e/support/hydrated.ts` → `actUntilVisible(act, result)`，
+  `account-deletion` 四处点按（含键盘 `Enter` 那一例）全部改走它。确认框的 locator 同时改成按
+  **可访问名称**取（`Type "delete" to confirm` / `请输入「删除」确认`）：设置页今天只有一格 textbox，
+  两种写法现在等价，但 `actUntilVisible` 要靠 `isVisible()` 判断状态，多匹配的 locator 在那儿会抛
+  严格模式错误——不该让「明天有人在设置页加一格输入」把这条用例变成随机红。
+  机制由 `e2e/hydrated-click.spec.ts` 钉住，两条一起放：`page.route` 把所有 `script` 请求延后 3 秒后，
+  一条证明**点一次确实会被吞**（`toHaveCount(0)`），一条证明 `actUntilVisible` 救得回来——
+  只留后一条的话，把重试删掉没人发现。复跑 `--repeat-each=12`：该文件与新文件共 84 条全绿（修前同命令 1 红）。
+  同类写法在 `admin-contact-mfa.spec.ts`（sign-in / Enable 2FA / 联系表单）与 `responsive.spec.ts`
+  （汉堡菜单）还有 10 处，没有实测失败因此本次不动：那些点里有些不是幂等的，包 `actUntilVisible`
+  之前得先想清楚重放的副作用（记在任务里，带行号）。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
