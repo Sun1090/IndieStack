@@ -1374,3 +1374,36 @@
   的交集是账本尾巴」这句过期陈述。判断型的边仍然只有两条：#96↔#103（同一缺陷的两份修法）与
   #116↔#120（同一注释区的两侧改写）。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 — 生产还站在 #69 之前，而 `indie-stack` 的构建配额刚刚放行
+
+- 里程碑 / 版本：v0.11.0 发布冻结的前置②（「部署 commit == 验证 commit」）；与上面那条合并台账是同一条分支，
+  因为解锁它的动作就是「合并」。
+- 状态：DONE（测量与取证已完成；剩下的动作属于用户）。分支：`docs/pr-merge-order`（PR #118，base `main`）。
+- 量到的四件事，全部是不需要 Vercel 权限的读法：
+  1. **生产确实不带构建身份**：`GET https://indie-stack-theta.vercel.app/api/health` 的键是
+     `status,timestamp,uptime,uptimeFormatted,version,environment,mockMode,checks,allConfigured,ready,degraded`
+     ——**没有 `commit`**，`version` 是 `0.11.0`（18:51Z 本机 `node`+`fetch` 探测，`curl` 在这台机器上不存在）。
+  2. **原因不是「没实现」而是「没部署」**：实现它的 `96fb4fa` 已在 `main` 里（`git merge-base --is-ancestor 96fb4fa origin/main` 通过），
+     PR #69 的合并时间是 `2026-09-22T09:31:13Z`；而 `gh api repos/…/deployments?per_page=100` 里
+     `environment == "Production – indie-stack"`（必须精确匹配，前缀匹配会把 docs-site 那个项目捞进来）最新一条是
+     `a322a4e` @ `2026-09-22T08:56:51Z`——**比那次合并早 34 分钟**。`main` tip 现在是 `ad4b029`（09-23 06:15 +08:00），
+     所以生产落后 main 一整天的合并量，且这个落后不是版本号能看出的（两边都写着 0.11.0）。
+  3. **配额窗口此刻是开的，但只开在一个项目上**：#131 的 `Vercel – indie-stack` 检查在 tip `033bfb6` 上 **pass**
+     （对应的预览部署记录是 `033bfb6` @ `2026-09-23T18:41:54Z`），同一条 PR 的 `indie-stack-docs-site` 仍然 fail
+     （`?upgradeToPro=build-rate-limit`）。这条对照又一次证明限流按项目计，也说明「同一个 PR 两个 Vercel 检查一红一绿」是正常状态，
+     不是某条改动坏了。
+  4. **主动取了一份新证据**：`gh workflow run "Production Smoke" --ref main` → run `35905536165`
+     （18:53:02Z→18:53:39Z，job `107332168014`）**`✅ production smoke: 6/6 passed`**，其中 health 那一行自己写着
+     `version=0.11.0, commit=unknown`——冒烟脚本在字段缺失时报 `unknown` 而不是悄悄通过，这一点值得留在证据里。
+- 结论，写给下一步动作：**前置②现在只差「main 的一次新构建真的上生产」**，而这需要一次合并（合并属于用户）。
+  配额此刻可用，所以合并任意一条 base 为 `main` 的在审 PR 都会把 `main` 推到生产；那之后 `/api/health` 会带 `commit`，
+  ②才有可断言的身份。按既定口径：**不创建 tag、不把冒烟标成通过、不因为配额放行就宣布发布步骤完成**。
+- 验证命令与结果：上面每一条都附了可复跑的命令与读到的原文；额外一条陷阱——
+  `gh run view --log --job=…` 抓冒烟输出时，直接 `grep smoke` 只会命中 teardown 的凭据清理噪音，
+  要按步骤名（`Run production smoke`）或脚本自己那行 `✅ production smoke: 6/6 passed` 取。
+- 阻塞 / 风险：本条是带日期的快照，配额窗口可能几小时后又关；`indie-stack-docs-site` 仍在限流中，
+  所以 docs-site 的预览不会跟着好起来，别把它当作本条改动的失败。
+- 下一项：等一次合并落到 `main` 之后，重跑同一条 `Production Smoke` 并带上 `expected_commit`，
+  比较「部署记录里的 SHA == health 返回的 commit」；B02（回滚演练）也需要那时才有两个可切的生产构建。
+- 更新时间：2026-09-24。
