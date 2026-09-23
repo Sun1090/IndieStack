@@ -1153,3 +1153,43 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 语言下拉抄了两份词表：把表单接回权威常量，并量清「要不要生效」有多大
+
+- 里程碑 / 版本：v0.12.0 / i18n 与文档治理（`profiles.language` 这一族的第 1 步，只做无争议的那一半）。
+- 分支 / commit：`fix/profile-language-vocabulary`（基于 `origin/main` = `ad4b029`，独立 PR，不叠栈）。
+- 状态：DONE（PR 停在 ready-for-review，待用户合并）。
+- 为什么做：从覆盖率线索（`src/lib/email-template.ts:30` 未覆盖）挖到 `profiles.language`，量出**三套互不相同的口径**：
+  1. 表单把选项写死在组件里（`profile-edit-form.tsx` 的 `["en","zh","ja","ko"]`），与权威常量
+     `PROFILE_LANGUAGES`（`src/lib/constants.ts:148`）是两份手抄；
+  2. 常量与站点真实 locale（`src/i18n/routing.ts:13` = `["zh-CN","en"]`）不同：`zh` ≠ `zh-CN`，`ja`/`ko` 在产品里不存在；
+  3. `src/lib/validations/profile.test.ts` 反而断言 `language: "zh-CN"` 合法。
+  `PROFILE_LANGUAGES` 不只是 UI 列表：它是动态翻译键 `dashboard.profile.view.languages.*` 的取值域
+  （`scripts/lib/dynamic-keys-check.js` 的 `profile-languages` 契约按它比对 en / zh-CN 两份消息）。两份手抄一漂移
+  就有选项取不到翻译，而没有任何东西会响——所以先接回常量，再钉住它。
+- 完成内容：选项改为映射 `PROFILE_LANGUAGES`；`profile-edit-form.test.tsx` 新增一条渲染断言
+  「下拉 option 值序列 === PROFILE_LANGUAGES」，并顺带钉住已存值会被选中（`language="zh"` → `select.value === "zh"`）。
+- 刻意没做（要产品决策，不代答）：
+  - **不校验写入取值**。两条写路径（`validations/profile.ts` 的 `profileSettingsSchema`、
+    `api/user/route.ts` 的 `profilePatchSchema`）都还是 `z.string().max(50)`，任意字符串可入库。收窄到
+    `PROFILE_LANGUAGES` 会直接判掉 `profile.test.ts` 那条 `zh-CN` 用例；收窄到 `locales` 会把
+    `zh`/`ja`/`ko` 三个现有选项变成非法。两边都是在替用户决定支持哪些语言。
+  - **不让该字段生效**。UI 语言只来自 `app-locale` cookie（`src/i18n/request.ts:57`），邮件恒为中文
+    （摘要主题 `cron/digest/route.ts:170`、CTA `email-template.ts:42`、类型标签 `email-digest.ts:9-17`，
+    其注释自认「邮件正文当前为中文」），而邮件要真本地化必须连**已存库的通知标题**一起处理。
+    `docs/design/email-templates.md:10` 承诺「英文为主、附中文摘要」，与现状相反。
+- 变更文件：`src/components/forms/profile-edit-form.tsx`、`src/components/forms/profile-edit-form.test.tsx`、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 变异：表单改回写死 `["en","zh","ja"]` → `expected [ 'en', 'zh', 'ja' ] to deeply equal
+    [ 'en', 'zh', 'ja', 'ko' ]`（1 failed / 3 passed）；随后从 `/tmp/pef.bak` 还原并 `cmp` 确认字节一致；
+  - `pnpm -s vitest run src/components/forms/profile-edit-form.test.tsx` → **4 passed**；
+  - `pnpm -s type-check` → 0；`pnpm -s lint` → 0；`CI=true pnpm -s check:all` → 0（「全部校验通过」）；
+    `pnpm build` 由 pre-push 钩子跑，钩子不过就推不出去。
+- 阻塞 / 风险：写入仍不校验，所以一次 `PATCH /api/user {"language":"klingon"}` 之后，资料页会把
+  `klingon` 当成语言名显示（展示侧有 `t.has()` 兜底，不是 500），而编辑表单退回第一项——同一份数据在同一个
+  页面上自相矛盾。这一半等产品决策。
+- 下一项：决策落地后按同一条链收口——选项与两条写路径统一到同一份词表，并同步 `dynamic-keys` 契约、
+  `messages/*/dashboard.json` 的 `profile.view.languages`、`src/lib/mock/data.ts:60` 的 `language: "zh"`，
+  以及 `scripts/lib/locales-check.js` 里为 `languages.ko` 开的值门禁豁免。
+- 更新时间：2026-09-23
