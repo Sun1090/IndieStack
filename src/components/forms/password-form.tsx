@@ -43,7 +43,7 @@ export function PasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form method="post" onSubmit={handleSubmit} className="space-y-6">
       <FormField htmlFor="currentPassword" label={t("currentLabel")}>
         <FormFieldControl>
           <Input name="currentPassword" type="password" autoComplete="current-password" required />

@@ -51,7 +51,7 @@ export function ProjectSettingsForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form method="post" onSubmit={handleSubmit} className="space-y-4">
       <FormField htmlFor="project-name" label={t("detail.nameLabel")}>
         <FormFieldControl>
           <Input name="name" defaultValue={name} required minLength={1} />

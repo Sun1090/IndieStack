@@ -120,7 +120,7 @@ export function TwoFactorSection() {
         {isLoading ? null : enabled ? (
           <>
             <p className="text-sm text-muted-foreground">{t("enabledDesc")}</p>
-            <form onSubmit={submitUnenroll} className="flex items-end gap-2">
+            <form method="post" onSubmit={submitUnenroll} className="flex items-end gap-2">
               <div className="space-y-1">
                 <Input
                   inputMode="numeric"
@@ -164,7 +164,7 @@ export function TwoFactorSection() {
               </div>
             </div>
 
-            <form onSubmit={submitVerify} className="flex items-end gap-2">
+            <form method="post" onSubmit={submitVerify} className="flex items-end gap-2">
               <div className="space-y-1 flex-1 max-w-xs">
                 <Input
                   inputMode="numeric"

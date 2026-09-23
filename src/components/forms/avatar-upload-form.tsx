@@ -51,7 +51,7 @@ export function AvatarUploadForm() {
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-2">
+    <form method="post" ref={formRef} onSubmit={handleSubmit} className="space-y-2">
       <FormField
         htmlFor="avatar"
         label={t("avatarLabel")}

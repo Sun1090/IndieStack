@@ -42,7 +42,7 @@ export function InviteMemberForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form method="post" onSubmit={handleSubmit} className="space-y-6">
       <FormField htmlFor="email" label={t("emailLabel")}>
         <FormFieldControl>
           <Input
