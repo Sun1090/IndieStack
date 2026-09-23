@@ -1279,3 +1279,9 @@
   原文照留，用来记下这次判断被自己的测量推翻。已 `gh pr edit 124 --base main`，GitHub 现在报
   **MERGEABLE**，那 5 个必需作业会在 `14cf8bd` 上真跑一遍；PR 正文和 #124 的条目都已同步改过。
   队列因此回到 **0 个 CONFLICTING**。
+- 从这次提炼一条判据，用来和上面「刻意不提前 retarget」的约定对齐：CONFLICTING 有两种，先用
+  `git merge-tree --write-tree origin/main <head>` 判性质。对 main 干净 ⇒ 只是 base 的记账问题，
+  此时改指 base 是一笔有价交易——代价是 diff 会含前驱的 commit（review 面变大），收益是评审不再看到
+  假红色、并且那 5 个必需作业会在该 SHA 上真跑。**只有出现这两个阻塞信号之一才提前做**（#124 两个都占：
+  挂着 CONFLICTING + 从没跑过必需 CI）；否则仍按上面的约定等前驱落地再改，不要为了「看着是绿的」扩大
+  review 面。改完必须同步 PR 正文和 `docs/progress.md` 里关于 base 的那句——base 是事实陈述，过期就是谎。
