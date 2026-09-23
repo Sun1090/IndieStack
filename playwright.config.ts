@@ -67,7 +67,10 @@ export default defineConfig({
     return {
       command: `pnpm dev -p ${port}`,
       url: `http://localhost:${port}/api/health`,
-      reuseExistingServer: !process.env.CI,
+      // 不复用：就绪检查只看「端口有没有响应」，复用别人（或上一轮残留）的服务会让整套用例
+      // 对着一个不相干的应用跑完并且全绿。宁可让端口冲突变成一次响亮的启动失败。
+      // globalSetup 里还有一道身份核对（`e2e/support/warm-up.ts`）。
+      reuseExistingServer: false,
       timeout: 120_000,
       env: serverEnv(port, slot),
     };

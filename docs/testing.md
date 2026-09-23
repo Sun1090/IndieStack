@@ -114,6 +114,14 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
   不做 shard，只在 shard 1 运行一次。
 - 上述策略由 `src/lib/testing/e2e-shard-policy.test.ts` 读取 workflow/config 做回归；如果移除 shard、把
   `PW_FULLY_PARALLEL` 改成默认开启，或让两个 job 上传同名 artifact，Vitest 会失败。
+- **本地 E2E 会核对「这台服务器是不是我们的」**：`playwright.config.ts` / `playwright.visual.config.ts`
+  的 `webServer.reuseExistingServer` 固定为 `false`（端口被占时宁可响亮地起不来），并且
+  `e2e/support/warm-up.ts`（globalSetup）在跑任何用例之前取 `/api/health` 核对
+  `mockMode === true` 且 `version` 与本仓库一致，判据在 `src/lib/testing/e2e-server-identity.ts`。
+  原因是就绪检查只看端口有没有 2xx：端口上站着别的项目的服务时，整轮用例是对别人的应用跑的，
+  而且**全绿**（roadmap C07 记过一次整份作废）。Playwright 自己那条报错给的出路是
+  `set reuseExistingServer:true`，而那正好重新打开这个洞——身份核对就是为了让那条路也安全。
+  被拒绝时错误里带 `lsof -nP -iTCP:<port> -sTCP:LISTEN` 与 `E2E_BASE_PORT=3400 pnpm test:e2e` 两条出路。
 - E2E 跑在 `next dev` 上：首屏 HTML 服务端就渲染好了，但 React 要等冷编译 + hydration 才挂上事件监听。
   此时 `toBeVisible()` 早已通过，点下去却因监听器还不存在被**静默丢弃**——症状是"断言超时、DOM 完整、
   控制台零报错"，很容易被误判成产品 Bug。所以依赖客户端事件的用例必须重试「动作 + 断言」整体，而不是
