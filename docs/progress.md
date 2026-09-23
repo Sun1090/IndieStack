@@ -54,6 +54,12 @@
 - 阻塞 / 风险：passkeys 由 `NEXT_PUBLIC_FEATURE_PASSKEY` 默认关闭，正常路径逐字符未变；新增的只有
   「读不到时」这一条分支。真正的读故障要接真库才会出现，单测用 `mockRejectedValue` 打桩，
   所以这条证据是行为级的、不是生产级的。
+- 同一条尺子扫了 Server Action 侧（阴性 + 已被别的 PR 修掉，登记以免重复劳动）：`src/lib/repositories/*`
+  里**会抛错**的导出函数共 62 个，扫 19 个 `src/lib/actions/*.ts` 后「调用它们且不在 try 内」只剩
+  2 处，都在 `api-keys.ts` 的 `regenerateApiKey`（`insertApiKey` / `deactivateApiKey`）。
+  逐处对过 PR **#102** 的分支：那两处它已经收口，而且顺手把顺序反转成「先吊销再签发」并新增
+  `apiKeyRevokedButNotCreated`——原顺序的坏情况正是「新密钥已 active 但没人知道明文」。
+  所以本条不再动它，#102 合并后这条扫描应当自动归零。
 - 下一项：覆盖率表上同一批低分文件按同一条尺子过一遍（`repositories/api-keys.ts` 74、
   `repositories/marketing.ts` 77、`repositories/upload-objects.ts` 78、`push-retry.ts` 80）。
   其中 `push-retry.ts` 的四条未覆盖语句已顺手读过：两处 `catch`（死信回执写失败、失效订阅清理失败）
