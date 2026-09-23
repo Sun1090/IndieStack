@@ -29,13 +29,20 @@ export async function insertApiKey(row: Record<string, unknown>): Promise<ApiKey
   return (data ?? {}) as ApiKeyRow;
 }
 
-/** 吊销（软删除）；RLS 保证只能操作自己的密钥 */
-export async function deactivateApiKey(userId: string, keyId: string): Promise<void> {
+/**
+ * 吊销（软删除）；RLS 保证只能操作自己的密钥。
+ *
+ * 返回「有没有真的改掉一行」。`update` 只给 `error`，0 行受影响时它是 `null`，
+ * 所以不 `select` 回来的话「吊销了一个不存在的密钥」与「吊销成功」在调用方看来一模一样。
+ */
+export async function deactivateApiKey(userId: string, keyId: string): Promise<boolean> {
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("api_keys")
     .update({ is_active: false })
     .eq("id", keyId)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("id");
   if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
 }
