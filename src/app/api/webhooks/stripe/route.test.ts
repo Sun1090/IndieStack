@@ -208,6 +208,48 @@ describe("POST /api/webhooks/stripe 事件分支", () => {
     );
   });
 
+  it("订阅归属读失败时点名上报，而不是安静地一封不发", async () => {
+    CURRENT_EVENT = event("evt_paid_sub_read", "invoice.payment_succeeded", {
+      id: "in_1",
+      parent: { subscription_details: { subscription: "sub_1" } },
+    });
+    adminFromMock.mockImplementation((table: string) =>
+      table === "subscriptions"
+        ? chain({ data: null, error: { message: "connection terminated" } })
+        : chain({ data: { user_id: "user_1" } }),
+    );
+
+    const response = await post();
+    // 钱已经收到了，通知这一路失败不该让 Stripe 重放整个事件（那是 200 的语义）；
+    // 但日志必须分得清「我们没读到归属」和「这个订阅本来就不属于任何团队」。
+    expect(response.status).toBe(200);
+    expect(notifyUserMock).not.toHaveBeenCalled();
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("订阅归属读取失败"),
+      expect.anything(),
+    );
+  });
+
+  it("owner 读失败时点名上报，而不是当成「这个团队没有 owner」", async () => {
+    CURRENT_EVENT = event("evt_paid_owner_read", "invoice.payment_succeeded", {
+      id: "in_1",
+      parent: { subscription_details: { subscription: "sub_1" } },
+    });
+    adminFromMock.mockImplementation((table: string) =>
+      table === "subscriptions"
+        ? chain({ data: { team_id: "team_1" } })
+        : chain({ data: null, error: { message: "could not parse response" } }),
+    );
+
+    const response = await post();
+    expect(response.status).toBe(200);
+    expect(notifyUserMock).not.toHaveBeenCalled();
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("团队 owner 读取失败"),
+      expect.anything(),
+    );
+  });
+
   it("未知事件类型落 skipped 且不 500", async () => {
     CURRENT_EVENT = event("evt_unknown", "customer.discount.created", { id: "di_1" });
 

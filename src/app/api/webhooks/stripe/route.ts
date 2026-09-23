@@ -253,20 +253,31 @@ async function notifyTeamOwner(invoice: Stripe.Invoice): Promise<void> {
     const subscriptionId = invoice.parent?.subscription_details?.subscription;
     if (typeof subscriptionId !== "string") return;
     const admin = createAdminClient();
-    const { data: sub } = await admin
+    const { data: sub, error: subError } = await admin
       .from("subscriptions")
       .select("team_id")
       .eq("provider_id", subscriptionId)
       .maybeSingle();
+    // 「读不到订阅归属」与「这个订阅不属于任何团队」是两件事：前者是我们瞎了，
+    // 钱确实收到了却没人被通知，而日志里必须分得出来；后者才是安静返回。
+    if (subError) {
+      await logApiError("[Stripe Webhook] 付款通知：订阅归属读取失败", subError);
+      return;
+    }
     const teamId = (sub as { team_id?: string } | null)?.team_id;
     if (!teamId) return;
-    const { data: owner } = await admin
+    const { data: owner, error: ownerError } = await admin
       .from("team_members")
       .select("user_id")
       .eq("team_id", teamId)
       .eq("role", "owner")
       .limit(1)
       .maybeSingle();
+    // 同理：读失败不能安静地当成「这个团队没有 owner」。
+    if (ownerError) {
+      await logApiError("[Stripe Webhook] 付款通知：团队 owner 读取失败", ownerError);
+      return;
+    }
     const ownerId = (owner as { user_id?: string } | null)?.user_id;
     if (!ownerId) return;
     await notifyUser({

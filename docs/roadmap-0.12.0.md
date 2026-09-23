@@ -297,10 +297,11 @@
     现在剩下的射程外只有两件半：`Promise.all` 之外自造的并发 helper（`allSettled` 等）、
     数组元素里再套三元，以及那半件「绑了 `error` 却从不使用」——判它需要作用域分析，
     全文数同名标识符会把 `catch (error)` 一起数进去，是个只会漏报的假指标，**刻意没测**。
-    **批次进度**：`actions/team.ts`(6) 与 `admin/page.tsx`(3) 已于 2026-09-23 清完
-    （团队解析改成三态 `TeamLookup`：`ok` / `no-team` / `error`，读失败回 `databaseError` 而不是 `noTeam`；
-    管理概览页三处统计读数改成渲染前抛）。剩下 15 处：Stripe（checkout 2 + webhook 2）→
-    `dashboard/page.tsx`(5) → `settings/page.tsx`(2) → `api/e2e/push-queue`(2)，
+    **批次进度**：`actions/team.ts`(6)、`admin/page.tsx`(3)、Stripe（checkout 2 + webhook 通知 2）
+    已于 2026-09-23 清完（团队解析改成三态 `TeamLookup`：`ok` / `no-team` / `error`，
+    读失败回 `databaseError` 而不是 `noTeam`；管理概览页三处统计读数改成渲染前抛；
+    结账两处回 503 + `checkoutUnavailable`——那两处的故障方向是**放行**，会重复购买）。
+    剩下 11 处：`dashboard/page.tsx`(5) → `settings/page.tsx`(2) → `api/e2e/push-queue`(2)，
     最后 `permission-gate.tsx`(2) 按 `justified` 处理。清完才接门禁。
     一个已确认、留给 #49 的洞：`dashboard/page.tsx:75` 那条 `as unknown as { data: … }`
     是**断言抹掉 `error`**（C08 那一族的正主），但 C08 门禁要求断言外面套 `await`，

@@ -1738,3 +1738,35 @@
   → `settings/page.tsx`(2) → `api/e2e/push-queue`(2) → `permission-gate.tsx`(2，按 `justified` 处理)。
 - 下一批：Stripe 那 4 处（钱的路径，读失败会答成「这个订阅不存在 / 这张发票没有归属」）。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-c 第五批：结账的两处读取，故障方向是「放行」
+
+- 里程碑 / 版本：v0.12.0 / C08-c 清偿（#42 的后半）。
+- 分支 / commit：`fix/c08c-stripe-reads`（栈在 #108 之上）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这批优先级高：前四批的失败方向都是「把有说成无」（显示错、权限说错、终态说错），
+  这一批是**放行**——`api/stripe/checkout` 读不到归属或读不到现有订阅时，scope 检查整个跳过，
+  于是「已经有有效订阅的团队」被允许再买一份。那不是显示错误，是钱和数据状态真的会分叉。
+- 改法：两处读取各绑 `error`，在建会话之前回 **503 + 新错误码 `checkoutUnavailable`**（双语）；
+  用例同时断言 `createCheckoutSession` **一次都没被调用**——只断言状态码的话，
+  「先建了会话再回 503」这种更糟的实现也能过。
+- 同批的第二件事：`webhooks/stripe` 的 `notifyTeamOwner` 两次读取（按 `provider_id` 回查订阅归属、
+  查团队 owner）都不绑 `error`。钱收到了、通知没发、日志什么都没有。
+  现在两处各自点名上报后返回——**通知失败不让 Stripe 重放整个事件**（那是 200 的语义），
+  但日志必须分得清「我们没读到」与「这个团队本来就没有 owner」。
+- 覆盖：`checkout/route.test.ts` 是这个路由的**第一批单测**（5 条：两处故障、两处合法终态、
+  守卫未登录仍 401）；webhook 侧新增 2 条（订阅归属读失败、owner 读失败）。
+- 验证：第一版 `pnpm -s lint` **红在** `POST` 的 `complexity 16 > 15`——两处守卫加进来之后，
+  这条门禁又在说「这个函数已经在做第二件事」了。于是把「谁在买、已经在买了吗」抽成
+  `readCheckoutScope()` 返回三态（`ok` / `unavailable` / `subscribed`）。
+  名字与栈里的 #96 撞了（同一路由、同一概念），合并时以先落地那份为准。
+  重跑：`pnpm -s lint` / `pnpm -s type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**（38 道门禁）；
+  `pnpm build` → exit 0。变异核对按**抽完之后的形状**重做了一遍（锚点全变），
+  **C1–C4 + W1–W3 共 7 项全部被杀死**，包括「把可重试的故障说成 403」（C3）
+  和「抛给外层 catch，日志标签退化成通用那句」（W3）。
+  重构之后测试仍然 5 条全绿，但那次「全绿」只证明行为没变——判据还是变异结果。
+- 数字同步：`--unbound` 15 → **11 处**。剩下：`dashboard/page.tsx`(5)、`settings/page.tsx`(2)、
+  `api/e2e/push-queue`(2)、`permission-gate.tsx`(2，按 `justified` 处理)。
+- 下一批：`dashboard/page.tsx` 的 5 处（其中 4 处是 `Promise.all` 的计数读数，
+  计数器修好之后才第一次被看见）。
+- 更新时间：2026-09-23（UTC）。
