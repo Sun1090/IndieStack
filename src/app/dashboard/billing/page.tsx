@@ -32,17 +32,18 @@ export default async function BillingPage() {
   const t = await getTranslations("dashboard");
   const tc = await getTranslations("common");
 
-  const { data: membership } = (await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id, teams!inner(plan, member_count)")
     .eq("user_id", user!.id)
     .limit(1)
-    .single()) as unknown as {
-    data: {
-      team_id: string;
-      teams: { plan: string; member_count: number } | { plan: string; member_count: number }[];
-    } | null;
-  };
+    .maybeSingle();
+
+  if (membershipError) {
+    // 读失败往下走就是 `currentPlan = "free"`：一个**付费账户**被显示成免费套餐。
+    // 用户在这页看到的套餐名就是他相信自己付的那个，猜不得。
+    throw new Error(`读取团队套餐失败：${membershipError.message}`);
+  }
 
   const teamRows = Array.isArray(membership?.teams) ? membership!.teams[0] : membership?.teams;
   const teamInfo = teamRows as { plan: string; member_count: number } | undefined;

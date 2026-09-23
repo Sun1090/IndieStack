@@ -15,6 +15,15 @@ import { logApiError } from "@/lib/api-log";
 
 export const dynamic = "force-dynamic";
 
+/** `api_usage` 时间序列里这张图真正用到的列。 */
+type UsageRow = {
+  created_at: string;
+  status_code: number | null;
+  user_id: string | null;
+  path: string;
+  method: string;
+};
+
 /**
  * GET /api/analytics
  * 获取分析汇总数据和趋势图表数据
@@ -56,21 +65,31 @@ export async function GET(request: NextRequest) {
         .gte("created_at", since.toISOString()),
     ]);
 
-    // 获取时间序列数据
-    const { data: dailyData } = (await supabase
+    // 这两次读取决定这张图上的每一个数字，而失败方向一模一样：读失败会长成
+    // 「0 个请求、0 个错误、空时间线」。对一个正在用密钥的账户来说，那就是「你的密钥没人用」——
+    // 空图必须是**真的没有行**，不能是「我们没读到」。
+    if (pageViewsResult.error) {
+      await logApiError("[Analytics API] 请求总数读取失败", pageViewsResult.error);
+      return jsonNoStore({ error: "Could not read your usage totals. Please retry." }, { status: 503 });
+    }
+
+    // 获取时间序列数据。这里刻意保留一个**带 `error` 成员**的结果类型：这条链 await 下来是
+    // `any`（列名串没匹配上生成的关系类型），而 `any` 正是「读失败看不见」的成因——
+    // 断言本身没问题，把 `error` 从断言里抹掉才有问题（C08 抓的是后者）。
+    const { data: dailyData, error: dailyError } = (await supabase
       .from("api_usage")
       .select("created_at, status_code, user_id, path, method")
       .eq("user_id", userId)
       .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: true })) as unknown as {
-      data: Array<{
-        created_at: string;
-        status_code: number | null;
-        user_id: string | null;
-        path: string;
-        method: string;
-      }> | null;
+      .order("created_at", { ascending: true })) as {
+      data: UsageRow[] | null;
+      error: { message: string } | null;
     };
+
+    if (dailyError) {
+      await logApiError("[Analytics API] 用量时间序列读取失败", dailyError);
+      return jsonNoStore({ error: "Could not read your usage timeline. Please retry." }, { status: 503 });
+    }
 
     // 组装时间序列
     const dailyMap = new Map<string, { requests: number; errors: number }>();

@@ -70,24 +70,10 @@ export interface ErrorChannelExemption {
  * permanent waiver list.
  */
 export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemption>> = {
-  "src/app/dashboard/team/page.tsx": {
-    sites: 2,
-    reason: "debt (C08-b): a failed membership read renders the 'you have no team' empty state.",
-  },
   "src/components/shared/permission-gate.tsx": {
     sites: 2,
     reason:
       "justified: client component — a failed role read resolves to the least privileged role on purpose, so the gate must not pretend it can 5xx there.",
-  },
-  "src/app/api/analytics/route.ts": {
-    sites: 1,
-    reason:
-      "debt (C08-b): a failed time-series read returns an empty chart that looks like unused keys.",
-  },
-  "src/app/dashboard/billing/page.tsx": {
-    sites: 1,
-    reason:
-      'debt (C08-b): `currentPlan = teamInfo?.plan ?? "free"` — a failed membership read shows the wrong billing tier.',
   },
 };
 
