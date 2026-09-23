@@ -57,37 +57,25 @@ export interface ErrorChannelExemption {
 /**
  * Files allowed to keep an error-erasing cast, with the reason and the **measured** site count.
  *
- * The entries here are *debt* (C08-b): the code answers a question it did not ask — a failed read
- * comes back as "no team", "no usage", "not an admin". Each one names where it lies, and
- * roadmap C08-b drains them, biggest blast radius first.
+ * **This ledger is empty, and that is the goal rather than an omission.** Every entry it ever held
+ * was *debt* (C08-b): the code answered a question it did not ask — a failed read came back as
+ * "no team", "no usage", "not an admin". Each was removed by the PR that paid it, so the count
+ * went 22 → 11 → 4 → 0 as the batches landed.
  *
- * There used to be a second kind here, a *justified* entry for `permission-gate.tsx`: a client
- * component legitimately resolves a failed role read to the least privileged role, because it
- * cannot 5xx. That entry is gone — the same outcome is now derived from the error channel
+ * There was also a *justified* entry for `permission-gate.tsx` (a client component cannot 5xx, so
+ * resolving a failed role read to the least privileged role was right). It went the other way:
+ * rather than keep the waiver, the outcome is now derived from the error channel
  * (`resolveProfileRole({ error, role })` returns `viewer` when `error` is set), so the read
- * failure travels the same path as a success instead of being indistinguishable from one.
- * The behaviour did not change; what changed is that it is now honestly derived.
+ * failure travels the same path as a success instead of being indistinguishable from one. The
+ * behaviour did not change; what changed is that it is now honestly derived.
  *
- * Either way the count is checked in both directions: a new error-erasing cast fails the gate, and
- * so does fixing one without lowering its number, which keeps this list from rotting into a
- * permanent waiver list.
+ * The two-way count check stays even with nothing registered — a new error-erasing cast fails the
+ * gate, and so does fixing one without lowering its number. That is what stops the list from
+ * quietly growing back into a permanent waiver list, and it is why `inspectQueryErrorChannel`
+ * takes the ledger as an injectable argument: with the real one empty, the test that proves both
+ * directions would otherwise have no subject left to measure.
  */
-export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemption>> = {
-  "src/app/dashboard/team/page.tsx": {
-    sites: 2,
-    reason: "debt (C08-b): a failed membership read renders the 'you have no team' empty state.",
-  },
-  "src/app/api/analytics/route.ts": {
-    sites: 1,
-    reason:
-      "debt (C08-b): a failed time-series read returns an empty chart that looks like unused keys.",
-  },
-  "src/app/dashboard/billing/page.tsx": {
-    sites: 1,
-    reason:
-      'debt (C08-b): `currentPlan = teamInfo?.plan ?? "free"` — a failed membership read shows the wrong billing tier.',
-  },
-};
+export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemption>> = {};
 
 const QUERY_METHODS = new Set(["from", "rpc"]);
 
@@ -197,6 +185,12 @@ export function collectErrorChannelCasts(
  */
 export function inspectQueryErrorChannel(
   sources: readonly QueryErrorChannelSource[],
+  /**
+   * 豁免台账，默认用真实的那份。做成可注入是为了让「多一处 / 少一处」两个方向
+   * 在真实台账为空时仍可测——C08-b 还清后真实台账就是空的，而少了可注入的口子，
+   * 唯一能证明双向对账还在的那条用例会跟着台账一起失去被测对象。
+   */
+  ledger: Readonly<Record<string, ErrorChannelExemption>> = ERROR_CHANNEL_EXEMPTIONS,
 ): QueryErrorChannelIssue[] {
   const issues: QueryErrorChannelIssue[] = [];
 
@@ -246,18 +240,22 @@ export function inspectQueryErrorChannel(
     return issues;
   }
 
-  return issues.concat(castAwayIssues(stats.casts), staleLedgerIssues(stats.casts));
+  return issues.concat(
+    castAwayIssues(stats.casts, ledger),
+    staleLedgerIssues(stats.casts, ledger),
+  );
 }
 
 /** Every error-erasing cast in a file whose ledger count does not cover it. */
 function castAwayIssues(
   casts: readonly { file: string; line: number }[],
+  ledger: Readonly<Record<string, ErrorChannelExemption>>,
 ): QueryErrorChannelIssue[] {
   const perFile = countByFile(casts);
   const issues: QueryErrorChannelIssue[] = [];
 
   for (const [file, found] of perFile) {
-    const allowed = ERROR_CHANNEL_EXEMPTIONS[file];
+    const allowed = ledger[file];
     if (allowed && allowed.sites === found) continue;
 
     for (const cast of casts) {
@@ -281,11 +279,14 @@ function castAwayIssues(
  * (entry stale) or its count drifted upward (also reported by `castAwayIssues`, deliberately —
  * the fix is the same either way, and an empty ledger is the goal).
  */
-function staleLedgerIssues(casts: readonly { file: string }[]): QueryErrorChannelIssue[] {
+function staleLedgerIssues(
+  casts: readonly { file: string }[],
+  ledger: Readonly<Record<string, ErrorChannelExemption>>,
+): QueryErrorChannelIssue[] {
   const perFile = countByFile(casts);
   const issues: QueryErrorChannelIssue[] = [];
 
-  for (const [file, allowed] of Object.entries(ERROR_CHANNEL_EXEMPTIONS)) {
+  for (const [file, allowed] of Object.entries(ledger)) {
     const found = perFile.get(file) ?? 0;
     if (found === allowed.sites) continue;
     issues.push({

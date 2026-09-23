@@ -73,12 +73,18 @@ export default async function TeamPage() {
   const t = await getTranslations("dashboard");
   const tc = await getTranslations("common");
 
-  const { data: membership } = (await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id, role")
     .eq("user_id", user!.id)
     .limit(1)
-    .single()) as unknown as { data: { team_id: string; role: string } | null };
+    .maybeSingle();
+
+  if (membershipError) {
+    // 读不到就不能假装读到了：继续渲染会给出「你还没有团队」这个空态加一个「创建团队」按钮，
+    // 用户于是相信自己没有团队（而真实原因是一次失败的读取），最坏情况是再建一个团队。
+    throw new Error(`读取团队成员失败：${membershipError.message}`);
+  }
 
   if (!membership) {
     return (
@@ -101,13 +107,17 @@ export default async function TeamPage() {
     );
   }
 
-  const { data: team } = (await supabase
+  const { data: team, error: teamError } = await supabase
     .from("teams")
     .select("*")
     .eq("id", membership.team_id)
-    .single()) as unknown as { data: Record<string, unknown> | null };
+    .maybeSingle();
 
-  const { data: members } = await supabase
+  if (teamError) {
+    throw new Error(`读取团队信息失败：${teamError.message}`);
+  }
+
+  const { data: members, error: membersError } = await supabase
     .from("team_members")
     .select(
       `
@@ -124,6 +134,12 @@ export default async function TeamPage() {
     `,
     )
     .eq("team_id", membership.team_id);
+
+  // 这一处连类型断言都没有（C08 门禁看不见它），但失败方向更要紧：`members` 为 null 会被
+  // 当成「这个团队一个人也没有」渲染——人数卡片显示 0、列表显示空态，而团队里可能全是人。
+  if (membersError) {
+    throw new Error(`读取团队成员列表失败：${membersError.message}`);
+  }
 
   const memberProfiles = (members ?? []) as Array<
     Record<string, unknown> & {

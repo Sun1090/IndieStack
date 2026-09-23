@@ -35,8 +35,12 @@ function codes(sources: QueryErrorChannelSource[]): string[] {
  * Codes about one file. The ledger covers the whole repo, so any partial scan also reports the
  * other files as stale — those are real signals for the full scan and noise for a fixture.
  */
-function codesFor(sources: QueryErrorChannelSource[], file: string): string[] {
-  return inspectQueryErrorChannel(sources)
+function codesFor(
+  sources: QueryErrorChannelSource[],
+  file: string,
+  ledger: Record<string, { sites: number; reason: string }> = ERROR_CHANNEL_EXEMPTIONS,
+): string[] {
+  return inspectQueryErrorChannel(sources, ledger)
     .filter((issue) => issue.file === file)
     .map((issue) => issue.code);
 }
@@ -131,22 +135,22 @@ describe("inspectQueryErrorChannel()", () => {
   });
 
   it("台账按数量对账：多一处就报，少一处也报（清理完不许留着旧条目）", () => {
-    // fixture 必须挂在一个**台账里还剩 2 处额度**的真实文件上：codesFor 用的是真台账，
-    // 额度对不上时它会连同 STALE 一起报，那正是本条要断的分岔。
-    const file = "src/app/dashboard/team/page.tsx";
-    expect(ERROR_CHANNEL_EXEMPTIONS[file]?.sites).toBe(2);
+    // 自带一份 2 处额度的台账，而不是借用真实台账里的某一条：C08-b 还清后真实台账是空的，
+    // 而「多一处报 CAST_AWAY / 少一处报 STALE」这两个方向必须一直有被测对象。
+    const file = "src/components/shared/permission-gate.tsx";
+    const ledger = { [file]: { sites: 2, reason: "fixture: 允许保留两处" } };
     expect(
-      codesFor([source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}}`)], file),
+      codesFor([source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}}`)], file, ledger),
     ).toEqual([]);
 
     const three = `async function f() {${ROLE_QUERY}${ROLE_QUERY}${ROLE_QUERY}}`;
-    expect(codesFor([source(file, three)], file)).toEqual(
+    expect(codesFor([source(file, three)], file, ledger)).toEqual(
       expect.arrayContaining(["QUERY_ERROR_CHANNEL_CAST_AWAY", "QUERY_ERROR_CHANNEL_EXEMPT_STALE"]),
     );
 
     const zero =
       "async function f() { const { data, error } = await supabase.from('profiles').select('role'); void data; void error; }";
-    expect(codesFor([source(file, zero), source("other.ts", ROLE_QUERY)], file)).toContain(
+    expect(codesFor([source(file, zero), source("other.ts", ROLE_QUERY)], file, ledger)).toContain(
       "QUERY_ERROR_CHANNEL_EXEMPT_STALE",
     );
   });
