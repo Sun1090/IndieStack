@@ -204,6 +204,16 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **两条 `profiles` 写路径的列名拼错不再只有打到真库才现形**：`updateProfileSettings`
+  （`src/lib/actions/profile.ts`）与 `updateSettings`（`src/lib/actions/settings.ts`）各挂着一句
+  `// @ts-ignore - Supabase update type inference limitation`，载荷是就地字面量。实测这句注释是错的：
+  把 `@ts-ignore` 删掉，`pnpm type-check` 依然退出 0——包括把 `full_name` 改成 `full_name_typo` 的情况，
+  也就是说这两处写入从来没有被类型检查过。改成仓库里已有的写法（`api/user/route.ts:106` 那样把载荷
+  标注成 `Database["public"]["Tables"]["profiles"]["Update"]`）之后，拼错列名变成编译错误
+  （`TS2353` / `TS2561`，两次变异各测一次），`src/**` 的非测试 `@ts-ignore` 也归零。
+  **同一族还剩 41 处**：全库 `.update()` / `.insert()` 共 50 个调用点，只有 9 处带这类标注——
+  剩下的是同一条洞，交给门禁而不是逐个手改（见 `docs/progress.md` 对应条目的「下一项」）。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

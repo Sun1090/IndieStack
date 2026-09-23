@@ -1153,3 +1153,31 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 那两句 `@ts-ignore` 是假的：删掉它 tsc 照样绿，因为载荷根本没类型
+
+- 里程碑 / 版本：v0.12.0 / C07 的下游（写侧列名类型），凭据与设置两条写路径。
+- 分支 / commit：`fix/profile-update-type-safety`（基于 `origin/main` = `ad4b029`，独立 PR）。
+- 状态：DONE（PR 停在 ready-for-review）。
+- 为什么做：本轮找新缺陷的两个探针都空手而归（跳过用例 0、`TODO/FIXME` 0），于是数抑制标记：
+  `src/**` 非测试只有 2 句 `@ts-ignore`，都在往 `profiles` 写：`actions/profile.ts:41` 与
+  `actions/settings.ts:71`，注释写着「Supabase update type inference limitation」。
+- 实测（这一步推翻了自己先下的「死抑制」结论）：
+  - 只删 `@ts-ignore`、载荷仍写成就地字面量 → `pnpm -s type-check` 退出 **0**，连 `full_name_typo` 都不红；
+    所以那不是「抑制了一个真错误」，而是**这两处写入从来没被类型检查过**，注释把读者的注意力引向了错误的方向。
+  - 换成仓库已有的写法（`api/user/route.ts:106` 把载荷标成 `Database[...]["Update"]`）之后：
+    `full_name` → `full_name_typo` 报 `TS2353`；`updated_at` → `updated_att` 报 `TS2561`，
+    两条错误信息还把合法列名列了出来。变异各自跑完即还原，`grep` 确认残留 0，还原后 tsc 回到 0。
+- 完成内容：两处载荷改为显式 `Database["public"]["Tables"]["profiles"]["Update"]` 标注；
+  `@ts-ignore` 清零（`src/**` 非测试计数 0）；行为不变。
+- 变更文件：`src/lib/actions/profile.ts`、`src/lib/actions/settings.ts`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`pnpm -s type-check` → 0（含变异一红一绿两轮，退出码单独取、不接管道）；
+  `pnpm -s vitest run src/lib/actions/profile.test.ts src/lib/actions/settings.test.ts` → **18 passed**；
+  `pnpm -s lint` / `CI=true pnpm -s check:all` 见下，`pnpm build` 由 pre-push 钩子跑，钩子不过推不出去。
+- 阻塞 / 风险：本条只补了两个点。全库 `.update()` 32 个 + `.insert()` 18 个 = 50 个写载荷调用点，
+  带这类标注的只有 **9** 个，其余 41 处是同一个洞（拼错列名要打到真库才现形）。逐个手改既不收敛，
+  也会跟栈里正在改同一批文件的 PR 撞车。
+- 下一项：把 C07 那套 `check:query-columns` 从「链上的列名参数」扩到「写载荷的键」——
+  复用 `src/lib/db/query-columns.ts` 的表名→`Row` 解析，判定改成对象字面量的键集合，
+  并按该仓库既有口径把「判不了的范围」计数打印出来。门禁落地前，新代码一律按本条的标注写法走。
+- 更新时间：2026-09-23
