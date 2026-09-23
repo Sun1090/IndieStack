@@ -79,6 +79,18 @@ describe("confirmSubscription()/unsubscribeByToken()", () => {
     await expect(unsubscribeByToken("b".repeat(48))).resolves.toBe(false);
   });
 
+  it("有效期只约束确认，不约束退订", async () => {
+    const confirmChain = chainMock({ data: [{ id: "m1" }] });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => confirmChain));
+    await confirmSubscription("a".repeat(48));
+    expect(confirmChain.gt).toHaveBeenCalledWith("token_expires_at", expect.any(String));
+
+    const unsubChain = chainMock({ data: [{ id: "m1" }] });
+    createAdminClientMock.mockReturnValue(dbClientMock(() => unsubChain));
+    await expect(unsubscribeByToken("b".repeat(48))).resolves.toBe(true);
+    expect(unsubChain.gt).not.toHaveBeenCalled();
+  });
+
   it("数据库错误抛错", async () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
     await expect(confirmSubscription("a".repeat(48))).rejects.toThrow("db");

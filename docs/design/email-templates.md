@@ -171,6 +171,10 @@
   `/api/marketing/unsubscribe?token=…` → `unsubscribed`。
 - Token 为 48 位十六进制随机串（不可猜测），公开路由凭 token 操作；
   未命中返回 404，命中后 302 跳回站点首页（带 `?marketing=confirmed|unsubscribed`）。
+- **有效期只约束确认，不约束退订**：`token_expires_at` 只在写入 pending 时算一次（7 天），
+  确认成功后不会刷新。若退订也判过期，订阅满 7 天的收件人会在之后每一封营销邮件里拿到一个
+  必然 404 的退订链接，而邮件还在继续寄——下面那条「强制附加退订页脚」是合规出口，不能有窗口。
+  轮换仍然生效：重新开关键名会变，旧链接的 `token_hash` 对不上就是命中不了。
 - 发送入口 `sendMarketingEmail()`（`src/lib/email-marketing.ts`）：强制附加
   该收件人的退订页脚；批量营销/活动内容为后续任务，本版仅收口通道与合规链接。
 - RLS：订阅行允许用户 select/insert/update 自己的行；确认/退订路由走
