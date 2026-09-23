@@ -1,5 +1,9 @@
 /**
  * webauthn repository 单测（v0.5.0 D01，迁移 019）
+ *
+ * 五个函数各自的「error 必须变成抛错」都在这里钉：调用方（`auth-verify` / `register-options` 路由、
+ * `deletePasskey` action、设置页）是靠抛不抛来分「读不到」和「读到且没有」的，
+ * 少一条断言，路由就可能把一次数据库故障答成一次正常的 404。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { chainMock, dbClientMock } from "./test-helpers";
@@ -47,6 +51,13 @@ describe("findCredentialById()", () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({})));
     await expect(findCredentialById("cX")).resolves.toBeNull();
   });
+
+  it("数据库错误抛错，不能与「没有这条凭据」同形", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "connection reset" } })),
+    );
+    await expect(findCredentialById("c1")).rejects.toThrow("connection reset");
+  });
 });
 
 describe("createCredential()", () => {
@@ -60,6 +71,15 @@ describe("createCredential()", () => {
       expect.objectContaining({ user_id: "u1", credential_id: "c1", public_key: "k", device_name: "Mac" }),
     );
   });
+
+  it("写入失败抛错，不能让注册流程以为凭据已落库", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "duplicate key value" } })),
+    );
+    await expect(
+      createCredential({ userId: "u1", credentialId: "c1", publicKey: "k", counter: 0 }),
+    ).rejects.toThrow("duplicate key value");
+  });
 });
 
 describe("updateCredentialCounter()", () => {
@@ -69,6 +89,13 @@ describe("updateCredentialCounter()", () => {
     await expect(updateCredentialCounter("c1", 5)).resolves.toBeUndefined();
     expect(chain.update).toHaveBeenCalledWith(expect.objectContaining({ counter: 5 }));
   });
+
+  it("计数器写不进去抛错（克隆检测依赖它）", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "row-level security" } })),
+    );
+    await expect(updateCredentialCounter("c1", 6)).rejects.toThrow("row-level security");
+  });
 });
 
 describe("deleteMyCredential()", () => {
@@ -77,5 +104,12 @@ describe("deleteMyCredential()", () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chain));
     await expect(deleteMyCredential("w1")).resolves.toBeUndefined();
     expect(chain.delete).toHaveBeenCalled();
+  });
+
+  it("删除失败抛错，action 才会回 databaseError 而不是「已删除」", async () => {
+    createClientMock.mockResolvedValue(
+      dbClientMock(() => chainMock({ error: { message: "delete failed" } })),
+    );
+    await expect(deleteMyCredential("w1")).rejects.toThrow("delete failed");
   });
 });
