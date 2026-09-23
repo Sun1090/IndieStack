@@ -1680,3 +1680,33 @@
   再 Stripe（checkout 2 + webhook 2），最后页面读数；清到只剩 `permission-gate.tsx` 那 2 处
   `justified` 才接门禁。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-c 第三批：团队动作不再把读失败说成「你没有团队」
+
+- 里程碑 / 版本：v0.12.0 / C08-c 清偿（#42 的后半，第二批动手的文件）。
+- 分支 / commit：`fix/c08c-team-actions`（栈在 #106 之上）。
+- 状态：DONE（PR 待 review 合并）。
+- 撒谎的形状：`getCurrentTeam()` 返回 `team | null`，两次断言都明写 `error: null`。
+  一次抖动 → 三个动作（invite / remove / updateRole）齐刷刷 `fail("noTeam")`。
+  `noTeam` 是**终态**，用户看到「你还没有团队」会去创建第二个团队，而不是刷新重试——
+  这正是 C08 一族反复出现的那类错：把「没读到」当成「查不到」。
+- 改法：`getCurrentTeam()` 改成三态 `TeamLookup`（`ok` / `no-team` / `error`），
+  共用一个私有 `requireTeam(scope)` 做分派（读失败 → 日志 + `databaseError`；确实没有 → `noTeam`）。
+  `removeMember` / `updateMemberRole` 各自的权限读与目标读（4 处）同批补上：
+  读失败不得答 `onlyAdmins*`（凭空造出的权限拒绝）或 `memberNotFound`（让人以为人早被移走）。
+  配套把两处 `.single()` 换成 `.maybeSingle()`——不换的话「确实没有这一行」会以 PGRST116 的形式变成故障。
+- **测试桩的忠实性补了一格**（这条是本批最值钱的副产品）：原先 mock 的 `single` 与 `maybeSingle`
+  各自只认自己那个键，另一种拼写预置不到数据，于是**代码从 maybeSingle 退回 single 也照样全绿**。
+  现在 `terminal()` 按「实际被调用的终局」加工同一份预置数据：`.single()` 撞上 null 行返回 PGRST116。
+  变异 T3（把归属读取退回 `.single()`）就是靠它当场红的。
+- 覆盖：`team.test.ts` 44 条（净增 10：解析三态 + 两条「不许往下读」的反向证据、
+  三个动作各自的解析失败、四个权限/存在性守卫）。首跑即绿，所以全部结论以变异核对为准：
+  T1–T8 **8 条变异全部被杀死且红在该判据上**。
+- 数字同步：`--unbound` 24 → **18 处**；C08 门禁的 awaited 断言 12 → **6 处**（本批删掉 6 处
+  `error: null` 断言），台账仍只有 `permission-gate.tsx` 那 2 处 `justified`。
+  `docs/architecture/08-server-actions.md` 的 `getCurrentTeam()` 一行按新契约改写。
+- 验证：`pnpm -s lint` / `pnpm -s type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**
+  （38 道门禁全过）；`pnpm build` → exit 0。
+- 下一批：`admin/page.tsx`(3) ——那 3 处里有一条是**角色读**，失败会把人显示成非管理员；
+  然后是 Stripe（checkout 2 + webhook 2）。
+- 更新时间：2026-09-23（UTC）。

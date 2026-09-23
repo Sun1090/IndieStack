@@ -37,6 +37,22 @@ function buildClient(opts: { user?: object | null; queries?: Record<string, Quer
   const queue = new Map<string, Query[]>();
   for (const [table, arr] of Object.entries(opts.queries ?? {})) queue.set(table, [...arr]);
 
+  /**
+   * `.single()` 与 `.maybeSingle()` 的差别必须可观测：真客户端在「没有这一行」时，
+   * 前者给 PGRST116 错误，后者给 `{ data: null, error: null }`。
+   * 两个终局共用同一份预置数据，谁被调用就按谁的语义加工——否则代码从 maybeSingle 退回 single
+   * 时，那次「没有这一行」在测试里会安静地变成读失败（或反过来），没有人发现。
+   */
+  function terminal(q: Query, kind: "single" | "maybeSingle") {
+    const given = (q[kind] ?? q.single ?? q.maybeSingle) as
+      | { data?: unknown; error?: unknown }
+      | undefined;
+    const result = given ?? { data: null, error: null };
+    if (kind === "single" && !result.error && (result.data === null || result.data === undefined))
+      return { data: null, error: { code: "PGRST116", message: "no rows returned" } };
+    return result;
+  }
+
   function chainFor(q: Query) {
     const c: Record<string, unknown> = {};
     c.then = (onFulfilled: (v: unknown) => unknown, onRejected: (e: unknown) => unknown) =>
@@ -44,8 +60,8 @@ function buildClient(opts: { user?: object | null; queries?: Record<string, Quer
     for (const m of ["select", "insert", "update", "delete", "eq", "limit", "order"]) {
       c[m] = vi.fn(() => c);
     }
-    c.single = vi.fn(async () => q.single ?? { data: null, error: null });
-    c.maybeSingle = vi.fn(async () => q.maybeSingle ?? { data: null, error: null });
+    c.single = vi.fn(async () => terminal(q, "single"));
+    c.maybeSingle = vi.fn(async () => terminal(q, "maybeSingle"));
     return c;
   }
 
@@ -63,7 +79,7 @@ function buildClient(opts: { user?: object | null; queries?: Record<string, Quer
 
 function serverQueriesForTeamMember(membership: unknown, role: unknown) {
   return [
-    { single: membership }, // getCurrentTeam membership
+    { maybeSingle: membership }, // getCurrentTeam 的归属读取（换成 maybeSingle：没有这一行不是错误）
     { maybeSingle: role }, // 当前成员角色检查
   ];
 }
@@ -79,30 +95,71 @@ afterEach(() => {
 });
 
 describe("getCurrentTeam()", () => {
-  it("未登录返回 null", async () => {
+  it("未登录算「没有团队」，不算读失败", async () => {
     createClientMock.mockResolvedValue(buildClient({ user: null }));
-    await expect(getCurrentTeam()).resolves.toBeNull();
+    await expect(getCurrentTeam()).resolves.toEqual({ status: "no-team" });
   });
 
-  it("无团队成员记录返回 null", async () => {
+  it("无团队成员记录返回 no-team，并且不再往下读", async () => {
+    const client = buildClient({
+      queries: { team_members: [{ maybeSingle: { data: null, error: null } }] },
+    });
+    createClientMock.mockResolvedValue(client);
+    await expect(getCurrentTeam()).resolves.toEqual({ status: "no-team" });
+    expect(client.from.mock.calls.filter((c: string[]) => c[0] === "teams")).toHaveLength(0);
+  });
+
+  it("归属读失败返回 error，而不是「这个人没有团队」", async () => {
+    const client = buildClient({
+      queries: {
+        team_members: [{ maybeSingle: { data: null, error: { message: "connection terminated" } } }],
+      },
+    });
+    createClientMock.mockResolvedValue(client);
+    await expect(getCurrentTeam()).resolves.toEqual({
+      status: "error",
+      message: "connection terminated",
+    });
+    expect(client.from.mock.calls.filter((c: string[]) => c[0] === "teams")).toHaveLength(0);
+  });
+
+  it("团队行读失败同样返回 error（有成员行却没有团队行是另一回事，见下一条）", async () => {
     createClientMock.mockResolvedValue(
       buildClient({
-        queries: { team_members: [{ single: { data: null, error: null } }] },
+        queries: {
+          team_members: [{ maybeSingle: { data: { team_id: "t1" }, error: null } }],
+          teams: [{ maybeSingle: { data: null, error: { message: "could not parse response" } } }],
+        },
       }),
     );
-    await expect(getCurrentTeam()).resolves.toBeNull();
+    await expect(getCurrentTeam()).resolves.toEqual({
+      status: "error",
+      message: "could not parse response",
+    });
+  });
+
+  it("成员行在、团队行确实缺失时算 no-team（数据不一致，不是故障）", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: [{ maybeSingle: { data: { team_id: "t1" }, error: null } }],
+          teams: [{ maybeSingle: { data: null, error: null } }],
+        },
+      }),
+    );
+    await expect(getCurrentTeam()).resolves.toEqual({ status: "no-team" });
   });
 
   it("返回当前用户所属团队", async () => {
     createClientMock.mockResolvedValue(
       buildClient({
         queries: {
-          team_members: [{ single: { data: { team_id: "t1" }, error: null } }],
-          teams: [{ single: { data: TEAM, error: null } }],
+          team_members: [{ maybeSingle: { data: { team_id: "t1" }, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
-    await expect(getCurrentTeam()).resolves.toEqual(TEAM);
+    await expect(getCurrentTeam()).resolves.toEqual({ status: "ok", team: TEAM });
   });
 });
 
@@ -211,15 +268,29 @@ describe("inviteMember()", () => {
     });
   });
 
+  it("团队归属读失败回答 databaseError，而不是让人去创建第二个团队", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: [{ maybeSingle: { data: null, error: { message: "db" } } }],
+        },
+      }),
+    );
+    await expect(inviteMember(VALID_INVITE_INPUT)).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
+  });
+
   it("非 owner/admin 返回 onlyAdminsInvite", async () => {
     createClientMock.mockResolvedValue(
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "member" }, error: null } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -238,7 +309,7 @@ describe("inviteMember()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: { role: "owner" }, error: null },
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -253,11 +324,11 @@ describe("inviteMember()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } }, // membership
+            { maybeSingle: { data: { team_id: "t1" }, error: null } }, // membership
             { maybeSingle: { data: { role: "admin" }, error: null } }, // 角色检查
             { maybeSingle: { data: { id: "u2" }, error: null } }, // existing（查重用 maybeSingle，无行不是错误）
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -275,7 +346,7 @@ describe("inviteMember()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: null, error: { message: "db" } }, // 角色查询本身失败
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -294,7 +365,7 @@ describe("inviteMember()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: { role: "owner" }, error: null },
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -310,11 +381,11 @@ describe("inviteMember()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "owner" }, error: null } },
             { maybeSingle: { data: null, error: { message: "db" } } }, // 查重失败
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -332,11 +403,11 @@ describe("inviteMember()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "admin" }, error: null } },
             { single: { data: null, error: null } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -354,11 +425,11 @@ describe("inviteMember()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "owner" }, error: null } },
             { single: { data: null, error: null } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -393,15 +464,61 @@ describe("removeMember()", () => {
     await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "noTeam" });
   });
 
+  it("团队归属读失败回答 databaseError，而不是「你没有团队」", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: { team_members: [{ maybeSingle: { data: null, error: { message: "db" } } }] },
+      }),
+    );
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "databaseError" });
+  });
+
+  it("自己的成员行读失败回答 databaseError，而不是凭空说「你没有权限」", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: serverQueriesForTeamMember(
+            { data: { team_id: "t1" }, error: null },
+            { data: null, error: { message: "db" } },
+          ),
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "databaseError" });
+  });
+
+  it("目标成员读失败回答 databaseError，而不是「这个人不存在」", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: serverQueriesForTeamMember(
+            { data: { team_id: "t1" }, error: null },
+            { data: { role: "admin" }, error: null },
+          ),
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    createAdminClientMock.mockReturnValue(
+      buildClient({
+        queries: {
+          team_members: [{ maybeSingle: { data: null, error: { message: "db" } } }],
+        },
+      }),
+    );
+    await expect(removeMember("m1")).resolves.toEqual({ ok: false, error: "databaseError" });
+  });
+
   it("当前成员非管理员返回 onlyAdminsRemove", async () => {
     createClientMock.mockResolvedValue(
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "member" }, error: null } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -416,7 +533,7 @@ describe("removeMember()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: { role: "admin" }, error: null },
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -434,7 +551,7 @@ describe("removeMember()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: { role: "owner" }, error: null },
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -454,7 +571,7 @@ describe("removeMember()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: { role: "admin" }, error: null },
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -479,7 +596,7 @@ describe("removeMember()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: { role: "admin" }, error: null },
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -521,6 +638,55 @@ describe("updateMemberRole()", () => {
     });
   });
 
+  it("团队归属读失败回答 databaseError，而不是「你没有团队」", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: { team_members: [{ maybeSingle: { data: null, error: { message: "db" } } }] },
+      }),
+    );
+    await expect(updateMemberRole("m1", "admin")).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
+  });
+
+  it("自己的成员行读失败回答 databaseError，而不是 onlyAdminsInvite", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: serverQueriesForTeamMember(
+            { data: { team_id: "t1" }, error: null },
+            { data: null, error: { message: "db" } },
+          ),
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    await expect(updateMemberRole("m1", "admin")).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
+  });
+
+  it("目标成员读失败回答 databaseError，而不是「这个人不存在」", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: [
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { role: "admin" }, error: null } },
+            { maybeSingle: { data: null, error: { message: "db" } } },
+          ],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    await expect(updateMemberRole("m1", "admin")).resolves.toEqual({
+      ok: false,
+      error: "databaseError",
+    });
+  });
+
   it("当前成员非管理员返回 onlyAdminsInvite", async () => {
     createClientMock.mockResolvedValue(
       buildClient({
@@ -529,7 +695,7 @@ describe("updateMemberRole()", () => {
             { data: { team_id: "t1" }, error: null },
             { data: { role: "member" }, error: null },
           ),
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -544,11 +710,11 @@ describe("updateMemberRole()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "admin" }, error: null } },
             { maybeSingle: { data: null, error: null } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -563,11 +729,11 @@ describe("updateMemberRole()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "admin" }, error: null } },
             { maybeSingle: { data: { role: "owner" }, error: null } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -582,12 +748,12 @@ describe("updateMemberRole()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "admin" }, error: null } },
             { maybeSingle: { data: { role: "member" }, error: null } },
             { resolve: { error: { message: "db" } } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
@@ -602,12 +768,12 @@ describe("updateMemberRole()", () => {
       buildClient({
         queries: {
           team_members: [
-            { single: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "owner" }, error: null } },
             { maybeSingle: { data: { role: "member" }, error: null } },
             { resolve: { error: null } },
           ],
-          teams: [{ single: { data: TEAM, error: null } }],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
       }),
     );
