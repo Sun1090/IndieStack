@@ -223,6 +223,21 @@ All notable changes to IndieStack will be documented in this file.
   （汉堡菜单）还有 10 处，没有实测失败因此本次不动：那些点里有些不是幂等的，包 `actUntilVisible`
   之前得先想清楚重放的副作用（记在任务里，带行号）。
 
+- **两个移动端菜单按钮同样在跟 hydration 抢跑**（`actUntilVisible` 的第二批调用方）：
+  `e2e/responsive.spec.ts` 的页头汉堡与仪表盘抽屉触发器都是纯客户端 `onClick`，而它们前面的
+  `toBeVisible()` / `aria-expanded=false` 在 hydration 之前就能通过。机制不是推测：临时探针把
+  所有 `script` 请求延后 3s，之后**点一次而菜单不出现**在两处都成立（`toHaveCount(0)` 通过）——
+  也就是说这两条用例今天同样是掷骰子，只是还没人撞见过，CI 的 `retries=2` 一直在替它们兜。
+  改成「先看结果、缺了才点」之后 `--repeat-each=4` 跑 `responsive` + `admin-contact-mfa` 共 76 条全绿。
+  `admin-contact-mfa.spec.ts` 的「开启两步验证」一并包上，但说清楚：**同一支探针下它的点击是落地的**
+  （前面那句 `getByText(...).toBeVisible({timeout:10_000})` 已经把 hydration 等完了），
+  所以那一处是防线、不是修好的 bug；留着是因为它离真正的失败点只差一次挪位置。
+  **刻意没包的几处**：同文件的 sign-in ×5、验证码提交、联系表单提交——它们是 `<form onSubmit=…>` 里的
+  `type="submit"`，一次点击会真的发一轮认证 / 写一行数据。`actUntilVisible` 的语义是
+  「结果没出现就重点一次」，而这类动作在「第一次已发出、结果还在路上」的窗口里会被点第二次。
+  **先定幂等性，再谈重试**；那几处要的是别的机制（等一次客户端校验有反应作为 hydration 屏障，
+  或断言「本轮只提交一次」）。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

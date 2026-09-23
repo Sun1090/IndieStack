@@ -120,8 +120,12 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
   只重试断言（`e2e/keyboard.spec.ts` 的 `retry()`、`e2e/theme.spec.ts` 的 `toggleThemeTo()` 都是这个形状）；
   对「切换」型按钮，每一轮重试要先读当前状态再决定点不点，否则第二次点击会把已经切好的值翻回去。
   新写的用例直接用共享版 `e2e/support/hydrated.ts` 的 `actUntilVisible(act, result)`：它把「先看结果、
-  缺了才动」固化成一个函数，`e2e/account-deletion.spec.ts` 就是它的第一批调用方（那文件的
-  `input.fill()` 曾以 1/6 的概率卡在 60s 超时，报错只有一句 `waiting for getByRole('textbox')`）。
+  缺了才动」固化成一个函数。已接上的调用方：`e2e/account-deletion.spec.ts`（确认表单的入口，
+  含键盘 `Enter` 那一例）与 `e2e/responsive.spec.ts`（页头汉堡、仪表盘抽屉）。
+  **不是所有点击都该包**：`<form onSubmit=…>` 里的 `type="submit"`（sign-in、MFA 验证码、联系表单）
+  一次点击会真的发一轮请求或写一行数据，而 `actUntilVisible` 在「第一次已发出、结果还在路上」的
+  窗口里会点第二次——那些位置要的是别的机制（先拿一次客户端校验的反应当 hydration 屏障，
+  或者断言「本轮只提交一次」）。判断顺序永远是：**先定幂等性，再谈重试**。
   本机复现有两条路：CDP `Emulation.setCPUThrottlingRate`（`rate: 25`）后 reload 并立刻点击；
   或者按 `e2e/hydrated-click.spec.ts` 那样 `page.route` 把 `resourceType === "script"` 的请求统一
   延后 3 秒——后者更确定，而且它同时放着两条用例：一条证明「点一次确实会被吞」，
