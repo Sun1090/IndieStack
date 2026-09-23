@@ -154,9 +154,62 @@ function unwrapAwait(node: ts.Expression): ts.Expression | undefined {
   return unwrapped.awaited ? unwrapped.expression : undefined;
 }
 
-/** Does the asserted type still carry an `error` member? */
+/** The outermost `as` of an expression, through parentheses (`x as unknown as T` → the `as T`). */
+function outermostAs(node: ts.Expression): ts.AsExpression | undefined {
+  let current: ts.Expression = node;
+  for (;;) {
+    if (ts.isParenthesizedExpression(current)) {
+      current = current.expression;
+      continue;
+    }
+    return ts.isAsExpression(current) ? current : undefined;
+  }
+}
+
+/**
+ * Does the asserted type still carry an `error` member that can actually hold an error?
+ *
+ * The member is looked for at the **top level** of the asserted type: `{ data: { error: X } }`
+ * describes a payload that happens to contain the word, not a result whose channel survived.
+ * And `error: null` is the same lie as no `error` at all — it asserts "this query cannot fail" —
+ * so a member whose type has no inhabitant (`null`, `undefined`, `never`, or unions of those)
+ * does not count as keeping the channel.
+ */
 function keepsErrorChannel(type: ts.TypeNode): boolean {
-  return /(^|[{;,]\s*)error\s*[?]?\s*:/.test(type.getText().replace(/\s*\n\s*/g, " "));
+  for (const candidate of typeLiteralCandidates(type)) {
+    for (const member of candidate.members) {
+      if (!ts.isPropertySignature(member) || !member.type) continue;
+      if (memberName(member) !== "error") continue;
+      if (canHoldError(member.type)) return true;
+    }
+  }
+  return false;
+}
+
+/** Name of a property signature, with quotes stripped (`{ "error": … }` is the same member). */
+function memberName(member: ts.PropertySignature): string {
+  return member.name ? member.name.getText().replace(/^["']|["']$/g, "") : "";
+}
+
+/** A type can carry an error unless every inhabitant of it is `null` / `undefined` / `never`. */
+function canHoldError(type: ts.TypeNode): boolean {
+  const parts = ts.isUnionTypeNode(type) ? type.types : [type];
+  return parts.some((part) => {
+    const node = ts.isParenthesizedTypeNode(part) ? part.type : part;
+    // `undefined` 与 `never` 是关键字类型节点；`null` 不是——它 parse 成包着 `null` 的字面量类型。
+    if (node.kind === ts.SyntaxKind.UndefinedKeyword) return false;
+    if (node.kind === ts.SyntaxKind.NeverKeyword) return false;
+    return !(ts.isLiteralTypeNode(node) && node.literal.kind === ts.SyntaxKind.NullKeyword);
+  });
+}
+
+/** Type literals the asserted type is or contains at its top level (through unions / parens). */
+function typeLiteralCandidates(type: ts.TypeNode): readonly ts.TypeLiteralNode[] {
+  if (ts.isTypeLiteralNode(type)) return [type];
+  if (ts.isParenthesizedTypeNode(type)) return typeLiteralCandidates(type.type);
+  if (ts.isUnionTypeNode(type) || ts.isIntersectionTypeNode(type))
+    return type.types.flatMap((part) => typeLiteralCandidates(part));
+  return [];
 }
 
 export interface QueryErrorChannelStats {
@@ -191,18 +244,36 @@ export function collectErrorChannelCasts(
       });
     }
 
+    const judgeCast = (asNode: ts.AsExpression): void => {
+      stats.judged += 1;
+      if (!keepsErrorChannel(asNode.type)) {
+        stats.casts.push({ file: source.file, line: lineOf(asNode.getStart()) });
+      }
+    };
+
     const visit = (node: ts.Node): void => {
       // `x as unknown as T` parses as two nested casts; judge only the outer one, because the
       // inner `unknown` is a stepping stone and would double-count every site.
       if (ts.isAsExpression(node) && !(node.parent && ts.isAsExpression(node.parent))) {
         const awaited = unwrapAwait(node.expression);
-        if (awaited && isQueryChain(awaited)) {
-          stats.judged += 1;
-          if (!keepsErrorChannel(node.type)) {
-            stats.casts.push({ file: source.file, line: lineOf(node.getStart()) });
-          }
+        if (awaited && isQueryChain(awaited)) judgeCast(node);
+      }
+
+      // `await Promise.all([chain as T, …])`: the `await` sits on the outside, so the element's own
+      // cast never matched the branch above and an erased channel there was invisible. Not
+      // hypothetical — the notifications read on the dashboard's first screen is written exactly
+      // this way. Elements that `await` for themselves stay with the branch above, so the same
+      // cast is never counted twice.
+      if (ts.isAwaitExpression(node)) {
+        const elements = promiseAllPromises(unwrapExpression(node.expression).expression);
+        for (const element of elements ?? []) {
+          if (unwrapExpression(element).awaited) continue;
+          const asNode = outermostAs(element);
+          if (!asNode) continue;
+          if (isQueryChain(unwrapExpression(asNode.expression).expression)) judgeCast(asNode);
         }
       }
+
       ts.forEachChild(node, visit);
     };
 

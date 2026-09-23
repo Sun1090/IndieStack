@@ -259,6 +259,26 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`check:query-errors` 的两处失明补上了（C08 #49）**：这条门禁原先对两种写法报绿，而两者说的都是同一句谎。
+  ① `keepsErrorChannel()` 用一条正则看断言类型里**有没有** `error` 成员，于是
+  `as { data: X; error: null }` 算合规——可明写 `error: null` 比不写更硬，它断言的是「这次查询不可能出错」，
+  和抹掉通道是同一件事。现在改成按 AST 取**顶层**的 `error` 成员，并问「这个类型有没有能装下错误的居民」：
+  `null` / `undefined` / `never`（以及它们的并集与括号写法）一律算抹掉，
+  `{ message: string } | null`、`unknown`、引用类型仍然算合规。
+  顺带修掉同一条正则的另一个假阴性：`{ data: { error: X } }` 里那个 `error` 说的是**载荷**不是结果，
+  从前也算保住通道。② `await Promise.all([chain as T, …])` 的元素自己不带 `await`
+  （`await` 落在外层），而判据要求「awaited 的链」，所以那一处的抹除完全看不见。
+  现在元素级也判，并沿用同一条「必须是 `.from()` / `.rpc()` 链」的收窄——
+  `Promise.all` 里一个普通调用的断言仍然不判，`Promise.allSettled` 与未 await 的 `Promise.all` 也在射程外；
+  元素自己 `await` 过时交给外层那一支，避免同一处双计。
+  先量后写（D01）：全库 358 个文件里，①的写法**当前 0 处**（这条纯属补洞，台账没有新增），
+  ②射程内共 5 条 `Promise.all` 元素查询链、其中 1 条带断言，就是仪表盘第一屏那条 notifications
+  ——它带着 `error` 成员，所以今天没有活的缺陷；补洞之后门禁的判到数从 3 变 4，
+  并新增一条打在真实文件上的用例：把那条断言的 `error` 成员改成 `null`，门禁必须红
+  （接线前它怎么改都是绿的）。单测 30 → 39；变异核对 11 项**全部被杀死**，
+  其中包括第一版写多的一行——`node.kind === NullKeyword` 那个分支永远走不到（`null` 在类型位置
+  parse 成字面量类型节点），删掉它之后对应的变异才真的被测试抓住。
+
 - **E2E 种子端点不再抹掉它没读到的偏好**（C08-c 第八批，**非 `justified` 的读数到此清零**）：
   `api/e2e/push-queue` 的 `setPushPreference` 读的是**要被自己覆盖的那一列**——
   `notification_settings` 是一个装着多种偏好的 JSON 列，读失败时 `current` 落成 `{}`，

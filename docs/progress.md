@@ -1899,3 +1899,43 @@
 - 下一件事：#49（断言里明写 `error: null` 与 `Promise.all` 元素断言这两处瞎点，判据要按 AST 重量）。
   C08 这一族到此只剩下它。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — #49：门禁的两处失明补上（`error: null` 与 `Promise.all` 元素断言）
+
+- 里程碑 / 版本：v0.12.0 / C08 #49（C08 这一族的最后一项）。
+- 分支 / PR：`fix/c08-gate-range-holes` → **PR #114**（栈在 #113 之上，停在 ready-for-review）。
+- 状态：DONE（PR 待 review 合并）。
+- **先量后写**（D01，重量脚本是一次性探针，不进门禁）：全库 358 个文件里 awaited 链上的断言一共 3 处，
+  把 `error` 成员写成永不成立（`error: null` / `undefined` / `never` 及并集）的 **0 处**。
+  也就是说这条**不产生任何台账**——它是纯补洞，价值在「下一个 PR 写不出来」。
+  同一次重量出第二个洞的真实规模：`await Promise.all([...])` 的元素里 5 条查询链、其中 1 条带断言，
+  正是仪表盘第一屏那条 notifications（`dashboard/page.tsx:99`）。它带着 `error` 成员所以今天是合规的，
+  但**判据完全看不见它**：`await` 落在 `Promise.all` 上，而旧判据要求「断言外面套 `await`」。
+  换句话说那处今天写错成 `error: null` 也不会红。
+- 改法两条，都尽量不加宽度：
+  1. `keepsErrorChannel()` 从「全文正则找 `error:`」改成「按 AST 取**顶层** `error` 成员，
+     再问那个类型有没有能装下错误的居民」。顺手修掉同一个正则的另一处假阴性：
+     `{ data: { error: X } }` 里那个 `error` 是**载荷**不是结果，从前算合规。
+  2. `Promise.all` 元素级断言进射程，且沿用「必须是 `.from()` / `.rpc()` 链」这条收窄——
+     这条收窄是**特意配了用例才守得住的**：`Promise.all` 里一个普通调用的断言不该被算成判到，
+     否则「射程变宽」和「判据变松」在输出里长得一样（N4 删掉这个条件即由该用例红）；
+     元素自己 `await` 过时交给通用那一支，避免同一处双计（N3 钉这条）。
+- 判据的自检跟着升级：新增一条打在**真实文件**上的用例——读 `src/app/dashboard/page.tsx`，
+  把那条断言的 `error: { message: string } | null` 文本替换成 `error: null`，门禁必须报
+  `QUERY_ERROR_CHANNEL_CAST_AWAY`；原样必须不报。替换不动就红（`expect(erased).not.toBe(original)`），
+  免得站点漂移后这条用例安静地变成空转。
+- 变异核对 **11 项全部被杀死**（P1–P4 判据细节、N2–N4 射程、N5–N8 判定退化）。
+  第一轮里 N1 存活，查出来不是测试弱而是**代码里有一行永远走不到**：
+  `node.kind === SyntaxKind.NullKeyword` 那个分支——`null` 出现在类型位置 parse 成的是
+  包着 `null` 的**字面量类型节点**，不是关键字类型节点。删掉死码后，对应的变异（P1）才真的被测试抓住。
+  一次「测试没杀死变异」反过来暴露了实现里的死分支，这是本轮最值钱的输出。
+- 门禁输出因此从 `3 处 awaited 断言` 变成 `4 处`（判到变多，违规数不变，台账仍然 断言 2 / 解构 2）。
+- 变更文件：`src/lib/security/query-error-channel.ts`、`.test.ts`（30 → 39 条）、
+  `CHANGELOG.md`、`docs/testing.md`（判定范围两条改写）、`docs/roadmap-0.12.0.md`（#49 关闭并记规模）、
+  `docs/progress.md`。
+- 验证：`pnpm -s lint` / `pnpm -s type-check` → exit 0；`node scripts/check-query-error-channel.js` →
+  `358 个文件 / 4 处 awaited 断言 + 165 处 awaited 解构，台账 断言 2 / 解构 2`，exit 0；
+  `CI=true pnpm check:all` → exit 0（38 道门禁）；`pnpm test` → exit 0；`pnpm build` → exit 0。
+- 下一件事：C08 这一族（断言 + 解构 + 射程）到此关闭。回到栈上待合并的 #92…#114，
+  以及仍然阻塞在平台配额上的 #28（生产冒烟）。
+- 更新时间：2026-09-23（UTC）。
