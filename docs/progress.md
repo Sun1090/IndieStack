@@ -39,6 +39,13 @@
     `src/lib/email-notify.ts`、`src/app/api/cron/digest/route.ts:221` 都是 `${siteUrl()}/api/...`
     字符串拼接，尾斜杠会拼出 `//api/...`。双斜杠在 Next 路由上到底成不成，**尚未实测**，
     所以只登记不下结论——这是下一条要量的东西。
+- 后续复测（同日，量完即结）：那条「尚未实测」已经量掉了，**阴性**——Next 16.3.5 对 `//path`
+  是 `308` 归一化到 `/path` 且**保留查询串**，`next start`（3220）与 `next dev`（3221）行为一致：
+  `//api/marketing/confirm?token=bad → 308 → /api/marketing/confirm?token=bad → 200`、
+  `//dashboard → 308 → /dashboard`。所以邮件里的双斜杠只是一次多余跳转，不是坏链接，
+  **不需要第二个修复**。缺陷因此收窄成「WebAuthn 那种严格相等比较才真的会坏」——
+  字符串拼接有路由器兜着，密码学校验没有。测量用的 `NEXT_DIST_DIR=.next-e2e-probe2` 又往
+  `tsconfig.json` 追加了两条 include（本机跑过的第三次），已核对差异只含生成条目后还原，探针目录已删。
   - APP_URL 完全没协议（`example.com`）时 `new URL` 抛错，`register-options` 在 try 之外调 `rpId()`，
     结果是 500 而不是可诊断的文案。属既有行为，本次未引入也未扩大；要不要做成 fail-fast 带文案，
     和「三处 siteUrl 是否收成一份」一起放下一条。
