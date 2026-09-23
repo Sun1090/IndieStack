@@ -208,8 +208,12 @@ All notable changes to IndieStack will be documented in this file.
   `src/lib/repositories/webauthn.ts` 按设计在 `error` 时 `throw`（这是 C08 的口径，不是缺陷），
   调用方各自收口——Server Action 走 `try`→`fail("databaseError")`，设置页走 `src/app/dashboard/error.tsx`
   边界。只有 `register-options` 的 `listMyCredentials()` 和 `auth-verify` 的 `findCredentialById()`
-  在 `try` 之外（27 个 `app/api/**/route.ts` 里只有这两处，另一个无 try 的是 e2e 种子路由）：
-  数据库一抖，客户端拿到的不是它一直在等的 JSON，而是一张 500 的 HTML 错误页；而 `auth-verify`
+  在 `try` 之外。这不是普遍失守，是一条逐处核过的账：用括号深度跟踪扫完 28 个 `app/api/**/route.ts`，
+  「调用 repositories 导出函数且该调用不在任何 try 内」的位置共 6 处——passkey 这两处是真抛穿（已修）；
+  `api/user` 的两处调的是**返回 error 通道**的函数，路由就地判了 `error` 并回 500 JSON；
+  `cron/digest` 那处在自己的函数体里抛，但它的调用方把整句包进 `try` 并记
+  `cron.digest.receipt_failed{stage="retry"}`；剩下 1 处是 `api/e2e/*` 测试种子路由，不在生产路径上。
+  后果是：数据库一抖，客户端拿到的不是它一直在等的 JSON，而是一张 500 的 HTML 错误页；而 `auth-verify`
   头部写着「challenge cookie 每次验证尝试后立即清除，避免浏览器重放」，抛穿那条路径上没人清它，
   于是一条**文档里已声明的边界**只在顺利时成立。
   修法是把「读不到」做成第三种状态而不是一个猜测：`loadCredential()` 返回 `undefined`=问不出答案、
