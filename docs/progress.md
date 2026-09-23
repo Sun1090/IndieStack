@@ -1157,7 +1157,7 @@
 ## 2026-09-23 — 预热清单与 spec 实际导航目标对账：4 条 vs 16 条（#55 #56）
 
 - 里程碑 / 版本：v0.12.0 / C 域（并行基线可信度），C02 的后半。
-- 分支 / PR：`chore/e2e-warm-route-inventory`（基在 main `ad4b029`，停在 ready-for-review；
+- 分支 / PR：`chore/e2e-warm-route-inventory` → **PR #120**（基在 main `ad4b029`，停在 ready-for-review；
   base 是 main ⇒ CI 会真跑 E2E）。
 - 状态：DONE（PR 待 review 合并）。
 - 起因是 #119 跑全量并行基线时顺手看了一眼 `warm-up.ts`：清单是
