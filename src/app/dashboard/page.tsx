@@ -30,6 +30,8 @@ function thirtyDaysAgoIso(): string {
   return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 }
 
+type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];
+
 export default async function DashboardOverview() {
   const supabase = await createClient();
   const {
@@ -41,42 +43,46 @@ export default async function DashboardOverview() {
   const tc = await getTranslations("common");
 
   // 获取用户资料
-  const { data: profile } = (await supabase
+  // 这几处断言原先都明写着 `error: null`——那不是「保留了错误通道」，是断言「这次查询不可能出错」。
+  // 后果是这个首页（多数用户进来看到的第一屏）会把一次抖动渲染成一堆合法的终态：
+  // 0 个项目、0 次调用、0 个会话、没有通知、套餐显示成 free。
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single()) as unknown as {
-    data: Database["public"]["Tables"]["profiles"]["Row"] | null;
-    error: null;
-  };
+    .maybeSingle();
+  if (profileError) {
+    throw new Error(`读取个人资料失败：${profileError.message}`);
+  }
 
   // 获取团队信息
-  const { data: membership } = (await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id, teams(name, plan, member_count)")
     .eq("user_id", user!.id)
     .limit(1)
-    .single()) as unknown as {
-    data: { team_id: string; teams: { name: string; plan: string; member_count: number } } | null;
-    error: null;
-  };
+    .maybeSingle();
+  if (membershipError) {
+    throw new Error(`读取团队归属失败：${membershipError.message}`);
+  }
 
-  const teamInfo = membership?.teams as unknown as
-    { name: string; plan: string; member_count: number } | undefined;
+  const teamInfo = membership?.teams ?? null;
   const currentPlan = teamInfo?.plan ?? "free";
 
   const since30Days = thirtyDaysAgoIso();
   const teamId = membership?.team_id;
 
   const [
-    { count: projectCount },
-    { count: apiCallCount },
-    { count: sessionCount },
-    { data: notifications },
+    { count: projectCount, error: projectError },
+    { count: apiCallCount, error: apiCallError },
+    { count: sessionCount, error: sessionError },
+    { data: notifications, error: notificationsError },
   ] = await Promise.all([
+    // 没有团队是合法状态（个人用户本来就没有项目），所以这里给的是 0 而不是错误；
+    // 但「查了没查到」与「没查成」仍然要分开，故两支都带 `error`。
     teamId
       ? supabase.from("projects").select("*", { count: "exact", head: true }).eq("team_id", teamId)
-      : { count: 0 },
+      : { count: 0, error: null },
     supabase
       .from("api_usage")
       .select("*", { count: "exact", head: true })
@@ -87,15 +93,26 @@ export default async function DashboardOverview() {
       .select("*", { count: "exact", head: true })
       .eq("user_id", user!.id)
       .gte("created_at", since30Days),
+    // 这条断言**留着**，因为不写它 `notifications` 会被推断成 `any`（Promise.all 里混了
+    // `{ count, error }` 的字面量分支，链的类型在这里合不起来）。与上面被删掉的那几条的差别是：
+    // 它带 `error` 成员，所以说的是「错误可能存在，而我会去看」——下面 `notificationsError` 真的在看。
     supabase
       .from("notifications")
       .select("*")
       .eq("user_id", user!.id)
       .order("created_at", { ascending: false })
       .limit(5) as unknown as {
-      data: Database["public"]["Tables"]["notifications"]["Row"][] | null;
+      data: NotificationRow[] | null;
+      error: { message: string } | null;
     },
   ]);
+
+  // 四个数字拼成的是「你的产品有人用吗」这张图：原先任何一路失败都会落成 0，
+  // 读起来就像「还没人用」，而真实原因可能是我们没读到。
+  if (projectError) throw new Error(`读取项目数失败：${projectError.message}`);
+  if (apiCallError) throw new Error(`读取 API 调用数失败：${apiCallError.message}`);
+  if (sessionError) throw new Error(`读取会话数失败：${sessionError.message}`);
+  if (notificationsError) throw new Error(`读取最近通知失败：${notificationsError.message}`);
 
   const locale = await getLocale();
   const recentActivity = (notifications ?? []).map((notification) => ({

@@ -244,6 +244,26 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **仪表盘第一屏不再把读失败渲染成一整屏合法的 0**（C08-c 第六批）：
+  `dashboard/page.tsx` 六处读取（资料、团队归属、项目数、API 调用数、会话数、最近通知）
+  原先两处明写 `error: null`、四处压根不绑 `error`。于是一次抖动显示成
+  「0 个项目 / 0 次调用 / 0 个会话 / 没有通知 / 套餐 free」——每个数字看起来都像刚初始化的实例。
+  现在六处各自 `throw`（渲染前，交给 `dashboard/error.tsx` 的重试入口）；
+  「确实没有归属」（个人用户不查 projects）与「跑完了、计数就是 0」仍是合法答案。
+  两处 `.single()` 换 `.maybeSingle()`，否则真缺行会以 PGRST116 的形式被当成故障。
+  唯一保留的断言是最近通知那条，且它**带 `error` 成员**：`Promise.all` 里混了字面量分支之后
+  链的类型合不起来，不写断言 `notifications` 就是 `any`（TS7006 直接挡在那里）——
+  与删掉的那几条的差别正在于它说的是「错误可能存在，而我会去看」。
+  新增 10 条用例（这个页面此前零单测）。桩这次直接带上「`.single()` 撞 null 行 = 真错误」的语义
+  （第二次写这条，见 #107），于是 D8 那种「从 maybeSingle 退回 single」的改法当场红。
+  变异核对 9 项（D1–D9）全部被杀死：删五条守卫、把合法空分支说成故障、数字写死成 0、
+  退回 `.single()`、以及把真缺资料行当故障。
+  **一个形状上的教训**：`textsOf` 必须走 props，光走 `children` 会漏掉 `<StatsCard value={…} />`
+  这种把值当 prop 传的组件——这一版第一遍就只断到文案，三个统计数一个都没断到，
+  是 `'Ada'` 那条红了才暴露的（走 `children` 时它们本来就藏在 props 里）。
+  规模同步：`--unbound` 11 → **6 处**（剩下 `settings/page.tsx` 2、`api/e2e/push-queue` 2、
+  `permission-gate.tsx` 2 处 `justified`）。
+
 - **结账的两处读取原先的故障方向是「放行」**（C08-c 第五批）：
   `api/stripe/checkout` 解析团队归属与「团队是否已有有效订阅」这两次读取都不绑 `error`，
   于是读失败 → `membership` 为 null → scope 检查整个跳过 → **已经有订阅的团队被允许再买一份**。
