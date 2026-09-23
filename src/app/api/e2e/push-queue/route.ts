@@ -83,11 +83,17 @@ function isoAt(offsetMs: number): string {
 /** 把 mock 用户的 push 偏好设为指定值，其余偏好保持不变 */
 async function setPushPreference(disabled: boolean): Promise<void> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("profiles")
     .select("notification_settings")
     .eq("id", MOCK_USER_ID)
     .maybeSingle();
+  // 这次读取决定「拿什么去覆盖整列」：`notification_settings` 是一个装着多种偏好的 JSON 列，
+  // 读失败时 `current` 会是 `{}`，下面那句 update 就把用户其余偏好**全部抹掉**，只留下 push。
+  // 种子端点没有资格悄悄改写它没读到的东西——读不到就停下来。
+  if (error) {
+    throw new Error(`[e2e/push-queue] 读取 notification_settings 失败：${error.message}`);
+  }
   const current = ((data as { notification_settings?: Record<string, unknown> } | null)
     ?.notification_settings ?? {}) as Record<string, unknown>;
   await admin
@@ -227,10 +233,15 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return jsonNoStore({ error: error.message }, { status: 500 });
 
-  const { data: subscriptions } = await admin
+  const { data: subscriptions, error: subscriptionsError } = await admin
     .from("push_subscriptions")
     .select("id,endpoint")
     .eq("user_id", MOCK_USER_ID);
+  // 上面那条 attempts 查询绑了 `error`，这一条没有——于是「订阅读不到」和
+  // 「用户确实没有订阅」在 spec 里长得一模一样，测试会拿一份假的观察去断言真实行为。
+  if (subscriptionsError) {
+    return jsonNoStore({ error: subscriptionsError.message }, { status: 500 });
+  }
 
   const attempts = ((data ?? []) as Record<string, unknown>[]).map((row) =>
     Object.fromEntries(ATTEMPT_COLUMNS.map((column) => [column, row[column]])),
