@@ -225,6 +225,28 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **上传不再把「读不到」当成「没有旧文件」，也不再指控用户没权限**（C08-b 第四批）：
+  `src/lib/uploads/service.ts` 三处 `(await …) as unknown as { data: … }` 断言改为绑定 `error`。
+  封面上传的两处读取（项目行、调用者在该团队的角色）发生在任何写入之前，读失败原先分别长成
+  `projectNotFound`（这个项目真的不存在，重试不会变）和 `onlyAdminsCreateProject`（指控用户没权限）
+  ——一次数据库抖动会被说成一条关于权限的事实，而该做的只是再点一次。
+  头像那处更实在：它读的是**要被换掉的那张旧头像**，唯一用途是删掉它。读失败时原先当成「没有旧头像」
+  继续写 `avatar_url`，于是旧对象失去唯一指向它的业务行，变成一个只能等孤儿巡检去发现的 bucket 孤儿。
+  现在三处一律中止：头像那处走既有回滚路径（删掉刚写入的新对象并标记元数据 deleted），
+  业务表一次都不写。
+  新增专用错误码 `uploadUnavailable`（en/zh-CN 各一条文案，说明「本次未改动任何内容，请稍后重试」），
+  在 `src/lib/uploads/request.ts` 的映射里对应 **HTTP 503**——不复用 `uploadFailed`（500 说的是服务器坏了），
+  也不用泛化的 `databaseError`。「没这一行」（`maybeSingle()` 给 `data: null` 且 `error` 为 `null`）
+  仍是合法状态、照常上传，故障与合法状态是两个回答。`docs/db/upload-metadata.md` 的写入协议图补上这个中止点。
+  补 5 条用例（头像 2 条：读失败必须中止且不覆盖、缺行必须照常上传；封面 2 条：两处读取各自答对；
+  错误码映射 1 条），另在 `storage-metrics.test.ts` 钉一条「`uploadUnavailable` 的终态是 failure
+  而不是 cancelled」。变异核对 7 项（M1–M7）逐项红且只红对应那条，其中 M4/M5 是反向证据——
+  把合法状态也改成故障会红，证明这套用例不是「只要报错就算对」；M6 撤掉中止时的回滚、
+  M7 把 503 从映射里删掉各红自己那条。台账 11 → 8 处（debt 9 → 6）。
+  复杂度门禁（`complexity` max 15，该文件不在存量豁免名单里）把封面那两次读取挤成了
+  `readCoverUploadScope()`：授权判定本来就该是一个能单独说「granted / refused」的东西，
+  这条规则又一次不是噪音而是设计信号。
+
 - **团队邀请链上的每一次读取故障，不再被答成一条关于权限或注册状态的事实**（C08-b 第三批）：
   `src/app/api/invitations/route.ts` 里五处 `(await …) as unknown as { data: … }` 断言（发起人的团队归属、
   他在该团队的角色、对方是否已是成员、被移除的成员行、操作人角色）全部改为绑定 `error`，读失败时记日志并回

@@ -1359,3 +1359,59 @@
   再往后是 ③ 的两处页面读数（`team/page.tsx`、`billing/page.tsx`）。`permission-gate.tsx` 两处是
   `justified`，不在清偿范围内。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-b 第四批：上传不再把「读不到」当成「没有旧文件」
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 11 → 8 处，debt 9 → 6）。
+- 分支 / commit：`fix/c08b-uploads-service`（栈在 #98 → #94 → #93 → #92 之上；门禁与台账住在
+  还没合并的 #92 里，合并后 GitHub 会依次把 base 接回 main）。
+- 状态：DONE（PR 待 review 合并）。
+- 这一批与前三批的差别：前三处是「把故障说成一个事实」，改完判断就够了；这里的第三处改完判断之后
+  **必须再做一个行为决策**——读不到「要被换掉的旧头像」时，是继续上传（旧对象变成孤儿）还是中止
+  （用户重试一次）。选了中止，理由是这个仓库在 A10/C05 上已经付过学费：脱离登记的旧对象只能等巡检
+  去发现，而巡检是**事后**的、按天计的；一次可重试的 503 是**当场**的、按次计的。
+  封面那两处更不用犹豫——读取发生在任何写入之前，中止零成本。
+- 做了什么：
+  1. `uploadProjectCoverFileImpl`：项目行与调用者角色两处断言改为绑定 `error`；读失败 →
+     记日志 + `fail("uploadUnavailable")`，`put` 一次都不发生。`projectNotFound`（终态）与
+     `onlyAdminsCreateProject`（关于用户的结论）只在真的读到那一行时才说。
+  2. `uploadAvatarFileImpl`：读 `profiles.avatar_url` 改为绑定 `error`；失败时**不覆盖**业务表，
+     并走既有回滚（`cleanupAfterFailure` 删新对象 + 标记元数据 deleted）。取消检查仍排在读取之后、
+     故障判断之前——E05 的终态口径要求「用户取消」不被算进失败率分子，两件事同时发生时取消更准确。
+  3. 新增错误码 `uploadUnavailable`：`messages/{en,zh-CN}/actions.json` 各一条（中文刻意不带你/您，
+     与相邻的「上传失败，请稍后重试。」同形），`src/lib/uploads/request.ts` 的 `ERROR_STATUS`
+     映射 **503**。不复用 `uploadFailed`（500 = 服务器坏了）也不复用 `databaseError`。
+     文案承诺的是「本次未改动任何内容」——这在三个中止点上都成立，因为业务表都没写。
+  4. `docs/db/upload-metadata.md` 的写入协议图补上这个中止点，并在「失败路径的取舍」里写清为什么
+     「没这一行」和「没读到」必须是两个回答（前者照常上传，后者中止并回滚）。
+- 覆盖：补 5 条（头像 2 + 封面 2 + 错误码映射 1），另在 `storage-metrics.test.ts` 钉一条
+  「`uploadUnavailable` 的终态是 failure 而不是 cancelled」——它是真故障，要进失败率分子。
+  老规矩，故障用例与合法状态用例成对：
+  「profiles 行确实不存在」必须**照常上传**，「项目确实不存在」必须仍是 `projectNotFound`。
+  `coverClient()` 加了第三个参数按读取位置注入故障，`avatarClientWithRead()` 只替那一次读取。
+- 一条规则把我逼向了更好的结构：`uploadProjectCoverFileImpl` 加上两个 guard 之后
+  `complexity 16 > 15` 被 ESLint 拦下（这个文件不在存量豁免名单里，也不打算加）。
+  抽出 `readCoverUploadScope()` 返回 `granted | refused` 之后降到 12，而且授权判定第一次成了一个
+  可以单独讨论的东西。这是本仓库第二次遇到「复杂度门禁逼出正确拆分」（第一次是 PR #96 的
+  `readCheckoutScope`），记下来：**这两个案子都不是把阈值调高，而是那段判断本来就该有自己的名字。**
+- 验证（全部在最后一次改动之后重跑）：
+  - 变异核对 7 项（M1–M7）逐项红且只红对应那条。三个 guard 空转各红自己那条；
+    **M4/M5 是反向证据**（把合法状态也改成故障会红），证明这套用例不是「只要报错就算对」；
+    M6 撤掉中止时的回滚 → 红在「不留孤儿」那条；M7 把 `uploadUnavailable: 503` 从映射里删掉 →
+    红在状态映射那条（退回 `?? 500`）。变异前后 `git diff --stat` 比对确认源码还原。
+  - `pnpm check:query-errors` → 「358 个文件 / 20 处 awaited 查询结果断言，无未登记的抹除（台账 8 处）」，
+    删掉该文件的三条台账条目之前它先报 `QUERY_ERROR_CHANNEL_EXEMPT_STALE`。
+  - `npx vitest run src/lib/uploads src/lib/observability` → 16 文件 / 196 passed。
+  - `pnpm lint` / `pnpm type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**
+    （38 道门禁、206 个测试文件全过）；`pnpm build` → exit 0。
+    这一串是**抽出 `readCoverUploadScope()` 之后**重跑的：第一次 `pnpm lint` 因
+    `complexity 16 > 15` 红，`check:all` 也在第一道门禁就中止（它不往后跑），所以那一次的
+    「206 全过」根本不存在——按最终形态重跑才有数。
+  - 浏览器侧取证：`npx playwright test e2e/uploads.spec.ts` → **5/5 通过**（23.5s，含「上传中显示进度
+    并支持取消」那条）。日志里的 `Error: aborted / ECONNRESET` 是浏览器主动断开造成的，属既有的预期噪音。
+    这一条要跑的理由：`e2e/uploads.spec.ts` 只在「取消」那一条上 `page.route()` 截了 `/api/uploads/avatar`，
+    其余四条是**真的**打到路由 handler → `service.ts` → Mock 客户端，改的正是这条链上读结果的分支判断。
+- 下一批（C08-b 收尾）：`lib/actions/sessions.ts` 与 `lib/actions/api-keys.ts` 各一处（②的尾巴），
+  然后 ③ 的 `dashboard/team/page.tsx` 两处与 `dashboard/billing/page.tsx` 一处。
+  `permission-gate.tsx` 两处是 `justified`，不在清偿范围内。
+- 更新时间：2026-09-23（UTC）。

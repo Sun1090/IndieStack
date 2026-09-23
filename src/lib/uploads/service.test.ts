@@ -216,6 +216,49 @@ describe("uploadAvatarFile", () => {
     await uploadAvatarFile(supabaseForAvatar(), png());
     expect(markDeletedMock).not.toHaveBeenCalledWith("avatars", "avatars/u1/old.png");
   });
+
+  /** 只替 `profiles` 那一次读取的结果，其余流程照旧。 */
+  function avatarClientWithRead(
+    read: { data?: unknown; error?: unknown },
+    update = vi.fn(async () => ({ error: null })),
+  ) {
+    return {
+      auth: { getUser: vi.fn(async () => ({ data: { user: USER } })) },
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => read) })),
+        })),
+        update: vi.fn(() => ({ eq: update })),
+      })),
+    } as never;
+  }
+
+  it("读不到旧 avatar_url 时中止：不覆盖 profiles，也不留下没人引用的旧对象", async () => {
+    const update = vi.fn(async () => ({ error: null }));
+    const supabase = avatarClientWithRead(
+      { data: null, error: { message: "connection reset" } },
+      update,
+    );
+
+    await expect(uploadAvatarFile(supabase, png())).resolves.toEqual({
+      ok: false,
+      error: "uploadUnavailable",
+    });
+    // 关键的一条：覆盖写入绝不能发生，否则旧 URL 失去唯一指向它的行，变成 bucket 孤儿。
+    expect(update).not.toHaveBeenCalled();
+    // 中止也不等于「什么都没发生」：刚写进去的新对象要走既有回滚路径删掉并标记。
+    expect(removeMock).toHaveBeenCalledWith("avatars/u1/key.png", expect.any(Object));
+    expect(markDeletedMock).toHaveBeenCalledWith("avatars", "avatars/u1/key.png");
+  });
+
+  it("profiles 行确实不存在时照常上传（读不到 ≠ 没有这一行）", async () => {
+    const update = vi.fn(async () => ({ error: null }));
+    await expect(
+      uploadAvatarFile(avatarClientWithRead({ data: null }, update), png()),
+    ).resolves.toEqual({ ok: true, data: { url: "https://cdn.example/uploads/k.png" } });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(removeMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("上传请求终态指标（E05）", () => {
@@ -324,20 +367,38 @@ describe("上传请求终态指标（E05）", () => {
 });
 
 describe("uploadProjectCoverFile", () => {
-  function coverClient(project: { team_id: string; logo_url: string | null } | null, role: string | null) {
+  function coverClient(
+    project: { team_id: string; logo_url: string | null } | null,
+    role: string | null,
+    readErrors: { project?: unknown; role?: unknown } = {},
+  ) {
     return {
       auth: { getUser: vi.fn(async () => ({ data: { user: USER } })) },
       from: vi.fn((table: string) => {
         if (table === "projects") {
           return {
-            select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: project })) })) })),
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () =>
+                  readErrors.project
+                    ? { data: null, error: readErrors.project }
+                    : { data: project },
+                ),
+              })),
+            })),
             update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
           };
         }
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: role ? { role } : null })) })),
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () =>
+                  readErrors.role
+                    ? { data: null, error: readErrors.role }
+                    : { data: role ? { role } : null },
+                ),
+              })),
             })),
           })),
         };
@@ -357,6 +418,33 @@ describe("uploadProjectCoverFile", () => {
       ok: false,
       error: "onlyAdminsCreateProject",
     });
+    expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it("项目行读失败时是 uploadUnavailable，不是「项目不存在」", async () => {
+    await expect(
+      uploadProjectCoverFile(
+        coverClient({ team_id: "t1", logo_url: null }, "admin", {
+          project: { message: "too-many-requests" },
+        }),
+        "p1",
+        png(),
+      ),
+    ).resolves.toEqual({ ok: false, error: "uploadUnavailable" });
+    // 授权判定还没做完之前，一个字节都不该写进 bucket
+    expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it("角色读失败时是 uploadUnavailable，不是「只有管理员能操作」", async () => {
+    await expect(
+      uploadProjectCoverFile(
+        coverClient({ team_id: "t1", logo_url: null }, "admin", {
+          role: { message: "connection terminated" },
+        }),
+        "p1",
+        png(),
+      ),
+    ).resolves.toEqual({ ok: false, error: "uploadUnavailable" });
     expect(putMock).not.toHaveBeenCalled();
   });
 

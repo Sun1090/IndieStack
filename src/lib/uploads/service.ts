@@ -228,14 +228,28 @@ async function uploadAvatarFileImpl(
     });
     if ("error" in staged) return fail(staged.error);
 
-    const { data: previousProfile } = (await supabase
+    const { data: previousProfile, error: previousProfileError } = await supabase
       .from("profiles")
       .select("avatar_url")
       .eq("id", user.id)
-      .maybeSingle()) as unknown as { data: { avatar_url: string | null } | null };
+      .maybeSingle();
     if (isAborted(options.signal)) {
       await cleanupAfterFailure(key, "avatar-upload-cancel", user.id);
       return fail("uploadCancelled");
+    }
+
+    // 这一次读取只有一个用途：拿到「要被换掉的那张旧头像」，好顺手把它删掉。
+    // 读失败时不能当成「没有旧头像」往下走——`avatar_url` 会被改成新对象，旧对象从此
+    // 没有任何业务行指向它，变成一个只能等孤儿巡检去发现的 bucket 孤儿。
+    // 所以在这里中止：新对象按既有回滚路径删掉（含元数据标记），旧 URL 仍然被引用，重试即可。
+    if (previousProfileError) {
+      logger.error(
+        "avatar metadata read failed before update",
+        { operation: "avatar-upload", resourceId: user.id },
+        previousProfileError,
+      );
+      await cleanupAfterFailure(key, "avatar-upload-rollback", user.id);
+      return fail("uploadUnavailable");
     }
 
     const { error } = await supabase
@@ -277,6 +291,57 @@ async function uploadAvatarFileImpl(
   }
 }
 
+/** 封面上传前的授权判定：`granted` 才带着项目行继续，`refused` 里就是最终回答。 */
+type CoverUploadScope =
+  | { status: "granted"; project: { team_id: string; logo_url: string | null } }
+  | { status: "refused"; error: string };
+
+/**
+ * 这两次读取都是**上传前的授权判定**，读失败必须与「查不到 / 没权限」分开说：
+ * `projectNotFound` 是终态（这个项目真的不存在，重试不会变），`onlyAdminsCreateProject`
+ * 指控用户没权限，而真正发生的是一次数据库抖动。两者都会把人送去开工单，而该做的只是再点一次。
+ * 走到这里还没有写任何对象，中止零成本。
+ */
+async function readCoverUploadScope(
+  supabase: UploadClient,
+  projectId: string,
+  userId: string,
+): Promise<CoverUploadScope> {
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("team_id, logo_url")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (projectError) {
+    logger.error(
+      "project row read failed before cover upload",
+      { operation: "project-cover-upload", resourceId: projectId },
+      projectError,
+    );
+    return { status: "refused", error: "uploadUnavailable" };
+  }
+  if (!project) return { status: "refused", error: "projectNotFound" };
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", project.team_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (membershipError) {
+    logger.error(
+      "team role read failed before cover upload",
+      { operation: "project-cover-upload", resourceId: projectId },
+      membershipError,
+    );
+    return { status: "refused", error: "uploadUnavailable" };
+  }
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    return { status: "refused", error: "onlyAdminsCreateProject" };
+  }
+  return { status: "granted", project };
+}
+
 /** 上传项目封面并回写 projects.logo_url；仅所属团队 owner/admin 可操作。 */
 async function uploadProjectCoverFileImpl(
   supabase: UploadClient,
@@ -289,24 +354,9 @@ async function uploadProjectCoverFileImpl(
   } = await supabase.auth.getUser();
   if (!user) return fail("notAuthenticated");
 
-  const { data: project } = (await supabase
-    .from("projects")
-    .select("team_id, logo_url")
-    .eq("id", projectId)
-    .maybeSingle()) as unknown as {
-    data: { team_id: string; logo_url: string | null } | null;
-  };
-  if (!project) return fail("projectNotFound");
-
-  const { data: membership } = (await supabase
-    .from("team_members")
-    .select("role")
-    .eq("team_id", project.team_id)
-    .eq("user_id", user.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null };
-  if (!membership || !["owner", "admin"].includes(membership.role)) {
-    return fail("onlyAdminsCreateProject");
-  }
+  const scope = await readCoverUploadScope(supabase, projectId, user.id);
+  if (scope.status === "refused") return fail(scope.error);
+  const { project } = scope;
 
   const validated = await readValidatedImage(file, options.signal);
   if (!validated.ok) return fail(validated.error);
