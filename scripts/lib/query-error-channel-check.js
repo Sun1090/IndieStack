@@ -118,9 +118,9 @@ export function runUnboundErrorChannelReport(repoRoot = REPO_ROOT) {
     );
   }
   console.log(
-    "\n盲区（不在射程内，别把这份清单当全量）：`Promise.all` 里的查询链、非字面量表名的链、" +
-      "被条件表达式包住的链（`cond ? await query : { … }`，所以这份清单是下界），" +
-      "以及「绑了 `error` 却从不使用」那一档（需要作用域分析，没测）。",
+    "\n射程外（会漏，别把这份清单当全量）：`Promise.all` 之外自造的并发 helper（`allSettled` 等）、" +
+      "`Promise.all` 数组元素里再套三元、以及「绑了 `error` 却从不使用」那一档" +
+      "（需要作用域分析，刻意没测）。",
   );
   return 0;
 }
