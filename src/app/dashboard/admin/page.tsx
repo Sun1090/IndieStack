@@ -44,14 +44,28 @@ export default async function AdminPage() {
     roleCount = mock.roleCount;
   } else {
     const supabase = createAdminClient();
-    const { count: usersCount } = await supabase
+    // 这三处读的是**面板上唯一的数字**，读失败原先一律落成 0：
+    // 「0 个用户 / 0 个团队 / 0 个管理员」看起来像一个刚初始化的空实例，而不是
+    // 一次查询故障——而 0 是终态，没有人会去刷新。改成渲染前就抛，交给错误页给重试入口。
+    const { count: usersCount, error: usersError } = await supabase
       .from("profiles")
       .select("*", { count: "exact", head: true });
-    const { count: teamsCount } = await supabase
+    if (usersError) {
+      throw new Error(`读取用户总数失败：${usersError.message}`);
+    }
+    const { count: teamsCount, error: teamsError } = await supabase
       .from("teams")
       .select("*", { count: "exact", head: true });
-    const { data: roles } = await supabase.from("profiles").select("role");
+    if (teamsError) {
+      throw new Error(`读取团队总数失败：${teamsError.message}`);
+    }
+    const { data: roles, error: rolesError } = await supabase.from("profiles").select("role");
+    if (rolesError) {
+      throw new Error(`读取角色分布失败：${rolesError.message}`);
+    }
 
+    // 计数与角色分布都只在「这次查询确实跑完了」之后才解释成 0：
+    // `count` 在没有错误时给 null 是合法的（没有匹配行），读失败已经在上面抛掉了。
     totalUsers = usersCount ?? 0;
     totalTeams = teamsCount ?? 0;
     roleCount = { super_admin: 0, admin: 0, member: 0, viewer: 0 };
