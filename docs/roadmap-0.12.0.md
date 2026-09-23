@@ -202,7 +202,19 @@
     它按「任意 workflow」判定接线，`release.yml` 也跑聚合，删掉 ci.yml 那一步它照样绿（变异核对量出来的），
     因此规则加在 CI 拓扑门禁上——静态作业正文必须出现 `pnpm check:all`，缺即 `CI_TOPOLOGY_DRIFT`。
     作业名保持 `Lint & Type Check` 不变，因为分支保护按名字匹配必需检查
-15. C05 孤儿巡检补上 provider 侧 `list()` 与数据库的集合差，覆盖 031 之前从未落元数据的存量对象
+15. C05 （**2026-09-23 已完成**）`pnpm audit:storage-orphans -- --provider-diff` 现在递归列完一个
+    bucket 并与 `upload_objects` 做**双向**差集：「bucket 里有、元数据完全不认得」（031 之前的存量就是
+    这一类，RPC 永远报不出「一行都不存在的记录」）与「`active` 行说对象应该在、bucket 里却没有」。
+    三条约束是这条的全部难度：① 它是 opt-in，不带 flag 时行为与开销和原来一致，而零孤儿的报告会自己
+    写明「这只说明数据库侧为空」；② **「没看完」不等于「没有」**——页数/深度/条数触顶、
+    `Content-Range` 缺失或前后矛盾一律 `exit 1` 并说清停在哪，不打印那份零发现的报告；
+    ③ 仍然只读，差集结果不自动删（历史文件可能正被引用只是没登记过）。
+    实测踩到并修掉的一个假清白：列**不存在的 bucket** 服务端返回 200 + 空数组，于是一次 `--bucket`
+    笔误就产出一「0 个发现」；现在先用 `GET /storage/v1/bucket` 校验存在性。
+    规则在 `src/lib/uploads/orphan-audit.ts`（纯函数）、IO 在 `scripts/lib/storage-orphans.js`，
+    58 项单测 + 10 项变异核对；本地栈端到端实测：3 个对象 2 行元数据的矩阵下，
+    数据库侧只报 2 条孤儿，`--provider-diff` 额外报出 1 个无元数据对象 + 1 个已消失的 active 行，
+    清场后归零。详见 `docs/db/upload-metadata.md`「provider 侧集合差」。
 16. C06 定夺 `src/lib/actions/uploads.ts` 两个 Server Action：保留为编程入口（补调用方与文档）
     或删除（同步 service-role inventory、错误码门禁与 docs-site）
 17. C07 （**2026-09-23 已完成**）：`pnpm check:query-columns` 把 `src/**` 每条 `.from("<表>")` 查询链上的
