@@ -418,14 +418,18 @@ describe("collectUnboundErrorChannels()（C08-c 测量，不是门禁）", () =>
     expect(summary.skippedUnparseable).toBe(1);
   });
 
-  it("真实仓库里这条规则不是空转，且两侧都有量到", () => {
+  it("真实仓库里这条规则不是空转，且 C08-c 债务已清零", () => {
     const summary = summarizeUnboundErrorChannels(
       collectUnboundErrorChannels(readQuerySources()),
     );
+    // 分母：扫描真的判到了 awaited 查询结果断言，否则「零未绑定」只是没在看。
     expect(summary.total).toBeGreaterThan(0);
-    expect(summary.unbound.length).toBeGreaterThan(0);
-    // 「绑了的」比「没绑的」多，才说明这条规则不是在把全库一锅端
-    expect(summary.total - summary.unbound.length).toBeGreaterThan(summary.unbound.length);
+    // 解析不动的文件必须报出来，而不是安静地贡献 0 处。
     expect(summary.skippedUnparseable).toBe(0);
+    // 这一条从**地板**（`unbound.length > 0`）改成**天花板**（一处都不许有）。
+    // 地板值断言的是「还有债没还」，而 C08-c 八批落地后实测是 159 处判读 / 0 处未绑定——
+    // 那个「改进会让它红」的地板值正是它自己写的清零判据，换成天花板后约束更紧：
+    // 任何一处新的「解构时压根不取 error」都会立刻红，而不是等到有人重新计数。
+    expect(summary.unbound).toEqual([]);
   });
 });
