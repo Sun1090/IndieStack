@@ -16,6 +16,9 @@ const mockState = vi.hoisted(() => ({
   rows: [] as Array<{ created_at: string; status_code: number | null; user_id: string | null; path: string; method: string }>,
   count: 0,
   shouldThrow: false,
+  /** 两条读取各自的「故障」与「合法空结果」必须能分开注入，所以各一个 error 开关。 */
+  headError: null as { message: string } | null,
+  rowsError: null as { message: string } | null,
 }));
 
 vi.mock("@/lib/auth/guards", () => ({
@@ -28,7 +31,7 @@ function makeDetailChain() {
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     gte: vi.fn(() => chain),
-    order: vi.fn(async () => ({ data: mockState.rows })),
+    order: vi.fn(async () => ({ data: mockState.rows, error: mockState.rowsError })),
   };
   return chain;
 }
@@ -39,7 +42,7 @@ const headCountChain = {
   count: 0,
   buildHead() {
     const self: Record<string, unknown> = {};
-    const terminal = async () => ({ count: this.count });
+    const terminal = async () => ({ count: this.count, error: mockState.headError });
     ["select", "eq", "gte"].forEach((m) => (self[m] = () => this.buildHead()));
     Object.assign(self, { then: (resolve: (v: unknown) => void) => terminal().then(resolve) });
     return self as never;
@@ -65,6 +68,8 @@ beforeEach(() => {
   mockState.rows = [];
   headCountChain.calls = 0;
   headCountChain.count = 0;
+  mockState.headError = null;
+  mockState.rowsError = null;
 });
 
 describe("GET /api/analytics", () => {
@@ -107,6 +112,36 @@ describe("GET /api/analytics", () => {
     const todayEntry = body.timeline.find((t: { date: string }) => t.date === today);
     expect(todayEntry).toMatchObject({ requests: 2, errors: 1 });
     expect(body.recent[0].path).toBe("/b"); // 最近记录倒序
+  });
+
+  it("总数读失败时是 503，而不是「0 个请求」这张看起来没人用的图", async () => {
+    mockState.headError = { message: "connection terminated" };
+    const res = await GET(new NextRequest("http://localhost/api/analytics"));
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body.error).toContain("totals");
+    expect(body.summary).toBeUndefined();
+  });
+
+  it("时间序列读失败时是 503，而不是空时间线", async () => {
+    mockState.rowsError = { message: "could not parse response" };
+    const res = await GET(new NextRequest("http://localhost/api/analytics"));
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body.error).toContain("timeline");
+    expect(body.timeline).toBeUndefined();
+  });
+
+  it("真的没有调用记录时才是零值图（合法空态，与读失败是两件事）", async () => {
+    headCountChain.count = 0;
+    mockState.rows = [];
+    const res = await GET(new NextRequest("http://localhost/api/analytics?range=7"));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.summary.totalRequests).toBe(0);
+    expect(body.summary.uniqueVisitors).toBe(0);
+    expect(body.timeline).toHaveLength(7);
+    expect(body.timeline.every((entry: { requests: number }) => entry.requests === 0)).toBe(true);
   });
 
   it("Supabase 异常返回 500 兜底", async () => {
