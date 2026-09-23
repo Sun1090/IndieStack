@@ -1903,7 +1903,7 @@
 ## 2026-09-23 — #49：门禁的两处失明补上（`error: null` 与 `Promise.all` 元素断言）
 
 - 里程碑 / 版本：v0.12.0 / C08 #49（C08 这一族的最后一项）。
-- 分支 / PR：`fix/c08-gate-range-holes`（栈在 #113 之上）。
+- 分支 / PR：`fix/c08-gate-range-holes` → **PR #114**（栈在 #113 之上，停在 ready-for-review）。
 - 状态：DONE（PR 待 review 合并）。
 - **先量后写**（D01，重量脚本是一次性探针，不进门禁）：全库 358 个文件里 awaited 链上的断言一共 3 处，
   把 `error` 成员写成永不成立（`error: null` / `undefined` / `never` 及并集）的 **0 处**。
