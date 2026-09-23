@@ -1,5 +1,6 @@
 {
   "apiKeyNotFound": "API key not found. It may have been deleted.",
+  "apiKeyRevokedButNotCreated": "The old key was revoked, but the new one could not be created. Please create a new key.",
   "alreadyMember": "User is already a team member",
   "authEmailNotConfirmed": "Email not confirmed. Please check your inbox.",
   "authError": "Authentication failed. Please try again.",

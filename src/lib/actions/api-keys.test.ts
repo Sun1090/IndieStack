@@ -26,6 +26,8 @@ function mockClient(
     /** 重新生成时读到的原密钥行；`null` 表示确实没有这一条。 */
     existingRow?: { name: string; scopes: string[] } | null;
     existingReadError?: boolean;
+    /** `update` 改掉的行数由这里决定：空数组就是「0 行受影响」。 */
+    updateRows?: { id: string }[];
   } = {},
 ) {
   const {
@@ -35,6 +37,7 @@ function mockClient(
     updateError = false,
     existingRow = { name: "Key", scopes: ["project:read"] },
     existingReadError = false,
+    updateRows = [{ id: "k1" }],
   } = opts;
   /** 记录写到哪一步、写了什么，用来证明「读失败时一个密钥都没签发」。 */
   const calls: string[] = [];
@@ -109,9 +112,16 @@ function mockClient(
             calls.push("update");
             return {
               eq: vi.fn(() => ({
-                eq: vi.fn(() =>
-                  Promise.resolve(updateError ? { error: { message: "db" } } : { error: null }),
-                ),
+                // 仓库层现在会 `.select("id")` 回来数行数，桩必须支持这一环
+                eq: vi.fn(() => ({
+                  select: vi.fn(() =>
+                    Promise.resolve(
+                      updateError
+                        ? { data: null, error: { message: "db" } }
+                        : { data: updateRows, error: null },
+                    ),
+                  ),
+                })),
               })),
             };
           }),
@@ -227,6 +237,14 @@ describe("revokeApiKey()", () => {
     createClientMock.mockResolvedValue(mockClient({ updateError: true }));
     await expect(revokeApiKey("k1")).resolves.toEqual({ ok: false, error: "databaseError" });
   });
+
+  it("0 行受影响时是 apiKeyNotFound，不能报「已吊销」", async () => {
+    createClientMock.mockResolvedValue(mockClient({ updateRows: [] }));
+    revalidatePathMock.mockClear();
+    await expect(revokeApiKey("k-999")).resolves.toEqual({ ok: false, error: "apiKeyNotFound" });
+    // 没改掉任何一行就不该让页面重拉一遍列表——那会把「成功」的形状演全套
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("regenerateApiKey()", () => {
@@ -249,12 +267,24 @@ describe("regenerateApiKey()", () => {
     expect(client.calls).not.toContain("insert");
   });
 
+  it("旧密钥已吊销而新密钥签发失败时，说的是「旧的没了、请新建」", async () => {
+    const client = mockClient({ insertError: true });
+    createClientMock.mockResolvedValue(client);
+    await expect(regenerateApiKey("k1")).resolves.toEqual({
+      ok: false,
+      error: "apiKeyRevokedButNotCreated",
+    });
+    // 关键在于顺序：先吊销才会出现「吊销成功 + 签发失败」；反过来留下的是没人知道的活密钥
+    expect(client.calls).toEqual(["update", "insert"]);
+  });
+
   it("读到元数据时沿用名字与 scopes 签发新密钥，并吊销旧的", async () => {
     const client = mockClient({ existingRow: { name: "CI", scopes: ["project:read", "project:write"] } });
     createClientMock.mockResolvedValue(client);
     const result = await regenerateApiKey("k1");
     expect(result.ok).toBe(true);
-    expect(client.calls).toEqual(["insert", "update"]);
+    // 先吊销、再签发：顺序反了就会造出一个谁都不知道明文的 active 密钥
+    expect(client.calls).toEqual(["update", "insert"]);
     if (!result.ok) throw new Error("unreachable");
     // 新密钥沿用原密钥的名字与 scopes：断言的是**写进去的载荷**，
     // 而不是 mock 返回行的形状（它固定回一条 name: "New"，断言那里等于什么都没断）。

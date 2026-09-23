@@ -1510,3 +1510,41 @@
   这条现在只剩 `safelyRequireAuth` 的 401 那半边——本批已把两次读数收掉）；
   A05/A01/C06 等用户拍板，B 域等外部权限。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — API 密钥动作不再报告它们没做到的事（#47 + #48）
+
+- 里程碑 / 版本：v0.12.0 / C08-b 收尾时登记的邻居缺陷。
+- 分支 / commit：`fix/apikey-write-results`（栈在 #101 之上；这条不再动台账，但仍需要 #92 的门禁与
+  `check:action-errors` 一起跑，所以留在栈上）。
+- 状态：DONE（PR 待 review 合并）。#47、#48 一并关闭。
+- 这一条是 C08 那一族的**对偶**：C08 管的是「读失败被说成一个结论」，这里是
+  「**写成功被说成了一件没做的事**」。判据也不同——`update` 只在报错时给 `error`，
+  0 行受影响时它是 `null`，所以写的成功与否必须由**结果行数**决定，不是由有没有 `error` 决定。
+- 做了什么：
+  1. `deactivateApiKey` 改为 `.update(…).eq(…).eq(…).select("id")` 并返回布尔（有没有真的改掉一行）。
+     老写法下 `revokeApiKey` 对「吊销一个不存在的密钥」回 `ok()`，UI 显示「已吊销」。
+  2. `regenerateApiKey` **改顺序**：先吊销旧的、再签发新的。原顺序 + 两步都不接结果 =
+     第二步失败时留下一个**用户从没见过明文却 active 的密钥**（明文只在成功响应里给一次），
+     旧密钥同时仍然有效，而动作以一个未处理异常收场。
+     新顺序的最坏情况是「旧的回不去、新的没出来」——一次**看得见**的失败，
+     且用户手里就有「创建密钥」这条出路。**不变量：绝不签发一个没打算告诉任何人明文的凭据。**
+  3. 新增专用错误码 `apiKeyRevokedButNotCreated`（不复用泛化的 `databaseError`，
+     后者说的恰恰是「什么都没变」）。`check:action-errors` 的错误码 45 → 46。
+- 覆盖：仓库层 3 条 + 动作层 3 条。两条值得抄进别处的桩设计：
+  - 共享的 `chainMock` 所有 builder 都返回**同一个链**，所以「有没有 `.select()`」在桩里根本看不见——
+    必须把链实例握住并断言 `chain.select` 被调用，否则少掉那一环也测不出来。
+  - 动作层用 `calls: string[]` 记录「写到哪一步」，成功路径断言 `["update","insert"]`：
+    这一条把**顺序**变成了可断言的东西，而不只是返回值。顺序错了就红，不必依赖异常路径。
+- 验证（最终形态重跑）：`pnpm lint` / `pnpm type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**
+  （38 道门禁、208 个测试文件全过）；`pnpm build` → exit 0；
+  `pnpm check:action-errors` → 「46 个错误码 × 2 个 locale」；
+  `npx vitest run src/lib/actions/api-keys.test.ts src/lib/repositories/api-keys.test.ts` → 24 passed。
+  浏览器侧 `e2e/a11y.spec.ts` → 14/14（清单里含 `/dashboard/api-keys`，但那两个动作的失败分支
+  E2E 构造不出来，成功路径的 UI 也没变——这里只是回归数）。
+  变异核对 6 项（K1–K6）：返回值恒真、删掉 `.select()`、两处「不数行数」、退回泛化错误码、
+  顺序退回「先签发再吊销」各红对应用例；K6 是反向证据（把真的吊销成功也判成找不到 → 红 2 条）。
+  两处 `if (!revoked) …` 文案完全相同导致第一次变异脚本按唯一匹配跳过（`PATTERN x2`），
+  于是把锚点扩到各自的 `logActionError` 标签才定位成功——**脚本跳过一项不是没测到，但必须重跑**。
+- 下一件：C08-c 重量（#42，debt 已清零，判据要扩成「awaited 查询结果必须绑定并使用 `error`」，
+  扩之前先量误报）；#44 剩下那半边（analytics/checkout 的 guard 失败映射成真实状态）。
+- 更新时间：2026-09-23（UTC）。
