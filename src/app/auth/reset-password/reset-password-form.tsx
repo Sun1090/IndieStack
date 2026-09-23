@@ -126,7 +126,7 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form method="post" onSubmit={handleSubmit}>
       <div className="grid gap-4">
         <FormField
           htmlFor="password"

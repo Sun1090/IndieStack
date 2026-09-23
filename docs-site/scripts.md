@@ -44,7 +44,7 @@
 | `pnpm provider:doctor` | Print a credential-free provider configuration report and fail on partial setups |
 | `pnpm check:tailwind` | Enforce Tailwind v4 native theme usage (no JS config, `@theme` tokens, renamed utilities) |
 | `pnpm check:tokens` | Enforce design token registry ↔ `globals.css` consistency and ban raw status palettes |
-| `pnpm check:fields` | Enforce shared `FormField` / `NativeSelect` usage and ban raw selects, copied control classes, and direct label imports |
+| `pnpm check:fields` | Enforce shared `FormField` / `NativeSelect` usage, ban raw selects, copied control classes and direct label imports, and require `method="post"` on JS-driven `<form onSubmit>` |
 | `pnpm check:states` | Enforce shared `PageLoading` / `EmptyState` / `ErrorState` usage and ban raw route skeletons, legacy loaders, and bare spinners |
  
  ## Testing

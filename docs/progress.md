@@ -1194,3 +1194,74 @@
   与栈上的 #113/#114 会在 `CHANGELOG.md` 与 `docs/progress.md` 的同一处相遇——谁后合谁解一次冲突。
 - 下一件：#51 / #52 之上继续挑可自主开工的项；栈上 20 个 PR 仍等 review。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — hydration 之前点提交，提交的是浏览器不是应用，而用例还绿着（#54）
+
+- 里程碑 / 版本：v0.12.0 / C 域（E2E 可信度）+ G03 表单形状门禁。
+- 分支 / PR：`fix/pre-hydration-native-submit` → **PR #119**（栈在 #115 之上——共享
+  `e2e/support/hydrated.ts`；合并顺序见「待合 PR 的合并顺序与 CI 证据范围」那条）。
+- 状态：DONE（PR 待 review 合并）。
+- 起因是 #51 留下的「刻意没包」那一栏：sign-in ×5、MFA 验证、contact 提交都在 `<form onSubmit>` 里，
+  当时写的是「先定幂等性再谈重试」。这次先量，量出来的东西比重复提交更糟。
+- 测量（临时探针：`page.route` 把 `script` 统一延后 3s；跑完即删，`git status` 干净后才提交）：
+  - A) `goto` 默认 `load`：提交正常，恰好一个带 `next-action` 的 POST。
+  - B) `domcontentloaded` + 拖慢：**0 个 action**，地址变成 `/contact?name=…&message=…`，
+    而 `#name` 是空的 → 那条用例的「成功标志」（`poll(#name).toBe("")`）**照样绿**。
+    这不是「偶尔红」，是**假绿**：浏览器替应用演完了整场，应用从头到尾没参与。
+  - D) 同一形状试登录页：0 个 action，但 URL 干净——登录表单的输入没有 `name`，原生提交序列化出
+    空查询。所以「值进 URL」只发生在带 `name` 的字段上（contact 4 项、project-settings 6 项、
+    profile-edit 4 项、password 2 项、两个上传表单各 1 项）。
+  - 结构性事实：18 个业务文件里的 **20 个 `<form onSubmit>` 没有一个声明 `method`**，
+    而 `<form>` 的默认方法就是 GET。
+- 因此这个缺陷有三半，少一半都留缝：
+  1. 应用：20 个 `<form>` 声明 `method="post"`。复测（同一探针）：那次原生提交改为对同一路由 POST，
+     服务端按普通页面渲染回来，实测 **200、字段不回显**，值不再进 URL。
+     **它没有变成 405 错误页**——草稿里写的「堵成一次 405」被这次复测推翻并改掉，
+     顺带说明为什么光改应用不够。
+  2. 门禁：`pnpm check:fields` 加第四条 `FORM_NATIVE_GET`（不新增门禁入口，聚合清单仍 36 道）。
+     按**开始标签**逐个判：`method="get"` 与漏写同罪；`{}` 深度优先找标签结尾，否则
+     `onSubmit={(e) => { if (a > b) … }} method="post"` 会被第一个 `>` 截断而误判；
+     读不到结尾（文件截断）失败封闭。真实仓库现状：133 个应用层文件、命中 `<form>` 的文件数 > 10、
+     违规 0。
+  3. 用例：判据必须离开「结果级」。新增 `watchServerActions(page)` 与
+     `actUntilServerAction(page, act)`——只认带 `next-action` 头的 POST，每轮先看计数有没有增加、
+     只有没增加才重放，所以正常路径恰好一次；`/contact` 那条改用新屏障并补 `toHaveURL(/\/contact$/)`。
+- 两次自伤，都记下来免得下次重犯：
+  - 屏障第一版只重放 `click()` → **卡满 23s 超时**。上一次原生提交把页面重渲染成空表单，
+    字段带 `required`，浏览器自己的校验把重放的点击全部挡掉。修法是把「填写 + 点击」收成
+    **一轮完整动作**，并把这条契约写进函数注释与 `docs/testing.md`。
+  - `pnpm format` 顺手重排了 5 个文件的 Tailwind className。查了一下：仓库现状本来就不是
+    prettier-clean（`git show HEAD:<file> | prettier --stdin-filepath --check` 在这 5 个文件上
+    都 exit 1），所以那次 `--write` 是无关改动。回退这 5 个文件、只手工加属性，
+    最终 diff = 18 文件 / 20 行，`git diff -U0` 里除 `<form` 与 `method="post"` 之外零命中。
+- 变异核对（每条判据都要能被打红）：去掉 `{}` 深度 → 1 红；去掉 JSX 字面量分支 → 1 红；
+  改成大小写敏感 → 1 红；把规则调用改成不可达 → **6 红**（其中一条是「删掉真实文件里的
+  `method="post"` 就必须报」的防失焦用例）。
+- 顺手量了同族的另一类风险：**缺席断言会不会也是假绿**。全仓 14 条 `toHaveCount(0)` / `toBeHidden()`
+  逐个读上下文，四条嫌疑全部有正向伴随断言兜着——`audit-logs:101` 前面有「暂无审计日志记录」可见、
+  后面有清空搜索恢复 ≥20 行；`notifications-realtime:84` 是同一条用例里「当前用户的 INSERT 会出现」
+  的反面；`smoke:128` 前面断言了中文文案可见；`uploads:183` 前面断言进度条先可见。**阴性结果，不改代码**，
+  记在这儿是为了下次不必重审。`responsive.spec.ts` 那 6 条是布局断言（无 JS 也成立），那正是它们的被测对象。
+- 覆盖 / 验证：`--repeat-each=2` 跑 `hydrated-click` + `admin-contact-mfa` → **24 passed / 0 failed**
+  （两条反向证据各自稳定：0 个 action / 恰好 1 个）；`vitest run src/lib/ui/form-field-rules.test.ts`
+  → 17 passed（原 10）；`pnpm -s check:fields` → exit 0；`pnpm -s lint` / `pnpm -s type-check` → exit 0；
+  `CI=true pnpm check:all` → exit 0；`pnpm -s test` → exit 0；`pnpm build` → exit 0。
+  **另跑了一次全量并行 E2E**：`PW_FULLY_PARALLEL=true E2E_SERVERS=3 pnpm test:e2e --retries=0`
+  → **113 passed / 0 failed**（1.6 分钟）。为什么要自己跑：本 PR 的 base 是 #115 的 head，
+  而 `ci.yml` 只在 base 为 `main`/`develop` 时触发——栈上的 PR 拿不到 CI 的 E2E（口径见
+  「待合 PR 的合并顺序与 CI 证据范围」那条）。日志里的 `⨯ uncaughtException: Error: aborted`
+  是已知的 Turbopack 冷编译关 keep-alive 现象（`admin-contact-mfa.spec.ts` 头部注释记过），
+  三台服务器都活过了它，113 条里没有一条因此变红。
+  **但那个 113/0 不代表这条 tip 稳定**：之后又在同一 SHA 上跑了 4 次并行基线（含清空 `.next-e2e-*`
+  的冷启动与一次旧预热对照），`responsive.spec.ts:92` 红了 3 次、`:62` 红 1 次——那两处正是 #117
+  包过的点按，而本分支没合 #117。数字记全，免得只留下最好看的那一次。
+- 变更文件：18 个表单组件、`src/lib/ui/form-field-rules.ts` + 其单测、`scripts/lib/form-field-check.js`、
+  `e2e/support/hydrated.ts`、`e2e/hydrated-click.spec.ts`、`e2e/admin-contact-mfa.spec.ts`、
+  `CHANGELOG.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、
+  `docs/progress.md`。
+- 风险 / 回滚：运行时的改动只有一个属性——无 JS 用户的失败形状从「字段回显在 URL 上的 GET 页」
+  变成「同一个页面、值在 POST 体里」，两种都不会真的提交成功；E2E 只动 `/contact` 一条加新增反向证据。
+  revert 即回滚。与 #117、长栈会在 `CHANGELOG.md` / `docs/progress.md` 尾部相遇，谁后合谁解一次冲突。
+- 下一件：`method` 这条形状已由门禁守住；同类待量的是「带 `name` 的字段是否还需要 `formAction`/无 JS
+  兜底」——那要先有真实诉求，不在本次猜。栈上 27 个 PR 等 review（本条所在 PR 是第 28 个）。
+- 更新时间：2026-09-23（UTC）。

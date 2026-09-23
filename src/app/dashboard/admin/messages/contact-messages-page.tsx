@@ -98,7 +98,7 @@ export function ContactMessagesPage() {
         <p className="text-muted-foreground">{t("desc")}</p>
       </div>
 
-      <form onSubmit={submitSearch} className="flex flex-col gap-2 sm:flex-row">
+      <form method="post" onSubmit={submitSearch} className="flex flex-col gap-2 sm:flex-row">
         <Input
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}

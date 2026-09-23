@@ -126,6 +126,19 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
   或者按 `e2e/hydrated-click.spec.ts` 那样 `page.route` 把 `resourceType === "script"` 的请求统一
   延后 3 秒——后者更确定，而且它同时放着两条用例：一条证明「点一次确实会被吞」，
   一条证明「`actUntilVisible` 救得回来」。只留前一条的话，删掉重试也没人发现。
+- **提交类动作不能套 `actUntilVisible`**，用同一个文件里的 `actUntilServerAction(page, act)`。
+  区别在判据：`<form>` 在 hydration 之前被点，浏览器会**自己**完成提交并重新渲染页面，
+  于是「字段被清空」「toast 出现」这类结果级判据全部失真——实测 `/contact` 就是这样假绿的
+  （应用一次都没收到请求，用例却绿了）。`actUntilServerAction` 只认网络层的事实：一个带
+  `next-action` 头的 POST（Server Action 的指纹，原生提交没有这个头）。它同样只在「上一轮没被收到」
+  时重放，所以正常路径恰好一次；`/contact` 那条用例因此既断言「收到了」又断言「只收到一次」。
+  两点坑记在这里：
+  ① `act` 必须是**完整一轮**（填写 + 点击一起）。上一次原生提交会把页面重渲染成空表单，
+    而字段带 `required`，只重放点击会被浏览器自己的校验挡死——第一版就是这样卡在 20s 超时的；
+  ② 等的是**请求发出**（3s 一轮），不是响应回来，否则 dev 冷编译会把正常提交误判成丢失。
+  反向证据在 `e2e/hydrated-click.spec.ts` 的「提交类动作」一节：同一次拖慢下，
+  一次点击 → 0 个 Server Action 但输入框确实清空了（旧判据为什么会假绿），
+  换 `actUntilServerAction` → 恰好 1 个。
 - 新页面至少加一条"可渲染"断言到 `e2e/smoke.spec.ts`
 - 安全头、trace-id、CSP nonce 断言集中在「安全与容错」组
 - `e2e/a11y.spec.ts` 使用 `@axe-core/playwright` 对首页、功能页、定价页、登录页、注册页执行 WCAG 2.1 A/AA 自动审计；新增或修改公共页面时必须同步评估覆盖范围
@@ -432,17 +445,27 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 文本有稳定 id，错误以 `role="alert"` 播报。原生下拉统一下沉到 `NativeSelect`，控件外观类名不再抄进业务表单。
 
 门禁规则实现位于 `src/lib/ui/form-field-rules.ts`（纯函数），扫描 `src/app` 与 `src/components` 下的非测试
-`.tsx`，三类规则码分别是：
+`.tsx`，四类规则码分别是：
 
 1. `RAW_SELECT`：业务文件不得直接写原生 `<select>`，使用 `NativeSelect` 才能共享 disabled / focus 态；
 2. `RAW_CONTROL_CLASSES`：业务文件不得复制 `border-input bg-background px-3 py-2 text-sm` 这类控件类名长串；
 3. `DIRECT_LABEL_IMPORT`：业务文件不得直接 `import "@/components/ui/label"`，标签统一经 `FormField` /
    `FormFieldLabel`，由字段上下文注入 `htmlFor`，避免 label 与控件 id 对不上。
+4. `FORM_NATIVE_GET`：`<form onSubmit=…>` 必须自己声明 `method="post"`。`<form>` 的默认方法就是 GET，
+   而这条 `onSubmit` 只有 React 接管之后才算数——hydration 之前的那一次点击由**浏览器**完成提交，
+   把所有带 `name` 的字段值原样序列化进 URL（历史、Referer、访问日志都留一份）。实测复现过一次：
+   拖慢客户端脚本后点 `/contact` 的提交，地址变成 `/contact?name=…&message=…`，而用例那句「成功标志」
+   （输入框被清空）照样绿。判据按开始标签逐个看，`method="get"` 与漏写同罪；`{}` 深度优先扫标签结尾，
+   所以 `onSubmit={(e) => { if (a > b) … }} method="post"` 这种把属性排在回调之后的写法不会被误判。
 
 `src/components/ui/**` 是上游 shadcn 基元，不参与扫描；`native-select.tsx` 与 `form-field.tsx` 只豁免各自职责
 对应的规则，其他规则仍会被检查。IO/CLI 位于 `scripts/lib/form-field-check.js`，由 `scripts/check-fields.js`
 经 Node 原生 type stripping 调用，`pnpm check:all` 与 CI 均会执行。该门禁只证明静态写法合规，运行时 ARIA
 行为由 `form-field.test.tsx` / `native-select.test.tsx` 覆盖，不能替代浏览器级键盘与 a11y 回归。
+
+`method="post"` 只堵住「字段值进 URL」这一半：改完复测，那次原生提交仍然会对同一路由发一个 POST、
+服务端按普通页面渲染回来（200、字段不回显），表单照样是空的。所以**用例的判据也得跟着换**——
+见下面 E2E 一节的 `actUntilServerAction`。
 
 ## 共享状态门禁（G04）
 

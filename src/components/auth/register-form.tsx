@@ -62,7 +62,7 @@ export function RegisterForm() {
   };
 
   return (
-    <form onSubmit={handleEmailRegister}>
+    <form method="post" onSubmit={handleEmailRegister}>
       <div className="grid gap-4">
         <FormField htmlFor="email" label={tc("email")} className="grid gap-2">
           <FormFieldControl>

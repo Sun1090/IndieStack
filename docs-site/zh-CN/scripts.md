@@ -44,7 +44,7 @@
 | `pnpm provider:doctor` | 输出不含凭据的 provider 配置报告，并在半套配置时失败 |
 | `pnpm check:tailwind` | 校验 Tailwind v4 原生主题用法（无 JS 配置、`@theme` token、已更名工具类） |
 | `pnpm check:tokens` | 校验设计 token 注册表与 `globals.css` 一致，并禁止用原生调色板表达状态语义 |
-| `pnpm check:fields` | 校验共享 `FormField` / `NativeSelect` 用法，禁止原生 select、复制控件类名和直接引入 label |
+| `pnpm check:fields` | 校验共享 `FormField` / `NativeSelect` 用法，禁止原生 select、复制控件类名和直接引入 label，并要求由 JS 接管的 `<form onSubmit>` 声明 `method="post"` |
 | `pnpm check:states` | 校验共享 `PageLoading` / `EmptyState` / `ErrorState` 用法，禁止手写路由骨架、旧 loader 和裸 spinner |
  
  ## 测试

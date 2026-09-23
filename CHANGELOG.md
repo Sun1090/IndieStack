@@ -204,6 +204,32 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **hydration 之前点提交，提交的是浏览器而不是应用**：`page.route` 把 `resourceType==="script"`
+  统一延后 3 秒、再以 `domcontentloaded` 打开 `/contact`，点提交后地址变成
+  `/contact?name=…&email=…&subject=…&message=…`——`<form>` 的默认方法是 GET，而那条
+  `onSubmit` 要等 React 接管才算数，窗口里的这一次点击由浏览器自己完成提交。页面重新渲染、
+  字段照样清空，于是当时那条用例的「成功标志」全绿，而应用一个请求都没收到
+  （带 `next-action` 的 Server Action 读数：0）。这不只是测试问题：真实用户在这一个窗口里填的东西
+  会进 URL，浏览器历史、Referer、服务端访问日志各留一份。量了一下，18 个业务文件里的 20 个
+  `<form onSubmit>` **没有一个**声明 `method`。
+  - 应用侧：这 20 个 `<form>` 全部声明 `method="post"`。改完复测：同一次原生提交改为对同一路由
+    POST，服务端按普通页面渲染回来（实测 200、字段不回显），值不再进 URL。**它没有变成错误页**，
+    所以只改这一半不够。
+  - 门禁侧：`pnpm check:fields` 多一条 `FORM_NATIVE_GET`（规则仍在 `src/lib/ui/form-field-rules.ts`，
+    不新增门禁入口）。判据按**开始标签**逐个看：`method="get"` 与漏写同罪，`{}` 深度优先找标签结尾
+    （否则 `onSubmit={(e) => { if (a > b) … }} method="post"` 会被截断误判），读不到结尾时失败封闭。
+    现状：133 个应用层文件、20 个 `<form>`，违规 0。7 条新单测，4 项变异核对各自打死对应的判据分支
+    （去掉 `{}` 深度 / 去掉 JSX 字面量分支 / 大小写敏感 / 把规则调用改不可达——最后一项红 6 条）。
+  - 用例侧：`e2e/support/hydrated.ts` 加 `watchServerActions(page)` 与
+    `actUntilServerAction(page, act)`，判据换成网络层事实（`next-action` 头的 POST），每轮先看计数
+    有没有增加、只有没增加才重放，所以正常路径**恰好一次**。`/contact` 那条改用新屏障，并加
+    `toHaveURL(/\/contact$/)`；`e2e/hydrated-click.spec.ts` 补两条反向证据：同一次拖慢下
+    「一次点击 → 0 个 action 但输入框确实清空」与「新屏障 → 恰好 1 个」。踩过的坑记在文档里：
+    `act` 必须连**填写**一起重放，因为上一次原生提交会把页面渲染成空表单，而字段带 `required`，
+    只重放点击会被浏览器自己的校验挡死（第一版卡满 23s 就是这么来的）。
+  - 刻意没铺开的：`admin-contact-mfa` 里 sign-in ×5 与 MFA 验证提交仍走 `waitUntil: "load"`，
+    实测那些页面脚本已执行、点击落地；登录表单的输入本来就没有 `name`，那一次原生提交序列化出
+    空查询，属于「点击被吞」而不是「值外泄」。
 - **`account-deletion` 的间歇红不是产品 Bug，是用例在和 hydration 抢跑**：那条「短语输错由服务端拒绝」
   以约 1/6 的概率卡满 60s，报错只有一句 `waiting for getByRole('textbox')`。危险区域的入口按钮是
   服务端渲染的，`toBeVisible()` 在 React 挂上 `onClick` 之前就已通过，那一次 click 被静默丢弃，

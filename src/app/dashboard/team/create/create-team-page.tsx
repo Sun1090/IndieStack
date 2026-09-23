@@ -85,7 +85,7 @@ export function CreateTeamPage() {
           <CardDescription>{t("team.create.desc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form method="post" onSubmit={handleSubmit} className="space-y-4">
             <FormField htmlFor="name" label={t("team.create.nameLabel")}>
               <FormFieldControl>
                 <Input

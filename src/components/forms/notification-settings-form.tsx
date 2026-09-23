@@ -61,7 +61,7 @@ export function NotificationSettingsForm({ settings }: NotificationSettingsFormP
   ] as const;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form method="post" onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
         {toggles.map((toggle) => (
           <FormField

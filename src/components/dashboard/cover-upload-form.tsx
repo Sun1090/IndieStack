@@ -52,7 +52,7 @@ export function CoverUploadForm({ projectId }: { projectId: string }) {
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-2">
+    <form method="post" ref={formRef} onSubmit={handleSubmit} className="space-y-2">
       <FormField
         htmlFor="cover"
         label={t("coverLabel")}
