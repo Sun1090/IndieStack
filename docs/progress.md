@@ -1246,3 +1246,30 @@
   #124 相对 main 的增量就只剩自己那一条。搬运脚本每次都断言「非空行多重集不变 + `## ` 条目数不变」，
   唯一的内容外副作用是把顶部多余的空行分隔归一成文件里通用的一个空行（行数因此少 1～2 行）。
 
+### 34 个 PR 按顺序合一遍会怎样（本机模拟，不动任何远端）
+
+- 做法：`git worktree add -b sim/merge-order /tmp/merge-sim origin/main`，按编号升序把
+  14 个「栈 tip 或 base=main 的独立 PR」逐个 `git merge --no-edit`；冲突就记下文件名并
+  `git merge --abort`（只回退那一次合并，模拟「后一个 PR 相对已合内容还剩什么」）。
+  跑完删工作区与模拟分支。
+- 结果：**第一条长栈（#92–#114，tip `fix/c08-gate-range-holes`）干净落地**；其后 13 个全部冲突，
+  但其中 12 个的冲突面只有 `CHANGELOG.md` + `docs/progress.md`（#95 与本 PR 连 CHANGELOG 都不撞，
+  只撞 `docs/progress.md`）。这是「同一个文件尾巴各自追加一条」的机械冲突，
+  解法永远是两块都留、按合并顺序排——不是需要判断的那种。
+- **唯一撞代码的是 #96 `fix/checkout-guard-fail-closed`**：
+  `src/app/api/stripe/checkout/route.ts`、`route.test.ts`、`messages/{en,zh-CN}/actions.json`。
+  逐行对过两侧实现：#96 和栈里的 #103 是**同一个缺陷的两份修法**——都是「两道前置读取读不到就
+  拒绝这次结账、回 503」，重复购买都回 409 `alreadySubscribed`，只是状态词汇不同
+  （#96：`failed` + `source` / `duplicate`，日志在调用点；#103：`unavailable` / `subscribed`，
+  日志在 helper 内）。两边测试各自钉住那两条 503 路径（栈侧 `route.test.ts:82` 与 `:101`，
+  #96 侧 `:86` 与 `:104`）。**建议 route.ts 与 route.test.ts 取栈侧**，让 #96 只保留它真正独有的
+  两样：`messages/{en,zh-CN}/actions.json` 里的 `alreadySubscribed`（main 至今没有这个键，
+  栈侧也没补，而 409 早就在发这个码），以及 `docs/reference/api-routes.md` 那段
+  「路由码 → 翻译」契约说明。按这个解法，#96 的净增量就是这两件事，不需要重跑它的实现。
+- #125（钩子层）与栈的文件交集实测 7 个：`package.json`、`scripts/check-all.sh`、
+  `docs-site/scripts.md`、`docs-site/testing.md` × 两个语言、`CHANGELOG.md`、`docs/progress.md`。
+  真跑模拟时只有后两个文档尾巴冲突，`package.json` 与 `check-all.sh` 被 git 自动合掉了——
+  **自动合掉不等于对**：合并后跑一次 `pnpm check:gates`，它重算门禁接线，漏接或重接都会红。
+- 新增一条 retarget 边：#124 目前对它的 base（#122 的分支）报 **CONFLICTING**，起因是今天两边
+  各自搬过一次 `docs/progress.md` 的同一段（不是代码分叉）。#122 落地后
+  `gh pr edit 124 --base main`，再按上面那条命令重看一次 retarget 清单。
