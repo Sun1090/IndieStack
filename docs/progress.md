@@ -1153,3 +1153,56 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 孤儿巡检补上 provider 侧集合差（C05 收尾）
+
+- 里程碑 / 版本：v0.12.0；roadmap C05。
+- 分支 / commit：`feat/c05-provider-orphan-diff`（基于 `main`）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这条不是「加个 flag」：`find_orphan_upload_objects()` 的真相来源是 `upload_objects`，
+  所以**一行都不存在的记录永远报不出来**。031 之前直接写进 bucket 的存量对象就是这么消失的——
+  代码注释、A10 的 v0.6.0 退出报告、`docs/db/upload-metadata.md` 三处都把它写成「未覆盖」，
+  于是这块盲区被清楚地记录着，同时又被任何一次「0 孤儿」的巡检报成清白。
+- 做了什么：`--provider-diff` 递归列完一个 bucket（`POST /storage/v1/object/list/<bucket>` 带分页），
+  分页读 `upload_objects` 的全部键，做**双向**差集：
+  「bucket 有、元数据不认得」（031 之前的存量）与「`active` 行说对象应该在、bucket 里却没有」
+  （后者是有人绕开应用删过对象 / 清过 bucket，而业务表里的 URL 还指着它）。
+  三条约束：opt-in（不带 flag 时请求数与以前一字不差）；**「没看完」不等于「没有」**——
+  页数 / 深度 / 条数触顶、`Content-Range` 缺失或前后矛盾一律 exit 1 并说明停在哪，
+  那份「0 个发现」的报告根本不打印出来；仍然只读，差集不自动删。
+- 实测（这是这条的主要价值，不是单测）：本地栈跑通一个 3 对象 / 2 行元数据的矩阵——
+  数据库侧只报 2 条孤儿；`--provider-diff` 额外报出 1 个无元数据对象 + 1 个已消失的 active 行，
+  两边都认得的 `b.png` 正确地不在任何一侧；清场后归零。列目录形状也是实测来的：
+  文件夹 `id:null`、对象大小在 `metadata.size`、`name` 相对于请求的 `prefix`。
+- 实测抓到一个会长期假绿的形状：**列一个不存在的 bucket，服务端返回 200 + 空数组**。
+  也就是说 `--bucket avatar`（少个 s）会产出一份漂亮的「0 个发现」。第一版就是这么写的，
+  是本地跑出来的、不是想到的——现在先 `GET /storage/v1/bucket` 校验存在性，
+  拼错直接失败并把服务端认识的 bucket 列出来。这类「输入笔误 → 假清白」的口子，
+  只有真打一次服务才会暴露。
+- 顺带留下的形状说明：身份是 `bucket/object_key`，而 `object_key` 自己带着 bucket 内的前缀目录
+  （`avatars/<userId>/…`），所以报告会显示成 `avatars/avatars/…`。是数据形状如此，不是拼接 bug，
+  已写进 `docs/db/upload-metadata.md`，免得下一个人以为看错了。
+- 覆盖：58 项单测（纯逻辑 + CLI 两侧）。变异核对 10 项，各自只让对应那条红：
+  去掉 bucket 存在性校验（Y1）、`vanished` 把 deleted 行也算进来（Y2，红 2 条）、
+  不递归进文件夹（Y3，红 2 条）、页数触顶不记住停在哪（Y4）、清单不完整照样报零（Y5）、
+  `--provider-diff` 变成无条件开启（Y6，红 4 条——默认那趟的开销契约是真的）、
+  没有 `Content-Range` 也当读全（Y7）、行数反超总数不报错（Y8）、
+  集合差发现不算进退出码（Y9）、元数据表分页没有上限（Y10）。
+  其中 Y8/Y10 对应的两条分支是第一版压根没有用例的，照「每条收窄都要有人踩」补上；
+  补 Y10 时才想起列目录有上限而元数据分页没有——不对称本身就是漏的那一半。
+- 一次 lint 教训的复用：三个函数被 `complexity` 拦在 15 以上（列目录解析 20、元数据分页读 20、
+  主流程 17）。规则没错——每个都真的在做三件事。分别拆出 `parseStorageListEntry` /
+  `readEntryBytes`、`parseTrackedPage` / `readRangeTotal`、`resolveDeps`（`??` 也算分支，
+  五个依赖注入默认值能把主函数压成一张分支表）。与 #96 那条同源：**这类 lint 报错是设计信号，
+  不是要绕的噪音**。
+- 未接入定时任务：`/api/cron/retention` 那一轮仍只跑数据库侧的两个计数。provider 侧这一趟
+  要走完整个 bucket，节奏归人工；这条边界写在文档里而不是留给猜。
+- 验证：`npx vitest run src/lib/uploads/orphan-audit.test.ts src/lib/uploads/orphan-audit-cli.test.ts`
+  → 58 passed；10 项变异逐条只红对应那条；`pnpm lint` / `pnpm type-check` /
+  `CI=true pnpm check:all` / `pnpm build` → 全部 exit 0。本地栈端到端实测见上面「实测」一段
+  （凭据是本地 dev JWT，只存在于那条命令行里，没写进任何文件、更没提交）。
+- 一条流程教训：中途单独跑过一次 `pnpm type-check` 是绿的，最后一次改动之后没有立刻重跑，
+  结果 `pnpm build`（它自己会再走一遍 TypeScript）抓出一个测试文件的类型错误。缺陷不在工具，
+  在「验证跑在最后一次编辑之前」——与既有的「先变异核对再宣布绿」是同一条规矩的另一半：
+  **门禁必须在最终形态上跑**，中途的绿灯不算数。
+- 更新时间：2026-09-23（UTC）。
