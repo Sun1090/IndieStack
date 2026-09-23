@@ -243,15 +243,15 @@
     ~~`dashboard/profile/edit/page.tsx` / `profile/page.tsx` / `notifications/page.tsx`~~ ——
     **2026-09-23 已完成**：三处的 `profiles` 读取改用 `maybeSingle()` 并真正读 `error`，
     读失败抛给错误边界；缺行仍按空值渲染（那是合法状态），表单不再拿假默认值等人保存；
-    ② 鉴权与所有权判定（~~`lib/uploads/service.ts` 封面上传把角色读失败答成 `onlyAdminsCreateProject`~~ ——
-    **2026-09-23 已完成**：三处断言全部绑定 `error`；封面在授权判定前中止，头像在读不到「要被替换的旧对象」
-    时**不覆盖**并回滚新对象（旧 URL 一旦失去业务行指向就成了只能等巡检发现的 bucket 孤儿），
-    新增专用错误码 `uploadUnavailable` → HTTP 503；见 progress 同日条目）、
-    ~~`api/invitations/route.ts` 五处~~ —— **2026-09-23 已完成**：五处断言全部改为绑定 `error`，
-    顺带收掉同一条链上门禁看不见的两处（GET 的成员身份校验、POST 按邮箱查 profiles），
-    见 progress 同日条目；`src/app/api/invitations/route.ts` 此前**零单测**，补了 15 条）、
-    `lib/actions/sessions.ts` 把读失败答成 `sessionNotFound`、
-    `lib/actions/api-keys.ts` 让「密钥不存在」与「读失败」共用一个 `databaseError`）；
+    ② 鉴权与所有权判定 —— **2026-09-23 整段完成**（逐行证据与变异核对见 progress 同日条目）：
+    `lib/uploads/service.ts` 三处（封面在授权判定前中止；头像读不到「要被替换的旧对象」时**不覆盖**
+    并回滚新对象——旧 URL 一旦失去业务行指向就成了只能等巡检发现的 bucket 孤儿；
+    新增专用错误码 `uploadUnavailable` → HTTP 503）；
+    `api/invitations/route.ts` 五处（顺带收掉同一条链上门禁看不见的两处：GET 的成员身份校验、
+    POST 按邮箱查 profiles；该文件此前**零单测**，补了 15 条）；
+    `lib/actions/sessions.ts`（读失败不再答成 `sessionNotFound`，且不删任何行）与
+    `lib/actions/api-keys.ts`（「密钥不存在」与「读失败」拆成两个回答，后者新增 `apiKeyNotFound`；
+    读失败时一个密钥都不签发）；
     ③ 页面读数（`dashboard/team/page.tsx` 渲染成「你还没有团队」、`dashboard/billing/page.tsx`
     把套餐显示成 `free`、~~`dashboard/profile/page.tsx` 把角色显示成 `member`~~ ——
     **2026-09-23 第二批已随 ① 一起收掉**，它在 ① 与 ③ 里被列了两次，是同一处读取）。

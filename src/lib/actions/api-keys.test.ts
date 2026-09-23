@@ -13,7 +13,7 @@ const { createClientMock, revalidatePathMock } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 
-import { listApiKeys, createApiKey, revokeApiKey } from "./api-keys";
+import { listApiKeys, createApiKey, regenerateApiKey, revokeApiKey } from "./api-keys";
 
 const USER = { id: "u1", email: "a@b.com" };
 
@@ -23,17 +23,40 @@ function mockClient(
     listError?: boolean;
     insertError?: boolean;
     updateError?: boolean;
+    /** 重新生成时读到的原密钥行；`null` 表示确实没有这一条。 */
+    existingRow?: { name: string; scopes: string[] } | null;
+    existingReadError?: boolean;
   } = {},
 ) {
-  const { user = USER, listError = false, insertError = false, updateError = false } = opts;
-  let insertPayload: Record<string, unknown> | null = null;
+  const {
+    user = USER,
+    listError = false,
+    insertError = false,
+    updateError = false,
+    existingRow = { name: "Key", scopes: ["project:read"] },
+    existingReadError = false,
+  } = opts;
+  /** 记录写到哪一步、写了什么，用来证明「读失败时一个密钥都没签发」。 */
+  const calls: string[] = [];
+  const inserts: Record<string, unknown>[] = [];
   return {
+    calls,
+    inserts,
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
     from: vi.fn((table: string) => {
       if (table === "api_keys") {
         return {
           select: vi.fn((..._args: unknown[]) => ({
             eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(() =>
+                  Promise.resolve(
+                    existingReadError
+                      ? { data: null, error: { message: "connection reset" } }
+                      : { data: existingRow, error: null },
+                  ),
+                ),
+              })),
               order: vi.fn(() =>
                 Promise.resolve(
                   listError
@@ -57,7 +80,8 @@ function mockClient(
             })),
           })),
           insert: vi.fn((payload: Record<string, unknown>) => {
-            insertPayload = payload;
+            inserts.push(payload);
+            calls.push("insert");
             return {
               select: vi.fn(() => ({
                 single: vi.fn(() =>
@@ -81,13 +105,16 @@ function mockClient(
               })),
             };
           }),
-          update: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              eq: vi.fn(() =>
-                Promise.resolve(updateError ? { error: { message: "db" } } : { error: null }),
-              ),
-            })),
-          })),
+          update: vi.fn(() => {
+            calls.push("update");
+            return {
+              eq: vi.fn(() => ({
+                eq: vi.fn(() =>
+                  Promise.resolve(updateError ? { error: { message: "db" } } : { error: null }),
+                ),
+              })),
+            };
+          }),
         };
       }
       throw new Error(`unexpected table: ${table}`);
@@ -199,5 +226,39 @@ describe("revokeApiKey()", () => {
   it("数据库错误返回 databaseError", async () => {
     createClientMock.mockResolvedValue(mockClient({ updateError: true }));
     await expect(revokeApiKey("k1")).resolves.toEqual({ ok: false, error: "databaseError" });
+  });
+});
+
+describe("regenerateApiKey()", () => {
+  it("读不到原密钥元数据时是 databaseError，且一个密钥都不签发", async () => {
+    const client = mockClient({ existingReadError: true });
+    createClientMock.mockResolvedValue(client);
+    await expect(regenerateApiKey("k1")).resolves.toEqual({ ok: false, error: "databaseError" });
+    // 名字与 scopes 是从这一行读来的；没读到就签发会签出一个错的密钥而不是失败
+    expect(client.calls).not.toContain("insert");
+    expect(client.calls).not.toContain("update");
+  });
+
+  it("密钥确实不存在时是 apiKeyNotFound，不再是含糊的 databaseError", async () => {
+    const client = mockClient({ existingRow: null });
+    createClientMock.mockResolvedValue(client);
+    await expect(regenerateApiKey("k-999")).resolves.toEqual({
+      ok: false,
+      error: "apiKeyNotFound",
+    });
+    expect(client.calls).not.toContain("insert");
+  });
+
+  it("读到元数据时沿用名字与 scopes 签发新密钥，并吊销旧的", async () => {
+    const client = mockClient({ existingRow: { name: "CI", scopes: ["project:read", "project:write"] } });
+    createClientMock.mockResolvedValue(client);
+    const result = await regenerateApiKey("k1");
+    expect(result.ok).toBe(true);
+    expect(client.calls).toEqual(["insert", "update"]);
+    if (!result.ok) throw new Error("unreachable");
+    // 新密钥沿用原密钥的名字与 scopes：断言的是**写进去的载荷**，
+    // 而不是 mock 返回行的形状（它固定回一条 name: "New"，断言那里等于什么都没断）。
+    expect(client.inserts[0]).toMatchObject({ name: "CI", scopes: ["project:read", "project:write"] });
+    expect(result.data?.key).toMatch(/^isk_/);
   });
 });

@@ -1415,3 +1415,48 @@
   然后 ③ 的 `dashboard/team/page.tsx` 两处与 `dashboard/billing/page.tsx` 一处。
   `permission-gate.tsx` 两处是 `justified`，不在清偿范围内。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-b 第五批：会话吊销与密钥重生成不再把读失败说成结论（②整段收尾）
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 8 → 6 处，debt 6 → 4；剩 4 处 = ③ 的 3 处 + `analytics` 1 处，
+  另有 2 处 `justified` 不在清偿范围）。
+- 分支 / commit：`fix/c08b-sessions-apikeys`（栈在 #99 → #98 → #94 → #93 → #92 之上）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这两处值得单独一批：它们是同一族里**后果最贴近"安全"**的两处。
+  `revokeSession` 读的是「这台设备的会话记录在不在」，读失败回 `sessionNotFound`，而该文案是
+  「Session not found. It may already be revoked.」——一次抖动会让用户以为某台设备已经登出，
+  而那个会话可能还好端端地活着；他不会重试，也不会去查第二遍。**错的不是措辞，是他据此做的决定。**
+  `regenerateApiKey` 读的是原密钥的 `name` 与 `scopes`，这两列直接决定**签发出的新密钥的权限**；
+  原先读失败与「密钥不存在」共用一个 `databaseError`，前者若继续往下就会拿错的 scopes 签发。
+- 做了什么：
+  1. 两处绑定 `error` 并 `logActionError`，读失败 → `databaseError`（可重试）。
+     会话那处读失败时 `delete` 一次都不发生；密钥那处读失败时既不 `insert` 也不 `update`
+     （用例直接断言 mock 记录的 `calls`，不只看返回值）。
+  2. 「确实没有这个密钥」从含糊的 `databaseError` 里分出来，新增 `apiKeyNotFound`
+     （en/zh-CN 各一条，中文刻意不带 你/您，与相邻文案同形）。
+     `check:action-errors` 的错误码从 43 → 45（本批 1 条 + 上一批 `uploadUnavailable` 1 条）。
+- **一条自己写出来才发现是假的断言**：正向用例起初写 `expect(result.data?.record.name).toBe("CI")`，
+  第一次跑就红——mock 的 `insert().select().single()` 固定回一条 `name: "New"`，跟传进去的载荷无关。
+  也就是说这条断言检验的是 mock，不是代码。改成断言**写进去的载荷**（`client.inserts[0]`）之后它才真的管东西。
+  顺带把测试桩里那个只赋值不使用的 `insertPayload` 换成对外可见的 `inserts` 数组。
+- 验证（最终形态重跑）：
+  - `pnpm -s type-check` / `pnpm -s lint` → exit 0；`pnpm check:query-errors` →
+    「358 文件 / 18 处 awaited 断言，无未登记的抹除（台账 6 处）」；
+    `pnpm check:action-errors` → 「45 个错误码 × 2 个 locale，163 个前端文件无裸渲染」。
+  - `npx vitest run src/lib/actions/sessions.test.ts src/lib/actions/api-keys.test.ts` → 25 passed
+    （本批新增 4 条：会话读失败 1、密钥读失败 1、密钥确实不存在 1、正向签发 1）。
+  - 变异核对 4 项（N1–N4）逐项红且只红对应那条：N1/N3 是两个 guard 空转，
+    N2/N4 是**反向证据**——把合法状态也改成故障会红（N2 用的是既有那条「会话不存在」用例，
+    所以它不需要新写也已经在那儿守着）。
+  - `pnpm lint` / `pnpm type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**（38 道门禁、
+    206 个测试文件全过）；`pnpm build` → exit 0。
+  - 浏览器侧：这两个 action 的失败分支在 E2E 里**构造不出来**（要真库抖一次），所以单测是它们唯一的证据。
+    仍跑了 `e2e/a11y.spec.ts` 取「那两页没被改坏」的回归数：**14/14 通过**（22.3s）。
+- 读这两处时撞见的两个邻居缺陷（都不属于 C08 那一类，已各自登记，不混进本 commit）：
+  #47 `regenerateApiKey` 的两步写入不接结果，中间抛错会留下一个用户从没见过明文却 active 的新密钥；
+  #48 `revokeApiKey` 在 0 行受影响时也回 `ok()`（`update` 只有 `error`，没有行数），
+  于是「吊销了一个不存在的密钥」在 UI 上长得和成功一模一样。
+- 下一批（③，最后一批 debt）：`dashboard/team/page.tsx` 两处（渲染成「你还没有团队」）与
+  `dashboard/billing/page.tsx` 一处（把套餐显示成 `free`）。清完 C08-b 只剩 2 处 `justified`，
+  届时该重新量一遍 C08-c（`#42`），而不是照旧清单点名。
+- 更新时间：2026-09-23（UTC）。

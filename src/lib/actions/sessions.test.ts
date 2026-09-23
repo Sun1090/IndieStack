@@ -34,6 +34,7 @@ function clientMock(opts: {
   sessionToken?: string | null;
   upsertError?: boolean;
   sessionRow?: object | null;
+  sessionReadError?: boolean;
   deleteError?: boolean;
 } = {}) {
   const {
@@ -41,6 +42,7 @@ function clientMock(opts: {
     sessionToken = makeToken("s-123"),
     upsertError = false,
     sessionRow = { id: "s-123" },
+    sessionReadError = false,
     deleteError = false,
   } = opts;
   return {
@@ -57,7 +59,13 @@ function clientMock(opts: {
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
           eq: vi.fn(() => ({
-            maybeSingle: vi.fn(() => Promise.resolve({ data: sessionRow })),
+            maybeSingle: vi.fn(() =>
+              Promise.resolve(
+                sessionReadError
+                  ? { data: null, error: { message: "connection terminated" } }
+                  : { data: sessionRow },
+              ),
+            ),
           })),
         })),
       })),
@@ -123,6 +131,15 @@ describe("revokeSession()", () => {
   it("会话不存在或越权返回 sessionNotFound", async () => {
     createClientMock.mockResolvedValue(clientMock({ sessionRow: null }));
     await expect(revokeSession("s-999")).resolves.toEqual({ ok: false, error: "sessionNotFound" });
+  });
+
+  it("会话记录读失败时是 databaseError，不是「这个会话已经吊销了」", async () => {
+    const client = clientMock({ sessionReadError: true });
+    createClientMock.mockResolvedValue(client);
+    await expect(revokeSession("s-123")).resolves.toEqual({ ok: false, error: "databaseError" });
+    // 没确认这一行在不在之前，绝不能删：删错设备比删不掉更糟
+    const sessionsTable = (client as unknown as { sessionsTable: { delete: ReturnType<typeof vi.fn> } }).sessionsTable;
+    expect(sessionsTable.delete).not.toHaveBeenCalled();
   });
 
   it("成功吊销：删除设备记录", async () => {

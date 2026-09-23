@@ -1,4 +1,5 @@
 {
+  "apiKeyNotFound": "API key not found. It may have been deleted.",
   "alreadyMember": "User is already a team member",
   "authEmailNotConfirmed": "Email not confirmed. Please check your inbox.",
   "authError": "Authentication failed. Please try again.",
