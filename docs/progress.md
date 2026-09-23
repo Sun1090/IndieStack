@@ -30,7 +30,9 @@
   - 变异：action 里不读受影响行（等价 main 上的行为）→ `expected { ok: true } to deeply equal
     { ok: false, error: 'passkeyNotFound' }`；跑完从 `/tmp/act2.bak` 还原并 `cmp` 确认；
   - `vitest run src/lib/actions/passkey.test.ts src/lib/repositories/webauthn.test.ts` → **15 passed**；
-  - 全量门禁（lint / type-check / test / `CI=true check:all` / build）在 push 前跑，数字落在 PR 描述与本条目后续 commit。
+  - 本机 push 前全量：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
+    **200 files / 2301 tests passed**（base #122 上是 2297，本条 +3 action +1 仓储用例）；
+    `CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
 - 阻塞 / 风险：
   - **base 是 #122**：同一批测试文件（`webauthn.test.ts`）两条 PR 都要改，独立基于 main 会留下一个
     重写同一段的合并冲突；叠在 #122 之后可以让账保持单调。代价是本 PR 的 diff 含 #122 的 4 个 commit，
