@@ -6,6 +6,16 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **`check:docs` 从此真的判两种语言**（原先英文那一半整体失明）：入口按 `docs-site/en/scripts.md` 找文档，
+  而本仓库的英文文档在 `docs-site/scripts.md`（只有中文在 `zh-CN/` 子目录），**读不到就 `continue`**——
+  于是它实际只校验过 zh-CN，每轮却打印「docs-site scripts 文档与 package.json 同步」。实测两边：往
+  `docs-site/scripts.md` 塞一条 `pnpm this-command-does-not-exist` → 退出 **0**；同样内容塞进 zh-CN → 退出 1。
+  修法分两层，第二层是重点：路径映射改对（en 在根、zh-CN 在子目录），并且**文件读不到就失败关闭**
+  （`SCRIPTS_DOC_MISSING`），因为「静默跳过一半」正是让这件事长期没人发现的机制。规则抽成
+  `src/lib/docs/scripts-docs.ts`（纯函数 + 7 条单测，含「一份坏文档不掩盖另一份的判定」），
+  IO 在 `scripts/lib/scripts-docs-check.js`，`scripts/check-docs-scripts.js` 只留 type-stripping 启动。
+  通过时输出带计数（`2/2 份文档、73 个脚本`），「两边都读了」和「只读了一边」在输出里不再同形。
+
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而

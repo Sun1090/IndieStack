@@ -1153,3 +1153,38 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — `check:docs` 的英文那一半从来没有被读过
+
+- 里程碑 / 版本：v0.12.0 / 门禁失明复核（与 D10「形同虚设」那一族同形）。
+- 分支 / commit：`fix/gate-docs-english-half`（基于 `origin/main` = `ad4b029`，独立 PR，不叠栈）。
+- 状态：DONE（PR 停在 ready-for-review）。
+- 怎么撞上的：这轮先量了依赖面（`pnpm audit --audit-level high` → No known vulnerabilities，且
+  `.npmrc` 的 registry 本来就是 npmjs.org，所以 `npm audit` 那条路在 pnpm 仓库里必然 ENOLOCK），
+  转去量「文档记录的命令 vs package.json 脚本」的双向差集，才发现单向差集里 en 有 18 条没记录——
+  顺着「为什么没人管」读到 `scripts/check-docs-scripts.js`：它找 `docs-site/en/scripts.md`，
+  而本仓库英文文档在 `docs-site/scripts.md`，`if (!fs.existsSync(docPath)) continue` 直接把半边吞了。
+- 实测门禁当前只判一边：`pnpm this-command-does-not-exist` 写进 en → `check:docs` 退出 **0**；
+  同样内容写进 zh-CN → 退出 **1** 并点名命令。（两次都用 `/tmp` 备份还原、`cmp` 确认字节一致。）
+- 完成内容：路径映射改对（en 在 `docs-site/` 根、zh-CN 在子目录）；**读不到文档改为失败关闭**
+  `SCRIPTS_DOC_MISSING`；规则抽成 `src/lib/docs/scripts-docs.ts` 纯函数 + 7 条单测，IO 落
+  `scripts/lib/scripts-docs-check.js`，`scripts/check-docs-scripts.js` 只留 type-stripping 启动（与
+  `check:gates` / `check:hooks` 同一形状）。通过输出带计数：`2/2 份文档、73 个脚本`。
+- 变更文件：`src/lib/docs/scripts-docs.ts`（新增）、`src/lib/docs/scripts-docs.test.ts`（新增）、
+  `scripts/lib/scripts-docs-check.js`（新增）、`scripts/check-docs-scripts.js`（改为薄入口）、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 修完再跑同一支探针：en 加假命令 → 退出 **1** 且报 `docs-site/scripts.md 引用了不存在的脚本`；还原后 0；
+  - 失败封闭探针：`node scripts/lib/scripts-docs-check.js /tmp/emptyrepo` → 退出 **1**（package.json 读不到），
+    文档缺失由规则报 `SCRIPTS_DOC_MISSING`（单测覆盖，含「一份坏文档不掩盖另一份的判定」）；
+  - 过程性错误记一条：IO 初版把 TS 语法写进了 `.js`（`import { type X }`、参数与返回标注），
+    Node 只在 `.ts` 里剥类型，于是 `SyntaxError: Unexpected identifier`——分三次清掉才跑起来。
+    `.js` 侧只能是纯 JS，这一点与同目录其它 IO 文件一致。
+  - `pnpm -s vitest run src/lib/docs/scripts-docs.test.ts` → **7 passed**；`pnpm -s type-check` → 0；
+    `pnpm -s lint` → 0；`CI=true pnpm -s check:all` → 0；`pnpm build` 与全量测试由 pre-push 钩子跑。
+- 阻塞 / 风险：本条只修「两边都读到了吗」这一半，**不要求 en 把 46 个脚本全写出来**（文档是子集，
+  `check:docs` 的语义仍是「文档里写的命令必须存在」）。已知的下一半差集：en 表格 42 行、zh-CN 38 行，
+  两份镜像的行数不一致而 `check:bilingual-docs` 不比对这份表格。
+- 下一项：给 `scripts.md` 加一条双向/镜像一致性判定（同一批 `pnpm` 命令在 en 与 zh-CN 两份里都要出现），
+  先量行数差的那 4 行是真漏还是刻意省略，再决定门禁往哪个方向收紧。
+- 更新时间：2026-09-24
