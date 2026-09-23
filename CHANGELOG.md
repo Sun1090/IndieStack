@@ -204,6 +204,19 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **删掉一条不存在（或属于别人）的通行密钥，会被报告成「已删除」**：`deleteMyCredential()` 只看
+  `error`，而 RLS 的 `users_delete_own_passkeys`（迁移 019）对不匹配的行是**静默过滤**——0 行受影响、
+  `error` 仍是 `null`。于是「删掉了」「那条本来就不是你的」两条路在 action 里长成同一个 `ok()`，
+  设置页弹「已移除」并 `revalidatePath`，而列表里那条凭据还活着。这是凭据管理面上的假成功：
+  用户以为吊销了一个密钥，它其实还在。同一条判据仓库已经立过（`revokeApiKey` 的「0 行不算吊销」、
+  `updateStatusByToken` 的 `.select("id")` 数行数），这里是漏网的一处。
+  修法照既有形状：`deleteMyCredential` 用 `.delete().eq("id", …).select("id")` 数受影响行返回布尔，
+  `deletePasskey` 在 0 行时回 `fail("passkeyNotFound")`（新码，en/zh 同步，中文按术语表用「通行密钥」）
+  且**不**重取列表；抛错仍是 `databaseError`。**为什么一直没人发现**：这个 action 此前在整个仓库里
+  没有任何用例——实测：把函数体换成无条件 `return ok()`（连仓储都不调）之后，全量仍然
+  **199 files / 2291 tests 全过**。现在 `src/lib/actions/passkey.test.ts` 3 条 + 仓储侧 2 条钉住三种结局
+  （成功/0 行/抛错），变异核对：action 里不读返回值 → `expected { ok: true } to deeply equal { ok: false,
+  error: 'passkeyNotFound' }`；仓储去掉 `.select("id")` → 两条仓储用例红。
 - **passkey 的两个路由把仓库层的读故障抛穿成 500，其中一条还破坏了它自己文件头写的边界**：
   `src/lib/repositories/webauthn.ts` 按设计在 `error` 时 `throw`（这是 C08 的口径，不是缺陷），
   调用方各自收口——Server Action 走 `try`→`fail("databaseError")`，设置页走 `src/app/dashboard/error.tsx`

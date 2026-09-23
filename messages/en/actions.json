@@ -43,6 +43,7 @@
   "onlyAdminsRemove": "Only team admins can remove members",
   "ownerCannotLeave": "The team owner cannot leave. Transfer ownership or delete the team instead.",
   "ownerCannotRemove": "The team owner cannot be removed",
+  "passkeyNotFound": "Passkey not found. It may have already been removed.",
   "passwordMin6": "Password must be at least 6 characters",
   "passwordMin8": "Password must be at least 8 characters",
   "passwordsDoNotMatch": "Passwords do not match",
