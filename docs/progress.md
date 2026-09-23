@@ -1153,3 +1153,47 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — 组件参考在推荐四个已被删除的组件，改正并补上门禁
+
+- 里程碑 / 版本：v0.12.0；「记录说假话」家族的第五处，新增门禁 D05。
+- 状态：DONE（待用户合并）。分支：`docs/components-reference-counts`，base = `origin/main`（`ad4b029`）。
+- 发现与量：把 `docs-site/components.md` 与中文半边的数量声明对回 `src/components/**`（非测试 `.tsx`）——
+  实测 ui 30 / shared 15 / layout 8 / auth 2 / forms 7，文档写的是 24 / 11 / 5 / 2 / 5；
+  6 个 `ui/` 组件（command、context-menu、kbd、radio-group、scroll-area、toaster）两侧都没列；
+  `LoadingState`、`PageLoader`（`223f9eb` 删）与 `SearchInput`、`PageContainer`（`42de059` 删）四行仍作为
+  可用的 `shared/` 组件在推荐；`DashboardSidebar` 标着 `layout/`，它在 `dashboard/`。
+- 同一条线索往外扫（是同一次 grep 带出来的，不是新假设）：`CLAUDE.md` 的组件地图 4 处数量过期
+  （ui 23 / layout 3 / forms 4 / shared 9），并且推荐了仓库里不存在的 `SupabaseProvider`、`LoadingPage`
+  ——而 `CLAUDE.md` 是 AI 助手读的第一份文件，写错的组件名会被当成事实继续生成代码；
+  `docs/architecture/09-frontend-components.md` 与 `agents/09-ui-ux.md` 各留着一份含幽灵的共享组件清单。
+  有意思的是 `agents/09-ui-ux.md` 的 `ui/` 清单 30 个全对——同一份文档里一半新一半旧。
+- 改动：五份文档按实测改正（中英两半的表格各从 49 行涨到 66 行——补 21 行真实组件、删 4 行幽灵；
+  `DashboardSidebar` 改指 `dashboard/`；小节标题里重复的数量断言删掉，只留目录树那一处可核的）；
+  新增 `pnpm check:component-docs`（规则
+  `src/lib/docs/component-docs.ts` + 17 项单测、IO `scripts/lib/component-docs-check.js`、入口
+  `scripts/check-component-docs.js`、接进 `package.json` 与 `check-all.sh`，`check:gates` 计数 37 → 38）。
+- 判据与边界（都写进门禁头注释）：只认表头是 `Component`/`组件` 的表——第一版按「首格是 PascalCase」认表，
+  立刻把 `CLAUDE.md` 的 `| Schema | 文件 | 用途 |` 读成一个叫 `Schema` 的组件；目录树写法（`├── auth/`）
+  只在声明 `exhaustive` 的参考文档里认，否则 `CLAUDE.md` 的 `src/app` 路由树里那句 `├── auth/ # 5 个认证页面`
+  会被当成组件数量；摘要文档只认 `` `src/components/<目录>/` `` 且带数字的行。条目式清单与表格说明列
+  **不**解析，所以 `SupabaseProvider` 现在仍在盲区里（见下一项）。不做中英文逐行镜像，理由同上一条
+  「两份 scripts.md 命令集合本来就一致」的判断。
+- 验证命令与结果：`pnpm -s type-check` exit 0；`pnpm -s lint` exit 0（第一版被
+  `@next/next/no-assign-module-variable` 拦下两处 `for (const module of …)`）；
+  `pnpm --silent check:component-docs` → `✅ 162 行 / 62 个枚举组件 / 15 处数量声明 × 5 份文档
+  （23 个组件位于不要求枚举的目录）` exit 0；`pnpm --silent check:gates` exit 0。
+- 变异核对（两条都不是「改完才绿」的事后断言）：① 在真实文档里塞一行 `| SearchInput | \`shared/\` |`
+  并把 ui 数量改回 24 → exit 1，`COMPONENT_GHOST` 点名 `search-input.tsx`、`COMPONENT_COUNT_STALE`
+  报 24/30，还原后 exit 0；② 对 `HEAD` 版本的两份文件跑同一条规则 → `architecture/09` 报 2 个幽灵、
+  `CLAUDE.md` 报 4 处数量过期，误报 0。
+- 阻塞：无。CI 证据范围：这条 PR base = `main`，所以 `ci.yml` 的 5 个必需作业会真的跑；上面列的是本机结果。
+- 风险 / 回滚：纯文档 + 只读门禁，无运行时路径。回滚 = revert 两个 commit。副作用是以后加组件必须同步
+  目录树数量与表格行——这正是门禁的目的，但会让「顺手加个组件」的 PR 多改两处。
+- 下一项：
+  1. 把解析扩到条目式清单（`CLAUDE.md` 的「共享组件」小节、`agents/09-ui-ux.md` 的 bullet 列表）、
+     表格说明列里的组件名，以及 `#### 共享组件（15 个）` 这种小节标题里的数量——
+     `SupabaseProvider` / `LoadingPage` 就漏在这一层；第二格写成 `` `shared/x.tsx` `` 文件路径的表
+     （`docs/architecture/09`）目前只核名字存在、不核挂在哪个目录。
+  2. #129 合并后要 `gh pr edit 129 --base main`（它 base 在 #128 上）。
+- 更新时间：2026-09-24。

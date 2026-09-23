@@ -6,6 +6,25 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **组件参考不再能写着不存在的组件**（D05）：新增 `pnpm check:component-docs`，把「文档说有哪些组件」
+  对回 `src/components/**`。起因是一次随手比对：`docs-site/components.md` 与中文半边把
+  `LoadingState`、`PageLoader` 当成可用的 `shared/` 组件在推荐，而这两个文件早在 `223f9eb`（G04 收敛
+  加载态）就删了；`SearchInput`、`PageContainer` 同理，删于 `42de059` 的死代码清理。对模板用户这不是措辞
+  问题——照着写 `import "@/components/shared/loading-state"` 直接构建失败。同一份表里 `DashboardSidebar`
+  仍写 `layout/`（它在 `dashboard/`），五个目录的数量声明合计少报 25 个组件，6 个 `ui/` 组件两侧都没列。
+  顺着这条线索往外扫，另外三份活文档犯的是同一个错：`CLAUDE.md` 的组件地图有 4 处数量过期（ui 23、layout 3、
+  forms 4、shared 9），并且推荐了仓库里根本没有的 `SupabaseProvider` 与 `LoadingPage`——而 `CLAUDE.md` 是
+  AI 助手读的第一份文件，写错的组件名会被当成事实继续生成代码；`docs/architecture/09` 与
+  `agents/09-ui-ux.md` 各自还留着一份含 2–3 个幽灵的共享组件清单。规则在 `src/lib/docs/component-docs.ts`
+  （纯函数、17 项单测），IO 在 `scripts/lib/component-docs-check.js`。三条判定：表格每一行的组件必须落到
+  真实模块文件且目录列一致；声明 `exhaustive` 的参考文档必须列全 `ui/shared/layout/auth/forms`；数量声明
+  必须等于实测（目录树写法允许写 0 但不许不写，摘要文档的 `` `src/components/ui/` `` 表格行只在带数字时
+  才算断言）。只认表头是 `Component`/`组件` 的表——第一版按「首格是 PascalCase」认表，立刻把 `CLAUDE.md`
+  的 `| Schema | 文件 | 用途 |` 校验表读成一个不存在的 `Schema` 组件。已知边界写在模块头注释里并如实说明：
+  条目式清单（`CLAUDE.md` 的「共享组件」小节）与表格说明列里的组件名不解析，`SupabaseProvider` 就漏在
+  这一层。刻意**不**做中英文逐行镜像（同 `check:docs` 的判断：两侧结构合法地不同，按行核会对着版式报警）。
+  门禁不是「改完才绿」的事后断言：对 `HEAD` 版本的两份文件跑同一条规则，`architecture/09` 报出 2 个幽灵、
+  `CLAUDE.md` 报出 4 处数量过期，全部是真缺陷、零误报。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
