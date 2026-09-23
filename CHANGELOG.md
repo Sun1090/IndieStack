@@ -244,6 +244,22 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **一次读失败不再让三个团队动作齐刷刷说「你没有团队」**（C08-c 第三批）：
+  `getCurrentTeam()` 原先返回 `team | null`，两次断言都明写着 `error: null`——数据库抖动一次，
+  `inviteMember` / `removeMember` / `updateMemberRole` 全部答 `noTeam`。而 `noTeam` 是终态：
+  用户看到的是「你还没有团队」，于是去创建第二个团队，而不是刷新重试。
+  现在它返回三态 `TeamLookup`（`ok` / `no-team` / `error`），由共用的 `requireTeam` 一句话分派：
+  读失败记日志并回 `databaseError`，确实没有团队才回 `noTeam`。`removeMember` 与 `updateMemberRole`
+  各自的**权限读**与**目标成员读**（4 处）同样补上：读失败不得答成 `onlyAdminsRemove` /
+  `onlyAdminsInvite` / `memberNotFound`——前两条是凭空造出来的权限拒绝，后一条会让人以为成员早被移走。
+  配套把两处 `.single()` 换成 `.maybeSingle()`，否则「确实没有这一行」会以 PGRST116 的形式被读成故障。
+  **测试桩同时补了一条忠实性要求**：`terminal()` 现在按「代码实际调了哪个终局」来加工预置数据，
+  `.single()` 遇到 null 行返回 PGRST116。原先 `single` 与 `maybeSingle` 在 mock 里长得一模一样，
+  从 maybeSingle 退回 single 这种改法压根不会红——变异 T3 就是这么被抓出来的。
+  覆盖：44 条（净增 10：团队解析的三态与两条「不许往下读」的反向证据、三个动作各自的解析失败、
+  四个权限/存在性守卫）。变异核对 8 项（T1–T8）全部被杀死且红在该判据上。
+  规模同步：`--unbound` 24 → 18 处，C08 门禁的 awaited 断言数 12 → 6（本批删掉 6 处 `error: null` 断言）。
+
 - **C08-c 的读数原先是下界，现在补齐了三类写法**：`collectUnboundErrorChannels` 只认
   「一条解构对着一条 awaited 链」，于是 `cond ? await query : { data: [] }`、
   `await Promise.all([chain, …])` 的数组解构、以及元素上再盖一层 `as unknown as { data }` 的链

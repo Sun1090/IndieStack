@@ -297,9 +297,11 @@
     现在剩下的射程外只有两件半：`Promise.all` 之外自造的并发 helper（`allSettled` 等）、
     数组元素里再套三元，以及那半件「绑了 `error` 却从不使用」——判它需要作用域分析，
     全文数同名标识符会把 `catch (error)` 一起数进去，是个只会漏报的假指标，**刻意没测**。
-    **下一步**：按这份真实清单排批次——先钱与权限（`actions/team.ts` 6 处、`admin/page.tsx` 3 处），
-    再 Stripe（checkout 2 + webhook 2），最后页面读数；清到只剩 `permission-gate.tsx` 那 2 处
-    `justified` 时接门禁。
+    **批次进度**：`actions/team.ts` 的 6 处已于 2026-09-23 清完（团队解析改成三态 `TeamLookup`：
+    `ok` / `no-team` / `error`，读失败回 `databaseError` 而不是 `noTeam`；权限读与目标读同批补上）。
+    **下一步**按剩下的清单排：先 `admin/page.tsx`(3) 与 Stripe（checkout 2 + webhook 2），
+    再页面读数（`dashboard/page.tsx` 4、`settings/page.tsx` 2、`e2e/push-queue` 2）；
+    清到只剩 `permission-gate.tsx` 那 2 处 `justified` 时接门禁。
     一个已确认、留给 #49 的洞：`dashboard/page.tsx:75` 那条 `as unknown as { data: … }`
     是**断言抹掉 `error`**（C08 那一族的正主），但 C08 门禁要求断言外面套 `await`，
     而这里的 `await` 落在 `Promise.all` 上——所以它只对 C08-c 可见，对门禁不可见。
