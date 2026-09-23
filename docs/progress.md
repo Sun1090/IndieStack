@@ -1157,7 +1157,8 @@
 ## 2026-09-23 — 待合 PR 的合并顺序与 CI 证据范围：长栈会把 commit 留在 main 之外
 
 - 里程碑 / 版本：v0.12.0；本轮不改代码，只回答「这 26 个 PR 怎么合才真的进 main」。
-- 分支 / PR：`docs/pr-merge-order`（基在 main `ad4b029`），停在 ready-for-review。
+- 分支 / PR：`docs/pr-merge-order` → **PR #118**（基在 main `ad4b029`，停在 ready-for-review；
+  因为 base 是 main，CI 会真跑——这正是上面「事实二」里那 20 个 PR 拿不到的东西）。
 - 状态：DONE（PR 待 review 合并）。
 - 量法（全部可复跑）：`gh pr list --state open --json number,baseRefName,headRefName,mergeable,mergeStateStatus`、
   逐个 `gh pr checks`、`gh api repos/…/branches/main/protection`、`git show <ref>:scripts/check-all.sh`。
