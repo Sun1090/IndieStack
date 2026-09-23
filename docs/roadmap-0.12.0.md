@@ -305,7 +305,10 @@
     最后 `permission-gate.tsx`(2) 按 `justified` 处理。清完才接门禁。
     **2026-09-23 续：`dashboard/page.tsx`(5) 与 `settings/page.tsx`(2) 也清完，剩 4 处** ——
     `api/e2e/push-queue`(2) 与 `permission-gate.tsx`(2 处 `justified`)。
-    清掉 push-queue 那 2 处之后，非 `justified` 的读数就清零，届时接门禁。
+    **同日：`api/e2e/push-queue`(2) 清完 —— 非 `justified` 的 C08-c 读数到此为 0，debt 清零。**
+    现在 `--unbound` 只剩 `permission-gate.tsx` 那 2 处，门禁接线的前提条件成立：
+    判据进 `check:query-errors` 时，`ERROR_CHANNEL_EXEMPTIONS` 需要给这个文件加一条
+    「客户端组件无法 5xx，读角色失败回落到最低权限」的 `justified` 记录（与它已有的 C08 豁免同源）。
     一个已确认、留给 #49 的洞：`dashboard/page.tsx:75` 那条 `as unknown as { data: … }`
     是**断言抹掉 `error`**（C08 那一族的正主），但 C08 门禁要求断言外面套 `await`，
     而这里的 `await` 落在 `Promise.all` 上——所以它只对 C08-c 可见，对门禁不可见。
