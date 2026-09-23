@@ -126,7 +126,7 @@ describe("parseGeneratedTables", () => {
 
   it("reads a hand-written object-literal snapshot too", () => {
     expect(parseGeneratedTables(OBJECT_LITERAL_TYPES)).toEqual([
-      { table: "api_usage", columns: ["id", "method", "path"] },
+      { table: "api_usage", columns: ["id", "method", "path"], writeColumns: [] },
     ]);
   });
 
@@ -363,5 +363,80 @@ describe("仓库现状", () => {
     expect(report.stats.tables).toBeGreaterThanOrEqual(15);
     expect(report.stats.fromCalls).toBeGreaterThanOrEqual(50);
     expect(report.stats.checked).toBeGreaterThanOrEqual(100);
+    // 写载荷那一半同样要有下限，否则「规则没读到任何东西」和「读到了但都合法」在输出里同形。
+    expect(report.stats.writeCalls).toBeGreaterThanOrEqual(30);
+    expect(report.stats.writeChecked).toBeGreaterThanOrEqual(80);
+  });
+});
+
+/**
+ * 写载荷那一半（`.insert()` / `.update()` / `.upsert()`）。
+ *
+ * 判的是生成的 `Insert`/`Update` 键集合，不是 `Row`：`Row` 里有 PostgREST 自己派生的列
+ * （生成的 id、stored tsvector），写进去反而是错的；而只写进 `Insert` 的列（这里的
+ * `password_hash`）确实合法。两条反例各自钉住这两个方向。
+ */
+describe("query write payloads", () => {
+  const writeCodes = (content: string) =>
+    codes([source("w.ts", content)]).filter((code) => code === "QUERY_WRITE_COLUMN_NOT_IN_TABLE");
+
+  it("接受 Update 里的键", () => {
+    expect(writeCodes(`supabase.from("profiles").update({ email: "a@b.c" })`)).toEqual([]);
+  });
+
+  it("拒绝 Update 里没有的键，并点名表与方法", () => {
+    const found = inspectQueryColumns({
+      typesContent: TYPES_FIXTURE,
+      sources: [source("w.ts", `supabase.from("profiles").update({ bio: 1 })`)],
+    }).issues;
+    expect(found).toHaveLength(1);
+    expect(found[0].code).toBe("QUERY_WRITE_COLUMN_NOT_IN_TABLE");
+    expect(found[0].message).toContain("profiles");
+    expect(found[0].message).toContain(".update");
+  });
+
+  it("Insert 独有、Row 里没有的列是合法写入", () => {
+    expect(writeCodes(`supabase.from("profiles").insert({ password_hash: "h" })`)).toEqual([]);
+  });
+
+  it("Row 里有但不可写的列要判错", () => {
+    expect(writeCodes(`supabase.from("profiles").update({ display_name: "n" })`)).toHaveLength(1);
+  });
+
+  it("数组载荷逐条判，upsert 同样判", () => {
+    expect(writeCodes(`supabase.from("profiles").insert([{ email: "a" }, { nope: 1 }])`)).toHaveLength(1);
+    expect(writeCodes(`supabase.from("profiles").upsert({ alsonope: 1 })`)).toHaveLength(1);
+  });
+
+  it("读不出的载荷形状不报错，但会被数出来", () => {
+    const report = inspectQueryColumns({
+      typesContent: TYPES_FIXTURE,
+      sources: [
+        source(
+          "w.ts",
+          `supabase.from("profiles").update({ ...patch });
+           supabase.from("profiles").update(variable);
+           supabase.from("profiles").insert({ [k]: 1 });`,
+        ),
+      ],
+    });
+    expect(report.stats.writeCalls).toBe(3);
+    expect(report.stats.writeChecked).toBe(0);
+    expect(report.stats.writeSkippedShapes).toBe(3);
+    // 什么都没判成时要失败关闭，而不是报绿。
+    expect(report.issues.map((issue) => issue.code)).toContain("QUERY_COLUMN_GATE_VACUOUS");
+  });
+
+  it("没有 Insert/Update 的表不参与判定，但计数可见", () => {
+    const loose = TYPES_FIXTURE.replace(
+      "        Insert: { id: string; email?: string | null; password_hash: string }\n        Update: { email?: string | null }",
+      "",
+    );
+    const report = inspectQueryColumns({
+      typesContent: loose,
+      sources: [source("w.ts", `supabase.from("profiles").update({ whatever: 1 })`)],
+    });
+    expect(report.stats.writeVocabularyMissing).toBe(1);
+    expect(report.stats.writeChecked).toBe(0);
   });
 });

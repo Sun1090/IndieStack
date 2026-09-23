@@ -1181,3 +1181,40 @@
   复用 `src/lib/db/query-columns.ts` 的表名→`Row` 解析，判定改成对象字面量的键集合，
   并按该仓库既有口径把「判不了的范围」计数打印出来。门禁落地前，新代码一律按本条的标注写法走。
 - 更新时间：2026-09-23
+
+## 2026-09-24 — 列名门禁补上写入那一半：载荷的键也对生成的 Insert/Update 判定
+
+- 里程碑 / 版本：v0.12.0 / C07 的另一半（读侧已管，写侧这轮接上）。
+- 分支 / commit：`feat/gate-write-payload-columns`（**叠在 PR #128 的分支之上**：这一半就是那条线量出来的，
+  且两边都改 `CHANGELOG.md` / `docs/progress.md` 的同一处尾巴。#128 落地后 `gh pr edit <本PR> --base main`，
+  判据见 #118 那篇）。
+- 状态：DONE（PR 停在 ready-for-review）。
+- 为什么做：#128 顺手量到的——载荷写成就地字面量时，把 `bio` 拼成 `bioo` 连 `pnpm type-check` 都不红。
+  全库 50 个 `.update()`/`.insert()` 调用点里只有 9 个带 `Database[...]["Update"]` 标注，
+  其余 41 处既没有类型兜底、`check:query-columns` 也只看读侧。逐个手改不收敛（还会跟 C08 栈撞文件），
+  所以补的是门禁。
+- 完成内容：`parseGeneratedTables` 除 `Row` 外再读 `Insert`/`Update` 的键集合；新增
+  `collectWritePayloadFacts`（对象字面量与「元素全是对象字面量」的数组都判）；新码
+  `QUERY_WRITE_COLUMN_NOT_IN_TABLE`；覆盖行打印 写入载荷处数 / 判定键数 / 跳过的形状数；
+  失败封闭扩成「读侧与写侧都没判成」才算空转。**判 `Insert`/`Update` 而不判 `Row`** 是有意的：
+  `Row` 含 PostgREST 派生、写入反而非法的列，只出现在 `Insert` 的列（`password_hash`）确实可写，
+  两个方向各有一条单测钉住。
+- 先量后写（D01 口径）：真实码库 **48 处写入载荷 / 判定 120 个键 / 误报 0**，跳过 13 个读不出的形状
+  （`{ ...patch }`、`[k]:`、载荷是变量——#128 刚把两处改成变量，正是被这一类计数的）。
+- 变更文件：`src/lib/db/query-columns.ts`、`src/lib/db/query-columns.test.ts`、
+  `scripts/lib/query-columns-check.js`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 第一版**变异是绿的**：拿 `actions/profile.ts` 试 `bio`→`bioo`，门禁退出 0。原因不是规则坏了，
+    是那里的载荷已被 #128 提成变量（属「读不出」一类）。换成真·就地字面量再试：
+    `repositories/api-keys.ts:37` 的 `is_active`→`is_activee` → 退出 **1** 并点名 `api_keys`，
+    还原（`cmp` 字节一致）后回到 0。这一轮把「探针打在自己没覆盖的形状上」记成了教训。
+  - 单测另有一条抓到我第一版的语义错：`writeChecked` 当时数的是「收集到的键」而非「判定的键」，
+    没有写词表的表会被算成已判——测试红之后改成只数真正比对过的键。
+  - `pnpm -s vitest run src/lib/db/query-columns.test.ts` → **30 passed**；`pnpm -s type-check` → 0；
+    `pnpm -s lint` / `CI=true pnpm -s check:all` 见下；`pnpm build` 与全量测试由 pre-push 钩子跑，钩子不过推不出去。
+- 阻塞 / 风险：`.upsert(..., { onConflict })` 的第二参、`.filter()`/`.or()` 的迷你表达式语言仍然不判，
+  三者都计数打印而不是静默跳过；载荷是变量/展开的不判，属既有收窄口径。
+- 下一项：把 41 处就地字面量按 #128 的标注写法逐步收掉——不是必须，门禁落地后它们已是「错了会红」，
+  收了只是多一层编译期兜底。顺序上排在 C08 栈落地之后。
+- 更新时间：2026-09-24

@@ -34,6 +34,12 @@ export interface QueryColumnSource {
 export interface QueryTable {
   table: string;
   columns: string[];
+  /**
+   * Keys the generated `Insert`/`Update` types accept, i.e. what a write payload may name.
+   * Kept separate from `columns` (`Row`) because the two sets differ: `Row` also carries
+   * columns PostgREST derives (generated ids, stored tsvector) that a write must not name.
+   */
+  writeColumns: string[];
 }
 
 /** A single literal column address used against a known table. */
@@ -69,15 +75,29 @@ export const COLUMN_ADDRESS_METHODS: ReadonlySet<string> = new Set([
 /** Methods whose argument is a comma-separated list of columns rather than exactly one. */
 export const COLUMN_LIST_METHODS: ReadonlySet<string> = new Set(["select"]);
 
-/** Every method this gate reads, so the coverage counters can't drift from the rule set. */
+/** Every read-side method this gate judges, so the coverage counters can't drift from the rule set. */
 export const JUDGED_METHODS: ReadonlySet<string> = new Set([
   ...COLUMN_ADDRESS_METHODS,
   ...COLUMN_LIST_METHODS,
 ]);
 
+/**
+ * Methods whose first argument is a payload whose keys name columns of the table.
+ *
+ * Separate from `JUDGED_METHODS` because the argument is an object, not a column-address string.
+ * Only the key set is judged: PostgREST rejects an unknown column but frequently coerces a wrong
+ * value type, so types are not this gate's claim.
+ */
+export const WRITE_PAYLOAD_METHODS: ReadonlySet<string> = new Set([
+  "insert",
+  "update",
+  "upsert",
+]);
+
 export type QueryColumnIssueCode =
   | "QUERY_TABLE_UNKNOWN"
   | "QUERY_COLUMN_NOT_IN_TABLE"
+  | "QUERY_WRITE_COLUMN_NOT_IN_TABLE"
   | "QUERY_TYPES_UNREADABLE"
   | "QUERY_COLUMN_GATE_VACUOUS";
 
@@ -97,6 +117,18 @@ export interface QueryColumnStats {
   skippedEmbedded: number;
   /** Arguments left alone because they are not plain column identifiers. */
   skippedArguments: number;
+  /** `.insert()` / `.update()` / `.upsert()` call sites against a known table. */
+  writeCalls: number;
+  /** Payload keys judged against the generated `Insert`/`Update` types. */
+  writeChecked: number;
+  /** Payloads left alone: spread, computed keys, or an argument that is not a literal. */
+  writeSkippedShapes: number;
+  /**
+   * Tables a write payload targeted but whose generated types expose no `Insert`/`Update`
+   * key set. Counted per write target, not per parsed table, because views legitimately
+   * have no write vocabulary and must not inflate this into noise.
+   */
+  writeVocabularyMissing: number;
 }
 
 export interface QueryColumnReport {
@@ -228,7 +260,14 @@ export function parseGeneratedTables(typesContent: string): QueryTable[] {
         if (!row) continue;
         const columns = namedMembers(row.value, parsed).map((column) => column.name);
         if (columns.length === 0) continue;
-        tables.push({ table: entry.name, columns });
+        const writable: string[] = [];
+        for (const kind of ["Insert", "Update"] as const) {
+          const writeBlock = memberNamed(namedMembers(entry.value, parsed), kind);
+          if (writeBlock) {
+            writable.push(...namedMembers(writeBlock.value, parsed).map((column) => column.name));
+          }
+        }
+        tables.push({ table: entry.name, columns, writeColumns: writable });
       }
     }
     ts.forEachChild(node, visit);
@@ -240,13 +279,18 @@ export function parseGeneratedTables(typesContent: string): QueryTable[] {
 
 /** Two schemas can each declare a table of the same name; the gate accepts either column set. */
 function dedupeTables(tables: QueryTable[]): QueryTable[] {
-  const byTable = new Map<string, Set<string>>();
+  const byTable = new Map<string, { columns: Set<string>; writeColumns: Set<string> }>();
   for (const entry of tables) {
-    const columns = byTable.get(entry.table) ?? new Set<string>();
-    for (const column of entry.columns) columns.add(column);
-    byTable.set(entry.table, columns);
+    const acc = byTable.get(entry.table) ?? { columns: new Set<string>(), writeColumns: new Set<string>() };
+    for (const column of entry.columns) acc.columns.add(column);
+    for (const column of entry.writeColumns) acc.writeColumns.add(column);
+    byTable.set(entry.table, acc);
   }
-  return [...byTable].map(([table, columns]) => ({ table, columns: [...columns].sort() }));
+  return [...byTable].map(([table, acc]) => ({
+    table,
+    columns: [...acc.columns].sort(),
+    writeColumns: [...acc.writeColumns].sort(),
+  }));
 }
 
 /** True when a `.select()`/`.insert()` list addresses an embedded relation, e.g. `profiles(id)`. */
@@ -383,6 +427,94 @@ export function collectQueryFacts(
   return { checks, fromCalls, skippedEmbedded, skippedArguments };
 }
 
+/** A property name that statically names a payload key, or null when the literal is not fully readable. */
+function literalPropertyKey(prop: ts.ObjectLiteralElementLike): string | null {
+  if (ts.isShorthandPropertyAssignment(prop)) return prop.name.text;
+  if (!ts.isPropertyAssignment(prop)) return null; // spread, method, accessor
+  const name = prop.name;
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
+  return null; // computed (`[k]:`) or numeric — a variable decides the key
+}
+
+/** Top-level keys of an object literal, or null when anything in it is not a static key. */
+function objectLiteralKeys(node: ts.Node): string[] | null {
+  if (!ts.isObjectLiteralExpression(node)) return null;
+  const keys: string[] = [];
+  for (const prop of node.properties) {
+    const key = literalPropertyKey(prop);
+    if (key === null) return null;
+    keys.push(key);
+  }
+  return keys;
+}
+
+/** Keys of a write payload: one object literal, or an array where every element is one. */
+function payloadKeys(arg: ts.Expression): string[] | null {
+  if (ts.isObjectLiteralExpression(arg)) return objectLiteralKeys(arg);
+  if (!ts.isArrayLiteralExpression(arg)) return null;
+  const keys: string[] = [];
+  for (const item of arg.elements) {
+    const inner = objectLiteralKeys(item);
+    if (inner === null) return null;
+    keys.push(...inner);
+  }
+  return keys.length > 0 ? keys : null;
+}
+
+export interface WritePayloadCheck {
+  file: string;
+  line: number;
+  table: string;
+  method: string;
+  column: string;
+}
+
+export interface CollectedWriteFacts {
+  checks: WritePayloadCheck[];
+  writeCalls: number;
+  writeSkippedShapes: number;
+}
+
+/** Inventory every static payload key per `.from("<table>").insert/update/upsert({...})`. */
+export function collectWritePayloadFacts(
+  sources: QueryColumnSource[],
+  knownTables: ReadonlySet<string>,
+): CollectedWriteFacts {
+  const checks: WritePayloadCheck[] = [];
+  let writeCalls = 0;
+  let writeSkippedShapes = 0;
+
+  for (const source of sources) {
+    const parsed = parse(source.file, source.content);
+
+    const visit = (node: ts.Node): void => {
+      const query = knownTableFromCall(node, knownTables);
+      if (query) {
+        for (const call of chainOf(query.call)) {
+          const method = methodName(call);
+          if (!method || !WRITE_PAYLOAD_METHODS.has(method)) continue;
+          writeCalls += 1;
+          const argument: ts.Expression | undefined = call.arguments[0];
+          const keys = argument ? payloadKeys(argument) : null;
+          if (argument === undefined || keys === null) {
+            writeSkippedShapes += 1;
+            continue;
+          }
+          const line = lineOf(parsed, argument);
+          for (const column of keys) {
+            checks.push({ file: source.file, line, table: query.table, method, column });
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+
+    visit(parsed);
+  }
+
+  return { checks, writeCalls, writeSkippedShapes };
+}
+
 /** `.from()` on a table the generated types do not know about is the same bug, one level up. */
 export function collectUnknownTableCalls(
   sources: QueryColumnSource[],
@@ -435,11 +567,25 @@ export function inspectQueryColumns(options: {
             "column gate cannot judge anything and refuses to report green",
         },
       ],
-      stats: { tables: 0, fromCalls: 0, checked: 0, skippedEmbedded: 0, skippedArguments: 0 },
+      stats: {
+        tables: 0,
+        fromCalls: 0,
+        checked: 0,
+        skippedEmbedded: 0,
+        skippedArguments: 0,
+        writeCalls: 0,
+        writeChecked: 0,
+        writeSkippedShapes: 0,
+        writeVocabularyMissing: 0,
+      },
     };
   }
 
   const facts = collectQueryFacts(options.sources, knownTables);
+  const writes = collectWritePayloadFacts(options.sources, knownTables);
+  const writeColumnsByTable = new Map(
+    tables.filter((entry) => entry.writeColumns.length > 0).map((entry) => [entry.table, new Set(entry.writeColumns)]),
+  );
   const checked = new Set<string>();
 
   for (const check of facts.checks) {
@@ -466,21 +612,48 @@ export function inspectQueryColumns(options: {
     });
   }
 
+  const seenWrites = new Set<string>();
+  const missingWriteVocabulary = new Set<string>();
+  let writeChecked = 0;
+  for (const write of writes.checks) {
+    const key = `${write.file}:${write.line}:${write.column}`;
+    if (seenWrites.has(key)) continue;
+    seenWrites.add(key);
+    const columns = writeColumnsByTable.get(write.table);
+    if (!columns) {
+      missingWriteVocabulary.add(write.table);
+      continue;
+    }
+    writeChecked += 1;
+    if (columns.has(write.column)) continue;
+    issues.push({
+      code: "QUERY_WRITE_COLUMN_NOT_IN_TABLE",
+      message:
+        `${write.file}:${write.line} sends .${write.method}({ ${write.column}: … }) against ` +
+        `table ${write.table}, whose generated Insert/Update types have no such key ` +
+        `(keys: ${[...columns].sort().join(", ")})`,
+    });
+  }
+
   const stats: QueryColumnStats = {
     tables: tables.length,
     fromCalls: facts.fromCalls,
     checked: facts.checks.length,
     skippedEmbedded: facts.skippedEmbedded,
     skippedArguments: facts.skippedArguments,
+    writeCalls: writes.writeCalls,
+    writeChecked,
+    writeSkippedShapes: writes.writeSkippedShapes,
+    writeVocabularyMissing: missingWriteVocabulary.size,
   };
 
-  if (stats.checked === 0 && issues.length === 0) {
+  if (stats.checked + stats.writeChecked === 0 && issues.length === 0) {
     // 只在其他方面都干净时补这一条：它的职责是阻止“无事可做却报绿”，不是第二份错误清单。
     issues.push({
       code: "QUERY_COLUMN_GATE_VACUOUS",
       message:
-        "no literal column address was checked; the gate stopped reading the query chains it " +
-        "exists to guard",
+        "no literal column address or write-payload key was checked; the gate stopped reading the " +
+        "query chains it exists to guard",
     });
   }
 
