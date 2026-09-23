@@ -70,6 +70,21 @@ async function verifyAssertion(
   }
 }
 
+/**
+ * 读凭据。仓库层按设计在 `error` 时抛，所以「读不到」在这里是第三种状态：
+ * `undefined` = 问不出答案（基础设施故障），`null` = 问出来了、确实没有这条凭据。
+ * 不接住就是 500 HTML 直接抛穿，而本文件头部写的边界是「challenge cookie 每次验证尝试后立即清除」——
+ * 抛穿的那条路径上 cookie 谁都不清，客户端拿到的也不是它一直在等的 JSON。
+ */
+async function loadCredential(credentialId: string) {
+  try {
+    return await findCredentialById(credentialId);
+  } catch (error) {
+    await logApiError("[passkey auth-verify] credential lookup failed", error);
+    return undefined;
+  }
+}
+
 async function persistCounter(credentialId: string, counter: number): Promise<boolean> {
   try {
     await updateCredentialCounter(credentialId, counter);
@@ -107,7 +122,10 @@ export async function POST(request: NextRequest) {
     return clearChallenge(jsonNoStore({ error: "Invalid body" }, { status: 400 }));
   }
 
-  const credential = await findCredentialById(credentialId);
+  const credential = await loadCredential(credentialId);
+  if (credential === undefined) {
+    return clearChallenge(jsonNoStore({ error: "Authentication unavailable" }, { status: 503 }));
+  }
   if (!credential) {
     return clearChallenge(jsonNoStore({ error: "Credential not found" }, { status: 404 }));
   }

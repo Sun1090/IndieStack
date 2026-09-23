@@ -173,6 +173,14 @@ describe("POST /api/auth/passkey/register-options", () => {
     expect(cookie).toContain("pk_challenge=reg-challenge");
     expect(cookie).toContain("HttpOnly");
   });
+
+  it("已登记凭据读不到时返回 503，而不是把异常抛穿成 500", async () => {
+    listMock.mockRejectedValue(new Error("connection reset by peer"));
+    const res = await registerOptions(jsonReq("/api/auth/passkey/register-options"));
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({ error: "Authentication unavailable" });
+    expect(logApiErrorMock).toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/auth/passkey/register-verify", () => {
@@ -249,6 +257,23 @@ describe("POST /api/auth/passkey/auth-verify", () => {
       ),
     );
     expect(res.status).toBe(404);
+    expect(res.headers.get("set-cookie") ?? "").toContain("pk_challenge=;");
+  });
+
+  it("凭据读取失败返回 503 并清除 challenge：读不到不能抛穿成 500", async () => {
+    findMock.mockRejectedValue(new Error("connection reset by peer"));
+    const res = await authVerify(
+      jsonReq(
+        "/api/auth/passkey/auth-verify",
+        { response: { id: "cred1" } },
+        { pk_challenge: "auth-challenge" },
+      ),
+    );
+    expect(res.status).toBe(503);
+    const payload = await res.json();
+    expect(payload).toEqual({ error: "Authentication unavailable" });
+    expect(JSON.stringify(payload)).not.toContain("connection reset");
+    // 该文件的头部边界：challenge cookie 每次验证尝试后都要清掉
     expect(res.headers.get("set-cookie") ?? "").toContain("pk_challenge=;");
   });
 
