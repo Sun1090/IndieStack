@@ -141,7 +141,7 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     zh: "文档",
     en: "Documentation",
     paths: ["docs", "docs-site"],
-    commands: ["check:docs", "check:adr", "check:changelog", "check:release-docs"],
+    commands: ["check:docs", "check:component-docs", "check:adr", "check:changelog", "check:release-docs"],
   },
 ];
 
