@@ -14,7 +14,7 @@
 > （见退出报告「与 roadmap 文本的矛盾」）。因此本文件要求：状态只在退出报告里维护，
 > roadmap 只写目标与验收口径。
 
-## 任务池（24 项）
+## 任务池（引用一律用 ID；条数不写在这里，现量：`awk '/^## 任务池/{f=1;next} /^## 里程碑/{f=0} f && /^[0-9]+\. [A-Z][0-9]+/' docs/roadmap-0.12.0.md | wc -l`）
 
 ### A. 通知投递语义（P0，来自 E03 与退出报告遗留项 1）
 
@@ -252,6 +252,28 @@
     `api/stripe/checkout/route.ts:58,68`、`api/webhooks/stripe/route.ts:256,263`、
     `dashboard/admin/page.tsx:47,50,53`、`dashboard/team/page.tsx:110`。C08 看不见它们（判据是断言），
     要么把门禁扩成「awaited 查询结果必须绑定 `error` 或使用它」，要么单独一条——扩之前先量误报
+
+21. C09 会话读取的错误通道（`auth.getUser()` / `getSession()` / `getClaims()`）：C08 的**同形状邻居**，
+    只是数据源从 PostgREST 换成 Auth——**这个客户端也是把失败装在 `error` 里返回而不是抛出**，所以
+    「连 `error` 都不取」在这里同样会把一次基础设施抖动说成一个关于用户的事实。
+    读数（2026-09-24，AST 扫 `src/**` 非测试文件；判据：调用形如 `supabase.auth.getUser()`、结果做解构绑定、
+    绑定成员里没有 `error`）：**62 处**，其中 **1 处绑定 `error`**（`src/app/auth/callback/page.tsx`）、
+    2 处不是解构绑定（`reset-password-form.tsx`、`dashboard/settings/page.tsx`，都当布尔用）。
+    剩下 59 处按下游第一个 `if (!user)` 分支答复什么归类：**39 处答「没登录」/401**、**4 处 redirect 到登录页**、
+    **1 处返回 null**（`actions/team.ts` 的 `getCurrentTeam()`，调用方据此回答 `noTeam`——「你没有团队」
+    也是读出来的事实）、2 处另有写法、13 处的判空跨出 14 行窗口，要逐条读。
+    **失败方向都是拒绝，不是放行**，所以这条没有 P0；排期时先做那 13 处的判读，确认没有一处把 `error`
+    当成「已登录」——那才是需要立刻处理的形状。
+    **已收口的部分**：守卫层（`src/lib/auth/guards.ts`）改走 `readSessionUser()`，`requireAuth/Role/Permission`
+    与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好。
+    **暂不接门禁**，理由与 C08-c 同源：合法状态（确实没有会话 → 回落登录页是对的）与「没读到」在 AST 上
+    都只是「没取 `error`」，先接会把正常写法一并点掉；先照 C08-b 的办法立台账再逐文件偿还。
+    两个已知消费者不在本条射程：`api/analytics/route.ts` 与 `api/stripe/checkout/route.ts` 现在仍把
+    守卫失败一律写成 401，那两处分别由 #103（analytics，#44 前半）与 #96（checkout）处理。
+    顺带一条治理观察，不在本条范围内但记下来免得重新发现：**本池的序号已经不复用不行了**——
+    C08 / C08-b / C08-c 在源码里占 18 / 19 / 20，而 D01 / D02 / D03 也是 18 / 19 / 20（本条写作 21，
+    与 D04 撞号）。渲染时有序列表按位置重编号，所以只有源码读者会被误导；引用一律用 ID（C09、D04），
+    别用序号。要不要给任务池加一条「ID 唯一 + 序号不撞」的门禁，等有第二次踩到再说。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 
