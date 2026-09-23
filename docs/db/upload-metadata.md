@@ -155,9 +155,9 @@ select object_key from public.upload_objects where status = 'active';
 `referenced=false` 的对象；单个对象删除失败**不阻塞删号**，失败的行保持 `active`，
 因此会稳定出现在上面的孤儿清单里等待补删。
 
-**仍未覆盖的一半**：bucket 里存在、但数据库从来没有登记过行的对象（例如 031 之前上传的历史文件），
-只能靠 provider 侧列目录与 `status='active'` 集合做差集；`pnpm audit:storage-orphans` 只读数据库这一侧，
-不做那半边比对。
+**过去未覆盖的一半（现在由 `--provider-diff` 补上，见下）**：bucket 里存在、但数据库从来没有
+登记过行的对象（例如 031 之前上传的历史文件），只读数据库这一侧是永远看不见的——
+RPC 的真相来源就是 `upload_objects`，一行不存在的记录无法被它报出来。
 
 数据库这一侧的巡检已经封装成命令（只读，不删任何对象）：
 
@@ -175,15 +175,38 @@ SUPABASE_SERVICE_ROLE_KEY=... pnpm audit:storage-orphans -- --json --output /tmp
 
 报告把 **owner_id 为空** 的行单列出来——那意味着上传者账户已经删除而对象还公开可读，
 是隐私问题而不只是容量问题，所以它排在总字节数之前。退出码：0 无孤儿、1 执行失败
-（缺凭据 / RPC 报错 / 响应形状不认识）、2 有孤儿且带了 `--fail-on-findings`。
+（缺凭据 / RPC 报错 / 响应形状不认识 / **列目录没走完**）、2 有孤儿且带了 `--fail-on-findings`。
 解析严格而不是断言：`byte_size` 缺列或类型漂移会让巡检失败，而不是把「读不懂」报成「没有孤儿」。
 
-反向比对需要 provider 侧对象列表（Supabase Storage `list()` 或 S3 ListObjectsV2），
-当前**尚未**接入定时任务——表先落数据，巡检/清理 worker 属于后续里程碑。手动巡检建议：
+### provider 侧集合差（`--provider-diff`，C05）
 
-1. 拉取某个 bucket 的完整对象列表（包含 `covers/` 前缀）；
-2. 与 `select object_key from public.upload_objects where bucket = '<bucket>' and status = 'active'` 做双向差集；
-3. 仅删除「bucket 有、元数据无」且创建时间超过观察窗口的对象，避免误删正在上传的对象。
+```bash
+pnpm audit:storage-orphans -- --provider-diff --bucket avatars --max-pages 200
+```
+
+它多做两件事：用 `POST /storage/v1/object/list/<bucket>` 递归列完一个 bucket（含分页），
+以及分页读 `upload_objects` 的全部键，然后做**双向**差集：
+
+- **无元数据行**：bucket 里有对象、`upload_objects` 完全不认得。031 之前的存量就是这一类，
+  这也是这条命令存在的理由——RPC 永远报不出「一行都不存在的记录」。
+- **active 行对象已不在**：元数据说对象应该在、bucket 里却没有。这通常意味着有人绕开应用删过
+  对象或清过 bucket，而业务表里的 URL 还指着它。`deleted` 行不算发现（那是我们已承认没了的）。
+
+三个刻意的设计：
+
+1. **它是 opt-in 的**，因为要多走一整趟列目录；不带这个 flag 时命令的行为与开销和以前完全一致，
+   报告的零孤儿一行也会自己写明「这只说明数据库侧为空」。
+2. **「没看完」不是「没有」**：页数 / 深度 / 条数任一触顶，元数据表 `Content-Range` 缺失或前后矛盾，
+   一律 `exit 1` 并给出停在哪，绝不打印那份「0 个发现」的报告。实测过反例：列一个不存在的 bucket
+   服务端返回的是 200 + 空数组，所以命令会先用 `GET /storage/v1/bucket` 校验 bucket 存在，
+   名字拼错时直接失败——否则一次笔误就产出一次假清白。
+3. **仍然只读**：集合差里「bucket 有、元数据无」的对象不能自动删。历史文件可能正被引用而只是
+   没登记过元数据，所以删除要么补登记、要么人工确认，且建议只碰创建时间超过观察窗口的对象。
+
+身份是 `bucket/object_key`，而 `object_key` 本身带着 bucket 内的前缀目录（`avatars/<userId>/…`），
+所以报告里会出现 `avatars/avatars/...` 这样的双前缀——那是数据形状如此，不是拼接 bug。
+反向比对接入了列目录，但**没有**接入定时任务：`/api/cron/retention` 那一轮仍然只跑数据库侧的
+两个计数，provider 侧这一趟按人工节奏来。
 
 ## 已知边界
 

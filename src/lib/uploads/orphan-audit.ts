@@ -16,7 +16,8 @@
  *
  * 边界（写在这里，不要靠猜）：RPC 的真相来源是 `upload_objects`，因此只能发现
  * 「有元数据行、无业务引用」的对象。031 之前直接写入 bucket、从未落过元数据的
- * 存量对象不在清单里，需要 provider 侧 `list()` 与数据库做集合差才能发现。
+ * 存量对象不在清单里——那半边由本文件末尾的 provider 侧列目录差集（C05）补上，
+ * 它是**按需开启**的第二条链路，因为要走完整个 bucket。
  */
 
 /** PostgREST RPC 名；与迁移签名和 service-role 边界清单一致。 */
@@ -182,15 +183,291 @@ export function formatOrphanReport(
     lines.push(`  …另有 ${rows.length - shown.length} 条，用 --json 拿完整清单`);
   }
   if (summary.count === 0) {
-    lines.push("  （数据库侧无遗漏；031 之前从未落元数据的对象需 provider 侧 list() 差集）");
+    lines.push(
+      "  （数据库侧无遗漏；这只说明「有元数据行、无业务引用」的集合为空——" +
+        "从未落过元数据的对象要加 --provider-diff 列目录才知道）",
+    );
   }
   return lines;
 }
 
-/** 巡检的退出码约定：0 无孤儿 / 1 执行失败 / 2 有孤儿且要求失败退出。 */
+/**
+ * 巡检的退出码约定：0 无孤儿 / 1 执行失败 / 2 有孤儿且要求失败退出。
+ *
+ * `extraFindings` 是给 provider 集合差留的口子：那类发现（无元数据行、active 行对象已消失）
+ * 同样应该让 `--fail-on-findings` 变红，但它们的修法完全不同（要么补登记要么人工确认），
+ * 所以只并到同一个退出码上，不混进 `OrphanSummary` 的孤儿计数里。
+ */
 export const ORPHAN_EXIT_CODES = { clean: 0, error: 1, findings: 2 } as const;
 
-export function decideOrphanExitCode(summary: OrphanSummary, failOnFindings: boolean): number {
-  if (summary.count > 0 && failOnFindings) return ORPHAN_EXIT_CODES.findings;
+export function decideOrphanExitCode(
+  summary: OrphanSummary,
+  failOnFindings: boolean,
+  extraFindings = 0,
+): number {
+  if ((summary.count > 0 || extraFindings > 0) && failOnFindings) {
+    return ORPHAN_EXIT_CODES.findings;
+  }
   return ORPHAN_EXIT_CODES.clean;
+}
+
+// ============================================================
+// provider 侧集合差（C05）
+// ============================================================
+
+/**
+ * `POST /storage/v1/object/list/<bucket>` 返回的一条目。
+ *
+ * 实测（本地栈 2026-09-23）：文件夹是 `{name:"probe", id:null, metadata:null}`，
+ * 对象是 `{name:"x.txt", id:"<uuid>", updated_at:"…", metadata:{size:12, …}}`。
+ * `name` 相对于请求里的 `prefix`，所以完整键要自己拼。
+ */
+export interface StorageListEntry {
+  name: string;
+  /** `null` 表示这是个文件夹而不是对象。 */
+  id: string | null;
+  updatedAt: string | null;
+  /** `metadata.size`；文件夹与缺元数据的条目为 `null`。 */
+  bytes: number | null;
+}
+
+/** provider 侧真实存在的一个对象。 */
+export interface ProviderObject {
+  bucket: string;
+  objectKey: string;
+  bytes: number | null;
+  updatedAt: string | null;
+}
+
+/** `upload_objects` 里的一行元数据。 */
+export interface TrackedObject {
+  bucket: string;
+  objectKey: string;
+  status: "active" | "deleted";
+}
+
+/** 从一条列目录结果的 `metadata.size` 取字节数；形状不认识就抛。 */
+function readEntryBytes(metadata: unknown, where: string): number | null {
+  if (metadata === null || metadata === undefined) return null;
+  if (typeof metadata !== "object" || Array.isArray(metadata)) {
+    throw new OrphanAuditError(`${where} 的 metadata 类型非法`);
+  }
+  const size = (metadata as Record<string, unknown>).size;
+  if (size === undefined || size === null) return null;
+  const parsed = Number(size);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new OrphanAuditError(`${where} 的 metadata.size 非法：${String(size)}`);
+  }
+  return parsed;
+}
+
+/** 解析列目录里的一个条目；`where` 只为了让报错能指出是哪一页的第几条。 */
+function parseStorageListEntry(entry: unknown, where: string): StorageListEntry {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new OrphanAuditError(`${where} 不是对象`);
+  }
+  const row = entry as Record<string, unknown>;
+  if (typeof row.name !== "string" || row.name === "") {
+    throw new OrphanAuditError(`${where} 缺少 name`);
+  }
+  const id = row.id;
+  if (id !== null && id !== undefined && typeof id !== "string") {
+    throw new OrphanAuditError(`${where} 的 id 类型非法`);
+  }
+  return {
+    name: row.name,
+    id: typeof id === "string" ? id : null,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+    bytes: readEntryBytes(row.metadata, where),
+  };
+}
+
+/** 解析一页列目录结果。形状不认识就抛，不猜。 */
+export function parseStorageListPage(payload: unknown, prefix: string): StorageListEntry[] {
+  if (!Array.isArray(payload)) {
+    throw new OrphanAuditError(
+      `列目录 ${prefix || "<根>"} 期望数组，实际得到 ${payload === null ? "null" : typeof payload}`,
+    );
+  }
+  return payload.map((entry, index) => parseStorageListEntry(entry, `${prefix || "<根>"} 第 ${index + 1} 条`));
+}
+
+/** 列目录的开销上限；触顶即「清单不完整」而不是「清单为空」。 */
+export interface BucketWalkLimits {
+  pageSize: number;
+  maxPages: number;
+  maxDepth: number;
+  maxObjects: number;
+}
+
+export const DEFAULT_BUCKET_WALK_LIMITS: BucketWalkLimits = {
+  pageSize: 500,
+  maxPages: 200,
+  maxDepth: 6,
+  maxObjects: 50_000,
+};
+
+export interface BucketWalkResult {
+  bucket: string;
+  objects: ProviderObject[];
+  /** 实际发出的列目录请求数。 */
+  pages: number;
+  folders: number;
+  /** `false` = 撞到上限，清单不完整。调用方必须按失败处理。 */
+  complete: boolean;
+  stoppedAt: string | null;
+}
+
+/**
+ * 递归列完一个 bucket。
+ *
+ * 分页终止条件是「这一页没满」，但**只有在上限之内**成立：页数/深度/条数任一触顶都记成
+ * 不完整，因为「我们没看完」和「bucket 里没有东西」是两个必须分开的结论——一个报绿的
+ * 巡检把前者说成后者，就等于把盲区洗成了清白。
+ */
+export async function walkProviderBucket(input: {
+  bucket: string;
+  listPage: (prefix: string, offset: number) => Promise<unknown>;
+  limits?: Partial<BucketWalkLimits>;
+}): Promise<BucketWalkResult> {
+  const limits: BucketWalkLimits = { ...DEFAULT_BUCKET_WALK_LIMITS, ...(input.limits ?? {}) };
+  const objects: ProviderObject[] = [];
+  const seen = new Set<string>();
+  let pages = 0;
+  let folders = 0;
+  let complete = true;
+  let stoppedAt: string | null = null;
+
+  const queue: Array<{ prefix: string; depth: number }> = [{ prefix: "", depth: 0 }];
+  while (queue.length > 0) {
+    const { prefix, depth } = queue.shift()!;
+    if (depth > limits.maxDepth) {
+      complete = false;
+      stoppedAt = stoppedAt ?? `${input.bucket}/${prefix}<深度上限 ${limits.maxDepth}>`;
+      continue;
+    }
+    let offset = 0;
+    for (;;) {
+      if (pages >= limits.maxPages) {
+        complete = false;
+        stoppedAt = stoppedAt ?? `${input.bucket}/${prefix}<页数上限 ${limits.maxPages}>`;
+        return { bucket: input.bucket, objects, pages, folders, complete, stoppedAt };
+      }
+      const entries = parseStorageListPage(await input.listPage(prefix, offset), prefix);
+      pages += 1;
+      for (const entry of entries) {
+        if (entry.id === null) {
+          folders += 1;
+          queue.push({ prefix: `${prefix}${entry.name}/`, depth: depth + 1 });
+          continue;
+        }
+        const objectKey = `${prefix}${entry.name}`;
+        const identity = objectIdentity(input.bucket, objectKey);
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        objects.push({
+          bucket: input.bucket,
+          objectKey,
+          bytes: entry.bytes,
+          updatedAt: entry.updatedAt,
+        });
+        if (objects.length >= limits.maxObjects) {
+          complete = false;
+          stoppedAt = stoppedAt ?? `${input.bucket}/${objectKey}<条数上限 ${limits.maxObjects}>`;
+          return { bucket: input.bucket, objects, pages, folders, complete, stoppedAt };
+        }
+      }
+      if (entries.length < limits.pageSize) break;
+      offset += limits.pageSize;
+    }
+  }
+
+  return { bucket: input.bucket, objects, pages, folders, complete, stoppedAt };
+}
+
+export function objectIdentity(bucket: string, objectKey: string): string {
+  return `${bucket}/${objectKey}`;
+}
+
+/** provider 与数据库两个方向的差集。 */
+export interface ProviderDiff {
+  bucket: string;
+  providerCount: number;
+  /** 元数据表里指向该 bucket 的行数（active + deleted）。 */
+  trackedCount: number;
+  /** bucket 里有对象、元数据表完全不认得——031 之前的存量就是这一类。 */
+  untracked: ProviderObject[];
+  /** 元数据说是 `active`，bucket 里却没有这个对象。 */
+  vanished: string[];
+  scannedPages: number;
+  folders: number;
+  complete: boolean;
+  stoppedAt: string | null;
+}
+
+/**
+ * 做集合差。
+ *
+ * `vanished` 只判 `active` 行：`deleted` 行是「我们已经承认它没了」，
+ * 而 `active` 行是一张还挂着的公共 URL——对象没了就意味着链接已经死了。
+ */
+export function diffProviderObjects(
+  walked: BucketWalkResult,
+  tracked: readonly TrackedObject[],
+): ProviderDiff {
+  const trackedHere = tracked.filter((row) => row.bucket === walked.bucket);
+  const trackedIdentities = new Set(
+    trackedHere.map((row) => objectIdentity(row.bucket, row.objectKey)),
+  );
+  const providerIdentities = new Set(walked.objects.map((object) => objectIdentity(object.bucket, object.objectKey)));
+
+  return {
+    bucket: walked.bucket,
+    providerCount: walked.objects.length,
+    trackedCount: trackedHere.length,
+    untracked: walked.objects.filter(
+      (object) => !trackedIdentities.has(objectIdentity(object.bucket, object.objectKey)),
+    ),
+    vanished: trackedHere
+      .filter(
+        (row) =>
+          row.status === "active" && !providerIdentities.has(objectIdentity(row.bucket, row.objectKey)),
+      )
+      .map((row) => objectIdentity(row.bucket, row.objectKey)),
+    scannedPages: walked.pages,
+    folders: walked.folders,
+    complete: walked.complete,
+    stoppedAt: walked.stoppedAt,
+  };
+}
+
+/** 差集里有发现吗（用于退出码）。 */
+export function providerDiffFindings(diff: ProviderDiff): number {
+  return diff.untracked.length + diff.vanished.length;
+}
+
+/** provider 差集那一段报告；只在巡检真的列过目录时调用。 */
+export function formatProviderDiffLines(diff: ProviderDiff, maxRows = 50): string[] {
+  const lines: string[] = [
+    `provider 集合差（bucket ${diff.bucket}）：列了 ${diff.providerCount} 个对象 / ` +
+      `${diff.trackedCount} 行元数据，用 ${diff.scannedPages} 页、${diff.folders} 个文件夹`,
+    `  - 无元数据行（031 之前的存量或删除失败的残留）：${diff.untracked.length} 个`,
+    `  - 元数据为 active 但对象已不在 bucket：${diff.vanished.length} 个`,
+  ];
+  for (const object of diff.untracked.slice(0, maxRows)) {
+    lines.push(
+      `    · ${objectIdentity(object.bucket, object.objectKey)}` +
+        `${object.bytes === null ? "" : `  ${formatBytes(object.bytes)}`}`,
+    );
+  }
+  if (diff.untracked.length > maxRows) {
+    lines.push(`    …另有 ${diff.untracked.length - maxRows} 个，用 --json 拿完整清单`);
+  }
+  for (const key of diff.vanished.slice(0, maxRows)) {
+    lines.push(`    · ${key}`);
+  }
+  if (diff.vanished.length > maxRows) {
+    lines.push(`    …另有 ${diff.vanished.length - maxRows} 个，用 --json 拿完整清单`);
+  }
+  return lines;
 }

@@ -6,6 +6,22 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **孤儿巡检终于能看见「数据库根本没有记过」的对象**（C05）：`pnpm audit:storage-orphans` 此前只查
+  数据库一侧——它的真相来源是 `find_orphan_upload_objects()`，而一行都不存在的记录是永远报不出来的，
+  所以 031 之前直接写进 bucket 的存量对象（以及任何丢掉的写入）是一个**结构性的盲区**，
+  代码注释与三份发布文档都只能把它写成「未覆盖」。新增 `--provider-diff`：递归列完一个 bucket
+  （`POST /storage/v1/object/list/<bucket>`，含分页）并分页读 `upload_objects` 的全部键，做双向差集——
+  「bucket 有、元数据不认得」与「`active` 行说对象应该在、bucket 里却没有」。
+  三条约束：① opt-in，不带 flag 时行为与开销与原来一致，而零孤儿的报告自己写明「这只说明数据库侧为空」；
+  ② **「没看完」不等于「没有」**——页数/深度/条数触顶、`Content-Range` 缺失或前后矛盾一律 `exit 1`
+  并说明停在哪，绝不打印那份「0 个发现」；③ 仍然只读，差集不自动删。
+  实测抓到一个否则会长期假绿的形状：列**不存在的 bucket** 服务端返回 200 + 空数组，
+  一次 `--bucket` 笔误就产出一次「零发现」，因此现在先 `GET /storage/v1/bucket` 校验存在性再列。
+  本地栈端到端验证（3 对象 / 2 行元数据的矩阵）：数据库侧只报 2 条孤儿，加上 `--provider-diff`
+  多报 1 个无元数据对象与 1 个已消失的 active 行，清场后归零。58 项单测 + 10 项变异核对；
+  规则在 `src/lib/uploads/orphan-audit.ts`，IO 在 `scripts/lib/storage-orphans.js`，
+  文档见 `docs/db/upload-metadata.md`「provider 侧集合差」。
+
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
