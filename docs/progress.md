@@ -1,8 +1,8 @@
 ## 2026-09-23 — 仓库层按设计抛，那谁接：passkey 两条路由把读故障抛穿成 500
 
 - 里程碑 / 版本：v0.12.0 C08 的收尾半边——error 通道不抹掉之后，还要问抛出去有没有人收。
-- 状态：DONE，已开 PR。
-- 分支 / commit：`fix/passkey-uncaught-reads`（基于 `origin/main` `ad4b029`）。
+- 状态：DONE，**PR #122**（base `main`，与 #121 只共用 `CHANGELOG.md` / `docs/progress.md` 的头部，代码零重叠）。
+- 分支 / commit：`fix/passkey-uncaught-reads`（基于 `origin/main` `ad4b029`），`76b0e5d` + `4547ec4` + `459d1a2`。
 - 为什么做：接着 #121 那条覆盖率线索往下走。C08 栈尖（`origin/fix/c08-gate-range-holes`）的
   `coverage-final.json` 里，`src/lib/repositories/webauthn.ts` 未覆盖的语句正好是那四行
   `if (error) throw new Error(error.message)`——不是「测试没测出 bug」，而是**这四行的抛出去以后
