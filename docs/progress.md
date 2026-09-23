@@ -26,22 +26,31 @@
   4. **刻意没做的**：`rpId()` 在 `NEXT_PUBLIC_APP_URL` 缺协议时同样抛穿（`register-options:42`、
      `auth-options:35`、两个 verify 路由），但那是部署配置错误，包成 503 等于对运维谎报「重试就好」；
      留 500。`register-options` 里还有一个从没用过的 `siteUrl` import，属另一件事，没顺手删。
+  5. **把路由押注的那条契约本身钉住**：上面的 503/404 分岔完全依赖「仓库层在 error 时抛」，
+     而 `webauthn.ts` 五处 `if (error) throw` 里只有 `listMyCredentials` 那处有用例（C08 栈尖的
+     `coverage-final.json` 报的未覆盖语句就是其余四行）。补 4 条：`findCredentialById`（抛 ≠ 404）、
+     `createCredential`（抛，否则注册会以为已落库）、`updateCredentialCounter`（抛，克隆检测依赖它）、
+     `deleteMyCredential`（抛，action 才会回 `databaseError` 而不是「已删除」）。该文件 7 → 11 条。
 - 变更文件：`src/app/api/auth/passkey/auth-verify/route.ts`、
   `src/app/api/auth/passkey/register-options/route.ts`、`src/app/api/auth/passkey/passkey.test.ts`、
-  `CHANGELOG.md`、本条目。
+  `src/lib/repositories/webauthn.test.ts`、`CHANGELOG.md`、本条目。
 - 验证命令与结果：
   - 先红：两条新用例在修之前是「`POST` 直接 reject」，被断言捕获后失败；
   - 变异核对三项全被抓：catch 里 `return null` → `expected 404 to be 503`；去掉 `clearChallenge` →
     `expected '' to contain 'pk_challenge=;'`；`register-options` 的 catch 返回 `[]` → `expected 200 to be 503`；
     每项跑完从 `/tmp` 的字节副本还原，`cmp` 确认与改前一致（不用 `git checkout`，工作区里有未提交内容）；
   - `vitest run src/app/api/auth/passkey/passkey.test.ts` → **15 passed**（该文件 13 → 15）；
+    `vitest run src/lib/repositories/webauthn.test.ts` → **11 passed**（7 → 11），
+    变异：删掉 `webauthn.ts` 全部五处 `if (error) throw` → **5 failed | 6 passed**，
+    即五个抛错各有一条用例钉着（跑完从 `/tmp/wa.bak` 还原、`cmp` 确认字节一致）；
   - `pnpm -s type-check` → 0；全量门禁与 PR 描述同口径（lint / test / `CI=true check:all` / build）。
 - 阻塞 / 风险：passkeys 由 `NEXT_PUBLIC_FEATURE_PASSKEY` 默认关闭，正常路径逐字符未变；新增的只有
   「读不到时」这一条分支。真正的读故障要接真库才会出现，单测用 `mockRejectedValue` 打桩，
   所以这条证据是行为级的、不是生产级的。
-- 下一项：把 `webauthn.ts` 剩下那四行 `throw` 本身补上单测（现在它们只是「被 try 包着」，没人证明
-  error 真的会变成抛错），以及覆盖率表上同一批低分文件（`repositories/api-keys.ts` 74/75、
-  `repositories/marketing.ts` 77、`upload-objects.ts` 78、`push-retry.ts` 80）。
+- 下一项：覆盖率表上同一批低分文件按同一条尺子过一遍（`repositories/api-keys.ts` 74、
+  `repositories/marketing.ts` 77、`repositories/upload-objects.ts` 78、`push-retry.ts` 80）。
+  其中 `push-retry.ts` 的四条未覆盖语句已顺手读过：两处 `catch`（死信回执写失败、失效订阅清理失败）
+  是**刻意吞掉并上报**的，与邮件侧的 at-least-once 代价同源，不是缺陷——登记为阴性结果，不为其改代码。
 
 
 ## 2026-09-22 — 把「mock 少一个方法」变成一条会点名的自检（PR #74 的后续）
