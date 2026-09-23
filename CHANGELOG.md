@@ -9,7 +9,7 @@ All notable changes to IndieStack will be documented in this file.
 - **进度台账第一次有自己的门禁**（C08 主题的自反应用）：新增 `pnpm check:progress`，
   检查 `docs/progress.md` 这件「谁在什么时候改了什么」的唯一台账是否遵守它自己写明的约定——
   条目按 `YYYY-MM-DD` 非递减排列（新条目只能追加在末尾）、标题不重复、每条都有 `- 里程碑` 与
-  `- 状态`。规则在 `src/lib/docs/progress-ledger.ts`（纯函数、14 项单测），
+  `- 状态`。规则在 `src/lib/docs/progress-ledger.ts`（纯函数、15 项单测），
   IO 在 `scripts/lib/progress-ledger-check.js`，`scripts/check-progress-ledger.js` 只是启动器。
   动机是当天真的翻过两次车，而且两次都是在做「把条目搬到末尾」这件事的过程中发生的：
   四条条目当时被插在**文件顶部**（约定是末尾追加），当天各分支不得不分别搬一次；
@@ -24,6 +24,10 @@ All notable changes to IndieStack will be documented in this file.
   必填字段只钉这两个是刻意的收窄：其余字段（`分支 / commit` 28、`验证命令与结果` 29、
   `更新时间` 14）在既有条目里出现频率不齐，第一天就红的门禁没有价值；
   收窄的事实写在规则模块的文件头注释里。
+  失败信息里带着处置动作，而不只是「违反了一条约定」：`date-out-of-order` 有两种成因——条目插错了位置，
+  或者解决 `docs/progress.md` 冲突时「两块都留」把内容保住了却把顺序弄坏（这一步原本只写在台账里）。
+  2026-09-24 把 19 个 open PR 的栈尖按编号合成一份模拟 main 时红的就是第二种，于是红灯上直接写明
+  「按日期稳定排序，不要删掉其中一条」。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
