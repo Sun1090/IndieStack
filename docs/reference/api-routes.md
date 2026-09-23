@@ -11,7 +11,7 @@
 | PATCH  | `/api/user`                 | 登录            | 更新 profile（白名单字段，strict 校验，拒绝 `javascript:` 头像协议）                                                                                                                                                                                          |
 | DELETE | `/api/user`                 | 登录            | 注销账号（service_role 删除 auth 用户）                                                                                                                                                                                                                       |
 | GET    | `/api/analytics?range=1-90` | 登录            | 请求指标聚合：summary / timeline / recent。UTC 自然日对齐窗口                                                                                                                                                                                                 |
-| POST   | `/api/stripe/checkout`      | 登录            | 创建 Stripe Checkout Session，返回跳转 URL                                                                                                                                                                                                                    |
+| POST   | `/api/stripe/checkout`      | 登录            | 创建 Stripe Checkout Session，返回跳转 URL；团队归属与「已有有效订阅」两道检查 fail closed：读不到就 503 `checkoutUnavailable`，不放行也不带 `teamId: undefined` 建会话                                                                                                                                                                                                                    |
 | POST   | `/api/webhooks/stripe`      | **签名验证**    | Stripe 事件回调（subscription.* / invoice.*）。无 rate limit（防重试丢失）                                                                                                                                                                                    |
 | GET    | `/api/auth/callback`        | OAuth state     | Supabase OAuth 回调，交换 code 换 session（by-design 公开：code 一次性 + `getSafeRedirect` 防开放重定向）                                                                                                                                                     |
 | POST   | `/api/auth/passkey/register-options` | 登录 + flag | 已登录用户创建 WebAuthn registration options；要求 `NEXT_PUBLIC_FEATURE_PASSKEY=true`，10 次/分钟 IP 限流，challenge 存短时 httpOnly cookie |
@@ -34,6 +34,9 @@
 - 统一经 `jsonNoStore` 输出（`src/lib/api-response.ts`）；`auth/callback` 只做 redirect 无 JSON 体
 - 永不返回堆栈、内部错误细节；详细原因仅记录在服务端日志
 - 认证失败统一 `401`；权限不足 `403`；校验失败 `400`；限流 `429`（`retryAfter` 秒数字段）
+- 结账路由（`POST /api/stripe/checkout`）的每个码都会被 `CheckoutButton` 直接当成 `actions.<code>` 键渲染，
+  所以它必须同时存在于 `messages/en/actions.json` 与 `messages/zh-CN/actions.json`：动态键在构建期查不出来
+  （`alreadySubscribed` 因此以裸键形式在页面上漏过若干版本），目前由该路由的测试逐码对账
 
 ### 缓存
 
