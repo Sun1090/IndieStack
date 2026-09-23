@@ -204,6 +204,20 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+
+- **日志文本在出口处剥掉控制字符，请求体造不出第二行日志**（CodeQL `js/log-injection`，
+  告警 #11–#14；分诊记录见 issue #132）：`src/lib/logger.ts` 新增 `sanitizeLogText()`，
+  `formatLog()` 的返回值（四个 `console.*` 都从它过）与 Sentry 那条「没有 error 实例就用 message
+  造一个」的标题各过一次。控制字符转成**可见的转义而不是删除**——`\n` `\r` `\t` 保留可读形状，
+  ANSI（`0x1b`）、NUL、DEL、C1 写成 `\uXXXX`，于是注入的内容在排查时仍然读得到，但它不再是日志的结构。
+  真实的流入路径是 `src/app/api/webhooks/stripe/route.ts:134` 与 `:228`：`invoice.id`、`event.type`、
+  `event.id` 直接拼进日志文本，那条路上没有任何字符级校验——签名校验只证明「来自 Stripe」，
+  不证明那个字段里没有换行。此前 `console.*` 只在 `NODE_ENV=development` 或
+  `NEXT_PUBLIC_VERBOSE_LOGGING=true` 时才输出，而后者是一个 `NEXT_PUBLIC_` 前缀的运维开关：
+  把「日志不被伪造」交给一个可以随手打开的环境变量，等于没有这个性质。
+  新增 7 条用例（`src/lib/logger.test.ts`），两处收口各自做过变异核对：抽掉 `formatLog` 那道 →
+  2 条红；抽掉 Sentry 标题那道 → 1 条红；每项跑完从 `/tmp` 字节副本还原并 `cmp` 确认一致。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
