@@ -1282,5 +1282,8 @@
 - 风险 / 回滚：行为面只有一处——Auth 不可读时不再把已登录用户送去登录页，而是 503 / 错误边界。
   回滚 = revert `5bfbcd2` 与文档 commit；无迁移、无数据面。
 - 下一项：那 **8 处 `user!.id`** 的页面（判空缺失、故障时是一次没有分类的崩溃）按守卫层同一形状收口，
-  先 `if (!user)` 再答「暂时不可用」；然后按 C08-b 的台账方式立 `AUTH_ERROR_CHANNEL` 豁免表，再谈门禁接不接。
+  先 `if (!user)` 再答「暂时不可用」——但**时机不是现在**：逐条量过重叠，`dashboard/notifications/page.tsx`
+  与 `profile/page.tsx` 各有 **18 条在审 PR** 改过、`billing` 与 `team` 14 条、`page.tsx` 5 条、`settings` 4 条，
+  现在动就是在整条 C08-c 栈上造 8 条需要作者出场的边。等那批落地之后一次收完。
+  然后再按 C08-b 的台账方式立 `AUTH_ERROR_CHANNEL` 豁免表，谈门禁接不接。
 - 更新时间：2026-09-24。
