@@ -139,16 +139,21 @@ export async function regenerateApiKey(
   const rawKey = `isk_${randomBytes(24).toString("base64url")}`;
 
   // 读取原密钥元数据
-  const { data: existing } = (await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("api_keys")
     .select("name, scopes")
     .eq("id", keyId)
     .eq("user_id", user.id)
-    .maybeSingle()) as unknown as {
-    data: { name: string; scopes: string[] } | null;
-  };
+    .maybeSingle();
 
-  if (!existing) return fail("databaseError");
+  // 这次读取决定「拿什么名字与 scopes 去签新密钥」，所以它读失败时**绝不能签发**。
+  // 原先两件事共用一个 `databaseError`：既把故障说成数据问题，也把「这个密钥不存在」
+  // 说成服务器坏了——而后者是终态，重试不会变，用户该看到的是「找不到那个密钥」。
+  if (existingError) {
+    await logActionError("[regenerateApiKey] 原密钥元数据读取失败", existingError);
+    return fail("databaseError");
+  }
+  if (!existing) return fail("apiKeyNotFound");
 
   // 签发新密钥
   const inserted = await insertApiKey({

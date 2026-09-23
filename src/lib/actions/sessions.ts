@@ -70,12 +70,19 @@ export async function revokeSession(sessionId: string): Promise<ActionResult> {
   } = await supabase.auth.getUser();
   if (!user) return fail("notAuthenticated");
 
-  const { data: row } = (await supabase
+  const { data: row, error: readError } = await supabase
     .from("user_sessions")
     .select("id")
     .eq("id", sessionId)
     .eq("user_id", user.id)
-    .maybeSingle()) as unknown as { data: { id: string } | null };
+    .maybeSingle();
+  // 「这台设备没有记录」与「我们没查到它的记录」是两件事。共用 `sessionNotFound` 不只是一次
+  // 措辞问题：那条文案说的是「它可能已经被吊销了」，于是一次数据库抖动会让用户以为某个设备
+  // 已经登出，而那个会话可能还好端端地活着——他既不会重试，也不会去查第二遍。
+  if (readError) {
+    await logActionError("[revokeSession] 会话记录读取失败", readError);
+    return fail("databaseError");
+  }
   if (!row) return fail("sessionNotFound");
 
   // 说明：当前 @supabase/auth-js 的 admin API 仅有 signOut(jwt, scope)，
