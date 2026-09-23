@@ -1196,6 +1196,19 @@
   修法：补两个键 + 第 7 条测试（从路由源码抽 `jsonNoStore({ error: … })` 的码，逐码要求两个 locale
   都有非空文案）。这条测试第一版就把 `rateLimited` 漏了（多行调用没匹配上），是**地板值断言**
   （`codes.length >= 9`）当场报出来的，不是靠人眼。
+- 同类缺陷扫了一遍，**结论是不建全库门禁**（先量再写，D01 口径）：`src/app/api/**` 里字面量错误码
+  17 个，其中只有 `Unauthorized` / `Forbidden` / `invalidJson` 在 `actions.*` 里没有键，
+  而三者所在的路由（cron / e2e / ops / 公开 invitations 接口）**仓库内没有任何代码 fetch**
+  （`grep -rn 'fetch(\s*["`]/api/(invitations|ops/|e2e/|cron/)' src` 在非测试文件里为空），
+  它们是给 API 使用者的机器契约，不是文案。
+  真正的判据是消费方：全库 24 个客户端文件把 `error` 动态喂给翻译器（`ta(result.error)`），
+  其中**只有 2 个**同时 fetch 站内路由；这 2 个里真正「路由码 → 翻译器」的边**只有结账这一条**。
+  `passkey-section.tsx` 也 fetch 了 passkey 路由，但非 2xx 一律 `throw`，catch 里翻的是**静态**
+  `ta("internalError")`，它那个动态键吃的是 `deletePasskey` 这个 Server Action 的结果
+  （`check:action-errors` 已经覆盖）。为一个 1 条边的面做全库数据流门禁，误报面比它保护的东西还大
+  （与 C07 那条「判据不同源」同理），所以拦网就留在 #96 里那条逐码对账测试上：新增路由码会当场红，
+  新增「fetch + 动态翻译」的客户端则要人把它纳入对账——这一点写在
+  `docs/reference/api-routes.md` 的错误格式一节。
 - 一条**留给 #92 合并之后**的相邻缺陷：这个路由把 `safelyRequireAuth()` 的所有失败都答成
   `401 notAuthenticated`。#92 让守卫能区分「没登录」与「角色读不到」（`SERVICE_UNAVAILABLE` / 503）之后，
   这里就必须跟着改，否则一次角色读取抖动会把用户踢去重新登录。已记进任务清单，不在本 PR 里做

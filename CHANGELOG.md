@@ -225,6 +225,10 @@ All notable changes to IndieStack will be documented in this file.
   从路由源码抽出所有 `jsonNoStore({ error: … })` 码，要求两个 locale 都有非空文案，
   带数量地板值（正则一旦失效就报「什么都没在看」而不是报绿）。三项变异（删一个 locale 的键、
   把文案改成空串、给路由加个没登记的新码）各自只让那条红。
+  同类缺陷全库量过一遍，**只有这一处**：17 个路由错误码里未登记的三个（`Unauthorized` / `Forbidden` /
+  `invalidJson`）所在的路由，仓库内没有任何代码去 fetch；而把 `error` 动态交给翻译器的 24 个客户端里，
+  真正「路由码 → 翻译器」的边只有 `CheckoutButton` 一条。判据写在 `docs/reference/api-routes.md`——
+  新增一个「fetch 路由 + 动态翻译」的客户端，就是新增一条没有门禁覆盖的契约。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条

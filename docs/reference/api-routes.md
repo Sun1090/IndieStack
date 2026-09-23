@@ -36,7 +36,15 @@
 - 认证失败统一 `401`；权限不足 `403`；校验失败 `400`；限流 `429`（`retryAfter` 秒数字段）
 - 结账路由（`POST /api/stripe/checkout`）的每个码都会被 `CheckoutButton` 直接当成 `actions.<code>` 键渲染，
   所以它必须同时存在于 `messages/en/actions.json` 与 `messages/zh-CN/actions.json`：动态键在构建期查不出来
-  （`alreadySubscribed` 因此以裸键形式在页面上漏过若干版本），目前由该路由的测试逐码对账
+  （`alreadySubscribed` 自 `5d3bbbd`（2026-09-03）起就是这个路由的 409 码，而 `messages/` 里从来没有过它），
+  目前由该路由的测试逐码对账
+- **谁需要文案，判据在消费方不在生产方**。2026-09-23 实测：全库把 `error` 动态交给翻译器的客户端有 24 个，
+  其中只有 2 个同时 fetch 站内路由，而真正「路由码 → 翻译器」的边只有 `CheckoutButton` 一条；
+  其余动态键吃的是 Server Action 的返回值（由 `pnpm check:action-errors` 覆盖）。因此**新增一个
+  「fetch 路由 + 动态翻译」的客户端，就等于新增一条没有任何门禁覆盖的契约**：请照 `checkout-button`
+  那样在路由测试里逐码对账。
+  反向不成立：`Unauthorized` / `Forbidden` / `invalidJson` 只发给 API 使用者（cron / e2e / ops /
+  公开 invitations 接口，仓库内没有任何代码 fetch 它们），不需要登记文案
 
 ### 缓存
 
