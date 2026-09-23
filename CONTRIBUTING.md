@@ -7,8 +7,11 @@
 3. Make your changes
 4. Run the checks for the area you touched — see the [contributor test matrix](./docs-site/testing.md) — or the
    full verification: `pnpm verify:all`（校验/测试）+ `pnpm build`
-5. Commit with conventional commit messages（commitlint 强制校验，规范详见 [agents/10-release-manager.md](./agents/10-release-manager.md)）
-6. Push and open a Pull Request（PR 目标分支：`develop` 或 `main`）
+5. Commit with conventional commit messages（规则登记在 `commitlint.config.js`；本仓库没有安装
+   commitlint，所以这一条靠 review 把关，规范详见 [agents/10-release-manager.md](./agents/10-release-manager.md)）
+6. Push and open a Pull Request（PR 目标分支：`develop` 或 `main`）。`pnpm install` 会把
+   `.husky/pre-push` 接进 `.git/hooks`，推送前自动跑 `pnpm verify:build`；没装钩子的克隆
+   没有任何本地守卫，先 `ls -l .git/hooks/pre-push` 确认。
 
 ## Agent 协作
 
