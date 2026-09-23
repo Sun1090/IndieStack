@@ -41,20 +41,29 @@ export default async function ProjectsPage({
   const locale = await getLocale();
   const { status: statusFilter } = await searchParams;
 
-  const { data: membership } = (await supabase
+  // 归属读不到时 `membership` 是 null，下面那三元表达式会**直接跳过查询**给出空列表：
+  // 用户看到的是「你还没有项目」，而真实原因是我们没读到他属于哪个团队。
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id")
     .eq("user_id", user!.id)
     .limit(1)
-    .maybeSingle()) as unknown as { data: { team_id: string } | null; error: null };
+    .maybeSingle();
+  if (membershipError) {
+    throw new Error(`读取项目列表的团队归属失败：${membershipError.message}`);
+  }
 
-  const { data: projectRows } = membership
+  const { data: projectRows, error: projectsError } = membership
     ? await supabase
         .from("projects")
         .select("*")
         .eq("team_id", membership.team_id)
         .order("created_at", { ascending: false })
-    : { data: [] };
+    : { data: [], error: null };
+  // 这一处连断言都没有（C08 门禁看不见），但它的失败方向与上一条一样是「空列表」。
+  if (projectsError) {
+    throw new Error(`读取项目列表失败：${projectsError.message}`);
+  }
 
   // 状态过滤（服务端 searchParams 驱动）
   const allProjects =
