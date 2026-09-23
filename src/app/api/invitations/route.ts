@@ -53,12 +53,21 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     // 纵深防御：显式校验当前用户属于该团队（RLS 是兜底，这里在应用层再拦一道，
     // 防止未来策略回归导致成员 PII（email 等）越权可读）
-    const { data: membership } = await supabase
+    const { data: membership, error: membershipError } = await supabase
       .from("team_members")
       .select("user_id")
       .eq("team_id", teamId)
       .eq("user_id", auth.data.id)
       .maybeSingle();
+
+    // 这一处与下面几处都没有类型断言，所以 C08-b 的门禁看不见；但它的失败方向是同一件事：
+    // 读失败会沿着 `!membership` 长成 403「Forbidden」，把一个权限没变过的人挡在团队外，
+    // 而他该做的只是重试。`error` 必须先于「有没有这一行」被判断。
+    if (membershipError) {
+      await logApiError("[Invitations API] 团队成员身份读取失败", membershipError);
+      return jsonNoStore({ error: "Could not verify your team membership. Please retry." }, { status: 503 });
+    }
+
     if (!membership) {
       return jsonNoStore({ error: "Forbidden" }, { status: 403 });
     }
@@ -134,13 +143,22 @@ export async function POST(request: NextRequest) {
       return jsonNoStore({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // 获取当前用户的团队
-    const { data: membership } = (await supabase
+    // 获取当前用户的团队。`.limit(1).single()` 会把「这个用户没有团队」也当成 error 抛出来，
+    // 与真正的读取故障同形，所以这里用 maybeSingle：缺行是合法状态，error 才是「我们没读到」。
+    const { data: membership, error: membershipError } = await supabase
       .from("team_members")
       .select("team_id")
       .eq("user_id", user.id)
       .limit(1)
-      .single()) as unknown as { data: { team_id: string } | null };
+      .maybeSingle();
+
+    // 三处读取（团队归属 / 我在该团队的角色 / 对方是否已是成员）都是**授权与幂等判定**的输入，
+    // 读失败时必须说「没读到」而不是顺着 `!data` 那条分支答成「你没有团队」或「你不是管理员」：
+    // 后者会让用户以为权限被改了，而真正该做的只是重试一次。
+    if (membershipError) {
+      await logApiError("[Invitations API] 发起人团队归属读取失败", membershipError);
+      return jsonNoStore({ error: "Could not read your team membership. Please retry." }, { status: 503 });
+    }
 
     if (!membership) {
       return jsonNoStore({ error: "No team found" }, { status: 404 });
@@ -149,12 +167,17 @@ export async function POST(request: NextRequest) {
     const teamId = validated.data.team_id ?? membership.team_id;
 
     // 校验当前用户对该团队拥有 owner/admin 权限
-    const { data: teamRole } = (await supabase
+    const { data: teamRole, error: teamRoleError } = await supabase
       .from("team_members")
       .select("role")
       .eq("team_id", teamId)
       .eq("user_id", user.id)
-      .maybeSingle()) as unknown as { data: { role: string } | null };
+      .maybeSingle();
+
+    if (teamRoleError) {
+      await logApiError("[Invitations API] 发起人在该团队的角色读取失败", teamRoleError);
+      return jsonNoStore({ error: "Could not verify your team role. Please retry." }, { status: 503 });
+    }
 
     if (!teamRole || !["owner", "admin"].includes(teamRole.role)) {
       return jsonNoStore({ error: "Only team admins can invite members" }, { status: 403 });
@@ -163,11 +186,18 @@ export async function POST(request: NextRequest) {
     // 按邮箱在 profiles 表精确查询目标用户（替代 admin.auth.admin.listUsers() 全量拉取，
     // 避免用户量大时拉取全部 auth.users；profiles.email 由注册触发器写入，与 auth.users 一致）
     const admin = createAdminClient();
-    const { data: invitedProfile } = await admin
+    const { data: invitedProfile, error: profileError } = await admin
       .from("profiles")
       .select("id")
       .eq("email", validated.data.email.toLowerCase())
       .maybeSingle();
+
+    // 这一处没有类型断言，所以 C08-b 的门禁看不见它，但它的失败方向与上面几处一模一样：
+    // 读失败会长成「这个人还没注册」，于是用户被劝着让对方去注册，而真正发生的是一次数据库抖动。
+    if (profileError) {
+      await logApiError("[Invitations API] 被邀请人读取失败", profileError);
+      return jsonNoStore({ error: "Could not look up that user. Please retry." }, { status: 503 });
+    }
 
     if (!invitedProfile) {
       return jsonNoStore(
@@ -176,13 +206,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查是否已是成员
-    const { data: existing } = (await supabase
+    // 检查是否已是成员。读失败时不能当作「还不是成员」往下走：`team_members` 上有
+    // `unique(team_id, user_id)`（迁移 001），所以后果不是重复插入而是撞约束、
+    // 报一个与真实原因无关的 500 —— 但仍然要说实话：我们没能确认。
+    const { data: existing, error: existingError } = await supabase
       .from("team_members")
       .select("id")
       .eq("team_id", teamId)
       .eq("user_id", invitedProfile.id)
-      .maybeSingle()) as unknown as { data: { id: string } | null };
+      .maybeSingle();
+
+    if (existingError) {
+      await logApiError("[Invitations API] 现有成员关系读取失败", existingError);
+      return jsonNoStore({ error: "Could not check existing membership. Please retry." }, { status: 503 });
+    }
 
     if (existing) {
       return jsonNoStore({ error: "User is already a team member" }, { status: 409 });
@@ -263,22 +300,34 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = await createClient();
-    const { data: member } = (await supabase
+    const { data: member, error: memberError } = await supabase
       .from("team_members")
       .select("team_id, role")
       .eq("id", memberId)
-      .maybeSingle()) as unknown as { data: { team_id: string; role: string } | null };
+      .maybeSingle();
+
+    // 「查不到这个人」要 404，「没查到」要 503：前者是终态，后者重试就好。
+    // 顺着 `!member` 走下去会把一次故障报成「这个成员不存在」。
+    if (memberError) {
+      await logApiError("[Invitations API] 目标成员读取失败", memberError);
+      return jsonNoStore({ error: "Could not read that team member. Please retry." }, { status: 503 });
+    }
 
     if (!member) {
       return jsonNoStore({ error: "Member not found" }, { status: 404 });
     }
 
-    const { data: membership } = (await supabase
+    const { data: membership, error: membershipError } = await supabase
       .from("team_members")
       .select("role")
       .eq("team_id", member.team_id)
       .eq("user_id", auth.data.id)
-      .maybeSingle()) as unknown as { data: { role: string } | null };
+      .maybeSingle();
+
+    if (membershipError) {
+      await logApiError("[Invitations API] 操作人在该团队的角色读取失败", membershipError);
+      return jsonNoStore({ error: "Could not verify your team role. Please retry." }, { status: 503 });
+    }
 
     if (!membership || !["owner", "admin"].includes(membership.role)) {
       return jsonNoStore({ error: "Only team admins can remove members" }, { status: 403 });
