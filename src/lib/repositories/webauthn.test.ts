@@ -99,11 +99,18 @@ describe("updateCredentialCounter()", () => {
 });
 
 describe("deleteMyCredential()", () => {
-  it("按 id 删除", async () => {
-    const chain = chainMock({});
+  it("按 id 删除，并回答「真的删掉了行」", async () => {
+    const chain = chainMock({ data: [{ id: "w1" }] });
     createClientMock.mockResolvedValue(dbClientMock(() => chain));
-    await expect(deleteMyCredential("w1")).resolves.toBeUndefined();
+    await expect(deleteMyCredential("w1")).resolves.toBe(true);
     expect(chain.delete).toHaveBeenCalled();
+    // 不 select 就拿不回受影响行，「删掉了」和「一行都没匹配上」会长成同一个样子
+    expect(chain.select).toHaveBeenCalledWith("id");
+  });
+
+  it("0 行受影响返回 false：RLS 对不匹配的行是静默过滤，不是报错", async () => {
+    createClientMock.mockResolvedValue(dbClientMock(() => chainMock({ data: null })));
+    await expect(deleteMyCredential("not-mine")).resolves.toBe(false);
   });
 
   it("删除失败抛错，action 才会回 databaseError 而不是「已删除」", async () => {
