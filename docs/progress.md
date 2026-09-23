@@ -1153,3 +1153,55 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 部署配置多写一个 `/`，passkey 就全量 400，而报的是「验证失败」
+
+- 里程碑 / 版本：v0.12.0 门禁看不见的另一半（C08 主题的延伸：把故障说成结论）；ADR-012 的推导口径。
+- 状态：DONE，**PR #121**（base `main`，与 C08 栈零文件重叠）。
+- 分支 / commit：`fix/passkey-expected-origin`（基于 `origin/main` `ad4b029`），`1e57117`。
+- 为什么做：不是猜出来的。在 C08 栈尖（`origin/fix/c08-gate-range-holes`，24 个 commit，等价于
+  #92–#114 全部合入后的 main）跑了一遍 `pnpm test:coverage` 取真实数字，`src/lib/auth/passkey.ts`
+  只有 **14.28% 语句覆盖**——一个安全模块里没人跑过的函数，正是缺陷藏身的地方。读过去就看到：
+  `expectedOrigin()` 直接返回环境变量原值，而隔壁 `rpId()` 已经 `new URL(...).hostname` 解析过了。
+- 完成内容：
+  1. **缺陷**：`@simplewebauthn` 用**严格相等**比较 origin
+     （`node_modules/@simplewebauthn/server/esm/registration/verifyRegistrationResponse.js:83`），
+     浏览器送来的 `authData.origin` 永远是 `scheme://host[:port]`，不带路径、不带尾斜杠。
+     所以 `NEXT_PUBLIC_APP_URL=https://app.example.com/` 会让注册与登录 100% 失败，
+     客户端拿到 `Verification failed`（400），日志只有一句 attestation verification failed——
+     指向「密钥/挑战不对」，而不是「环境变量多写了一个字符」。`/console` 这类 basePath 部署同理。
+  2. **修法**：`expectedOrigin()` → `new URL(siteUrl()).origin`。规范写法逐字符不变（含端口，
+     非默认端口是 origin 的一部分，不能削）；尾斜杠与 basePath 从「必坏」变成「可用」。
+  3. **为什么测试以前测不出来**：`src/app/api/auth/passkey/passkey.test.ts:47` 把
+     `@simplewebauthn/server` 整个 mock 掉，那条决定成败的相等比较在单测里从没真的执行；
+     passkeys 又没法在 E2E 里过真认证器。所以**推导函数本身就是唯一防线**，新增
+     `src/lib/auth/passkey.test.ts`（9 条）钉住 `siteUrl` / `rpId` / `expectedOrigin` 与
+     challenge cookie 的写入、过期、读取。
+  4. 顺带把 ADR-012 决策 3 补一句：origin 也取解析后的值。ADR 原文只写了「RP ID = hostname」，
+     没说 origin 也要解析——这条缺陷正是照原文实现的产物。
+- 变更文件：`src/lib/auth/passkey.ts`、`src/lib/auth/passkey.test.ts`（新增）、
+  `docs/adr/adr-012-passkey.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 先红：修之前两条用例分别拿到 `https://app.example.com/` 与 `https://app.example.com/console`
+    （期望 `https://app.example.com`），失败输出即证据；
+  - 变异核对：只 `replace(/\/$/, "")` 的写法仍被 basePath 那条抓住，不会因为「尾斜杠也修了」而变绿；
+  - cookie 断言按实测写：Next 的删除序列化成 `Expires=Thu, 01 Jan 1970…` 而不是 `Max-Age=0`，
+    第一版按后者写、当场红——改断言而不是改实现（实现是对的，`response.cookies.delete()` 本就是那条）；
+  - `vitest run src/lib/auth/passkey.test.ts src/app/api/auth/passkey/passkey.test.ts` → 22 通过；
+  - 全量门禁（本机，push 前）：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
+    **200 files / 2300 tests passed**；`CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
+- 阻塞 / 风险：
+  - **同一份环境变量的其余消费方没在这次里改**：`src/lib/email-marketing.ts:14`、
+    `src/lib/email-notify.ts`、`src/app/api/cron/digest/route.ts:221` 都是 `${siteUrl()}/api/...`
+    字符串拼接，尾斜杠会拼出 `//api/...`。双斜杠在 Next 路由上到底成不成，**尚未实测**，
+    所以只登记不下结论——这是下一条要量的东西。
+- 后续复测（同日，量完即结）：那条「尚未实测」已经量掉了，**阴性**——Next 16.3.5 对 `//path`
+  是 `308` 归一化到 `/path` 且**保留查询串**，`next start`（3220）与 `next dev`（3221）行为一致：
+  `//api/marketing/confirm?token=bad → 308 → /api/marketing/confirm?token=bad → 200`、
+  `//dashboard → 308 → /dashboard`。所以邮件里的双斜杠只是一次多余跳转，不是坏链接，
+  **不需要第二个修复**。缺陷因此收窄成「WebAuthn 那种严格相等比较才真的会坏」——
+  字符串拼接有路由器兜着，密码学校验没有。测量用的 `NEXT_DIST_DIR=.next-e2e-probe2` 又往
+  `tsconfig.json` 追加了两条 include（本机跑过的第三次），已核对差异只含生成条目后还原，探针目录已删。
+  - APP_URL 完全没协议（`example.com`）时 `new URL` 抛错，`register-options` 在 try 之外调 `rpId()`，
+    结果是 500 而不是可诊断的文案。属既有行为，本次未引入也未扩大；要不要做成 fail-fast 带文案，
+    和「三处 siteUrl 是否收成一份」一起放下一条。
