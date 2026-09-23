@@ -1,8 +1,8 @@
 ## 2026-09-23 — 部署配置多写一个 `/`，passkey 就全量 400，而报的是「验证失败」
 
 - 里程碑 / 版本：v0.12.0 门禁看不见的另一半（C08 主题的延伸：把故障说成结论）；ADR-012 的推导口径。
-- 状态：DONE，已开 PR。
-- 分支 / commit：`fix/passkey-expected-origin`（基于 `origin/main` `ad4b029`）。
+- 状态：DONE，**PR #121**（base `main`，与 C08 栈零文件重叠）。
+- 分支 / commit：`fix/passkey-expected-origin`（基于 `origin/main` `ad4b029`），`1e57117`。
 - 为什么做：不是猜出来的。在 C08 栈尖（`origin/fix/c08-gate-range-holes`，24 个 commit，等价于
   #92–#114 全部合入后的 main）跑了一遍 `pnpm test:coverage` 取真实数字，`src/lib/auth/passkey.ts`
   只有 **14.28% 语句覆盖**——一个安全模块里没人跑过的函数，正是缺陷藏身的地方。读过去就看到：
@@ -32,7 +32,8 @@
   - cookie 断言按实测写：Next 的删除序列化成 `Expires=Thu, 01 Jan 1970…` 而不是 `Max-Age=0`，
     第一版按后者写、当场红——改断言而不是改实现（实现是对的，`response.cookies.delete()` 本就是那条）；
   - `vitest run src/lib/auth/passkey.test.ts src/app/api/auth/passkey/passkey.test.ts` → 22 通过；
-  - 全量门禁见下方 PR 描述（lint / type-check / test / build / `CI=true check:all`）。
+  - 全量门禁（本机，push 前）：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
+    **200 files / 2300 tests passed**；`CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
 - 阻塞 / 风险：
   - **同一份环境变量的其余消费方没在这次里改**：`src/lib/email-marketing.ts:14`、
     `src/lib/email-notify.ts`、`src/app/api/cron/digest/route.ts:221` 都是 `${siteUrl()}/api/...`
