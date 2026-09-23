@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { appUrl } from "./support/base-url";
+import { actUntilVisible } from "./support/hydrated";
 
 /**
  * G06 移动端断点回归。
@@ -68,10 +69,11 @@ test.describe("手机（375px）", () => {
     // 桌面链接在手机端不可见
     await expect(page.locator("header nav").first()).toBeHidden();
 
-    await menuButton.click();
-    await expect(menuButton).toHaveAttribute("aria-expanded", "true");
-
+    // 汉堡是纯客户端开关：hydration 之前那一次 click 会被丢掉，`aria-expanded` 就永远停在 false。
+    // 结果用移动菜单本身（一个「只有开了才存在」的元素），而不是那个一直可见的按钮。
     const mobileMenu = page.locator("#site-mobile-menu");
+    await actUntilVisible(() => menuButton.click(), mobileMenu);
+    await expect(menuButton).toHaveAttribute("aria-expanded", "true");
     await expect(mobileMenu).toBeVisible();
 
     const pricing = mobileMenu.getByRole("link", { name: NAV_LINK_NAME });
@@ -96,9 +98,8 @@ test.describe("手机（375px）", () => {
     const trigger = page.getByRole("button", { name: DASHBOARD_MENU_BUTTON });
     await expect(trigger).toBeVisible();
 
-    await trigger.click();
     const drawer = page.getByRole("dialog");
-    await expect(drawer).toBeVisible();
+    await actUntilVisible(() => trigger.click(), drawer);
 
     const analytics = drawer.getByRole("link", { name: /Analytics|分析/ });
     await expect(analytics).toBeVisible();

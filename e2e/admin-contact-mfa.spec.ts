@@ -19,6 +19,7 @@ import { test, expect, request as pwRequest, type APIRequestContext } from "@pla
 
 const E2E_BEARER = "e2e-bearer-token";
 import { appUrl } from "./support/base-url";
+import { actUntilVisible } from "./support/hydrated";
 const MOCK_EMAIL = "dev@indiestack.local";
 
 async function resetContactMessages(api: APIRequestContext): Promise<void> {
@@ -173,10 +174,16 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
       timeout: 10_000,
     });
 
-    await page.getByRole("button", { name: /Enable 2FA|开启两步验证/i }).click();
-    await expect(page.getByText(/Verify|验证并启用/i)).toBeVisible({ timeout: 10_000 });
+    // 「开启两步验证」翻的是客户端状态：hydration 之前点下去会被丢掉，验证表单永远不等出来。
+    // 结果取「验证并启用」那颗按钮——它既是要等的东西，也是下一行要点的东西（那次提交不幂等，
+    // 所以只包这一步，不包它）。
+    const verifyButton = page.getByRole("button", { name: /Verify|验证并启用/i });
+    await actUntilVisible(
+      () => page.getByRole("button", { name: /Enable 2FA|开启两步验证/i }).click(),
+      verifyButton,
+    );
     await page.getByLabel(/Verification code|验证码/i).fill("123456");
-    await page.getByRole("button", { name: /Verify|验证并启用/i }).click();
+    await verifyButton.click();
 
     await expect(page.getByRole("button", { name: /Disable 2FA|解除两步验证/i })).toBeVisible({
       timeout: 10_000,
