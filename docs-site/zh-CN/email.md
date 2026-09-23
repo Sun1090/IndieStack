@@ -83,7 +83,8 @@ Hobby plan 下每个 cron 路径每天最多运行一次，一个固定的 UTC �
 营销邮件是独立的 double opt-in 通道，不使用 `notifications` 表：
 
 - 确认和退订操作只接受 `POST`。
-- Token 以 SHA-256 摘要存储，7 天后失效。
+- Token 以 SHA-256 摘要存储；7 天有效期只约束**确认**（一直没被确认的 double opt-in 请求会过期）。
+  退订链接不设时间窗——邮件还在继续寄的时候，退订出口不能先失效。
 - 每封营销邮件都附带当前收件人的专属退订链接。
 
 ## Supabase Auth 邮件

@@ -98,7 +98,9 @@ digest pulls. Operators can query dead letters through the notification reposito
 Marketing mail is a separate double opt-in channel and does not use the `notifications` table:
 
 - Subscription confirmation and unsubscribe operations only accept `POST`.
-- Tokens are stored as SHA-256 digests and expire after 7 days.
+- Tokens are stored as SHA-256 digests. The 7-day expiry gates **confirmation only** — a double
+  opt-in request that was never confirmed goes stale. An unsubscribe link stays valid, because the
+  opt-out exit cannot carry a time window while mail keeps arriving.
 - Every marketing message includes a recipient-specific unsubscribe link.
 
 ## Supabase Auth Email
