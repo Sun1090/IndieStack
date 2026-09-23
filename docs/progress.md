@@ -1237,6 +1237,11 @@
 - 变异核对（每条判据都要能被打红）：去掉 `{}` 深度 → 1 红；去掉 JSX 字面量分支 → 1 红；
   改成大小写敏感 → 1 红；把规则调用改成不可达 → **6 红**（其中一条是「删掉真实文件里的
   `method="post"` 就必须报」的防失焦用例）。
+- 顺手量了同族的另一类风险：**缺席断言会不会也是假绿**。全仓 14 条 `toHaveCount(0)` / `toBeHidden()`
+  逐个读上下文，四条嫌疑全部有正向伴随断言兜着——`audit-logs:101` 前面有「暂无审计日志记录」可见、
+  后面有清空搜索恢复 ≥20 行；`notifications-realtime:84` 是同一条用例里「当前用户的 INSERT 会出现」
+  的反面；`smoke:128` 前面断言了中文文案可见；`uploads:183` 前面断言进度条先可见。**阴性结果，不改代码**，
+  记在这儿是为了下次不必重审。`responsive.spec.ts` 那 6 条是布局断言（无 JS 也成立），那正是它们的被测对象。
 - 覆盖 / 验证：`--repeat-each=2` 跑 `hydrated-click` + `admin-contact-mfa` → **24 passed / 0 failed**
   （两条反向证据各自稳定：0 个 action / 恰好 1 个）；`vitest run src/lib/ui/form-field-rules.test.ts`
   → 17 passed（原 10）；`pnpm -s check:fields` → exit 0；`pnpm -s lint` / `pnpm -s type-check` → exit 0；
@@ -1247,6 +1252,9 @@
   「待合 PR 的合并顺序与 CI 证据范围」那条）。日志里的 `⨯ uncaughtException: Error: aborted`
   是已知的 Turbopack 冷编译关 keep-alive 现象（`admin-contact-mfa.spec.ts` 头部注释记过），
   三台服务器都活过了它，113 条里没有一条因此变红。
+  **但那个 113/0 不代表这条 tip 稳定**：之后又在同一 SHA 上跑了 4 次并行基线（含清空 `.next-e2e-*`
+  的冷启动与一次旧预热对照），`responsive.spec.ts:92` 红了 3 次、`:62` 红 1 次——那两处正是 #117
+  包过的点按，而本分支没合 #117。数字记全，免得只留下最好看的那一次。
 - 变更文件：18 个表单组件、`src/lib/ui/form-field-rules.ts` + 其单测、`scripts/lib/form-field-check.js`、
   `e2e/support/hydrated.ts`、`e2e/hydrated-click.spec.ts`、`e2e/admin-contact-mfa.spec.ts`、
   `CHANGELOG.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、
