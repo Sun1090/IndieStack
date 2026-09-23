@@ -42,6 +42,7 @@ echo "==> check:fields";     pnpm --silent check:fields
 echo "==> check:states";     pnpm --silent check:states
 echo "==> check:docs";   pnpm --silent check:docs
 echo "==> check:progress"; pnpm --silent check:progress
+echo "==> check:component-docs"; pnpm --silent check:component-docs
 echo "==> check:a11y";   pnpm --silent check:a11y
 echo "==> type-check";   pnpm --silent type-check
 echo "==> lint";         pnpm --silent lint
