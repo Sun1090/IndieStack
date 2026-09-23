@@ -236,6 +236,17 @@ All notable changes to IndieStack will be documented in this file.
   回答 `userNotFoundAdmin`，而是记日志并回**新增的专用错误键** `roleReadFailedAdmin`（en/zh-CN 各一条文案），
   不复用泛化的 `databaseError`——管理员看到的应该是「角色信息读不到、可重试」，不是「数据库操作失败」。
 
+- **同一个守卫里，「会话读不到」以前也答成「你没登录」**（C09 第一步）：上一条修的是 `auth.getUser()`
+  下面那处角色读取，而它上面这一行连 `error` 都不取。这不是 PostgREST 的特例——**Auth 客户端同样把失败
+  装在 `error` 里返回而不抛**，所以同一形状的错误在鉴权入口又发生一次：页面侧 `requireAuth()` 执行
+  `redirect(/login)`、API 侧 `safelyRequireAuth()` 返回 401，客户端于是清掉一个仍然有效的本地会话并跳登录页，
+  而重新登录走的正是同一条读取。两处统一收进 `readSessionUser()`（绑定 `error`，交调用方映射），
+  `safelyRequireAuth()` 的最外层 catch 也从「一律 UNAUTHORIZED」改成 `SERVICE_UNAVAILABLE`（503）——
+  走到那里的一定是「读取本身没成功」，那不是一个关于用户的事实。**拒绝的方向没有放宽**：失败仍然 deny，
+  只是不再撒谎，而且变成可重试。同一次测量在 `main` 上还有 61 处这样的读取（只有 1 处绑定 `error`），
+  已登记为 roadmap C09，本条只收口守卫层这一个入口——它覆盖了 `requireAuth/Role/Permission`
+  与三个 `safely*` 变体的全部消费者。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

@@ -1224,3 +1224,48 @@
   C08-c（12 处解构时压根不取 `error`，本门禁看不见它）、A05 出队语义与 A01 `profiles.timezone` 等用户拍板、
   B 域演练与生产冒烟等外部权限。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-24 — C09：守卫层读不到会话时不再答「你没登录」，另外 61 处同类读数登记进任务池
+
+- 里程碑 / 版本：v0.12.0 / C09（本池新增编号，与 C08 同形状、不同数据源）。分支 `feat/gate-query-error-channel`
+  （PR #92，base `main`）——刻意**不新开 PR**：改动落在 C08 刚建起来的那道鉴权入口上，另开会把同一个函数拆成两条评审。
+- 状态：DONE（守卫层已修，其余 61 处按读数排期）。commit：`5bfbcd2`（代码 + 测试）、文档改动在同一条 commit 序列里。
+- 发现路径（不是猜的，是量出来的）：为了找「门禁看不见的那一类」，把 `src/**` 的 28 个 API route 全列出来问一遍
+  「这个端点答话前读过会话吗」，正则判据是 `requireAuth|getUser|…`——21 个报「没读」，其中两个上传端点其实把鉴权
+  委托给了 `src/lib/uploads/request.ts` + service。顺着 service 读到 `const { data: { user } } = await supabase.auth.getUser()`
+  才发现真正的形状：**Auth 客户端和 PostgREST 一样，把失败装在 `error` 里返回而不抛**，所以 C08 那一类撒谎在 Auth
+  上原样复发了一遍，而 C08 门禁的射程是 `.from()/.rpc()`，看不见它。
+- 量到的读数（AST：调用形如 `supabase.auth.<getUser|getSession|getClaims>()`、结果做解构绑定、绑定成员里没有 `error`）：
+  `main` 上 **62 处**，其中**只有 1 处绑定 `error`**（`src/app/auth/callback/page.tsx`）、2 处不是解构绑定；
+  剩下按下游第一个 `if (!user)` 分支归类：**39 处答「没登录」/401**、**4 处 redirect 到登录页**、**1 处返回 null**
+  （`actions/team.ts` 的 `getCurrentTeam()`，调用方据此答 `noTeam`——「你没有团队」也是读出来的事实）、
+  2 处另有写法、**13 处判空跨出 14 行窗口**（这一档必须逐条读，它同时也是「有没有哪处把 `error` 当成已登录」的风险位）。
+  方向上先给结论：**没有发现 fail-open**，全部是拒绝侧撒谎，所以这条不是 P0；先收口入口，再按台账偿还。
+- 改了什么：`src/lib/auth/guards.ts` 两处读取统一走新增的 `readSessionUser()`（绑定 `error`，抛出交给调用方映射），
+  `safelyRequireAuth()` 的最外层 catch 从「一律 UNAUTHORIZED」改成 `SERVICE_UNAVAILABLE`。
+  这里有一条容易被忽略的自相矛盾：#92 早先为角色读取引入 `SERVICE_UNAVAILABLE` 时特意写了内层 catch 不让它落外层，
+  但**外层本身**仍把所有异常折成 401——即 `createClient()` 失败、或 Auth 抛异常，都还是答成「你没登录」。本条把外层也改对。
+  失败方向不变：仍然 deny，只是不再撒谎，而且变成可重试（503 由 `guardHttpStatus` 映射，那一档 C08 已经备好）。
+- 不在本条射程、也刻意没碰：`api/analytics/route.ts` 与 `api/stripe/checkout/route.ts` 现在仍把守卫失败一律写成 401，
+  那两处分别由 #103（analytics，#44 前半）和 #96（checkout）处理；去改就是抢别人的边、还多造两条冲突。
+- 变异核对（不采信「绿了」）：把 `readSessionUser()` 的 `error` 解构与外层 catch 原样退回旧写法，跑
+  `npx vitest run src/lib/auth/guards.test.ts` → **3 failed | 32 passed**，红的正是新加的三条
+  （`requireAuth() > auth.getUser 返回 error（不抛）时…`、`safelyRequireAuth() > 会话读取抛异常时…`、
+  `… > auth.getUser 返回 error（不抛）时同样…`），随后 `cp` 回字节副本并 `cmp` 确认还原、`git diff --numstat` 只剩真实改动。
+  另配一条「返回 `error` 对象」的 mock（`getUserErrorObject`），因为 supabase-js 的抖动**不抛**——只测抛异常那一半，
+  测试会通过而真实路径依旧撒谎。
+- 顺手清掉一条会长期制造冲突的写法：`docs/roadmap-0.12.0.md` 的 `## 任务池（24 项）` 改成不写死条数、
+  改指一条现量命令（D04 的既定口径）。理由是量出来的：**20 条 open PR（#92–#94、#98–#114）各自都在改这一行**
+  （逐条 `git diff <merge-base> <head> | grep 任务池（` 计数，每条命中 2 行），也就是整条 C08 栈每合一个就要
+  重解一次同一个单行冲突，而最后写进去的那个数字相对合并后的池子**必然是错的**。删掉数字，20 条改动同时作废。
+  同时本条把引用口径写进标题：**用 ID（C09 / D04）而不是序号**——序号在本池已经撞了（C08 家族与 D 家族都占 18/19/20）。
+- 验证命令与结果：`pnpm verify`（type-check + lint + 全量测试 + `check:bundle`）**exit 0**，
+  `Test Files 202 passed (202)`、`Tests 2315 passed (2315)`；`pnpm -s check:changelog` / `check:docs` /
+  `check:bilingual-docs` / `check:gates` / `check:adr` 各自 exit 0（门禁接线 38 个：本地 35 / CI 37 / 豁免 3；
+  双语 27 篇一致；CHANGELOG 11 个已发布版本 + 1 个 Unreleased）。
+- 阻塞：无（本条不需要外部权限）。Vercel 配额仍按既定口径记录并忽略。
+- 风险 / 回滚：行为面只有一处——Auth 不可读时不再把已登录用户送去登录页，而是 503 / 错误边界。
+  回滚 = revert `5bfbcd2` 与文档 commit；无迁移、无数据面。
+- 下一项：把那 **13 处「判空跨出 14 行」** 逐条读完并把结论写回 C09（重点是有没有一处把 `error` 当已登录）；
+  然后按 C08-b 的台账方式立 `AUTH_ERROR_CHANNEL` 豁免表，再谈门禁接不接。
+- 更新时间：2026-09-24。
