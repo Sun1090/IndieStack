@@ -13,9 +13,16 @@
      `persistCredential` / `persistCounter` 的 `try` 里；`listMyCredentials` 在设置页
      （`src/app/dashboard/settings/page.tsx:70`）抛 → `src/app/dashboard/error.tsx` 边界，这是 Next 的
      正常形状。**只有两处抛穿到路由外**：`register-options:39` 与 `auth-verify:110`。
-     同一把尺子量了一遍全仓：`src/app/api/**/route.ts` 27 个文件里「import 了 repositories 且整个文件
-     没有 `try {`」的只有 2 个——上面那条 `register-options` 和 `api/e2e/webhook-events`（测试种子路由，
-     不在生产路径上）。所以这不是一个普遍失守，是这两处漏了。
+     同一把尺子量了一遍全仓：用一个按括号深度跟踪 try 块的脚本扫 28 个 `app/api/**/route.ts`，
+     「调用 `@/lib/repositories/*` 导出函数、且该调用不在任何 try 块内」的位置共 **6 处**，逐处判定：
+     passkey 这两处是真抛穿（本条修掉）；`api/user/route.ts:55/113` 调的 `getProfileById` / `updateProfile`
+     **返回的是 error 通道**、路由就地判 `error` 并回 500 JSON（不是缺陷）；`api/cron/digest/route.ts:84`
+     在 `recordEmailFailures` 自己的函数体里抛，但调用方 `route.ts:176` 把整句包进 `try` 并记
+     `cron.digest.receipt_failed{stage="retry"}`（不是缺陷）；`api/e2e/webhook-events/route.ts:18` 是
+     测试种子路由，不在生产路径上。**所以这不是普遍失守，是这两处漏了。**
+     顺带记下工具自身的教训：这个脚本第一版把「`try` 后跟空格再跟 `{`」判成了不匹配，
+     于是 27 个调用点全被报成未覆盖——正是这条假数字逼着我去逐处读被点名的四处，
+     才把上面这份账做实（如果只信第一版，PR 里就会写成一个不存在的大洞）。
   2. **缺陷不只是状态码难看**：`auth-verify` 头部第 8 行写着「challenge cookie 每次验证尝试后立即清除，
      避免浏览器重放」，而抛穿那条路径上没有任何人清它——**一条文件自己声明的安全边界只在顺利时成立**。
      另外客户端在等的始终是 JSON（同文件另有三条 `jsonNoStore` 失败分支），500 给的是 HTML 错误页。
