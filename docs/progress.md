@@ -1854,7 +1854,7 @@
 ## 2026-09-23 — C08-c 接线：解构那一半从「测量」变成门禁（#42 关闭）
 
 - 里程碑 / 版本：v0.12.0 / C08-c（#42 的后半，本族的最后一件事）。
-- 分支 / PR：`feat/c08c-gate-wiring`（栈在 #112 之上）。
+- 分支 / PR：`feat/c08c-gate-wiring` → **PR #113**（栈在 #112 之上，停在 ready-for-review）。
 - 状态：DONE（PR 待 review 合并）。
 - 台账从「一个文件一个数字」变成「一个文件、一条规则一个数字」：`ErrorChannelExemption` 加
   `unboundSites`（不写即 0）。`permission-gate.tsx` 登记 `sites: 2` + `unboundSites: 2`——
