@@ -547,7 +547,13 @@ const { data: profile } = (await supabase
 - 只判断**外层** `as`，且括号与 `as unknown` 会被穿透（`x as unknown as T` 是一处而不是两处）；
   被断言的东西必须是 `await` 下来的 `.from()` / `.rpc()` 链结果。未 await 的构造器断言
   （`const query = admin.from("x").select(...) as unknown as FilterChain`）是给 builder 定形状，不在射程内。
-- 断言类型里仍带 `error:` 的写法合规——门禁要的是「错误通道还在」，不是某种特定写法。
+- 断言类型里带 `error` 成员**而且那个成员真能装下错误**才算合规：`error: { message: string } | null`、
+  `error: unknown`、引用类型都过；`error: null` / `undefined` / `never`（含并集与括号写法）不判为合规——
+  明写「error 恒为空」和抹掉 `error` 是同一句谎，只是换了拼写。成员只看**顶层**：
+  `{ data: { error: X } }` 里那个 `error` 说的是载荷，不是查询结果。
+- `await` 可以在外层：`await Promise.all([chain as T, …])` 里的元素断言同样判（元素自己不带 `await`，
+  从前那一处抹除完全看不见）；元素自己 `await` 过时由通用那一支判，不双计。
+  `Promise.allSettled`、未 await 的 `Promise.all`、以及 `Promise.all` 里**不是**查询链的断言仍在射程外。
 - 第二条规则判的是**解构**：`const { data } = await supabase.from(...)` 里 `error` 从来没被绑进作用域，
   所以没有任何断言可看，第一条规则对着它一直是绿的。射程内有三种写法：直接一条链、
   `cond ? await chain : { … }`、`await Promise.all([chain, …])` 配数组解构（元素上再盖

@@ -278,10 +278,15 @@
     `api/invitations/route.ts` 两处与 `api/stripe/checkout/route.ts` 两处已随别的 PR 消失）。
     新量出的一个副产品写进 #49：`keepsErrorChannel()` 现在把「断言类型里带 `error:` 成员」一律当
     合规放行，所以 `as { data: X; error: null }`（明写「error 恒为 null」）它是瞎的——
-    与「抹掉 `error`」是同一句谎，只是换了拼写。**这条的规模目前还没有可信数字**：
-    先用 `grep "error: null;"` 数出「5 处」，但那个数不可信——分号漏掉了单行写法
-    `error: null };`（`actions/team.ts` 实际出现 7 次，而它在上面那 23 处里只占 6 处）。
-    #49 判据要按 AST 重量，不要照这份 grep 开工。
+    与「抹掉 `error`」是同一句谎，只是换了拼写。
+    **#49 已于 2026-09-23 按 AST 量完并关闭**（没照那份 grep 开工是对的）：全库 awaited 链上的断言
+    共 3 处，其中把 `error` 成员写成永不成立的 **0 处**——这条是纯补洞，台账不增不减；
+    同一次重量出第二个洞：`await Promise.all([...])` 的元素里 5 条查询链、1 条带断言
+    （仪表盘第一屏的 notifications），因为 `await` 落在外层、判据要求「awaited 的链」，
+    那条断言**今天对门禁完全不可见**。两处都已修：`keepsErrorChannel` 改成按 AST 取顶层 `error`
+    成员并要求它真能装下错误；`Promise.all` 元素级断言进射程（仍要求那是 `.from()` / `.rpc()` 链，
+    元素自己 await 过时不双计）。修完判到数 3 → 4，并加一条打在真实文件上的用例：
+    把那条 notifications 断言的 `error` 改成 `null`，门禁必须红。
     **落地顺序**：先按影响面一批一批清（同 C08-b 的做法：每批自带用例与变异核对），
     清到只剩 `justified` 那 2 处时再把判据接进 `check:query-errors`——
     一个刚落地就要求全库加豁免的门禁，教人的是绕过它而不是尊重它。

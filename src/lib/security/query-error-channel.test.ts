@@ -89,6 +89,127 @@ describe("collectErrorChannelCasts()", () => {
     expect(stats.casts).toEqual([{ file: "a.ts", line: 2 }]);
   });
 
+  it("断言明写 `error: null` 同样是抹掉：那句说的是「这次查询不可能出错」", () => {
+    for (const spelling of [
+      "error: null",
+      "error: undefined",
+      "error: never",
+      "error: null | undefined",
+      "error: (null)",
+    ]) {
+      const body = ROLE_QUERY.replace(
+        "as { data: { role: string } | null }",
+        `as { data: { role: string } | null; ${spelling} }`,
+      );
+      const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${body}}`)]);
+      expect(stats.judged, spelling).toBe(1);
+      expect(stats.casts, spelling).toEqual([{ file: "a.ts", line: 2 }]);
+    }
+  });
+
+  it("带真实形状的 `error` 成员仍然合规，包括可空与可选", () => {
+    for (const spelling of [
+      "error: { message: string } | null",
+      "error?: { message: string } | null",
+      "error: unknown",
+      "error: PostgrestError",
+      "error: (Error & { code: string }) | null",
+    ]) {
+      const body = ROLE_QUERY.replace(
+        "as { data: { role: string } | null }",
+        `as { data: { role: string } | null; ${spelling} }`,
+      );
+      const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${body}}`)]);
+      expect(stats.judged, spelling).toBe(1);
+      expect(stats.casts, spelling).toEqual([]);
+    }
+  });
+
+  it("只有嵌套里出现 `error` 不算保住通道：那一层描述的是载荷，不是查询结果", () => {
+    const nested = ROLE_QUERY.replace(
+      "as { data: { role: string } | null }",
+      "as { data: { role: string; error: { message: string } } | null }",
+    );
+    const stats = collectErrorChannelCasts([source("a.ts", `async function f() {${nested}}`)]);
+    expect(stats.judged).toBe(1);
+    expect(stats.casts).toEqual([{ file: "a.ts", line: 2 }]);
+  });
+
+  it("`await Promise.all([chain as T])`：断言抹掉的通道同样判得到", () => {
+    const body = `
+      async function f(supabase: any) {
+        const [{ data: rows }] = await Promise.all([
+          supabase.from("notifications").select("*") as unknown as { data: Row[] | null },
+        ]);
+        return rows;
+      }
+    `;
+    const stats = collectErrorChannelCasts([source("a.ts", body)]);
+    expect(stats.judged).toBe(1);
+    // 报的是断言写在哪一行（元素那一行），不是解构那一行
+    expect(stats.casts).toEqual([{ file: "a.ts", line: 4 }]);
+  });
+
+  it("带 `error` 的 `Promise.all` 元素断言合规，但必须真的被判到过", () => {
+    const body = `
+      async function f(supabase: any) {
+        const [{ data: rows }] = await Promise.all([
+          supabase.from("notifications").select("*") as {
+            data: Row[] | null;
+            error: { message: string } | null;
+          },
+        ]);
+        return rows;
+      }
+    `;
+    const stats = collectErrorChannelCasts([source("a.ts", body)]);
+    expect(stats.judged).toBe(1);
+    expect(stats.casts).toEqual([]);
+  });
+
+  it("元素自己 await 过时只判一次，不双计", () => {
+    const body = `
+      async function f(supabase: any) {
+        const [{ data: rows }] = await Promise.all([
+          (await supabase.from("notifications").select("*")) as { data: Row[] | null },
+        ]);
+        return rows;
+      }
+    `;
+    expect(collectErrorChannelCasts([source("a.ts", body)]).judged).toBe(1);
+  });
+
+  it("射程外仍然是射程外：`allSettled` 与未 await 的 `Promise.all` 都不判", () => {
+    const body = `
+      async function f(supabase: any) {
+        const [{ data: a }] = await Promise.allSettled([
+          supabase.from("notifications").select("*") as { data: Row[] | null },
+        ]);
+        const pending = Promise.all([supabase.from("teams").select("*") as { data: null }]);
+        return [a, pending];
+      }
+    `;
+    const stats = collectErrorChannelCasts([source("a.ts", body)]);
+    expect(stats.judged).toBe(0);
+    expect(stats.casts).toEqual([]);
+  });
+
+  it("`Promise.all` 里**不是**查询链的断言不判：射程跟着「awaited 的查询结果」走", () => {
+    const body = `
+      async function f(supabase: any) {
+        const [{ data: a }, { data: b }] = await Promise.all([
+          loadSomethingRemote() as { data: null },
+          supabase.from("teams").select("*") as { data: null },
+        ]);
+        return [a, b];
+      }
+    `;
+    const stats = collectErrorChannelCasts([source("a.ts", body)]);
+    // 判到的是第 5 行那条链，第 4 行那个「不知道返回什么」的调用不算
+    expect(stats.judged).toBe(1);
+    expect(stats.casts).toEqual([{ file: "a.ts", line: 5 }]);
+  });
+
   it("解析不动的文件会被点名，而不是安静地算作干净", () => {
     // `as` 换行会被 ASI 截断成另一条语句——这一份 fixture 本身就是这么写坏的。
     // 如果扫描器不报语法诊断，这类代码在门禁眼里等于不存在。
@@ -253,6 +374,21 @@ describe("inspectQueryErrorChannel()", () => {
         line: 2,
       }),
     ]);
+  });
+
+  it("真实仓库：仪表盘 `Promise.all` 里那条断言现在在射程内", () => {
+    // 接线前它**完全**看不见：`await` 落在 `Promise.all` 上，元素自己不带 await，
+    // 而断言那侧的判据要求「awaited 的链」。这一处抹掉通道时门禁会一路绿到线上。
+    const file = "src/app/dashboard/page.tsx";
+    const real = readQuerySources().find((item) => item.file === file);
+    expect(real, `${file} 不在扫描范围内`).toBeDefined();
+    const original = real?.content ?? "";
+    const erased = original.replace("error: { message: string } | null;", "error: null;");
+    // 站点漂移到 replace 改不动时这条必须红，否则它会安静地变成空转
+    expect(erased).not.toBe(original);
+
+    expect(codesFor([{ file, content: original }], file)).toEqual([]);
+    expect(codesFor([{ file, content: erased }], file)).toContain("QUERY_ERROR_CHANNEL_CAST_AWAY");
   });
 
   it("三条失败封闭：没有文件、文件全空、扫到了文件却一个 awaited 查询结果都没判", () => {
