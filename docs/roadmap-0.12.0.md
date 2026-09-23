@@ -223,7 +223,7 @@
 18. C08 （**2026-09-23 已完成，债务按文件登记**）把「被断言抹掉 `error` 通道的 awaited 查询结果」变成门禁：
     这类写法在类型上宣称「这条查询不会出错」，于是编译期再也逼不出 `error` 分支，运行期一次故障就被答成
     一个确定的结论。落地为 `pnpm check:query-errors`（规则 `src/lib/security/query-error-channel.ts`，
-    IO `scripts/lib/query-error-channel-check.js`，文档 `docs/testing.md`「查询错误通道门禁（C08）」）。
+    IO `scripts/lib/query-error-channel-check.js`，文档 `docs/testing.md`「查询错误通道门禁（C08 / C08-c）」）。
     重测之后**先前那份规模估计不成立**：早期脚本用单行 grep 数，漏掉了多行断言；换成 AST 后判据改成
     「`await` 一条 `.from()/.rpc()` 链的结果、且断言类型里没有 `error` 成员」，未 await 的构造器断言
     （`… as unknown as FilterChain`）不再算数，`x as unknown as T` 只算一处而不是两处。
@@ -309,9 +309,18 @@
     现在 `--unbound` 只剩 `permission-gate.tsx` 那 2 处，门禁接线的前提条件成立：
     判据进 `check:query-errors` 时，`ERROR_CHANNEL_EXEMPTIONS` 需要给这个文件加一条
     「客户端组件无法 5xx，读角色失败回落到最低权限」的 `justified` 记录（与它已有的 C08 豁免同源）。
+    **2026-09-23 接线完成（#42 关闭）**：`ErrorChannelExemption` 增加 `unboundSites`（缺省即 0），
+    `permission-gate.tsx` 那条同时登记 `sites: 2` 与 `unboundSites: 2`——那 2 处语句既是抹掉类型的
+    断言、也是没绑 `error` 的解构，一条语句同时犯两条规则，所以两条台账各记一次、各自双向对账。
+    解构侧另加一个地板值：断言那半判到了链、解构那半一条没判到时报 `UNBOUND_VACUOUS`，
+    此时**仍然打印断言侧的违规**（半个门禁坏了不能连带藏起另一半的结论），但**不**跑台账对账
+    （采集器死了会让每条正当豁免看起来都像过期条目，照提示删就把 `justified` 删没了）。
+    13 项变异里 12 项被杀死；唯一存活的「台账单向宽松」经探针确认与断言侧同构——
+    它不会让门禁变绿，只会让报告少掉 `file:line`，是 `unboundAway`/`unboundStale` 有意重叠的那一格。
     一个已确认、留给 #49 的洞：`dashboard/page.tsx:75` 那条 `as unknown as { data: … }`
     是**断言抹掉 `error`**（C08 那一族的正主），但 C08 门禁要求断言外面套 `await`，
-    而这里的 `await` 落在 `Promise.all` 上——所以它只对 C08-c 可见，对门禁不可见。
+    而这里的 `await` 落在 `Promise.all` 上。**从本次接线起这一处对门禁不再全盲**：
+    解构那一半判得到它（元素断言会被剥掉再看链），断言那一半仍然看不见——#49 的规模仍然要按 AST 重量。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 

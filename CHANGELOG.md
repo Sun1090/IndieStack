@@ -66,6 +66,21 @@ All notable changes to IndieStack will be documented in this file.
   变异核对 4 项（V1–V4）：判断恒真、只认本地变量名不认属性名（改名绑定会漏）、
   语法诊断文件不计数、去掉 `await` 要求（builder 断言被误伤）——逐项都让对应用例红。
 
+- **`check:query-errors` 现在也判解构（C08-c 接线，#42 关闭）**：上面那条测量规则不再是只出清单，
+  它进了门禁。`ErrorChannelExemption` 增加 `unboundSites`（不写即 0），台账从「一个数字」变成
+  「每条规则一个数字」——`src/components/shared/permission-gate.tsx` 同时登记 `sites: 2` 与
+  `unboundSites: 2`，因为那两处语句**既是**抹掉 `error` 的断言、**又是**没绑 `error` 的解构：
+  一条语句犯两条规则，两条台账各记一次、各自双向对账（多一处红、少一处也红）。
+  新代码 `QUERY_ERROR_CHANNEL_UNBOUND_AWAY` / `_UNBOUND_STALE`，加一个解构侧的地板值
+  `QUERY_ERROR_CHANNEL_UNBOUND_VACUOUS`：断言那半判到了链、解构那半一条没判到，说明
+  `readsFromPattern()` 被调空了——原有的 `judged > 0` 只证明第一条链还在走，管不住第二条。
+  这个早退分支**仍然打印断言侧的违规**（半个门禁坏了，不能连带把另一半的结论藏起来），
+  但**不**跑台账对账：采集器死掉时每条正当豁免都会看起来像过期条目，照着提示删就等于删掉 `justified`。
+  单测 26 → 30 条（含「断言台账刚好、解构台账多一处」这条独立性的用例——两条规则共用一个计数的话它全绿），
+  门禁输出那行改成同时打印两条覆盖数（`3 处 awaited 断言 + 165 处 awaited 解构，台账 断言 2 / 解构 2`）。
+  变异核对 13 项：**12 项被杀死**。唯一存活的是「把解构台账改成只许多不许少」——
+  另开一次探针确认它与断言侧同构：那种改法不会让门禁变绿（`unboundStale` 仍然红），
+  少掉的只是报告里的 `file:line`，是这一对规则有意重叠的那一格，已写进函数注释。
 - **管理面板终于看得见邮件待发队列的形状**（A05 前半）：新增 `src/lib/notifications/queue-diagnostics.ts`
   ——纯规则，四件事：队列有多少条、最老一条卡了多久、最近有几轮「拉到东西却一封没发出去」、
   以及超过 48h（两个日调度周期）算不算卡住；admin 概览页多一张「邮件待发队列」卡片。
