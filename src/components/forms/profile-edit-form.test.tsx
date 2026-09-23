@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProfileEditForm } from "./profile-edit-form";
+import { PROFILE_LANGUAGES } from "@/lib/constants";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -60,5 +61,16 @@ describe("ProfileEditForm", () => {
       );
     });
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("语言下拉的选项就是 PROFILE_LANGUAGES，不再各写一份", () => {
+    render(<ProfileEditForm fullName="Alice" bio="" timezone="" language="zh" />);
+    const select = document.querySelector('[name="language"]') as HTMLSelectElement;
+    // 少了这条断言，表单和常量可以各走各的：`PROFILE_LANGUAGES` 同时是动态翻译键
+    // （dashboard.profile.view.languages.*）的取值域，两边一漂移就有键取不到翻译。
+    expect(Array.from(select.options).map((option) => option.value)).toEqual([
+      ...PROFILE_LANGUAGES,
+    ]);
+    expect(select.value).toBe("zh");
   });
 });
