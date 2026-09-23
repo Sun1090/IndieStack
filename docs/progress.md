@@ -1153,3 +1153,58 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 待合 PR 的合并顺序与 CI 证据范围：长栈会把 commit 留在 main 之外
+
+- 里程碑 / 版本：v0.12.0；本轮不改代码，只回答「这 26 个 PR 怎么合才真的进 main」。
+- 分支 / PR：`docs/pr-merge-order`（基在 main `ad4b029`），停在 ready-for-review。
+- 状态：DONE（PR 待 review 合并）。
+- 量法（全部可复跑）：`gh pr list --state open --json number,baseRefName,headRefName,mergeable,mergeStateStatus`、
+  逐个 `gh pr checks`、`gh api repos/…/branches/main/protection`、`git show <ref>:scripts/check-all.sh`。
+- 事实一：**26 个 PR（#92–#117）全部 `MERGEABLE`，全部 `UNSTABLE`**。`UNSTABLE` 的语义是
+  「必需检查全过、有非必需检查红着」，而红的只有两个 Vercel 部署检查（配额，按既定口径忽略）。
+  main 的必需上下文一共 7 个：`Lint & Type Check` / `Build` / `Build Docs Site` /
+  `E2E (Playwright)` / `security-config` / `Analyze (javascript-typescript)` / `Detect Secrets`；
+  Vercel 不在其中 → **平台的部署限制不挡合并**。保护规则 `required_pull_request_reviews: null`，
+  也没有「必须与 base 同步」，所以合并只等 CI。
+- 事实二（开这个 PR 的原因）：拓扑不是一条链，而是**一条 20 个 PR 的长栈 + 6 个独立 PR + 1 个两级小栈**。
+  每个栈内 PR 的 base 都是前一个的 head 分支，只有栈底 #92 基在 main：
+  `#92 → #93 → #94 → #98 → #99 → #100 → #101 → #102 → #103 → #104 → #105 → #106 → #107 → #108 →
+  #109 → #110 → #111 → #112 → #113 → #114`；独立基在 main 的是 #95、#96、#97、#115、#116；
+  #117 基在 #115 的 head 上（它用 #115 引入的 `e2e/support/hydrated.ts`）。
+- **按编号顺序直接点合并，会把 #93–#114 的工作留在 main 之外**：#92 落地后
+  `feat/gate-query-error-channel` 与 main 打平，此时把 #93 合进那条分支，main 拿不到它的 commit，
+  而那条分支上已经没有任何 PR 通向 main；往后 19 个依次同理。更糟的是它**不报错**——
+  仓库 `delete_branch_on_merge=false`，中间分支安静地留着，GitHub 侧每一步都显示成功。
+- 因此栈内每个 PR 要两条命令（不改历史、不 force push、不产生 merge commit）：
+  1. `gh pr edit <N> --base main` —— 前驱刚进 main，这一刻它的 diff 恰好等于自己那几个 commit；
+  2. 等它自己的 CI 跑完再合。
+  顺带解决第二个缺口：`ci.yml` 的触发条件是 `pull_request: branches: [main, develop]`，
+  **base 不是 main 的那 20 个 PR（长栈里除 #92 外的 19 个，加 #117）从来没跑过 CI**——
+  它们头上只有 `security-config` 与 `Detect Secrets`（来自别的 workflow）加 Vercel，
+  5 个必需 CI 检查不是「过了」而是「根本没上报」。这 20 个 PR 现有的证据是本地在每个 SHA 上跑的全套
+  门禁（逐条写在各自条目里，口径见下）；retarget 之后 CI 会在同一个 SHA 上真跑一遍，含 E2E 分片。
+- 本地证据的确切口径，别写成做不到的事：`CI=true pnpm check:all` 在长栈的 tip
+  （`fix/c08-gate-range-holes`）跑过、exit 0，那是**整条栈叠加之后**的状态；
+  每个中间 SHA 也各自在自己的分支上跑过全套，但不是「相对当时 main」重跑。
+  门禁数量按实测：`check-all.sh` 在 main 上是 36 道，栈 tip 上是 37 道，多出来那道正是栈里加的
+  `check:query-errors`——不是记忆里的 38，草稿写 38 时被这条实测纠正了。
+- 冲突预期：#92、#96、#97、#115、#116 这 5 个 main 基 PR 同时往 `CHANGELOG.md` 的 `### Fixed` 顶部与
+  `docs/progress.md` 末尾追加（本 PR 只动 `docs/progress.md`，只会撞后半）。今天的全绿只是
+  「相对各自 base」的快照，一个落地后后面的大概率转 `DIRTY`；解法是仓库里已记过的那套：
+  只删三行冲突标记（两侧都是新增条目，「都保留」就是完整解）→ `git add -A` →
+  `GIT_EDITOR=true git rebase --continue` → 重跑门禁 → `git push --force-with-lease`
+  （仅限自己的 PR 传输分支）。
+- 顺序建议：先长栈 20 个（一次一个，每个先 retarget），再 #96、#97、#115 → #117、#116。
+  #95 单独说一句：它是纯 progress 记录，其中「12 处就是 C08-c 的全部工作量」是**那版计数器的读数**，
+  #106 补上三类写法盲区后重测，实际清单比它长（#112 把 debt 清完，台账只剩 `justified`）。
+  想留完整日志就先合（后面的条目带着修正），不想再发一份过期数字就关掉——修正版在长栈的条目里已有。
+- 为什么不在本次就把 20 个 base 全改好：现在 retarget，每个栈内 PR 的 diff 会变成「它以下全部未合
+  commit」的累积，#114 一口气显示 20 个 commit，review 面反而变大、也没有 CI 证据增益。
+  retarget 的正确时机是「前驱刚落地」。`gh pr edit` 不改历史、可回退，但会动 20 个 PR 的可见状态，
+  所以这一步停在文档里等用户：要么合并时逐条执行，要么第一个 PR 落地后由我按顺序做完再逐个报状态。
+- 验证：本 PR 只动 `docs/progress.md`。分支 tip 上 `pnpm -s lint` / `pnpm -s type-check` → exit 0；
+  `CI=true pnpm check:all` → exit 0；`pnpm -s test` → exit 0（199 文件）；`pnpm build` → exit 0。
+- 风险 / 回滚：纯文档，revert 即回滚；没动任何 PR 的 base、没动分支保护、没合并任何 PR。
+- 下一件：#44 后半（结账路由的状态映射）仍等 #92 + #96 落地；等 review 期间继续从巡检里挑可自主开工的项。
+- 更新时间：2026-09-23（UTC）。
