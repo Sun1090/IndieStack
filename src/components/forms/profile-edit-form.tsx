@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { updateProfileSettings } from "@/lib/actions/profile";
+import { PROFILE_LANGUAGES } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,7 +88,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
       <FormField htmlFor="language" label={t("languageLabel")}>
         <FormFieldControl>
           <NativeSelect name="language" defaultValue={language}>
-            {(["en", "zh", "ja", "ko"] as const).map((value) => (
+            {PROFILE_LANGUAGES.map((value) => (
               <option key={value} value={value}>
                 {tv(`languages.${value}`)}
               </option>

@@ -189,6 +189,15 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Changed
 
+- **个人资料的语言下拉改成引用权威常量**：`ProfileEditForm` 过去把 `["en","zh","ja","ko"]` 抄在组件里，
+  而同一份词表的权威声明是 `src/lib/constants.ts` 的 `PROFILE_LANGUAGES`——它同时是动态翻译键
+  `dashboard.profile.view.languages.*` 的取值域（`check:dynamic-keys` 的 `profile-languages` 契约按它比对
+  两种语言）。表单与常量分开写意味着谁漂移都不会有人响。现在选项由常量映射生成，并有一条渲染断言钉住
+  「选项 === PROFILE_LANGUAGES」。**本条只收口「重复」，没有收口「词表互相矛盾」**：`profiles.language`
+  当前没有任何功能消费方（UI 语言只认 `app-locale` cookie），而 `zh` ≠ 应用真实 locale `zh-CN`、`ja`/`ko`
+  在产品里并不存在，`src/lib/validations/profile.test.ts` 还断言 `zh-CN` 合法。是否按该字段本地化邮件、
+  `ja`/`ko` 算不算支持语言属于产品决策，见 `docs/progress.md` 对应条目，本条不代答。
+
 - **CI 的静态门禁与本地聚合从此只有一份清单**（C04 的剩余部分）：`ci.yml` 的 `Lint & Type Check` job
   过去逐个写 30 步 `pnpm check:*`，与 `scripts/check-all.sh` 是两份各自手工维护的清单——历史上确实
   出现过「只在本地聚合里有」和「只在 CI 里有」的门禁（`check:gates` 就是为这件事存在的）。现在那 30 步
