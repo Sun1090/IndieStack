@@ -236,7 +236,8 @@
     所以它既不会悄悄长胖也不会悄悄烂成永久豁免表。另加一条 `QUERY_ERROR_CHANNEL_PARSE`：
     语法树不完整的文件必须点名，因为「解析不动」在门禁眼里等于「不存在」，这条是被自己的测试 fixture
     抓出来的（`as` 换行会被 ASI 截断成语法错误，第一版因此悄悄不判那一处）
-19. C08-b 偿还错误通道台账：按影响面从大到小清 `ERROR_CHANNEL_EXEMPTIONS` 里标 `debt` 的条目。
+19. C08-b （**2026-09-23 已完成，debt 清零**）偿还错误通道台账：按影响面从大到小清
+    `ERROR_CHANNEL_EXEMPTIONS` 里标 `debt` 的条目。
     顺序是**逐个读过代码之后**定的，不是按文件或字母序：
     ① 会把**没提交的数据写掉**的三处——`actions/projects.ts` 的 config 合并**已于 2026-09-23 修好**
     （读失败改为中止，一次都不写；顺带把该文件另外四处同源的身份/项目行读取一起收了，见 progress 同日条目）；
@@ -252,12 +253,16 @@
     `lib/actions/sessions.ts`（读失败不再答成 `sessionNotFound`，且不删任何行）与
     `lib/actions/api-keys.ts`（「密钥不存在」与「读失败」拆成两个回答，后者新增 `apiKeyNotFound`；
     读失败时一个密钥都不签发）；
-    ③ 页面读数（`dashboard/team/page.tsx` 渲染成「你还没有团队」、`dashboard/billing/page.tsx`
-    把套餐显示成 `free`、~~`dashboard/profile/page.tsx` 把角色显示成 `member`~~ ——
-    **2026-09-23 第二批已随 ① 一起收掉**，它在 ① 与 ③ 里被列了两次，是同一处读取）。
+    ③ 页面读数 —— **2026-09-23 全部完成，C08-b 的 debt 到此清零**（台账只剩 `permission-gate.tsx`
+    两处 `justified`）：`dashboard/team/page.tsx` 三处（成员身份 → 空态、团队行 → 套餐徽章、
+    成员列表 → 满员显示成 0 人，最后一处没有断言、门禁看不见）、
+    `dashboard/billing/page.tsx`（`currentPlan = teamInfo?.plan ?? "free"` 把付费账户显示成免费）、
+    `api/analytics/route.ts` 两处（两次读取的失败拼成「0 请求、空时间线」= 「你的密钥没人用」）。
+    页面改为渲染前抛给 `dashboard/error.tsx`，接口回 503；「没有这一行」仍是合法状态。
     每清一处必须同时下调台账数字，否则 `QUERY_ERROR_CHANNEL_EXEMPT_STALE` 会红。
     台账规模以 `pnpm check:query-errors` 的输出为准——这里原先每清一批就要手写一次数字，
-    按 D04 口径不再抄
+    按 D04 口径不再抄。**注意范围**：本条清完只说明「断言抹掉 `error`」这一类没有了，
+    不等于「解构时压根不取 `error`」那一类（C08-c，见下条）也没有了
 20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的），
     接线时按同一套 AST 实测到 12 处：`api/e2e/push-queue/route.ts:86,230`、`api/invitations/route.ts:56,166`、
     `api/stripe/checkout/route.ts:58,68`、`api/webhooks/stripe/route.ts:256,263`、

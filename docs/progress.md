@@ -1460,3 +1460,53 @@
   `dashboard/billing/page.tsx` 一处（把套餐显示成 `free`）。清完 C08-b 只剩 2 处 `justified`，
   届时该重新量一遍 C08-c（`#42`），而不是照旧清单点名。
 - 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-b 第六批：最后三处读数，debt 清零
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 6 → 2 处，**debt 4 → 0**，剩 2 处 `justified`）。
+- 分支 / commit：`fix/c08b-team-billing-pages`（栈在 #100 → #99 → #98 → #94 → #93 → #92 之上）。
+- 状态：DONE（PR 待 review 合并）。**C08-b 到此收口**，但要说清楚范围：本条清完的是
+  「断言抹掉 `error`」这一类；「解构时压根不取 `error`」那一类（C08-c）仍然存在，
+  只是这一批顺手把它在团队页与用量接口上的三处一起收了（见下）。
+- 这一批的四处读数，全都是「**读失败长成一份看起来合法的读数**」：
+  1. `team/page.tsx` 成员身份 → 渲染成「你还没有团队」+「创建团队」按钮。用户相信了自己没有团队，
+     最坏情况是再建一个团队，然后面对两个团队。
+  2. `team/page.tsx` 成员列表（**没有类型断言，C08 门禁看不见这一处**）→ 满员的团队显示成 0 人、
+     空列表。owner 数与成员数两张卡片一起说谎。
+  3. `billing/page.tsx` → `currentPlan = teamInfo?.plan ?? "free"`，**付费账户显示成免费**。
+  4. `api/analytics/route.ts` 两处（head 计数 + 时间序列）→ 拼成「0 个请求、0 个错误、空时间线」。
+     对一个正在用 API 密钥的账户，这张图的意思就是「你的密钥没人用」。
+- 做了什么：三处页面读取绑定 `error` 并在渲染前 `throw`（交给 `dashboard/error.tsx`，
+  可重试，文案走 `errors.errorBoundary.*`，抛出的中文只进日志）；用量接口的两次读取各回
+  **503 + 一句「…Please retry.」**，且不再返回半张图（`summary`/`timeline` 一起 absent，
+  缺就是真缺）。`.limit(1).single()` → `maybeSingle()`（同 batch 3 的理由）。
+  「没有这一行」一律保持既有合法回答：没有成员关系仍渲染空态、团队行缺失仍走徽章回退、
+  真的零调用仍是零值图。
+- 用量接口那处**保留**了结果类型断言，但把它改成正经写法：`(await …) as { data: UsageRow[] | null; error: { message: string } | null }`。
+  原因是这条链 await 下来是 `any`（多列名串没匹配上生成的关系类型），而 `any` 正是「读失败看不见」的成因；
+  门禁的判据是「错误通道还在」而不是「不许断言」。删掉断言让 tsc 用 TS7006（隐式 any）把这件事报了出来——
+  又一处「局部 type-check 才能看见的东西」。
+- 覆盖：新建 `team/page.test.tsx`（6 条）与 `billing/page.test.tsx`（3 条），
+  `analytics/route.test.ts` +3 条（503 两条 + 合法零值一条）。
+  **一条假证据被当场抓到**：团队页的假客户端最初没给查询链加 `then`，于是「成员列表」那一路
+  `await` 到一个普通对象，`data` 与 `error` 双双 `undefined`——6 条用例里只有 1 条发现不对
+  （正是那条故障用例红在「promise resolved」）。这与 batch 2 记下的 `redirect()` mock 必须抛
+  NEXT_REDIRECT 是同一条教训：**mock 的行为形状不对时，测试保护的是 mock。**
+- 验证（最终形态重跑）：
+  - `pnpm check:query-errors` → 「358 文件 / 15 处 awaited 断言，无未登记的抹除（台账 2 处）」
+    ——剩下的 2 处全是 `permission-gate.tsx` 的 `justified`，debt 归零。
+  - `pnpm lint` / `pnpm type-check` → exit 0；`CI=true pnpm check:all` → **exit 0**
+    （38 道门禁、208 个测试文件全过，比上一批多出的 2 个文件就是本批新建的两页测试）；
+    `pnpm build` → exit 0。改注释之后 lint/type-check 又单独重跑过一次。
+  - 浏览器侧：`e2e/a11y.spec.ts` → **14/14 通过**，其中包含 `/dashboard/team`（这一批改的就是它），
+    证明抛错路径之外的正常渲染没被改坏。`/dashboard/billing` 不在 a11y 覆盖清单里，
+    它只有那 3 条单测兜着——记下来是为了下次别以为它被 E2E 看过。
+  - 变异核对 8 项（P1–P8）：六处 guard 空转各红自己那条；两条反向证据
+    （P7 把「确实没有团队」也抛掉、P8 把「真的零调用」判成 503）都会红，
+    其中 P8 一次红 3 条——一次变异未必只对应一条用例，要的是「它一定红」。
+    变异前后 `git diff --stat` 比对确认源码还原。
+- 下一步（不再在 C08-b 栈上）：重新量 C08-c（#42，判据要扩成「awaited 查询结果必须绑定并使用 `error`」，
+  扩之前先量误报）；#47 / #48 两个 API 密钥侧的邻居缺陷；#44（analytics/checkout 的 guard 失败映射成真实状态，
+  这条现在只剩 `safelyRequireAuth` 的 401 那半边——本批已把两次读数收掉）；
+  A05/A01/C06 等用户拍板，B 域等外部权限。
+- 更新时间：2026-09-23（UTC）。
