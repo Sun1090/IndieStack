@@ -48,7 +48,7 @@ export function ContactForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form method="post" onSubmit={handleSubmit} className="space-y-4">
       <FormField htmlFor="name" label={t("form.nameLabel")} className="grid gap-2">
         <FormFieldControl>
           <Input

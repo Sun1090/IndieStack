@@ -62,7 +62,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form method="post" onSubmit={handleSubmit}>
       <div className="grid gap-4">
         <FormField htmlFor="email" label={tc("email")} className="grid gap-2">
           <FormFieldControl>

@@ -117,7 +117,7 @@ function MfaForm() {
   }
 
   return recoveryMode ? (
-    <form onSubmit={handleRedeem} className="space-y-6">
+    <form method="post" onSubmit={handleRedeem} className="space-y-6">
       <p className="text-muted-foreground text-sm">{t("recoveryDesc")}</p>
       <FormField htmlFor="recovery-code" label={t("recoveryTitle")} labelClassName="sr-only">
         <FormFieldControl>
@@ -148,7 +148,7 @@ function MfaForm() {
       </Button>
     </form>
   ) : (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form method="post" onSubmit={handleSubmit} className="space-y-6">
       <FormField htmlFor="mfa-code" label={t("codeLabel")} labelClassName="sr-only">
         <FormFieldControl>
           <Input

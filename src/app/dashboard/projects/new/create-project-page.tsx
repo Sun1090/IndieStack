@@ -80,7 +80,7 @@ export function CreateProjectPage() {
           <CardDescription>{t("projects.create.desc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form method="post" onSubmit={handleSubmit} className="space-y-4">
             <FormField htmlFor="name" label={t("projects.create.nameLabel")}>
               <FormFieldControl>
                 <Input

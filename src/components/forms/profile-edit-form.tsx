@@ -50,7 +50,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form method="post" onSubmit={handleSubmit} className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         <FormField htmlFor="fullName" label={t("nameLabel")}>
           <FormFieldControl>
