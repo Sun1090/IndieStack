@@ -1157,22 +1157,25 @@
 ## 2026-09-23 — 待合 PR 的合并顺序与 CI 证据范围：长栈会把 commit 留在 main 之外
 
 - 里程碑 / 版本：v0.12.0；本轮不改代码，只回答「这些 PR 怎么合才真的进 main」。
-  口径截至 2026-09-23 08:40Z 的复扫：**28 个 open PR（#92–#119）**。
+  下面的计数是**一次性快照**（2026-09-23 09:20Z：29 个 open PR，#92–#120）。会过期的是数字，
+  不会过期的是判据——重算只要跑「量法」那几条命令（这也是 D04 的口径：文档不复述会漂移的数）。
 - 分支 / PR：`docs/pr-merge-order` → **PR #118**（基在 main `ad4b029`，停在 ready-for-review；
   因为 base 是 main，CI 会真跑——这正是上面「事实二」里那 21 个 PR 拿不到的东西）。
 - 状态：DONE（PR 待 review 合并）。
 - 量法（全部可复跑）：`gh pr list --state open --json number,baseRefName,headRefName,mergeable,mergeStateStatus`、
   逐个 `gh pr checks`、`gh api repos/…/branches/main/protection`、`git show <ref>:scripts/check-all.sh`。
-- 事实一：**28 个 PR（#92–#119）全部 `MERGEABLE`，全部 `UNSTABLE`**。`UNSTABLE` 的语义是
-  「必需检查全过、有非必需检查红着」，而红的只有两个 Vercel 部署检查（配额，按既定口径忽略）。
+- 事实一：**29 个 PR（#92–#120）没有一个处于冲突态**——28 个 `MERGEABLE/UNSTABLE`，
+  第 29 个（#120）是 `MERGEABLE/BLOCKED`，因为推上来不到一分钟、必需检查还在跑。
+  `UNSTABLE` 的语义是「必需检查全过、有非必需检查红着」，而红的只有两个 Vercel 部署检查
+  （配额，按既定口径忽略）。
   main 的必需上下文一共 7 个：`Lint & Type Check` / `Build` / `Build Docs Site` /
   `E2E (Playwright)` / `security-config` / `Analyze (javascript-typescript)` / `Detect Secrets`；
   Vercel 不在其中 → **平台的部署限制不挡合并**。保护规则 `required_pull_request_reviews: null`，
   也没有「必须与 base 同步」，所以合并只等 CI。
-- 事实二（开这个 PR 的原因）：拓扑不是一条链，而是**一条 20 个 PR 的长栈 + 6 个基在 main 的独立 PR
+- 事实二（开这个 PR 的原因）：拓扑不是一条链，而是**一条 20 个 PR 的长栈 + 7 个基在 main 的独立 PR
   + 2 个基在 #115 上的 PR**。每个长栈 PR 的 base 都是前一个的 head 分支，只有栈底 #92 基在 main：
   `#92 → #93 → #94 → #98 → #99 → #100 → #101 → #102 → #103 → #104 → #105 → #106 → #107 → #108 →
-  #109 → #110 → #111 → #112 → #113 → #114`；基在 main 的是 #95、#96、#97、#115、#116 与本 PR #118；
+  #109 → #110 → #111 → #112 → #113 → #114`；基在 main 的是 #95、#96、#97、#115、#116、#118、#120；
   #117 与 #119 基在 #115 的 head 上（都用 #115 引入的 `e2e/support/hydrated.ts`）。
 - 文件重叠是量过的（`git diff --name-only origin/main…<branch>` 求交集）：
   #119 与长栈的交集**只有文档**（`CHANGELOG.md`、`docs/testing.md`、`docs-site/scripts.md` 双语、
@@ -1198,14 +1201,16 @@
   每个中间 SHA 也各自在自己的分支上跑过全套，但不是「相对当时 main」重跑。
   门禁数量按实测：`check-all.sh` 在 main 上是 36 道，栈 tip 上是 37 道，多出来那道正是栈里加的
   `check:query-errors`——不是记忆里的 38，草稿写 38 时被这条实测纠正了。
-- 冲突预期：#92、#96、#97、#115、#116 这 5 个 main 基 PR 同时往 `CHANGELOG.md` 的 `### Fixed` 顶部与
-  `docs/progress.md` 末尾追加（本 PR 只动 `docs/progress.md`，只会撞后半）。今天的全绿只是
+- 冲突预期：#92、#96、#97、#115、#116、#118、#120 这些 main 基 PR 同时往 `CHANGELOG.md` 的
+  `### Fixed` / `### Added` 顶部与 `docs/progress.md` 末尾追加（本 PR 只动 `docs/progress.md`，
+  只会撞后半）。今天的全绿只是
   「相对各自 base」的快照，一个落地后后面的大概率转 `DIRTY`；解法是仓库里已记过的那套：
   只删三行冲突标记（两侧都是新增条目，「都保留」就是完整解）→ `git add -A` →
   `GIT_EDITOR=true git rebase --continue` → 重跑门禁 → `git push --force-with-lease`
   （仅限自己的 PR 传输分支）。
 - 顺序建议：先长栈 20 个（一次一个，每个先 retarget），再 #96、#97、#115 → #117、#119（两个都得等
-  #115 落地，retarget 后各自跑一遍 CI）、#116、#118。
+  #115 落地，retarget 后各自跑一遍 CI），最后 #116、#118、#120 这三个独立项（谁先谁后都行，只是
+  文档尾部要有人解冲突）。
   #95 单独说一句：它是纯 progress 记录，其中「12 处就是 C08-c 的全部工作量」是**那版计数器的读数**，
   #106 补上三类写法盲区后重测，实际清单比它长（#112 把 debt 清完，台账只剩 `justified`）。
   想留完整日志就先合（后面的条目带着修正），不想再发一份过期数字就关掉——修正版在长栈的条目里已有。
