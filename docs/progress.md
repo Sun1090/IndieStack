@@ -1157,7 +1157,7 @@
 ## 2026-09-23 — 孤儿巡检补上 provider 侧集合差（C05 收尾）
 
 - 里程碑 / 版本：v0.12.0；roadmap C05。
-- 分支 / commit：`feat/c05-provider-orphan-diff`（基于 `main`）。
+- 分支 / commit：`feat/c05-provider-orphan-diff`（基于 `main`）→ **PR #97**。
 - 状态：DONE（PR 待 review 合并）。
 - 为什么这条不是「加个 flag」：`find_orphan_upload_objects()` 的真相来源是 `upload_objects`，
   所以**一行都不存在的记录永远报不出来**。031 之前直接写进 bucket 的存量对象就是这么消失的——
@@ -1205,4 +1205,14 @@
   结果 `pnpm build`（它自己会再走一遍 TypeScript）抓出一个测试文件的类型错误。缺陷不在工具，
   在「验证跑在最后一次编辑之前」——与既有的「先变异核对再宣布绿」是同一条规矩的另一半：
   **门禁必须在最终形态上跑**，中途的绿灯不算数。
+- 下一件（写在这里，免得下一次会话重新找）：
+  1. **C08-b 台账继续清**——#92 那条栈上实测剩 8 个文件 / 16 处，其中
+     `permission-gate.tsx` 的 2 处是**有理由的豁免**（客户端组件没法 5xx，降级到最小权限是对的），
+     真正的债务是 7 个文件 / 14 处；最大的一条是 `src/app/api/invitations/route.ts` 的 5 处
+     （把查询故障答成 `No team found` / `Member not found` / `Only team admins …`）。
+     它必须叠在未合并的 #92/#94 上，所以要不要继续堆第 6 个 PR 取决于用户先合哪个。
+  2. **#44（analytics + checkout 把守卫失败映射成真实状态码）** 与 **#42（C08-c 门禁）**
+     都上游阻塞在 #92 合并，动不了。
+  3. **C06**（`src/lib/actions/uploads.ts` 两个 Server Action 留还是删）是要人拍的产品决策：
+     对一个模板项目而言，删掉一个公开入口不是纯技术判断。
 - 更新时间：2026-09-23（UTC）。
