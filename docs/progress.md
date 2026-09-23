@@ -1,3 +1,49 @@
+## 2026-09-23 — 仓库层按设计抛，那谁接：passkey 两条路由把读故障抛穿成 500
+
+- 里程碑 / 版本：v0.12.0 C08 的收尾半边——error 通道不抹掉之后，还要问抛出去有没有人收。
+- 状态：DONE，已开 PR。
+- 分支 / commit：`fix/passkey-uncaught-reads`（基于 `origin/main` `ad4b029`）。
+- 为什么做：接着 #121 那条覆盖率线索往下走。C08 栈尖（`origin/fix/c08-gate-range-holes`）的
+  `coverage-final.json` 里，`src/lib/repositories/webauthn.ts` 未覆盖的语句正好是那四行
+  `if (error) throw new Error(error.message)`——不是「测试没测出 bug」，而是**这四行的抛出去以后
+  从没人走过**。于是把 `webauthn.ts` 的五个导出函数的调用点逐个读了一遍。
+- 完成内容：
+  1. **收口情况（实测，不是印象）**：`deleteMyCredential` 在 `src/lib/actions/passkey.ts:15` 的 `try` 里 →
+     `fail("databaseError")`；`createCredential` / `updateCredentialCounter` 各自包在
+     `persistCredential` / `persistCounter` 的 `try` 里；`listMyCredentials` 在设置页
+     （`src/app/dashboard/settings/page.tsx:70`）抛 → `src/app/dashboard/error.tsx` 边界，这是 Next 的
+     正常形状。**只有两处抛穿到路由外**：`register-options:39` 与 `auth-verify:110`。
+     同一把尺子量了一遍全仓：`src/app/api/**/route.ts` 27 个文件里「import 了 repositories 且整个文件
+     没有 `try {`」的只有 2 个——上面那条 `register-options` 和 `api/e2e/webhook-events`（测试种子路由，
+     不在生产路径上）。所以这不是一个普遍失守，是这两处漏了。
+  2. **缺陷不只是状态码难看**：`auth-verify` 头部第 8 行写着「challenge cookie 每次验证尝试后立即清除，
+     避免浏览器重放」，而抛穿那条路径上没有任何人清它——**一条文件自己声明的安全边界只在顺利时成立**。
+     另外客户端在等的始终是 JSON（同文件另有三条 `jsonNoStore` 失败分支），500 给的是 HTML 错误页。
+  3. **修法**：把「读不到」做成第三种状态，而不是猜一个答案。`loadCredential()` 用 `undefined` 表示
+     问不出答案、`null` 表示问出来了且确实没有 → 前者 `503 + clearChallenge`（与既有两条基础设施故障
+     同形），后者保持 404；`register-options` 读不到时 503，而不是拿 `[]` 继续（`[]` 说的是「你还没有
+     passkey」，而 `excludeCredentials` 存在的目的就是不让人重复登记）。原始 error 只进 `logApiError`。
+  4. **刻意没做的**：`rpId()` 在 `NEXT_PUBLIC_APP_URL` 缺协议时同样抛穿（`register-options:42`、
+     `auth-options:35`、两个 verify 路由），但那是部署配置错误，包成 503 等于对运维谎报「重试就好」；
+     留 500。`register-options` 里还有一个从没用过的 `siteUrl` import，属另一件事，没顺手删。
+- 变更文件：`src/app/api/auth/passkey/auth-verify/route.ts`、
+  `src/app/api/auth/passkey/register-options/route.ts`、`src/app/api/auth/passkey/passkey.test.ts`、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 先红：两条新用例在修之前是「`POST` 直接 reject」，被断言捕获后失败；
+  - 变异核对三项全被抓：catch 里 `return null` → `expected 404 to be 503`；去掉 `clearChallenge` →
+    `expected '' to contain 'pk_challenge=;'`；`register-options` 的 catch 返回 `[]` → `expected 200 to be 503`；
+    每项跑完从 `/tmp` 的字节副本还原，`cmp` 确认与改前一致（不用 `git checkout`，工作区里有未提交内容）；
+  - `vitest run src/app/api/auth/passkey/passkey.test.ts` → **15 passed**（该文件 13 → 15）；
+  - `pnpm -s type-check` → 0；全量门禁与 PR 描述同口径（lint / test / `CI=true check:all` / build）。
+- 阻塞 / 风险：passkeys 由 `NEXT_PUBLIC_FEATURE_PASSKEY` 默认关闭，正常路径逐字符未变；新增的只有
+  「读不到时」这一条分支。真正的读故障要接真库才会出现，单测用 `mockRejectedValue` 打桩，
+  所以这条证据是行为级的、不是生产级的。
+- 下一项：把 `webauthn.ts` 剩下那四行 `throw` 本身补上单测（现在它们只是「被 try 包着」，没人证明
+  error 真的会变成抛错），以及覆盖率表上同一批低分文件（`repositories/api-keys.ts` 74/75、
+  `repositories/marketing.ts` 77、`upload-objects.ts` 78、`push-retry.ts` 80）。
+
+
 ## 2026-09-22 — 把「mock 少一个方法」变成一条会点名的自检（PR #74 的后续）
 
 - 里程碑 / 版本：v0.12.0 C03 的收尾，外加一条新发现的失效模式。
