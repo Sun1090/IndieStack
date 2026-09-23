@@ -1157,7 +1157,7 @@
 ## 2026-09-23 — 本地 E2E 从此拒绝「不是我们的那台服务器」（任务 #52）
 
 - 里程碑 / 版本：v0.12.0 / C 域（E2E 可信度）。基在 `origin/main`，与 #115 无依赖关系。
-- 分支 / PR：`fix/e2e-server-identity`。
+- 分支 / PR：`fix/e2e-server-identity` → **PR #116**（基在 `origin/main`，停在 ready-for-review）。
 - 状态：DONE（PR 待 review 合并）。
 - 起因不是 theorizing：`reuseExistingServer: !process.env.CI` 意味着本地会静默复用端口上任何先来的
   服务，而就绪检查只看 `/api/health` 有没有 2xx。roadmap C07 已经记过一次「整轮全量 E2E 跑在
