@@ -23,6 +23,9 @@ All notable changes to IndieStack will be documented in this file.
   的 `| Schema | 文件 | 用途 |` 校验表读成一个不存在的 `Schema` 组件。已知边界写在模块头注释里并如实说明：
   条目式清单（`CLAUDE.md` 的「共享组件」小节）与表格说明列里的组件名不解析，`SupabaseProvider` 就漏在
   这一层。刻意**不**做中英文逐行镜像（同 `check:docs` 的判断：两侧结构合法地不同，按行核会对着版式报警）。
+  同一次提交里把这道门禁登记进它自己的可发现性路径：`src/lib/testing/test-matrix.ts` 的 `docs` 领域
+  （`check:test-matrix` 因此强制两份矩阵文档都列出它）、两份 `docs-site/scripts.md` 与 `docs/testing.md`
+  的命令表——一道负责核组件文档的门禁，第一版自己却没被任何文档提到。
   门禁不是「改完才绿」的事后断言：对 `HEAD` 版本的两份文件跑同一条规则，`architecture/09` 报出 2 个幽灵、
   `CLAUDE.md` 报出 4 处数量过期，全部是真缺陷、零误报。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，

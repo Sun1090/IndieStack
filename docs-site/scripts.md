@@ -36,6 +36,7 @@
 | `pnpm check:secrets-scan` | Audit gitleaks scan strength and leak response policy: action major, full-history fetch depth, trigger coverage, token wiring, write permissions, allowlist entries, and runbook facts |
 | `pnpm check:trace-coverage` | Audit that every route handler and server action logs errors through the trace-aware `logApiError` / `logActionError` funnels, and that the `x-request-id` contract in `src/lib/trace-id.ts` and `src/proxy.ts` has not drifted |
 | `pnpm check:bilingual-docs` | Compare scheduling facts (cron expressions, `HH:MM UTC` times) between each `docs-site` page and its `zh-CN` counterpart; one-sided edits fail |
+| `pnpm check:component-docs` | Audit that the component reference documents match `src/components/**`: every table row points at a real module in the directory it claims, references declared exhaustive list all of `ui`/`shared`/`layout`/`auth`/`forms`, and each counted claim equals the tree |
 | `pnpm check:cron-contract` | Audit Vercel cron schedules, route methods, rejection observability, documented metrics, that every conditional skip in a worker route reports a counter, and that every cron expression / `/api/cron/*` path quoted in `docs-site` and `docs` actually exists in the repository |
 | `pnpm check:release-tag` | Verify a `vX.Y.Z` tag matches `package.json`, the CHANGELOG has a dated release section, and `release.yml` publishes reviewed notes only after all gates |
 | `pnpm check:mock-docs` | Audit that the Mock docs match the Mock client tables and E2E endpoints |
