@@ -1241,6 +1241,12 @@
   （两条反向证据各自稳定：0 个 action / 恰好 1 个）；`vitest run src/lib/ui/form-field-rules.test.ts`
   → 17 passed（原 10）；`pnpm -s check:fields` → exit 0；`pnpm -s lint` / `pnpm -s type-check` → exit 0；
   `CI=true pnpm check:all` → exit 0；`pnpm -s test` → exit 0；`pnpm build` → exit 0。
+  **另跑了一次全量并行 E2E**：`PW_FULLY_PARALLEL=true E2E_SERVERS=3 pnpm test:e2e --retries=0`
+  → **113 passed / 0 failed**（1.6 分钟）。为什么要自己跑：本 PR 的 base 是 #115 的 head，
+  而 `ci.yml` 只在 base 为 `main`/`develop` 时触发——栈上的 PR 拿不到 CI 的 E2E（口径见
+  「待合 PR 的合并顺序与 CI 证据范围」那条）。日志里的 `⨯ uncaughtException: Error: aborted`
+  是已知的 Turbopack 冷编译关 keep-alive 现象（`admin-contact-mfa.spec.ts` 头部注释记过），
+  三台服务器都活过了它，113 条里没有一条因此变红。
 - 变更文件：18 个表单组件、`src/lib/ui/form-field-rules.ts` + 其单测、`scripts/lib/form-field-check.js`、
   `e2e/support/hydrated.ts`、`e2e/hydrated-click.spec.ts`、`e2e/admin-contact-mfa.spec.ts`、
   `CHANGELOG.md`、`docs/testing.md`、`docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、
