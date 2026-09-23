@@ -1153,3 +1153,128 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 仓库层按设计抛，那谁接：passkey 两条路由把读故障抛穿成 500
+
+- 里程碑 / 版本：v0.12.0 C08 的收尾半边——error 通道不抹掉之后，还要问抛出去有没有人收。
+- 状态：DONE，**PR #122**（base `main`，与 #121 只共用 `CHANGELOG.md` / `docs/progress.md` 的头部，代码零重叠）。
+- 分支 / commit：`fix/passkey-uncaught-reads`（基于 `origin/main` `ad4b029`），`76b0e5d` + `4547ec4` + `459d1a2`。
+- 为什么做：接着 #121 那条覆盖率线索往下走。C08 栈尖（`origin/fix/c08-gate-range-holes`）的
+  `coverage-final.json` 里，`src/lib/repositories/webauthn.ts` 未覆盖的语句正好是那四行
+  `if (error) throw new Error(error.message)`——不是「测试没测出 bug」，而是**这四行的抛出去以后
+  从没人走过**。于是把 `webauthn.ts` 的五个导出函数的调用点逐个读了一遍。
+- 完成内容：
+  1. **收口情况（实测，不是印象）**：`deleteMyCredential` 在 `src/lib/actions/passkey.ts:15` 的 `try` 里 →
+     `fail("databaseError")`；`createCredential` / `updateCredentialCounter` 各自包在
+     `persistCredential` / `persistCounter` 的 `try` 里；`listMyCredentials` 在设置页
+     （`src/app/dashboard/settings/page.tsx:70`）抛 → `src/app/dashboard/error.tsx` 边界，这是 Next 的
+     正常形状。**只有两处抛穿到路由外**：`register-options:39` 与 `auth-verify:110`。
+     同一把尺子量了一遍全仓：用一个按括号深度跟踪 try 块的脚本扫 28 个 `app/api/**/route.ts`，
+     「调用 `@/lib/repositories/*` 导出函数、且该调用不在任何 try 块内」的位置共 **6 处**，逐处判定：
+     passkey 这两处是真抛穿（本条修掉）；`api/user/route.ts:55/113` 调的 `getProfileById` / `updateProfile`
+     **返回的是 error 通道**、路由就地判 `error` 并回 500 JSON（不是缺陷）；`api/cron/digest/route.ts:84`
+     在 `recordEmailFailures` 自己的函数体里抛，但调用方 `route.ts:176` 把整句包进 `try` 并记
+     `cron.digest.receipt_failed{stage="retry"}`（不是缺陷）；`api/e2e/webhook-events/route.ts:18` 是
+     测试种子路由，不在生产路径上。**所以这不是普遍失守，是这两处漏了。**
+     顺带记下工具自身的教训：这个脚本第一版把「`try` 后跟空格再跟 `{`」判成了不匹配，
+     于是 27 个调用点全被报成未覆盖——正是这条假数字逼着我去逐处读被点名的四处，
+     才把上面这份账做实（如果只信第一版，PR 里就会写成一个不存在的大洞）。
+  2. **缺陷不只是状态码难看**：`auth-verify` 头部第 8 行写着「challenge cookie 每次验证尝试后立即清除，
+     避免浏览器重放」，而抛穿那条路径上没有任何人清它——**一条文件自己声明的安全边界只在顺利时成立**。
+     另外客户端在等的始终是 JSON（同文件另有三条 `jsonNoStore` 失败分支），500 给的是 HTML 错误页。
+  3. **修法**：把「读不到」做成第三种状态，而不是猜一个答案。`loadCredential()` 用 `undefined` 表示
+     问不出答案、`null` 表示问出来了且确实没有 → 前者 `503 + clearChallenge`（与既有两条基础设施故障
+     同形），后者保持 404；`register-options` 读不到时 503，而不是拿 `[]` 继续（`[]` 说的是「你还没有
+     passkey」，而 `excludeCredentials` 存在的目的就是不让人重复登记）。原始 error 只进 `logApiError`。
+  4. **刻意没做的**：`rpId()` 在 `NEXT_PUBLIC_APP_URL` 缺协议时同样抛穿（`register-options:42`、
+     `auth-options:35`、两个 verify 路由），但那是部署配置错误，包成 503 等于对运维谎报「重试就好」；
+     留 500。`register-options` 里还有一个从没用过的 `siteUrl` import，属另一件事，没顺手删。
+  5. **把路由押注的那条契约本身钉住**：上面的 503/404 分岔完全依赖「仓库层在 error 时抛」，
+     而 `webauthn.ts` 五处 `if (error) throw` 里只有 `listMyCredentials` 那处有用例（C08 栈尖的
+     `coverage-final.json` 报的未覆盖语句就是其余四行）。补 4 条：`findCredentialById`（抛 ≠ 404）、
+     `createCredential`（抛，否则注册会以为已落库）、`updateCredentialCounter`（抛，克隆检测依赖它）、
+     `deleteMyCredential`（抛，action 才会回 `databaseError` 而不是「已删除」）。该文件 7 → 11 条。
+- 变更文件：`src/app/api/auth/passkey/auth-verify/route.ts`、
+  `src/app/api/auth/passkey/register-options/route.ts`、`src/app/api/auth/passkey/passkey.test.ts`、
+  `src/lib/repositories/webauthn.test.ts`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 先红：两条新用例在修之前是「`POST` 直接 reject」，被断言捕获后失败；
+  - 变异核对三项全被抓：catch 里 `return null` → `expected 404 to be 503`；去掉 `clearChallenge` →
+    `expected '' to contain 'pk_challenge=;'`；`register-options` 的 catch 返回 `[]` → `expected 200 to be 503`；
+    每项跑完从 `/tmp` 的字节副本还原，`cmp` 确认与改前一致（不用 `git checkout`，工作区里有未提交内容）；
+  - `vitest run src/app/api/auth/passkey/passkey.test.ts` → **15 passed**（该文件 13 → 15）；
+    `vitest run src/lib/repositories/webauthn.test.ts` → **11 passed**（7 → 11），
+    变异：删掉 `webauthn.ts` 全部五处 `if (error) throw` → **5 failed | 6 passed**，
+    即五个抛错各有一条用例钉着（跑完从 `/tmp/wa.bak` 还原、`cmp` 确认字节一致）；
+  - `pnpm -s type-check` → 0；全量门禁与 PR 描述同口径（lint / test / `CI=true check:all` / build）。
+- 阻塞 / 风险：passkeys 由 `NEXT_PUBLIC_FEATURE_PASSKEY` 默认关闭，正常路径逐字符未变；新增的只有
+  「读不到时」这一条分支。真正的读故障要接真库才会出现，单测用 `mockRejectedValue` 打桩，
+  所以这条证据是行为级的、不是生产级的。
+- 同一条尺子扫了 Server Action 侧（阴性 + 已被别的 PR 修掉，登记以免重复劳动）：`src/lib/repositories/*`
+  里**会抛错**的导出函数共 62 个，扫 19 个 `src/lib/actions/*.ts` 后「调用它们且不在 try 内」只剩
+  2 处，都在 `api-keys.ts` 的 `regenerateApiKey`（`insertApiKey` / `deactivateApiKey`）。
+  逐处对过 PR **#102** 的分支：那两处它已经收口，而且顺手把顺序反转成「先吊销再签发」并新增
+  `apiKeyRevokedButNotCreated`——原顺序的坏情况正是「新密钥已 active 但没人知道明文」。
+  所以本条不再动它，#102 合并后这条扫描应当自动归零。
+- 下一项：覆盖率表上同一批低分文件按同一条尺子过一遍（`repositories/api-keys.ts` 74、
+  `repositories/marketing.ts` 77、`repositories/upload-objects.ts` 78、`push-retry.ts` 80）。
+  其中 `push-retry.ts` 的四条未覆盖语句已顺手读过：两处 `catch`（死信回执写失败、失效订阅清理失败）
+  是**刻意吞掉并上报**的，与邮件侧的 at-least-once 代价同源，不是缺陷——登记为阴性结果，不为其改代码。
+
+## 2026-09-23 — RLS 静默过滤不等于成功：删掉一条不存在的通行密钥也被报成「已删除」
+
+- 里程碑 / 版本：v0.12.0 C08 的下游判据（「0 行受影响」不是「做到了」）；凭据管理面。
+- 状态：DONE，**PR #124**（base = `main`；开 PR 时指的是 #122 的分支，2026-09-23 改指 main，理由见「风险」）。
+- 分支 / commit：`fix/passkey-delete-reports-actual-work`（历史含 #122 到 `eec9e44` 的 5 个 commit，加本条的
+  `b82345f` 与 3 条 progress commit），tip `59b55db`。
+  base 曾经是 topic 分支 ⇒ `ci.yml` 的 5 个必需作业不在本 SHA 上跑（判据见上面 #118 那篇），当时 PR 里写的是
+  「本机全量是这条 SHA 目前唯一的证据」；改指 main 之后必需 CI 会在本 SHA 上跑，那句话只对改指之前成立。
+- 为什么做：还是顺着 #122 那条覆盖率线索。`src/lib/actions/passkey.ts` 在 C08 栈尖上是
+  **14% 语句覆盖**——整个 action 只有一行 `await deleteMyCredential(id)` 被读过一次，
+  `catch`、`revalidatePath`、`ok()` 全没被任何用例经过。先量了一下这有多没人看着：
+  把 `deletePasskey` 的函数体换成无条件 `return ok()`（连仓储都不调）后跑全量，
+  **199 files / 2291 tests 全过**。这条 action 是设置页上「凭据已移除」的确认。
+- 缺陷：`deleteMyCredential()` 只看 `error`。迁移 019 的
+  `users_delete_own_passkeys ... using (auth.uid() = user_id)` 对不匹配的行是**静默过滤**：
+  0 行受影响、`error` 为 `null`。所以「删掉了自己的那条」和「那条是别人的 / 早就不在了」
+  在调用方看来越同，`deletePasskey` 于是回 `ok()` 并 `revalidatePath`，UI 报「已移除」，
+  而凭据其实还在。判据仓库早就立过：#102（未合）把 `revokeApiKey` 从同形缺陷里救出来用的是
+  同一个形状——`.select("id")` 数受影响行；`marketing.updateStatusByToken` 也是这个形状。
+- 完成内容：
+  1. `deleteMyCredential(id): Promise<boolean>`：`.delete().eq("id", id).select("id")`，
+     error 仍抛（保持 #122 那条契约），`data` 长度为 0 → `false`。
+  2. `deletePasskey`：`false` → `fail("passkeyNotFound")` 且**不** `revalidatePath`；抛错仍
+     `databaseError`。新码 `passkeyNotFound` 同步进 `messages/en/actions.json` 与
+     `messages/zh-CN/actions.json`（中文按既有术语用「通行密钥」，措辞对齐 `sessionNotFound`）。
+  3. 测试：新建 `src/lib/actions/passkey.test.ts`（3 条：成功 / 0 行 / 抛错，各自钉
+     `revalidatePath` 是否发生）；`webauthn.test.ts` 的删除段从 1 条扩到 3 条，
+     其中一条断言 `.select("id")` 真的在链上——少了它，「删掉了」和「一行都没匹配上」不可区分。
+- 变更文件：`src/lib/repositories/webauthn.ts`、`src/lib/actions/passkey.ts`、
+  `src/lib/actions/passkey.test.ts`（新增）、`src/lib/repositories/webauthn.test.ts`、
+  `messages/en/actions.json`、`messages/zh-CN/actions.json`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 变异：action 里不读受影响行（等价 main 上的行为）→ `expected { ok: true } to deeply equal
+    { ok: false, error: 'passkeyNotFound' }`；跑完从 `/tmp/act2.bak` 还原并 `cmp` 确认；
+  - `vitest run src/lib/actions/passkey.test.ts src/lib/repositories/webauthn.test.ts` → **15 passed**；
+  - 本机 push 前全量：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
+    **200 files / 2301 tests passed**（base #122 上是 2297，本条 +3 action +1 仓储用例）；
+    `CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
+- 阻塞 / 风险：
+  - **base 从 #122 改指 main**：改指前先量了两边——`git merge-tree --write-tree origin/main HEAD` 返回
+    **0 冲突**，而对 base（#122 分支 tip `fabebe2`）唯一的冲突文件是 `docs/progress.md` 本身：#122 搬自己条目
+    用 `fabebe2`，我这边搬 #122+#124 两条用 `59b55db`，两边改了同一段尾部。也就是说 CONFLICTING 是我自己
+    那两条搬运 commit 造出来的记账冲突，不是代码冲突，而 GitHub 上挂着 CONFLICTING 会让评审以为动不了。
+    改指 main 后 `gh pr view 124` 报 **MERGEABLE**。
+  - 代价：本 PR 的历史含 #122 的 5 个 commit，所以 base=main 时 diff 里会一并出现 #122 的
+    `auth-verify/route.ts`、`register-options/route.ts`；**#122 先落地**（它的 tip 是 `fabebe2`，比我这条的
+    祖先 `eec9e44` 多一个搬运 commit）之后，本 PR 就只剩自己的 4 个 commit。顺序判据在 #118 那篇。
+  - mock 模式没有 `webauthn_credentials` 这张表（`src/lib/mock` 里查无此表），E2E 也不碰 passkey，
+    所以「0 行 → passkeyNotFound」在 mock 下不可达；这是既有的覆盖面缺口，不是本条引入的。
+    真要覆盖它得先给 mock 补表数据 + 让 delete 回受影响行（PostgREST 的 `RETURNING` 口径）。
+    **2026-09-23 量过成本，别按「补张表」估**：mock 是 1595 行手写查询层（`from()` 在
+    `src/lib/mock/index.ts:1521`、`delete()` 在 `:714`），补表只是小的那一半；真正拦住的是注册仪式——
+    `@simplewebauthn/server` 要验 clientDataJSON/authData（本条 #121 已读过它对 `origin` 用严格相等比较），
+    E2E 里没有真 authenticator，所以得引入可注入的验证桩或让 mock 客户端接进 E2E。那是独立一件大事。
+- 下一项：`src/lib/actions/admin.ts` 的 `listAdminUsersPage`（C08 栈尖上 79-89 行整段未执行、
+  且没有任何用例提到它）。它和 #93–#114 那条栈改同一个 `admin.test.ts`，所以**等那条栈落地之后再补**，
+  否则只是给评审多加一处必冲突的文件。

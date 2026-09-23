@@ -204,6 +204,44 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **删掉一条不存在（或属于别人）的通行密钥，会被报告成「已删除」**：`deleteMyCredential()` 只看
+  `error`，而 RLS 的 `users_delete_own_passkeys`（迁移 019）对不匹配的行是**静默过滤**——0 行受影响、
+  `error` 仍是 `null`。于是「删掉了」「那条本来就不是你的」两条路在 action 里长成同一个 `ok()`，
+  设置页弹「已移除」并 `revalidatePath`，而列表里那条凭据还活着。这是凭据管理面上的假成功：
+  用户以为吊销了一个密钥，它其实还在。同一条判据仓库已经立过（`revokeApiKey` 的「0 行不算吊销」、
+  `updateStatusByToken` 的 `.select("id")` 数行数），这里是漏网的一处。
+  修法照既有形状：`deleteMyCredential` 用 `.delete().eq("id", …).select("id")` 数受影响行返回布尔，
+  `deletePasskey` 在 0 行时回 `fail("passkeyNotFound")`（新码，en/zh 同步，中文按术语表用「通行密钥」）
+  且**不**重取列表；抛错仍是 `databaseError`。**为什么一直没人发现**：这个 action 此前在整个仓库里
+  没有任何用例——实测：把函数体换成无条件 `return ok()`（连仓储都不调）之后，全量仍然
+  **199 files / 2291 tests 全过**。现在 `src/lib/actions/passkey.test.ts` 3 条 + 仓储侧 2 条钉住三种结局
+  （成功/0 行/抛错），变异核对：action 里不读返回值 → `expected { ok: true } to deeply equal { ok: false,
+  error: 'passkeyNotFound' }`；仓储去掉 `.select("id")` → 两条仓储用例红。
+- **passkey 的两个路由把仓库层的读故障抛穿成 500，其中一条还破坏了它自己文件头写的边界**：
+  `src/lib/repositories/webauthn.ts` 按设计在 `error` 时 `throw`（这是 C08 的口径，不是缺陷），
+  调用方各自收口——Server Action 走 `try`→`fail("databaseError")`，设置页走 `src/app/dashboard/error.tsx`
+  边界。只有 `register-options` 的 `listMyCredentials()` 和 `auth-verify` 的 `findCredentialById()`
+  在 `try` 之外。这不是普遍失守，是一条逐处核过的账：用括号深度跟踪扫完 28 个 `app/api/**/route.ts`，
+  「调用 repositories 导出函数且该调用不在任何 try 内」的位置共 6 处——passkey 这两处是真抛穿（已修）；
+  `api/user` 的两处调的是**返回 error 通道**的函数，路由就地判了 `error` 并回 500 JSON；
+  `cron/digest` 那处在自己的函数体里抛，但它的调用方把整句包进 `try` 并记
+  `cron.digest.receipt_failed{stage="retry"}`；剩下 1 处是 `api/e2e/*` 测试种子路由，不在生产路径上。
+  后果是：数据库一抖，客户端拿到的不是它一直在等的 JSON，而是一张 500 的 HTML 错误页；而 `auth-verify`
+  头部写着「challenge cookie 每次验证尝试后立即清除，避免浏览器重放」，抛穿那条路径上没人清它，
+  于是一条**文档里已声明的边界**只在顺利时成立。
+  修法是把「读不到」做成第三种状态而不是一个猜测：`loadCredential()` 返回 `undefined`=问不出答案、
+  `null`=问出来了且确实没有，前者 503 + `clearChallenge`（与同文件既有的两条基础设施故障 503 同形），
+  后者保持 404；`register-options` 读不到时返回 503 而不是拿空数组继续——空数组说的是「你还没有
+  passkey」，那是把一次故障答成一次正常登记，而 `excludeCredentials` 正是用来挡住重复登记的。原始
+  error 只进 `logApiError`，不进响应。刻意没做的：`rpId()` 在环境变量没写协议时同样会抛穿，但那是
+  部署配置错误而不是运行时故障，把它包成 503 等于对运维谎报「重试就好」，所以留着 500。
+  新增 2 条路由用例（该文件 13 → 15 条），三项变异核对全部被抓：catch 里 `return null` → 503 变 404；
+  503 不 `clearChallenge` → `expected '' to contain 'pk_challenge=;'`；`register-options` 的 catch
+  返回 `[]` → 200 而非 503。发现路径记在 `docs/progress.md`：这条是顺着 C08 栈尖的覆盖率表找到的——
+  `webauthn.ts` 未覆盖的语句恰好就是那四行 `throw`。既然路由的判定全押在「抛不抛」上，那四行本身也
+  补了断言（`src/lib/repositories/webauthn.test.ts` 7 → 11 条）：把该文件五处 `if (error) throw` 全删掉，
+  恰好 5 条用例红——每一处抛错各由一条用例钉住，不是凑数的空断言。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

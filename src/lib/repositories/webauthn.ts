@@ -72,9 +72,21 @@ export async function updateCredentialCounter(credentialId: string, counter: num
   if (error) throw new Error(error.message);
 }
 
-/** 用户上下文：删除自己的凭据（设置页） */
-export async function deleteMyCredential(id: string): Promise<void> {
+/**
+ * 用户上下文：删除自己的凭据（设置页）。
+ *
+ * 返回「真的删掉了没有」而不是 void：RLS 的 `users_delete_own_passkeys` 对**不匹配**的行
+ * 是静默过滤（0 行受影响、`error` 为 null），不是报错。只判 `error` 的话，
+ * 删一条不存在的凭据和删一条别人的凭据都会长成「成功」。`.select("id")` 拿回受影响行，
+ * 才能把这两种情况分开。（与 `deactivateApiKey` / `updateStatusByToken` 同一口径。）
+ */
+export async function deleteMyCredential(id: string): Promise<boolean> {
   const supabase = await createClient();
-  const { error } = await supabase.from("webauthn_credentials").delete().eq("id", id);
+  const { data, error } = await supabase
+    .from("webauthn_credentials")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
 }
