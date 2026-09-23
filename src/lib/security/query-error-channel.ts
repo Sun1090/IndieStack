@@ -89,16 +89,6 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
     reason:
       'debt (C08-b): `currentPlan = teamInfo?.plan ?? "free"` — a failed membership read shows the wrong billing tier.',
   },
-  "src/lib/actions/api-keys.ts": {
-    sites: 1,
-    reason:
-      'debt (C08-b): a missing key and a failed read both answer the generic `databaseError`, so "not found" is never sayable here.',
-  },
-  "src/lib/actions/sessions.ts": {
-    sites: 1,
-    reason:
-      "debt (C08-b): a failed session read answers `sessionNotFound` for a session that may still be valid.",
-  },
 };
 
 const QUERY_METHODS = new Set(["from", "rpc"]);
