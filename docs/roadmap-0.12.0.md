@@ -274,7 +274,13 @@
     「失败登录时本来就没有会话」在 `user_id` 这一列上完全同形**，而取证时这是两件相反的事；
     本条已修（审计照写，但 metadata 打 `sessionReadFailed`，见 CHANGELOG）。
     **已收口的部分**：守卫层（`src/lib/auth/guards.ts`）改走 `readSessionUser()`，`requireAuth/Role/Permission`
-    与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好。
+    与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好；
+    审计侧 `actions/audit.ts` 打上 `sessionReadFailed` 标记。
+    **那 8 处 `user!.id` 现在不能动，原因是重叠而不是难度**（2026-09-24 量的：逐条 open PR 的
+    `git diff --name-only <merge-base> <head>` 对文件全名匹配）——`dashboard/notifications/page.tsx`
+    与 `profile/page.tsx` 被 **18 条**在审 PR 各自改过，`billing`、`team` 14 条，`page.tsx` 5 条，
+    `settings` 4 条。也就是这一批改法会同时在整条 C08-c 栈上造出 8 条需要作者出场的边。
+    时机是**等那批 PR 落地之后**，按同一形状（先判空、再答「暂时不可用」）一次收完。
     **暂不接门禁**，理由与 C08-c 同源：合法状态（确实没有会话 → 回落登录页是对的）与「没读到」在 AST 上
     都只是「没取 `error`」，先接会把正常写法一并点掉；先照 C08-b 的办法立台账再逐文件偿还。
     两个已知消费者不在本条射程：`api/analytics/route.ts` 与 `api/stripe/checkout/route.ts` 现在仍把
