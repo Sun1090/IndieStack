@@ -1157,7 +1157,8 @@
 ## 2026-09-23 — 给 C08-c 那批页面改动补跑 E2E，撞出一条真实的间歇红并修掉
 
 - 里程碑 / 版本：v0.12.0 / C 域（E2E 稳定性），不属任何未合项，独立基于 `main`。
-- 分支 / PR：`fix/e2e-hydration-click-race`（base = `origin/main` `ad4b029`）。
+- 分支 / PR：`fix/e2e-hydration-click-race` → **PR #115**（base = `origin/main` `ad4b029`，
+  停在 ready-for-review；因为基在 main 上，CI 会真的跑 E2E —— 这正是栈上那批 PR 拿不到的证据）。
 - 状态：DONE（PR 待 review 合并）。
 - 为什么去跑 E2E：C08-b/c 那十几批改动改了 8 个页面与 3 个路由的失败语义（读失败从「渲染成合法终态」
   改成抛错/503）。那些 PR 都在栈上，CI 对非 main 基的栈 PR 只挂两三个检查——**E2E 从没在它们头上跑过**。
