@@ -66,7 +66,7 @@ if (result.error) {
 
 | 函数 | 功能 | 输入验证 | 认证 |
 |------|------|----------|------|
-| `getCurrentTeam()` | 获取当前用户团队 | — | 需要 |
+| `getCurrentTeam()` | 获取当前用户团队，返回三态 `TeamLookup`：`ok` / `no-team`（确实没有）/ `error`（没读到） | — | 需要 |
 | `getTeamMembers(teamId)` | 获取团队成员列表 | — | 需要 |
 | `createTeam(input)` | 创建新团队 | `createTeamSchema` | 需要 |
 | `inviteMember(input)` | 邀请团队成员 | `inviteMemberSchema` | 需要 |

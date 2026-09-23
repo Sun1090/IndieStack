@@ -22,36 +22,63 @@ import { fail, ok } from "@/lib/types/action-result";
 import { logActionError } from "@/lib/api-log";
 
 /**
- * Get the current user's team.
+ * 当前用户的团队解析结果。三种情况必须分开说：`no-team` 是「这个人确实没有团队」，
+ * `error` 是「我们没读到」。
+ *
+ * 原先这里返回 `team | null`，两处断言里明写着 `error: null`——于是数据库抖动一次，
+ * 三个团队动作就齐刷刷答成「你没有团队」（`noTeam`），而那是个终态：用户会去创建第二个团队，
+ * 而不是刷新重试。断言里那个 `error: null` 不是「保留了错误通道」，是断言它不可能出现。
  */
-export async function getCurrentTeam() {
+export type TeamLookup =
+  | { status: "ok"; team: Database["public"]["Tables"]["teams"]["Row"] }
+  | { status: "no-team" }
+  | { status: "error"; message: string };
+
+/** Get the current user's team. */
+export async function getCurrentTeam(): Promise<TeamLookup> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return null;
+  if (!user) return { status: "no-team" };
 
   // Get the team the user belongs to (first one)
-  const { data: membership } = (await supabase
+  // `.maybeSingle()` 而不是 `.single()`：后者在「确实没有这一行」这个正常结果上就会给 error，
+  // 而这里现在真的要看 `error`——不换成 maybeSingle 的话，没团队会被说成读失败。
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id")
     .eq("user_id", user.id)
     .limit(1)
-    .single()) as unknown as { data: { team_id: string } | null; error: null };
+    .maybeSingle();
 
-  if (!membership) return null;
+  if (membershipError) return { status: "error", message: membershipError.message };
+  if (!membership) return { status: "no-team" };
 
-  const { data: team } = (await supabase
+  const { data: team, error: teamError } = await supabase
     .from("teams")
     .select("*")
     .eq("id", membership.team_id)
-    .single()) as unknown as {
-    data: Database["public"]["Tables"]["teams"]["Row"] | null;
-    error: null;
-  };
+    .maybeSingle();
 
-  return team;
+  if (teamError) return { status: "error", message: teamError.message };
+  // 有成员行却没有团队行是数据不一致（外键不该允许），不是读失败：照旧按「没有团队」回答。
+  return team ? { status: "ok", team } : { status: "no-team" };
+}
+
+/**
+ * 三个团队动作共用的解析：把 `TeamLookup` 折成「拿到团队」或「一个已经写好日志的失败」。
+ * 分派规则只有一句——读失败是 `databaseError`（该重试），没有团队是 `noTeam`（该去创建）。
+ */
+async function requireTeam(scope: string): Promise<
+  { team: Database["public"]["Tables"]["teams"]["Row"] } | { failure: ActionResult }
+> {
+  const lookup = await getCurrentTeam();
+  if (lookup.status === "ok") return { team: lookup.team };
+  if (lookup.status === "no-team") return { failure: fail("noTeam") };
+  await logActionError(`[${scope}] 团队归属读取失败`, new Error(lookup.message));
+  return { failure: fail("databaseError") };
 }
 
 /**
@@ -131,10 +158,9 @@ export async function inviteMember(input: InviteMemberInput): Promise<ActionResu
     return fail(validated.error.issues[0]?.message ?? "invalidInput");
   }
 
-  const team = await getCurrentTeam();
-  if (!team) {
-    return fail("noTeam");
-  }
+  const resolved = await requireTeam("inviteMember");
+  if ("failure" in resolved) return resolved.failure;
+  const team = resolved.team;
 
   // Check if user is admin/owner
   // 「查不到成员行」与「查不了」必须分开：抹掉 error 会让一次故障答成「你没有权限」，
@@ -229,29 +255,42 @@ export async function removeMember(memberId: string): Promise<ActionResult> {
     return fail("notAuthenticated");
   }
 
-  const team = await getCurrentTeam();
-  if (!team) {
-    return fail("noTeam");
-  }
+  const resolved = await requireTeam("removeMember");
+  if ("failure" in resolved) return resolved.failure;
+  const team = resolved.team;
 
-  const { data: currentMembership } = (await supabase
+  const { data: currentMembership, error: currentMembershipError } = await supabase
     .from("team_members")
     .select("role")
     .eq("team_id", team.id)
     .eq("user_id", user.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle();
+
+  // 「读不到我的角色」不是「我没有权限」：这条故障如果落到下面的权限判断，
+  // 管理员会在一次抖动里收到 onlyAdminsRemove，而重试才是正确答案。
+  if (currentMembershipError) {
+    await logActionError("[removeMember] 权限查询失败", currentMembershipError);
+    return fail("databaseError");
+  }
 
   if (!currentMembership || !["owner", "admin"].includes(currentMembership.role)) {
     return fail("onlyAdminsRemove");
   }
 
   const admin = createAdminClient();
-  const { data: targetMember } = (await admin
+  const { data: targetMember, error: targetMemberError } = await admin
     .from("team_members")
     .select("role")
     .eq("id", memberId)
     .eq("team_id", team.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle();
+
+  // 同样地，service_role 那一路读失败也不能答成「成员不存在」——那是终态，
+  // 用户会以为这个人早就被移走了。
+  if (targetMemberError) {
+    await logActionError("[removeMember] 目标成员读取失败", targetMemberError);
+    return fail("databaseError");
+  }
 
   if (!targetMember) {
     return fail("memberNotFound");
@@ -299,27 +338,40 @@ export async function updateMemberRole(
 
   if (!user) return fail("notAuthenticated");
 
-  const team = await getCurrentTeam();
-  if (!team) return fail("noTeam");
+  const resolved = await requireTeam("updateMemberRole");
+  if ("failure" in resolved) return resolved.failure;
+  const team = resolved.team;
 
-  const { data: currentMembership } = (await supabase
+  const { data: currentMembership, error: currentMembershipError } = await supabase
     .from("team_members")
     .select("role")
     .eq("team_id", team.id)
     .eq("user_id", user.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle();
+
+  // 与 removeMember 同一条线：读失败答成 `onlyAdminsInvite` 是凭空造出一条权限拒绝。
+  if (currentMembershipError) {
+    await logActionError("[updateMemberRole] 权限查询失败", currentMembershipError);
+    return fail("databaseError");
+  }
 
   if (!currentMembership || !["owner", "admin"].includes(currentMembership.role)) {
     return fail("onlyAdminsInvite");
   }
 
   // 目标成员必须是本团队的普通成员/admin（不允许动 owner）
-  const { data: target } = (await supabase
+  const { data: target, error: targetError } = await supabase
     .from("team_members")
     .select("role")
     .eq("id", memberId)
     .eq("team_id", team.id)
-    .maybeSingle()) as unknown as { data: { role: string } | null; error: null };
+    .maybeSingle();
+
+  // 「没读到」不是「没有这个人」：memberNotFound 是终态，重试不会变。
+  if (targetError) {
+    await logActionError("[updateMemberRole] 目标成员读取失败", targetError);
+    return fail("databaseError");
+  }
 
   if (!target) return fail("memberNotFound");
   if (target.role === "owner") return fail("ownerCannotRemove");
