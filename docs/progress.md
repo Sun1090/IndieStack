@@ -1153,3 +1153,44 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 给 C08-c 那批页面改动补跑 E2E，撞出一条真实的间歇红并修掉
+
+- 里程碑 / 版本：v0.12.0 / C 域（E2E 稳定性），不属任何未合项，独立基于 `main`。
+- 分支 / PR：`fix/e2e-hydration-click-race` → **PR #115**（base = `origin/main` `ad4b029`，
+  停在 ready-for-review；因为基在 main 上，CI 会真的跑 E2E —— 这正是栈上那批 PR 拿不到的证据）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么去跑 E2E：C08-b/c 那十几批改动改了 8 个页面与 3 个路由的失败语义（读失败从「渲染成合法终态」
+  改成抛错/503）。那些 PR 都在栈上，CI 对非 main 基的栈 PR 只挂两三个检查——**E2E 从没在它们头上跑过**。
+  本地全量：`108 passed / 1 failed`。
+- 红的那条：`e2e/account-deletion.spec.ts:50` 「短语输错由服务端拒绝」，60s 超时，报
+  `waiting for getByRole('textbox')`。危险区域标题与入口按钮都是服务端渲染的，
+  `toBeVisible()` 在 hydration 之前就会通过 → 那一次 click 被丢进空气 → 输入框永远不等出来。
+  单独复跑该文件 `--repeat-each=6` → **1/6 复现**，同一台机器上没有别的项目干扰时也一样。
+  所以它不是这批页面改动引入的回归，是一条一直在那儿掷骰子的用例（CI 的 `retries=2` 长期替它兜着）。
+- 修法沿用仓库已确立的形状（`theme.spec.ts` 的 `toggleThemeTo()`、`keyboard.spec.ts` 的 `retry()`），
+  但把它收成**一份**共享实现 `e2e/support/hydrated.ts` → `actUntilVisible(act, result)`：
+  每一轮先读结果、结果缺席才重放动作。只重试断言是错的（动作会演第二遍），
+  无条件重放动作也是错的（非幂等的点按会留下重复提交）——这两句话就是这套写法的全部难点。
+- 顺手把 locator 收紧：确认框改成按**可访问名称**取（`aria-label` = `Type "delete" to confirm` /
+  `请输入「删除」确认`）。今天设置页只有一格 textbox，两种写法等价；但 `actUntilVisible` 的
+  「先看结果」依赖 `isVisible()`，多匹配 locator 在那儿抛严格模式错误——
+  别人明天在设置页加一格输入，不该把这条删除用例变成随机红。
+- 机制证明放在 `e2e/hydrated-click.spec.ts`，**两条一起放**：`page.route` 把 `resourceType==="script"`
+  的请求统一延后 3s，之后一条断言「点一次确实会被吞」（`toHaveCount(0)`），
+  一条断言 `actUntilVisible` 在同一次拖慢下仍然把表单打开。只留后一条的话，把重试删掉也没人发现；
+  前一条的存在让「重试」这件事不能被糊过去。这比 CDP 节流那条复现路径（docs/testing.md 里原有的）
+  更确定，也更便宜。
+- 验证：`--repeat-each=12` 跑该文件 + 新文件 = **84 passed / 0 failed**（修前同命令 1 红）；
+  `pnpm -s type-check` / `pnpm -s lint` → exit 0；`CI=true pnpm check:all` → exit 0；`pnpm -s test` → exit 0。
+- 遗留（都带行号记进任务，不在本次动）：
+  #51 同类 `goto(domcontentloaded) → toBeVisible → 一次 click` 还在 `admin-contact-mfa.spec.ts`
+  （sign-in ×5、Enable 2FA、验证、联系表单提交）与 `responsive.spec.ts`（汉堡 ×2）——
+  那些动作不一定幂等，包 `actUntilVisible` 之前要先定「什么结果证明它生效」。
+  #52 `playwright.config.ts` 的 `reuseExistingServer: !CI` 会在端口被别的项目占掉时**静默**把整套
+  E2E 跑到别人的服务上（roadmap C07 已经记过一次作废；今天这台机器上另一个项目的
+  `playwright.build.config.ts` 正在并行跑，且本次跑完还留了一台 `:3100` 的孤儿 dev server）。
+- 风险 / 回滚：只动 `e2e/**` 与文档，运行时代码零改动；回滚 = revert 本 commit。
+  与栈上的 #113/#114 会在 `CHANGELOG.md` 与 `docs/progress.md` 的同一处相遇——谁后合谁解一次冲突。
+- 下一件：#51 / #52 之上继续挑可自主开工的项；栈上 20 个 PR 仍等 review。
+- 更新时间：2026-09-23（UTC）。
