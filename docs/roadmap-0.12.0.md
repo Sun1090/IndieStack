@@ -243,7 +243,10 @@
     ~~`dashboard/profile/edit/page.tsx` / `profile/page.tsx` / `notifications/page.tsx`~~ ——
     **2026-09-23 已完成**：三处的 `profiles` 读取改用 `maybeSingle()` 并真正读 `error`，
     读失败抛给错误边界；缺行仍按空值渲染（那是合法状态），表单不再拿假默认值等人保存；
-    ② 鉴权与所有权判定（`lib/uploads/service.ts` 封面上传把角色读失败答成 `onlyAdminsCreateProject`、
+    ② 鉴权与所有权判定（~~`lib/uploads/service.ts` 封面上传把角色读失败答成 `onlyAdminsCreateProject`~~ ——
+    **2026-09-23 已完成**：三处断言全部绑定 `error`；封面在授权判定前中止，头像在读不到「要被替换的旧对象」
+    时**不覆盖**并回滚新对象（旧 URL 一旦失去业务行指向就成了只能等巡检发现的 bucket 孤儿），
+    新增专用错误码 `uploadUnavailable` → HTTP 503；见 progress 同日条目）、
     ~~`api/invitations/route.ts` 五处~~ —— **2026-09-23 已完成**：五处断言全部改为绑定 `error`，
     顺带收掉同一条链上门禁看不见的两处（GET 的成员身份校验、POST 按邮箱查 profiles），
     见 progress 同日条目；`src/app/api/invitations/route.ts` 此前**零单测**，补了 15 条）、

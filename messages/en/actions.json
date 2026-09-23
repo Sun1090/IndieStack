@@ -25,6 +25,7 @@
   "fileTooLarge": "File exceeds the 2MB size limit.",
   "fileTypeUnsupported": "Only PNG, JPEG or WebP images are supported.",
   "uploadFailed": "Upload failed. Please try again later.",
+  "uploadUnavailable": "We could not read your current data, so nothing was changed. Please try again.",
   "forbidden": "You do not have permission to perform this action",
   "fullNameRequired": "Full name is required",
   "internalError": "Internal server error. Please try again later.",

@@ -70,11 +70,6 @@ export interface ErrorChannelExemption {
  * permanent waiver list.
  */
 export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemption>> = {
-  "src/lib/uploads/service.ts": {
-    sites: 3,
-    reason:
-      "debt (C08-b): cover upload reads the project and the caller's team role, so a failed read answers `onlyAdminsCreateProject`; the avatar read leaks an unmanaged old object.",
-  },
   "src/app/dashboard/team/page.tsx": {
     sites: 2,
     reason: "debt (C08-b): a failed membership read renders the 'you have no team' empty state.",
