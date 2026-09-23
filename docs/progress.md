@@ -1153,3 +1153,69 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 结账路由的两道门禁读取从 fail-open 改成 fail closed
+
+- 里程碑 / 版本：v0.12.0；来源是 C08-c 的前置测量（PR #95 的 progress 条目），不是门禁抓到的。
+- 分支 / commit：`fix/checkout-guard-fail-closed`（基于 `main`，与 #92~#95 那条栈无关）→ **PR #96**。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这一条值得单独做：`POST /api/stripe/checkout` 的两道**安全检查**都建立在一次查询上——
+  当前用户属于哪个团队、该团队是否已有 `active`/`trialing` 订阅。两处都写成
+  `const { data } = await supabase.from(…)…maybeSingle()`，压根不接 `error`。
+  读取失败时方向是往下走：
+  1. 跳过「已有订阅请改用 Customer Portal」的 scope 检查 → 重复订阅被放行；
+  2. `teamId: membership?.team_id` 以 `undefined` 进会话 metadata → 钱照收，
+     但 webhook 从此认不出这张订阅属于哪个团队（#89 那条链处理的就是「认不出归属」的事件，
+     当时它被标成 `skipped`，现在知道上游为什么会持续产出这种事件了）。
+  C08 的门禁看不见它（没有类型断言），所以这不是「等台账清完」的活儿，是量出来就得单独修的 bug。
+- 做了什么：两处绑定 `error`，记 `[Stripe Checkout] …读取失败` 日志并回
+  `503 { error: "checkoutUnavailable" }`，一次会话都不建。方向刻意选「不扣钱」那一侧——
+  用户可以重试，而「扣了钱却归不了款」是要人工介入的事故。
+  两道读取最后收进同文件里的 `readCheckoutScope()`，返回 `ok` / `duplicate` /
+  `failed(source)` 三态。这不是顺手重构：直接把两个 `if (error)` 加在 `POST` 里，
+  `eslint complexity` 就把它拦在 16>15（规则本身没错，POST 原本已有 11 个分支），
+  而绕开它最诚实的办法就是把这次判断作为一个**结果**而不是几个布尔拎出来——
+  「没读到」「读到了且不该再买」「读到了且可以买」压成布尔正是这个 bug 原来的形状。
+- 覆盖：该路由此前**零测试**，补了它的第一份测试文件（先 6 条行为用例，加第 7 条契约对账）：
+  两道门禁各自读失败 → 503 且不建会话、「确实查到已有订阅」仍是 409（读不到与查不到是两件事）、
+  没有团队时按个人订阅放行且不去查 `subscriptions`、两条正常路径放行且不记错误日志。
+  变异核对 5 项，各自只让对应那条红：任一读取的失败不上报（M1/M2）、有效订阅不再拒绝（M3）、
+  去掉日志调用（M4，红 2 条）、没有团队时也去查订阅（M5 —— 第一轮它活下来了，所以补了第 6 条测试）。
+- 契约处理（**一度写错，实测推翻**）：原本记的是「这个端点仓库内没有调用方，`checkoutUnavailable` 是
+  给 API 使用者的字符串契约，不进 `messages/*/actions.json`」。复查 `grep -rn "stripe/checkout" src`
+  时被打脸——`src/components/dashboard/checkout-button.tsx:38` 就在调用，而且它把响应里的码
+  **直接当 i18n 键渲染**（`ta(payload.error ?? "checkoutError")`）。于是：
+  1. `checkoutUnavailable` 必须登记文案，否则用户看到的是裸键（已补 `en` + `zh-CN`）；
+  2. 顺着这条量出一个**已经在线上的缺陷**：`alreadySubscribed`（409，重复购买必然走到那条）
+     从来没登记过，仓库自己的 `docs/reference/api-routes.md` 明写错误体是「i18n error key」。
+     `git log -S alreadySubscribed -- messages/` 为空：不是后来删的，是压根没加过；
+     码本身在路由里从 `5d3bbbd`（2026-09-03，错误格式收敛为 `jsonNoStore`）就在了。
+     为什么没有任何一道门禁抓到：`check:i18n` 的自述是「扫描 868 个**静态**翻译调用」，动态键不在射程；
+     `check:action-errors` 只管 `src/lib/actions/**`；`check:dynamic-keys` 的 9 个契约是枚举
+     （角色、通知类型……），错误码这条枚举没人登记。
+  修法：补两个键 + 第 7 条测试（从路由源码抽 `jsonNoStore({ error: … })` 的码，逐码要求两个 locale
+  都有非空文案）。这条测试第一版就把 `rateLimited` 漏了（多行调用没匹配上），是**地板值断言**
+  （`codes.length >= 9`）当场报出来的，不是靠人眼。
+- 同类缺陷扫了一遍，**结论是不建全库门禁**（先量再写，D01 口径）：`src/app/api/**` 里字面量错误码
+  17 个，其中只有 `Unauthorized` / `Forbidden` / `invalidJson` 在 `actions.*` 里没有键，
+  而三者所在的路由（cron / e2e / ops / 公开 invitations 接口）**仓库内没有任何代码 fetch**
+  （`grep -rn 'fetch(\s*["`]/api/(invitations|ops/|e2e/|cron/)' src` 在非测试文件里为空），
+  它们是给 API 使用者的机器契约，不是文案。
+  真正的判据是消费方：全库 24 个客户端文件把 `error` 动态喂给翻译器（`ta(result.error)`），
+  其中**只有 2 个**同时 fetch 站内路由；这 2 个里真正「路由码 → 翻译器」的边**只有结账这一条**。
+  `passkey-section.tsx` 也 fetch 了 passkey 路由，但非 2xx 一律 `throw`，catch 里翻的是**静态**
+  `ta("internalError")`，它那个动态键吃的是 `deletePasskey` 这个 Server Action 的结果
+  （`check:action-errors` 已经覆盖）。为一个 1 条边的面做全库数据流门禁，误报面比它保护的东西还大
+  （与 C07 那条「判据不同源」同理），所以拦网就留在 #96 里那条逐码对账测试上：新增路由码会当场红，
+  新增「fetch + 动态翻译」的客户端则要人把它纳入对账——这一点写在
+  `docs/reference/api-routes.md` 的错误格式一节。
+- 一条**留给 #92 合并之后**的相邻缺陷：这个路由把 `safelyRequireAuth()` 的所有失败都答成
+  `401 notAuthenticated`。#92 让守卫能区分「没登录」与「角色读不到」（`SERVICE_UNAVAILABLE` / 503）之后，
+  这里就必须跟着改，否则一次角色读取抖动会把用户踢去重新登录。已记进任务清单，不在本 PR 里做
+  （本 PR 基于 main，那个 code 还不存在）。
+- 验证：`npx vitest run src/app/api/stripe/checkout/route.test.ts` → 7 passed；行为侧 5 项变异 +
+  契约侧 3 项变异（删某 locale 的键 / 文案改成空串 / 路由新增没登记的码）逐条只红对应那条；
+  `pnpm lint` / `pnpm type-check` / `pnpm test`（200 个测试文件全绿）/
+  `CI=true pnpm check:all`（结尾 `✅ 全部校验通过`）/ `pnpm build` → 全部 exit 0。
+- 更新时间：2026-09-23（UTC）。
+

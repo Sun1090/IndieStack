@@ -204,6 +204,32 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **读不到的结账门禁不再放行**（`POST /api/stripe/checkout`）：路由用两道查询决定这次能不能买——
+  当前用户属于哪个团队、该团队是否已有 `active`/`trialing` 订阅。两处原先都不接 `error`，
+  于是读取失败的方向是**往下走**：既跳过「已有订阅请去 Customer Portal」的 scope 检查（重复订阅被放行），
+  又把 `teamId: undefined` 写进会话 metadata——钱照收，而 webhook 从此认不出这张订阅属于哪个团队。
+  两处现在都 fail closed：记 `[Stripe Checkout] …读取失败` 日志并回 `503 { error: "checkoutUnavailable" }`，
+  一次会话都不建。方向是刻意选的：这条链上失败必须落在「不扣钱」那一侧，用户重试一次即可，
+  而扣了钱却无法归款是需要人工介入的事故。
+  两道读取收进 `readCheckoutScope()`，返回 `ok` / `duplicate` / `failed(哪一道)` 三态：
+  把「没读到」「查到了且不该再买」「查不到」压成一个布尔，正是这个 bug 原本的形状。
+  该路由此前**没有任何测试**，补了它的第一份测试文件（7 条）：两道门禁各自的读失败 → 503 且不建会话、
+  「查到已有订阅」仍是 409（读不到与查不到是两件事）、没有团队时按个人订阅放行且不查订阅表、两条正常路径放行。
+  变异核对 5 项：任一读取的失败不上报、有效订阅不再拒绝、去掉日志、没有团队时也去查订阅，
+  各自只让对应那条红（最后一项第一轮活了下来，因此才有第 6 条测试）。
+  错误码文案：`checkoutUnavailable` 补进 `messages/{en,zh-CN}/actions.json`——`CheckoutButton` 会把响应里的
+  `error` **直接当 i18n 键渲染**（`ta(payload.error ?? …)`），不登记就是让用户看裸键。
+  顺着这条查出已存在的缺陷：`alreadySubscribed`（409，重复购买必然走到）从来没登记过文案
+  （`git log -S alreadySubscribed -- messages/` 为空——不是后来删掉的，是压根没加过），
+  而动态键在构建期查不出来，`pnpm build` 一声不响。两个键现在都在，并加了第 7 条**逐码对账**测试：
+  从路由源码抽出所有 `jsonNoStore({ error: … })` 码，要求两个 locale 都有非空文案，
+  带数量地板值（正则一旦失效就报「什么都没在看」而不是报绿）。三项变异（删一个 locale 的键、
+  把文案改成空串、给路由加个没登记的新码）各自只让那条红。
+  同类缺陷全库量过一遍，**只有这一处**：17 个路由错误码里未登记的三个（`Unauthorized` / `Forbidden` /
+  `invalidJson`）所在的路由，仓库内没有任何代码去 fetch；而把 `error` 动态交给翻译器的 24 个客户端里，
+  真正「路由码 → 翻译器」的边只有 `CheckoutButton` 一条。判据写在 `docs/reference/api-routes.md`——
+  新增一个「fetch 路由 + 动态翻译」的客户端，就是新增一条没有门禁覆盖的契约。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
