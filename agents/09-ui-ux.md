@@ -21,21 +21,30 @@
 
 ### 组件体系
 
-#### shadcn/ui 原语（23 个）
+#### shadcn/ui 原语（30 个）
 所有位于 `src/components/ui/`：
 `alert`, `avatar`, `badge`, `button`, `card`, `checkbox`, `collapsible`, `command`, `context-menu`, `dialog`, `dropdown-menu`, `input`, `kbd`, `label`, `popover`, `progress`, `radio-group`, `scroll-area`, `select`, `separator`, `sheet`, `skeleton`, `switch`, `table`, `tabs`, `textarea`, `toast`, `toaster`, `toggle`, `tooltip`
 
-#### 共享组件（9 个）
+#### 共享组件（15 个）
 位于 `src/components/shared/`：
 - `Breadcrumbs` — 面包屑导航
 - `ConfirmDialog` — 确认对话框（基于 Dialog）
 - `EmptyState` — 空状态展示
 - `ErrorState` — 错误展示
-- `LoadingState` — 加载状态
-- `PageContainer` — 标准页面容器
+- `FormField` / `FormFieldControl` — 表单字段四件套，自动接 id 与 aria
+- `GithubIcon` — 内联 GitHub 图标（lucide 1.x 移除了品牌图标）
+- `InitialAvatar` — 姓名/邮箱首字母头像
+- `NativeSelect` — 统一样式的原生 select
 - `PageHeader` — 页面标题区
+- `PageLoading` / `LoadingIndicator` — 路由级骨架与内联指示器（`aria-busy` / `role="status"`）
+- `PasswordStrength` — 密码强度指示条
 - `PermissionGate` — 权限条件渲染
-- `SearchInput` — 防抖搜索
+- `QueryErrorState` — 查询失败重试卡片（展示层复用 ErrorState）
+- `Section` — 内容分区
+- `UploadProgress` — 上传进度条（含取消）
+
+加载态、空态、错误态各自只有一个落脚点，写法由 `check:states` 守；组件清单与代码是否一致由
+`check:component-docs` 守（它只解析表格与数量行，本节这种条目清单不在解析范围内）。
 
 ### 布局结构
 
