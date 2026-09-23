@@ -1285,3 +1285,33 @@
   假红色、并且那 5 个必需作业会在该 SHA 上真跑。**只有出现这两个阻塞信号之一才提前做**（#124 两个都占：
   挂着 CONFLICTING + 从没跑过必需 CI）；否则仍按上面的约定等前驱落地再改，不要为了「看着是绿的」扩大
   review 面。改完必须同步 PR 正文和 `docs/progress.md` 里关于 base 的那句——base 是事实陈述，过期就是谎。
+
+## 2026-09-24 — 队列涨到 40 个 PR，把 #131 的合并拓扑量完
+
+- 里程碑 / 版本：v0.12.0；上一条「待合 PR 的合并顺序与 CI 证据范围」的增量。
+- 状态：DONE。分支：`docs/pr-merge-order`（PR #118，base `main`）。
+- 上一条那份「34 个 PR 按顺序合一遍」的模拟，**成员已经过期**：现在 open PR 40 个（#92–#131），
+  其中 22 个 base 不是 `main`（它们至今没跑过那 5 个必需作业；判据仍是 `gh pr checks` 只列得出
+  `Detect Secrets` / `security-config`）。顺序模拟没有重跑——新增的 9 个（#123–#131）里只有 #129 叠在
+  #128 上，其余 8 个 base 都是 `main`，不改「第一条长栈干净落地、其余只撞账本」这个结论的形状。
+  过期的是成员清单，不是方法。
+- 新量出来的一条边（#131 `check:component-docs`）：对 39 个其他 open PR 逐个
+  `git merge-tree --write-tree feat/component-docs-gate pr/<n>` → **39/39 冲突，其中 38 个只撞
+  `CHANGELOG.md` / `docs/progress.md`**；唯一撞代码的是 **#126 `check:progress`，撞在
+  `scripts/check-all.sh`**（两边各插一行门禁调用）。这是继「#96 与栈里的 #103 是同一缺陷的两份修法」
+  之后第二条需要人判断的边，但性质轻得多：两行都留，然后跑 `pnpm check:gates` 重算接线即可。
+- #131 的 CI 证据范围：base = `main`，所以 5 个必需作业真的跑了——`Lint & Type Check` / `Unit Tests` /
+  `Build` / `E2E shard 1` / `E2E shard 2` 全绿，另 `Build Docs Site` / `E2E (Playwright)` / CodeQL /
+  Detect Secrets / Analyze 绿。两个 Vercel 检查红在 `Deployment rate limited — retry in 24 hours`
+  （`upgradeToPro=build-rate-limit`），按既定口径照实记录并忽略，不绕过、不放宽门禁。
+- 方法（免得下次重新推）：`git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 把全部 PR head
+  落成本地引用，之后判冲突是纯本地运算。**两个坑**：① `merge-tree --write-tree --name-only` 输出的
+  第一行是结果树的 OID，不剔掉它就会把每个 PR 都判成「撞代码」——我第一次跑就是这么得到 39/39 全红的，
+  判据没错，是读法错了；② 文件重叠 ≠ 冲突，`package.json` + `scripts/check-all.sh` 这一对被 22 个 PR
+  同时改过，git 全都自动合上了，只有 merge-tree 说了才算。
+- 一条自我更正：#131 开 PR 时正文写着「若与 #128/#129 相撞，只可能撞在 CHANGELOG.md 与
+  docs/progress.md」——那是没跑过的推测，而且漏了 #126 这条边。量完已经改掉正文，原句留在 PR 评论里。
+  冲突面跟 base 一样是事实陈述，过期就是谎。
+- 下一项：#126 与本 PR 谁后进 `main`，就在 `scripts/check-all.sh` 里保留对方的那一行并重跑
+  `pnpm check:gates`；#129 需要等 #128 落地后 `gh pr edit 129 --base main`。
+- 更新时间：2026-09-24。
