@@ -1153,3 +1153,45 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — 四条 CodeQL 日志注入告警挂了五天，本仓库的分诊流程第一次没被执行
+
+- 里程碑 / 版本：v0.12.0 安全线；`docs/operations/codeql-alert-triage.md` 的 5 个工作日 SLA。
+- 状态：DONE（修复 + 分诊记录都已产出）。分支：`fix/log-injection-sink`，base `main`，
+  对应 issue #132 与同一个 PR。
+- 怎么找到的：这轮把安全线整体扫了一遍——`dependabot/alerts?state=open` 0 条、
+  `secret-scanning/alerts?state=open` 0 条、`code-scanning/alerts?state=open` **4 条**
+  （#11–#14，规则 `js/log-injection`，`severity=error` / `security-severity=medium`，
+  首次出现 `2026-09-19T23:15:26Z`，命中点就是 `src/lib/logger.ts:80/83/86/89` 那四个 `console.*`）。
+- 要紧的不是那 4 条告警，而是**流程第一次没被执行**：本仓库自己的 runbook 写着
+  「4.0–6.9 允许合并，但必须建 issue 并在 5 个工作日内完成分诊」，而 `gh issue list --search` 显示
+  与这批告警相关的 issue 是 **0 条**——到 2026-09-24 是第 4 个工作日，SLA 只剩一两天，
+  没有人判定过真阳性还是假阳性。这与「三个提交钩子写着在跑其实一个都没跑」是同一类失效：
+  约定存在于文档里，执行状态没人看。
+- 判定（真阳性）与证据：`src/app/api/webhooks/stripe/route.ts:134` 与 `:228` 把请求体字段
+  （`invoice.id` / `event.type` / `event.id`）直接拼进日志文本，路径上没有字符级校验。
+  一个会被拿来做假阳性论证的事实，以及它为什么不够：`console.*` 只在 `NODE_ENV=development` 或
+  `NEXT_PUBLIC_VERBOSE_LOGGING=true` 时输出——但后者是 `NEXT_PUBLIC_` 的运维开关，
+  把「日志不被伪造」这种性质交给一个可以随手打开的环境变量等于没有它；而且同一份未净化的
+  `message` 在生产还会作为 Sentry 事件的标题（`new Error(message)`）。
+- 完成内容：`src/lib/logger.ts` 新增 `sanitizeLogText()`，两个出口各过一次（`formatLog()` 的返回值
+  覆盖四个 `console.*`；Sentry 标题那一处覆盖「没有 error 实例」的分支）。
+  控制字符**转义而非删除**：`\n` `\r` `\t` 保留可见形状，ANSI/NUL/DEL/C1 写 `\uXXXX`——
+  注入内容排查时仍然读得到，但它不再是日志的结构。
+- 验证命令与结果：`npx vitest run src/lib/logger.test.ts` → 10 passed（原 3 条 + 新 7 条）。
+  两处收口分别做过变异核对：抽掉 `formatLog` 那道 → 2 failed / 8 passed；抽掉 Sentry 标题那道 →
+  1 failed / 9 passed；两次都从 `/tmp/logger.bak.ts` 还原并 `cmp` 确认字节一致，最后跑一次对照
+  （10 passed）确认不是「删多了」。
+- 为什么不给它加门禁：`check:codeql` 的口径是**本地可复现的静态契约**（扫描强度、阈值、dismissal
+  理由与工作流同源）。告警计数与「每条告警是否有条目」需要 GitHub 安全 API，runbook 里已经明写这条
+  本地无法复现——把门禁建在本地取不到的输入上，只会得到一条永远跳过或永远红 checks。
+  缺的是「有人按 runbook 走一遍」，这次补上的是那一步，不是一条假门禁。
+- 阻塞 / 风险：告警的自动关闭要等合并进 `main` 之后的那次 CodeQL 扫描；在那之前不改告警状态、
+  不做 dismissal（runbook 第 4 步）。风险面很小：`sanitizeLogText` 只影响日志文本，
+  不改任何控制流；dev 环境下 `JSON.stringify(data, null, 2)` 的缩进会变成 `\n` 转义，
+  这是「一次调用一行」这个保证的代价，刻意接受。
+- 下一项：合并后复看 `code-scanning/alerts?state=open`，确认 #11–#14 转为 closed（removed）；
+  若仍在，说明 CodeQL 没把自定义函数当 sanitizer，那时的正确动作是按 runbook 记录判定并留证据，
+  而不是批量 dismiss。
+- 更新时间：2026-09-24。
+
