@@ -574,9 +574,11 @@ node --no-warnings --experimental-strip-types scripts/lib/query-error-channel-ch
 
 它打印「解构 awaited 查询结果时压根不绑 `error`」的清单，以及因语法诊断被跳过的文件数
 （跳过不为 0 时整份报告不可信）。判据与盲区写在 `collectUnboundErrorChannels` 的注释里，
-其中三条要记住：`Promise.all` 里的查询链不在射程内、非字面量表名的链不在射程内、
-「绑了 `error` 却从不使用」那一档**刻意没测**（要作用域分析，全文数同名标识符会把 `catch (error)`
-也算进去，是个只会漏报的假指标）。什么时候接进门禁、以及为什么排在清偿之后，写在 roadmap C08-c。
+其中四条要记住：`Promise.all` 里的查询链不在射程内、非字面量表名的链不在射程内、
+`const { data } = cond ? await query : { data: [] }` 这种被条件表达式包住的链也不在射程内
+（所以这份清单是**下界**），以及「绑了 `error` 却从不使用」那一档**刻意没测**
+（要作用域分析，全文数同名标识符会把 `catch (error)` 也算进去，是个只会漏报的假指标）。
+什么时候接进门禁、以及为什么排在清偿之后，写在 roadmap C08-c。
 
 ## 依赖与 secrets 扫描门禁（H10）
 

@@ -47,7 +47,6 @@ All notable changes to IndieStack will be documented in this file.
   崩在中途没走到还原，把 `collectQueryFacts` 里的那处豁免静默吃掉而门禁全绿——补了一条「桶名与表名同名」
   的用例，现在它必须由那条用例红。
   CI 不需要单独接线：`ci.yml` 的静态作业跑 `pnpm check:all`（C04），新门禁进聚合入口即进 CI。
-### Added
 
 - **C08 的邻居缺陷现在可以量了（先量，不先接门禁）**：`query-error-channel` 多了一条纯规则
   `collectUnboundErrorChannels` / `summarizeUnboundErrorChannels`，配合
@@ -242,6 +241,20 @@ All notable changes to IndieStack will be documented in this file.
   换两处的判定完全同源。
 
 ### Fixed
+
+- **项目页不再把一次读失败渲染成 404 或「你还没有项目」**（C08-c 第一批）：
+  `dashboard/projects/[id]/page.tsx` 的两处断言明写着 `error: null`——那不是「保留错误通道」，
+  是断言「不可能有 error」，于是 `team_members` 或 `projects` 任一读取抖动都走到下面的 `notFound()`。
+  404 是终态：用户以为项目被删了，而该做的只是刷新。`dashboard/projects/page.tsx` 是同一家族：
+  归属读失败时 `membership` 为 null，三元表达式**干脆跳过**第二次查询直接给出空列表。
+  列表那第二次读取连断言都没有（C08 门禁看不见），失败方向却一模一样。
+  现在四处都绑定 `error`、故障在渲染前抛出，由 `dashboard/error.tsx` 给重试入口；
+  「真没有这一行」仍是 `notFound()` / 空列表，这两条合法终态各自有用例钉住。
+  新增 10 条用例（每个故障点配一条反向证据），变异核对 6 项（删三条守卫、把 404 改成无条件、
+  把合法空态改成故障）逐项红在对应用例。
+  **顺带量出计数器自己的一个盲区**：`--unbound` 从 23 处降到 20 处，而这批实际硬化了 4 处读取——
+  差的那处是 `const { data } = cond ? await query : { data: [] }`，`unwrapAwait` 拿到的是条件表达式，
+  于是它连 160 的总数都没进过。已记进 roadmap C08-c 与 testing.md，下一批先修计数器再决定清偿顺序。
 
 - **`/api/analytics` 不再把守卫读不到说成「你没登录」**（C08 的邻居 #44 的前半）：
   该路由原先对 `safelyRequireAuth()` 的**任何**失败都回 401，而 #92 之后守卫会区分出

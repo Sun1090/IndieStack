@@ -306,6 +306,8 @@ function countByFile(sites: readonly { file: string }[]): Map<string, number> {
  * 已知盲区一并写在这里，免得这份报告被读成「全库只有这些」：
  * - `const [a] = await Promise.all([supabase.from(...)])`：初始化表达式是 `Promise.all`，
  *   不是查询链，整条都不在射程内；
+ * - `const { data } = ok ? await supabase.from(...) : { data: [] }`：被条件表达式包住的链同样
+ *   走不到 `unwrapAwait`，所以清单是**下界**——这一条是清项目页时现场撞出来的，先记下来；
  * - 「绑了 `error` 却从不使用」**故意没有测**：判它要做作用域分析，而全文数同名标识符会把
  *   `catch (error)` 一起数进去，得到一个只会漏报的假指标——一个只会低估的计数比没有计数更糟。
  * ============================================================ */

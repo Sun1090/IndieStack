@@ -266,7 +266,8 @@
 20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的）。
     **2026-09-23 已按当前代码重量**（`node --no-warnings --experimental-strip-types
     scripts/lib/query-error-channel-check.js --unbound`，规则在
-    `src/lib/security/query-error-channel.ts` 的 `collectUnboundErrorChannels`，8 条单测覆盖）：
+    `src/lib/security/query-error-channel.ts` 的 `collectUnboundErrorChannels`，单测覆盖，其中两条
+    特征化用例专门钉住「判不到」）：
     358 个文件里 **160 处** awaited 查询结果的解构绑定，其中 **23 处压根不绑 `error`**，
     0 个文件因语法诊断被跳过。抽样逐行看过 5 处（`actions/team.ts:36`、`dashboard/page.tsx:44`、
     `admin/page.tsx:47`、`permission-gate.tsx:86`、`webhooks/stripe/route.ts:256`），
@@ -281,11 +282,17 @@
     先用 `grep "error: null;"` 数出「5 处」，但那个数不可信——分号漏掉了单行写法
     `error: null };`（`actions/team.ts` 实际出现 7 次，而它在上面那 23 处里只占 6 处）。
     #49 判据要按 AST 重量，不要照这份 grep 开工。
-    **落地顺序**（不再改）：先按影响面清这 23 处（同 C08-b 的做法：一次一批、每批自带用例与变异核对），
+    **落地顺序**：先按影响面一批一批清（同 C08-b 的做法：每批自带用例与变异核对），
     清到只剩 `justified` 那 2 处时再把判据接进 `check:query-errors`——
     一个刚落地就要求全库加豁免的门禁，教人的是绕过它而不是尊重它。
+    **清偿进度以 `--unbound` 的输出为准，不在这里手抄**。第一批（2026-09-23）是项目页的 4 处读取
+    （`projects/[id]/page.tsx` 两处、`projects/page.tsx` 两处），它同时暴露了计数器的第四个盲区：
+    `const { data } = cond ? await query : { data: [] }` 这种条件表达式包住的链，`unwrapAwait` 拿不到
+    查询链，于是那一处**连 160 的总数都没进过**——这份清单是下界，不是全量。
+    顺序因此插一步：先补这一条（`collectUnboundErrorChannels` 走进条件表达式的两个分支），
+    用真实规模重排剩余批次，再接门禁。
     已知盲区必须在报告里如实出现：`Promise.all` 里的查询链（初始化表达式不是查询链）、
-    非字面量表名的链，以及「绑了 `error` 却从不使用」那一档（判它需要作用域分析；
+    非字面量表名的链、条件表达式包住的链，以及「绑了 `error` 却从不使用」那一档（判它需要作用域分析；
     全文数同名标识符会把 `catch (error)` 一起数进去，是个只会漏报的假指标，**刻意没测**）
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）

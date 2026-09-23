@@ -275,6 +275,17 @@ describe("collectUnboundErrorChannels()（C08-c 测量，不是门禁）", () =>
     expect(summary.total).toBe(0);
   });
 
+  it("已知盲区要如实是盲区：条件表达式包住的链也判不到（清项目页时撞出来的）", () => {
+    const summary = summarizeUnboundErrorChannels(
+      collectUnboundErrorChannels(
+        src(
+          `const { data } = ok ? await supabase.from("projects").select("*") : { data: [], error: null };`,
+        ),
+      ),
+    );
+    expect(summary.total).toBe(0);
+  });
+
   it("解析不动的文件计入 skipped，而不是安静地贡献 0 处", () => {
     const summary = summarizeUnboundErrorChannels(
       collectUnboundErrorChannels(src(`const { data } = await supabase.from("profiles") as`)),

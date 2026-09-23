@@ -61,24 +61,30 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: membership } = (await supabase
+  // 断言里明写 `error: null` 不等于错误通道还在，它断言的是「不可能有 error」——
+  // 于是下面两行 `notFound()` 会把一次数据库抖动渲染成「这个项目不存在」（404 是终态，
+  // 用户于是以为项目被删了，而真正该做的只是重试）。
+  const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id")
     .eq("user_id", user!.id)
     .limit(1)
-    .maybeSingle()) as unknown as { data: { team_id: string } | null; error: null };
+    .maybeSingle();
+  if (membershipError) {
+    throw new Error(`读取项目所属团队失败：${membershipError.message}`);
+  }
 
   if (!membership) notFound();
 
-  const { data: row } = (await supabase
+  const { data: row, error: rowError } = await supabase
     .from("projects")
     .select("*")
     .eq("id", id)
     .eq("team_id", membership.team_id)
-    .maybeSingle()) as unknown as {
-    data: Database["public"]["Tables"]["projects"]["Row"] | null;
-    error: null;
-  };
+    .maybeSingle();
+  if (rowError) {
+    throw new Error(`读取项目失败：${rowError.message}`);
+  }
 
   if (!row) notFound();
 
