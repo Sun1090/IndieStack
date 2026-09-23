@@ -4,7 +4,7 @@
 
 ## 提交规范
 
-### Conventional Commits（commitlint 强制校验）
+### Conventional Commits（约定 + review 把关）
 
 ```
 <type>(<scope>): <subject>
@@ -79,5 +79,8 @@ curl -sI https://<production-url>/ | grep -i content-security-policy
 
 ## 维护说明
 
-- commitlint 规则见 `commitlint.config.js`，husky + lint-staged 在提交时自动执行
+- 提交信息规则写在 `commitlint.config.js`，但本仓库没有安装 commitlint，也没有 pre-commit /
+  commit-msg 钩子——规范靠 review 兜。要机器强制就装 `@commitlint/cli` 并补一个 `.husky/commit-msg`
+  （`pnpm check:hooks` 会拒绝引用未安装工具的钩子，避免再留下跑不了的钩子）。
+  本地唯一的自动守卫是 `.husky/pre-push` → `pnpm verify:build`，由 `pnpm install` 接入。
 - 本 Agent 与 08-devops（基础设施）分工：08 管"环境与流水线怎么搭"，10 管"一次发布怎么做对"

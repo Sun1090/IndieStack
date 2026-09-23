@@ -80,7 +80,7 @@
  1. 检查 Node.js 版本（要求 18.17+）
  2. 安装项目依赖（`pnpm install`）
  3. 复制环境变量模板（如果 `.env.local` 不存在）
- 4. 初始化 Git Hooks（husky）
+ 4. 把 Git Hooks 接入当前克隆（`scripts/install-hooks.sh`）
  5. 提示启动开发模式
  
  ### `/scripts/dev.sh`
@@ -91,12 +91,13 @@
  - 应用数据库迁移
  - 启动 Next.js 开发服务器
  
- ## Git Hooks（husky）
- 
- 项目使用 husky 管理 Git Hooks：
- 
- - **pre-commit**: 运行 lint-staged（自动格式化 + ESLint 修复暂存文件）
- - **commit-msg**: 校验提交信息是否符合 Conventional Commits 规范
+ ## Git Hooks
+
+ `pnpm install` 会通过 `prepare` 把 `.husky/pre-push` 软链进 `.git/hooks`，推送前跑
+ `pnpm verify:build`（lint + 类型检查 + 单测 + 生产构建）。刻意**没有**用
+ `core.hooksPath`：那会连带屏蔽别的工具已经放在 `.git/hooks` 里的钩子。
+ 装钩子用 `INDIESTACK_SKIP_HOOKS=1` 跳过，单次推送跳过用 `git push --no-verify`。
+ `pnpm check:hooks` 会在钩子引用了仓库里不存在的脚本、二进制或安装入口时直接失败。
  
  ```bash
  # 提交信息格式

@@ -31,6 +31,7 @@
 | `pnpm check:changelog` | Validate CHANGELOG.md structure (versions, sections, entries) |
 | `pnpm check:adr` | Validate ADR numbering, status, index, sections, and supersession links |
 | `pnpm check:gates` | Audit that every `check:*` gate is wired into `check-all.sh` and CI, or exempt with a reason |
+| `pnpm check:hooks` | Audit the Git hook layer: shebangs, sourced files, and every script/binary a hook calls must resolve, and `prepare` must install them |
 | `pnpm check:workflows` | Audit CI workflow hygiene: pinned actions, job timeouts, `needs` targets, PR concurrency, real script names, and the ci.yml parallel/cache contract |
 | `pnpm check:codeql` | Audit CodeQL scan strength and alert triage policy: action major, languages, query suite, SARIF category, permissions, timeout, branch/schedule coverage, path filters, and runbook facts |
 | `pnpm check:secrets-scan` | Audit gitleaks scan strength and leak response policy: action major, full-history fetch depth, trigger coverage, token wiring, write permissions, allowlist entries, and runbook facts |
@@ -80,7 +81,7 @@
  1. Check Node.js version (18.17+)
  2. Install dependencies
  3. Copy env template (if `.env.local` missing)
- 4. Initialize Git hooks (husky)
+ 4. Wire the Git hooks into the clone (`scripts/install-hooks.sh`)
  
  ### `/scripts/dev.sh`
  
@@ -89,10 +90,13 @@
  - Apply database migrations
  - Start Next.js dev server
  
- ## Git Hooks (husky)
- 
- - **pre-commit**: lint-staged (auto format + ESLint fix staged files)
- - **commit-msg**: Conventional Commits validation
+ ## Git Hooks
+
+ `.husky/pre-push` runs `pnpm verify:build` (lint + type-check + unit tests + production build).
+ `pnpm install` symlinks it into `.git/hooks` through the `prepare` script — deliberately **not**
+ `core.hooksPath`, because that would also disable hooks other tools already put in `.git/hooks`.
+ Skip the wiring with `INDIESTACK_SKIP_HOOKS=1`, or skip a single push with `git push --no-verify`.
+ `pnpm check:hooks` fails if a hook references a script, binary, or installer the repo doesn't have.
  
  ## Docker
  

@@ -1153,3 +1153,63 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 三个「写着在跑」的提交钩子，其实一个都没跑过（守卫层自检）
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施——这一条查的不是业务代码，是「门禁」这件事本身是否成立。
+- 状态：DONE，分支 `fix/hook-layer-actually-runs`（base `main` = `ad4b029`）。
+- 为什么做：AGENTS.md 的 ⛔ 段落写着「The pre-push hook auto-runs test + build」，并把它当成
+  2026-08-23 那次「没本地构建就推、Vercel 生产构建炸了」的解药。要复用这条守卫之前先量了三件事：
+  `git config --show-origin --get-all core.hooksPath` 在任何 scope 都没有值（rc=1）、
+  `node_modules/.bin` 里只有 eslint 与 prettier（husky / @commitlint/cli / lint-staged 都不是依赖）、
+  `.husky/_/husky.sh` 不存在。也就是 `.husky/` 里那三个文件在任何克隆里都没执行过一次，
+  CI 里也搜不到 commitlint。一个从不运行的守卫比没有守卫更糟——它让所有人在没保护的情况下
+  相信自己有保护。
+- 完成内容：
+  1. 新增门禁 `pnpm check:hooks`：钩子必须能被 exec（`#!` 开头）、source 的路径必须存在、
+     调用的 `pnpm <script>` / `npx|pnpm exec <bin>` / `node <file>` 必须解析得到、
+     `.husky/` 非空时必须有安装入口。规则在 `src/lib/release/hook-wiring.ts`（纯函数），
+     IO 在 `scripts/lib/hook-wiring-check.js`，`scripts/check-hooks.js` 只是 type-stripping 启动器。
+     只接进 `check-all.sh` 就够——`ci.yml` 跑的就是聚合入口（C04 的成果），`check:gates` 会盯着接线。
+  2. **先在坏仓库上跑红**：未修之前它报 6 项——1 处缺 shebang（`pre-push` 首行是中文注释，
+     git 无法 exec）、2 处 source 了不存在的 `_/husky.sh`、2 处调用未安装的二进制
+     （commitlint / lint-staged）、1 处没有安装入口。红是实测出来的，不是照规则编出来的。
+  3. 修法保持零新增依赖：`pre-push` 补 shebang；新增 `scripts/install-hooks.sh`，由 `prepare`
+     在 `pnpm install` 之后把钩子**逐个软链**进 `.git/hooks`。刻意不用 `core.hooksPath`
+     （husky 的做法）：那会整体替换 hooks 目录，把别的工具已经装在那里的钩子一起屏蔽掉——
+     本机 `.git/hooks` 里正躺着一个 IDE 代理装的 `post-commit` 与 `post-checkout`。
+     已存在同名非软链钩子就不覆盖；`INDIESTACK_SKIP_HOOKS=1` 跳过；非 git 工作树静默退出
+     （模板被 degit / 打包安装时属正常情况）。
+  4. 删掉 `.husky/pre-commit`、`.husky/commit-msg`、`.lintstagedrc.mjs`。留下判断依据：
+     pre-commit 那套 `prettier --write` 接到暂存文件上是**有害**的——`src/**/*.tsx` 实测 97 个文件
+     不是 prettier-clean（`prettier --check` 报 97），任何一次提交都会被整文件重排；
+     commit-msg 那套没有任何东西能执行。提交规范因此改成写明「规则登记在 `commitlint.config.js`、
+     由 review 把关」，并在该文件顶部写清要机器强制该装什么——装完之后 `check:hooks` 才允许那个钩子存在。
+  5. 文档 8 处与事实对齐：AGENTS.md（pre-push 段落 + 提交规范那条，并新增「没装钩子的克隆就是零守卫，
+     先 `ls -l .git/hooks/pre-push` 再信它」）、CONTRIBUTING.md、docs-site 的 scripts / testing /
+     tech-stack 三页 × 两个语言、docs/architecture 的 02-tech-stack 与 12-deployment、
+     agents/10-release-manager.md。`scripts/setup.sh` 补一次显式安装，让「步骤 4 接入 Git Hooks」为真。
+- 变更文件：`.husky/{pre-push,pre-commit,commit-msg}`、`.lintstagedrc.mjs`（删）、
+  `scripts/{install-hooks.sh,check-hooks.js,setup.sh,check-all.sh}`、
+  `scripts/lib/hook-wiring-check.js`、`src/lib/release/{hook-wiring.ts,hook-wiring.test.ts}`、
+  `package.json`（`prepare` + `check:hooks`）、`commitlint.config.js`、上面那 8 处文档、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 红→绿：修前 `check:hooks` 退出 1、点名 6 项；修后退出 0（1 个钩子 / 1 条命令全部可解析）。
+  - 四条判定各做变异核对，数量对得上：去掉 shebang 检查 → 2 failed；去掉 pnpm 子命令白名单
+    → 1 failed；去掉安装入口检查 → 3 failed；去掉二进制检查 → 2 failed。每项跑完从 `/tmp`
+    字节副本 `cmp` 还原（本分支工作区全程有未提交内容，不用 `git checkout` 还原）。
+  - `prepare` 确实会执行：临时目录里给一个只写 `"prepare": "touch prepared.flag"` 的包跑
+    `pnpm install`，flag 出现；本仓库改完 `package.json` 后跑任意 `pnpm <script>` 也打出
+    `. prepare$ sh scripts/install-hooks.sh` → 克隆被装上了钩子。
+  - `vitest run src/lib/release/hook-wiring.test.ts` → 18 passed。
+- 本条自己也翻了一次车并记下：往本文件追加条目时用脚本整文件重写，切片边界取错，
+  把 main 最后一条（「五个 PR 全部合并回 main…」）整条删掉了。`git status` 显示该文件相对 HEAD
+  干净（那条本来就在 HEAD 里），`git checkout -- docs/progress.md` 还原后改用纯追加重做。
+  这正是本仓库反复记的那条规矩的第三次应验：**脚本可以读文件，不可以整文件写文件**。
+- 阻塞 / 风险：纯本地层，不碰运行时与数据库，回滚 = revert 本分支的 commit。风险两条：
+  一是 `prepare` 在 `pnpm install` 里跑 shell（CI/Vercel 无 `.git` 时静默退出，有 `.git` 时只是多
+  两个软链，不改变任何构建产物）；二是钩子只在装过的克隆里生效，CI 才是权威关口——所以文档没有
+  把它写成「有保障」，而是写成「先确认它在你机器上存在」。
+- 下一件：回到 #44 后半（结账 / 分析路由的守卫状态映射），它仍等 #92 + #96 落地。
+- 更新时间：2026-09-23（UTC 20:30 前后）。

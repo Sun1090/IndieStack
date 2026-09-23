@@ -5,7 +5,8 @@
 
 Running everything is always safe but slow. The table below gives the **minimum** gate set for each
 change area; `pnpm check:all` (same as `pnpm verify:all`) runs the full local aggregate and is what
-`.husky/pre-push` enforces through `pnpm verify:build`.
+`.husky/pre-push` enforces through `pnpm verify:build` — in clones where the hook was installed by
+`pnpm install`, which is the only thing standing between this page and a purely manual rule.
 
 ## Change areas
 

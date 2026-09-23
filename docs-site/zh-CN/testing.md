@@ -4,7 +4,8 @@
 > 已不存在、或某个领域没有登记，CI 会直接失败。
 
 全量跑当然最保险，但很慢。下表给出每个改动领域的**最小**门禁集；`pnpm check:all`（等价于
-`pnpm verify:all`）是本地聚合入口，`.husky/pre-push` 通过 `pnpm verify:build` 强制执行。
+`pnpm verify:all`）是本地聚合入口，`.husky/pre-push` 通过 `pnpm verify:build` 强制执行——前提是
+这个克隆装过钩子（`pnpm install` 会装），否则这一页的规则就退化成纯靠自觉。
 
 ## 改动领域
 

@@ -51,7 +51,12 @@ pnpm test        # full test suite
 pnpm build       # production build ← critical: i18n missing keys / SSG errors surface only here
 ```
 
-Or one-shot: `pnpm verify:build`. The pre-push hook auto-runs test + build.
+Or one-shot: `pnpm verify:build`. `.husky/pre-push` runs exactly that command — but a hook only
+fires in a clone where it was installed: `pnpm install` wires it through `prepare`
+(`scripts/install-hooks.sh`), and `pnpm check:hooks` fails if the hook layer ever references a
+script, binary, or installer that isn't in the repo. A clone that never ran the installer has **no
+local guard at all**, so on a machine you didn't set up yourself, check before trusting it:
+`ls -l .git/hooks/pre-push`.
 Pushing without these is treated as an incident.
 
 ## Agent Collaboration Flow
@@ -69,7 +74,10 @@ requirement → pick the right agent → execute → cross-review → done
 
 - When adding an agent, add a row here and create `agents/{id}-{name}.md`.
 - When updating an agent, keep this index file's description in sync.
-- Commit convention: Conventional Commits, enforced by commitlint (config in `commitlint.config.js`). No `Co-Authored-By` or AI sign-off; one commit = one logical topic.
+- Commit convention: Conventional Commits. `commitlint.config.js` holds the rule set, but nothing in
+  this repo installs commitlint, so the convention is upheld by review, not by a hook — install
+  `@commitlint/cli` (plus a `.husky/commit-msg` that calls it) if you want it machine-enforced.
+  No `Co-Authored-By` or AI sign-off; one commit = one logical topic.
 
 ---
 

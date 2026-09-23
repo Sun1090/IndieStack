@@ -6,6 +6,29 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **写着在跑的提交钩子，现在真的会跑；跑不了的那两个被删掉了**：新增 `pnpm check:hooks`，
+  专查钩子层与声明是否一致——钩子必须以 `#!` 开头（否则 git 根本 exec 不了它）、source 的路径必须存在、
+  调用的 `pnpm <script>` / `npx <bin>` / `node <file>` 必须真能解析到、`.husky/` 非空时必须有安装入口。
+  起因是照着 AGENTS.md 的「⛔ 推送前必须过四条」去核对守卫，实测三件事同时不成立：
+  `git config --show-origin --get-all core.hooksPath` 在任何 scope 都没有值、
+  `husky` / `@commitlint/cli` / `lint-staged` 都不在 `package.json`（`node_modules/.bin` 里只有
+  eslint 与 prettier）、`.husky/_/husky.sh` 不存在。也就是说 `.husky/` 里那三个文件
+  在任何克隆里一次都没执行过，而 6 处文档（AGENTS.md、CONTRIBUTING.md、docs-site 三页 × 两个语言、
+  docs/architecture 两处、agents/10-release-manager.md）把它们写成了既成事实。
+  门禁先在坏仓库上跑红（6 项：1 缺 shebang、2 处 source 不存在的 `_/husky.sh`、
+  2 处调用未安装的二进制、1 处没有安装入口），修完全绿——红是实测出来的，不是想象的。
+  修法保持零新增依赖：`.husky/pre-push` 补 shebang；新增 `scripts/install-hooks.sh` 由 `prepare`
+  在 `pnpm install` 后把钩子**逐个软链**进 `.git/hooks`（刻意不用 `core.hooksPath`——那会整体替换
+  hooks 目录，把别的工具已经装在那里的 `post-commit` / `post-checkout` 一起屏蔽掉，本仓库开发机上
+  就有这两个），已存在同名非软链钩子时不覆盖，`INDIESTACK_SKIP_HOOKS=1` 可跳过；
+  `.husky/pre-commit`、`.husky/commit-msg`、`.lintstagedrc.mjs` 直接删除——pre-commit 那套
+  `prettier --write` 接到暂存文件上是有害的（`src/**/*.tsx` 实测 97 个文件不是 prettier-clean，
+  任何一次提交都会被整文件重排），commit-msg 那套没有任何东西能执行。提交规范因此改为明确写成
+  「规则登记在 `commitlint.config.js`、由 review 把关」，并在配置文件顶部写清怎么把它变成机器强制。
+  规则在 `src/lib/release/hook-wiring.ts`（纯函数），IO 在 `scripts/lib/hook-wiring-check.js`，
+  `scripts/check-hooks.js` 只是 type-stripping 启动器；18 项单测（含用临时目录跑真 CLI），
+  四条判定各做变异核对——去掉 shebang 检查 / 去掉 pnpm 子命令白名单 / 去掉安装入口检查 /
+  去掉二进制检查，分别红 2、1、3、2 项，跑完从 `/tmp` 字节副本 `cmp` 还原。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
