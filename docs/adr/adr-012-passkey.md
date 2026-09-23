@@ -20,7 +20,9 @@ v0.4.0 仅对 WebAuthn/Passkey 做了可行性结论（不写生产代码）。v
    与设置入口；`NEXT_PUBLIC_FEATURE_PASSKEY_LOGIN=true` 额外控制登录选项
    与认证验证。任一所需开关关闭时对应 API 返回 404。默认关闭，部署后显式启用。
 3. **RP/origin 推导**：RP ID 与验证 origin 从 `NEXT_PUBLIC_APP_URL` 推导
-   （RP ID = hostname），不新增环境变量。
+   （RP ID = hostname），不新增环境变量。两者都必须**过 URL 解析**：origin 取 `URL.origin`
+   而不是环境变量原值，因为 `@simplewebauthn` 拿它和浏览器送来的 `authData.origin`
+   （永远没有路径与尾斜杠）做严格相等比较，原值多写一个 `/` 就会让注册与登录全量失败。
 4. **challenge 传递**：短时（5 分钟）httpOnly + SameSite=Lax cookie，
    无状态、serverless 友好，避免引入 challenge 存储表。
 5. **数据模型**（迁移 019）：`webauthn_credentials`——`credential_id`（base64url，唯一）、

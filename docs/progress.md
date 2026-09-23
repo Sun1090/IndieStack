@@ -1,3 +1,49 @@
+## 2026-09-23 — 部署配置多写一个 `/`，passkey 就全量 400，而报的是「验证失败」
+
+- 里程碑 / 版本：v0.12.0 门禁看不见的另一半（C08 主题的延伸：把故障说成结论）；ADR-012 的推导口径。
+- 状态：DONE，已开 PR。
+- 分支 / commit：`fix/passkey-expected-origin`（基于 `origin/main` `ad4b029`）。
+- 为什么做：不是猜出来的。在 C08 栈尖（`origin/fix/c08-gate-range-holes`，24 个 commit，等价于
+  #92–#114 全部合入后的 main）跑了一遍 `pnpm test:coverage` 取真实数字，`src/lib/auth/passkey.ts`
+  只有 **14.28% 语句覆盖**——一个安全模块里没人跑过的函数，正是缺陷藏身的地方。读过去就看到：
+  `expectedOrigin()` 直接返回环境变量原值，而隔壁 `rpId()` 已经 `new URL(...).hostname` 解析过了。
+- 完成内容：
+  1. **缺陷**：`@simplewebauthn` 用**严格相等**比较 origin
+     （`node_modules/@simplewebauthn/server/esm/registration/verifyRegistrationResponse.js:83`），
+     浏览器送来的 `authData.origin` 永远是 `scheme://host[:port]`，不带路径、不带尾斜杠。
+     所以 `NEXT_PUBLIC_APP_URL=https://app.example.com/` 会让注册与登录 100% 失败，
+     客户端拿到 `Verification failed`（400），日志只有一句 attestation verification failed——
+     指向「密钥/挑战不对」，而不是「环境变量多写了一个字符」。`/console` 这类 basePath 部署同理。
+  2. **修法**：`expectedOrigin()` → `new URL(siteUrl()).origin`。规范写法逐字符不变（含端口，
+     非默认端口是 origin 的一部分，不能削）；尾斜杠与 basePath 从「必坏」变成「可用」。
+  3. **为什么测试以前测不出来**：`src/app/api/auth/passkey/passkey.test.ts:47` 把
+     `@simplewebauthn/server` 整个 mock 掉，那条决定成败的相等比较在单测里从没真的执行；
+     passkeys 又没法在 E2E 里过真认证器。所以**推导函数本身就是唯一防线**，新增
+     `src/lib/auth/passkey.test.ts`（9 条）钉住 `siteUrl` / `rpId` / `expectedOrigin` 与
+     challenge cookie 的写入、过期、读取。
+  4. 顺带把 ADR-012 决策 3 补一句：origin 也取解析后的值。ADR 原文只写了「RP ID = hostname」，
+     没说 origin 也要解析——这条缺陷正是照原文实现的产物。
+- 变更文件：`src/lib/auth/passkey.ts`、`src/lib/auth/passkey.test.ts`（新增）、
+  `docs/adr/adr-012-passkey.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - 先红：修之前两条用例分别拿到 `https://app.example.com/` 与 `https://app.example.com/console`
+    （期望 `https://app.example.com`），失败输出即证据；
+  - 变异核对：只 `replace(/\/$/, "")` 的写法仍被 basePath 那条抓住，不会因为「尾斜杠也修了」而变绿；
+  - cookie 断言按实测写：Next 的删除序列化成 `Expires=Thu, 01 Jan 1970…` 而不是 `Max-Age=0`，
+    第一版按后者写、当场红——改断言而不是改实现（实现是对的，`response.cookies.delete()` 本就是那条）；
+  - `vitest run src/lib/auth/passkey.test.ts src/app/api/auth/passkey/passkey.test.ts` → 22 通过；
+  - 全量门禁见下方 PR 描述（lint / type-check / test / build / `CI=true check:all`）。
+- 阻塞 / 风险：
+  - **同一份环境变量的其余消费方没在这次里改**：`src/lib/email-marketing.ts:14`、
+    `src/lib/email-notify.ts`、`src/app/api/cron/digest/route.ts:221` 都是 `${siteUrl()}/api/...`
+    字符串拼接，尾斜杠会拼出 `//api/...`。双斜杠在 Next 路由上到底成不成，**尚未实测**，
+    所以只登记不下结论——这是下一条要量的东西。
+  - APP_URL 完全没协议（`example.com`）时 `new URL` 抛错，`register-options` 在 try 之外调 `rpId()`，
+    结果是 500 而不是可诊断的文案。属既有行为，本次未引入也未扩大；要不要做成 fail-fast 带文案，
+    和「三处 siteUrl 是否收成一份」一起放下一条。
+
+
+
 ## 2026-09-22 — 把「mock 少一个方法」变成一条会点名的自检（PR #74 的后续）
 
 - 里程碑 / 版本：v0.12.0 C03 的收尾，外加一条新发现的失效模式。

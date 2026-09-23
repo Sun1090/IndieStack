@@ -204,6 +204,22 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`NEXT_PUBLIC_APP_URL` 带尾斜杠时，passkey 注册与登录全部失败，而报的是「验证失败」**：
+  `expectedOrigin()` 把环境变量原样交给 `@simplewebauthn`，而后者拿它和浏览器送来的
+  `authData.origin` 做**严格相等**比较（`node_modules/@simplewebauthn/server/esm/registration/verifyRegistrationResponse.js:83`），
+  后者永远形如 `scheme://host[:port]`——没有路径、没有尾斜杠。于是 `https://app.example.com/`
+  （部署时最容易顺手写出来的形状）会让注册和认证 100% 400，客户端只看到 `Verification failed`，
+  日志里也只有一句 attestation verification failed，指向「密钥不对」而不是「环境变量多写了一个字符」。
+  隔壁 `rpId()` 早就用 `new URL(...).hostname` 做了解析——同一个环境变量、两种口径，缺陷就在没解析的那一半。
+  现在 `expectedOrigin()` 走 `new URL(siteUrl()).origin`：规范写法逐字符不变（含端口），尾斜杠与 basePath
+  两种写法从「必坏」变成「可用」。**为什么测试以前测不出来**：路由测试 `src/app/api/auth/passkey/passkey.test.ts`
+  把 `@simplewebauthn/server` 整个 mock 掉，那条决定成败的相等比较在单测里从没真的跑过；passkeys 又没法在
+  E2E 里走真认证器——所以这一层是唯一的防线，新文件 `src/lib/auth/passkey.test.ts` 钉住推导本身（默认回落、
+  规范写法、尾斜杠、`/console` basePath、非默认端口要留着）和 challenge cookie 的四个属性；先红后绿：
+  修之前那两条用例分别拿到 `https://app.example.com/` 与 `https://app.example.com/console`。
+  变异核对：只 `replace(/\/$/, "")` 的写法仍被 basePath 那条抓住。顺带补上该模块此前没人跑过的
+  `readChallengeCookie` / `clearChallengeCookie`（`src/lib/auth/passkey.ts` 在 C08 栈尖上语句覆盖只有 14.28%）。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
