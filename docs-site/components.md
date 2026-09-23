@@ -57,8 +57,9 @@ through `cn()` and Tailwind CSS variables.
 
 ## Custom Components
 
-Rows below enumerate every component in `shared/`, `layout/`, `auth/` and `forms/`. Components in
-`dashboard/`, `charts/`, `data-tables/` and `providers/` are page-specific and not listed here.
+Rows below enumerate every component in `shared/`, `layout/`, `auth/` and `forms/`. The
+`dashboard/`, `charts/` and `data-tables/` rows are examples only — those three directories are not
+fully enumerated here.
 
 | Component | Directory | Usage |
 |-----------|-----------|-------|

@@ -59,8 +59,8 @@
  
  ## 自定义组件
  
- 下表列出 `shared/`、`layout/`、`auth/`、`forms/` 四个目录下的全部组件；`dashboard/`、`charts/`、
- `data-tables/`、`providers/` 属于页面专属组件，未在此枚举。
+ 下表列出 `shared/`、`layout/`、`auth/`、`forms/` 四个目录下的全部组件；另有几行来自 `dashboard/`、
+ `charts/`、`data-tables/` 的示例，这三个目录未在此完整枚举。
  
  | 组件 | 所在目录 | 用途 |
  |------|---------|------|
