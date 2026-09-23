@@ -100,14 +100,15 @@ function isQueryChain(node: ts.Node): boolean {
 }
 
 /**
- * Unwrap `( … )` and `as unknown` down to the expression actually awaited.
+ * Unwrap `( … )`, `as unknown` and `await` down to the expression underneath them.
  *
  * `as unknown as T` parses as two casts; the inner one is a stepping stone, so it has to be
  * walked through — otherwise the double-cast spelling, which is exactly how this idiom reaches
  * for a wrong type, hides from the gate.
  */
-function unwrapAwait(node: ts.Expression): ts.Expression | undefined {
+function unwrapExpression(node: ts.Expression): { expression: ts.Expression; awaited: boolean } {
   let current: ts.Expression = node;
+  let awaited = false;
   for (;;) {
     if (ts.isParenthesizedExpression(current)) {
       current = current.expression;
@@ -117,9 +118,19 @@ function unwrapAwait(node: ts.Expression): ts.Expression | undefined {
       current = current.expression;
       continue;
     }
+    if (ts.isAwaitExpression(current)) {
+      awaited = true;
+      current = current.expression;
+      continue;
+    }
     break;
   }
-  return ts.isAwaitExpression(current) ? current.expression : undefined;
+  return { expression: current, awaited };
+}
+
+function unwrapAwait(node: ts.Expression): ts.Expression | undefined {
+  const unwrapped = unwrapExpression(node);
+  return unwrapped.awaited ? unwrapped.expression : undefined;
 }
 
 /** Does the asserted type still carry an `error` member? */
@@ -303,13 +314,16 @@ function countByFile(sites: readonly { file: string }[]): Map<string, number> {
  * 作用域，所以没有任何断言可看，上面的门禁对着它一直是绿的。
  *
  * **这一版只做测量，不做门禁**（D01 口径：先量到误报，才有依据把判据收紧）。
- * 已知盲区一并写在这里，免得这份报告被读成「全库只有这些」：
- * - `const [a] = await Promise.all([supabase.from(...)])`：初始化表达式是 `Promise.all`，
- *   不是查询链，整条都不在射程内；
- * - `const { data } = ok ? await supabase.from(...) : { data: [] }`：被条件表达式包住的链同样
- *   走不到 `unwrapAwait`，所以清单是**下界**——这一条是清项目页时现场撞出来的，先记下来；
+ * 射程内有三种写法：直接一条链、`cond ? await chain : { data: [] }`、
+ * `await Promise.all([chain, …])` 配数组解构。后两种原先判不到——条件那一种是清项目页时撞出来的
+ * （清单因此一直报的是下界），`Promise.all` 那一种是顺手一起补的。
+ * 还在射程外的两件事，报告页脚会一并打印，免得这份清单被读成「全库只有这些」：
+ * - `Promise.all` 之外自造的并发 helper（`allSettled` 之类）不认；
  * - 「绑了 `error` 却从不使用」**故意没有测**：判它要做作用域分析，而全文数同名标识符会把
  *   `catch (error)` 一起数进去，得到一个只会漏报的假指标——一个只会低估的计数比没有计数更糟。
+ *
+ * 非字面量表名（`.from(TABLE)`）**在**射程内，只是标成 `<非字面量>`：它一直都在，早先那句
+ * 「非字面量表名的链不在射程内」是写错的，一并改掉。
  * ============================================================ */
 
 /** 一处 awaited 查询结果的解构读数。 */
@@ -354,6 +368,93 @@ function bindsErrorChannel(pattern: ts.ObjectBindingPattern): boolean {
   );
 }
 
+/** 一处解构对应的一条读取，`node` 用来定位行号。 */
+interface QueryReadAnchor {
+  source: string;
+  bindsError: boolean;
+  node: ts.Node;
+}
+
+/**
+ * `Promise.all([ … ])` 里的那几条 Promise。
+ *
+ * 参数是**一个数组字面量**，不是可变参数——按 `node.arguments` 配对的话每个文件都只会量到第一条，
+ * 那条恰好是个 `ArrayLiteralExpression`，于是链一条也不认识（这条是探针脚本抓出来的）。
+ */
+function promiseAllPromises(node: ts.Node): readonly ts.Expression[] | undefined {
+  if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return undefined;
+  if (node.expression.name.text !== "all") return undefined;
+  if (node.expression.expression.getText() !== "Promise") return undefined;
+  const [only] = node.arguments;
+  // 不滤掉数组字面量里的空缺位（`[a, , b]`）：滤掉之后下标就和解构那侧错一位，
+  // 配出来的链就不是这条绑定读的那条，读数会变成假的。
+  if (only && ts.isArrayLiteralExpression(only)) return only.elements;
+  return node.arguments.length > 0 ? node.arguments : undefined;
+}
+
+/** 对象解构直接对着一条 awaited 查询链时的那条读数。 */
+function readFromChain(
+  pattern: ts.Node,
+  expression: ts.Expression,
+  awaitedByOuter: boolean,
+): QueryReadAnchor[] {
+  if (!ts.isObjectBindingPattern(pattern)) return [];
+  const unwrapped = unwrapAwait(expression);
+  const chain = unwrapped ?? (awaitedByOuter ? expression : undefined);
+  if (!chain || !isQueryChain(chain)) return [];
+  const source = queryChainRoot(chain);
+  return source ? [{ source, bindsError: bindsErrorChannel(pattern), node: pattern }] : [];
+}
+
+/**
+ * 一条 `const { … } = …` 可以对着**几条**读取，所以返回的是列表：
+ * - 直接一条链：`const { data } = await supabase.from(…)`；
+ * - 条件表达式：`cond ? await chain : { data: [] }`——两支各自判，没有查询的那一支不贡献站点；
+ * - `await Promise.all([ … ])` + 数组解构：按下标把元素与链配对，**只判对象解构的元素**
+ *   （`const [res] = await Promise.all([chain])` 里 `error` 还挂在 `res` 上，那是「绑了不用」那一档）。
+ *
+ * `awaitedByOuter` 只为 `await (cond ? chainA : chainB)` 这一种写法存在：`await` 落在括号外，
+ * 分支自己不再 await。少了它，`await` 的要求会在这一层悄悄失效。
+ */
+function readsFromPattern(
+  pattern: ts.Node,
+  initializer: ts.Expression,
+  awaitedByOuter = false,
+): QueryReadAnchor[] {
+  const direct = readFromChain(pattern, initializer, awaitedByOuter);
+  if (direct.length > 0) return direct;
+
+  const unwrapped = unwrapExpression(initializer);
+  if (ts.isConditionalExpression(unwrapped.expression)) {
+    return [
+      ...readsFromPattern(pattern, unwrapped.expression.whenTrue, unwrapped.awaited),
+      ...readsFromPattern(pattern, unwrapped.expression.whenFalse, unwrapped.awaited),
+    ];
+  }
+
+  const elementPromises =
+    ts.isArrayBindingPattern(pattern) && unwrapped.awaited
+      ? promiseAllPromises(unwrapped.expression)
+      : undefined;
+  if (!elementPromises || !ts.isArrayBindingPattern(pattern)) return [];
+
+  const reads: QueryReadAnchor[] = [];
+  pattern.elements.forEach((element, index) => {
+    const argument = elementPromises[index];
+    if (!argument || !ts.isBindingElement(element)) return;
+    if (!ts.isObjectBindingPattern(element.name)) return;
+    // 元素上常常再盖一层 `as unknown as { data: … }`（断言里连 `error` 成员都没有）。
+    // 这一族问的不是「断言说了什么」而是「`error` 有没有被绑进作用域」，所以先把断言剥掉再看链；
+    // 断言那一半归 C08 的门禁管——它原先对 `Promise.all` 里的断言同样是瞎的。
+    const chain = unwrapExpression(argument).expression;
+    if (!isQueryChain(chain)) return;
+    const source = queryChainRoot(chain);
+    if (source)
+      reads.push({ source, bindsError: bindsErrorChannel(element.name), node: element.name });
+  });
+  return reads;
+}
+
 /**
  * 收集一批源文件里所有 awaited 查询结果的解构绑定。
  *
@@ -379,15 +480,17 @@ export function collectUnboundErrorChannels(sources: readonly QueryErrorChannelS
     }
 
     const visit = (node: ts.Node): void => {
-      if (ts.isVariableDeclaration(node) && node.initializer && ts.isObjectBindingPattern(node.name)) {
-        const awaited = unwrapAwait(node.initializer);
-        const root = awaited && isQueryChain(awaited) ? queryChainRoot(awaited) : undefined;
-        if (awaited && root) {
+      const destructures =
+        ts.isVariableDeclaration(node) &&
+        node.initializer !== undefined &&
+        (ts.isObjectBindingPattern(node.name) || ts.isArrayBindingPattern(node.name));
+      if (destructures) {
+        for (const read of readsFromPattern(node.name, node.initializer)) {
           sites.push({
             file: source.file,
-            line: parsed.text.slice(0, node.getStart()).split("\n").length,
-            source: root,
-            bindsError: bindsErrorChannel(node.name),
+            line: parsed.text.slice(0, read.node.getStart()).split("\n").length,
+            source: read.source,
+            bindsError: read.bindsError,
           });
         }
       }

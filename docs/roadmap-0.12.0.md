@@ -286,14 +286,23 @@
     清到只剩 `justified` 那 2 处时再把判据接进 `check:query-errors`——
     一个刚落地就要求全库加豁免的门禁，教人的是绕过它而不是尊重它。
     **清偿进度以 `--unbound` 的输出为准，不在这里手抄**。第一批（2026-09-23）是项目页的 4 处读取
-    （`projects/[id]/page.tsx` 两处、`projects/page.tsx` 两处），它同时暴露了计数器的第四个盲区：
-    `const { data } = cond ? await query : { data: [] }` 这种条件表达式包住的链，`unwrapAwait` 拿不到
-    查询链，于是那一处**连 160 的总数都没进过**——这份清单是下界，不是全量。
-    顺序因此插一步：先补这一条（`collectUnboundErrorChannels` 走进条件表达式的两个分支），
-    用真实规模重排剩余批次，再接门禁。
-    已知盲区必须在报告里如实出现：`Promise.all` 里的查询链（初始化表达式不是查询链）、
-    非字面量表名的链、条件表达式包住的链，以及「绑了 `error` 却从不使用」那一档（判它需要作用域分析；
-    全文数同名标识符会把 `catch (error)` 一起数进去，是个只会漏报的假指标，**刻意没测**）
+    （`projects/[id]/page.tsx` 两处、`projects/page.tsx` 两处），它当场暴露计数器在漏：
+    条件表达式包住的链、`await Promise.all([chain, …])` 的数组解构、以及元素上再盖
+    `as unknown as { data }` 的链，原先一条都判不到——所以之前那两份「23 处」的数都是**下界**。
+    **第二步已于同日完成**：判据走进条件两支、`Promise.all` 的下标配对与元素断言，
+    重量结果 358 文件 / **165 处**解构 / **24 处不绑 `error`** / 0 个文件跳过；
+    新量出的 4 处逐行看过（`dashboard/page.tsx` 的两条计数、最近通知、`settings/page.tsx` 设备列表），
+    **误报 0**——失败方向和已清的那批同族：读失败长成「0 次调用 / 0 个会话 / 没有通知 / 没有设备」。
+    顺带改掉一处写错的口径：非字面量表名（`.from(TABLE)`）**一直**在射程内，只是标成 `<非字面量>`。
+    现在剩下的射程外只有两件半：`Promise.all` 之外自造的并发 helper（`allSettled` 等）、
+    数组元素里再套三元，以及那半件「绑了 `error` 却从不使用」——判它需要作用域分析，
+    全文数同名标识符会把 `catch (error)` 一起数进去，是个只会漏报的假指标，**刻意没测**。
+    **下一步**：按这份真实清单排批次——先钱与权限（`actions/team.ts` 6 处、`admin/page.tsx` 3 处），
+    再 Stripe（checkout 2 + webhook 2），最后页面读数；清到只剩 `permission-gate.tsx` 那 2 处
+    `justified` 时接门禁。
+    一个已确认、留给 #49 的洞：`dashboard/page.tsx:75` 那条 `as unknown as { data: … }`
+    是**断言抹掉 `error`**（C08 那一族的正主），但 C08 门禁要求断言外面套 `await`，
+    而这里的 `await` 落在 `Promise.all` 上——所以它只对 C08-c 可见，对门禁不可见。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 
