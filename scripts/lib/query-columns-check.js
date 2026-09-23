@@ -59,20 +59,22 @@ export function runQueryColumnCheck(repoRoot = REPO_ROOT) {
   }
 
   const { stats } = report;
+  const coverage =
+    `覆盖：${stats.tables} 张表 / ${stats.fromCalls} 处 .from() / ${stats.checked} 个字面量列名 / ` +
+    `${stats.writeCalls} 处写入载荷（判定 ${stats.writeChecked} 个键，跳过 ${stats.writeSkippedShapes} 个读不出的载荷形状），` +
+    `跳过 ${stats.skippedEmbedded} 条含关联查询的链、${stats.skippedArguments} 个非纯列名参数` +
+    (stats.writeVocabularyMissing > 0
+      ? `；${stats.writeVocabularyMissing} 张被写入的表没有 Insert/Update 可判`
+      : "");
+
   if (report.issues.length > 0) {
     console.error(`❌ 查询列名与 database.types.ts 不一致（${report.issues.length} 项）`);
     for (const issue of report.issues) console.error(`   ${issue.code}: ${issue.message}`);
-    console.error(
-      `   覆盖：${stats.tables} 张表 / ${stats.fromCalls} 处 .from() / ${stats.checked} 个字面量列名，` +
-        `跳过 ${stats.skippedEmbedded} 条含关联查询的链、${stats.skippedArguments} 个非纯列名参数`,
-    );
+    console.error(`   ${coverage}`);
     return 1;
   }
 
-  console.log(
-    `✅ 查询列名校验通过：${stats.tables} 张表 / ${stats.fromCalls} 处 .from() / ${stats.checked} 个字面量列名，` +
-      `跳过 ${stats.skippedEmbedded} 条含关联查询的链、${stats.skippedArguments} 个非纯列名参数`,
-  );
+  console.log(`✅ 查询列名校验通过：${coverage}`);
   return 0;
 }
 

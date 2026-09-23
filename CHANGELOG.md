@@ -6,6 +6,18 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **列名门禁从此也管写入**（C07 的另一半）：`pnpm check:query-columns` 过去只判查询链上的字面量列名
+  （`select`/`eq`/`order`…），而 `.insert()` / `.update()` / `.upsert()` 的载荷键不在它的射程里——
+  起因是另一条线（PR #128）实测：载荷写成就地字面量时，把 `bio` 拼成 `bioo` 连 `pnpm type-check` 都不红。
+  现在每个键都对生成的 `Insert`/`Update` 键集合判定，**刻意不用 `Row`**：`Row` 含 PostgREST 自己派生、
+  写入反而非法的列，而只出现在 `Insert` 里的列（如 `password_hash`）确实可写——两个方向各有一条单测钉住。
+  接线前先量（D01 口径）：**48 处写入载荷、判定 120 个键、误报 0**；读不出的形状（展开 `{...x}`、计算键
+  `[k]:`、载荷是变量）不判但计数打印（13 处），「范围本来就窄」和「范围被调空」在输出里仍然一眼可分。
+  失败封闭同一条规则：只写入、一个键都没判成时报 `QUERY_COLUMN_GATE_VACUOUS`，不报绿。
+  新码 `QUERY_WRITE_COLUMN_NOT_IN_TABLE`；规则在 `src/lib/db/query-columns.ts`，判定与计数在
+  `scripts/lib/query-columns-check.js` 打印。端到端变异：把 `repositories/api-keys.ts:37` 的
+  `is_active` 改成 `is_activee` → 门禁退出 1 并点名 `api_keys`，还原后回到 0。
+
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而

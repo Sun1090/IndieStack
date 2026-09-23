@@ -66,7 +66,7 @@
 | `pnpm db:types` | 从 Supabase 生成 TypeScript 类型定义 |
 | `pnpm db:status` | 查看 Supabase 本地服务状态 |
 | `pnpm check:migrations` | 校验迁移不可变校验和与命名/顺序规则 |
-| `pnpm check:query-columns` | 校验查询链里每个字面量列名都存在于生成的行类型中 |
+| `pnpm check:query-columns` | 校验查询链里的字面量列名，以及 `insert`/`update`/`upsert` 载荷的键，都存在于生成的行类型 / Insert·Update 类型中 |
 | `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加） |
 | `pnpm check:migration-history` | 比对本地 Supabase 迁移历史（需 `supabase start`） |
 | `pnpm check:migration-runbook` | 校验迁移回滚 runbook 与迁移清单保持一致 |
