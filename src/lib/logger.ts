@@ -39,6 +39,31 @@ const isProduction = process.env.NODE_ENV === "production";
 /** 是否启用详细日志 */
 const isVerbose = process.env.NEXT_PUBLIC_VERBOSE_LOGGING === "true";
 
+/**
+ * 控制字符：`\r` / `\n` 能凭空造出一条日志行，`\u001b`（ANSI）能在终端里伪造颜色，
+ * `\u0000` 会让按行解析的采集器截断。CodeQL 的 `js/log-injection` 报的就是这件事：
+ * `src/app/api/webhooks/stripe/route.ts` 把请求体里的 `invoice.id` / `event.type` /
+ * `event.id` 拼进日志文本，那条路径上没有任何字符级校验——签名校验只证明「来自 Stripe」，
+ * 不证明那个字段里没有换行。
+ */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
+
+/**
+ * 把任意文本压成「一行、不含控制字符」的日志文本：控制字符转成可见的转义形式而不是删掉，
+ * 这样注入的内容仍然可被读出来（排查时看得见），但它不再是结构。
+ *
+ * 出口只有两处：`formatLog` 的返回值（四个 `console.*` 都从它过），以及 Sentry 那条
+ * 「没有 error 实例就用 message 造一个」的标题。
+ */
+export function sanitizeLogText(text: string): string {
+  return text.replace(CONTROL_CHARS, (char) => {
+    if (char === "\n") return "\\n";
+    if (char === "\r") return "\\r";
+    if (char === "\t") return "\\t";
+    return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
+  });
+}
+
 /** 日志记录器接口 */
 interface Logger {
   debug: (message: string, data?: Record<string, unknown>) => void;
@@ -49,7 +74,8 @@ interface Logger {
 }
 
 /**
- * 格式化日志输出
+ * 格式化日志输出。**每次调用只产出一行**：入参可能带着请求体里的控制字符，
+ * 返回前统一过 `sanitizeLogText`，所以四个 `console.*` 出口共用同一道收口。
  */
 function formatLog(entry: LogEntry): string {
   const { level, message, timestamp, data, error } = entry;
@@ -64,7 +90,7 @@ function formatLog(entry: LogEntry): string {
     parts.push(error.stack ?? error.message);
   }
 
-  return parts.join(" ");
+  return sanitizeLogText(parts.join(" "));
 }
 
 /**
@@ -91,11 +117,12 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown>, e
     }
   }
 
-  // 生产环境错误上报 Sentry；异步加载，日志调用本身不阻塞请求
+  // 生产环境错误上报 Sentry；异步加载，日志调用本身不阻塞请求。
+  // 没有 error 时用 message 造一条：那个标题同样可能被请求体里的换行伪造，所以过同一个收口。
   if (level === "error" && isProduction) {
     void import("@sentry/nextjs")
       .then((Sentry) =>
-        Sentry.captureException(error ?? new Error(message), {
+        Sentry.captureException(error ?? new Error(sanitizeLogText(message)), {
           extra: { ...data, logLevel: level },
         }),
       )
