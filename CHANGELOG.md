@@ -244,6 +244,20 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **管理概览页不再把读失败显示成「0 个用户、0 个团队、0 个管理员」**（C08-c 第四批）：
+  三处统计读取（`profiles` 计数、`teams` 计数、`profiles.role` 分布）原先都不绑 `error`，
+  计数直接 `?? 0`——于是一次故障长得像一个刚初始化的空实例，而 0 是终态，没人会去刷新。
+  现在三处各自绑定 `error` 并在渲染前抛出（交给 `dashboard/error.tsx` 给重试入口）；
+  「查询跑完了、计数就是 0」仍然是合法答案。
+  新增 6 条用例（每条故障配一条合法状态当反向证据，另有一条钉住「守卫说没权限时走 redirect、
+  一次库都不读」）。**这个文件原先零单测**——它是有权限才能看的页面，所以一直没人给它写过桩。
+  桩按「表名 + 该表第几次读取」预置（`profiles` 在一页里被读两次，必须能指名让其中一次失败），
+  并且链必须可 `await`（页面直接 await `.select(...)`，缺 `then` 时故障用例会变成「什么都没读到」而假绿）。
+  变异核对 6 项（A1–A6）全部被杀死：删三条 `error` 分支、角色行拿到了却不计数、
+  读数写死成 0、把 redirect 换成抛错。其中「数字真的来自那次读取」是靠把元素树摊平成字符串断言的——
+  只断言 `resolves.toBeTruthy()` 的话，A4/A5 两种篡改都能蒙过去。
+  规模同步：`--unbound` 18 → **15 处**。
+
 - **一次读失败不再让三个团队动作齐刷刷说「你没有团队」**（C08-c 第三批）：
   `getCurrentTeam()` 原先返回 `team | null`，两次断言都明写着 `error: null`——数据库抖动一次，
   `inviteMember` / `removeMember` / `updateMemberRole` 全部答 `noTeam`。而 `noTeam` 是终态：
