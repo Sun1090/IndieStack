@@ -261,9 +261,18 @@
     2 处不是解构绑定（`reset-password-form.tsx`、`dashboard/settings/page.tsx`，都当布尔用）。
     剩下 59 处按下游第一个 `if (!user)` 分支答复什么归类：**39 处答「没登录」/401**、**4 处 redirect 到登录页**、
     **1 处返回 null**（`actions/team.ts` 的 `getCurrentTeam()`，调用方据此回答 `noTeam`——「你没有团队」
-    也是读出来的事实）、2 处另有写法、13 处的判空跨出 14 行窗口，要逐条读。
-    **失败方向都是拒绝，不是放行**，所以这条没有 P0；排期时先做那 13 处的判读，确认没有一处把 `error`
-    当成「已登录」——那才是需要立刻处理的形状。
+    也是读出来的事实）。**没有一处把 `error` 当成「已登录」**，路由层同样是 fail-closed
+    （`src/proxy.ts` 里 `isProtected && !user` 一律重定向登录页），所以这条不是 P0。
+    第二遍判读换了判据（下游 45 行内「有没有自己的判空」vs「有没有 `user!.` 强解引用」），
+    并且是在本 PR 修完守卫层之后量的（`main` 上 62 处，这里 61 处）：**45 处有自己的判空**（上面那三档）、
+    **8 处没有判空却直接 `user!.id`**（`dashboard/page.tsx`、`billing`、`notifications`、`profile`、`projects`、
+    `projects/[id]`、`settings`、`team` —— 读失败时抛 `TypeError` 由错误边界兜住：不是撒谎，
+    但是一次没有分类的崩溃，修法和守卫层同一形状——先判空、再答「暂时不可用」）、
+    **3 处两者都没有**（`api/auth/callback/route.ts`、`hooks/use-user.ts`、`lib/supabase/middleware.ts`：
+    前两处把 null 当合法值往下传，第三处只是把 `user` 交回 `proxy.ts` 做重定向判定，方向仍是拒绝）。
+    还有一处形状不同：`actions/audit.ts` 用 `user?.id ?? null` 直接落审计表——**「读不到会话」与
+    「失败登录时本来就没有会话」在 `user_id` 这一列上完全同形**，而取证时这是两件相反的事；
+    本条已修（审计照写，但 metadata 打 `sessionReadFailed`，见 CHANGELOG）。
     **已收口的部分**：守卫层（`src/lib/auth/guards.ts`）改走 `readSessionUser()`，`requireAuth/Role/Permission`
     与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好。
     **暂不接门禁**，理由与 C08-c 同源：合法状态（确实没有会话 → 回落登录页是对的）与「没读到」在 AST 上

@@ -1259,6 +1259,21 @@
   （逐条 `git diff <merge-base> <head> | grep 任务池（` 计数，每条命中 2 行），也就是整条 C08 栈每合一个就要
   重解一次同一个单行冲突，而最后写进去的那个数字相对合并后的池子**必然是错的**。删掉数字，20 条改动同时作废。
   同时本条把引用口径写进标题：**用 ID（C09 / D04）而不是序号**——序号在本池已经撞了（C08 家族与 D 家族都占 18/19/20）。
+- 判读做完了（原本记为「13 处要逐条读」，换判据后重量一遍，且是在守卫层修完之后：`main` 上 62 处、本分支 61 处）：
+  **45 处有自己的 `if (!user)`**（39 答「没登录」/401、4 跳登录页、1 返回 null）、
+  **8 处没有判空却直接 `user!.id`**（`dashboard/page.tsx`、`billing`、`notifications`、`profile`、`projects`、
+  `projects/[id]`、`settings`、`team`：Auth 抖动时抛 `TypeError` 由错误边界兜住——不是撒谎，但是一次没有分类的崩溃）、
+  **3 处两者都没有**（`api/auth/callback/route.ts`、`hooks/use-user.ts`、`lib/supabase/middleware.ts`，
+  最后一处只是把 `user` 交回 `proxy.ts` 判重定向）。**全库没有一处把 `error` 当成「已登录」**，
+  路由层也 fail-closed（`src/proxy.ts` 的 `isProtected && !user` 一律去登录页）——C09 的严重度据此定为「不是 P0」。
+- 顺着这条判读又抓到一处**形状不同**的：`src/lib/actions/audit.ts` 的 `logAuthEvent` 用
+  `user?.id ?? null` 直接落审计表，于是「读不到会话」与「失败登录时本来就没有会话」在 `user_id` 列上完全同形，
+  而取证时这是两件相反的事。改成绑定 `error` + metadata 打 `sessionReadFailed: true`，
+  审计照写、不阻断登录，**不加列不做迁移**（审计表是既有的 append-only 面）。
+  变异核对：只把那一行标记退回 `metadata` → `1 failed | 7 passed`，红的正是新增那条断言，随后 `cp` + `cmp` 还原。
+  另外生产侧顺手取了一个数：`/api/health` 的 `checks` 报 `supabase configured+reachable`、
+  `sentry`/`stripe` 均 `required:false, configured:false`，`ready:true` 而 `allConfigured:false`——
+  所以 #133 那条 Sentry 上报路径**在生产上目前没有接收端**，这不影响修复的正确性，但影响它的实际覆盖面。
 - 验证命令与结果：`pnpm verify`（type-check + lint + 全量测试 + `check:bundle`）**exit 0**，
   `Test Files 202 passed (202)`、`Tests 2315 passed (2315)`；`pnpm -s check:changelog` / `check:docs` /
   `check:bilingual-docs` / `check:gates` / `check:adr` 各自 exit 0（门禁接线 38 个：本地 35 / CI 37 / 豁免 3；
@@ -1266,6 +1281,6 @@
 - 阻塞：无（本条不需要外部权限）。Vercel 配额仍按既定口径记录并忽略。
 - 风险 / 回滚：行为面只有一处——Auth 不可读时不再把已登录用户送去登录页，而是 503 / 错误边界。
   回滚 = revert `5bfbcd2` 与文档 commit；无迁移、无数据面。
-- 下一项：把那 **13 处「判空跨出 14 行」** 逐条读完并把结论写回 C09（重点是有没有一处把 `error` 当已登录）；
-  然后按 C08-b 的台账方式立 `AUTH_ERROR_CHANNEL` 豁免表，再谈门禁接不接。
+- 下一项：那 **8 处 `user!.id`** 的页面（判空缺失、故障时是一次没有分类的崩溃）按守卫层同一形状收口，
+  先 `if (!user)` 再答「暂时不可用」；然后按 C08-b 的台账方式立 `AUTH_ERROR_CHANNEL` 豁免表，再谈门禁接不接。
 - 更新时间：2026-09-24。
