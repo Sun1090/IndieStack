@@ -30,6 +30,7 @@
 | `pnpm check:security` | Verify secrets/env policy and security-scanner configuration |
 | `pnpm check:changelog` | Validate CHANGELOG.md structure (versions, sections, entries) |
 | `pnpm check:adr` | Validate ADR numbering, status, index, sections, and supersession links |
+| `pnpm check:progress` | Audit the progress ledger itself: dated entries in non-decreasing order (new entries append at the end), no duplicated entry, and the `里程碑` / `状态` fields present |
 | `pnpm check:gates` | Audit that every `check:*` gate is wired into `check-all.sh` and CI, or exempt with a reason |
 | `pnpm check:workflows` | Audit CI workflow hygiene: pinned actions, job timeouts, `needs` targets, PR concurrency, real script names, and the ci.yml parallel/cache contract |
 | `pnpm check:codeql` | Audit CodeQL scan strength and alert triage policy: action major, languages, query suite, SARIF category, permissions, timeout, branch/schedule coverage, path filters, and runbook facts |
