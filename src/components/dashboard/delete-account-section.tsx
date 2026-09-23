@@ -59,6 +59,7 @@ export function DeleteAccountSection() {
 
         {confirming ? (
           <form
+            method="post"
             onSubmit={(event) => {
               event.preventDefault();
               handleDelete();

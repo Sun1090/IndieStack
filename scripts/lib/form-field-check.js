@@ -72,7 +72,7 @@ export function runFormFieldCheck(repoRoot = REPO_ROOT) {
     return 1;
   }
   console.log(
-    `✅ 共享表单字段校验通过：${report.stats.scannedFiles} 个应用层文件统一走 FormField / NativeSelect，无原生 <select> 与复制类名`,
+    `✅ 共享表单字段校验通过：${report.stats.scannedFiles} 个应用层文件统一走 FormField / NativeSelect，无原生 <select>、无复制类名，且每个 <form> 都声明了 method="post"`,
   );
   return 0;
 }

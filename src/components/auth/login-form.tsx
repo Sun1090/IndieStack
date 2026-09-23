@@ -199,7 +199,7 @@ export function LoginForm({ passkeyEnabled = false }: { passkeyEnabled?: boolean
 
   return (
     <div className="grid gap-6">
-      <form onSubmit={handleEmailLogin}>
+      <form method="post" onSubmit={handleEmailLogin}>
         <div className="grid gap-4">
           <FormField htmlFor="email" label={tc("email")} className="grid gap-2">
             <FormFieldControl>
