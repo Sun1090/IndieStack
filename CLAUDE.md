@@ -85,12 +85,18 @@ Action: read/write/create/delete/manage/invite/remove/export
 - `PermissionGate` - 权限条件渲染
 - `ConfirmDialog` - 确认对话框
 - `Breadcrumbs` - 面包屑导航
-- `SearchInput` - 防抖搜索
-- `LoadingState / LoadingPage` - 加载状态
+- `FormField` / `FormFieldControl` - 表单字段四件套，自动接 id 与 aria
+- `NativeSelect` - 统一样式的原生 select
+- `PasswordStrength` - 密码强度指示条
+- `UploadProgress` - 上传进度条（含取消）
 - `ErrorState` - 错误展示
-- `PageContainer` - 标准页面容器
+- `QueryErrorState` - 查询失败重试卡片
+- `PageLoading` / `LoadingIndicator` - 加载状态（路由级骨架与内联指示器）
 - `PageHeader` - 页面标题区
+- `Section` - 页面分区容器
 - `EmptyState` - 空状态
+- `InitialAvatar` - 姓名/邮箱首字母头像
+- `GithubIcon` - 内联 GitHub 图标
 
 ## API 密钥管理 (dashboard/api-keys)
 - 创建/查看/吊销 API 密钥
@@ -117,16 +123,20 @@ Action: read/write/create/delete/manage/invite/remove/export
 
 ### 组件组织
 
+完整清单以 `docs-site/components.md`（中文 `docs-site/zh-CN/components.md`）为准，那份参考由
+`check:component-docs` 与代码对齐；下表只做数量级导航。
+
 | 目录 | 数量 | 内容 |
 |------|------|------|
- | `src/components/ui/` | 23 | shadcn/ui 原语 |
+| `src/components/ui/` | 30 | shadcn/ui 原语（Button、Dialog、Select…） |
 | `src/components/auth/` | 2 | LoginForm, RegisterForm |
-| `src/components/layout/` | 3 | SiteHeader, SiteFooter, ThemeToggle |
-| `src/components/dashboard/` | 3 | Sidebar, StatsCard, RemoveMemberButton |
-| `src/components/forms/` | 4 | ProfileEdit, Password, NotificationSettings, InviteMember |
-| `src/components/shared/` | 9 | Breadcrumbs, ConfirmDialog, EmptyState, ErrorState, LoadingState, PageContainer, PageHeader, PermissionGate, SearchInput |
+| `src/components/layout/` | 8 | SiteHeader、SiteFooter、CommandPalette、ShortcutsDialog 等 |
+| `src/components/dashboard/` | 20 | 仪表盘专属组件（DashboardSidebar、StatsCard、TwoFactorSection…） |
+| `src/components/forms/` | 7 | 业务表单（ProfileEdit、Password、NotificationSettings…） |
+| `src/components/shared/` | 15 | 见上方「共享组件」清单 |
 | `src/components/charts/` | 1 | AreaChart (Recharts) |
-| `src/components/providers/` | 2 | ThemeProvider, SupabaseProvider |
+| `src/components/data-tables/` | 1 | DataTable (@tanstack/react-table) |
+| `src/components/providers/` | 1 | ThemeProvider |
 
 ### 校验模式 (Zod, 8 个)
 
