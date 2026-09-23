@@ -1198,7 +1198,8 @@
 ## 2026-09-23 — hydration 之前点提交，提交的是浏览器不是应用，而用例还绿着（#54）
 
 - 里程碑 / 版本：v0.12.0 / C 域（E2E 可信度）+ G03 表单形状门禁。
-- 分支 / PR：`fix/pre-hydration-native-submit`（栈在 #115 之上——共享 `e2e/support/hydrated.ts`）。
+- 分支 / PR：`fix/pre-hydration-native-submit` → **PR #119**（栈在 #115 之上——共享
+  `e2e/support/hydrated.ts`；合并顺序见「待合 PR 的合并顺序与 CI 证据范围」那条）。
 - 状态：DONE（PR 待 review 合并）。
 - 起因是 #51 留下的「刻意没包」那一栏：sign-in ×5、MFA 验证、contact 提交都在 `<form onSubmit>` 里，
   当时写的是「先定幂等性再谈重试」。这次先量，量出来的东西比重复提交更糟。
