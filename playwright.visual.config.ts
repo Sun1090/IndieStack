@@ -41,7 +41,8 @@ export default defineConfig({
   webServer: {
     command: "pnpm dev -p 3100",
     url: "http://localhost:3100/api/health",
-    reuseExistingServer: !process.env.CI,
+    // 不复用：端口上站着别的项目的服务时，截图会比着别人的应用（见 playwright.config.ts 同一条）。
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       NEXT_PUBLIC_MOCK_ENABLED: "true",
