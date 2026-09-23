@@ -128,22 +128,23 @@ redirects: [
 
 ```mermaid
 flowchart LR
-    Dev["开发者"] -->|git push| Repo["Git 仓库"]
-    Repo --> Hook["Husky pre-commit"]
-    Hook --> LintStaged["lint-staged<br/>ESLint + Prettier"]
-    LintStaged --> Commitlint["commitlint<br/>提交消息规范"]
-    Commitlint --> Push["git push 到远程"]
+    Dev["开发者"] -->|git commit| Repo["Git 仓库"]
+    Repo --> Hook[".husky/pre-push<br/>pnpm verify:build"]
+    Hook --> Lint["ESLint + type-check"]
+    Lint --> Unit["Vitest 单测"]
+    Unit --> Build["Next.js 生产构建"]
+    Build --> Push["git push 到远程"]
     Push --> CI["GitHub Actions"]
     CI --> TypeCheck["TypeScript 类型检查"]
-    CI --> Lint["ESLint"]
+    CI --> Lint2["ESLint"]
     CI --> Test["Vitest 测试"]
-    CI --> Build["Next.js 构建"]
+    CI --> Build2["Next.js 构建"]
     CI --> Deploy["部署"]
 ```
 
 ### 提交规范
 
-使用 commitlint 强制 Conventional Commits 规范：
+提交信息遵循 Conventional Commits；规则登记在 `commitlint.config.js`，但本仓库没有安装 commitlint，实际由 review 把关：
 
 ```
 <type>(<scope>): <subject>
