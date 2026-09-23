@@ -1,5 +1,5 @@
 /**
- * 「断言抹掉 error 通道」规则的单测（C08）。
+ * 「error 通道被抹掉」规则的单测（C08 断言 + C08-c 解构）。
  *
  * 两条约束互相拉扯：探测器必须真的能标出一段它该标的代码（否则它就是永不响的门禁），
  * 又必须不标那些与错误通道无关的写法（否则第一个 PR 就学会加 `// eslint-disable`）。
@@ -13,6 +13,7 @@ import {
   collectUnboundErrorChannels,
   inspectQueryErrorChannel,
   summarizeUnboundErrorChannels,
+  type ErrorChannelExemption,
   type QueryErrorChannelSource,
 } from "./query-error-channel";
 
@@ -40,7 +41,7 @@ function codes(sources: QueryErrorChannelSource[]): string[] {
 function codesFor(
   sources: QueryErrorChannelSource[],
   file: string,
-  ledger: Record<string, { sites: number; reason: string }> = ERROR_CHANNEL_EXEMPTIONS,
+  ledger: Readonly<Record<string, ErrorChannelExemption>> = ERROR_CHANNEL_EXEMPTIONS,
 ): string[] {
   return inspectQueryErrorChannel(sources, ledger)
     .filter((issue) => issue.file === file)
@@ -134,13 +135,36 @@ describe("inspectQueryErrorChannel()", () => {
       expect(found, `${file} 实际 ${found} 处，台账登记 ${entry.sites} 处`).toBe(entry.sites);
       expect(entry.reason.length).toBeGreaterThan(0);
     }
+
+    // 解构那一侧同样逐文件对账。总数在这里是 165，只有逐文件才看得见「哪一格被换掉了」
+    const unbound = summarizeUnboundErrorChannels(collectUnboundErrorChannels(sources));
+    const unboundRegistered = ledger.reduce(
+      (total, [, entry]) => total + (entry.unboundSites ?? 0),
+      0,
+    );
+    expect(unbound.total).toBeGreaterThanOrEqual(unboundRegistered);
+    // 「绑了的」比「没绑的」多，才说明这条规则不是在把全库一锅端
+    expect(unbound.total - unbound.unbound.length).toBeGreaterThan(unbound.unbound.length);
+    // 两个收集器共用同一个解析调用：只要有文件被跳过，`unbound.total` 就是下界，绿灯不可信
+    expect(unbound.skippedUnparseable).toBe(0);
+    for (const [file, entry] of ledger) {
+      const found = unbound.unbound.filter((site) => site.file === file).length;
+      expect(found, `${file} 解构实际 ${found} 处，台账登记 ${entry.unboundSites ?? 0} 处`).toBe(
+        entry.unboundSites ?? 0,
+      );
+    }
+    // 台账之外的解构抹除必须为 0——这正是把判据接进门禁的依据
+    const exempt = new Set(ledger.map(([file]) => file));
+    expect(unbound.unbound.filter((site) => !exempt.has(site.file))).toEqual([]);
   });
 
   it("台账按数量对账：多一处就报，少一处也报（清理完不许留着旧条目）", () => {
     // 自带一份 2 处额度的台账，而不是借用真实台账里的某一条：C08-b 还清后真实台账是空的，
     // 而「多一处报 CAST_AWAY / 少一处报 STALE」这两个方向必须一直有被测对象。
     const file = "src/components/shared/permission-gate.tsx";
-    const ledger = { [file]: { sites: 2, reason: "fixture: 允许保留两处" } };
+    // unboundSites 一并给 2：这两条用例只关心**断言**侧的对账，解构侧由下面两条专门测。
+    // 不给的话新接线的解构规则会一起报，把这条用例的判据盖掉。
+    const ledger = { [file]: { sites: 2, unboundSites: 2, reason: "fixture: 允许保留两处" } };
     expect(
       codesFor([source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}}`)], file, ledger),
     ).toEqual([]);
@@ -155,6 +179,83 @@ describe("inspectQueryErrorChannel()", () => {
     expect(codesFor([source(file, zero), source("other.ts", ROLE_QUERY)], file, ledger)).toContain(
       "QUERY_ERROR_CHANNEL_EXEMPT_STALE",
     );
+  });
+
+  it("一条语句同时抹掉断言与解构时，两条规则各报一次", () => {
+    const issues = inspectQueryErrorChannel([
+      source("src/lib/auth/guards.ts", `async function f() {${ROLE_QUERY}}`),
+    ]);
+    const flagged = issues.filter((issue) => issue.file === "src/lib/auth/guards.ts");
+
+    expect(flagged.map((issue) => issue.code)).toEqual([
+      "QUERY_ERROR_CHANNEL_CAST_AWAY",
+      "QUERY_ERROR_CHANNEL_UNBOUND_AWAY",
+    ]);
+    expect(flagged.every((issue) => issue.line === 2)).toBe(true);
+    // 解构那侧的报告要点名读的是哪张表，否则「第 2 行有问题」无法核对
+    expect(flagged[1].message).toContain("profiles");
+  });
+
+  it("两条台账各自独立：断言那侧刚好、解构那侧多一处，仍然要报", () => {
+    const file = "src/components/shared/permission-gate.tsx";
+    const extraUnbound = `
+      const { data: teams } = await supabase.from("teams").select("plan");
+      void teams;
+    `;
+    const codes = codesFor(
+      [source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}${extraUnbound}}`)],
+      file,
+      // 断言侧登记 2 处（对得上），解构侧登记 2 处（实际 3 处）——两条计数互不影响。
+      { [file]: { sites: 2, unboundSites: 2, reason: "fixture" } },
+    );
+
+    // 断言台账（2 处）仍然对得上——如果两条规则共用一个计数，这里会全绿
+    expect(codes).not.toContain("QUERY_ERROR_CHANNEL_CAST_AWAY");
+    expect(codes).not.toContain("QUERY_ERROR_CHANNEL_EXEMPT_STALE");
+    // 逐站点各报一条（与断言那一侧同构），这里只看报了哪几种
+    expect([...new Set(codes)]).toEqual([
+      "QUERY_ERROR_CHANNEL_UNBOUND_AWAY",
+      "QUERY_ERROR_CHANNEL_UNBOUND_STALE",
+    ]);
+    expect(codes).toHaveLength(4);
+  });
+
+  it("解构债务还清了却不删台账，同样要报", () => {
+    const file = "src/components/shared/permission-gate.tsx";
+    // 两条断言（各计一次 sites）、零处「没绑 error 的解构」：sites 对得上，unboundSites 已是旧数字。
+    // 那条绑了 `error` 的读取不能省：它撑起的是「解构判据仍然在工作」，
+    // 否则这条用例会撞上下面的空转地板值，量的就不是同一件事了。
+    const castOnly = `
+      async function f() {
+        const a = (await supabase.from("profiles").select("role")) as { data: null };
+        const b = (await supabase.from("teams").select("plan")) as { data: null };
+        const { data: c, error } = await supabase.from("notifications").select("*");
+        return [a, b, error ? null : c];
+      }
+    `;
+    expect(
+      codesFor(
+        [source(file, castOnly)],
+        file,
+        // 断言侧 2 处对得上；解构侧登记 2 处而实际 0 处 -> 只有 STALE。
+        { [file]: { sites: 2, unboundSites: 2, reason: "fixture" } },
+      ),
+    ).toEqual(["QUERY_ERROR_CHANNEL_UNBOUND_STALE"]);
+  });
+
+  it("解构判据自己被调空时不会安静地变成绿灯", () => {
+    // 断言那一半仍然判到 1 处，所以既有的 VACUOUS 地板值不会响——这一格只有新地板值能占。
+    // 同时真实的断言违规不许被这条早退吞掉：半个门禁坏了，不能连带藏起另一半的结论。
+    const body = `
+      async function f() {
+        const profile = (await supabase.from("profiles").select("role")) as { data: null };
+        return profile;
+      }
+    `;
+    expect(codesFor([source("a.ts", body)], "a.ts")).toEqual([
+      "QUERY_ERROR_CHANNEL_UNBOUND_VACUOUS",
+      "QUERY_ERROR_CHANNEL_CAST_AWAY",
+    ]);
   });
 
   it("未登记的违规文件直接报错", () => {
@@ -199,7 +300,7 @@ function readQuerySources(): QueryErrorChannelSource[] {
   }));
 }
 
-describe("collectUnboundErrorChannels()（C08-c 测量，不是门禁）", () => {
+describe("collectUnboundErrorChannels()（C08-c 的采集侧，判据见上面）", () => {
   const src = (body: string): { file: string; content: string }[] => [
     { file: "src/lib/probe.ts", content: body },
   ];

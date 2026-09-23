@@ -552,9 +552,10 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 `.filter()` / `.or()` 与 `insert`/`update` 的 payload 键不在门禁内：前者的参数是一门小表达式语言（`and(col.eq.x)`），
 后者由生成的行类型直接约束。
 
-## 查询错误通道门禁（C08）
+## 查询错误通道门禁（C08 / C08-c）
 
-`pnpm check:query-errors` 校验**没有任何一处 awaited 的 Supabase 查询结果被断言成不含 `error` 的类型**。
+`pnpm check:query-errors` 校验**没有任何一处 awaited 的 Supabase 查询结果丢失了 `error` 通道**，
+两条规则：断言把它抹掉（C08），以及解构时压根没取它（C08-c）。
 动机是本仓库连续修过的同一类缺陷：查询结果是 `{ data, error, count }`，而
 
 ```ts
@@ -588,31 +589,32 @@ const { data: profile } = (await supabase
 - 语法树不完整的文件报 `QUERY_ERROR_CHANNEL_PARSE` 而不是安静地贡献 0 处——解析不动的文件在门禁眼里
   不存在，是最坏的一种「绿」。这条是被自己的测试 fixture 证出来的：`as` 换行会被 ASI 截断成语法错误。
 - 扫不到文件报 `QUERY_ERROR_CHANNEL_NO_SOURCES`，文件全空报 `QUERY_ERROR_CHANNEL_SOURCE_EMPTY`，
-  扫到了文件却一处 awaited 查询结果都没判到报 `QUERY_ERROR_CHANNEL_VACUOUS`。
+  扫到了文件却一处 awaited 查询结果都没判到报 `QUERY_ERROR_CHANNEL_VACUOUS`（断言侧）/
+  `QUERY_ERROR_CHANNEL_UNBOUND_VACUOUS`（解构侧）。两个地板值各自独立是必要的：
+  把解构判据调空，断言那半仍然判得到链，只看 `judged > 0` 就会一路绿灯。
+  解构侧报地板值时**仍然打印断言侧的违规**（半个门禁坏了不能连带藏起另一半的结论），
+  但**不**做台账对账——采集器死掉时每条正当豁免都会看起来像过期条目，照提示删就把 `justified` 删没了。
 
 规模**不在这里抄数字**——台账会随清偿一处处变小，把计数抄进文档就是造一条会过期的断言（v0.12.0 D04）。
-现量用 `node --experimental-strip-types scripts/lib/query-error-channel-check.js`（输出即「文件数 / awaited
-断言数 / 台账数」），逐条债务读 `src/lib/security/query-error-channel.ts` 里的 `ERROR_CHANNEL_EXEMPTIONS`，
-每条都写明「这一处把读失败答成了什么事实」；清偿顺序与已完成部分写在 roadmap C08-b。
-门禁先落地是为了**止住新增**，不是为了宣称问题已清完。
+现量用 `node --experimental-strip-types scripts/lib/query-error-channel-check.js`（输出即「文件数 /
+两条规则各自的 awaited 判到数 / 两条台账数」），逐条债务读 `src/lib/security/query-error-channel.ts`
+里的 `ERROR_CHANNEL_EXEMPTIONS`，每条都写明「这一处把读失败答成了什么事实」；
+清偿顺序与已完成部分写在 roadmap C08-b / C08-c。门禁先落地是为了**止住新增**，不是为了宣称问题已清完。
 
-**不在门禁内**：解构时压根不取 `error`（`const { data } = await supabase.from(...)`，接线时实测有一批，
-清单记在 `docs/progress.md` 的 C08 条目里）与 `.single()` 的「零行即错误」语义。前者不看断言就看不到，
-是本门禁的邻居而非子集；后者由调用方的 `error` 处理决定，属于 Code Reviewer 的检查项。
-
-邻居那条（C08-c）**已经能量，但还不是门禁**：
+逐条清单（门禁只说「台账不匹配」，还债要知道是哪几行）用清单模式打印：
 
 ```bash
 node --no-warnings --experimental-strip-types scripts/lib/query-error-channel-check.js --unbound
 ```
 
-它打印「解构 awaited 查询结果时压根不绑 `error`」的清单，以及因语法诊断被跳过的文件数
-（跳过不为 0 时整份报告不可信）。射程内有三种写法：直接一条链、`cond ? await chain : { … }`、
-`await Promise.all([chain, …])` 配数组解构（元素上再盖 `as unknown as { data }` 也认）。
-还漏的两件事报告页脚会一并打印：`Promise.all` 之外自造的并发 helper（`allSettled` 等）与数组元素里
+它列出「解构 awaited 查询结果时压根不绑 `error`」的每一处，以及因语法诊断被跳过的文件数
+（跳过不为 0 时整份报告不可信，`QUERY_ERROR_CHANNEL_PARSE` 会同时点名）。
+还漏的三件事报告页脚会一并打印：`Promise.all` 之外自造的并发 helper（`allSettled` 等）、数组元素里
 再套三元，以及「绑了 `error` 却从不使用」那一档**刻意没测**（要作用域分析，全文数同名标识符会把
-`catch (error)` 也算进去，是个只会漏报的假指标）。非字面量表名（`.from(TABLE)`）**在**射程内，
-只标成 `<非字面量>`。什么时候接进门禁、以及为什么排在清偿之后，写在 roadmap C08-c。
+`catch (error)` 也算进去，是个只会漏报的假指标）。
+
+**不在门禁内**：`.single()` 的「零行即错误」语义——它由调用方的 `error` 处理决定，属于 Code Reviewer
+的检查项；以及上面页脚点名的那三档。
 
 ## 依赖与 secrets 扫描门禁（H10）
 
