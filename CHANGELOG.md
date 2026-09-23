@@ -221,7 +221,9 @@ All notable changes to IndieStack will be documented in this file.
   新增 2 条路由用例（该文件 13 → 15 条），三项变异核对全部被抓：catch 里 `return null` → 503 变 404；
   503 不 `clearChallenge` → `expected '' to contain 'pk_challenge=;'`；`register-options` 的 catch
   返回 `[]` → 200 而非 503。发现路径记在 `docs/progress.md`：这条是顺着 C08 栈尖的覆盖率表找到的——
-  `webauthn.ts` 未覆盖的语句恰好就是那四行 `throw`。
+  `webauthn.ts` 未覆盖的语句恰好就是那四行 `throw`。既然路由的判定全押在「抛不抛」上，那四行本身也
+  补了断言（`src/lib/repositories/webauthn.test.ts` 7 → 11 条）：把该文件五处 `if (error) throw` 全删掉，
+  恰好 5 条用例红——每一处抛错各由一条用例钉住，不是凑数的空断言。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
