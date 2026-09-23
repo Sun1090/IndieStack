@@ -18,9 +18,16 @@ export function rpId(): string {
   return new URL(siteUrl()).hostname;
 }
 
-/** 验证时的期望 origin（含协议，本地允许 http） */
+/**
+ * 验证时的期望 origin（含协议与非默认端口，本地允许 http）。
+ *
+ * 必须走 URL 解析，不能把环境变量原样交出去：@simplewebauthn 拿它和浏览器送来的
+ * `authData.origin` 做**严格相等**比较，而后者永远不带路径和尾斜杠。写成
+ * `NEXT_PUBLIC_APP_URL=https://app.example.com/` 时原样返回，注册和登录会全部 400，
+ * 客户端只看到「Verification failed」，看不出是部署配置的问题。
+ */
 export function expectedOrigin(): string {
-  return siteUrl();
+  return new URL(siteUrl()).origin;
 }
 
 /** 把 challenge 写入响应 cookie（httpOnly + SameSite=Lax + 5 分钟） */
