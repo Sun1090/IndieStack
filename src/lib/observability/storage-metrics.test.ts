@@ -84,6 +84,8 @@ describe("uploadOutcomeFor()", () => {
     );
     expect(uploadOutcomeFor({ ok: false, error: "uploadCancelled" })).toBe("cancelled");
     expect(uploadOutcomeFor({ ok: false, error: "uploadFailed" })).toBe("failure");
+    // 读不到授权判定所需的那一行是真失败（要进失败率分子），不是用户放弃
+    expect(uploadOutcomeFor({ ok: false, error: "uploadUnavailable" })).toBe("failure");
     expect(uploadOutcomeFor({ ok: false, error: "fileTooLarge" })).toBe("failure");
   });
 });

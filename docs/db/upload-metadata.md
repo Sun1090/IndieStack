@@ -108,6 +108,9 @@ put(objectKey)                      → provider 私钥写入
   ├─ 请求已取消（signal.aborted）    → 删除刚写入的对象，返回 uploadCancelled
   └─ recordUploadObject(...)        → 写 upload_objects（active）
        ├─ 写失败                     → 删除刚写入的对象，返回 uploadFailed（不留无元数据的对象）
+       ├─ 读不到「要被替换掉的旧对象」 → 删除刚写入的对象，返回 uploadUnavailable（C08-b）
+       │    （头像：`profiles.avatar_url`；封面：项目行与调用者角色。读失败**不往下写**——
+       │     一旦覆盖，旧 URL 就失去唯一指向它的业务行，变成只能等巡检发现的 bucket 孤儿）
        └─ 成功                       → 回写业务表（profiles.avatar_url / projects.logo_url）
             ├─ 业务写失败            → 删除对象 + 标记 metadata deleted，返回 uploadFailed
             └─ 成功                  → 替换场景：删除旧对象，**确认删除成功才**把旧行标记 deleted
@@ -117,6 +120,9 @@ put(objectKey)                      → provider 私钥写入
 
 - **元数据写失败即回滚对象**。宁可让一次上传失败，也不要在 bucket 里留下没有登记的行——
   否则孤儿巡检永远发现不了它（没有 `active` 行可对比）。
+- **读不到旧对象也回滚、并且不覆盖**（`uploadUnavailable`，HTTP 503）。理由与上一条同源：
+  「没读到」不能当成「没有旧的」，后者会让旧对象脱离登记。「没这一行」（`maybeSingle()` 返回
+  `data: null` 且 `error` 为 `null`）是合法状态，照常上传；两者必须是两个不同的回答。
 - **旧对象删除失败不标记 deleted**。对象可能仍在 bucket 里；标成 `deleted` 会让巡检把它
   当成已清理而漏报（`cleanupStorageObject` 返回 `false` 时跳过标记）。
 - **标记 deleted 失败只记日志**（`markDeletedQuietly`）。对象已经删掉，这时再抛错会让调用方
