@@ -19,6 +19,7 @@ import { test, expect, request as pwRequest, type APIRequestContext } from "@pla
 
 const E2E_BEARER = "e2e-bearer-token";
 import { appUrl } from "./support/base-url";
+import { actUntilServerAction } from "./support/hydrated";
 const MOCK_EMAIL = "dev@indiestack.local";
 
 async function resetContactMessages(api: APIRequestContext): Promise<void> {
@@ -205,18 +206,28 @@ test.describe("Admin / Contact / MFA 页面 (F02)", () => {
     const MESSAGE =
       "这是来自 Playwright UI 的 E2E 测试消息（仅断言 UI 流程不报错，落表由 #5 覆盖）。";
 
-    await page.locator("#name").fill(NAME);
-    await page.locator("#contact-email").fill(EMAIL);
-    await page.locator("#subject").fill(SUBJECT);
-    await page.locator("#message").fill(MESSAGE);
-
     // 提交按钮（带 Send 图标）
     const submit = page.getByRole("button", { name: /Send|提交/i }).last();
-    await submit.click();
+    // 提交不套 actUntilVisible：hydration 之前的那一次点击会由浏览器自己完成提交，
+    // 字段同样被清空、下面那句「成功标志」照样绿，而应用根本没收到请求。
+    // 判据因此换成「收到了一次带 next-action 的 Server Action 请求」，且恰好一次。
+    // 填写必须和点击一起重放：那次原生提交会留下一个空表单，字段是 required 的，
+    // 只重放点击会被浏览器自己的校验挡死（第一版就是这么卡住 23 秒的）。
+    const fillAndSubmit = async () => {
+      await page.locator("#name").fill(NAME);
+      await page.locator("#contact-email").fill(EMAIL);
+      await page.locator("#subject").fill(SUBJECT);
+      await page.locator("#message").fill(MESSAGE);
+      await submit.click();
+    };
+    const actions = await actUntilServerAction(page, fillAndSubmit);
+    expect(actions).toBe(1);
 
     // 等待 submit 处理完成（form fields 清空 或 toast 出现）
     // 表单 reset 是成功标志；不必依赖跨进程 mock 可见性
     await expect.poll(() => page.locator("#name").inputValue(), { timeout: 10_000 }).toBe("");
+    // 原生提交的现场长这样：/contact?name=…&email=…&subject=…&message=…
+    await expect(page).toHaveURL(/\/contact$/);
 
     // 断言：UI 流程没有抛出未捕获运行时错误
     const fatal = consoleErrors.filter((m) => !/aborted|ECONNRESET/i.test(m));
