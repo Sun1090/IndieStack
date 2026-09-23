@@ -14,11 +14,20 @@
  * "user not found" for a query that never completed. Nothing was logged, so the user looked
  * wrong and the system looked healthy.
  *
- * This gate is deliberately narrow for its first increment: it only judges **casts applied to an
- * awaited query result**, because that is the idiom that erases the channel the type system was
- * trying to preserve. Client components that fall back to least privilege on purpose are listed
- * in `ERROR_CHANNEL_EXEMPTIONS` with a reason and a site count — an exemption whose count drifts
- * (in either direction) fails, so the debt cannot silently grow or silently rot.
+ * This gate judges two neighbouring ways of deleting that signal:
+ *
+ *   - **assertion** (`collectErrorChannelCasts`): a cast whose asserted type has no `error` member;
+ *   - **destruction** (`collectUnboundErrorChannels`, C08-c): `const { data } = await supabase…`,
+ *     where `error` never enters scope at all, so there is no assertion to look at.
+ *
+ * The second one was measured before it was judged (roadmap D01): a first pass over `src/**` found
+ * 165 awaited query reads destructured in range and exactly 2 of them not binding `error`, both in
+ * a client component that resolves a failed role read to least privilege on purpose. That is the
+ * whole ledger, so the judgement is now enforced instead of merely reported.
+ *
+ * Client components that fall back to least privilege on purpose are listed in
+ * `ERROR_CHANNEL_EXEMPTIONS` with a reason and a site count **per rule** — an exemption whose count
+ * drifts (in either direction) fails, so the debt cannot silently grow or silently rot.
  *
  * It fails closed: no sources, no parsed files, or no awaited query results at all means the
  * scanner is not reading the codebase, which must not be reported as green.
@@ -36,6 +45,9 @@ export type QueryErrorChannelCode =
   | "QUERY_ERROR_CHANNEL_CAST_AWAY"
   | "QUERY_ERROR_CHANNEL_PARSE"
   | "QUERY_ERROR_CHANNEL_EXEMPT_STALE"
+  | "QUERY_ERROR_CHANNEL_UNBOUND_AWAY"
+  | "QUERY_ERROR_CHANNEL_UNBOUND_STALE"
+  | "QUERY_ERROR_CHANNEL_UNBOUND_VACUOUS"
   | "QUERY_ERROR_CHANNEL_NO_SOURCES"
   | "QUERY_ERROR_CHANNEL_SOURCE_EMPTY"
   | "QUERY_ERROR_CHANNEL_VACUOUS";
@@ -49,13 +61,20 @@ export interface QueryErrorChannelIssue {
 
 /** What the gate counts as "one file" of evidence, per exemption entry. */
 export interface ErrorChannelExemption {
-  /** Number of violating sites the file is allowed to keep. */
+  /** Error-erasing **casts** the file is allowed to keep (`0` = none, and it must be stated). */
   sites: number;
+  /**
+   * Awaited query results destructured **without binding `error`** that the file is allowed to
+   * keep. Absent means `0`. Both numbers are required to be checked in both directions because one
+   * statement can break both rules at once — `const { data } = (await chain) as { data: X }` is a
+   * cast that erases the type *and* a destructuring that drops the channel from scope.
+   */
+  unboundSites?: number;
   reason: string;
 }
 
 /**
- * Files allowed to keep an error-erasing cast, with the reason and the **measured** site count.
+ * Files allowed to keep an error-erasing read, with the reason and the **measured** site counts.
  *
  * Two kinds of entry live here, and they mean different things:
  *
@@ -63,15 +82,17 @@ export interface ErrorChannelExemption {
  *     least privilege, because a client component cannot 5xx. Fixing it would make it worse.
  *   - a *debt* entry (everything else): the code answers a question it did not ask — a failed read
  *     comes back as "no team", "no usage", "not an admin". Each one names where it lies, and
- *     roadmap C08-b drains them, biggest blast radius first.
+ *     roadmap C08-b/C08-c drains them, biggest blast radius first.
  *
- * Either way the count is checked in both directions: a new error-erasing cast fails the gate, and
- * so does fixing one without lowering its number, which keeps this list from rotting into a
+ * Either way every count is checked in both directions: a new error-erasing read fails the gate,
+ * and so does fixing one without lowering its number, which keeps this list from rotting into a
  * permanent waiver list.
  */
 export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemption>> = {
   "src/components/shared/permission-gate.tsx": {
     sites: 2,
+    // 同一批语句：这两处既是抹掉类型的断言，也是没绑 `error` 的解构，所以两条规则各记 2 处。
+    unboundSites: 2,
     reason:
       "justified: client component — a failed role read resolves to the least privileged role on purpose, so the gate must not pretend it can 5xx there.",
   },
@@ -245,7 +266,31 @@ export function inspectQueryErrorChannel(
     return issues;
   }
 
-  return issues.concat(castAwayIssues(stats.casts), staleLedgerIssues(stats.casts));
+  // The destructuring rule has its own floor: `judged > 0` only proves the cast walk saw chains,
+  // not that the second walk did. Tuning `readsFromPattern()` to always return `[]` leaves the
+  // first counter intact and turns this rule into a permanent pass.
+  const unbound = summarizeUnboundErrorChannels(collectUnboundErrorChannels(readable));
+  if (unbound.total === 0) {
+    issues.push({
+      code: "QUERY_ERROR_CHANNEL_UNBOUND_VACUOUS",
+      file: readable[0].file,
+      line: 0,
+      message:
+        `扫描了 ${readable.length} 个文件，一个「awaited 查询结果 + 解构绑定」都没判到：` +
+        "断言那一半还在工作，解构这一半的判据已经被调空",
+    });
+    // The cast side is still reported: a half-dead scanner must not hide real violations. The
+    // unbound ledger is *not* checked here, though — with the collector dead, every entry would
+    // read as stale, and the naive "fix" would delete a justified exemption.
+    return issues.concat(castAwayIssues(stats.casts), staleLedgerIssues(stats.casts));
+  }
+
+  return issues.concat(
+    castAwayIssues(stats.casts),
+    staleLedgerIssues(stats.casts),
+    unboundAwayIssues(unbound.unbound),
+    unboundStaleLedgerIssues(unbound.unbound),
+  );
 }
 
 /** Every error-erasing cast in a file whose ledger count does not cover it. */
@@ -298,6 +343,65 @@ function staleLedgerIssues(casts: readonly { file: string }[]): QueryErrorChanne
   return issues;
 }
 
+/**
+ * An awaited query result destructured without binding `error`, in a file whose destructuring
+ * ledger does not cover it. Same bidirectional rule as the cast ledger: a file with no
+ * `unboundSites` may keep none of these.
+ *
+ * 与 `staleLedgerIssues` 那一对同理，`found < allowed` 时两边都会报。变异探针量过这件事：
+ * 把这里改成「只许多不许少」不会让门禁变绿（台账那条仍然红），少掉的只是报告里的 `file:line`。
+ */
+function unboundAwayIssues(
+  sites: readonly UnboundQueryRead[],
+): QueryErrorChannelIssue[] {
+  const perFile = countByFile(sites);
+  const issues: QueryErrorChannelIssue[] = [];
+
+  for (const [file, found] of perFile) {
+    const allowed = ERROR_CHANNEL_EXEMPTIONS[file]?.unboundSites;
+    if (allowed === found) continue;
+
+    for (const site of sites) {
+      if (site.file !== file) continue;
+      issues.push({
+        code: "QUERY_ERROR_CHANNEL_UNBOUND_AWAY",
+        file: site.file,
+        line: site.line,
+        message:
+          allowed === undefined
+            ? `${file}:${site.line} 解构 awaited 查询结果（${site.source}）时没有绑定 \`error\`：` +
+              "读失败与「没有这一行」将变得无法区分"
+            : `${file}:${site.line} 解构 awaited 查询结果（${site.source}）时没有绑定 \`error\`；` +
+              `该文件登记的解构台账是 ${allowed} 处，实际 ${found} 处`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+/** A destructuring ledger entry that no longer matches reality — see `staleLedgerIssues`. */
+function unboundStaleLedgerIssues(
+  sites: readonly { file: string }[],
+): QueryErrorChannelIssue[] {
+  const perFile = countByFile(sites);
+  const issues: QueryErrorChannelIssue[] = [];
+
+  for (const [file, allowed] of Object.entries(ERROR_CHANNEL_EXEMPTIONS)) {
+    if (allowed.unboundSites === undefined) continue;
+    const found = perFile.get(file) ?? 0;
+    if (found === allowed.unboundSites) continue;
+    issues.push({
+      code: "QUERY_ERROR_CHANNEL_UNBOUND_STALE",
+      file,
+      line: 0,
+      message: `${file} 登记解构台账 ${allowed.unboundSites} 处，实际 ${found} 处：清理后请删掉这个计数`,
+    });
+  }
+
+  return issues;
+}
+
 function countByFile(sites: readonly { file: string }[]): Map<string, number> {
   const perFile = new Map<string, number>();
   for (const site of sites) {
@@ -307,23 +411,28 @@ function countByFile(sites: readonly { file: string }[]): Map<string, number> {
 }
 
 /* ============================================================
- * C08-c 测量：解构 awaited 查询结果时压根不取 `error`
+ * C08-c 判定：解构 awaited 查询结果时压根不取 `error`
  *
  * 这是 C08 的**邻居**而不是子集：上面那条规则判的是断言（类型上宣称不会有 error），
  * 这一条判的是解构（`const { data } = await supabase.from(...)`）——`error` 从来没被绑进
  * 作用域，所以没有任何断言可看，上面的门禁对着它一直是绿的。
  *
- * **这一版只做测量，不做门禁**（D01 口径：先量到误报，才有依据把判据收紧）。
+ * 先量后写（D01 口径）：测量跑过之后才把判据接进 `inspectQueryErrorChannel`。全库 358 个文件 /
+ * 165 处解构读数，其中 2 处压根没绑 `error`，都在 `permission-gate.tsx`，且都是刻意的最低权限
+ * 回落——所以台账不为 0，不为 0 就是这条规则没有把全库一锅端的证据。
  * 射程内有三种写法：直接一条链、`cond ? await chain : { data: [] }`、
  * `await Promise.all([chain, …])` 配数组解构。后两种原先判不到——条件那一种是清项目页时撞出来的
  * （清单因此一直报的是下界），`Promise.all` 那一种是顺手一起补的。
- * 还在射程外的两件事，报告页脚会一并打印，免得这份清单被读成「全库只有这些」：
+ * 还在射程外的三件事，`--unbound` 报告的页脚会一并打印，免得这份清单被读成「全库只有这些」：
  * - `Promise.all` 之外自造的并发 helper（`allSettled` 之类）不认；
+ * - `Promise.all` 数组元素里再套三元不认；
  * - 「绑了 `error` 却从不使用」**故意没有测**：判它要做作用域分析，而全文数同名标识符会把
  *   `catch (error)` 一起数进去，得到一个只会漏报的假指标——一个只会低估的计数比没有计数更糟。
  *
  * 非字面量表名（`.from(TABLE)`）**在**射程内，只是标成 `<非字面量>`：它一直都在，早先那句
  * 「非字面量表名的链不在射程内」是写错的，一并改掉。
+ * 语法诊断导致跳过的文件由 `QUERY_ERROR_CHANNEL_PARSE` 点名（两个收集器用的是同一个解析调用、
+ * 同一个判据），所以这里只累计计数，真实仓库那条用例要求它为 0。
  * ============================================================ */
 
 /** 一处 awaited 查询结果的解构读数。 */
