@@ -10,6 +10,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
 import { listApiKeysByUser, insertApiKey, deactivateApiKey } from "@/lib/repositories/api-keys";
+import type { ApiKeyRow } from "@/lib/repositories/api-keys";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import { logActionError } from "@/lib/api-log";
@@ -113,7 +114,10 @@ export async function revokeApiKey(keyId: string): Promise<ActionResult> {
   if (!user) return fail("notAuthenticated");
 
   try {
-    await deactivateApiKey(user.id, keyId);
+    // 0 行受影响不是成功：`update` 只在报错时给 `error`，吊销一个不存在（或本就属于别人、
+    // 被 RLS 挡掉）的密钥过去会照样回 `ok()`，UI 于是报「已吊销」。
+    const revoked = await deactivateApiKey(user.id, keyId);
+    if (!revoked) return fail("apiKeyNotFound");
   } catch (error) {
     await logActionError("[revokeApiKey] 吊销密钥失败", error);
     return fail("databaseError");
@@ -155,17 +159,32 @@ export async function regenerateApiKey(
   }
   if (!existing) return fail("apiKeyNotFound");
 
-  // 签发新密钥
-  const inserted = await insertApiKey({
-    user_id: user.id,
-    name: existing.name,
-    key_prefix: `${rawKey.slice(0, 10)}...`,
-    key_hash: hashApiKey(rawKey),
-    scopes: existing.scopes ?? ["project:read"],
-  });
+  // 顺序是**先吊销旧的、再签发新的**，不是反过来。原顺序会造出一个谁都不知道明文的可用凭据：
+  // 明文只在成功响应里给一次，一旦后面的吊销步骤抛错，新密钥已经 active 却永远不会被使用，
+  // 列表里只留一条前缀能对上的谜。现在的顺序最坏情况是「旧的回不去、新的没出来」——
+  // 那是一次可见的失败，用户看得见旧密钥已失效，并且手里就有「创建密钥」这条出路。
+  try {
+    const revoked = await deactivateApiKey(user.id, keyId);
+    if (!revoked) return fail("apiKeyNotFound");
+  } catch (error) {
+    await logActionError("[regenerateApiKey] 旧密钥吊销失败", error);
+    return fail("databaseError");
+  }
 
-  // 吊销旧密钥
-  await deactivateApiKey(user.id, keyId);
+  let inserted: ApiKeyRow;
+  try {
+    inserted = await insertApiKey({
+      user_id: user.id,
+      name: existing.name,
+      key_prefix: `${rawKey.slice(0, 10)}...`,
+      key_hash: hashApiKey(rawKey),
+      scopes: existing.scopes ?? ["project:read"],
+    });
+  } catch (error) {
+    // 这条不能用泛化的 `databaseError`：它说的不是「什么都没变」，而是「旧密钥已经没了」。
+    await logActionError("[regenerateApiKey] 旧密钥已吊销，但新密钥签发失败", error);
+    return fail("apiKeyRevokedButNotCreated");
+  }
 
   revalidatePath(ROUTES.apiKeys);
   return ok({ key: rawKey, record: toRecord(inserted) });

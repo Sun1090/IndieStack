@@ -1,5 +1,6 @@
 {
   "apiKeyNotFound": "未找到该 API 密钥，它可能已被删除。",
+  "apiKeyRevokedButNotCreated": "旧密钥已吊销，但新密钥签发失败，请重新创建一个密钥。",
   "alreadyMember": "该用户已是团队成员",
   "authEmailNotConfirmed": "邮箱尚未确认，请先查收确认邮件",
   "authError": "登录失败，请稍后重试",
