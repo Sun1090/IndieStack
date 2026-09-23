@@ -34,6 +34,7 @@ function mockSupabase(
     user?: { id: string; email?: string | null } | null;
     profileRole?: string | null;
     getUserError?: boolean;
+    getUserErrorObject?: boolean;
     profileQueryError?: boolean;
   } = {},
 ) {
@@ -41,16 +42,23 @@ function mockSupabase(
     user = { id: "u1", email: "a@b.com" },
     profileRole = "member",
     getUserError = false,
+    getUserErrorObject = false,
     profileQueryError = false,
   } = overrides;
 
   return {
     auth: {
-      getUser: vi
-        .fn()
-        .mockResolvedValue(
-          getUserError ? Promise.reject(new Error("network")) : { data: { user } },
-        ),
+      getUser: vi.fn().mockImplementation(() => {
+        if (getUserError) return Promise.reject(new Error("network"));
+        // supabase-js 的抖动是「返回 error」而不是抛：旧实现在这里连 error 都不取。
+        if (getUserErrorObject) {
+          return Promise.resolve({
+            data: { user: null },
+            error: { message: "Auth retry-failed fetch" },
+          });
+        }
+        return Promise.resolve({ data: { user }, error: null });
+      }),
     },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
@@ -95,6 +103,12 @@ describe("requireAuth()", () => {
 
     createClientMock.mockResolvedValue(mockSupabase({ profileRole: "owner" }));
     await expect(requireAuth()).resolves.toEqual({ ...adminUser, role: "member" });
+  });
+
+  it("auth.getUser 返回 error（不抛）时抛 SERVICE_UNAVAILABLE，而不是把已登录的用户送去登录页", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ getUserErrorObject: true }));
+    await expect(requireAuth()).rejects.toBe(SERVICE_UNAVAILABLE);
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 });
 
@@ -190,11 +204,18 @@ describe("safelyRequireAuth()", () => {
     if (!result.success) expect(result.error).toBe(UNAUTHORIZED);
   });
 
-  it("supabase 异常时捕获为 UNAUTHORIZED", async () => {
+  it("会话读取抛异常时回答 SERVICE_UNAVAILABLE，而不是没登录", async () => {
     createClientMock.mockResolvedValue(mockSupabase({ getUserError: true }));
     const result = await safelyRequireAuth();
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error).toBe(UNAUTHORIZED);
+    if (!result.success) expect(result.error.code).toBe("SERVICE_UNAVAILABLE");
+  });
+
+  it("auth.getUser 返回 error（不抛）时同样回答 SERVICE_UNAVAILABLE", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ getUserErrorObject: true }));
+    const result = await safelyRequireAuth();
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("已登录返回用户数据", async () => {
