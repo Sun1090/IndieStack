@@ -204,6 +204,28 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **本地 E2E 不再可能对着别人的服务跑完一整轮还全绿**：`playwright.config.ts` 与
+  `playwright.visual.config.ts` 的 `webServer.reuseExistingServer` 原来是 `!process.env.CI`——
+  本地会**静默复用**端口上任何先来的服务。就绪检查只看「`/api/health` 有没有 2xx」，
+  所以端口被另一个项目占着时，整套用例是拿别人的应用跑完的，绿得毫无意义。
+  这条路已经真实咬过一次（roadmap C07：那轮全量 E2E 整份作废，`:3100` 上是
+  `~/Projects/trade-buty` 的服务）；本轮跑 C08-c 的复验时，同一台机器上又有一个别的项目的
+  Playwright 在并行跑。
+  两道防线：**默认不复用**（`reuseExistingServer: false`），外加 **globalSetup 里的身份核对**——
+  取 `/api/health`，要求 `mockMode === true` 且 `version` 等于本仓库 `package.json` 的版本，
+  拿不到 JSON / 读失败 / 字段不对一律拒绝（「认不出来」和「认出来不是」在这儿是同一件事）。
+  实测两条各管一段：端口被占时先撞 Playwright 自己的报错（`.../api/health is already used`），
+  而它给的那条出路恰恰是 `set reuseExistingServer:true` ——**那个 workaround 会把洞重新打开**，
+  身份核对就是为了让那条路也走得通：临时把配置改回 true 再放一台假服务在 `:3100` 上，
+  抛出的正是 `http://localhost:3100/api/health 回的不是本仓库要测的应用：mockMode 不是 true（拿到 false）…`，
+  并带着 `lsof -nP -iTCP:3100 -sTCP:LISTEN` 与 `E2E_BASE_PORT=3400 pnpm test:e2e` 两条出路。
+  判据是纯函数（`src/lib/testing/e2e-server-identity.ts`），`e2e/support/warm-up.ts` 只做取数与抛错，
+  且身份核对排在「只在并行时预热」那句早退**之前**——串行才是最常用的模式。
+  单测 15 条（含真实健康响应的形状、`mockMode` 的 `"true"` / `1` / `null` 都不放行、
+  读失败必须抛、URL 取的是 `/api/health`、接线与早退顺序）；变异核对 9 项**全部被杀死**，
+  其中两项专门盯「接线」：把整段身份核对从 globalSetup 删掉、或把它挪到早退之后，各让一条用例红。
+  正向验证：端口空着时 `pnpm test:e2e e2e/theme.spec.ts` → 6 passed（真服务器被正确认出来）。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

@@ -1153,3 +1153,41 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 本地 E2E 从此拒绝「不是我们的那台服务器」（任务 #52）
+
+- 里程碑 / 版本：v0.12.0 / C 域（E2E 可信度）。基在 `origin/main`，与 #115 无依赖关系。
+- 分支 / PR：`fix/e2e-server-identity` → **PR #116**（基在 `origin/main`，停在 ready-for-review）。
+- 状态：DONE（PR 待 review 合并）。
+- 起因不是 theorizing：`reuseExistingServer: !process.env.CI` 意味着本地会静默复用端口上任何先来的
+  服务，而就绪检查只看 `/api/health` 有没有 2xx。roadmap C07 已经记过一次「整轮全量 E2E 跑在
+  `trade-buty` 的服务上、结果整份作废」；今天复跑 C08-c 的验证时，同一台机器上又有一个别的项目的
+  `playwright.build.config.ts` 在并行跑，跑完还留了一台 `:3100` 的孤儿 dev server。
+  **一份证明不了任何东西的绿，比没有测更贵**——它会被人引用。
+- 两道防线，各管一段（这是量出来的，不是设计时假设的）：
+  1. `reuseExistingServer: false`（两份 playwright 配置都改）。端口被占时 Playwright 自己就拒绝启动：
+     `http://localhost:3100/api/health is already used …`。实测：拿一个假服务占住 `:3100` 跑
+     `e2e/theme.spec.ts` → exit 1，报的就是这句。
+  2. globalSetup 里的身份核对。关键在 1 的那句报错**给出的出路**是
+     `set reuseExistingServer:true`——照做就把洞重新打开了。所以身份核对必须独立存在：
+     `mockMode === true` 且 `version` 等于本仓库 `package.json`，拿不到 JSON / 读失败 / 字段不对都拒绝。
+     实测：临时把配置改回 `true` 再放假服务在 `:3100`，抛出的正是
+     `回的不是本仓库要测的应用：mockMode 不是 true（拿到 false）`，带 `lsof` 与
+     `E2E_BASE_PORT=3400` 两条出路；抛错发生在任何用例跑起来之前。
+- 结构：判据是纯函数 `src/lib/testing/e2e-server-identity.ts`（含 `assertOurServer`，取数由调用方注入），
+  `e2e/support/warm-up.ts` 只剩「读 package.json + 传 fetch」。身份核对排在
+  「只在并行时预热」那句早退**之前**——串行才是最常用的模式，放在早退之后等于在最常跑的路上不设防。
+- 覆盖：新增 15 条单测（真实健康响应放行；`mockMode` 是 `"true"` / `1` / `0` / `null` / 缺省都不放行；
+  版本不一致时理由里点名两边；非对象/数组拒绝；读失败必须抛；取的是 `<origin>/api/health`；
+  接线与早退顺序）。变异核对 **9 项全部被杀死**，其中两项专门盯接线（I7/I9）。
+  这两条是补出来的：第一版 I7 用「循环长度改成 0」模拟，探针跑完发现它**杀不掉**（调用点文本还在早退之前），
+  于是换成真正的「整段搬到早退之后」；同时把 needle 从 `assertOurServer` 收紧成 `await assertOurServer(`——
+  只查名字的话 import 那一行就足够让用例假绿。
+- 正向验证：端口空着时 `pnpm test:e2e e2e/theme.spec.ts` → 6 passed（真服务器被正确认出，没误伤）。
+- 验证：`pnpm -s lint` / `pnpm -s type-check` → exit 0；`CI=true pnpm check:all` → exit 0；
+  `pnpm -s test` → exit 0；`pnpm build` → exit 0。
+- 风险 / 回滚：本地跑 E2E 的人从此不能「顺手复用一台已经在跑的 dev server」——要复用就得显式改回
+  `reuseExistingServer:true`，而那条路的正确性由身份核对兜着。运行时代码零改动，revert 即回滚。
+- 下一件：#51（同类 `goto → toBeVisible → 一次 click` 还在 admin-contact-mfa / responsive 里，
+  要先逐个判幂等性）。
+- 更新时间：2026-09-23（UTC）。
