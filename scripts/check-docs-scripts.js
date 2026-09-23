@@ -1,30 +1,22 @@
 #!/usr/bin/env node
 /**
- * docs-site scripts.md 与 package.json 同步校验
- * 确保文档中记录的 pnpm 命令都真实存在（防止文档漂移）
+ * 文档命令校验入口（docs-site scripts.md ↔ package.json）。
+ *
+ * 判定在 src/lib/docs/scripts-docs.ts（纯函数 + 单测），IO 在 scripts/lib/scripts-docs-check.js，
+ * 这里只负责用 Node 原生 type stripping 运行 ESM（import .ts 需要该 flag）。
  */
-const fs = require("fs");
-const path = require("path");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
-const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
-const scriptNames = new Set(Object.keys(pkg.scripts));
+const cli = path.join(__dirname, "lib", "scripts-docs-check.js");
+const result = spawnSync(
+  process.execPath,
+  ["--no-warnings", "--experimental-strip-types", cli, ...process.argv.slice(2)],
+  { stdio: "inherit" },
+);
 
-let failed = false;
-for (const locale of ["en", "zh-CN"]) {
-  const docPath = path.join(__dirname, "..", "docs-site", locale, "scripts.md");
-  if (!fs.existsSync(docPath)) continue;
-  const doc = fs.readFileSync(docPath, "utf8");
-  // 抓取文档中的 pnpm <name> 命令（排除 pnpm install/build 等通用词由白名单处理）
-  const commands = [...doc.matchAll(/`pnpm\s+([a-z:.-]+)`/g)].map((m) => m[1]);
-  // pnpm 内置命令白名单（非 package.json scripts）
-  const builtin = new Set(["install", "add", "remove", "update", "dev"]);
-  for (const cmd of new Set(commands)) {
-    if (!builtin.has(cmd) && !scriptNames.has(cmd)) {
-      console.error(`❌ ${locale}/scripts.md 引用了不存在的脚本: pnpm ${cmd}`);
-      failed = true;
-    }
-  }
+if (result.error) {
+  console.error(`❌ 无法运行文档命令校验：${result.error.message}`);
+  process.exit(1);
 }
-
-if (failed) process.exit(1);
-console.log("✅ docs-site scripts 文档与 package.json 同步");
+process.exit(result.status ?? 1);
