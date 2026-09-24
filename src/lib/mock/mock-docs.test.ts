@@ -9,8 +9,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildSnapshot, runMockDocsCheck } from "../../../scripts/lib/mock-docs-check.js";
 import {
   auditMockDocs,
+  extractClientFilters,
   extractClientTables,
   extractDocumentedEndpoints,
+  extractDocumentedFilters,
   extractDocumentedTables,
   extractE2eEndpoints,
   formatMockDocIssues,
@@ -31,14 +33,16 @@ function codes(input: Parameters<typeof auditMockDocs>[0]): string[] {
   return auditMockDocs(input).issues.map((item) => item.code);
 }
 
-/** 合规文档：登记全部传入表与端点，并覆盖所有事实锚点。 */
+/** 合规文档：登记全部传入表、端点与过滤算子，并覆盖所有事实锚点。 */
 function compliantDoc(
   tables: string[] = ["profiles"],
   endpoints: string[] = ["/api/e2e/mock-reset"],
+  filters: string[] = MOCK_FILTERS,
 ) {
   const facts = REQUIRED_DOC_FACTS.map((fact) => `- \`${fact.phrase}\``).join("\n");
   const tableRows = tables.map((name) => `| \`${name}\` | rows |`).join("\n");
   const endpointRows = endpoints.map((endpoint) => `- \`${endpoint}\``).join("\n");
+  const filterRow = `| ${filters.map((name) => `\`${name}()\``).join(" / ")} | Implemented filters |`;
   return [
     "# Mock 开发指南",
     "",
@@ -48,6 +52,8 @@ function compliantDoc(
     "| ----- | ------- |",
     tableRows,
     "",
+    filterRow,
+    "",
     "## E2E 端点",
     "",
     endpointRows,
@@ -55,9 +61,35 @@ function compliantDoc(
   ].join("\n");
 }
 
-const MOCK_SOURCE = ["switch (this.table) {", '  case "profiles":', "    return rows;", "}"].join(
-  "\n",
-);
+const MOCK_FILTERS = ["eq", "in", "is"];
+
+const MOCK_SOURCE = [
+  "switch (this.table) {",
+  '  case "profiles":',
+  "    return rows;",
+  "}",
+  "class MockQueryBuilder {",
+  "  eq(column: string, value: unknown) {",
+  "    this.filters[column] = value;",
+  "    return this;",
+  "  }",
+  "  in(column: string, values: unknown[]) {",
+  "    this.filters[`${column}:in`] = values;",
+  "    return this;",
+  "  }",
+  "  is(column: string, value: unknown) {",
+  "    this.filters[`${column}:isnull`] = true;",
+  "    return this;",
+  "  }",
+  "  select(columns: string) {",
+  "    this.columns = columns;",
+  "    return this;",
+  "  }",
+  "  matches(row: Record<string, unknown>) {",
+  '    return this.filters["id"] !== undefined;',
+  "  }",
+  "}",
+].join("\n");
 
 describe("extractClientTables", () => {
   it("抽取表名并去重排序", () => {
@@ -93,6 +125,127 @@ describe("extractE2eEndpoints", () => {
         "docs/e2e/mock/route.ts",
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("extractClientFilters", () => {
+  it("只数「真的往 this.filters 写条件」的方法，读它的不算", () => {
+    expect(extractClientFilters(MOCK_SOURCE)).toEqual(["eq", "in", "is"]);
+  });
+
+  it("改名不改行为的算子仍然被抽到；只留名字不留写入就不算实现了", () => {
+    const renamed = [
+      "class B {",
+      "  neq(column: string, value: unknown) {",
+      "    return this;",
+      "  }",
+      "  gte(column: string, value: unknown) {",
+      "    this.filters[`${column}:gte`] = value;",
+      "    return this;",
+      "  }",
+      "}",
+    ].join("\n");
+    expect(extractClientFilters(renamed)).toEqual(["gte"]);
+  });
+
+  it("赋值之外的比较不会被误判为写入", () => {
+    const reads = ["class B {", '  ok() { return this.filters["id"] === 1; }', "}"].join("\n");
+    expect(extractClientFilters(reads)).toEqual([]);
+  });
+
+  it("真仓库的查询构建器：抽出的算子必须多于 9 个且包含 eq 与 gt", () => {
+    const source = fs.readFileSync("src/lib/mock/index.ts", "utf8");
+    const filters = extractClientFilters(source);
+    expect(filters.length).toBeGreaterThan(9);
+    expect(filters).toContain("eq");
+    expect(filters).toContain("gt");
+    expect(filters).not.toContain("neq");
+    expect(filters).not.toContain("select");
+  });
+});
+
+describe("extractDocumentedFilters", () => {
+  it("认英文与中文两种行首，取首格里的行内代码方法名", () => {
+    const en = "| `eq()` / `gt()` | Implemented filters. Anything else … |";
+    const zh = "| `eq()` / `gt()` | 已实现的过滤器。其它方法未实现 |";
+    expect(extractDocumentedFilters(en)).toEqual(["eq", "gt"]);
+    expect(extractDocumentedFilters(zh)).toEqual(["eq", "gt"]);
+  });
+
+  it("没有这一行时返回 null，而不是空数组", () => {
+    expect(extractDocumentedFilters("| Table | Returns |\n| `profiles` | rows |")).toBeNull();
+  });
+
+  it("真仓库两份 mock 文档登记的算子必须与实现逐字相等", () => {
+    const filters = extractClientFilters(fs.readFileSync("src/lib/mock/index.ts", "utf8"));
+    for (const relative of ["docs-site/mock.md", "docs-site/zh-CN/mock.md"]) {
+      const documented = extractDocumentedFilters(fs.readFileSync(relative, "utf8"));
+      expect(documented, relative).toEqual(filters);
+    }
+    expect(filters.length).toBeGreaterThan(9);
+  });
+});
+
+describe("过滤算子表面与文档对账", () => {
+  it("文档少写一个已实现的算子 → MOCK_FILTER_UNDOCUMENTED", () => {
+    const doc = compliantDoc(["profiles"], ["/api/e2e/mock-reset"], ["eq", "in"]);
+    expect(
+      codes({
+        mockIndexSource: MOCK_SOURCE,
+        e2eRoutePaths: ["src/app/api/e2e/mock-reset/route.ts"],
+        documents: [{ path: "docs-site/mock.md", content: doc }],
+      }),
+    ).toContain("MOCK_FILTER_UNDOCUMENTED");
+  });
+
+  it("文档多写一个没实现的算子 → MOCK_FILTER_UNSUPPORTED（`neq()` 那一类假说明书）", () => {
+    const doc = compliantDoc(["profiles"], ["/api/e2e/mock-reset"], ["eq", "in", "is", "neq"]);
+    const report = auditMockDocs({
+      mockIndexSource: MOCK_SOURCE,
+      e2eRoutePaths: ["src/app/api/e2e/mock-reset/route.ts"],
+      documents: [{ path: "docs-site/mock.md", content: doc }],
+    });
+    const issue = report.issues.find((item) => item.code === "MOCK_FILTER_UNSUPPORTED");
+    expect(issue?.detail).toContain("neq()");
+  });
+
+  it("两份 docs-site 文档缺这一行 → MOCK_FILTER_ROW_MISSING；架构文档不强制", () => {
+    const noRow = compliantDoc(["profiles"], ["/api/e2e/mock-reset"], []).replace(
+      "|  | Implemented filters |",
+      "",
+    );
+    expect(
+      codes({
+        mockIndexSource: MOCK_SOURCE,
+        e2eRoutePaths: ["src/app/api/e2e/mock-reset/route.ts"],
+        documents: [{ path: "docs-site/mock.md", content: noRow }],
+      }),
+    ).toContain("MOCK_FILTER_ROW_MISSING");
+    expect(
+      codes({
+        mockIndexSource: MOCK_SOURCE,
+        e2eRoutePaths: ["src/app/api/e2e/mock-reset/route.ts"],
+        documents: [{ path: "docs/architecture/13-mock-system.md", content: noRow }],
+      }),
+    ).not.toContain("MOCK_FILTER_ROW_MISSING");
+  });
+
+  it("算子名还在但不再写 this.filters → 视为未实现，文档那一行要跟着改", () => {
+    const shell = [
+      "class B {",
+      "  eq(column: string, value: unknown) {",
+      "    return this;",
+      "  }",
+      "}",
+    ].join("\n");
+    const report = auditMockDocs({
+      mockIndexSource: shell,
+      e2eRoutePaths: ["src/app/api/e2e/mock-reset/route.ts"],
+      documents: [{ path: "docs-site/mock.md", content: compliantDoc() }],
+    });
+    expect(report.filters).toEqual([]);
+    expect(report.issues.map((item) => item.code)).toContain("MOCK_DOC_SOURCE_EMPTY");
+    expect(report.issues.map((item) => item.code)).toContain("MOCK_FILTER_UNSUPPORTED");
   });
 });
 
@@ -238,13 +391,15 @@ describe("auditMockDocs", () => {
     ).toContain("MOCK_DOC_SOURCE_EMPTY");
   });
 
-  it("抽不到表名或端点时失败封闭", () => {
+  it("抽不到表名、端点或过滤算子时失败封闭", () => {
     const empty = codes({
       mockIndexSource: "const x = 1;",
       e2eRoutePaths: ["src/app/api/health/route.ts"],
       documents: [{ path: "docs-site/mock.md", content: compliantDoc() }],
     });
-    expect(empty.filter((code) => code === "MOCK_DOC_SOURCE_EMPTY")).toHaveLength(2);
+    expect(empty.filter((code) => code === "MOCK_DOC_SOURCE_EMPTY")).toHaveLength(3);
+    // 抽取失效之外不能顺带把「文档写了三个算子」判成合规：那一行也得报错
+    expect(empty.filter((code) => code === "MOCK_FILTER_UNSUPPORTED")).toHaveLength(3);
   });
 
   it("每份文档独立校验", () => {
