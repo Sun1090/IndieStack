@@ -204,6 +204,16 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **两处「登出失败」不再被读成「已登出」（C09）**：`establishPasskeySession` 在 magiclink 已被消费、返回的
+  user 与断言者不一致时会先撤销那条刚建立的本地会话，那一句写的是 `signOut(...).catch(() => undefined)`——
+  撤销失败和撤销成功在代码里是同一个形状：请求方拿到 "bridge failed"，浏览器却揣着一条有效会话，日志里什么都没有。
+  现在失败经 `logApiError` 留下痕迹，函数照旧失败关闭（返回值没改，因为它没资格比原来更准）。
+  `deleteAccountAction` 里的 `signOut({ scope: "global" })` 把整个返回值丢弃：账户确实删掉了，回头报
+  `accountDeleteFailed` 会让人去删一个已经不存在的账户，但文件头上承诺的「清掉本设备会话」没做成时也不能读成做成了，
+  所以记录之后仍返回 `ok`。同一文件里 `getUser()` 抹掉 `error` 的那条（会话读失败会被说成「未登录」）**刻意没在这条里改**：
+  区分「读不到」与「没有」的判据 `isRetryableSessionReadFailure` 还在 #92 里审，本条要独立于那条栈，不背它的级联。
+  4 项新用例（`passkey-session` 3 条 / `account` 1 条，两文件用例数 7+7 → 10+8）。变异核对：把两个源文件退回修复前，
+  新用例 3 红 1 绿——红的正是三条断「失败要留痕迹」的，绿的那条是「撤销成功时不记日志」，它本来就该绿。
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

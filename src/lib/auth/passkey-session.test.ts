@@ -11,6 +11,7 @@ const {
   generateLinkMock,
   verifyOtpMock,
   signOutMock,
+  logApiErrorMock,
 } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
   createClientMock: vi.fn(),
@@ -18,10 +19,12 @@ const {
   generateLinkMock: vi.fn(),
   verifyOtpMock: vi.fn(),
   signOutMock: vi.fn(),
+  logApiErrorMock: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
+vi.mock("@/lib/api-log", () => ({ logApiError: logApiErrorMock }));
 
 import { establishPasskeySession, PasskeySessionError } from "./passkey-session";
 
@@ -159,6 +162,50 @@ describe("establishPasskeySession()", () => {
 
     await expect(establishPasskeySession(USER_ID)).rejects.toBeInstanceOf(PasskeySessionError);
     expect(signOutMock).toHaveBeenCalledWith({ scope: "local" });
+  });
+
+  it("撤销本地会话失败时留下痕迹，并且仍然失败关闭", async () => {
+    verifyOtpMock.mockResolvedValue({
+      data: {
+        session: { access_token: "access" },
+        user: { id: "22222222-2222-2222-2222-222222222222", factors: [] },
+      },
+      error: null,
+    });
+    signOutMock.mockResolvedValue({ error: new Error("revocation rejected") });
+
+    await expect(establishPasskeySession(USER_ID)).rejects.toBeInstanceOf(PasskeySessionError);
+    expect(logApiErrorMock).toHaveBeenCalledTimes(1);
+    expect(logApiErrorMock.mock.calls[0][1]).toMatchObject({ message: "revocation rejected" });
+  });
+
+  it("撤销本地会话抛异常时同样留下痕迹", async () => {
+    verifyOtpMock.mockResolvedValue({
+      data: {
+        session: { access_token: "access" },
+        user: { id: "22222222-2222-2222-2222-222222222222", factors: [] },
+      },
+      error: null,
+    });
+    signOutMock.mockRejectedValue(new Error("transport died"));
+
+    await expect(establishPasskeySession(USER_ID)).rejects.toBeInstanceOf(PasskeySessionError);
+    expect(logApiErrorMock).toHaveBeenCalledTimes(1);
+    expect(logApiErrorMock.mock.calls[0][1]).toMatchObject({ message: "transport died" });
+  });
+
+  it("撤销成功时不记日志", async () => {
+    verifyOtpMock.mockResolvedValue({
+      data: {
+        session: { access_token: "access" },
+        user: { id: "22222222-2222-2222-2222-222222222222", factors: [] },
+      },
+      error: null,
+    });
+
+    await expect(establishPasskeySession(USER_ID)).rejects.toBeInstanceOf(PasskeySessionError);
+    expect(signOutMock).toHaveBeenCalledWith({ scope: "local" });
+    expect(logApiErrorMock).not.toHaveBeenCalled();
   });
 
   it("底层错误只暴露通用会话桥接错误", async () => {
