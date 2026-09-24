@@ -2021,3 +2021,53 @@
   ② 它只覆盖 chromium，webkit 侧（视觉基线那条链）仍只能由 CI runner 出证据。
 - 下一项：把 E2E 这一行与「配方可复现」一起补进 PR #118 正文。
 - 更新时间：2026-09-24（UTC 11:4x 前后）。
+
+## 2026-09-24 — 读了仓库保护规则本身：合并配方少了一步，而 Vercel 的红根本不挡合并
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：合并地图里「先合前驱、再把后继的 base 改成 main」那一步是我从**过去的现象**推出来的，
+  没有读过规则本身。趁队列静止，直接读 `gh api repos/Sun1090/IndieStack/branches/main/protection`。
+- 完成内容：
+  1. **量到的规则**：必需检查 7 个（`Lint & Type Check`、`Build`、`Build Docs Site`、
+     `E2E (Playwright)`、`security-config`、`Analyze (javascript-typescript)`、`Detect Secrets`），
+     `strict: true`、`enforce_admins: true`、`required_linear_history: true`，
+     仓库侧 `delete_branch_on_merge: false`。
+  2. **三条结论，两条推翻了我自己写过的话**：
+     ① `Vercel – indie-stack*` **不在必需清单里**——那条 `build-rate-limit` 红不挡任何一次合并。
+     以前我是从「红了很多天也合了几十条」归纳的，现在是读设置读出来的；
+     ② `strict: true` 意味着每合一条，其余每一条立刻变成不是最新 base，必须逐条更新分支——
+     46 条一起合的体力成本主要在这里，不在那 6 条冲突边；
+     ③ `required_linear_history` + `enforce_admins` 关掉了我一直默认的那条退路：
+     管理员**不能**绕过必需检查合并，也不能用 merge commit。
+  3. **因此合并配方缺一步**：栈内 PR 的正确顺序是
+     前驱落地 → `gh pr edit <n> --base main` → **`gh pr update-branch <n> --rebase`** → 等 7 项绿 → 合。
+     第 ③ 步不能省，因为**改 base 不触发 CI**（本仓库量过两次、当时只记成一条 trivia）：
+     只改 base 的话那 5 个必需检查会一直是「expected but not reported」，
+     而 `enforce_admins:true` 让 GitHub 把这条 PR 永远判成 `BLOCKED`，谁也点不动。
+  4. **队列现状按这个判据重扫**（46 条，逐条 `mergeStateStatus` + `mergeable`）：
+     `MERGEABLE=46`（没有一条 GitHub 侧冲突）；`BLOCKED=2` 是 **#98** 与 **#118**；`CLEAN=1`（#121）；
+     其余 43 条 `UNSTABLE` 的红全在 Vercel 那两个非必需检查上。
+     #98 的原因实测到位：它的 head 上只有 2 个 check run（`Detect Secrets`、`security-config`），
+     正是「本会话早些时候我把它改指 main、而改 base 不触发 CI」留下的后果——**是我这一步做出来的一堵墙**，
+     不是我发现的别人的问题。#118 是自己刚推送、CI 还在跑。
+- 验证命令与结果：
+  - `gh api repos/Sun1090/IndieStack/branches/main/protection`（读 `required_status_checks.contexts` /
+    `strict` / `enforce_admins` / `required_linear_history`）、
+    `gh api repos/Sun1090/IndieStack --jq '{delete_branch_on_merge,...}'`。
+  - `gh pr list --state open --limit 100 --json number,mergeable,mergeStateStatus`
+    → 分母 `PRs: 46`，`BLOCKED=2 CLEAN=1 UNSTABLE=43`，`MERGEABLE=46`。
+  - `gh pr checks 98` → 4 行：2 pass + 2 Vercel fail；
+    `gh api .../commits/$(git rev-parse pr/98)/check-runs` → `check runs: 2`，
+    两条命令互相印证「CI 从没在这个 head 上跑过」。
+  - `gh run list --limit 30` → `success=28`、`in_progress=2`（都是 #118 自己），最近 30 次没有 failure。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：**#98 我没有动**。修它需要一次能触发 `synchronize` 的推送，而它的分支是
+  #99–#114 那条 16 条长栈的地基：重推会牵动整条栈重排；`close` + `reopen` 也能触发，但仓库是否开了
+  「合并/关闭时自动删头分支」我**测不到**（REST 没有这个字段），而删掉 `fix/c08b-invitations-route`
+  会让那条栈全部塌掉——高爆破半径、不可逆，所以不做，改成把这一步写进正文交给合并的人：
+  对 #98 直接执行 `gh pr update-branch 98 --rebase`（它 base 就是 main，rebase 是空操作但会产生一次推送，
+  从而触发 CI）。回滚 = revert 本 commit。
+- 下一项：把这一节同步进 PR #118 正文的合并动作清单。
+- 更新时间：2026-09-24（UTC 11:5x 前后）。
