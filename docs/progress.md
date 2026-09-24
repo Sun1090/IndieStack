@@ -1504,6 +1504,15 @@
   - 合成树复跑：`sim/queue-46` 再并一次本分支（`main` 之上 176 个 commit / 25 个 merge）后
     `CI=true pnpm check:all` → **exit 0**，`Test Files 229 passed (229)` / `Tests 2699 passed (2699)`；
     `pnpm test:coverage` → exit 0，`All files 97.46 / 92.37 / 98.27 / 98.63`（阈值 91/90/93/92 未动）。
+- 补记（同日）：上面这条把 `toBe(14)` 换地板值的道理，在**同一个 `describe("真实仓库")` 的上一格**还有一份
+  同形的没被改掉——`expect(handlers.length).toBe(45)`。已在 #137 的分支修成 `toBeGreaterThanOrEqual(45)`
+  （commit `5b0e3f1b`，本分支 rebase 之后继承），用例标题里的「45 个」一并去掉，文件头注释改成写明
+  「条数只作地板值」。两处唯一的差别是**有没有当场亮**：14 那处是整队列重建跑红的（`expected 16 to be 14`），
+  45 这处还没亮——49 个 open PR 逐个对 `origin/main` 做 diff，新增与删除的 handler 各 0 条，也没有 PR 写
+  `export const GET` 那种变体（所以独立分母那条 canary 同样不会被踩）。不亮不等于不会亮：下一个加端点的 PR
+  没有任何理由知道要回来改测试里这个数，它就会在合并后的 main 上红成一场不存在的回归，正是 14 那次的剧本。
+  活性核对：地板临时抬到 46 → `AssertionError: expected 45 to be greater than or equal to 46`
+  （1 红 26 绿），顺带现量确认合并前分母确实是 45；改回后 `git diff` 复核无残留。本次补记只动本文件。
 - 变更文件：`src/lib/security/route-auth.test.ts`、`docs/roadmap-0.12.0.md`、`docs/progress.md`
   （本条目 + 上述两处数字更正）。
 - 阻塞 / 风险 / 回滚：C12 的 ①（哪些写入端点必须有窗口）仍是要人定的判断，本条**没有**给任何端点判对错。
