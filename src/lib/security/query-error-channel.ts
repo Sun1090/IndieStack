@@ -57,13 +57,16 @@ export interface ErrorChannelExemption {
 /**
  * Files allowed to keep an error-erasing cast, with the reason and the **measured** site count.
  *
- * Two kinds of entry live here, and they mean different things:
+ * The entries here are *debt* (C08-b): the code answers a question it did not ask — a failed read
+ * comes back as "no team", "no usage", "not an admin". Each one names where it lies, and
+ * roadmap C08-b drains them, biggest blast radius first.
  *
- *   - a *justified* entry (`permission-gate.tsx`): the code is right to resolve a failed read to
- *     least privilege, because a client component cannot 5xx. Fixing it would make it worse.
- *   - a *debt* entry (everything else): the code answers a question it did not ask — a failed read
- *     comes back as "no team", "no usage", "not an admin". Each one names where it lies, and
- *     roadmap C08-b drains them, biggest blast radius first.
+ * There used to be a second kind here, a *justified* entry for `permission-gate.tsx`: a client
+ * component legitimately resolves a failed role read to the least privileged role, because it
+ * cannot 5xx. That entry is gone — the same outcome is now derived from the error channel
+ * (`resolveProfileRole({ error, role })` returns `viewer` when `error` is set), so the read
+ * failure travels the same path as a success instead of being indistinguishable from one.
+ * The behaviour did not change; what changed is that it is now honestly derived.
  *
  * Either way the count is checked in both directions: a new error-erasing cast fails the gate, and
  * so does fixing one without lowering its number, which keeps this list from rotting into a
@@ -78,11 +81,6 @@ export const ERROR_CHANNEL_EXEMPTIONS: Readonly<Record<string, ErrorChannelExemp
   "src/app/dashboard/team/page.tsx": {
     sites: 2,
     reason: "debt (C08-b): a failed membership read renders the 'you have no team' empty state.",
-  },
-  "src/components/shared/permission-gate.tsx": {
-    sites: 2,
-    reason:
-      "justified: client component — a failed role read resolves to the least privileged role on purpose, so the gate must not pretend it can 5xx there.",
   },
   "src/app/api/analytics/route.ts": {
     sites: 1,

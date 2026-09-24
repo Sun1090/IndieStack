@@ -131,7 +131,10 @@ describe("inspectQueryErrorChannel()", () => {
   });
 
   it("台账按数量对账：多一处就报，少一处也报（清理完不许留着旧条目）", () => {
-    const file = "src/components/shared/permission-gate.tsx";
+    // fixture 必须挂在一个**台账里还剩 2 处额度**的真实文件上：codesFor 用的是真台账，
+    // 额度对不上时它会连同 STALE 一起报，那正是本条要断的分岔。
+    const file = "src/app/dashboard/team/page.tsx";
+    expect(ERROR_CHANNEL_EXEMPTIONS[file]?.sites).toBe(2);
     expect(
       codesFor([source(file, `async function f() {${ROLE_QUERY}${ROLE_QUERY}}`)], file),
     ).toEqual([]);

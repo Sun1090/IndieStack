@@ -579,10 +579,12 @@ const { data: profile } = (await supabase
   被断言的东西必须是 `await` 下来的 `.from()` / `.rpc()` 链结果。未 await 的构造器断言
   （`const query = admin.from("x").select(...) as unknown as FilterChain`）是给 builder 定形状，不在射程内。
 - 断言类型里仍带 `error:` 的写法合规——门禁要的是「错误通道还在」，不是某种特定写法。
-- `ERROR_CHANNEL_EXEMPTIONS` 是**按文件计数**的台账，两种条目含义不同：`justified`（客户端组件
-  `permission-gate.tsx`，读角色失败时故意回落到最低权限，客户端无法 5xx）与 `debt (C08-b)`
+- `ERROR_CHANNEL_EXEMPTIONS` 是**按文件计数**的台账，条目是 `debt (C08-b)`
   （代码确实在撒谎，等待按影响面从大到小偿还）。台账**双向对账**：新增一处抹除报错，
   修好一处不改数字也报错（`QUERY_ERROR_CHANNEL_EXEMPT_STALE`），所以它不会悄悄长胖，也不会悄悄烂成永久豁免表。
+  这张表曾经还有第二种条目 `justified`（客户端组件 `permission-gate.tsx`，读角色失败时故意回落到
+  最低权限、客户端无法 5xx）；它已随 #145 删掉——同样的结局现在由 `resolveProfileRole({ error, role })`
+  从 error 通道导出，行为没变，变的只是它不再与「读到了」长得一模一样。
 - 语法树不完整的文件报 `QUERY_ERROR_CHANNEL_PARSE` 而不是安静地贡献 0 处——解析不动的文件在门禁眼里
   不存在，是最坏的一种「绿」。这条是被自己的测试 fixture 证出来的：`as` 换行会被 ASI 截断成语法错误。
 - 扫不到文件报 `QUERY_ERROR_CHANNEL_NO_SOURCES`，文件全空报 `QUERY_ERROR_CHANNEL_SOURCE_EMPTY`，
