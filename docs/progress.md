@@ -1242,7 +1242,8 @@
   语义却叠在同一个调用点上。唯一的照妖镜还是把那棵树真合一遍。
 - 阻塞 / 风险 / 回滚：只动 mock 与文档，生产路径（真 supabase-js）一行未改；`gt` 语义与 PostgREST 的 `>` 一致，
   且 mock 模式下原先这条链**根本跑不通**，所以不存在「以前能跑现在变了」的回归面。
-  回滚 = revert 本 PR 分支 `fix/mock-query-gt` 相对 `main` 的全部 5 个 commit。
+  回滚 = revert 分支 `fix/mock-query-gt` 相对 `main` 的全部提交（故意不写条数——这条分支还在动，
+  写死一个数就会像本条目里那条 `expected 16 to be 14` 一样过期）。
 - 下一项：realtime 那一族还没有对账——`.channel()/.on()/.subscribe()` 在 `src/**` 只有 1 个消费方
   （`src/components/dashboard/notifications-live.tsx:48-59`），Mock 侧这三个方法**确实存在**
   （`src/lib/mock/index.ts:1537,1567,1592`），所以今天没有缺口，只有「下次加一个订阅者就没人核对」的风险；
