@@ -29,6 +29,7 @@ import { ShortcutsDialog } from "@/components/layout/shortcuts-dialog";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { ROUTES, SITE_CONFIG } from "@/lib/constants";
 import { useTranslations } from "next-intl";
+import { toast } from "@/hooks/use-toast";
 import { User, Settings, LogOut, LayoutDashboard, Menu, X } from "lucide-react";
 
 /** 判断链接是否为外部 URL */
@@ -69,7 +70,13 @@ export function SiteHeader() {
   /** 退出登录处理 */
   const handleSignOut = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    // `signOut()` 和这个客户端的其它方法一样，失败不抛异常、只出现在返回的 error 上（C09）。
+    // 不读它就会在一次根本没退成的操作后照样跳转：用户以为已经登出，而这台电脑上的会话还活着。
+    if (error) {
+      toast({ title: tc("error"), description: tc("signOutFailed"), variant: "destructive" });
+      return;
+    }
     router.push(ROUTES.home);
     router.refresh();
   };
