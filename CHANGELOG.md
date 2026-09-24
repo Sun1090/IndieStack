@@ -299,7 +299,11 @@ All notable changes to IndieStack will be documented in this file.
   兜底改回 `member` 红 2 条、把两个调用点分别退回「不读 error」**各自只红自己那一条**——
   50/10 档的分歧钉在两处调用点上，不只是钉在那个纯函数上。
   说清严重性边界：**这不是一条提权通路**，授权仍在服务端（`requireRole` / RLS / Action 守卫），
-  红的是「组件自己的契约说读不到就给最低权限，代码给的不是」，后果是数据库抖动时 UI 多露出几个入口。
+  红的是「组件自己的契约说读不到就给最低权限，代码给的不是」。今天它甚至影响不到任何一个页面——
+  `PermissionGate` 与 `usePermissions` 在 `src/**` 里**没有任何消费方**（真正给侧边栏用的那条路是
+  `hooks/use-is-admin.ts`），它是模板交付给使用者的公共件（`docs-site/components.md` 两语都在册）。
+  也就是说：一个「有文档、无消费方、无测试」的件，配上一条把意图当成事实的 justified 豁免，
+  三层防护同时失明。
   顺带修掉三处仍在复述 001 旧域（`'user' | 'admin'`）的角色说明，和一处把 `viewer` 写成团队角色的
   `team_members` 段落（`TeamRole` 只有 `owner / admin / member`，迁移 001 的 check 同样如此）。
   **与 #92 的耦合**：本条若先合，#92 的 `ERROR_CHANNEL_EXEMPTIONS` 里 `permission-gate.tsx` 那条要删

@@ -1214,19 +1214,35 @@
   3、4 是分开的两次探针，各自还原；这一步的意义在于：两个调用点各自被钉住，纯函数测得再全也不能
   证明调用点真的读了 `error`。
 - 严重性边界（写清楚，免得下次当漏洞处理）：**这不是提权通路**。授权仍由服务端说了算
-  （`requireRole` / RLS / Action 守卫），客户端档位只决定 UI 露不露入口。红的是契约：
-  组件自己声明「读不到就给最低权限」，代码给的不是。
+  （`requireRole` / RLS / Action 守卫），客户端档位只决定 UI 露不露入口。而且今天它连一个页面都
+  影响不到：`PermissionGate` 与 `usePermissions` 在 `src/**` 里**没有任何消费方**——grep 全仓
+  只命中它自己和这次新建的测试；真正给侧边栏 / 移动端抽屉用的那条路是 `hooks/use-is-admin.ts`
+  （2 个消费方，且两个都有测试）。它不删的理由是身份不同：这是模板交付给使用者的公共件，
+  `docs-site/components.md` 两语都在册、`docs/architecture/09-frontend-components.md` 也列着它，
+  「app 里没人用」在这里不等于死代码。于是这个缺陷的完整成因是三件事叠在一起——
+  **有文档、无消费方、无测试**，再配上一条把意图当成事实的 justified 豁免：四层防护各自都以为
+  别人在管这件事。
 - 与 #92 的耦合（两条 PR 正文都写了）：#92 的 `src/lib/security/query-error-channel.ts` 豁免清单里
   `permission-gate.tsx` 是一条 `sites: 2` 的 **justified**，理由句 `a failed role read resolves to
   the least privileged role on purpose` 描述的是意图、不是代码。本 PR 让那句话变成真的，代价是
   豁免不再需要：**若本 PR 先合，#92 落地时该条要删（sites 2 → 0）**，否则 #92 门禁的反向计数
   会因为一条过期豁免而红。本地不会红——那份清单在 #92 的分支上，main 还没有这个门禁。
-- 验证（一次性跑完再推，只占一个 preview build）：`pnpm lint` exit 0；`pnpm type-check` exit 0；
-  `pnpm test` → 200 文件 / 2302 用例全绿；`CI=true pnpm check:all` → exit 0「✅ 全部校验通过」
-  （37 个门禁）；`pnpm build` exit 0。本轮第一次 `pnpm test` 有 2 条红，都是 CHANGELOG 结构校验：
-  我的条目里有一行以 `#92` 开头，被解析成标题层级——**是门禁抓对了写法**，改成 `PR #92` 后转绿。
+- 验证（分两轮，但只推一次）：第一轮 `pnpm lint` exit 0、`pnpm type-check` exit 0、
+  `pnpm test` → 200 文件 / 2302 用例全绿、`CI=true pnpm check:all` exit 0「✅ 全部校验通过」
+  （37 个门禁）、`pnpm build` exit 0。第一轮之前那次 `pnpm test` 有 2 条红，都是 CHANGELOG
+  结构校验：我的条目里有一行以 `#92` 开头，被解析成标题层级——**是门禁抓对了写法**，
+  改成 `PR #92` 后转绿。改完文档与台账之后重跑第二轮：`check:all` exit 0、`pnpm test` exit 0
+  （200 / 2302 不变）、`pnpm -C docs-site build`（VitePress，本轮动了 `docs-site/**`）exit 0、
+  `pnpm build` exit 0。lint 与 type-check 不在第二轮重跑的理由：这两轮只改了 `.md`，
+  两者都不读 Markdown——写在这是为了让「全绿」这句话的范围可查。
 - 下一项：无主的链尾断言已清零、`.then` 形态已扫完，C08 剩余 12 处全部有主（#92 / #94 / #98 /
   #101 / #107），等它们的 PR 落地；把它们对上号正是 #92 那份豁免清单要做的事。
+- 这条线索顺出来一个可量的口径，当场量完：`src/components/shared/` 15 个件里，**0 消费方**的只有
+  两个——`permission-gate`（本条刚补上测试）与 `section`；后者是现在唯一「既没人用也没测试」的一个。
+  整个目录无测试的是 5 个：`section`、`github-icon`、`upload-progress`、`breadcrumbs`、`page-header`。
+  和 #103 那 44 条「无测试的守卫」是同一片地：**模板交付件不会因为 app 里没人用就变安全**，
+  它的使用者会直接用。下一件从 `section` 起不如从 `upload-progress` 起——它 2 个消费方、
+  带进度状态机，出错方向比一个 `<section>` 壳子要紧。
 - 风险 / 回滚：回滚只需还原本 PR 两个源文件；不改任何服务端判定，最坏影响是数据库故障期间
   客户端 UI 少露出一些入口（这正是想要的行为）。
 - 更新时间：2026-09-25。
