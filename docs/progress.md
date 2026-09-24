@@ -1857,3 +1857,54 @@
   下一次合并动作之后要重跑而不是引用。
 - 下一项：把这轮的三份数字（`check:all` / `test:coverage` / 5 条边）同步进 PR #118 正文。
 - 更新时间：2026-09-24（UTC 08:40 前后）。
+
+## 2026-09-24 — 第四次从零重建（45 个 PR / 24 个栈尖）：判断边 5→6，新那条是 C11 自己贡献的
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：队列从 44 条涨到 45 条（新增 #137 = C11 路由鉴权台账），而 C11 是一条**会读全仓库代码**的门禁。
+  上一遍的结论只覆盖「没有 C11 的合成树」；台账是在 #135 分支的源码形状上手写的，它能不能在
+  别的 43 条 PR 都落地之后仍然绿，是一个真实的未知——`#136` 改了营销端点的守卫邻近代码、
+  `#98`–`#114` 改了一批 route 的鉴权与错误通道。所以重跑一遍，而不是引用上一遍。
+- 完成内容：
+  1. 重算栈尖：45 个 open PR → **24 个 tip**（判据仍是逐个 `git merge-base --is-ancestor`）。
+     `sim/queue-45b` 从 `origin/main` 起按编号升序并入 24 个 tip，`main` 之上 **164 个 commit / 24 个 merge**，
+     **45/45 个 PR head 逐个证为 ancestor**。
+  2. 判断边 **6 条**（上一遍 5 条），算法不变：对 `origin/main..HEAD` 每个 merge 跑
+     `git merge-tree --write-tree <m^1> <m^2>`，冲突路径去掉 `CHANGELOG.md` / `docs/progress.md` 之后剩下的算一条。
+     这次**先把边的字段取错过**：merge-tree 的冲突记录是 `mode oid stage\tpath` 四个字段，
+     我按六个字段去取 `$6`，于是扫出「零条边」——一个正好是我想要的回答的空结果。改成 `$4` 之后
+     6 条全数现形，分母也打印出来（`6 / 24 merges`）。
+     边清单：#114（checkout route + 它的 test + 两份 `messages/*/actions.json` + roadmap + `query-error-channel.ts`）、
+     #119（`e2e/admin-contact-mfa.spec.ts`）、#120（`e2e/support/warm-up.ts`）、#129（两份 `docs-site/scripts.md`）、
+     #131（`docs/testing.md` + `scripts/check-all.sh`）、**#137（新增：两份 `docs-site/scripts.md` + roadmap +
+     `docs/testing.md` + `package.json` + `scripts/check-all.sh`）**。
+  3. #96 与 #114 是**同一处修复的两个独立版本**（结账前置读取 fail-closed），这一遍把它们的关系量清楚了：
+     两份 `readCheckoutScope` 在合成树里**同时存在**（自动合并把两处定义都留下了 → 重复声明），
+     取 #96 的那一份（`failed` 带 `source` + 调用点 `logApiError`），丢弃 #114 的（`unavailable` / 在 helper 内记日志），
+     两侧对 `checkoutUnavailable` 的中英文案也因此各留一条。`query-error-channel.ts` 的台账方向相反：
+     取 #114 的（那 7 条 `debt` 已被 #98–#103 #110 逐条清掉），这一处**判据本身会双向对账**，
+     所以留错方向会当场红，不靠我判断得对。
+  4. C11 在合成树上 exit 0：`45 个 handler 全部登记且守卫可达（6 个无守卫符号 / 调用图截断计数 792）`。
+     与单分支相比 handler 数与 public 数一字不差，只有截断计数从 770 涨到 792——别的 PR 往 helper 里加了代码，
+     **没有加路由**，也没有把台账声明的守卫挪到走不到的位置。这正是这条门禁要能回答的问题。
+  5. 台账排序第四次验证「从零重建必然破顺序」：`check:progress` 红在 3 个位置，稳定排序后
+     **94 条条目 / 54 条换位**，行数 4211 → 4211 且内容多重集相同（脚本自己断言这两点才写盘），再跑 exit 0。
+- 验证命令与结果（全部在 `sim/queue-45b` 这棵合成树上跑）：
+  - `CI=true pnpm check:all` → **exit 0**，`Test Files 229 passed`（上一遍 228，多的那 1 个文件是
+    #137 新增的 `route-auth.test.ts`）。第一次跑是**红的**，红的就是 `check:progress` 那 3 个乱序点。
+  - `pnpm test:coverage` → **exit 0**，`All files 97.46 / 92.38 / 98.27 / 98.62`
+    （阈值 91 / 90 / 93 / 92 未动；上一遍是 97.48 / 92.34 / 98.24 / 98.59）。
+  - `git grep --cached "^<<<<<<< "` → 无命中。依赖面 `pnpm-lock.yaml` 零差异，所以这一遍不需要重装依赖。
+- 一处必须记下的异常（原因未定位）：第一趟驱动脚本汇报「#92 merged clean / #93 merged clean」，
+  紧接着 #94 冲突；但之后 HEAD 回到 `origin/main`，两条 merge **既不在 reflog 里、也不在对象库里**
+  （`git fsck --dangling` 63 个悬空 commit 中没有 `sim/queue-45` 的那两条）。单独复跑同一条 merge 可复现地
+  成功并留下 reflog，所以本条记录的数字全部来自第二趟（逐个调用、每步之后另外查一次 HEAD）。
+  **不写机制解释**：能确认的只有「驱动脚本的 stdout 不能当证据」，而这一点上一遍已经用 merge-tree 反推解决过。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/queue-45b` 只在本地，从未推送、从未建 PR、
+  从未碰 `main` 或任何真实 PR 分支；数字已全部写进本条，记完即删。风险同上一条：这份矩阵随队列每次
+  变动即过期，下一次合并动作之后要重跑而不是引用。
+- 下一项：把这一遍的四份数字（`check:all` / `test:coverage` / 6 条边 / C11 在合成树绿）同步进 PR #118 正文。
+- 更新时间：2026-09-24（UTC 09:05 前后）。
