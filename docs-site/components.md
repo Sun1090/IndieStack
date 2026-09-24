@@ -6,20 +6,21 @@ IndieStack provides a three-layer component architecture: base UI (shadcn/ui), s
 
 ```
 src/components/
-├── ui/             # Base UI (shadcn/ui, 24 components)
-├── shared/         # Shared business components (11)
-├── layout/         # Layout components (5)
+├── ui/             # Base UI (shadcn/ui, 30 components)
+├── shared/         # Shared business components (15)
+├── layout/         # Layout components (8)
 ├── auth/           # Auth components (2)
 ├── dashboard/      # Dashboard components
 ├── charts/         # Charts (Recharts)
-├── forms/          # Form components (5)
+├── forms/          # Form components (7)
 ├── data-tables/    # Tables (@tanstack/react-table)
 └── providers/      # React Context Providers
 ```
 
-## shadcn/ui (24 components)
+## shadcn/ui
 
-All built on Radix UI primitives with accessibility and theme support.
+Most rows wrap a Radix UI primitive; the `-` rows are hand-written. All support light/dark theming
+through `cn()` and Tailwind CSS variables.
 
 | Component | Usage | Radix Base |
 |-----------|-------|------------|
@@ -47,36 +48,57 @@ All built on Radix UI primitives with accessibility and theme support.
 | Label | Label | `@radix-ui/react-label` |
 | Popover | Popover | `@radix-ui/react-popover` |
 | Collapsible | Collapsible | `@radix-ui/react-collapsible` |
+| Command | Command palette (`⌘K`) | `cmdk` + `@radix-ui/react-dialog` |
+| ContextMenu | Right-click menu | `@radix-ui/react-context-menu` |
+| Kbd | Keyboard shortcut hint | - |
+| RadioGroup | Radio group | `@radix-ui/react-radio-group` |
+| ScrollArea | Custom scroll container | `@radix-ui/react-scroll-area` |
+| Toaster | Toast host: renders the queue | - |
 
 ## Custom Components
+
+Rows below enumerate every component in `shared/`, `layout/`, `auth/` and `forms/`. The
+`dashboard/`, `charts/` and `data-tables/` rows are examples only — those three directories are not
+fully enumerated here.
 
 | Component | Directory | Usage |
 |-----------|-----------|-------|
 | SiteHeader | `layout/` | Responsive navbar with auth state, theme + locale switcher |
 | SiteFooter | `layout/` | Page footer with links and copyright |
-| DashboardSidebar | `layout/` | Collapsible sidebar with role-based menu |
 | ThemeToggle | `layout/` | Light/dark theme toggle |
 | LocaleSwitcher | `layout/` | Chinese/English language switcher |
+| CommandPalette | `layout/` | `⌘K` / `Ctrl+K` palette that jumps between dashboard routes |
+| ShortcutsDialog | `layout/` | Keyboard-shortcut help, opened with `?` |
+| NavigationProgress | `layout/` | Top progress bar on route change |
+| OfflineBanner | `layout/` | Banner shown when `navigator.onLine` goes false |
 | PermissionGate | `shared/` | Role-based permission guard for UI elements |
 | ConfirmDialog | `shared/` | Generic confirmation dialog |
 | Breadcrumbs | `shared/` | Auto breadcrumb navigation |
 | EmptyState | `shared/` | Empty state (icon + title + desc + action) |
-| LoadingState | `shared/` | Generic loading skeleton |
 | ErrorState | `shared/` | Error state with retry button |
-| SearchInput | `shared/` | Debounced search input |
-| PageContainer | `shared/` | Uniform page container |
+| QueryErrorState | `shared/` | Failed-query card: renders ErrorState plus the retry wiring |
 | PageHeader | `shared/` | Page header with action slot |
-| PageLoader | `shared/` | Full-screen loading indicator |
 | Section | `shared/` | Content section wrapper |
+| FormField | `shared/` | Label / control / description / error wrapper; `FormFieldControl` wires `id` + `aria` |
+| NativeSelect | `shared/` | Styled native `<select>`, pairs with FormField |
+| PageLoading | `shared/` | Route-level loading skeleton with `aria-busy`; also exports `LoadingIndicator` |
+| PasswordStrength | `shared/` | Client-side password strength bar |
+| UploadProgress | `shared/` | Upload percentage bar with cancel |
+| InitialAvatar | `shared/` | Letter avatar derived from name/email, no storage dependency |
+| GithubIcon | `shared/` | Inline GitHub mark (lucide dropped brand icons) |
+| DashboardSidebar | `dashboard/` | Collapsible sidebar with role-based menu |
 | StatsCard | `dashboard/` | Stats card with trend indicator |
 | DataTable | `data-tables/` | Generic table (sort/search/pagination) |
 | AreaChart | `charts/` | Area chart (Recharts) |
 | LoginForm | `auth/` | Email + OAuth login form |
 | RegisterForm | `auth/` | Registration form |
 | ProfileEditForm | `forms/` | Profile edit form |
+| AvatarUploadForm | `forms/` | Avatar upload with progress and cancel |
 | InviteMemberForm | `forms/` | Invite team member form |
 | PasswordForm | `forms/` | Change password form |
 | NotificationSettingsForm | `forms/` | Notification preferences form |
+| PushNotificationForm | `forms/` | Web Push subscribe/unsubscribe toggle (needs `NEXT_PUBLIC_VAPID_PUBLIC_KEY`) |
+| ThemeSettingsForm | `forms/` | Light / dark / system appearance choice |
 
 ## Component Principles
 

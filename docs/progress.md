@@ -1153,3 +1153,75 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — 组件参考在推荐四个已被删除的组件，改正并补上门禁
+
+- 里程碑 / 版本：v0.12.0；「记录说假话」家族的第五处，新增门禁 D05。
+- 状态：DONE（待用户合并）。分支：`docs/components-reference-counts`，base = `origin/main`（`ad4b029`）。
+- 发现与量：把 `docs-site/components.md` 与中文半边的数量声明对回 `src/components/**`（非测试 `.tsx`）——
+  实测 ui 30 / shared 15 / layout 8 / auth 2 / forms 7，文档写的是 24 / 11 / 5 / 2 / 5；
+  6 个 `ui/` 组件（command、context-menu、kbd、radio-group、scroll-area、toaster）两侧都没列；
+  `LoadingState`、`PageLoader`（`223f9eb` 删）与 `SearchInput`、`PageContainer`（`42de059` 删）四行仍作为
+  可用的 `shared/` 组件在推荐；`DashboardSidebar` 标着 `layout/`，它在 `dashboard/`。
+- 同一条线索往外扫（是同一次 grep 带出来的，不是新假设）：`CLAUDE.md` 的组件地图 4 处数量过期
+  （ui 23 / layout 3 / forms 4 / shared 9），并且推荐了仓库里不存在的 `SupabaseProvider`、`LoadingPage`
+  ——而 `CLAUDE.md` 是 AI 助手读的第一份文件，写错的组件名会被当成事实继续生成代码；
+  `docs/architecture/09-frontend-components.md` 与 `agents/09-ui-ux.md` 各留着一份含幽灵的共享组件清单。
+  有意思的是 `agents/09-ui-ux.md` 的 `ui/` 清单 30 个全对——同一份文档里一半新一半旧。
+- 改动：五份文档按实测改正（中英两半的表格各从 49 行涨到 66 行——补 21 行真实组件、删 4 行幽灵；
+  `DashboardSidebar` 改指 `dashboard/`；小节标题里重复的数量断言删掉，只留目录树那一处可核的）；
+  新增 `pnpm check:component-docs`（规则
+  `src/lib/docs/component-docs.ts` + 17 项单测、IO `scripts/lib/component-docs-check.js`、入口
+  `scripts/check-component-docs.js`、接进 `package.json` 与 `check-all.sh`，`check:gates` 计数 37 → 38）。
+- 判据与边界（都写进门禁头注释）：只认表头是 `Component`/`组件` 的表——第一版按「首格是 PascalCase」认表，
+  立刻把 `CLAUDE.md` 的 `| Schema | 文件 | 用途 |` 读成一个叫 `Schema` 的组件；目录树写法（`├── auth/`）
+  只在声明 `exhaustive` 的参考文档里认，否则 `CLAUDE.md` 的 `src/app` 路由树里那句 `├── auth/ # 5 个认证页面`
+  会被当成组件数量；摘要文档只认 `` `src/components/<目录>/` `` 且带数字的行。条目式清单与表格说明列
+  **不**解析，所以 `SupabaseProvider` 现在仍在盲区里（见下一项）。不做中英文逐行镜像，理由同上一条
+  「两份 scripts.md 命令集合本来就一致」的判断。
+- 验证命令与结果：`pnpm -s type-check` exit 0；`pnpm -s lint` exit 0（第一版被
+  `@next/next/no-assign-module-variable` 拦下两处 `for (const module of …)`）；
+  `pnpm --silent check:component-docs` → `✅ 162 行 / 62 个枚举组件 / 15 处数量声明 × 5 份文档
+  （23 个组件位于不要求枚举的目录）` exit 0；`pnpm --silent check:gates` exit 0。
+- 变异核对（两条都不是「改完才绿」的事后断言）：① 在真实文档里塞一行 `| SearchInput | \`shared/\` |`
+  并把 ui 数量改回 24 → exit 1，`COMPONENT_GHOST` 点名 `search-input.tsx`、`COMPONENT_COUNT_STALE`
+  报 24/30，还原后 exit 0；② 对 `HEAD` 版本的两份文件跑同一条规则 → `architecture/09` 报 2 个幽灵、
+  `CLAUDE.md` 报 4 处数量过期，误报 0。
+- 阻塞：无。CI 证据范围：这条 PR base = `main`，所以 `ci.yml` 的 5 个必需作业会真的跑；上面列的是本机结果。
+- 风险 / 回滚：纯文档 + 只读门禁，无运行时路径。回滚 = revert 两个 commit。副作用是以后加组件必须同步
+  目录树数量与表格行——这正是门禁的目的，但会让「顺手加个组件」的 PR 多改两处。
+- 下一项：
+  1. ~~把解析扩到条目式清单与表格说明列~~ —— 量过了，不做。`CLAUDE.md` 的「共享组件」小节根本没有
+     `` `src/components/<目录>/` `` 这行定位标记（它写的是 `## 共享组件 (components/shared/)`），
+     `agents/09-ui-ux.md` 的 `ui/` 清单是一行逗号分隔的反引号串而不是 bullet，行 86/88 那两处
+     `` `src/components/ui/` `` 又在代码注释块里。要覆盖这些形态，得再加「跳过围栏」「认第二种 scope
+     写法」「解析逗号串」三条规则——而第一版只因为「按首格 PascalCase 认表」这一条宽松规则就把
+     `CLAUDE.md` 的 `| Schema | 文件 | 用途 |` 读成了一个叫 `Schema` 的组件。表格 + 数量已经覆盖了
+     这次真正造成伤害的那部分（`CLAUDE.md` 的 4 处过期数量、`architecture/09` 的 2 个幽灵行），
+     散文与条目清单留在盲区里如实写在头注释中，靠人工。第二格写成 `` `shared/x.tsx` `` 的表目前只核
+     名字存在、不核目录，同理。
+  2. #129 合并后要 `gh pr edit 129 --base main`（它 base 在 #128 上）。
+- 补记（同日）：上面这些把编号 D05 写进了 CHANGELOG 和本条目，却没有登记进任务池——
+  `docs/roadmap-0.12.0.md` 的 D 域当时只到 D04，而 v0.6.0 池的 D05 是「语言切换状态持久化」。
+  「同编号在两个池里含义不同、引用必须带池子名」这句话正是 D03 那条自己写下的警告，
+  而这次是我自己踩的：一个只存在于引用里的编号，等于给下一个读的人留了一道对不上的账。
+  现已把 D05 登记进 v0.12.0 池（含三条判据、两条刻意边界、以及「对改动前的文件跑同一条规则」这个取证口径），
+  门禁、CHANGELOG 与任务池说的是同一件事。同一轮里补掉第二处只写了代码没写文档的账：
+  这道门禁当时没进 `src/lib/testing/test-matrix.ts` 的 `docs` 领域，也没进两份 `docs-site/scripts.md`
+  与 `docs/testing.md` 的命令表——也就是**负责核组件文档的门禁，自己不在任何文档里**，
+  贡献者按矩阵办事永远不会知道改组件参考要跑它。现在登记了，`check:test-matrix` 会强制两份矩阵文档跟着它。
+- 补记二（同日，另一处「把一次性的读数钉成等号」）：上面那条「15 处数量声明 × 5 份文档」的读数被写进了
+  单测，形如 `expect(report.stats.counts).toBe(15)`，而**同一个 `it()` 里另外两条都是地板值**
+  （`rows >= 160`、`enumeratedModules >= 62`）——只有 `counts` 用了等号。已改成
+  `toBeGreaterThanOrEqual(15)`，理由写在断言旁边。`counts` 是「文档里共有几处数量断言」，多一个目录就多两处
+  （中英两半各一处），钉成等号等于要求每个改组件文档的 PR 回来改这个测试里的魔数：忘了不会挡住任何错误，
+  只会在合并后的 main 上红成一场不存在的回归。地板防的是另一件事——解析停摆时读数是 0，而「一处都没读到」
+  和「文档本来就没写数量」在输出里长得一样。精确读数交给 `pnpm check:component-docs` 现量。
+  - 活性核对：地板抬到 16 → `AssertionError: expected 15 to be greater than or equal to 16`
+    （该文件 17 项里 1 红 16 绿），顺带现量确认 `counts` 今天确实是 15；改回 15 后 17 项全绿，
+    `git diff` 复核只剩预期的那一处。
+  - 同一条线索顺手把上面 状态 里那个分支名订正成 `feat/component-docs-gate`（本条目原先写的是
+    `docs/components-reference-counts`）：那个名字现在既不在本地分支里、也不在 `git ls-remote --heads origin`
+    里，49 个 open PR 与全部历史 PR 的 head 也没有一个是它——也就是说台账留着的是一个 PR 正文里都没引用过的
+    分支名，按它去找分支的人会一无所获。这次改的是**指向**，条目内容一字未动。
+- 更新时间：2026-09-24。

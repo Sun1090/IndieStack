@@ -267,6 +267,28 @@
     **保留不动的**：历史版本页（`docs-site/v0.*.md`）、roadmap 与退出/演练/Runbook 记录里的数字——
     那些是带日期的证据而非当前断言；service-role 清点表保留为快照，但已在其上方与开头标注
     「以 `pnpm check:supabase-security` 与清单文件为准」
+22. D05 （**2026-09-24 已完成；这个编号是本池新增的，v0.6.0 池的 D05 是「语言切换状态持久化」，
+    两者无关**——上面 D03 刚记下「`D01` 这类编号在两个池里含义不同，引用必须带池子名」，这里是它自己的第一次应用）
+    把「文档说有哪些组件」钉回 `src/components/**`：新增 `pnpm check:component-docs`（规则
+    `src/lib/docs/component-docs.ts` 纯函数 + 17 项单测，IO `scripts/lib/component-docs-check.js`，
+    启动器 `scripts/check-component-docs.js`），对 5 份活文档逐行核组件行与数量声明。
+    起因是一次随手比对，量出的不是措辞问题而是**文档在推荐已被删除的组件**：
+    `docs-site/components.md` 与中文半边把 `LoadingState` / `PageLoader` 当成可用的 `shared/` 组件在列
+    （两者删于 `223f9eb` 的加载态收敛），`SearchInput` / `PageContainer` 同理（删于 `42de059` 的死代码清理）——
+    模板用户照着写 `import "@/components/shared/loading-state"` 会直接构建失败。同一张表里
+    `DashboardSidebar` 的目录列错（在 `dashboard/` 却写 `layout/`），五个目录的数量声明合计少报 25 个组件，
+    6 个 `ui/` 组件两份文档都没列。顺这条线索往外扫，另外三份活文档犯的是同一个错：
+    `CLAUDE.md`（AI 助手读的第一份文件，写错的组件名会被当成事实继续生成代码）有 4 处数量过期，
+    并且推荐了仓库里从来没有的 `SupabaseProvider`；`docs/architecture/09-frontend-components.md` 与
+    `agents/09-ui-ux.md` 各自还留着一份含 2–3 个幽灵的共享组件清单。三条判据：表格每一行的组件必须落到
+    真实模块文件且目录列一致；声明 `exhaustive` 的参考文档必须列全 `ui/shared/layout/auth/forms`；
+    带数字的路径声明必须等于实测。
+    **刻意的边界**（都写在规则模块的头注释里，不留幻觉）：只认表头是 `Component` / `组件` 的表——
+    第一版按「首格是 PascalCase」认表，立刻把 `CLAUDE.md` 的 `| Schema | 文件 | 用途 |` 校验表读成一个
+    不存在的 `Schema` 组件，于是条目式清单与表格说明列里的组件名一律不解析，`SupabaseProvider` 就漏在这一层；
+    也刻意**不**做中英文逐行镜像（理由同 `check:docs`：两侧结构合法地不同，按行核会对着版式报警）。
+    门禁不是「改完才绿」的事后断言：对改动前的两份文件跑同一条规则，`architecture/09` 报 2 个幽灵、
+    `CLAUDE.md` 报 4 处数量过期，全是真缺陷、零误报。
 
 ## 里程碑
 

@@ -66,6 +66,7 @@
     "check:test-matrix": "node scripts/check-test-matrix.js",
     "check:migration-runbook": "node scripts/check-migration-runbook.js",
     "check:provider-docs": "node scripts/check-provider-docs.js",
+    "check:component-docs": "node scripts/check-component-docs.js",
     "provider:doctor": "node scripts/provider-doctor.js",
     "check:tailwind": "node scripts/check-tailwind.js",
     "check:tokens": "node scripts/check-tokens.js",

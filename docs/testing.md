@@ -30,6 +30,7 @@
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
 | `pnpm check:production-smoke`       | 校验 Production Smoke workflow 的手动/定时入口、URL、cron、证据留存契约，以及「读 inputs 的手动作业必须排除 schedule 触发」与两个作业各自的 artifact 名 |
 | `pnpm check:query-columns`         | 校验查询链里每个字面量列名都存在于生成的行类型中（C07）                          |
+| `pnpm check:component-docs`        | 校验组件参考文档与 `src/components/**` 一致：幽灵组件、目录列错、漏列、数量过期都会红（v0.12.0 池 D05） |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
 ## 贡献者测试矩阵（I09）

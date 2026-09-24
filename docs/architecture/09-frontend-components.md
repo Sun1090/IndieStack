@@ -81,16 +81,21 @@ graph LR
 
 | 组件 | 文件 | 功能 |
 |------|------|------|
-| PageContainer | `shared/page-container.tsx` | 页面容器（标题 + 内容） |
-| PageHeader | `shared/page-header.tsx` | 页面标题区域 |
 | Breadcrumbs | `shared/breadcrumbs.tsx` | 面包屑导航 |
 | ConfirmDialog | `shared/confirm-dialog.tsx` | 确认对话框 |
 | EmptyState | `shared/empty-state.tsx` | 空数据状态 |
 | ErrorState | `shared/error-state.tsx` | 错误状态 |
+| FormField | `shared/form-field.tsx` | 表单字段四件套（`FormField` / `FormFieldControl` / `FormFieldLabel` / `FormFieldDescription` / `FormFieldError`），自动接 id 与 aria |
+| GithubIcon | `shared/github-icon.tsx` | 内联 GitHub 品牌图标（lucide 1.x 移除了品牌图标） |
+| InitialAvatar | `shared/initial-avatar.tsx` | 姓名/邮箱首字母头像，无对象存储依赖 |
+| NativeSelect | `shared/native-select.tsx` | 统一样式的原生 `<select>`，与 FormField 配套 |
+| PageHeader | `shared/page-header.tsx` | 页面标题区域 |
 | PageLoading | `shared/page-loading.tsx` | 路由级骨架屏与局部加载指示器（`PageLoading` / `LoadingIndicator`，自带 `aria-busy` / `role="status"`） |
+| PasswordStrength | `shared/password-strength.tsx` | 密码强度指示条（纯前端评分） |
 | PermissionGate | `shared/permission-gate.tsx` | 权限控制组件 |
-| SearchInput | `shared/search-input.tsx` | 搜索输入框 |
+| QueryErrorState | `shared/query-error-state.tsx` | 查询失败重试卡片，展示层复用 ErrorState |
 | Section | `shared/section.tsx` | 内容分区 |
+| UploadProgress | `shared/upload-progress.tsx` | 上传进度条（含取消） |
 
 ### PermissionGate 组件
 
