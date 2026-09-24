@@ -1473,3 +1473,41 @@
   需要知道那是「来路」而不是「这条路由自己的文件」，所以报告每行都带着这个前缀打印，不省略。
 - 下一项：把这条并到 #137 之后重定基（它依赖 C11 的解析器），或者直接随 #137 一起看。
 - 更新时间：2026-09-24（UTC 09:40 前后）。
+
+## 2026-09-24 — 合成树把本 PR 自己跑红了：一条等号断言改成地板值 + 家族白名单
+
+- 里程碑 / 版本：v0.12.0 门禁基建 C12（PR #138，base `feat/gate-route-auth` = #137）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`feat/measure-route-rate-limits`（本条目）。
+- 为什么做：第五次整队列重建（记录在 `docs/pr-merge-order` 分支）在合成树上跑 `pnpm check:all`，
+  唯一由代码带来的红就是本分支的一条断言：`expected 16 to be 14`。合成树的数字是对的——`#136`
+  给两条营销端点加了窗口，覆盖从 14/45 涨到 16/45；被钉成等号的那个 14 是我接线时的一次性读数。
+  这不只是「测试写得严」：按编号顺序合并的人会在一条**并不存在的回归**上撞一次红灯。
+- 完成内容：
+  1. `toBe(14)` → `toBeGreaterThanOrEqual(14)`，理由写在断言旁边：地板要防的是判据死掉时读数掉到 0，
+     而 0 看起来和「没人加窗口」一样干净；精确读数交给 `--rate-limit-report`。
+  2. 家族集合的等号 → 两条各管一头的断言：`session` 与 `public` 必须有窗口；读数里出现的每一族必须
+     在这份点名清单（`public` / `session` / `token`）里，多一族就红且红话点名那一族。原先那句
+     「mock-only / cron / signature 今天不该有窗口」只是注释，没有任何东西守着它，现在由白名单守。
+  3. roadmap 的 C12 条目末尾补下这次踩坑的原文（数字全对、错在断言的形状），以及它对合并动作的后果。
+  4. 同日上一条里的两处自相矛盾的用例数（同一条目先写 `34 passed`、变异复原后又写 `33 passed`，
+     读起来像复原动作删掉了一条用例）改成不带条数的说法，条数交给命令本身。
+- 验证命令与结果：
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **35 passed**。
+  - `pnpm lint` → exit 0；`pnpm type-check` 第一次**红**：`families.has(family)` 里 `family` 被推成
+    `string`、与 `Set<ProtectionFamily>` 不兼容（`TS2345`），加 `as const` 之后 exit 0。
+  - **三条活性核对**（每条改完跑同一个文件，再 `git checkout --` 复原；每次复原后 `git status` 为空）：
+    地板从 14 抬到 15 → 红，`expected 14 to be greater than or equal to 15`；
+    白名单去掉 `public` → 红，消息写着「public 族读到了限流器，但这条测试不认识它」；
+    把判据 `isRateLimitModule` 改成恒 false（模拟检测器死掉）→ **6 条红**，其中包含这条分母对账
+    （地板与 `session`/`public` 都在它名下）和「报告在真实仓库退出 0、在为空的仓库退出 1」那条控制。
+  - 合成树复跑：`sim/queue-46` 再并一次本分支（`main` 之上 176 个 commit / 25 个 merge）后
+    `CI=true pnpm check:all` → **exit 0**，`Test Files 229 passed (229)` / `Tests 2699 passed (2699)`；
+    `pnpm test:coverage` → exit 0，`All files 97.46 / 92.37 / 98.27 / 98.63`（阈值 91/90/93/92 未动）。
+- 变更文件：`src/lib/security/route-auth.test.ts`、`docs/roadmap-0.12.0.md`、`docs/progress.md`
+  （本条目 + 上述两处数字更正）。
+- 阻塞 / 风险 / 回滚：C12 的 ①（哪些写入端点必须有窗口）仍是要人定的判断，本条**没有**给任何端点判对错。
+  回滚 = revert 本 commit。风险一条：白名单是一份会被顺手加长的清单，所以红话特意写成「这条测试不认识它」——
+  要加长它的那次改动必须先给出理由。
+- 下一项：把这个结果写进 PR #138 正文，并同步 PR #118 的合并地图。
+- 更新时间：2026-09-24（UTC 10:55 前后）。
