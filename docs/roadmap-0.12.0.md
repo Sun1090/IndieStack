@@ -244,6 +244,27 @@
     结论不变的自证）。规则与解析在 `src/lib/security/route-auth.ts`，IO/CLI 在
     `scripts/lib/route-auth-check.js` + `scripts/check-route-auth.js`。
 
+24. C12 把 C11 的同一套解析用于**限频**：`check:route-auth` 现在只回答「这条路由靠什么挡住未授权」，
+    不回答「这条路由能被打多少次」。这不是设想——写 C11 时顺手量过一遍，`main`（`ad4b029`）上
+    45 个 handler / 27 个路由文件里，只有 **8 个文件** import 了 `@/lib/rate-limit`：
+    passkey 的 auth-options / auth-verify / register-options / register-verify（各自
+    `createRateLimit({maxRequests:10, windowMs:60_000})` 的**局部实例**）与 user / analytics /
+    stripe checkout / invitations（用导出的单例 `rateLimit.check`）。**零限频**的是：营销
+    confirm/unsubscribe 两条 POST（凭 token 而非会话，`#136` 正在修这一条）、3 条 cron + `cron/push-retry`
+    的 GET、15 条 mock-only e2e、`ops/supabase-restore`、两条 uploads（`guardUploadRequest` 只管同源与
+    载荷，不计数）、stripe webhook、health、og、auth/callback。
+    接入前有两件事必须先定，否则这条门禁会是**假清白**的制造者：① **哪些写入端点必须有窗口**是产品判断
+    （cron 由平台调度、密钥门控，给它加 IP 窗口只会让重试丢邮件；e2e 只在 Mock 档存在），所以要有
+    一份带理由的豁免台账，形如 C08 的 `debt` / `justified` 两态；② 判据**不能按名字表**认限流器——
+    C11 那张 `PROTECTION_SYMBOLS` 名单在写的当天就量出三处失明（原型链命中、同名误报、路径吃前缀），
+    而限流器更糟：`const authOptionsRateLimit = createRateLimit(...)` 的实例名是任意的。
+    可判定的形状应当从模块图推出来：**凡是 import 了 `@/lib/rate-limit` 的绑定、或顶层常量其初始化调用了
+    该模块导出的工厂，都算限流器**；一个 handler「被限频」当且仅当它的可达闭包里出现这样的绑定，
+    或出现一个自身满足该条件的函数（`#136` 的 `marketingTokenRateGuard` 正是这种跨文件的第二层）。
+    好处是这条判据不维护名单，坏处是要把「谁调用了限流器工厂」做成图上的传递闭包——所以先在
+    `MAX_CALL_DEPTH` 已放开的那套 walk 上量一遍误报，再决定它是否独立成一条门禁还是并入 `check:route-auth`
+    （并入省掉六处登记面，独立则 CI 归因更清楚）。按 D01 口径：**接线前先量，别写完再发现它永远不响**。
+
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 
 18. D01 （**2026-09-22 已完成，范围按实测收窄**）：`pnpm check:cron-contract` 现在核对

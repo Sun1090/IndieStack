@@ -1354,3 +1354,43 @@
   或者等 #135 落地后我重定基。
 - 下一项：#135 合并后把本分支 `gh pr edit --base main` 重定基（台账断言的是修完之后的状态）。
 - 更新时间：2026-09-24（UTC 08:50 前后）。
+
+## 2026-09-24 — 第四遍整队列重建把 C11 的台账验绿了，顺手量出限频这一维的覆盖面（C12 记入任务池）
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施 + 安全面（本分支 `feat/gate-route-auth`，PR #137）。
+- 状态：DONE（待合并）。
+- 为什么做：C11 落地后，「一条路由的可达闭包里有什么」第一次成了机器可答的问题，于是限频这一维
+  不再是「感觉没人管」而是可以五分钟量出来的东西。动机也不是设想：`#136` 正因为营销那两条
+  公开 POST 没窗口才存在。
+- 完成内容：
+  1. `docs/roadmap-0.12.0.md` 新增 C 段第 24 项（C12），写的是**量出来的覆盖面**而不是判断：
+     `main`（`ad4b029`）45 个 handler / 27 个路由文件里只有 **8 个文件** import 了 `@/lib/rate-limit`
+     （passkey 四条各自 `createRateLimit({maxRequests:10,windowMs:60_000})` 的局部实例，
+     user / analytics / stripe checkout / invitations 用导出的单例）；零窗口的含营销两条 POST、
+     3 条 cron + `push-retry` 的 GET、15 条 mock-only、两条 uploads（`guardUploadRequest` 只管同源与载荷）、
+     webhook、health、og、auth/callback。
+  2. 把**接这条门禁的两个前置**写进任务条目，因为它比 C11 更容易造出假清白：
+     ① 哪些写入端点必须有窗口是产品判断（给 cron 加 IP 窗口只会让重试丢邮件），所以要先有一份
+     `debt` / `justified` 两态的豁免台账；② 判据**不能按名字表**认限流器——C11 的
+     `PROTECTION_SYMBOLS` 在写它的当天就量出三处失明，而 `const authOptionsRateLimit = createRateLimit(...)`
+     的实例名是任意的。可判定的形状应从模块图推出：import 了 `@/lib/rate-limit` 的绑定、或顶层常量其初始化
+     调用了该模块的工厂，都算限流器；handler 被限频当且仅当可达闭包里出现这样的绑定或出现一个自身满足条件的
+     函数（`#136` 的 `marketingTokenRateGuard` 正是跨文件的第二层）。
+  3. 一次**自己差点被自己的工具骗了**的读数：先按「名字表」写了探针（`rateLimit` /
+     `marketingTokenRateGuard` / …）跑 `collectRouteHandlers`，输出 `family=* rateLimited=no` 全表为零——
+     看着像「全仓库没有一处限频」。真原因是 C11 的 `handler.reachable` **只收 `PROTECTION_SYMBOLS` 里的符号**
+     （`guardsIn` 第一支就过滤），限流器名字根本不会出现在那个集合里。所以那条 0 是探针的形状错了，
+     不是仓库的形状错了；改成数「哪些文件 import 了 `@/lib/rate-limit`」（上面那个 8）才是这一维的读数。
+     记下来是因为同一句话对 C12 本身成立：**复用别人的可达集合，要先确认它没在往里筛东西**。
+  4. 同一趟把 C11 在整队列合成树上的读数补进 PR 正文：45 个 PR / 24 个栈尖 / 164 commit，
+     `check:all` 与 `test:coverage` 均 exit 0，`check:route-auth` 在合成树上仍报 45 个 handler、
+     6 条无守卫符号，调用图截断计数 770 → 792。
+- 变更文件：`docs/roadmap-0.12.0.md`、本条目。
+- 验证命令与结果：`pnpm check:cron-contract` / `check:docs` / `check:adr` 各自 exit 0
+  （roadmap 里点了 `/api/cron/*` 的名字，最先可能红的就是它）；纯文档改动，push 时仍按约定跑完整
+  `pnpm verify:build`。
+- 阻塞 / 风险 / 回滚：不动任何代码路径，回滚 = revert 本 commit。风险一条：C12 的两个前置里
+  ①（哪些端点必须有窗口）是要人定的判断，不是我能从代码里读出来的，写条目时没有替它决定。
+- 下一项：C12 要么并入 `check:route-auth`（省六处登记面）要么独立（CI 归因更清楚），先按 D01 口径
+  把「谁调用了限流器工厂」的传递闭包跑一遍看误报率，再定形态。
+- 更新时间：2026-09-24（UTC 09:30 前后）。
