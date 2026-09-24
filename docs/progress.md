@@ -1629,3 +1629,49 @@
   `AUTH_ERROR_CHANNEL` 台账在 #92、#114 落地之后接，台账尺寸按本条量出的 58 点位 / 33 文件估。
 - 更新时间：2026-09-24。
 
+## 2026-09-24 — 本地守卫全数清点：AGENTS.md 说「commitlint 强制」，而 commitlint 根本不是这个仓库的依赖
+
+- 里程碑 / 版本：v0.12.0；分支 `docs/pr-merge-order`（PR #118）。起因是 #134 那条台账里记下的「pre-push 静失明」，
+  顺着把 `.git/hooks/` 整个清点了一遍，结果比那一条大得多。
+- 状态：DONE（清点 + 一处已修）。剩下的接线**排在那几条门禁 PR 之后**，理由在末尾。
+- 撞上的过程：`.git/hooks/pre-push` 是指向 `/private/tmp/merge-sim-42/.husky/pre-push` 的软链
+  （今天做整队列模拟时在 worktree 里跑命令，把主仓库共享的 `.git/hooks/` 指到了那个临时目录）。
+  第一次推送目标还在，钩子跑了 958 行；`git worktree remove` 之后链接**悬空**，
+  随后两次推送钩子一行都没跑、退出码 0、推送成功。判据不是「有没有报错」，是**推送日志的行数**（958 → 2）。
+- 全数清点（`for h in …; do [ -L ] / [ -x ] / [ -e ]`）：
+  - `post-checkout`、`post-commit`：真实文件、可执行 ✅
+  - `pre-commit`、`commit-msg`：`.git/hooks/` 里**根本不存在**，而 `.husky/pre-commit`、`.husky/commit-msg` 是入库的 ❌
+  - `pre-push`：悬空软链 → 已修成 `ln -sfn ../../.husky/pre-push`（相对链接），本条之后的推送都真跑了 `verify:build`
+    （日志 946~953 行、build 23/23 静态页，四次）。
+- **为什么没有照同样办法去「修」另外两个**：`.husky/pre-commit` 与 `.husky/commit-msg` 头上都有
+  `. "$(dirname -- "$0")/_/husky.sh"`，而 `.husky/_/` **不存在**。把它软链进 `.git/hooks/` 之后 `$0` 变成
+  `.git/hooks/commit-msg`，于是它去找 `.git/hooks/_/husky.sh`——找不到就非零退出，**每一次提交都会被挡**。
+  `pre-push` 侥幸能用，只因为那份文件恰好没有这行 source。这是个反直觉的点：
+  「照抄上一个修复」在这里会把仓库变成不能提交。
+- 更深一层（这条才是结论）：`husky`、`@commitlint/cli`、`@commitlint/config-conventional`、`lint-staged`
+  **一个都不在 `package.json`，`pnpm-lock.yaml` 里也是 0 命中**；`.github/workflows/*.yml` 里
+  `grep commitlint|conventional` **零命中**。而 `AGENTS.md` 的 Maintenance 段写着
+  「Commit convention: Conventional Commits, **enforced by commitlint** (config in `commitlint.config.js`)」。
+  也就是说：配置文件在、钩子脚本在、话写在 AGENTS.md 上，**执行者一处都没有**——本地没装、CI 不查。
+  这与 task #63 修的是同一类（承诺的守卫不存在或存在但不生效），只是这次是提交规范那一层。
+- 那大家是不是在乱提交？没有。按 `commitlint.config.js` 的硬规则（`type-enum` 11 个、`scope-case: lower-case`、
+  `subject-empty`、`type-empty`，加上它 extends 的 `config-conventional` 默认 `header-max-length: 100` 与
+  `body-max-line-length: 100`）逐条量过 **`origin/main` 最近 200 个 commit**：**0 条违反**；
+  我自己最近 40 个也 0 条（最长 header 73 字符，无一条 body 行超 100）。
+  所以现状是**靠纪律维持，不是靠门禁**——这既是好消息（没有存量要清），也是坏消息（它随时可以静悄悄变成不一致，
+  而且今天已经证明了这一层守卫可以整层不存在而没人发现）。
+- 修法与为什么现在不做：正解是把 `@commitlint/cli` + `config-conventional` 加进 devDependencies，
+  用仓库自己的门禁形态（`src/lib/**` 纯规则 + `scripts/lib/*.js` IO + `scripts/*.js` 启动器 + 进 `check-all.sh`）
+  做一个「按区间校验 commit message」的门禁，这样 CI 真的会拦，不依赖谁本地装没装 husky。
+  **代价现在不做**：要动 `package.json` 与 `scripts/check-all.sh`，这两个文件各有 4 条 open PR 在改
+  （#113 / #114 / #126 / #131 正是门禁接线那几条），再加一条与之竞争的 PR 不划算；
+  `git config core.hooksPath .husky` 这一类本地环境改动**不替用户做**（它会改变用户自己每次提交的行为）。
+  已登记为待办（含「顺带把三个缺失钩子的存在性一起守住」）。
+- 验证：以上每一条都是当场跑的命令 + 打印出来的数（钩子的 `-L`/`-x`/`-e` 三态、`ls .husky/_` 不存在、
+  `node -e` 读 package.json 与 lockfile 的命中数、`grep .github/workflows`、200/40 个 commit 的规则核对）。
+- 风险 / 回滚：本条只是文档；唯一的环境改动是 `.git/hooks/pre-push` 从悬空软链改成指向仓库自己的 `.husky/pre-push`，
+  反向操作是 `rm .git/hooks/pre-push`。
+- 下一项：门禁形态的 commit 校验排在 #113/#114/#126/#131 落地之后；
+  `AUTH_ERROR_CHANNEL` 与「已装钩子存在性」两条也排在同一批之后。
+- 更新时间：2026-09-24。
+
