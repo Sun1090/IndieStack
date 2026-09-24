@@ -1153,3 +1153,41 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — 两条公开营销 token 端点补上限频：27 条路由普查里最后剩下的「既不限速也不带凭据」
+
+- 里程碑 / 版本：v0.12.0 安全面收口（C10）。分支 `fix/marketing-token-rate-limit`（base `main` = `ad4b029`）。
+- 状态：已完成，本地全绿，等待合并。
+- 起因：PR #135 那条路由普查量到的读数——17 条 mutating 路由里，把守卫藏在小工具里的那些
+  （`authorized()` / `safelyRequirePermission` / `guardUploadRequest`）递归展开之后，
+  真正「匿名 + 不限速 + 命中即写库」的只剩 `marketing/{confirm,unsubscribe}` 两条 POST。
+- 判据先说清楚，免得把「限频」说成「防枚举」：token 是 48 位十六进制（≈192 bit）、按 sha256 查、
+  `updateStatusByToken()` 还卡了长度上下界与 `token_expires_at`，猜中不是现实路径；
+  问题是任何人都不花配额就能反复触发一次会写数据库的公开请求。
+- 变更：新增 `src/lib/marketing/request.ts`（`marketingTokenRateGuard()` + `clearMarketingTokenBucket()` +
+  `MARKETING_TOKEN_RATE_LIMIT = 10 次 / 60s`），两条路由的 POST 各加两行；`GET` 不动（只渲染表单，不写库）。
+  两条端点**共用一只桶**——同一个滥用面分开计数等于阈值翻倍。命名与文件位置对齐既有约定：
+  阈值取 `src/app/api/auth/passkey/*/route.ts` 那四条匿名入口的 `createRateLimit({ maxRequests: 10, windowMs: 60_000 })`，
+  返回体形状取 `invitations` 的 `{ error, retryAfter }` + 429，`Retry-After` 头取 `guardUploadRequest` 的做法。
+  桶复位导出的形状与 `src/lib/actions/login-attempts.ts` 的 `clearLoginBuckets()` 一致。
+- 测试：`src/app/api/marketing/confirm/route.test.ts` +45 行——`beforeEach` 复位桶（不复位就是一条
+  顺序依赖的 flake），三条新用例分别钉住「第 11 次 429 且仓储层没被调到」「两条端点共用一只桶」
+  「GET 不吃配额」。
+- 变异核对（两条各测一件事，跑完都 `git checkout --` 复原，`git status` 干净）：
+  1. 从 `confirm/route.ts` 删掉那句守卫 → 红的是 `× 同一来源打到第 11 次返回 429，并且不再碰数据库`
+     和 `× 确认与退订共用一只桶…`（`Tests 2 failed | 11 passed`）——正是这两条该红。
+  2. 把 `request.ts` 里的单桶改成按 URL 分桶 → **只有** `× 确认与退订共用一只桶…` 红
+     （`Tests 1 failed | 12 passed`），说明这条断言测的是共用性，不是阈值。
+- 验证：`npx tsc --noEmit` exit 0；`npx vitest run src/app/api/marketing --project node` → 1 文件 / 13 用例绿；
+  `CI=true pnpm check:all` **exit 0**（`Test Files 199 passed`——比 #135 分支少一个文件，
+  因为本分支从 `main` 起，那边新增的 `e2e-bearer.test.ts` 还没进 `main`，这个差值本身是对得上账的）。
+- 与在审 PR 的重叠：按**路径**扫全部 43 条 open PR（`gh pr list --json number,files --limit 100`，
+  一次拉全，不再 spot-check——PR #135 那条台账刚为这件事付过一次重复劳动的学费）：
+  `src/app/api/marketing/**` **0 条**、任何 `*rate-limit*` 文件 **0 条**。
+  唯一的可预期机械冲突是 `CHANGELOG.md` 与 `docs/progress.md` 的插入区——两侧都是追加，删标记即可。
+- 阻塞：无。
+- 风险 / 回滚：真实用户点一次确认邮件、一次退订，离 10 次/分钟很远；被限频挡住时返回 429 + `Retry-After`
+  而不是静默成功。revert 本分支两个 commit 即回滚，没有数据面改动。
+- 下一项：这次普查的承载问题——「17 条 mutating 路由靠什么挡住」目前没有任何门禁记录，
+  要不要收成一条带豁免清单（每条写理由）的 inventory 规则，等这条落地后再定（清单约 13 条）。
+- 更新时间：2026-09-24。

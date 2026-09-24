@@ -6,12 +6,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
+import { marketingTokenRateGuard } from "@/lib/marketing/request";
 import { renderMarketingActionPage } from "@/lib/marketing-action-page";
 import { confirmSubscription } from "@/lib/repositories/marketing";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  const limited = await marketingTokenRateGuard(request);
+  if (limited) return limited;
+
   const token = request.nextUrl.searchParams.get("token") ??
     (request.headers.get("content-type")?.includes("application/json")
       ? ((await request.json().catch(() => null)) as { token?: string } | null)?.token

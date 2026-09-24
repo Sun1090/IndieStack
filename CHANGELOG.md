@@ -204,6 +204,13 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **两条公开的营销 token 端点补上限频**（`POST /api/marketing/confirm`、`POST /api/marketing/unsubscribe`）：
+  把 27 条 `src/app/api/**/route.ts` 按「谁用什么挡住请求」逐个展开本地辅助函数读完之后，
+  17 条会写库的路由里只剩这两条既不限速也不带凭据。弱点不在猜 token——它是 48 位十六进制
+  （≈192 bit）、按 sha256 查、长度上下界与有效期都卡着——在于**任何人都能不限速地触发一次
+  「命中即写数据库」的公开请求**。现在按 IP 滑窗限到 10 次 / 分钟，与 passkey 匿名入口同档，
+  超限返回 429 并带 `Retry-After`；两条路由共用一只桶（它们是同一个滥用面，分开计数等于阈值翻倍），
+  `GET` 只渲染表单、不写库，因此不吃配额。用例侧同时钉住「被挡下的请求不得落到仓储层」。
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
