@@ -236,17 +236,19 @@
     所以它既不会悄悄长胖也不会悄悄烂成永久豁免表。另加一条 `QUERY_ERROR_CHANNEL_PARSE`：
     语法树不完整的文件必须点名，因为「解析不动」在门禁眼里等于「不存在」，这条是被自己的测试 fixture
     抓出来的（`as` 换行会被 ASI 截断成语法错误，第一版因此悄悄不判那一处）
-19. C08-b 偿还错误通道台账：按影响面从大到小清 `ERROR_CHANNEL_EXEMPTIONS` 里标 `debt` 的 20 处。
-    顺序是**逐个读过代码之后**定的，不是按文件或字母序：① 会把**没提交的数据写掉**的两处——
-    `actions/projects.ts:183`（config 合并读失败后写入 `{ ...(current?.config ?? {}), ...input.config }`，
-    项目 config 里其他键静默消失）与 `dashboard/profile/edit/page.tsx:33`（表单预填 `""` / `UTC` / `en`，
-    用户点保存就把真实资料覆盖掉；`notifications/page.tsx:46` 同型，开关全渲染成关，保存即落库）；
+19. C08-b 偿还错误通道台账：按影响面从大到小清 `ERROR_CHANNEL_EXEMPTIONS` 里标 `debt` 的条目。
+    顺序是**逐个读过代码之后**定的，不是按文件或字母序：
+    ① 会把**没提交的数据写掉**的三处——`actions/projects.ts` 的 config 合并**已于 2026-09-23 修好**
+    （读失败改为中止，一次都不写；顺带把该文件另外四处同源的身份/项目行读取一起收了，见 progress 同日条目）；
+    还剩 `dashboard/profile/edit/page.tsx:33`（表单预填 `""` / `UTC` / `en`，用户点保存就把真实资料覆盖掉）与
+    `notifications/page.tsx:46`（开关全渲染成关，保存即落库）；
     ② 鉴权与所有权判定（`lib/uploads/service.ts` 封面上传把角色读失败答成 `onlyAdminsCreateProject`、
-    `api/invitations/route.ts` 五处、`lib/actions/projects.ts` 另两处、`lib/actions/sessions.ts` 把读失败答成
-    `sessionNotFound`、`lib/actions/api-keys.ts` 让「密钥不存在」与「读失败」共用一个 `databaseError`）；
+    `api/invitations/route.ts` 五处、`lib/actions/sessions.ts` 把读失败答成 `sessionNotFound`、
+    `lib/actions/api-keys.ts` 让「密钥不存在」与「读失败」共用一个 `databaseError`）；
     ③ 页面读数（`dashboard/team/page.tsx` 渲染成「你还没有团队」、`dashboard/billing/page.tsx`
     把套餐显示成 `free`、`dashboard/profile/page.tsx` 把角色显示成 `member`）。
-    每清一处必须同时下调台账数字，否则 `QUERY_ERROR_CHANNEL_EXEMPT_STALE` 会红
+    每清一处必须同时下调台账数字，否则 `QUERY_ERROR_CHANNEL_EXEMPT_STALE` 会红。
+    当前台账 19 处 = 17 处 debt + 2 处 justified
 20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的），
     接线时按同一套 AST 实测到 12 处：`api/e2e/push-queue/route.ts:86,230`、`api/invitations/route.ts:56,166`、
     `api/stripe/checkout/route.ts:58,68`、`api/webhooks/stripe/route.ts:256,263`、
