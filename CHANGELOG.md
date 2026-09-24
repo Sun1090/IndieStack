@@ -261,7 +261,8 @@ All notable changes to IndieStack will be documented in this file.
   （新增 `logoutAllFailed` / `signOutOthersFailed`，en 与 zh-CN 各一条），成功才进入原有跳转 / 完成态。
   同一次清点里剩下的 `signOut` 站点：`site-header.tsx`（默认 local scope，方向较轻）与
   `lib/auth/passkey-session.ts`（校验失败后的清理，本来就 `.catch()` 后照样 throw，属于刻意吞掉）——
-  两者连同判据一起记进 roadmap C09，不在本条里顺手改。
+  两者连同判据一起记进 roadmap C09，不在本条里顺手改。（`site-header.tsx` 在**本 PR 后面的 commit 里收了**，
+  见下面那条；没动的只剩 `passkey-session.ts` 那一处已判定的吞掉。）
 
 - **恢复码自救：解绑失败不再把码烧掉**（C09）：`redeemRecoveryCode` 原先的次序是「扣恢复码 → 写审计 → 解绑 TOTP」，
   而解绑那两步走的是 Auth **管理**端口——`listFactors()` 与 `deleteFactor()` 同样只把失败放在返回的 `error` 上，
@@ -272,6 +273,23 @@ All notable changes to IndieStack will be documented in this file.
   （新增键，en / zh-CN 各一条，文案明说「恢复码没有扣减、可以重试」）。方向是往保守一侧偏：
   一次失败的兑换把码留在库里（可重试），代价远小于一个用掉的码配一把还在锁着的验证器。
   「账号本来就没有 TOTP 因子」是合法状态，不算失败，照常扣码。
+
+- **顶栏「退出登录」没退成时不再照样跳走**（C09）：`site-header.tsx` 的 `handleSignOut` 丢掉 `signOut()`
+  的返回值，然后无条件 `router.push(首页)` + `router.refresh()`。后果和上面那两个按钮同源，只是这个入口
+  更常被打到：用户点了退出、页面跳回首页，于是**以为这台电脑上的会话已经没了**——而它还活着。
+  现在读 `error`：失败弹一条可重试的 destructive toast（新增 `common.signOutFailed`，en / zh-CN 各一条），
+  成功才进入原有的跳转 + 刷新。测试把 Radix 下拉换成普通元素（jsdom 没有 `ResizeObserver`，被测的是
+  「这一步失败时组件做了什么」，不是下拉的展开实现）；变异核对：把组件退回旧写法 → `1 failed | 5 passed`，
+  红的正是失败路径那条，成功那条照绿。
+
+- **一次确实成功的 OAuth 登录不再被审计写成没有主人**（C09）：`api/auth/callback/route.ts` 在
+  `exchangeCodeForSession` **已经成功**之后再去 `getUser()`，那一处原本连 `error` 都不取、直接
+  `user?.id ?? null` 落审计表。于是 Auth 一次抖动会写出一行 `user_id` 为空的 `auth.oauth_login`，
+  与「失败登录时本来就没有 session」完全同形——而这里的真事实恰恰相反：**会话已经换到了**。
+  现在绑定 `error`：审计照写、跳转方向不变（拦一次已经成功的登录不是这条路由的职责），metadata 打
+  `sessionReadFailed: true`，并把这次读取失败记进 `logApiError`。新增 `route.test.ts` 4 条用例
+  （这是该路由的第一份测试）；变异核对两刀：只退回 metadata 标记 → `1 failed | 3 passed`；
+  只退回那行日志 → 同一条用例红，说明断言两头都吃得住。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条

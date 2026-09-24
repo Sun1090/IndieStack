@@ -298,12 +298,28 @@
     都读，任一失败记日志并回 `recoveryUnenrollFailed`（en / zh-CN 各一条，文案明说码没有被扣、可以重试）。
     偏向保守一侧的代价只是一次失败的兑换把码留在库里；「账号本来就没有 TOTP 因子」是合法状态，照常扣码。
     **这是目前 C09 里唯一一处「抹掉 `error` 之外还要靠调顺序才能修」的站点**，其余都是补绑定 `error` 即可。
-    剩下三处刻意不顺手改，理由各不相同：`components/layout/site-header.tsx` 是默认 local scope，
-    后果只是界面比真实状态先登出；`lib/auth/passkey-session.ts:72` 是 magic link 校验失败后的清理，
-    `.catch(() => undefined)` 之后照样 throw，属于**已判定**的吞掉而不是漏看；
-    `app/auth/mfa/page.tsx:85` 的 `refreshSession` 在 `try` 里、外层 catch 有通用文案，
-    但那个 catch 读的是**异常**而不是 `error` 对象，所以「服务端返回 `error`」这条路径现在会静默往下走——
-    它要连 MFA 流程一起判，单独改一处会把成功路径改坏。
+    **同一次重叠测量里剩下的 0 重叠站点也收了**（`site-header.tsx`、`api/auth/callback/route.ts`、
+    `hooks/use-user.ts`、`lib/supabase/middleware.ts` 各 **0** 条；`app/auth/mfa/page.tsx` 是 **1** 条 = #119）：
+    ①`components/layout/site-header.tsx` 的 `handleSignOut` 丢掉 `signOut()` 的返回值后照样跳首页——
+    入口比设置页那两个按钮更常被打到，读 `error`、失败弹可重试 toast（`common.signOutFailed`）；
+    ②`api/auth/callback/route.ts` 在 `exchangeCodeForSession` **成功之后**再 `getUser()`，那一处不取 `error`
+    就把 `user?.id ?? null` 落审计——一次确实成功的登录被写成没有主人，与「失败登录时本来就没有 session」同形。
+    改成绑定 `error` + metadata `sessionReadFailed` + `logApiError`（跳转方向不动：拦一次已经成功的登录
+    不是这条路由的职责），并补上该路由的第一份测试（4 条用例）。
+    **两处量完之后不改，理由各不相同**：`hooks/use-user.ts` 的修法要么改钩子契约
+    （`{ user, loading }` → 多一个「没读到」），要么在三个消费者里判空——三个文件都是 0 重叠
+    （`use-is-admin.ts`、`use-unread-notifications.ts` 各 0），但这不是补一处 `error` 绑定的形状，
+    是一次接口决定，方向上也全是拒绝侧（头像是登出态、`useIsAdmin()` 为假、未读数为 0），所以留在这里等决定。
+    `lib/supabase/middleware.ts` **这条判据在它身上不成立，理由是它答的其实不是同一个问题**：
+    那里的 `getUser()` 走的是**浏览器带来的 cookie**，读失败最常见的成因就是「这份会话已经不再有效」
+    （access token 过期且刷新失败、token 被撤销）——对中间件而言那不是基础设施抖动，而是关于用户的真事实。
+    所以 `user = null` → `proxy.ts` 重定向登录页**是正确答案**；把「error」单独拎出来放行，
+    会把一次普通的过期会话变成一个错误边界页。它不该进债务清单，该记在这里——`proxy.ts` 本身也是 0 重叠，
+    也就是说不动它不是因为动不了，是因为动它会把对的行为改错。
+    `lib/auth/passkey-session.ts:72` 是 magic link 校验失败后的清理，`.catch(() => undefined)` 之后
+    照样 throw，属于**已判定**的吞掉而不是漏看；`app/auth/mfa/page.tsx:85` 的 `refreshSession`
+    在 `try` 里、外层 catch 读的是**异常**而不是 `error` 对象，「服务端返回 `error`」这条路径会静默往下走——
+    它要连 MFA 流程一起判，单独改一处会把成功路径改坏，而且 #119 正在改这个文件。
     **那 8 处 `user!.id` 现在不能动，原因是重叠而不是难度**（2026-09-24 量的：逐条 open PR 的
     `git diff --name-only <merge-base origin/main <head>> <head>` 对文件全名匹配，即上面那条保守口径）
     ——`dashboard/notifications/page.tsx`

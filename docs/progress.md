@@ -1344,3 +1344,41 @@
   `auth/mfa/page.tsx` 的 `refreshSession`）；那 8 处 `user!.id` 仍等 C08-c 那批 PR 落地；
   之后立 `AUTH_ERROR_CHANNEL` 豁免台账再谈门禁接不接。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 — C09：0 重叠的站点又收两处，另外两处量完之后一条判据被推翻
+
+- 里程碑 / 版本：v0.12.0 / C09。分支 `feat/gate-query-error-channel`（PR #92，base `main`），
+  仍然折在同一条 PR 里，不新开。
+- 状态：DONE（`0607805` 顶栏退出、`101fcf5` 登录回调审计）。
+- 挑站点的尺子沿用上一条那把（`merge-base origin/main <head>` 之后 diff 文件全名）。这一轮量到的 0 重叠是四个：
+  `site-header.tsx`、`api/auth/callback/route.ts`、`hooks/use-user.ts`、`lib/supabase/middleware.ts`；
+  `app/auth/mfa/page.tsx` 是 **1**（#119 在改），所以它不动。对照着又量了消费者侧：
+  `use-is-admin.ts` 0、`use-unread-notifications.ts` 0、`proxy.ts` 0、`use-toast.ts` 0。
+- 收的两处：①`handleSignOut` 丢掉 `signOut()` 的返回值后照样 `push(首页)` + `refresh()`——
+  这个入口比设置页那两个按钮更常被打到，用户点了退出、页面跳走，于是**以为这台电脑上的会话已经没了**；
+  改成读 `error`，失败弹可重试的 destructive toast（新增 `common.signOutFailed`，en / zh-CN 各一条）。
+  ②`api/auth/callback/route.ts` 在 `exchangeCodeForSession` **已经成功**之后再去 `getUser()`，那一处不取
+  `error` 就把 `user?.id ?? null` 落审计表——一次确实发生的登录被写成没有主人。改成绑定 `error` +
+  metadata `sessionReadFailed` + `logApiError`；**跳转方向不动**（拦一次已经成功的登录不是这条路由的职责），
+  并补上该路由的第一份测试（4 条用例，含「无 code」「交换失败不回写审计」两档）。
+- **有一条判据在这两处之后被推翻**：C09 原先把 `lib/supabase/middleware.ts` 记成「两者都没有」的债。
+  量完发现它根本不该进这张表——那里的 `getUser()` 读的是**浏览器带来的 cookie**，读失败最常见的成因就是
+  「这份会话不再有效」（access token 过期且刷新失败、token 被撤销）。对中间件而言那不是基础设施抖动，
+  是关于用户的真事实，所以 `user=null` → `proxy.ts` 重定向登录页**是正确答案**；把 `error` 单独拎出来放行，
+  会把一次普通的会话过期变成一个错误边界页。`proxy.ts` 本身 0 重叠，也就是不动它不是因为动不了，
+  是因为动它会把对的行为改错。判据的适用范围因此收窄成「读的是服务端自己拿到的会话」，这条写进 roadmap C09。
+- 另一处量完之后仍不动的是 `hooks/use-user.ts`：它的修法要么改钩子契约（多返回一个「没读到」），
+  要么在三个消费者里判空，而三个文件都是 0 重叠——所以拦住它的不是冲突面，是一次接口决定；
+  方向也全在拒绝侧（头像显示登出态、`useIsAdmin()` 为假、未读数为 0）。留在 C09 等决定，不塞进本 PR。
+- 测试与变异核对：顶栏 6 条用例（`1 failed | 5 passed` ← 把组件退回旧写法，红的正是失败路径那条、
+  成功那条照绿）；回调路由 4 条用例，两刀分别退回 metadata 标记与那行日志，**都只红同一条**用例。
+  顶栏测试把 Radix 下拉 mock 成普通元素——jsdom 没有 `ResizeObserver`，被测的是「这一步失败时组件做了什么」，
+  不是下拉的展开实现。两次变异都用 `git checkout --` 还原（改动已先 commit），还原后 `git status` 干净。
+- 验证命令与结果：`CI=true pnpm check:all` **exit 0**（38 道门禁；`Test Files 204`，比上一条多一个文件；
+  翻译对称 `en/zh-CN 各 1247 key`；`check:test-matrix` 11 领域 / 104 条门禁 × 2 份文档）。
+- 阻塞：无。Vercel 部署检查仍按既定口径记录并忽略。
+- 风险 / 回滚：两处都是「失败不再报成功」，回滚 = revert `0607805` 与 `101fcf5`；
+  无迁移、无数据面，回调那条只往既有审计行的 metadata 里多写一个布尔。
+- 下一项：C09 还剩的是那 8 处 `user!.id`（等 C08-c 那批落地）、`use-user.ts` 的接口决定、
+  `app/auth/mfa/page.tsx`（#119 落地之后），以及立 `AUTH_ERROR_CHANNEL` 台账再谈门禁接不接。
+- 更新时间：2026-09-24。
