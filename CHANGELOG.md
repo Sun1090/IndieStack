@@ -840,6 +840,7 @@ All notable changes to IndieStack will be documented in this file.
   与 `storage.remove` 是同一族的第二个实例：**仓储层单测抓不到它，因为它用的手搓 `chainMock` 自带 `gt`**——
   `src/lib/repositories/test-helpers.ts:18` 那份清单里有 `gt`、`neq`，而真正的替身没有。
   修法分四层：① `MockQueryBuilder` 补 `gt()`，并且**读写两条路径都要落**（mock 里 `matchesFilters` 服务
+  修法分三层：① `MockQueryBuilder` 补 `gt()`，并且**读写两条路径都要落**（mock 里 `matchesFilters` 服务
   update/delete、`applyFiltersAndPagination` 服务 select，是两处独立实现），顺手把排序算子的判定抽成
   `passesOrdered()`，边界语义不再各写一遍（也是为了让 `matchesFilters` 留在 ESLint 的复杂度上限内——
   直接加分支会红在 `complexity 34 > 30`，本仓库不用 `eslint-disable` 豁免这条规则）；
@@ -867,6 +868,9 @@ All notable changes to IndieStack will be documented in this file.
   这条动态对账还顺带抓出一整类合并时才会现形的边：它第一版断言的是「退订也吃过期的 token 就返回
   `false`」，而队列里的 #123 正在把退订的有效期语义改成「不设时间窗」——两侧改的是不同文件，
   `merge-tree` 说「不冲突」，真把那棵树合一遍才红。现在过期闸门只由确认路径钉，改完两侧都成立。
+  变异核对 3 项，各自抓红：删掉 `gt()` → 3 条语义 + surface 点名共 4 条；把 `:gt` 判成 `>=` → 恰好写/读
+  两条严格大于红而 `gte` 对照仍绿；只让写路径放过排序过滤器 → 写路径 3 条红而读路径仍绿
+  （证明两边是被独立钉住的，不是读路径顺带覆盖）。每步 `git checkout --` 还原并校验逐字节一致。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
