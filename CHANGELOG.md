@@ -204,6 +204,27 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **四处 Server Action 的限流一直把所有人当成同一个人**：`contact`、`account`（删号）、
+  `recovery-codes`（兑换恢复码）、`audit`（认证审计）四个 action 写成
+  `rateLimit.check(new Request("http://local/xxx"))`。限流器的桶键只来自
+  `clientIpFromHeaders(request.headers)`（读 `x-real-ip`，其次形如 IP 的 `x-forwarded-for`，
+  否则 `"anonymous"`），而凭空 new 出来的 Request 一个 header 都没有，于是这四处**恒为
+  `"anonymous"`**：所有用户挤在同一个 100 次/60 秒的桶里，而且是四个 action 共用同一个单例桶。
+  后果不是限得太松而是**能被打人锁死**——刷联系表单可以顺带把别人的恢复码兑换（2FA 兜底路径）
+  和账号删除一起限掉。用真模块跑的探针读数：两个合成请求都解析成 `anonymous`，同一实例上第 101 次
+  调用被拒，而换一个带 `x-real-ip` 的请求不受影响。全库 17 个限流调用点里 13 个传的是真 `request`，
+  只有这 4 个是现造的对象。这不是「Action 里拿不到请求头」的限制：同目录的 `login-attempts.ts`
+  一直在用 `clientIpFromHeaders(await headers())`，且没有任何测试钉过 `anonymous` 这个行为。
+  现在四处走新增的 `checkActionRateLimit()`，从 `next/headers` 取真实请求头再交给同一个单例——
+  路由侧行为一字未动。动态 `await import("next/headers")` 而不是顶层 import：
+  `recovery-codes.ts` 顶部写着它被客户端组件引用，静态引入会进客户端图。拿不到请求头时退化为匿名桶
+  而不是抛错：这一层是滥用防护，不是鉴权边界。守卫是一条扫 `src/**` 的源码检查（写在既有
+  `src/lib/rate-limit.test.ts` 里，不开新测试文件），抓到「把现造的 Request 交给限流器」这个形状；
+  它第一次跑就红在自己头上——红在那句描述旧写法的**注释**上，于是判据补了「注释不算」并把这条
+  同时写进阳性对照。四条变异核对各自红在该红的用例上：不再传 headers → 「另一个客户端不该共享同一个桶」
+  红且仓库扫描同时红；删掉兜底 → 只有兜底那条红；扫描器恒返回空 → 阳性对照红；取消注释豁免 →
+  阳性对照与仓库扫描两条都红。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

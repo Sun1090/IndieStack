@@ -1153,3 +1153,73 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — 四处 Server Action 的限流一直把所有人当成同一个人
+
+- 里程碑 / 版本：v0.12.0 安全/滥用防护；分支 `fix/limiter-client-identity-in-actions`，base `main` = `ad4b029`。
+- 状态：DONE（待合并）。
+- 分支 / commit：`fix/limiter-client-identity-in-actions`（本条目）。
+- 为什么做：起因是给 C12 找判据——在 `feat/measure-route-rate-limits` 上跑
+  `node scripts/check-route-auth.js --rate-limit-report`，读到的分母是「45 个 handler 里 14 个有限流器绑定」。
+  但那份台账只覆盖 `app/api/**/route.ts`：**登录、MFA、恢复码这些真正的凭据面不在那 45 个里**，
+  它们是 Server Action。于是去数 action 那一侧，结果不是一个盲区统计，而是一个活着缺陷。
+- 完成内容：
+  1. **量出来的形状**（全库 17 个限流调用点，逐个分类，分母写在这里）：
+     13 个传的是真 `request`（8 个路由文件 + `src/lib/uploads/request.ts`），
+     **4 个传的是现造的对象**：
+     `rateLimit.check(new Request("http://local/{contact,account-delete,redeem,audit}"))`
+     ——分别在 `src/lib/actions/{contact,account,recovery-codes,audit}.ts`。
+  2. **为什么这是缺陷而不是省事写法**：`createRateLimit().check()` 的键只来自
+     `clientIpFromHeaders(request.headers)`（读 `x-real-ip`，其次形如 IP 的 `x-forwarded-for`，
+     否则 `"anonymous"`）。凭空 new 出来的 Request 一个 header 都没有 → 键恒为 `"anonymous"` →
+     **所有用户挤在同一个 100 次/60 秒的桶里，而且四个 action 共用这一个桶**
+     （默认导出是单例）。用真模块跑的探针读数：两个合成请求都解析成 `anonymous`，
+     同一个实例上第 **101** 次调用被拒，而换一个带 `x-real-ip` 的请求不受影响。
+     后果不是「限得太松」而是**能被打人锁死**：刷联系表单可以顺带把别人的
+     恢复码兑换（2FA 兜底路径）和账号删除一起限掉。
+  3. **判据不是猜的**：同目录的 `login-attempts.ts` 一直在用
+     `clientIpFromHeaders(await headers())` 拿真实 IP——说明 Server Action 里请求头**拿得到**，
+     这四处是漏了而不是做不到。也没有任何测试钉过 `anonymous` 这个行为（grep 全测试目录 0 命中），
+     所以不存在「这是有意为之」的解释。
+  4. **修法**：新增 `checkActionRateLimit()`（`src/lib/rate-limit.ts`），内部
+     动态 `await import("next/headers")` 取真实请求头，再交给同一个 `rateLimit` 单例——
+     路由侧行为一字未动，action 侧从「全局共用一桶」变成「按客户端分桶」。
+     动态导入而不是顶层 import：`recovery-codes.ts` 顶部就写着它被客户端组件引用，
+     静态引入 `next/headers` 会进客户端图。不在请求上下文时**退化**为匿名桶而不是抛错：
+     这层是滥用防护不是鉴权边界，宁可限得粗也不要让用户的操作失败。
+  5. **顺手加了一条守卫**（写在既有 `src/lib/rate-limit.test.ts` 里，不开新测试文件，
+     所以 `check:test-matrix` 不需要跟着改）：扫 `src/**` 找「把现造的 Request 交给限流器」这个形状。
+     它第一次跑就红了——红在 `rate-limit.ts` 里**我自己写的那句描述旧写法的注释**上，
+     于是判据补了「注释不算」，并把这条同时写进阳性对照。
+- 验证命令与结果：
+  - 定向：`npx vitest run`（rate-limit + 四个 action 的测试）→ **5 files / 46 tests passed**。
+  - 四条变异核对（每条跑完 `git checkout --` 复原，末尾 `git status --porcelain` 为 0）：
+    ① 让 `checkActionRateLimit()` 不再传 headers → 红在「一个 IP 打满配额不会影响另一个 IP」，
+    消息是「另一个客户端不该共享同一个桶: expected false」，**并且**仓库扫描也红（说明守卫是承重的）；
+    ② 删掉 `headers()` 的兜底 → 只有「拿不到请求头时退化为匿名桶而不是抛错」红
+    （`Error: outside of a request context`）；③ 让扫描器恒返回空 → 红在阳性对照
+    （`expected [] to deeply equal ['sample.ts:1']`）；④ 取消「跳过注释」 → 阳性对照与仓库扫描**两条都红**。
+  - 四个 action 的测试原本会因换导入符号而全红（13 条），已把 mock 的键从
+    `rateLimit: { check }` 改成 `checkActionRateLimit`；它们不断言参数，只断言放行/限流两条分支。
+  - 全量：`pnpm verify:build`（lint + type-check + test + build）由 `.husky/pre-push` 跑，
+    结果记在下面的推送日志判据里（守卫真跑时日志 ~950 行，悬空时 ~2 行）。
+- 变更文件：`src/lib/rate-limit.ts`（+22）、四个 `src/lib/actions/*.ts`（各 2 行）、
+  `src/lib/rate-limit.test.ts`（两个 describe + mock 键）、四个 action 测试的 mock 键、`docs/progress.md`。
+- 阻塞 / 风险 / 回滚：**与 open PR 的重叠是量过的，不是推测的**——按
+  `git diff --name-only origin/main...pr/<n>` 逐条判：`account.ts` 撞 #134，
+  `recovery-codes.ts` 与 `audit.ts` 撞 #92/#94/#114 那条 C08 链。
+  先看行号：我那几行（`audit.ts:8` 与 `:71`、`recovery-codes.ts:13` 与 `:74`）**就落在**
+  它们 hunk 的范围里（例如 #92 在 `recovery-codes.ts` 改 `-69,7`，正好盖住我的 74 行），
+  所以我一开始写在台账里的「同一文件不同区域」是错的。改成量两件事：
+  ① `git merge-tree --write-tree` 逐个真合（`pr/134`、`pr/92`、`pr/94`、`pr/114`）→
+  **四次都 rc=0、零条冲突记录**；② 光合得上不算数，还要证明我没把符号删掉——
+  统计各 PR 版本里的 `rateLimit` 引用数与 `main` 完全相等（account 3=3、recovery-codes 3=3、audit 2=2），
+  且 #134 那份 `account.ts` 里仍是「import + 一处 check + `rateLimited` 字符串」这三行，
+  **没有哪条 PR 新增限流调用点**，所以我换掉导入不会留下悬空符号。
+  风险面：合并后每个客户端从「四个 action 共用一个全局桶」变成「一个 IP 共用默认桶
+  （100/分钟，与 user/analytics/checkout/invitations/uploads 同一单例）」——
+  这与路由侧一直是同一套口径，不是新增的收紧；如果以后要按 action 分预算，那是 C12 的产品判断，不在本条。
+  回滚 = revert 本 commit（纯行为回退，无迁移、无数据面）。
+- 下一项：合并这条之后，把 C12 的判据从「45 个 route handler 有没有窗口」扩成
+  「17 个限流调用点按身份来源分类」——本报告的分母与分类可以直接复用。
+- 更新时间：2026-09-24（UTC 13:1x）。

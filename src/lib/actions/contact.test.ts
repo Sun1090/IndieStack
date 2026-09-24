@@ -12,7 +12,7 @@ const { createClientMock, revalidatePathMock, rateLimitCheckMock } = vi.hoisted(
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
-vi.mock("@/lib/rate-limit", () => ({ rateLimit: { check: rateLimitCheckMock } }));
+vi.mock("@/lib/rate-limit", () => ({ checkActionRateLimit: rateLimitCheckMock }));
 
 import { submitContactMessage } from "./contact";
 

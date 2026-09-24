@@ -140,3 +140,25 @@ export function createRateLimit(options?: { maxRequests?: number; windowMs?: num
 
 /** 单例导出，供全局复用 */
 export const rateLimit = createRateLimit();
+
+/**
+ * Server Action 的限流入口。
+ *
+ * Action 里拿不到 Request 对象，只有 `next/headers` 的请求头。此前四处 action 直接写
+ * `rateLimit.check(new Request("http://local/xxx"))`，那样造出来的 Request 一个 header 都没有，
+ * `clientIpFromHeaders()` 于是恒返回 `"anonymous"`——所有用户挤进同一个桶，
+ * 一个人刷联系表单就能把别人的恢复码兑换、账号删除一起限掉。
+ *
+ * 不在请求上下文里（脚本、单测）时退化为 `"anonymous"`，与路由 handler 缺头时的行为一致：
+ * 这一层是滥用防护，不是鉴权边界，所以宁可退到粗桶也不要让用户的操作失败。
+ */
+export async function checkActionRateLimit(): Promise<RateLimitResult> {
+  const { headers } = await import("next/headers");
+  let source: Headers;
+  try {
+    source = (await headers()) as unknown as Headers;
+  } catch {
+    source = new Headers();
+  }
+  return rateLimit.check(new Request("https://app.local/action", { headers: source }));
+}
