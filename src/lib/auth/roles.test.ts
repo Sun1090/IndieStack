@@ -14,6 +14,7 @@ import {
   isRoleAtLeast,
   getAllRolesWithPermissions,
   parseRole,
+  resolveProfileRole,
   teamRoleToSystemRole,
 } from "./roles";
 import { PERMISSIONS, type Permission } from "./permissions";
@@ -198,6 +199,30 @@ describe("parseRole()", () => {
     expect(parseRole("")).toBeUndefined();
     expect(parseRole(undefined)).toBeUndefined();
     expect(parseRole(null)).toBeUndefined();
+  });
+});
+
+describe("resolveProfileRole()", () => {
+  it("读到什么角色就是什么角色", () => {
+    for (const role of ROLES) {
+      expect(resolveProfileRole({ role })).toBe(role);
+    }
+  });
+
+  it("查询失败一律落到 viewer，哪怕 data 里带了角色", () => {
+    expect(resolveProfileRole({ error: { message: "connection timeout" }, role: "admin" })).toBe("viewer");
+    expect(resolveProfileRole({ error: { code: "PGRST116" } })).toBe("viewer");
+  });
+
+  it("没有 error 但读不出合法角色，同样落到 viewer 而不是 member", () => {
+    expect(resolveProfileRole({})).toBe("viewer");
+    expect(resolveProfileRole({ role: null })).toBe("viewer");
+    expect(resolveProfileRole({ role: "" })).toBe("viewer");
+    expect(resolveProfileRole({ role: "owner" })).toBe("viewer");
+  });
+
+  it("遗留的 'user' 不再算 member：迁移 002 已把这些行改成 member 并收紧了约束", () => {
+    expect(resolveProfileRole({ role: "user" })).toBe("viewer");
   });
 });
 
