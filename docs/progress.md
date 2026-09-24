@@ -1539,3 +1539,50 @@
   `AUTH_ERROR_CHANNEL` 台账（C09 的门禁接不接）仍排在其后。
 - 更新时间：2026-09-24。
 
+## 2026-09-24 — 上一条那三条「要人判断的边」：两条判完了，理由和落地规则写在这里
+
+- 里程碑 / 版本：v0.12.0；分支 `docs/pr-merge-order`（PR #118）。上一条目写着「届时应已由作者定稿」——
+  那三条边都是**我自己两条 PR 之间的分歧**，作者就是我，不必等人。这一条把能判的两条判掉，并把判据落成一条
+  合并时可执行的规则；判不了的那条留在原地。
+- 状态：DONE（边 1、边 3 已定案；边 2 仍开放）。
+- **判据先说清楚，否则这条目就只是又一次「我说了算」**：三条边里前两条的共同点是 **#96 与 #109 把同一个守卫重写了两遍**
+  （`src/app/api/stripe/checkout/route.ts`：main 上 98 行，#96 版 139 行、#109 版 133 行；
+  `diff main→#96` 改 81 行、`diff main→#109` 改 79 行——两份都是整函数级重写，不是各加一处）。
+  所以这不是「两个都对、只能选一个文案」，而是**同一件事的两个实现要挑一个**，挑完另一份在这三个文件上的改动整体作废。
+- 逐行比过两份实现（`/tmp/r96.ts` vs `/tmp/r109.ts`，临时文件未入库）：**行为等价**，
+  差别只有三处——① #96 的失败结果带 `source`（`membership` / `subscription`），日志因此能说是哪一道读失败
+  （`FAILURE_LABEL`），#109 只回 `{status:"unavailable"}`，日志里分不出；② 状态命名（`duplicate`/`failed` vs
+  `subscribed`/`unavailable`）；③ 注释措辞。**#109 没有任何 #96 缺的行为**（两版对 `priceId` 白名单、
+  `createCheckoutSession` 参数、`idempotencyKey` 的处理逐行一致）。
+  反过来 #96 的测试文件里有 #109 没有的两条，其中一条是「**路由能返回的每个错误码都在两个 locale 里有文案**」——
+  那是 PR #96 那类缺陷（错误码没有对应文案）的门禁级用例，丢了就没有别的地方守着。
+- **定案（边 1）**：`checkoutUnavailable` 取 **#96 的泛化文案**（「支付服务暂时不可用，请稍后重试」/
+  "Payment is temporarily unavailable. Please try again."）。理由不是「#96 更早」，是**这个键服务于两种失败来源**：
+  `readCheckoutScope` 会在「团队归属读失败」和「现有订阅读失败」两种情况下都用它。
+  #109 那句「暂时无法确认你团队的当前订阅，本次没有发起结账」在团队归属读失败时是一句**假话**（没确认的是归属，不是订阅）。
+- **定案（边 3）**：`route.test.ts` 同样整体取 #96 版（7 条），#109 的 5 条不并进来——它们断言的行为是 #96 那 7 条的子集
+  （只是 `it()` 标题不同），做「按标题并集」只会产出同一行为的重复断言 + 重复声明（上一条模拟里已经量过：
+  强行并集 = 12 条 / 298 行且重复声明）。
+- **落地规则（合并时执行，零 rebase、零新增冲突边）**：#96 编号小于 #109，按升序先落地，所以到合 **#109** 时，
+  这几处**一律取 main 已有的那一版**（也就是 #96 落进去的那份）：`src/app/api/stripe/checkout/route.ts`、
+  `src/app/api/stripe/checkout/route.test.ts`、以及 `messages/en/actions.json` 与 `messages/zh-CN/actions.json` 里的
+  `checkoutUnavailable` 键。**#109 其余文件照常**（它真正的贡献是 `src/app/api/webhooks/stripe/route.ts` 及其测试，
+  #96 完全没碰），own-delta 全清单：`CHANGELOG.md`、`docs/progress.md`、`docs/roadmap-0.12.0.md`、
+  `messages/{en,zh-CN}/actions.json`、`stripe/checkout/route{,.test}.ts`、`webhooks/stripe/route{,.test}.ts`。
+  代价写清楚：#109 分支上那两处 checkout 改动就此作废，**#109 的 PR 正文应在合并前把这一点标注出来**，
+  否则它的 diff 看起来像是改了两遍。
+- **边 2 仍开放**：`e2e/support/warm-up.ts` 的 #116 × #120 是**兄弟不是父子**（服务器身份核对 vs 预热清单双向对账），
+  没有「挑一份」这回事，必须手工并集，而且并法改变语义（身份核对要放在「只在并行时预热」的早退**之前**，
+  否则串行模式下核对被跳过）。这条**不是文案选择**，是要写代码的：留在 #116/#120 落地时按上一条记的并法做。
+- 顺带更正一条与本条无关的口径：队列现在是 **42 条**（#134 `fix/c09-swallowed-signout`，base `main`，
+  与那 41 条零 own-delta 重叠），上面那套整队列模拟覆盖的是 #92–#133。傍晚逐条扫 `gh pr checks` 的桶：
+  41 条里 40 条唯一红项是 Vercel（配额），1 条全绿，**没有一条是因为代码红的**；#134 的必需 CI
+  （Build / Unit Tests / Lint & Type Check / CodeQL / E2E + 两个 shard）在 base `main` 上全 pass。
+- 验证：本条只是文档，判据本身来自 `git show <ref>:<file>` + `diff` 的逐行比对，命令都在上面；
+  两条 `route.ts` 的行数与 diff 规模、#109 的 own-delta 清单、#96 无下游（`baseRefName=="fix/checkout-guard-fail-closed"`
+  命中 0 条）/ #109 下游只有 #110，都是当场量的。
+- 风险 / 回滚：本条不改代码、不动任何 PR 的 base，回滚 = revert 本 commit。
+- 下一项：`main` 前进之后重跑整队列模拟（那时边 1、边 3 应已因这条规则自动消失，只剩边 2 与新的账）；
+  `AUTH_ERROR_CHANNEL` 台账仍排在 #92 与 #114 落地之后。
+- 更新时间：2026-09-24。
+
