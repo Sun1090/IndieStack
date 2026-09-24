@@ -1,8 +1,15 @@
 /**
  * Rate Limiter 单元测试
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createRateLimit } from "./rate-limit";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { RATE_LIMIT } from "@/lib/constants";
+import { checkActionRateLimit, createRateLimit, rateLimit } from "./rate-limit";
+
+/** 让 checkActionRateLimit() 里的动态 import 命中一个可编排的 headers() */
+const headersMock = vi.hoisted(() => ({ headers: vi.fn() }));
+vi.mock("next/headers", () => headersMock);
 
 describe("createRateLimit()", () => {
   beforeEach(() => {
@@ -131,5 +138,103 @@ describe("窗口重置与并发", () => {
     expect((await rl.check(a)).allowed).toBe(true);
     expect((await rl.check(a)).allowed).toBe(false);
     expect((await rl.check(b)).allowed).toBe(true);
+  });
+});
+
+describe("Server Action 的客户端身份（checkActionRateLimit）", () => {
+  const DEFAULT_MAX = RATE_LIMIT.maxRequests;
+
+  beforeEach(() => {
+    rateLimit.clear();
+  });
+
+  afterEach(() => {
+    rateLimit.clear();
+    vi.mocked(headersMock.headers).mockReset();
+  });
+
+  async function setClientIp(ip: string | null): Promise<void> {
+    const entries: [string, string][] = ip === null ? [] : [["x-real-ip", ip]];
+    vi.mocked(headersMock.headers).mockResolvedValue(new Headers(entries) as never);
+  }
+
+  it("一个 IP 打满配额不会影响另一个 IP", async () => {
+    await setClientIp("203.0.113.11");
+    let firstBlockedAt = -1;
+    for (let i = 1; i <= DEFAULT_MAX + 1; i += 1) {
+      const r = await checkActionRateLimit();
+      if (!r.allowed) {
+        firstBlockedAt = i;
+        break;
+      }
+    }
+    expect(firstBlockedAt, "打满默认配额后应当出现限流").toBe(DEFAULT_MAX + 1);
+
+    await setClientIp("198.51.100.22");
+    const other = await checkActionRateLimit();
+    expect(other.allowed, "另一个客户端不该共享同一个桶").toBe(true);
+  });
+
+  it("拿不到请求头时退化为匿名桶而不是抛错", async () => {
+    vi.mocked(headersMock.headers).mockRejectedValue(new Error("outside of a request context"));
+    const r = await checkActionRateLimit();
+    expect(r.allowed).toBe(true);
+  });
+});
+
+describe("限流调用点必须带真实客户端身份", () => {
+  /**
+   * 判据：把 Request 现造一个交给限流器，就等于把所有人塞进 "anonymous" 同一个桶。
+   * 这条扫描同时跑在合成样本与本仓库源码上——只有本仓库那一次为 0 是不够的，
+   * 必须先证明它抓得到那个形状。
+   */
+  function findHeaderlessLimiterCalls(files: { path: string; content: string }[]): string[] {
+    const hits: string[] = [];
+    for (const file of files) {
+      const lines = file.content.split("\n");
+      lines.forEach((line, i) => {
+        const trimmed = line.trim();
+        // 注释里可以描述这个形状（否则连「别这么写」都没法写），代码里不行
+        if (trimmed.startsWith("*") || trimmed.startsWith("/*") || trimmed.startsWith("//")) return;
+        if (/\.check\(\s*new\s+Request\(/.test(line) && !/headers/.test(line)) {
+          hits.push(`${file.path}:${i + 1}`);
+        }
+      });
+    }
+    return hits;
+  }
+
+  it("阳性对照：这种写法必须被抓到，写在注释里的不算", () => {
+    const bad = [{
+      path: "sample.ts",
+      content: '  const limits = await rateLimit.check(new Request("http://local/redeem"));\n',
+    }];
+    expect(findHeaderlessLimiterCalls(bad)).toEqual(["sample.ts:1"]);
+    const good = [{
+      path: "sample.ts",
+      content: "  const limits = await rateLimit.check(request);\n",
+    }, {
+      path: "sample2.ts",
+      content: '  const limits = await rateLimit.check(new Request(url, { headers }));\n',
+    }, {
+      path: "sample3.ts",
+      content: ' * 以前是 `rateLimit.check(new Request("http://local/x"))`，那是缺陷\n',
+    }];
+    expect(findHeaderlessLimiterCalls(good)).toEqual([]);
+  });
+
+  it("本仓库 src/ 里已经没有这种调用点", () => {
+    const files = fs
+      .readdirSync("src", { withFileTypes: true, recursive: true })
+      .filter((e) => e.isFile() && /\.(ts|tsx)$/.test(e.name) && !/\.(test|spec)\.(ts|tsx)$/.test(e.name))
+      .map((e) => {
+        const abs = path.join(e.parentPath, e.name);
+        return {
+          path: path.relative(process.cwd(), abs).split(path.sep).join("/"),
+          content: fs.readFileSync(abs, "utf8"),
+        };
+      });
+    expect(files.length, "扫描必须有分母").toBeGreaterThan(100);
+    expect(findHeaderlessLimiterCalls(files)).toEqual([]);
   });
 });
