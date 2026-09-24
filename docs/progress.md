@@ -2046,6 +2046,9 @@
      第 ③ 步不能省，因为**改 base 不触发 CI**（本仓库量过两次、当时只记成一条 trivia）：
      只改 base 的话那 5 个必需检查会一直是「expected but not reported」，
      而 `enforce_admins:true` 让 GitHub 把这条 PR 永远判成 `BLOCKED`，谁也点不动。
+     **【当日订正】「改 base 不触发 CI」是对的，但这里给的补救动作是错的**：
+     `update-branch --rebase` 在 base 已经是这条 head 的祖先时得到同一个 sha，不产生 `synchronize`，
+     所以它一次 CI 也唤不起来；能唤起来的是 `gh pr close <n>` + `gh pr reopen <n>`。详见下一条。
   4. **队列现状按这个判据重扫**（46 条，逐条 `mergeStateStatus` + `mergeable`）：
      `MERGEABLE=46`（没有一条 GitHub 侧冲突）；`BLOCKED=2` 是 **#98** 与 **#118**；`CLEAN=1`（#121）；
      其余 43 条 `UNSTABLE` 的红全在 Vercel 那两个非必需检查上。
@@ -2067,8 +2070,13 @@
   #99–#114 那条 16 条长栈的地基：重推会牵动整条栈重排；`close` + `reopen` 也能触发，但仓库是否开了
   「合并/关闭时自动删头分支」我**测不到**（REST 没有这个字段），而删掉 `fix/c08b-invitations-route`
   会让那条栈全部塌掉——高爆破半径、不可逆，所以不做，改成把这一步写进正文交给合并的人：
-  对 #98 直接执行 `gh pr update-branch 98 --rebase`（它 base 就是 main，rebase 是空操作但会产生一次推送，
-  从而触发 CI）。回滚 = revert 本 commit。
+  ~~对 #98 直接执行 `gh pr update-branch 98 --rebase`（它 base 就是 main，rebase 是空操作但会产生一次推送，
+  从而触发 CI）~~。
+  **【当日订正，两处】**：① 那句 update-branch 是错的——rebase 到已是祖先的 base 得到同一个 sha，
+  不产生事件，唤不起 CI；② 被我当成理由的那条「关闭可能自动删头分支」当场证伪——
+  `delete_branch_on_merge` 管的是合并而不是关闭，`gh pr close 98` + `gh pr reopen 98` 之后
+  分支仍在同一个 `896f11e`、#98 回到 `OPEN`、#99 未受影响，并且这个 head 上 7 项必需检查转为全绿，
+  `BLOCKED` 就此解除。做这一步花了两条活动流记录，不花一次推送。回滚 = revert 本 commit。
 - 下一项：把这一节同步进 PR #118 正文的合并动作清单。
 - 更新时间：2026-09-24（UTC 11:5x 前后）。
 
