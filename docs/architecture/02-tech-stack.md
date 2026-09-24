@@ -8,7 +8,7 @@
 
 - **Server Components** — 默认服务端渲染，减少客户端 JS 体积
 - **Server Actions** — 直接在组件中调用服务端函数，无需手写 API
-- **Route Handlers** — `app/api/` 下的 RESTful API 路由
+- **Route Handlers** — `src/app/api/` 下的 RESTful API 路由
 - **Proxy（Next.js 16）** — 请求级中间件，处理认证和路由保护
 - **Streaming SSR** — 通过 `loading.tsx` 实现流式渲染
 - **Metadata API** — 自动生成 SEO 元数据和 OpenGraph 图片

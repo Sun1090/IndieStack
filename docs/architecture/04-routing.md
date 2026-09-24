@@ -24,7 +24,7 @@ graph TD
 
 ```mermaid
 flowchart TD
-    Request["HTTP 请求进入"] --> MW["Edge Middleware"]
+    Request["HTTP 请求进入"] --> MW["Proxy（Next 16 前称 Edge Middleware）"]
     MW --> UpdateSession["updateSession()<br/>刷新 Supabase Cookie 会话"]
     UpdateSession --> CheckMock{"Mock 模式?"}
     CheckMock -->|是| SkipAuth["跳过权限检查<br/>返回模拟用户"]
@@ -57,13 +57,13 @@ flowchart TD
 ### 受保护路由
 
 ```typescript
-// src/middleware.ts
+// src/proxy.ts
 const protectedRoutes = ["/dashboard", "/dashboard/(.*)"];
-const authRoutes = ["/auth/login", "/auth/register"];
+const authRoutes = ["/auth/login", "/auth/register", "/auth/mfa"];
 ```
 
 - **受保护路由** — `/dashboard` 及其所有子路由，未登录用户重定向到登录页
-- **认证路由** — `/auth/login`、`/auth/register`，已登录用户重定向到仪表盘
+- **认证路由** — `/auth/login`、`/auth/register`、`/auth/mfa`，已登录用户重定向到仪表盘
 - **细粒度角色检查** — 由页面组件内的 `requireRole()` / `requirePermission()` 处理
 
 ### Matcher 配置
@@ -76,9 +76,12 @@ export const config = {
 };
 ```
 
-排除静态资源、图片和 favicon，其余所有路径都经过中间件。
+排除静态资源、图片和 favicon，其余所有路径都经过代理（`src/proxy.ts`）。
 
 ## 路由清单
+
+下面各表的「文件」列写的是 **App Router 根下的相对路径**；本仓库的根是 `src/`，
+所以 `app/dashboard/page.tsx` 在磁盘上是 `src/app/dashboard/page.tsx`。
 
 ### 营销页面 `(marketing)`
 

@@ -39,7 +39,7 @@
 5. 添加路由常量 → `src/lib/constants.ts`
 6. 添加导航链接 → sidebar 或 header
 7. 添加组件 → `src/components/`
-8. 添加国际化文本 → `src/lib/i18n/messages/`
+8. 添加国际化文本 → `messages/en/*.json` 与 `messages/zh-CN/*.json`（两半必须同时加）
 9. 更新文档 → `agents/` 和 `docs-site/`
 
 ### 5. TypeScript 风格
@@ -49,7 +49,7 @@
 - 数据库查询使用类型断言处理 RLS 类型问题
 
 ### 6. 错误处理
-- Server Actions: 返回值统一 ActionResult 判别联合（`lib/types/action-result.ts`，用 ok()/fail() 构造）
+- Server Actions: 返回值统一 ActionResult 判别联合（`src/lib/types/action-result.ts`，用 ok()/fail() 构造）
 - Server Components: try/catch 包裹 Supabase 查询，提供回退 UI
 - Client Components: 错误边界，Server Action 失败分支 `if (!result.ok)` + toast 提示
 - API Routes: try/catch 配合正确的 HTTP 状态码；鉴权响应使用 `jsonNoStore()`
