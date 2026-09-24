@@ -13,7 +13,7 @@ All notable changes to IndieStack will be documented in this file.
   装的是「已发送」邮件原文（含确认 / 退订 token）。少了一个守卫而全部门禁照绿，原因是没有任何地方记录着
   「这条路由本来该有什么」。于是这条门禁不发明「什么算安全」，只判两件可机械核对的事：**每个 handler 必须有
   台账条目**、**条目声明的守卫符号必须真的能从该 handler 走到**——新加一条没登记的路由会红，把
-  `safelyRequirePermission` 删掉或改名也会红。台账 `ROUTE_AUTH_LEDGER` 现有 45 条，每条的 reason 都是逐条
+  `safelyRequirePermission` 删掉或改名也会红。台账 `ROUTE_AUTH_LEDGER` 落地时 45 条，每条的 reason 都是逐条
   读源码写的（含「上传端点的守卫其实有三层，最后一层是 024 的 Storage RLS」这种只看 route 文件看不出来的）。
   解析器按 TypeScript AST 沿调用图展开，**必须**展开同文件局部函数与跨文件 import：`e2e/*` 的 `authOk`
   是同文件局部函数，上传端点的 `guardUploadRequest` 在 `src/lib` 里，只看单文件会得出一批假的「无守卫」。
@@ -22,7 +22,9 @@ All notable changes to IndieStack will be documented in this file.
   `unsubscribe`，与推送订阅的 `.unsubscribe()` 同名，全仓库误报；③ 路径推导把 `/api` 前缀吃掉了。
   范围收窄都计数、并且能被自己的测试证伪：`MAX_CALL_DEPTH = 5`，单测用 depth+15 复算一遍断言结论一字不差
   （否则「上限太浅」和「范围本来就窄」在输出里分不开）；handler 条数另有一个 grep 出来的独立分母做交叉
-  核对，将来出现 `export const GET = …` 这种新写法会红着提醒扩解析器。守卫词表本身也有一条「不能写 fiction」
+  核对，将来出现 `export const GET = …` 这种新写法会红着提醒扩解析器。条数本身在单测里只作地板值
+  （`toBeGreaterThanOrEqual(45)`）而不是等号——它是随仓库增长的量，钉死等于要求每个新增端点回来改一个魔数，
+  忘了就在合并后的 main 上红成一场不存在的回归；精确读数交给 `pnpm check:route-auth` 现量。守卫词表本身也有一条「不能写 fiction」
   的用例钉着：它要求表里每个符号都能在源码里找到（排掉门禁自己的文件），初版里 `readSessionRole` 与
   `verifyWebhookSignature` 就是这样两个「应该有」的名字，已删。27 项单测，其中一条就是**复现那个
   真实缺陷**：把收件箱 GET 的 `authOk` 摘掉，issues 恰好等于

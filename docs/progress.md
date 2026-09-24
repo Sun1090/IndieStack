@@ -1353,6 +1353,22 @@
   - 三处解析失明是量出来的，不是设想：`in` 顺原型链命中（`toString` 让每个文件都「有守卫」）、
     `unsubscribe` 与推送订阅的 `.unsubscribe()` 同名（全仓库误报，改成真名 `unsubscribeByToken`）、
     路径推导吃掉 `/api` 前缀。前两条都以「阳性对照先红再绿」的方式确认修好了。
+  - 【当日订正】上面「真实仓库」那一层里的 `expect(handlers.length).toBe(45)` 当场改成地板值
+    `toBeGreaterThanOrEqual(45)`，用例标题里的「45 个」一并去掉。改的不是数字而是它的**形状**：45 是从
+    全仓库读出来的量，加一条端点就涨一次，而那个 PR 没有任何理由知道要回来改测试里的这个数——于是一次
+    正常的新增会在合并之后的 main 上红成一场不存在的回归。地板要的不对称是「往上不挡、往下才挡」：解析
+    范围被调窄时条数会往下掉，而「掉了一半」和「路由本来就这么几条」在输出里长得一样；新增没登记的路由
+    本来就红在 `UNLEDGED`，用不着一个魔数来替它说话。精确读数交给 `pnpm check:route-auth` 现量。
+    自相矛盾的地方在于：同一个门禁在 #138 里给限流读数用的正是地板值（`toBeGreaterThanOrEqual(14)`，
+    注释写着「钉成等号就是给每个后来的 PR 埋一次红灯」），两条 PR 叠在同一个 `describe` 里才看得见。
+    - 变异核对：把地板临时改成 46 → `AssertionError: expected 45 to be greater than or equal to 46`
+      （一条红，其余 26 条绿），既证明这条断言会咬，也顺带现量了当前真实条数就是 45；随后改回 45，
+      `git diff` 复核为两 hunk、无残留。
+    - 队列侧实测这条红灯**当时还没亮**：49 个 open PR 逐个对 `origin/main` 做 diff，新增
+      `export [async] function GET|POST|PUT|PATCH|DELETE` 合计 0 条、删除 0 条，也没有 PR 写
+      `export const GET` 那种变体（独立分母那条 canary 不会被踩）。计数器的阳性对照：同一正则喂
+      `+export const GET = (req) => {}` 与 `+export { handle as POST }` 各命中 1，喂
+      `+export async function DELETE(){}` 命中 0——所以那个 0 是「没有」，不是「看不见」。
 - 阻塞 / 风险 / 回滚：不碰任何运行时行为——这条门禁只读代码，不改代码，回滚 = revert 本 commit。
   风险三条，都记下：① 守卫按**名字**识别，所以 `getUser` 这类常见方法名有误认空间（台账要求的是
   「声明的符号可达」而不是「可达集合非空」，因此误认不会让一条真没守卫的路由蒙过去）；

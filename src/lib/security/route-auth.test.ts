@@ -3,8 +3,9 @@
  *
  * 三层：① 用合成源码证明解析器真的沿调用图走（同文件局部函数、跨文件 import、常量、
  * 属性访问各自的形态），并且不被同名噪音误导；② 用注入的台账证明六种偏差每种都会红；
- * ③ 对真实仓库复算一遍，确认 45 个 handler 全部对上、并且把深度上限放宽之后结论不变
- * ——否则「范围被调浅」和「范围本来就窄」在输出里分不开。
+ * ③ 对真实仓库复算一遍，确认台账与解析结果双向一致、并且把深度上限放宽之后结论不变
+ * ——否则「范围被调浅」和「范围本来就窄」在输出里分不开。handler 条数在这层只作地板值：
+ * 它是会随仓库增长的量，钉成等号就是给每个新增端点的 PR 埋一次红灯。
  */
 import { describe, expect, it } from "vitest";
 import { buildRouteAuthSources, runRouteAuthCheck } from "../../../scripts/lib/route-auth-check.js";
@@ -287,8 +288,12 @@ describe("真实仓库", () => {
   const sources: RouteAuthSource[] = buildRouteAuthSources();
   const handlers = collectRouteHandlers(sources);
 
-  it("45 个 handler 全部解析出来，并且与台账双向一致", () => {
-    expect(handlers.length).toBe(45);
+  it("真实仓库的 handler 全部解析出来，并且与台账双向一致", () => {
+    // 地板值，不是等号：新增一条端点只要台账跟着登记就该通过（台账漏了会红在 UNLEDGED），
+    // 而等号等于要求每个加路由的 PR 回来改这个数——忘了改挡不住任何错误，只在合并后的 main 上
+    // 红出一场不存在的回归。地板防的是另一件事：解析范围被调窄时条数会往下掉，而「掉了一半」
+    // 和「路由本来就这么几条」在输出里长得一样。精确读数由 `pnpm check:route-auth` 现量。
+    expect(handlers.length).toBeGreaterThanOrEqual(45);
     expect(auditRouteAuth(handlers)).toEqual([]);
   });
 
