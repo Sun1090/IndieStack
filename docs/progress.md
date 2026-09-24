@@ -1257,3 +1257,29 @@
 - 下一项：(1) `account-deletion.spec.ts` 上 `retry(动作+断言)`，用 `retries=0` 复跑到 5/5；
   (2) 给 `marketing/{confirm,unsubscribe}` 的 POST 补 `rateLimit.check`，看有没有公开端点限频的门禁可挂。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 —【同日晚些订正】上面那条「本地全绿」被自己的 pre-push 钩子驳回了：两条全仓扫描用例卡在 5 秒默认预算上
+
+- 起因：上一条写完就推，钩子（`pnpm verify:build`）在 test 这一腿**挡下**了推送——
+  `Test Files 2 failed | 198 passed`，`EXIT=1`，远端还停在 `4c05d3b`。
+  红的是 `admin-client-boundary.test.ts > accepts the committed service-role inventory`（9207ms）
+  与 `db/query-columns.test.ts > 仓库里每个字面量列名都对得上生成的行类型`，两条都是
+  `Error: Test timed out in 5000ms`，不是断言失败。
+- 同一棵树、同一个套件，十几分钟前 `CI=true pnpm check:all` 是全绿（200 文件）——
+  这就是 flake 的定义，不是我改出来的逻辑错。本分支对这两条的净影响只有：
+  我给 `admin-client-boundary.test.ts` 加了 2 条用例，而其中一条也要读全仓。
+- 空闲复测（`npx vitest run <两个文件> --project node`）：那两条**单条**分别 4570ms / 4439ms，
+  也就是说默认 5 秒预算只剩 10% 余量；套件里还有 2858ms / 3216ms 两条在同一悬崖边上。
+  并发跑 jsdom 用例时同一条测到 9207ms ⇒ 任何一次推送都可能随机撞上它。
+- 修法：`vitest.config.ts` 的 **node project** 单独 `testTimeout: 20_000`，注释里写清实测数字与判据。
+  只放宽 node 的理由是量出来的：`grep -rln readFileSync src --include="*.test.tsx" --include="*.dom.test.ts"`
+  **返回空**——jsdom 项目里没有一个用例读盘，它那条 5 秒仍然是「交互回归」的有效信号，不该跟着一起松。
+  这也是仓库既有的立场：config 顶部那段注释说得很明白，之前是靠 `maxWorkers: 2` 而不是靠放松断言来消超时。
+- 正向对照（证明这个开关真的在管事，而不是我改了个没人读的文件）：临时放一条睡 7 秒的用例进 node 项目，
+  `npx vitest run --project node` → `✓ … 7003ms`（默认 5 秒下必然红），跑完删除，`git status` 只剩 config 一处改动。
+- 验证：`pnpm test` **EXIT=0**，`Test Files 200 passed`、`Tests 2299 passed (2299)`——就是钩子红掉的那一腿。
+- 与在审 PR 的重叠：把 43 条 open PR 的 own-delta（`git diff --name-only <baseRefOid> <headRefOid>`，
+  43/43 个 oid 本地都取得到、分母打印过）全扫了一遍，**碰 `vitest.config.ts` 的有 0 条**，
+  这一行配置不会和队列里任何一条抢。
+- 阻塞：无。风险 / 回滚：一行配置，revert 即回滚；放宽的是超时预算，不是任何断言的判据。
+- 更新时间：2026-09-24。
