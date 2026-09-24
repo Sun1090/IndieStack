@@ -2071,3 +2071,68 @@
   从而触发 CI）。回滚 = revert 本 commit。
 - 下一项：把这一节同步进 PR #118 正文的合并动作清单。
 - 更新时间：2026-09-24（UTC 11:5x 前后）。
+
+## 2026-09-24 — 推翻上一条交给合并的人那一步：`update-branch` 对 #98 是空操作，真正能用的是 close/reopen
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：上一条结尾写了一句「对 #98 直接执行 `gh pr update-branch 98 --rebase`（rebase 是空操作但会产生
+  一次推送，从而触发 CI）」，并且把它作为「交给合并的人」的动作发布出去。写完它我就去测了两件事，
+  两句都不成立。交给别人的错动作比不写更贵——它让人在一条根本不存在的路上等 CI。
+- 完成内容：
+  1. **推翻第 ③ 步的那个括号**：#98 的 base 已经是 `main`，而 `origin/main` 是它 head `896f11e` 的祖先，
+     所以 rebase 到一个「已经是祖先」的 base 得到的还是同一个 sha，不产生 `synchronize`，
+     也就不可能触发 CI。**我没有真的执行 `update-branch`**——真执行了就会对一条 16 条 PR 栈的地基分支
+     做 force-push；结论只依赖那条祖先测量，跟 GitHub 打印什么无关。
+  2. **上一条列为「不做」的 close/reopen 才是正解，而且是实测出来的**：`ci.yml` 的 `on.pull_request`
+     没有写 `types`，GitHub 的默认集合含 `reopened`。于是对 #98 做 `gh pr close` + `gh pr reopen`
+     （不推、不合、不改历史）就要回了 CI：同一 head `896f11e` 上新增
+     `CodeQL completed/success` + `CI in_progress`，此前这条分支上只有 `Secrets Scan` 与
+     `security-config` 两种运行。**我亲手垒的那堵墙，不用推任何东西就拆了。**
+     我上一条担心的「关闭时自动删头分支」也当场证伪：close/reopen 之后
+     `git ls-remote origin refs/heads/fix/c08b-invitations-route` 仍是 `896f11e`，
+     #98 回到 `OPEN/MERGEABLE`，后继 #99 的 base 一字未动。
+     （仓库级 `delete_branch_on_merge: false` 管的是合并，不是关闭——关闭本来就不删分支。）
+  3. **必需检查是按 base 分支的规则判的**，一组零歧义的对照：#98（base `main`）与 #114
+     （base `feat/c08c-gate-wiring`）在各自 head 上的 check 形状**完全一样**
+     （`Detect Secrets` + `security-config` 过、2 条 Vercel 红、5 项 CI/CodeQL 缺席），
+     GitHub 却分别判 `BLOCKED` 与 `UNSTABLE`；差别只在 base——
+     `gh api branches/feat/c08c-gate-wiring/protection` → 404 `Branch not protected`。
+     推论要记牢：**栈内 PR 在改指 main 之前，`mergeStateStatus` 是一个没有信息量的信号**，
+     它绿不红都跟进 main 的资格无关。
+  4. **按这个判据重扫 24 个栈尖**（分母 `tips scanned: 24/24`、`api failures: 0`）：
+     18 个 base 已是 main 且 7 项必需全绿；**6 个不是**——#94 #114 #117 #119 #129 #138，
+     它们的 base 是栈内分支、5 项 CI/CodeQL 从没在自己 head 上跑过
+     （#114 那条分支的历史里 CI/CodeQL 一次都没有，4 次运行全是 Secrets Scan 与 security-config）。
+     这 6 条一旦改指 main 会立刻变 `BLOCKED`，触发方式就是第 ② 条那句 close/reopen。
+  5. **而且第 ③ 步此刻对每一条都是空操作**：24 个栈尖逐个测
+     `git merge-base --is-ancestor origin/main <head>` → **24/24 全部 NOT-behind**
+     （main 停在 `ad4b029`，自上次合并以来队列没动过）。`update-branch` 要等到
+     「合了一条、其余落到后面」之后才第一次有意义——它是**合并过程中**的步骤，不是**合并开始前**的。
+     上一条把它写成了任何时刻都要做的第 ③ 步，这是它真正的错处。
+  6. **顺手否掉一条我准备推荐的省事方案**：「只合栈尖、让栈里其余的自动关闭」能把 46 次合并压成 24 次，
+     祖先内容确实全在栈尖里（#114 head 含 #98 head，实测 `merge-base --is-ancestor` 通过）。
+     但 `required_linear_history: true` 决定了进 main 走 rebase 类合并，栈内那些 PR 的**原始 head sha
+     不会成为 main 的祖先**（落进去的是改写后的新 sha），所以「祖先自动变 Merged」在这里没有依据；
+     本仓库最近 60 条合并记录里也没有任何同分钟级联（一直是一条一条合的）。方案不采用。
+  7. #118 自己的 `BLOCKED` 不是墙：6 项必需已 SUCCESS，只剩 `E2E shard 1/2` 在跑。
+- 验证命令与结果：
+  - `git merge-base --is-ancestor origin/main pr/98` → 成立（NOT-behind）；
+    `gh pr view 98 --json baseRefName,headRefOid,mergeStateStatus` → `main` / `896f11e` / `BLOCKED`。
+  - `grep` `ci.yml` 的 `on:` 块 → `push: branches:[main,develop]` + `pull_request: branches:[main,develop]`，
+    无 `types`；`E2E (Playwright)` 是 `ci.yml:212` 的 job（不在只有 `workflow_dispatch` 的
+    `e2e-parallel.yml` 里），所以 close/reopen 要回的是**全套**必需上下文，不是残缺的一套。
+  - `gh pr close 98 --comment ...` → `✓ Closed`；`gh pr reopen 98` → `✓ Reopened`；
+    `gh run list --branch fix/c08b-invitations-route --limit 6` → 同 sha 上 `CI in_progress` +
+    `CodeQL completed/success`（对照组：`--limit 5` 在动手之前只有 2 条）。
+  - `gh api repos/.../branches/feat/c08c-gate-wiring/protection` → 404 `Branch not protected`。
+  - 栈尖扫描脚本 `/tmp/tip-gate.js`（`gh pr list --json` + 逐条 `statusCheckRollup`，
+    打印 `tips scanned: 24/24 / api failures: 0` 作为分母）。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：#98 的 CI 此刻还在跑，我没等它绿——如果它红了，先按内容归因再说话
+  （#98 的改动早已在合成树里跟着全队列跑绿过，所以环境因素更可能）。close/reopen 会留下两条
+  活动流记录（closed → reopened），这是本次唯一的可见副作用，我认为它比一堵墙便宜。
+  回滚 = revert 本 commit。
+- 下一项：把这一节与前两节一起同步进 PR #118 正文的合并动作清单（配方里那一步换成 close/reopen）。
+- 更新时间：2026-09-24（UTC 11:5x 之后）。
