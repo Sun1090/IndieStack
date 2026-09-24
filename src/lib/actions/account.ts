@@ -36,7 +36,13 @@ export async function deleteAccountAction(input: { confirm?: unknown }): Promise
     return fail("accountDeleteFailed");
   }
 
-  await supabase.auth.signOut({ scope: "global" });
+  const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
+  if (signOutError) {
+    // 不回头报 `accountDeleteFailed`：账户已经删掉了，那样会让人去删一个不存在的账户。
+    // 但「清掉本设备会话」是这个函数在文件头上承诺过的事（见文档注释），没做成必须留痕迹，
+    // 而不是让它读起来像做成了。
+    await logActionError("[deleteAccountAction] 账户已删除，但清退会话失败", signOutError);
+  }
   revalidatePath(ROUTES.dashboardSettings);
   return ok();
 }
