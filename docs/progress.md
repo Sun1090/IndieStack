@@ -1153,3 +1153,54 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — Mock/E2E 端点的凭据比较把「没配」读成「空配」：`Authorization: Bearer ` 就能进门
+
+- 里程碑 / 版本：v0.12.0；分支 `fix/e2e-bearer-unset-token`（base `main`，独立于那条 20 长的栈）。
+- 状态：DONE。起因不是有人报障，是我在数「27 个 API 路由里谁做了限频」时顺路审到 `src/app/api/e2e/**` 的鉴权形状。
+- 量到的形状（**8 个文件、9 处比较**）：全部写成了
+  ``const expected = `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}` ``，其中 **7 处**前面还有一句
+  `if (!expected || got !== expected)`。那句**永远不成立**——模板字符串先放进了 `"Bearer "` 前缀，
+  `expected` 最短也是 7 个字符的真值。第 8 处（`webhook-events`）连这句都没有。
+  净效果：**凭据没配的时候，一个 `Authorization: Bearer `（尾空格 + 空 token）的请求就是合法的**，
+  而这些端点能读用户留言（`contact-messages`）、清 Mock 缓存（`mock-reset`）、注入上传失败（`mock-upload`）、
+  灌通知种子（`seed-notifications`）、写偏好（`push-queue`）。
+- 爆炸半径（这条要先说清，否则会把 low 说成 high）：每条路由都有 `if (!isMockEnabled) return 404` 前置，
+  而 `isMockEnabled = NEXT_PUBLIC_MOCK_ENABLED==="true" || (NODE_ENV!=="production" && 没配 Supabase URL)`
+  （`src/lib/mock/config.ts`）。所以**生产不会因为漏配而裸奔**；CI 的 Playwright 两个变量都设了
+  （`playwright.config.ts:21,38`）。敞开的窗口是「显式开了 Mock、又没配 token」的环境——
+  本地开发、手搓的预览、以及**照着模板文档把 Mock 打开的人**。仓库是模板，这一档用户量不小，
+  而那恰好是 Mock 模式的常态用法。
+- 改法：判据收进一处 `src/lib/testing/e2e-bearer.ts` 的 `e2eBearerAuthorized(header, token?)`，
+  规则只有一句——**没配凭据 ⇒ 任何请求都不合法**，空串与未设置是同一件事；比较仍是整串等值，
+  不给大小写、前缀、`Basic` 留门。仓库里其实早就有正确形状可抄：`checkCronAuth`（`src/lib/cron-auth.ts`）
+  第一行就是 `if (!expectedSecret) return "secret_unconfigured"`，还把三种拒绝原因分开返回。
+  `email-inbox` 那处的 `Boolean(process.env.X) && …` 本来就是对的，这次也一并换成集中守卫。
+- 顺手挖出来的一件事：**门禁会奖励错误的写法**。`ADMIN_CLIENT_TRUST_EVIDENCE_MISSING`
+  （`src/lib/security/admin-client-boundary.ts:826`）要求 `E2E_BEARER_TOKEN` 这个字符串出现在每个清单文件里，
+  集中化把它藏掉之后门禁当场红。也就是说这些路由当初内联各自比较，部分是被门禁推着写的。
+  现在证据项支持**备选写法**（内联读环境变量 **或** 调用集中守卫，二者皆无仍报缺失），
+  两条新用例一边证明可用、一边证明不能白拿；`evidence` 的类型从 `string[]` 放宽成
+  `Array<string | readonly string[]>`，第 197 行原来那条纯字符串用例照旧通过。
+- 防腐化（不新增门禁、不动 `check-all.sh`）：`e2e-bearer.test.ts` 里一条扫描，
+  `src/app/**/route.ts` 再出现内联拼 `Bearer` 头就红；**同文件先断言自己读到的路由文件数 > 8**，
+  否则一个走错目录的 walker 能让这条断言永远绿。变异核对就是拿这条做的：
+  临时造一条 `src/app/api/e2e/__probe__/route.ts`（内联拼头）→ 用例红且点名该文件；删掉 → 6/6 绿。
+- 变更文件：新增 `src/lib/testing/e2e-bearer.ts` + `.test.ts`；改 8 个 `src/app/api/e2e/*/route.ts`
+  （净 +17/−20，守卫从 3 行变 1 行）+ `src/lib/security/admin-client-boundary.ts`（类型、5 条清单证据、判定循环）
+  + 其测试（2 条新用例）+ `CHANGELOG.md` + 本条台账。
+- 与在审 PR 的重叠（42 条 own-delta 全扫，分母打印过）：`src/lib/security/admin-client-boundary.ts` **0 条**；
+  8 个 e2e 路由里只有 `push-queue` 被 #112 碰过，而它的改动在第 86-91 与 230-240 行，
+  离这里改的 70-75 行很远，实测合得动。
+- 验证：`npx tsc --noEmit` exit 0（中途抓到我两处错：新测试文件漏 `import { describe, expect, it } from "vitest"`；
+  以及第一版 `evidence` 类型没收窄导致 `source.includes(evidence)` 传数组）；
+  `npx vitest run src/lib/testing src/app/api/e2e --project node` → 3 文件 / 29 用例全绿；
+  `CI=true pnpm check:all` **exit 0**（`Test Files 200 passed`）。
+  读法提醒：那份日志里有 3 行 `❌ a11y 静态审计失败：1 个问题`，那是 a11y 门禁自己的**负控用例**在打印期望输出，
+  不是失败——聚合行是 `✅ 全部校验通过`。判断聚合结果要看 `门禁失败：…` 那一行有没有出现，不要看 `❌` 子串。
+- 阻塞：无。build 这一腿由恢复后的 `pre-push` 钩子（`pnpm verify:build`）在推送时补上。
+- 风险 / 回滚：只影响 Mock/E2E 面，生产路径一行没动；revert 本分支两个 commit 即回滚。
+  唯一行为变化：**没配 `E2E_BEARER_TOKEN` 且开了 Mock 的环境，从此调不到这些端点**——那扇门本来就不该开着；
+  本地要用的话 `E2E_BEARER_TOKEN=anything` 一行解决，Playwright 已经带着它自己的值。
+- 下一项：跑一遍全量 E2E 确认这些 spec 不受影响；顺路审剩下的 19 个 API 路由的鉴权/限频形状（这次数出来的）。
+- 更新时间：2026-09-24。
