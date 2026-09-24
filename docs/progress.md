@@ -2130,9 +2130,15 @@
   - 栈尖扫描脚本 `/tmp/tip-gate.js`（`gh pr list --json` + 逐条 `statusCheckRollup`，
     打印 `tips scanned: 24/24 / api failures: 0` 作为分母）。
 - 变更文件：`docs/progress.md`（本条目，纯追加）。
-- 阻塞 / 风险 / 回滚：#98 的 CI 此刻还在跑，我没等它绿——如果它红了，先按内容归因再说话
-  （#98 的改动早已在合成树里跟着全队列跑绿过，所以环境因素更可能）。close/reopen 会留下两条
-  活动流记录（closed → reopened），这是本次唯一的可见副作用，我认为它比一堵墙便宜。
-  回滚 = revert 本 commit。
+- 阻塞 / 风险 / 回滚：~~#98 的 CI 此刻还在跑，我没等它绿~~
+  **【同日晚些订正】等完了，而且它绿了**：`gh pr view 98 --json mergeStateStatus,statusCheckRollup`
+  → 从 `BLOCKED` 变成 `UNSTABLE`，7 项必需上下文在这个**一字未动的 head `896f11e`** 上全部 `SUCCESS`
+  （`Lint & Type Check`、`Build`、`Build Docs Site`、`E2E (Playwright)`、`Unit Tests`、
+  `security-config`、`Analyze (javascript-typescript)`、`Detect Secrets`），
+  只剩两条 Vercel 配额红（非必需，按定案照实记录并忽略）。队列里那 2 个 `BLOCKED`，
+  现在只剩 #118 自己（它的 CI 在跑）。所以第 ② 条那个 close/reopen 不只是「能唤起 CI」，
+  它把一条 PR 从不能合变成了能合，全程没推任何东西。
+  close/reopen 会留下两条活动流记录（closed → reopened），这是本次唯一的可见副作用，
+  我认为它比一堵墙便宜。回滚 = revert 本 commit。
 - 下一项：把这一节与前两节一起同步进 PR #118 正文的合并动作清单（配方里那一步换成 close/reopen）。
 - 更新时间：2026-09-24（UTC 11:5x 之后）。
