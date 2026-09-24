@@ -37,7 +37,7 @@
 4. Add route constant in `src/lib/constants.ts` under `ROUTES`
 5. Add navigation link in sidebar or header as appropriate
 6. Add database migration in `supabase/migrations/` (if new table needed)
-7. Update docs in `docs/` and `docs-site/index.html`
+7. Update docs in `docs/` and `docs-site/index.md`
 
 ## Adding a Database Migration
 

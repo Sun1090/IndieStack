@@ -72,5 +72,5 @@ const { data: item } = await supabase
 
 1. 所有表启用 RLS
 2. 用户注册时通过数据库触发器自动创建 profile + personal team
-3. Service Role（`supabase/admin.ts`）仅在受信任的 Server 端使用（如 Stripe webhook）
+3. Service Role（`src/lib/supabase/admin.ts`）仅在受信任的 Server 端使用（如 Stripe webhook）
 4. 敏感操作写入 `audit_logs` 表
