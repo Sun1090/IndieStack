@@ -275,7 +275,13 @@
     本条已修（审计照写，但 metadata 打 `sessionReadFailed`，见 CHANGELOG）。
     **已收口的部分**：守卫层（`src/lib/auth/guards.ts`）改走 `readSessionUser()`，`requireAuth/Role/Permission`
     与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好；
-    审计侧 `actions/audit.ts` 打上 `sessionReadFailed` 标记。
+    审计侧 `actions/audit.ts` 打上 `sessionReadFailed` 标记；两个登出按钮读 `signOut` 的 `error`；
+    恢复码自救读 `listFactors` / `deleteFactor` 的 `error`，并把扣码挪到解绑成功之后。
+    **按「这个文件在几条在审 PR 里被动过」量的零重叠口径**（2026-09-24 重跑，41 条 open PR 全部本地可测、
+    无一条取不到对象；判据 = `git diff --name-only <merge-base origin/main <head>> <head>` 对文件全名匹配，
+    也就是**把栈上 PR 下游带来的改动也算进去**的保守口径——只看单个 PR 自己的 delta 会把 `notifications/page.tsx`
+    从 18 条读成 1 条，那样选站点会选错）：C09 的站点里只有 `actions/recovery-codes.ts` 是 **0 条**，
+    所以本条只收它。同一把尺下 `guards.ts` 20 条、`logout-all-button.tsx` 1 条（就是 #92 自己新建的）。
     **射程随后从 `getUser/getSession` 扩到整个 Auth 客户端**（同一条判据：`await x.auth.<method>()`
     的结果有没有绑定并使用 `error`）：**90 处** awaited 调用里 **27 处绑定**、**63 处不绑定**；
     不绑定的按方法分：`getUser` 55、**`signOut` 4**、`admin.mfa.listFactors` 1、`admin.mfa.deleteFactor` 1、
@@ -283,6 +289,15 @@
     其他设备登出」的按钮过去无条件往下走，Auth 抖动时**在没登出的情况下报告已登出**
     （一个把用户送去登录页，一个把界面切成完成态，而后者正是共用电脑上要防的那件事）；
     **本条已修**：读 `error`、失败留在原地给可重试文案（`logoutAllFailed` / `signOutOthersFailed`）。
+    **`admin.mfa.*` 那两处是同一个调用点**——`actions/recovery-codes.ts` 的 `redeemRecoveryCode` 用
+    `listFactors` + `deleteFactor` 解绑该用户的全部 TOTP 因子。它比 `signOut` 那一档更糟，因为这里抹掉的
+    不是一个可以重试的提示，而是一次**不可逆的扣减**：原次序是「扣恢复码 → 写审计 → 解绑」，恢复码一次性、
+    扣掉回不来，而解绑失败只出现在返回的 `error` 上（`listFactors` 那处连绑定都没有），于是动作照样回
+    `{ ok: true }`——用户烧掉了唯一的自救码，并且仍然被锁在**他丢掉的那把验证器**后面，也就是这条功能
+    存在的理由没有被解决、还少了一次重试机会。现在次序反过来：**先解绑、成功后才扣码**，两步的 `error`
+    都读，任一失败记日志并回 `recoveryUnenrollFailed`（en / zh-CN 各一条，文案明说码没有被扣、可以重试）。
+    偏向保守一侧的代价只是一次失败的兑换把码留在库里；「账号本来就没有 TOTP 因子」是合法状态，照常扣码。
+    **这是目前 C09 里唯一一处「抹掉 `error` 之外还要靠调顺序才能修」的站点**，其余都是补绑定 `error` 即可。
     剩下三处刻意不顺手改，理由各不相同：`components/layout/site-header.tsx` 是默认 local scope，
     后果只是界面比真实状态先登出；`lib/auth/passkey-session.ts:72` 是 magic link 校验失败后的清理，
     `.catch(() => undefined)` 之后照样 throw，属于**已判定**的吞掉而不是漏看；
@@ -290,7 +305,8 @@
     但那个 catch 读的是**异常**而不是 `error` 对象，所以「服务端返回 `error`」这条路径现在会静默往下走——
     它要连 MFA 流程一起判，单独改一处会把成功路径改坏。
     **那 8 处 `user!.id` 现在不能动，原因是重叠而不是难度**（2026-09-24 量的：逐条 open PR 的
-    `git diff --name-only <merge-base> <head>` 对文件全名匹配）——`dashboard/notifications/page.tsx`
+    `git diff --name-only <merge-base origin/main <head>> <head>` 对文件全名匹配，即上面那条保守口径）
+    ——`dashboard/notifications/page.tsx`
     与 `profile/page.tsx` 被 **18 条**在审 PR 各自改过，`billing`、`team` 14 条，`page.tsx` 5 条，
     `settings` 4 条。也就是这一批改法会同时在整条 C08-c 栈上造出 8 条需要作者出场的边。
     时机是**等那批 PR 落地之后**，按同一形状（先判空、再答「暂时不可用」）一次收完。
