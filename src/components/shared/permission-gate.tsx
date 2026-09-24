@@ -27,7 +27,7 @@ import {
   hasAnyPermission,
   getRoleLevel,
   type Role,
-  parseRole,
+  resolveProfileRole,
 } from "@/lib/auth/roles";
 import type { Permission } from "@/lib/auth/permissions";
 
@@ -83,14 +83,17 @@ export function PermissionGate({
           return;
         }
 
-        const { data: profile } = (await supabase
+        const { data: profile, error: roleError } = (await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
-          .single()) as { data: { role: string } | null };
+          .single()) as {
+          data: { role: string } | null;
+          error: { message: string } | null;
+        };
 
         if (!cancelled) {
-          setUserRole(parseRole(profile?.role as string | undefined) ?? "member");
+          setUserRole(resolveProfileRole({ error: roleError, role: profile?.role }));
           setIsLoading(false);
         }
       } catch {
@@ -167,13 +170,16 @@ export function usePermissions() {
           }
           return;
         }
-        const { data: profile } = (await supabase
+        const { data: profile, error: roleError } = (await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
-          .single()) as { data: { role: string } | null };
+          .single()) as {
+          data: { role: string } | null;
+          error: { message: string } | null;
+        };
         if (!cancelled) {
-          setUserRole(parseRole(profile?.role as string | undefined) ?? "member");
+          setUserRole(resolveProfileRole({ error: roleError, role: profile?.role }));
           setIsLoading(false);
         }
       } catch {
