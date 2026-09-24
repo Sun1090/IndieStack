@@ -1434,7 +1434,8 @@
      不需要第二套遍历，也不维护任何名字表。
   2. `scripts/lib/route-auth-check.js`：`--rate-limit-report` 逐条打印 `id [家族] [绑定]` + 分母。
      **不判定**（① 还没定），唯一的失败封闭是「一条都没匹配到」——那更可能意味着判据自己坏了。
-  3. 12 → 33 条用例里新增 7 条（6 条合成 + 1 条真实仓库分母对账）。
+  3. 用例从 26 条涨到 34 条：8 条新的 = 6 条合成（含两种负例）+ 1 条真实仓库分母对账 +
+     1 条给报告退出码本身做的控制（真仓库 0、一棵只有一条无限频路由的临时仓库 1）。
 - **读数推翻了我几小时前写下的话**：本分支 45 个 handler 里 **14 个**闭包里有限流器绑定，
   分布在 10 个路由文件；按家族 session 12/12、public 2/7、token 0/2、shared-secret 0/8、
   signature 0/1、mock-only 0/15。而 C12 条目原文写的是「两条 uploads 只管同源与载荷、不计数」——
@@ -1445,9 +1446,14 @@
 - 变更文件：`src/lib/security/{route-auth.ts,route-auth.test.ts}`、`scripts/lib/route-auth-check.js`、
   `docs/testing.md`、`docs/roadmap-0.12.0.md`、`CHANGELOG.md`、本条目。
 - 验证命令与结果：
-  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **33 passed**。
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **34 passed**。
   - `node scripts/check-route-auth.js` → 仍是 `✅ 45 个 handler 全部登记且守卫可达`（台账判定一字未动）。
   - `node scripts/check-route-auth.js --rate-limit-report` → exit 0，分母行 `45 个 handler / 10 个路由文件`。
+  - **真实树上的一次性正控**（不是夹具）：临时新建 `src/app/api/tmp-probe/route.ts`，限流器放在两跳之外
+    的 `src/lib/tmp-probe-guard.ts` 里 → 报告如实打出
+    `POST /api/tmp-probe\t[未登记]\t[src/lib/tmp-probe-guard.ts#rateLimit]`，分母同步走到 46/11；
+    同一棵树上台账门禁按预期红在 `ROUTE_AUTH_UNLEDGED POST /api/tmp-probe`。两个 scratch 文件已删，
+    `git status` 干净。
   - `pnpm type-check` / `pnpm lint` → exit 0。
   - **变异核对（四条判据各自都要证明会咬）**，每条改完跑同一份 33 条用例再 `git checkout --` 复原：
     P1 去掉工厂实例那一支 → 2 红（工厂用例 + 真实仓库分母）；P2 去掉「对象取用」那一支 → 4 红

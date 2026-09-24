@@ -71,8 +71,8 @@ function dump() {
  * 唯一的失败封闭是「一条都没匹配到」——那更可能意味着判据本身失效（限流库换路径或换用法），
  * 而不是全仓库突然没了限频。
  */
-function rateLimitReport() {
-  const handlers = collectRouteHandlers(buildRouteAuthSources(REPO_ROOT));
+export function rateLimitReport(repoRoot = REPO_ROOT) {
+  const handlers = collectRouteHandlers(buildRouteAuthSources(repoRoot));
   for (const handler of handlers) {
     const family = ROUTE_AUTH_LEDGER[handler.id]?.family ?? "未登记";
     console.log(`${handler.id}\t[${family}]\t[${handler.limiters.join(", ") || "-"}]`);
@@ -94,11 +94,13 @@ const invokedAsScript = process.argv[1]
   ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
   : false;
 if (invokedAsScript) {
-  const [target] = process.argv.slice(2);
-  if (target === "--dump") dump();
-  else if (target === "--rate-limit-report") process.exitCode = rateLimitReport();
-  else if (target && target.startsWith("-")) {
-    console.error(`❌ 未知参数：${target}（本 CLI 认 --dump、--rate-limit-report 或一个仓库路径）`);
+  const argv = process.argv.slice(2);
+  const flag = argv.find((item) => item.startsWith("--"));
+  const [target] = argv.filter((item) => !item.startsWith("--"));
+  if (flag === "--dump") dump();
+  else if (flag === "--rate-limit-report") process.exitCode = rateLimitReport(target ?? REPO_ROOT);
+  else if (flag) {
+    console.error(`❌ 未知参数：${flag}（本 CLI 认 --dump、--rate-limit-report 或一个仓库路径）`);
     process.exitCode = 1;
   } else process.exitCode = runRouteAuthCheck(target ?? REPO_ROOT);
 }

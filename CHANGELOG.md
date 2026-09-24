@@ -39,9 +39,13 @@ All notable changes to IndieStack will be documented in this file.
   只管同源与载荷、不计数」，而 `guardUploadRequest` 第一句就是 `rateLimit.check(request)`——
   限流器在 helper 那个文件里，grep import 看不见。剩下的前置是要人定「哪些写入端点必须有窗口」
   （给 cron 加 IP 窗口只会让重试丢邮件），所以这条先不红：报告唯一的失败封闭是「一条都没匹配到」，
-  那更可能意味着判据自己坏了。6 条合成用例含两种负例（只是 import 一个函数来调用不算、
-  同名但自己声明的对象不算），另有真实仓库分母对账：每条上报的绑定都要能在来源文件里对上那行 import，
-  且直接 import 限流库的路由文件一个都不能漏。
+  那更可能意味着判据自己坏了。8 条新用例：6 条合成（含两种负例——只是 import 一个函数来调用不算、
+  同名但自己声明的对象不算）、1 条真实仓库分母对账（每条上报的绑定都要能在来源文件里对上那行 import，
+  且直接 import 限流库的路由文件一个都不能漏）、1 条给「全空就要红」这句承诺本身做的控制
+  （真仓库退出 0、一棵只有一条无限频路由的临时仓库退出 1）。另在真实树上跑了一次一次性正控：
+  新建一条 scratch 路由，限流器放在两跳之外的 helper 里，报告如实记成
+  `POST /api/tmp-probe → src/lib/tmp-probe-guard.ts#rateLimit`，分母同时从 45/10 走到 46/11；
+  同一棵树上台账门禁按预期红了 `ROUTE_AUTH_UNLEDGED`。scratch 文件已删。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
