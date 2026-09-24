@@ -1667,6 +1667,13 @@
   （#113 / #114 / #126 / #131 正是门禁接线那几条），再加一条与之竞争的 PR 不划算；
   `git config core.hooksPath .husky` 这一类本地环境改动**不替用户做**（它会改变用户自己每次提交的行为）。
   已登记为待办（含「顺带把三个缺失钩子的存在性一起守住」）。
+- **把范围收窄，别读成「AGENTS.md 通篇过期」**：那份文件点名的东西我逐条核过——
+  5 条 `pnpm` 命令（`lint` / `type-check` / `test` / `build` / `verify:build`）全部存在于 `package.json`，
+  10 个 `agents/*.md` 相对链接全部存在，3 个反引号点名的文件全部存在。
+  **对不上的只有「enforced by commitlint」这一句**（外加「pre-push 钩子会自动跑」这句一度是真的坏了）。
+  这条核对本身差点又产出一次假发现：第一版脚本用 `"." + 相对路径` 拼路径，拼出来是 `.agents/…`，
+  于是报「20 个 agent 文件全都不在」——`ls agents` 一行就把这个结论推翻了。
+  **路径要 `path.join`，别用字符串加法**；任何「全部都不在」这种数一出现，第一动作是去目录里看一眼，不是写进文档。
 - 验证：以上每一条都是当场跑的命令 + 打印出来的数（钩子的 `-L`/`-x`/`-e` 三态、`ls .husky/_` 不存在、
   `node -e` 读 package.json 与 lockfile 的命中数、`grep .github/workflows`、200/40 个 commit 的规则核对）。
 - 风险 / 回滚：本条只是文档；唯一的环境改动是 `.git/hooks/pre-push` 从悬空软链改成指向仓库自己的 `.husky/pre-push`，
