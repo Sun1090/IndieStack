@@ -10,6 +10,7 @@
   "signIn": "登录",
   "signUp": "注册",
   "signOut": "退出登录",
+  "signOutFailed": "没能退出登录，请检查网络后重试。",
   "save": "保存",
   "cancel": "取消",
   "loading": "加载中...",
