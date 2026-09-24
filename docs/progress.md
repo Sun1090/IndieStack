@@ -1511,8 +1511,11 @@
   45 这处还没亮——49 个 open PR 逐个对 `origin/main` 做 diff，新增与删除的 handler 各 0 条，也没有 PR 写
   `export const GET` 那种变体（所以独立分母那条 canary 同样不会被踩）。不亮不等于不会亮：下一个加端点的 PR
   没有任何理由知道要回来改测试里这个数，它就会在合并后的 main 上红成一场不存在的回归，正是 14 那次的剧本。
-  活性核对：地板临时抬到 46 → `AssertionError: expected 45 to be greater than or equal to 46`
-  （1 红 26 绿），顺带现量确认合并前分母确实是 45；改回后 `git diff` 复核无残留。本次补记只动本文件。
+  活性核对在**两棵树各跑一次**：#137 那份文件（27 项）与本分支 rebase 之后的这份（35 项），把地板抬到 46
+  都是 `AssertionError: expected 45 to be greater than or equal to 46`，且各自只红这一条
+  （本分支实测汇总 `Tests 1 failed | 34 passed (35)`），顺带现量确认合并前分母确实是 45；
+  复原用 `git checkout -- <file>`（这一次文件里没有我自己未提交的改动，`git status` 复原后为空）。
+  本次补记只动本文件。
 - 变更文件：`src/lib/security/route-auth.test.ts`、`docs/roadmap-0.12.0.md`、`docs/progress.md`
   （本条目 + 上述两处数字更正）。
 - 阻塞 / 风险 / 回滚：C12 的 ①（哪些写入端点必须有窗口）仍是要人定的判断，本条**没有**给任何端点判对错。
