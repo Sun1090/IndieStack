@@ -228,6 +228,10 @@ All notable changes to IndieStack will be documented in this file.
   `unsubscribeByToken`，并断言**过期 token 返回 `false` 而不是抛错**（这才逼 `gt` 真的在过滤）。
   顺带修文档里的假声明：双语 mock 文档写着 Mock 支持 `eq() / neq() / in() / is()`，**`neq()` 从来没实现**
   （链上一调用就是同一个 TypeError）；现在按实测列出已实现的算子，并写下没实现的行为。
+  E2E 侧把那个盲区关掉：`e2e/mail-flow.spec.ts` 现在会从收件箱里取出真 token，GET 自动提交页、
+  POST 确认（期望 302 而不是 500）、POST 假 token（期望 404，作为对照）、POST 退订（期望 302）。
+  删掉 `gt()` 会让这条 spec 红在 302 那一行（实际 500），把结果打成恒 `true` 会让它红在 404 那一行——
+  两侧都有牙齿，不是「跑过一次就好」。
   同一趟量到的阴性（别重扫）：`src/**` 的查询链上只用到 19 个构建器方法，缺的就是 `gt` 那一个；
   `neq / like / ilike / filter / match / textSearch / containedBy / overlaps` 的链上使用数**全为 0**；
   写路径会忽略的 `or() / contains() / not()` 与写操作的组合也是 0（6 处 `.or(` 逐条看过，全在 `select` 链上）。

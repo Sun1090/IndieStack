@@ -1197,6 +1197,16 @@
   5. 文档：两份 mock 文档按实测重列已实现算子，并写明「`update()`/`delete()` 链上的 `or()/contains()/not()`
      会被接受但**忽略**（读路径全部生效）」——这是代码事实（`matchesFilters` 的跳过分支），
      以前文档没说过，读者会以为读写一致。
+  6. `e2e/mail-flow.spec.ts` 补第 4 类覆盖：**真的把邮件里的链接点下去**。原来这条 spec 只断言
+     「邮件 HTML 里含 `/api/marketing/confirm?token=`」，从没 GET/POST 过它——这正是 #148 与 #149
+     两个缺陷能一路绿到线上的原因。新用例走完整真实入口：登录 → 开营销开关保存 → 从收件箱里
+     **正则取出那串 48 位 hex token** → GET 自动提交页（200 且表单 `action="/api/marketing/confirm"`）→
+     POST 真 token 期望 **302 + `marketing=confirmed`** → POST 假 token 期望 **404** → POST 退订期望 302。
+     最后那一下退订同时是把状态还原成「未订阅」，这样后面再开开关仍会重发确认邮件，
+     不会把 happy path 顶成「收件箱里没有确认邮件」。
+     限频那一侧量过再写：`#136` 链上这两条路由共用一只 **10 次 / 分钟** 的桶，本用例打 3 次，
+     且队列里当前只有这一条 spec 会 POST 这两个端点（`git grep "api/marketing" sim/queue-57 -- 'e2e/**'`
+     只命中「链接存在」那句断言），所以不是一次只在满载时才红的顺序依赖。
 - 量到的阴性（写下来免得下次重扫）：`src/**` 查询链上真正用到的构建器方法共 **19 个**，缺的就是 `gt` 一个；
   `neq / like / ilike / filter / match / textSearch / containedBy / overlaps` 的链上使用数**全为 0**；
   写路径会忽略的三个算子与写操作的组合数 **0**（6 处 `.or(` 逐条看过，全在 `select` 链上：
@@ -1204,7 +1214,8 @@
   也就是说 2 里那条不对称今天是**文档问题而不是在跑的缺陷**，按阴性记录、不改行为。
 - 变更文件：`src/lib/mock/index.ts`、`src/lib/mock/mock-query-gt.test.ts`（新增）、
   `src/lib/mock/mock-query-surface.test.ts`（新增）、
-  `src/lib/repositories/marketing-mock-client.test.ts`（新增）、`docs-site/mock.md`、`docs-site/zh-CN/mock.md`、
+  `src/lib/repositories/marketing-mock-client.test.ts`（新增）、`e2e/mail-flow.spec.ts`、
+  `docs-site/mock.md`、`docs-site/zh-CN/mock.md`、
   `CHANGELOG.md`、本条目。**没有改** `src/lib/repositories/marketing.ts`（属 #123）与
   `src/lib/repositories/test-helpers.ts`（手搓替身留着，它服务的是仓储层的错误注入，不是替身保真度）。
 - 验证命令与结果：
@@ -1222,6 +1233,13 @@
     `token 过期 → false`），而静态 surface 对账**整份文件全绿**——它只问「方法在不在」，
     这就是 4 存在的理由。每步还原后用 `git hash-object` 与 `HEAD` 的 blob 比对逐字节一致，
     正向对照 11 绿。
+  - E2E（`npx playwright test e2e/mail-flow.spec.ts`）：**4 passed（19.0s）**——新用例与原有三条并存，
+    且它跑完之后 happy path 仍然能拿到确认邮件。两条变异核对各自只打这一个用例：
+    **M1 删掉 `gt()`** → 红在 `expect(confirmed.status()).toBe(302)`，实际收到 **500**
+    （这就是这条 spec 存在的理由：#149 那个缺陷在线上绿了一整天）；
+    **M2 把 `updateStatusByToken` 打成恒 `true`** → 红在 `expect(bogus.status()).toBe(404)`，实际收到 **302**
+    （证明那条 404 对照不是装饰：没有它，302 可能是路由无条件发的）。
+    两次都 `git checkout --` 还原并用 `git hash-object` 与 `HEAD` blob 比对逐字节一致，还原后 `git status` 空。
   - `pnpm --silent type-check` → exit 0；最终 head `ea51cb7e` 上 `CI=true pnpm check:all` **exit 0（37 步）**、
     `npx vitest run` **202 文件 / 2302 通过**、`pnpm build` **exit 0**（pre-push 钩子又跑了一遍 test + build）。
     同一 head 合进 57 条那棵树之后：`check:all` **exit 0 / 42 步 / 236 文件 / 2751 passed + 4 skipped**
