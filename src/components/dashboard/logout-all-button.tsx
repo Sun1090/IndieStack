@@ -18,12 +18,20 @@ export function LogoutAllButton() {
   const tc = useTranslations("common");
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function handleLogoutAll() {
     startTransition(async () => {
       const supabase = createClient();
-      await supabase.auth.signOut({ scope: "global" });
+      const { error } = await supabase.auth.signOut({ scope: "global" });
+      // 这个按钮承诺的是「所有设备都掉线」。signOut 把失败装在 `error` 里返回而不是抛，
+      // 不读它就等于在没做到的时候把用户送去登录页——看到的界面就是那条假的「已登出」。
+      if (error) {
+        setFailed(true);
+        return;
+      }
+      setFailed(false);
       router.push(ROUTES.login);
       router.refresh();
     });
@@ -31,7 +39,12 @@ export function LogoutAllButton() {
 
   return (
     <div className="flex items-center justify-between gap-4">
-      <p className="text-sm text-muted-foreground">{t("logoutAllDesc")}</p>
+      <p
+        className={failed ? "text-sm text-destructive-text" : "text-sm text-muted-foreground"}
+        role={failed ? "alert" : undefined}
+      >
+        {failed ? t("logoutAllFailed") : t("logoutAllDesc")}
+      </p>
       {confirming ? (
         <div className="flex gap-2">
           <Button variant="destructive" size="sm" onClick={handleLogoutAll} disabled={pending}>

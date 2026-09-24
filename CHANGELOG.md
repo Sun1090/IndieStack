@@ -253,6 +253,16 @@ All notable changes to IndieStack will be documented in this file.
   现在绑定 `error` 并在 metadata 里打 `sessionReadFailed: true`；审计照写、不阻断登录流程，
   **不加列也不做迁移**（审计表是既有的 append-only 面），约定写进 roadmap C09。
 
+- **两个登出按钮不再在没登出的时候报告成功**（C09）：`退出所有设备` 与 `退出其他设备` 过去写的是
+  `await supabase.auth.signOut(...)` 然后无条件往下走——而 **`signOut()` 和这个客户端的其它方法一样，
+  失败只出现在返回的 `error` 上，不抛异常**。于是 Auth 一次抖动之后：前者把用户送去登录页
+  （所有设备的会话其实都还活着），后者直接把界面切成「其他设备已登出」，而那正是这条控制要防的场景
+  ——在共用电脑上以为已经踢掉了别人。现在读 `error`：失败时留在原地、`role="alert"` 给出可重试的文案
+  （新增 `logoutAllFailed` / `signOutOthersFailed`，en 与 zh-CN 各一条），成功才进入原有跳转 / 完成态。
+  同一次清点里剩下的 `signOut` 站点：`site-header.tsx`（默认 local scope，方向较轻）与
+  `lib/auth/passkey-session.ts`（校验失败后的清理，本来就 `.catch()` 后照样 throw，属于刻意吞掉）——
+  两者连同判据一起记进 roadmap C09，不在本条里顺手改。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

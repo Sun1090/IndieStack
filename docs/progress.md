@@ -1274,6 +1274,19 @@
   另外生产侧顺手取了一个数：`/api/health` 的 `checks` 报 `supabase configured+reachable`、
   `sentry`/`stripe` 均 `required:false, configured:false`，`ready:true` 而 `allConfigured:false`——
   所以 #133 那条 Sentry 上报路径**在生产上目前没有接收端**，这不影响修复的正确性，但影响它的实际覆盖面。
+- 判据没停在 `getUser`：把同一条规则套到**整个 Auth 客户端**（`await x.auth.<method>()` 的结果有没有绑定并使用
+  `error`），量到 **90 处 awaited 调用 / 27 处绑定 / 63 处不绑定**，不绑定的按方法是
+  `getUser` 55、**`signOut` 4**、`admin.mfa.listFactors` 1、`admin.mfa.deleteFactor` 1、`refreshSession` 1、
+  `getSession` 1。**`signOut` 是这批里方向最坏的一档**：`退出所有设备` 与 `退出其他设备` 两个按钮
+  写的是 `await supabase.auth.signOut(...)` 然后无条件往下走，而这个客户端**失败只出现在 `error` 上、不抛**，
+  于是 Auth 抖动时一个把用户送去登录页（所有设备会话仍在）、一个把界面切成「其他设备已登出」
+  ——后者正是共用电脑上要防的那件事，控制没生效却报了完成。改成读 `error`：失败留在原地、
+  `role="alert"` 给可重试文案（新增 `logoutAllFailed` / `signOutOthersFailed`，en 与 zh-CN 各一条）。
+  新增 `sign-out-buttons.test.tsx` 4 条用例；变异核对：把两个组件的 `const { error } = …` 退回
+  `await …` → **2 failed | 2 passed**，红的正是两条失败路径用例，随后按字节还原并 `cmp`。
+  刻意没顺手改的三处连同理由记进 roadmap C09：`site-header`（local scope，后果轻）、
+  `passkey-session.ts:72`（清理用，`.catch()` 后照样 throw，是已判定的吞掉）、
+  `auth/mfa/page.tsx:85`（外层 catch 读异常不读 `error`，要连 MFA 流程一起判）。
 - 验证命令与结果：`pnpm verify`（type-check + lint + 全量测试 + `check:bundle`）**exit 0**，
   `Test Files 202 passed (202)`、`Tests 2315 passed (2315)`；`pnpm -s check:changelog` / `check:docs` /
   `check:bilingual-docs` / `check:gates` / `check:adr` 各自 exit 0（门禁接线 38 个：本地 35 / CI 37 / 豁免 3；

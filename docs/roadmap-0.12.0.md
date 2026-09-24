@@ -276,6 +276,19 @@
     **已收口的部分**：守卫层（`src/lib/auth/guards.ts`）改走 `readSessionUser()`，`requireAuth/Role/Permission`
     与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好；
     审计侧 `actions/audit.ts` 打上 `sessionReadFailed` 标记。
+    **射程随后从 `getUser/getSession` 扩到整个 Auth 客户端**（同一条判据：`await x.auth.<method>()`
+    的结果有没有绑定并使用 `error`）：**90 处** awaited 调用里 **27 处绑定**、**63 处不绑定**；
+    不绑定的按方法分：`getUser` 55、**`signOut` 4**、`admin.mfa.listFactors` 1、`admin.mfa.deleteFactor` 1、
+    `refreshSession` 1、`getSession` 1。**`signOut` 那一档方向最坏**——两个承诺「所有设备 /
+    其他设备登出」的按钮过去无条件往下走，Auth 抖动时**在没登出的情况下报告已登出**
+    （一个把用户送去登录页，一个把界面切成完成态，而后者正是共用电脑上要防的那件事）；
+    **本条已修**：读 `error`、失败留在原地给可重试文案（`logoutAllFailed` / `signOutOthersFailed`）。
+    剩下三处刻意不顺手改，理由各不相同：`components/layout/site-header.tsx` 是默认 local scope，
+    后果只是界面比真实状态先登出；`lib/auth/passkey-session.ts:72` 是 magic link 校验失败后的清理，
+    `.catch(() => undefined)` 之后照样 throw，属于**已判定**的吞掉而不是漏看；
+    `app/auth/mfa/page.tsx:85` 的 `refreshSession` 在 `try` 里、外层 catch 有通用文案，
+    但那个 catch 读的是**异常**而不是 `error` 对象，所以「服务端返回 `error`」这条路径现在会静默往下走——
+    它要连 MFA 流程一起判，单独改一处会把成功路径改坏。
     **那 8 处 `user!.id` 现在不能动，原因是重叠而不是难度**（2026-09-24 量的：逐条 open PR 的
     `git diff --name-only <merge-base> <head>` 对文件全名匹配）——`dashboard/notifications/page.tsx`
     与 `profile/page.tsx` 被 **18 条**在审 PR 各自改过，`billing`、`team` 14 条，`page.tsx` 5 条，
