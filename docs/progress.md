@@ -1815,3 +1815,45 @@
 - 下一项：#125 的 bundle 门禁改动只在本地路径上验证过（pre-push 跑完整链），CI 结果随该 PR 的
   11 项必需检查回来再补记。
 - 更新时间：2026-09-24（UTC 07:40 前后）。
+
+## 2026-09-24 — 第三次从零重建（补上覆盖率这一半证据）：24 个栈尖 / 44 个 PR，判断边 5 条，`check:all` 与 `test:coverage` 同时 exit 0
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。这一条同时补上前一条「下一项」欠的 #125 CI 结果。
+- 为什么做：前一条只量了「#125 新 commit 与每个 PR 两两合得起来」，没有重跑整队列——而 #125 那次改动
+  动的是 `check:bundle` / `verify` 这两条链本身（新增一个 `src/lib/release/bundle-freshness.ts` +
+  13 项单测），恰好是最可能把**集成后**的覆盖率或门禁清单搞红的改动类型。上一轮 44-PR 模拟刻意没跑
+  覆盖率，这次把它补上，让「合完 44 个 PR 的 main 是绿的」这句话第一次同时有 `check:all` 与
+  `test:coverage` 两份数字。
+- 完成内容：
+  1. `git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 之后重算栈尖：44 个 open PR → **24 个 tip**
+     （判据仍是逐个 `git merge-base --is-ancestor`，不是数合并次数），`sim/queue-44b` 从 `origin/main`
+     起按编号升序并入，`main` 之上 162 个 commit，**44/44 个 PR head 逐个证为 ancestor**。
+  2. 判断边这次**不靠驱动脚本的 stdout**（上一次 `tail -32` 把前半段截掉了，那 6 条里只有 2 条是我亲眼
+     看着解的）。改成从合并历史反推：对 `origin/main..HEAD` 里每个 merge commit 跑一次
+     `git merge-tree --write-tree <m^1> <m^2>`，把冲突路径里除去 `CHANGELOG.md` / `docs/progress.md`
+     之后剩下的那些当作「需要人判断的边」。结果 **5 条**：#114（checkout route + 它的 test + 两份
+     `messages/*/actions.json` + `docs/roadmap-0.12.0.md` + `src/lib/security/query-error-channel.ts`）、
+     #119（`e2e/admin-contact-mfa.spec.ts`）、#120（`e2e/support/warm-up.ts`）、#129（两份
+     `docs-site/scripts.md`）、#131（`docs/testing.md` + `scripts/check-all.sh`）。其余 19 个 tip
+     要么干净、要么只撞那两份台账。上一条记录写的「6 条」是把 #114↔#96 单独数了一次，这次它落在 #114
+     那次合并里（`messages/*` + route + test 同时红），是同一处重叠的两种数法，不是队列变了。
+  3. 台账排序这一步又必须做一遍（第三次验证「从零重建必然破顺序」）：`check:progress` 红在 3 个位置，
+     `/tmp/sort-ledger.py` 稳定排序后 **92 条条目 / 53 条换位**，行数 4116 → 4116 且内容多重集相同
+     （脚本自己断言这两点才肯写盘），再跑 exit 0。
+- 验证命令与结果（全部在 `sim/queue-44b` 这棵集成树上跑，node_modules 与本 checkout 共用）：
+  - `CI=true pnpm check:all` → **exit 0**，`Test Files 228 passed`（上一轮 227，多的那 1 个文件就是
+    #125 新增的 `bundle-freshness.test.ts`）。
+  - `pnpm test:coverage` → **exit 0**，`All files 97.48 / 92.34 / 98.24 / 98.59`
+    （阈值 91 / 90 / 93 / 92，来自 `vitest.config.ts`，**没有降低任何阈值**）。
+  - 结尾一次 `git grep --cached "^<<<<<<< "` → 无命中。
+  - #125 自己的 CI 在 `d71613f` 上：14 项里 **13 项 pass**，唯一红的是 `Vercel – indie-stack`
+    （`Deployment rate limited — retry in 24 hours`，按定案照实记录并忽略）。同时刻 docs-site 那条
+    是绿的，所以「一红一绿」再次成立。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/queue-44b` 是**只在本地**的分支，从未推送、
+  从未建 PR、从未碰 `main` 或任何真实 PR 分支；它的数字已经全部写进本条，所以记完就删——留一个不可达
+  的本地 tip 正是 `ops:work-audit` 会点名的东西。风险一条：这份矩阵随队列每次变动即过期，
+  下一次合并动作之后要重跑而不是引用。
+- 下一项：把这轮的三份数字（`check:all` / `test:coverage` / 5 条边）同步进 PR #118 正文。
+- 更新时间：2026-09-24（UTC 08:40 前后）。
