@@ -1971,3 +1971,53 @@
   犯了这个错的现场。
 - 下一项：把这一遍的结果同步进 PR #118 正文（含对上一段「不重跑」的公开更正）。
 - 更新时间：2026-09-24（UTC 10:55 前后）。
+
+## 2026-09-24 — 合成树第一次跑完整 E2E：chromium 113/113 绿，而且合并配方重放出了同一棵树
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：前几遍整队列重建的证据停在 `check:all` 与 `test:coverage`，而 CI 那五个必需作业里
+  **E2E 从没在「46 条一起」的树上跑过**。这件事在本案里格外要紧，因为六条判断边有两条**就是 e2e 文件**
+  （#119 的 `e2e/admin-contact-mfa.spec.ts`、#120 的 `e2e/support/warm-up.ts`），它们的解法是人手写的——
+  解错了单测不会响，只有 E2E 会响。
+- 完成内容：
+  1. 把 `sim/queue-46` 的合并配方原样重放成 `sim/e2e`（同一批 24 个栈尖、同一套解法）。
+     **重放是逐字节可复现的**：每个手工解点前后的行数与第一遍一字不差
+     （`checkout/route.ts` 199→188→140、`route.test.ts` 305→179、`query-error-channel.ts` 745→705、
+     roadmap 527→508；`#119`/`#120` 之后 CHANGELOG 1831/1844、台账 3288/3328；
+     收尾 CHANGELOG 2128、台账 4365；稳定排序同样是 97 条 / 55 换位）。
+     这等于给 PR #118 正文里那份解法做了一次「照着做一遍能不能得到同一棵树」的核对——
+     合并的人照那份文本动手时，得到的不是我的树而是同一棵。
+  2. 重放里踩到的一次自己制造的污染，记下来因为它的判据可推广：`#129` 那处我把 `#138` 的锚点文本
+     用错了对象，`count==0` 断言失败了，**但脚本没有终止后续命令**，于是带冲突标记的两个
+     `docs-site/*.md` 被后面的 `git add -A` 当成「已解决」提交进去。发现方式是提交之后
+     `git grep -n "^<<<<<<< "` 仍然命中。修法是 `git merge --abort` + `git reset --hard <129 之前那一个>`,
+     然后照真实锚点重解——`sim/e2e` 是本地一次性分支、每一步都可复现，所以这里 reset 才安全。
+     重放时用过的锚点也订正了一处：`#129` 的真实冲突是「HEAD 侧短描述 + query-errors 行 / 来侧扩展描述」，
+     解法取扩展描述那一行再留 query-errors 行（与 PR #118 正文写的一致）；我最初误用了 `#138`
+     那次（两侧都有 query-columns）的锚点，所以才会 `count==0`。
+     **可推广的两条**：机械解冲突的脚本，锚点没命中必须终止整条链；提交后要用 `git grep --cached`
+     证明标记真的清零，而不是相信自己的解法。
+  3. 合成树上跑完整 E2E（并行基线：`PW_FULLY_PARALLEL=true E2E_SERVERS=3`，即 3 台 dev server / 3 worker）：
+     `Running 113 tests using 3 workers` → **`113 passed (4.8m)`、exit 0，零失败零重试**。
+     条数范围说清楚：`projects` 只有 chromium，所以这句话就是 chromium 的 113 条；
+     同一时刻 `main` 树是 **109 条**（`pnpm test:e2e --list` → `Total: 109 tests in 15 files`），
+     队列净增 4 条，全部来自改 e2e 的那几条 PR。
+- 验证命令与结果：
+  - 跑之前逐个端口确认空闲（`lsof -nP -iTCP:3100/3101/3102 -sTCP:LISTEN` 全空）——
+    `reuseExistingServer: false` 会让端口冲突变成响亮的启动失败，但前提是我没拿别人的服务当自己的结果。
+  - `PW_FULLY_PARALLEL=true E2E_SERVERS=3 pnpm test:e2e` → `113 passed (4.8m)` / `e2e exit=0`。
+    **条数取 runner 的汇总行**：我对日志数 `^ *✓` 得到的是 111，因为若干 ✓ 被 `[WebServer]`
+    的噪声挤进行内——日志里那些 `⨯ Error: aborted` 与 `e2e injected transient failure`
+    是用例自己注入的故障，不是失败。
+  - 跑之后：`git status` 干净、`git diff tsconfig.json` 零差异（`NEXT_DIST_DIR` 会往 tsconfig 里追加
+    且不会自己回收，这是本仓库量过第三次的坑）、三个 `.next-e2e-{0,1,2}`（合计 3.6 GB）已删。
+  - 同一棵树此前已复跑：`CI=true pnpm check:all` exit 0（229 files / 2699 tests）、
+    `pnpm test:coverage` exit 0（97.46 / 92.37 / 98.27 / 98.63）、`git grep --cached "^<<<<<<< "` 零命中。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/e2e` 只在本地、从未推送、记完即删。
+  风险两条：① 这份 E2E 结论跟着队列变，任何一条 PR 的 head 再动，「113/113」就只描述它那一刻的树；
+  ② 它只覆盖 chromium，webkit 侧（视觉基线那条链）仍只能由 CI runner 出证据。
+- 下一项：把 E2E 这一行与「配方可复现」一起补进 PR #118 正文。
+- 更新时间：2026-09-24（UTC 11:4x 前后）。
