@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import { AuthRetryableFetchError, AuthSessionMissingError } from "@supabase/supabase-js";
 
 const { createClientMock, appendAuditLogMock, recordCurrentSessionMock, logApiErrorMock } =
   vi.hoisted(() => ({
@@ -80,8 +81,8 @@ describe("GET /api/auth/callback", () => {
     );
   });
 
-  it("交换成功但会话读不出来：审计照写，metadata 标出 sessionReadFailed", async () => {
-    mockAuth({ user: null, getUserError: { message: "auth unavailable" } });
+  it("交换成功但会话读取故障：审计照写，metadata 标出 sessionReadFailed", async () => {
+    mockAuth({ user: null, getUserError: new AuthRetryableFetchError("Failed to fetch", 0) });
     const res = await GET(req("?code=c1"));
     // 跳转方向不变：会话已经在浏览器里了，拦一次已经成功的登录不是这条路由的职责
     expect(res.headers.get("location")).toBe("https://app.example.com/dashboard");
@@ -93,5 +94,14 @@ describe("GET /api/auth/callback", () => {
       }),
     );
     expect(logApiErrorMock).toHaveBeenCalled();
+  });
+
+  it("匿名式的 error（AuthSessionMissingError）不打故障标记、不记故障日志", async () => {
+    mockAuth({ user: null, getUserError: new AuthSessionMissingError() });
+    await GET(req("?code=c1"));
+    expect(appendAuditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { method: "oauth" } }),
+    );
+    expect(logApiErrorMock).not.toHaveBeenCalled();
   });
 });
