@@ -1480,3 +1480,60 @@
   新的 5 个 commit 之后要重跑才算数（重跑就是本条上面那套命令，一次 `check:all` + coverage + E2E）。
 - 更新时间：2026-09-24。
 
+## 2026-09-24 — 41 个 head 从零重跑整队列：绿灯覆盖到 build，另外量出三条需要人判断的边
+
+- 里程碑 / 版本：v0.12.0；上一条留下的那句话（「#92 新的 5 个 commit 之后要重跑才算数」）在这一条兑现。
+  分支 `docs/pr-merge-order`（PR #118，base `main`）。模拟发生在本地分支 `sim/queue-42`
+  （`/tmp/merge-sim-42`，tip `c89d8a0` 之后再两条整理 commit），**没有推送、没有碰任何远端、没有对 `main` 做任何操作**。
+- 状态：DONE。重跑的范围是 41 条 open PR（`origin/main` 仍是 `ad4b029`，队列自上次模拟没有合进任何东西）。
+- 做法（与上一条同一套，多了两处修正）：`git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 把 41 个
+  head 取到本地 → `git worktree add -b sim/queue-42 /tmp/merge-sim-42 origin/main` → 按编号升序
+  `git merge --no-edit pr/<n>`，每次合并后**核对落地的第二父（或快进后的 HEAD）就是那条 PR 的 head**，
+  不匹配就停。包含关系仍是逐个证的：**41/41 通过、`missing=0`**；树上是 `main` 之上 **152 个 commit**、
+  first-parent 合并 **40 次**（少的那一次是 #92 直接快进）。
+- 冲突只落在那几类共享追加区，每个文件的**独立编辑条数**（逐条 PR 自己的 delta，
+  `merge-base <base-ref-oid> <head>` 之后 diff 文件全名）是量出来的：`docs/progress.md` 41、
+  `CHANGELOG.md` 39、`docs/testing.md` 13、`messages/{en,zh-CN}/actions.json` 各 7、
+  `docs-site/scripts.md` 与 `docs-site/zh-CN/scripts.md` 各 7、`scripts/check-all.sh` 4、`package.json` 4、
+  `e2e/admin-contact-mfa.spec.ts` 2（#117 #119）、`e2e/support/warm-up.ts` 2（#116 #120）。
+- **三条需要人判断的边（前一轮没有量出来，因为判据本身不对）**：
+  1. `messages/{en,zh-CN}/actions.json` 的 **`checkoutUnavailable` 两侧各自定义、文案不同**——
+     #96 那条是泛化的「支付服务暂时不可用」，#109 那条点名了「确认不了团队当前订阅、本次没有发起结账」。
+     模拟里按「后合的覆盖」取了 #109。**要人确认最终寄给用户的到底是哪一句**，这不是 git 能决定的。
+  2. `e2e/support/warm-up.ts`：#116（服务器身份核对）与 #120（预热清单双向对账）是**兄弟不是父子**，
+     两份里各自都没有对方那半件。「两块都留」在这台机器上产出了**非法 TypeScript（53 处 type-check 错误）**，
+     只能手工并集：身份核对放在「只在并行时预热」那句早退**之前**、预热循环改用 `WARM_ROUTES`。
+  3. `src/app/api/stripe/checkout/route.test.ts`：#96 是 7 条用例 / 178 行，#109 是 5 条 / 127 行，
+     并集 = 12 条 / 298 行且重复声明。模拟按既定口径取了栈侧（#109），**代价写清楚：#96 那两条多的用例
+     没进这棵树**，得由作者确认它们断言的行为不是 #109 需要的。
+- **对上一条解法本身的两个修正**（这是本轮最有价值的产出，因为它影响每一批 PR 的重解）：
+  ① 「断言非空行多重集不变」这条判据**在两类文件上都不成立**。第一次实现按
+  `base + (ours−base) + (theirs−base)` 算期望值，栈式分支**共享的新增会被算两份**，于是把一次本来正确的
+  「两块都留」读成「丢了一行」；② 代码文件里对侧**删掉行是合法结果**，`⊇ 两侧`根本不是想要的性质。
+  现在的口径：纯追加的账（`docs/progress.md`、`CHANGELOG.md`、`docs/roadmap-0.12.0.md`、
+  `scripts/check-all.sh`）才做并集断言；代码与被删过的文档只做「标记清零」，交给 type-check / lint / test 判。
+  这条改完，之前那个「期望 4 得到 3」的假丢行消失了，而两处**真的**需要人判断的地方（上面 2、3）浮了出来。
+- 台账排序这一步仍然躲不掉：合并完 `pnpm -s check:progress` 在**未排序**的树上红两项
+  （`[date-out-of-order] 第 1470 行 / 第 2788 行`）。按日期稳定排序之后绿：79 条条目、非空行 3329 → 3329、
+  多重集一致、45 条换了位置。**每一次从零重建都要重跑这一步**，它不是一次性整顿。
+- 合并后同一棵树上的验证（这次比上一轮多跑了 build）：`CI=true pnpm check:all` **exit 0**，
+  `Test Files 226` / `Tests 2634`；`pnpm test:coverage` **exit 0**，
+  `All files | 97.46 | 92.33 | 98.14 | 98.59`；`pnpm test:e2e` **exit 0**，`113 passed (3.2m)`
+  （日志里那两条 `[ERROR] avatar upload failed / storage object cleanup failed` 是用例**故意注入**的
+  mock 故障路径，不是失败）；`pnpm build` **exit 0**，23 个静态页全部生成——
+  上一轮那句「`pnpm build` 不在 `check:all` 的 41 步里，所以这条绿灯不含构建」现在补上了。
+- 顺手清掉的队列卫生：重跑之前 `gh pr list` 全量扫 `mergeStateStatus`，**整条队列只有 #93 是 CONFLICTING**
+  （它的 base 就是 #92，而 #92 今天多了 7 个 commit）。按升序重放：#93 rebase 到 `605be71`（`5312e8f`）、
+  `check:all` 绿、`--force-with-lease` 推送；这又让 #94 CONFLICTING，同样处理（`4f61d42`，
+  `git range-diff` 证明它自己那条 commit 逐字节没变、只是换了父）。#93 的下游链深度实测只有 1
+  （唯一子分支是 #94），级联到此结束。
+- 这次模拟**没覆盖**的东西，别当成覆盖了：包含性与绿灯用的是 09:54 取到的 head，
+  之后 #93 / #94 的 rebase 换了 sha（内容按 `range-diff` 等价）；`main` 一旦前进，41/41 与这三条边都要重量。
+  Vercel 那条部署检查仍红（平台配额），按既定口径记录并忽略，不绕过、不因此削弱任何门禁。
+- 风险 / 回滚：本条只是文档；模拟分支是本地的，回滚 = `git worktree remove /tmp/merge-sim-42 --force` +
+  `git branch -D sim/queue-42` + `git for-each-ref --format='delete %(refname)' refs/remotes/pr | git update-ref --stdin`，
+  远端无需任何动作。#93 / #94 的 force-push 是既定生命周期内的分支更新，且各自 `check:all` 已在推送前跑绿。
+- 下一项：`main` 前进之后重跑本条（含那三条需要人判断的边，届时应已由作者定稿）；
+  `AUTH_ERROR_CHANNEL` 台账（C09 的门禁接不接）仍排在其后。
+- 更新时间：2026-09-24。
+
