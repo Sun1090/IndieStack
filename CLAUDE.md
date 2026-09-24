@@ -42,7 +42,7 @@ src/app/
 ### 关键规则
 
 - 所有仪表盘页面使用 `export const dynamic = "force-dynamic"`
-- Server Actions 在 `src/lib/actions/` 中，配合 Zod 校验；返回值统一 ActionResult（`lib/types/action-result.ts`）
+- Server Actions 在 `src/lib/actions/` 中，配合 Zod 校验；返回值统一 ActionResult（`src/lib/types/action-result.ts`）
 - 客户端列表数据用 TanStack Query（useQuery/useMutation），禁止手写 fetch loading 样板
 - Supabase 客户端：`server.ts`（Server Components）、`client.ts`（浏览器）、`admin.ts`（Service Role）
 - 路由常量在 `src/lib/constants.ts`——始终使用 `ROUTES.*` 进行导航
