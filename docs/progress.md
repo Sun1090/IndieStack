@@ -1192,8 +1192,8 @@
      看不见「这个仓储真的跑在替身上会怎样」——所以这一层是**动态对账**：`vi.mock("@/lib/supabase/admin")`
      把 `createAdminClient()` 换成 `createMockSupabaseClient()`，然后直接调 `upsertPendingSubscription` /
      `confirmSubscription` / `unsubscribeByToken` 真码。4 条分别是：订阅 → 确认落到 `subscribed`
-     （补 `gt` 之前这一步就是 TypeError）、过期 token → **`false` 而不是抛错**、退订链接同样吃这条闸门、
-     未知 token → `false`。
+     （补 `gt` 之前这一步就是 TypeError）、过期 token → **`false` 而不是抛错**、退订走同一条链且 token
+     有效时真的落到 `unsubscribed`、未知 token → `false`。
   5. 文档：两份 mock 文档按实测重列已实现算子，并写明「`update()`/`delete()` 链上的 `or()/contains()/not()`
      会被接受但**忽略**（读路径全部生效）」——这是代码事实（`matchesFilters` 的跳过分支），
      以前文档没说过，读者会以为读写一致。
@@ -1218,10 +1218,25 @@
     它证明读写两边各被独立钉住，而不是读路径顺带把写路径顶绿了。
     后两项是**针对同一个 `gt()` 的两个不同破坏面**，专门用来问「静态对账够不够」：
     Q1 再删一次 `gt()` → 8 红（原有 4 + 集成 4 全红，含「订阅 → 点确认链接」那条）；
-    Q2 把 `gt()` 收成空壳（接受参数、不写 `this.filters`）→ 恰好 5 红，红的正是两条过期闸门断言
-    （`token 过期 → false` 与 `退订链接同样吃这条闸门`），而静态 surface 对账**全绿**——
-    它只问「方法在不在」。这就是 4 存在的理由。
+    Q2 把 `gt()` 收成空壳（接受参数、不写 `this.filters`）→ **4 红**（`gt` 语义那 3 条 +
+    `token 过期 → false`），而静态 surface 对账**整份文件全绿**——它只问「方法在不在」，
+    这就是 4 存在的理由。每步还原后用 `git hash-object` 与 `HEAD` 的 blob 比对逐字节一致，
+    正向对照 11 绿。
   - `pnpm --silent type-check` → exit 0；`CI=true pnpm check:all` 与 `pnpm build` 见 commit 之后补记。
+- **量到一条 `merge-tree` 看不见的边：#123 × #149，而且它一开始是红的**。逐条 `merge-tree` 的结论是
+  「56/56 只撞台账、非台账冲突 0 个」，把 57 条按编号升序真合一遍之后 `pnpm test` **红 1 条**：
+  `退订链接同样吃这条闸门；未过期时才真的落到 unsubscribed`（`expected true to be false`，
+  `src/lib/repositories/marketing-mock-client.test.ts:70`）。起因不是替身污染也不是并行用例串状态——
+  **单独跑这个文件在同一棵树上照样红**：#123（`fix/marketing-unsubscribe-expiry`，base `main`，
+  head `23f07f0b`）把 `updateStatusByToken` 改成 `status === "unsubscribed"` 那一支**不再挂
+  `.gt("token_expires_at", now)`**（退订出口不设时间窗，确认仍然受），于是我这条新用例钉的是
+  **它正要改掉的那一半语义**。处置是**改用例而不是留一个「合并时要做」的动作**：第 3 条现在只断言
+  「退订走同一条 update 链、token 有效时真的落到 `unsubscribed`」，过期闸门只由第 2 条（确认路径）钉，
+  那条在 #123 前后都成立。防「改弱」检查 Q3：把 `unsubscribeByToken` 打成恒 `false` → 恰好第 3 条红，
+  所以它不是装饰性断言；`src/lib/repositories/marketing.ts` 一字未改，探针后逐字节还原。
+  **这条边的通用形态**：新写的用例只要断言「某个公开入口在边界情形下的返回值」，而队列里已有一条 PR
+  在改那个情形的产品语义，`merge-tree` 必然说「不冲突」——两侧改的是不同文件（测试 vs 仓储），
+  语义却叠在同一个调用点上。唯一的照妖镜还是把那棵树真合一遍。
 - 阻塞 / 风险 / 回滚：只动 mock 与文档，生产路径（真 supabase-js）一行未改；`gt` 语义与 PostgREST 的 `>` 一致，
   且 mock 模式下原先这条链**根本跑不通**，所以不存在「以前能跑现在变了」的回归面。
   回滚 = revert 本 PR 三个 commit。

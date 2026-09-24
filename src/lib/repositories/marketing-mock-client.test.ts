@@ -61,16 +61,14 @@ describe("营销订阅闭环跑在真 Mock 客户端上", () => {
     expect(after?.status).toBe("pending");
   });
 
-  it("退订链接同样吃这条闸门；未过期时才真的落到 unsubscribed", async () => {
+  it("退订走同一条 update 链，token 有效时真的落到 unsubscribed", async () => {
     await upsertPendingSubscription(USER, EMAIL);
     const sub = await getSubscriptionByUserId(USER);
     await confirmSubscription(sub!.token);
 
-    await ageTokenTo("2020-01-01T00:00:00.000Z");
-    await expect(unsubscribeByToken(sub!.token)).resolves.toBe(false);
-    expect((await getSubscriptionByUserId(USER))?.status).toBe("subscribed");
-
-    await ageTokenTo(new Date(Date.now() + 60_000).toISOString());
+    // 退订的**过期**语义不在这里钉：#123 正在把它改成「退订不设时间窗」（确认仍然受），
+    // 那是产品决定而不是本条主题。本文件要钉的是「`gt` 在真替身上真的过滤」，
+    // 那条由上一条的确认用例钉住——它在 #123 前后都成立。
     await expect(unsubscribeByToken(sub!.token)).resolves.toBe(true);
     expect((await getSubscriptionByUserId(USER))?.status).toBe("unsubscribed");
   });
