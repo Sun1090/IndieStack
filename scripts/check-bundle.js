@@ -1,54 +1,26 @@
 #!/usr/bin/env node
 /**
- * Bundle 体积基线检查（Turbopack 版）
- * 用法: pnpm check:bundle （先自动执行 next build）
- * 统计 .next/static 下客户端 chunks 总大小，与 .bundle-baseline 比较：
- * - 超过基线 +5% 时失败（防止依赖引入悄悄膨胀客户端包）
+ * Bundle 体积门禁入口。
+ *
+ * 判定规则在 src/lib/release/bundle-freshness.ts，IO/CLI 在
+ * scripts/lib/bundle-freshness-check.js，这里只负责用 Node 原生 type stripping
+ * 运行 ESM（.ts import 需要该 flag）——与 scripts/check-gates.js 同一形态。
+ *
+ * 本脚本自己不构建：`.next/static` 必须由调用方先产出（`pnpm build` /
+ * `pnpm verify:build` / CI 的 Build job），否则新鲜度判定会直接失败退出。
  */
-const fs = require("fs");
-const path = require("path");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
-const ROOT = path.join(__dirname, "..");
-const STATIC_DIR = path.join(ROOT, ".next", "static");
-const BASELINE_FILE = path.join(ROOT, ".bundle-baseline");
-const TOLERANCE = 1.05;
+const cli = path.join(__dirname, "lib", "bundle-freshness-check.js");
+const result = spawnSync(
+  process.execPath,
+  ["--no-warnings", "--experimental-strip-types", cli, ...process.argv.slice(2)],
+  { stdio: "inherit" },
+);
 
-function dirSize(dir) {
-  let total = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) total += dirSize(full);
-    else total += fs.statSync(full).size;
-  }
-  return total;
-}
-
-if (!fs.existsSync(STATIC_DIR)) {
-  console.error("❌ 未找到 .next/static，请先执行 pnpm build");
+if (result.error) {
+  console.error(`❌ 无法运行 bundle 体积门禁：${result.error.message}`);
   process.exit(1);
 }
-
-const currentKb = Math.round((dirSize(STATIC_DIR) / 1024) * 10) / 10;
-
-let baseline = null;
-try {
-  baseline = Number(fs.readFileSync(BASELINE_FILE, "utf8").trim());
-} catch (error) {
-  if (error.code !== "ENOENT") throw error;
-}
-
-if (!baseline || Number.isNaN(baseline)) {
-  fs.writeFileSync(BASELINE_FILE, String(currentKb), { flag: "wx" });
-  console.log(`✅ 已建立 bundle 基线: ${currentKb} kB（客户端静态资源总量）`);
-  process.exit(0);
-}
-
-console.log(`Bundle: 当前 ${currentKb} kB / 基线 ${baseline} kB`);
-if (currentKb > baseline * TOLERANCE) {
-  console.error(
-    `❌ 客户端资源超过基线 ${Math.round((TOLERANCE - 1) * 100)}%。` +
-      `如为有意变更（新功能/升级），请同步更新 .bundle-baseline 文件。`
-  );
-  process.exit(1);
-}
-console.log("✅ Bundle 体积在基线范围内");
+process.exit(result.status ?? 1);

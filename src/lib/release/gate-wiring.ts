@@ -104,9 +104,9 @@ function containsPnpmScript(haystack: string, name: string): boolean {
  * 门禁是否在某段文本里被执行：接受 `pnpm <gate>`、其原始命令，
  * 或直接调用该门禁的实现脚本（`node scripts/x.js`）。
  *
- * 第三种形态是给「产物已经就绪、只需跑断言」的 CI 用的：`check:bundle` 的 package.json
- * 命令自带一次 `pnpm build`，CI 里照抄会白等 20 分钟，于是 Build job 之后直接跑
- * `node scripts/check-bundle.js`。只认脚本路径而不是任意文本，避免注释里提一句就算接线。
+ * 第三种形态是给「产物已经就绪、只需跑断言」的 CI 用的：Build job 在 `pnpm build` 之后
+ * 直接跑 `node scripts/check-bundle.js`，复用同一份产物，不必绕一遍聚合命令。只认脚本路径
+ * 而不是任意文本，避免注释里提一句就算接线。
  */
 function wiredInScriptList(text: string, gate: string, command: string): boolean {
   if (containsPnpmScript(text, gate)) return true;
