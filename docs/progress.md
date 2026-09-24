@@ -1197,6 +1197,19 @@
 - 阻塞：无。门禁那条路（把 auth 也纳入 `check:query-errors`，即 `AUTH_ERROR_CHANNEL` 台账）**仍未决定接不接**，
   现在有了分母才谈得上：58 个点位里 54 个是同一个 `getUser` 形状，台账要么按文件给 sites/reason（和 C08-b 一样两向对账），
   要么先只禁「新增抹通道」而不追认存量。这一步排在 #92 与 #114 落地之后，因为判据模块和门禁本体都还在审。
+- 顺手挖出来的一条**本地守卫失明**（与本条的改动无关，但正是在推本条时撞上的）：
+  `.git/hooks/pre-push` 是指向 `/private/tmp/merge-sim-42/.husky/pre-push` 的软链——今天 10:19 做整队列模拟时，
+  在 worktree 里跑 husky 相关命令把主仓库的安装钩子指到了那个**临时目录**。第一次推送（`1d4bf33`）时目标还在，
+  钩子跑了 958 行；我清掉 worktree 之后链接悬空，随后两次推送（`b3ee62b`、本分支的 `4e248c3`）**钩子一行都没跑**，
+  退出码 0、推送成功，看起来完全正常。AGENTS.md 把「推送前必跑 lint/type-check/test/build」写成硬性规则，
+  而这条规则的本地执行者可静消失。已修：`.git/hooks/pre-push` 改成指向仓库自己的 `.husky/pre-push`（相对链接，
+  不再依赖任何临时目录），本条之后的推送会真的过 `pnpm verify:build`。
+  补偿性验证：`4e248c3` 上 `CI=true pnpm check:all` 退出 0（38 道门禁 + type-check + lint + test），
+  缺的那条 build 由本次（钩子恢复后的）推送补上。
+  还缺的那一步没做，记在这里：**没有门禁检查「安装着的钩子是否存在且可执行」**——
+  `grep -rl pre-push scripts/ src/lib` 零命中，`check:gates` 数的是 `scripts/check-all.sh` 里的门禁，
+  本地钩子不在任何清单里。这与 task #63 修的是同一类问题（承诺的守卫不存在，或存在但不生效），
+  接线要动 `package.json` 与 `check-all.sh`（各有 4 条 PR 在改），所以排在这两条落地之后。
 - 风险 / 回滚：两个文件与 `main` 逐字节相同、且 41 条 own-delta 全扫无人碰（`src/app/auth/mfa/page.tsx` 除外，已避开），
   所以本 PR 不引入冲突边；回滚 = revert 那一个 commit。
 - 下一项：`CHANGELOG.md` 已补一条 Fixed；#118 分支上的整队列模拟在 `main` 前进之后要重跑（本条会让它多一个合并点）。
