@@ -213,7 +213,7 @@ All notable changes to IndieStack will be documented in this file.
   所以缺陷是照着文档长出来的。现在有效期只约束确认（没被确认的 double opt-in 请求该过期），
   退订不看它；token 轮换的约束原样保留（`token_expires_at` 为 null 的历史行也一并从「永远退不了」
   变成「能退」）。文档三处同口径改：`docs-site/email.md` / `zh-CN/email.md` 那条摘要 + 有效期说明、
-  `docs/design/email-templates.md` 的 A05 段新增一条判据。用例打在查询构造上（该文件 10 → 11 条）：
+  `docs/design/email-templates.md` 的 A05 段新增一条判据。用例打在查询构造上而不是 mock 的结果上：
   确认必须带 `.gt("token_expires_at", …)`、退订必须不带；两个方向各做一次变异——折叠成「都判过期」
   与「都不判」都红。刻意没动的相邻一项：凭旧 token 仍能把已退订的行确认回 `subscribed`，
   那需要持有发给本人的那封邮件，不是攻击面，改它属于产品口径。

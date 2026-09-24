@@ -1186,7 +1186,7 @@
      报告里每个守卫的起始行对一遍分支覆盖」（44 条线索 → 5 条有未覆盖分支，其中 2 条已分别归 #140
      与这条）。这两个入口挂在公开路由上、token 直接来自查询串，闸门唯一的作用是让一次垃圾请求
      换不到一个 service-role 连接，所以用例断言的是 `createAdminClient` **一次都没被调用**，
-     而不是返回值。`marketing.test.ts` 现在 13 条（上面那句「10 → 11 条」是本条 commit 时的历史值，
+     而不是返回值。`marketing.test.ts` 到 2026-09-25 为 13 条（上面那句「10 → 11 条」是本条 commit 时的历史值，
      别把它当现状读）。
 - 变更文件：`src/lib/repositories/marketing.ts`、`src/lib/repositories/marketing.test.ts`、
   `docs-site/email.md`、`docs-site/zh-CN/email.md`、`docs/design/email-templates.md`、
