@@ -1205,10 +1205,19 @@
      去掉上限后宽度正好凑到 8 组会被判真）。
   4. `pnpm type-check` / `pnpm lint` / `node scripts/check-changelog.js` / 台账门禁；
      推送时 `.husky/pre-push` 跑完整 `verify:build`（lint + type-check + test + build）。
-  5. CI（#140 第一次推送的那个 sha）：**11 项作业全绿**（含 `Build`、`E2E (Playwright)`、两个 shard），
+  5. CI（第一次推送的 sha `48b0d404`）：**11 项作业全绿**（含 `Build`、`E2E (Playwright)`、两个 shard），
      红的两项是 `Vercel – indie-stack` 配额；`Vercel – indie-stack-docs-site` 当次**已经转绿**，
      也就是 docs-site 项目的配额窗口在 09-24 13:4xZ 前后重新放行——一红一绿是配额状态而不是代码结论。
-     本条订正重推之后需要重新看一次。
+     订正重推的 sha `404e480f` 已复看：**同样 11 项全绿**，红的仍只有 `Vercel – indie-stack`。
+  6. 与 #139 的那条边（全队列唯一的非台账代码冲突）在本地一个一次性 scratch 分支上**真合过一遍**：
+     合并后 `src/lib/rate-limit.test.ts` 是 21 条用例 / 6 个顶层 describe，
+     分母对得上（main 8 + #139 加 4 + 本条加 9），七个相关文件 **72 passed**，
+     `pnpm type-check` / `pnpm lint` exit 0；scratch 已 `git branch -D`，没有推送任何东西。
+     这一遍查出附三原本那句「keep-both 成立」说得太轻：两侧最后一个 `it` 各自缺一对收尾括号、
+     共用文件末尾那两行，只删标记会得到「`describe` 挂在 `it` 里」的形状，而 lint/tsc/vitest
+     全都不会报——解法与验证都补进 PR #118 的附三·2 与附五。
+  7. 顺手改掉自己写在测试文件头注释里的一句错数字（「75 例语料 / 64 例判成像 IP」——语料最终是
+     74 例、63 例）。这类数就该由用例每次现算，不该抄进注释；已改成指向那条差分用例而不是数值。
 - 阻塞：无（不依赖凭据、不依赖合并）。
 - 风险 / 回滚：只收紧形状，没动额度、窗口与桶键算法。行为变化是：某个头写了非 IP 形态的值时，
   先看另一个头（`x-real-ip` 坏了会退回 `x-forwarded-for`），两个都不合格才落到 `anonymous`
