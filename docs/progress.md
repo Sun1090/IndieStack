@@ -36,7 +36,7 @@
 
 - 里程碑 / 版本：v0.12.0 的 C02 **达成**。
 - 状态：DONE——全量并行第一次拿到可复跑的绿记录（run `35746785602`，107 passed / 0 failed）。
-- 分支 / commit：`test/e2e-per-worker-servers`（PR #77）第三个 commit `3d624e5`。
+- 分支 / commit：`test/e2e-per-worker-servers`（PR #77）第三个 commit（当时 3d624e5，落地后 `8c510c84`）。
 - 为什么做：上一条记录里 C02 停在 PARTIAL：共享状态清零后仍有 1～2 条红。留着「并行还是红」这句话
   不看下去，就等于把计时问题误记成状态问题。
 - 完成内容：
@@ -65,7 +65,7 @@
   （用例总数与本机 `playwright test --list` 的 107 对齐；日志端点仍取不到，计数来自
   check-run 的 🎭 Playwright Run Summary annotation）。
 - 阻塞 / 风险：无。风险是有人把这三条红重新当成共享状态去「修 store」——分诊口径已写进
-  `docs/testing.md` 与 roadmap C02。回滚 = revert `3d624e5`（预热与 eslint ignore 要一起回退）。
+  `docs/testing.md` 与 roadmap C02。回滚 = revert `8c510c84`（预热与 eslint ignore 要一起回退）。
 - 下一项：PR #77 合并、清理分支，然后回到 A05 的可观测那一半（队列规模 / 最早一条年龄 /
   `sent=0` 轮次），出队语义仍等用户拍板。
 - 更新时间：2026-09-22（UTC 15:55 前后）。
@@ -98,7 +98,7 @@
     （第一次用 `| tail` 把失败吞了，教训重演一次）；文档门禁 7 项全 0。
   - CI 常规路径在本 ref 上全绿：`E2E shard 1`、`E2E shard 2`、`E2E (Playwright)`、Unit、Build、
     Lint & Type Check 全 pass，只有两个 Vercel 检查因项目配额红。
-  - **并行基线两轮**（同一 ref `30ec139`，手动 dispatch）：run `35742942744` = 106 passed / 1 failed；
+  - **并行基线两轮**（同一 ref 30ec139，落地后 `67d3e53e`；手动 dispatch）：run `35742942744` = 106 passed / 1 failed；
     run `35744080784` = 105 passed / 2 failed（用例总数 107，与本机 `playwright test --list` 一致）。
     红的分别是 `uploads`（登录后 `waitForURL` 15s）、`smoke`（`page.goto` 60s + `ERR_ABORTED`）、
     `webhook-events`（同 id 第二次投递未认 duplicate）。三条各不相同、且都不是上一轮那类
@@ -116,7 +116,7 @@
 
 - 里程碑 / 版本：关闭 v0.12.0 的 C03。
 - 状态：DONE（密码那条入口）；passkey 那条另说，见「阻塞」。
-- 分支 / commit：`test/e2e-parallel-baseline-first-run` 的第二个 commit（基于 `ea9489f`）。
+- 分支 / commit：`test/e2e-parallel-baseline-first-run` 的第二个 commit（基于 ea9489f，落地后 `46bc2519`）。
 - 为什么做：上一条目改掉 C03 的假前置（不是 store 隔离）之后，真阻塞只剩仓库内可验证的几行代码，
   于是接着把那条「真实走一遍挑战流程」的 E2E 写出来。
 - 完成内容：
@@ -923,7 +923,7 @@
 - 阻塞 / 风险 / 回滚：不改发送条件、不改队列过滤、不改 schema；只给「已经失败的行」加一个终止时刻与一条指标。
   风险一侧：7 天内一直失败且始终写不进计数的行会在第 7 天被判死而不是继续尝试——这正是目的，但如果
   将来把 worker 调度加密（不再每天一轮），这个常数需要重新按「几轮 × 间隔」核对，别按天数拍。
-  回滚 = revert 本 commit（两个 commit 可分别 revert：`481f357` 是 C07 的重构跟进）。
+  回滚 = revert 本 commit（两个 commit 可分别 revert：`b07e9b8b` 是 C07 的重构跟进）。
 - 下一项：v0.12.0 池内可自主执行的条目已清空，剩余项分别等用户拍板（A05 出队口径、A01 `profiles.timezone`
   去留、C06 两个孤儿 Server Action）与外部权限（B02–B05、C05、digest 生产复验、task #28 的生产冒烟）。
   下一轮优先做「再量一次缺陷」而不是等大任务。
@@ -1153,3 +1153,62 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — main 的文档里有 7 个 commit 指针在任何克隆里都解析不出来，逐个对回落地 commit
+
+- 里程碑 / 版本：v0.12.0 文档治理（living doc 家族的第六处）。
+- 状态：DONE（待合并）。分支 `docs/dead-commit-refs`，base = `origin/main`（`ad4b029`）。
+- 为什么做：起点是 #131 那条「台账写着一个既不在这台机器、也不在远端的分支名」——同一个形状的问题
+  在 commit 指针上更常见，因为**rebase/squash 落地会把 PR 期间写进台账的那个 sha 变成 main 之外的孤对象**。
+  量法：把 `origin/main` 上所有 `.md`（152 份）里**反引号包起来的 7–40 位十六进制串**当作
+  「作者声称这是一个可解析的 commit 指针」，对每个跑两件事——`git rev-parse --verify <sha>^{commit}`
+  与 `git merge-base --is-ancestor <sha> origin/main`。分母与阳性对照印在报告里：
+  `md files=152 read=152 tokens=41 reachable=35 suspect=7`，对照是把 `origin/main` 自己的 HEAD
+  也塞进待验清单，它必须判可达（`positive control flagged? false`）。
+- 结论要说准，不能只说「链接坏了」：这 7 个对象**在 github.com 上仍然能点开**（逐个走 REST
+  `GET /repos/…/commits/<sha>`，7/7 返回 200），但**任何分支头都不包含它们**
+  （`git branch --contains` 与逐条 `for-each-ref` 都是空），所以在一份只取分支的干净克隆里
+  `git show <sha>` 是 unknown revision——而台账里两处写的是
+  「回滚 = revert `<sha>`」这种**照做会失败**的指令。为什么服务端还留着这些对象没有取证
+  （PR ref、事件缓存都可能解释得通），本条目只记录「分支头不含它 + 服务端仍可解析」这两件量到的事。
+- 逐条对账（旧值按下面的约定不加反引号，新值加）：3b7a5df→`bbdd9318`、3d624e5→`8c510c84`、
+  30ec139→`67d3e53e`、ea9489f→`46bc2519`、481f357→`b07e9b8b`、60242cb→`56aa4739`、
+  9f11337→`aa3b66f0`。配对不是靠「subject 差不多」猜的：每个旧 sha 的 subject 在 `origin/main` 上
+  **有且只有一条命中**（`main_matches=1` ×7），且**两侧 tree hash 完全相同**（`tree_equal=true` ×7）
+  ——同一份内容在落地前后的两个身份，不是两个改动。
+- 完成内容：10 处引用改指向，分布在 4 份文档，**按用途分两种写法**。
+  1. 用途是「照着做」或「这是那条达成的证据」（`回滚 = revert X`、v0.11.0 缺口审计表格的达成列）——
+     直接换成落地 sha，读者要的是一个能真的 revert、能在历史里找到的对象。
+  2. 用途是「当时的 ref 长这样 / 这是分支的第几个 commit」（Actions run 的 ref、`基于 X` 的父提交）——
+     旧值**原样保留但不加反引号**，后面补「落地后 `<新 sha>`」。历史一字不改，指针全部可解析。
+  由此这份文档有了一条明写的约定：**反引号里的 sha = 可从 `main` 解析的指针；纯文本 = 历史原值**。
+  这条约定本身没有门禁守着（见下面的取舍），但它让「还剩下几个坏指针」变成一条命令能复量的量。
+- 变更文件：`docs/progress.md`（5 处 + 本条目）、`docs/roadmap-0.12.0.md`（2 处）、
+  `docs/roadmap-0.5.0.md`（2 处）、`docs/operations/release-gap-audit-v0.11.0.md`（1 处）、
+  `CHANGELOG.md`。
+- 验证命令与结果：
+  - **先红后绿**：改之前对同一棵树跑扫描 → `md files=152 read=152 tokens=41 reachable=35 suspect=7`
+    （就是上面那 7 个）；改之后复跑 → `tokens=42 reachable=43 suspect=0`
+    （多出来的那一个 token 是本条目自己引用的 base `ad4b029`，它可从 `main` 解析，所以按约定就该进
+    反引号、也该被计入），阳性对照两次都没被误报。
+    复扫跑在 `git stash create` 出来的临时 commit 上，HEAD 与工作树都没动，避免为了验证
+    先把未提交的改动 commit 掉。
+  - 每一处都是**单行替换**：在「只改那 10 处引用、还没写本条目与 CHANGELOG」的那一刻，
+    `git diff --stat` = 4 files / 10 insertions(+) / 10 deletions(-)。增删行数相等就是「没有整段重写」
+    的证据，这一条是防着自己用脚本重排整份文档（同一次工作里已经写过「脚本整文件重写要先断言行数
+    才能信」，而这次真的靠它发现了一次重复追加）。
+  - 本条目那 7 个旧 sha 是**故意**写成纯文本的，所以扫描不会再看见它们——不是绕过检测，
+    而是它们本来就不该是可解析指针。
+- 阻塞：无（不依赖凭据、不依赖合并）。
+- 风险 / 回滚：不改任何代码路径，回滚 = revert 本 commit。真正的风险是**这还会长回来**：
+  只要 PR 以 rebase/squash 落地，作者在台账里写下的自己分支的 sha 就在合并那一刻变成 main 之外的对象，
+  这是结构性的而不是某次疏忽。两条收口方式与它们的代价：
+  ① 约定「进 `main` 的文档只引用 PR 编号，落地之后才允许引用 sha」——成本低，但靠人遵守；
+  ② 加一道 `check:commit-refs`（规则就是上面那条扫描）——它能红，但红的时点必然在**合并之后**
+  （写的人在 PR 上不可能知道自己的落地 sha），于是红话落在合并的人头上，而不是写错的人头上。
+  本条选择先把已发现的 10 处修完、把探测器留在台账里，①/②的取舍要人拍板。
+- 下一项：把这条扫描并进 #118 的**合并后清单**——整队列合并会一次制造几十个这样的假指针
+  （每个 squash 落地的 PR 都是一个），合完必须复跑一次并重新指向。
+- 更新时间：2026-09-25 00:2x（本机）——同一时刻是 UTC 2026-09-24 16:2x。所以这一条按本机日历挂在
+  09-25 名下，而它在时间上晚于上面所有标着「UTC 09-24 白天」的条目；「台账按哪一侧的日历记」
+  这一条本条目不替仓库定，只把两个读数都写下来。
