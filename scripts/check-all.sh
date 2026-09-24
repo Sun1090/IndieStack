@@ -17,11 +17,8 @@ echo "==> check:rls";    pnpm --silent check:rls
 echo "==> check:migrations"; pnpm --silent check:migrations
 echo "==> check:supabase-security"; pnpm --silent check:supabase-security
 echo "==> check:query-columns"; pnpm --silent check:query-columns
-<<<<<<< HEAD
 echo "==> check:query-errors"; pnpm --silent check:query-errors
-=======
 echo "==> check:route-auth";  pnpm --silent check:route-auth
->>>>>>> 09717e40 (feat(security): 每条 API 路由靠什么保护，从「问人」变成一份会被核对的台账（C11 / check:route-auth）)
 echo "==> check:security"; pnpm --silent check:security
 echo "==> check:release-docs"; pnpm --silent check:release-docs
 echo "==> check:changelog";    pnpm --silent check:changelog
