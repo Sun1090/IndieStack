@@ -132,8 +132,26 @@ function commitMatches(observed, expected) {
   return observed.trim().toLowerCase().startsWith(expected.trim().toLowerCase());
 }
 
-function commitLabel(commit) {
-  return typeof commit === "string" && commit.trim().length > 0 ? commit.trim().slice(0, 7) : "unknown";
+/**
+ * 生产上报的构建身份，三种情况必须分开读：
+ * - **键不在**（`not-reported`）：那份构建早于 `/api/health` 开始上报 commit 的改动，
+ *   也就是说生产跑的是旧构建——这跟「构建时拿不到 git 变量」是两件事，混成一条读数就会
+ *   把平台配置问题与部署滞后当成同一个症状。
+ * - 键在但没有值（`no-build-env`）：构建身份没被注入（Vercel 的 System Environment Variables
+ *   没开，或不是从 git 部署的）。
+ * - 键在有值：短 SHA。
+ */
+function commitLabel(body) {
+  if (!body || !Object.hasOwn(body, "commit")) return "not-reported";
+  const value = body.commit;
+  if (typeof value !== "string" || value.trim().length === 0) return "no-build-env";
+  return value.trim().slice(0, 7);
+}
+
+/** 证据文件（顶层或 health 那条检查）里的 commit 该读成哪一种。 */
+function describeEvidenceCommit(evidence) {
+  if (!evidence || evidence.commitReported !== true) return "not-reported";
+  return commitLabel({ commit: evidence.commit });
 }
 
 function healthFailureDetail(response, body, versionMatches, expectedVersion, commitOk, expectedCommit) {
@@ -146,7 +164,7 @@ function healthFailureDetail(response, body, versionMatches, expectedVersion, co
     ["x-request-id", Boolean(response.headers.get("x-request-id"))],
     [`version=${version}, expected=${expectedVersion ?? "unknown"}`, versionMatches],
     [
-      `commit=${commitLabel(body?.commit)}, expected=${expectedCommit ?? "unset"}`,
+      `commit=${commitLabel(body)}, expected=${expectedCommit ?? "unset"}`,
       commitOk,
     ],
   ];
@@ -192,7 +210,7 @@ async function checkHealth(baseUrl, options) {
   const commitOk = commitMatches(body?.commit, expectedCommit);
   const passed = probeResult.healthy;
   const detail = passed
-    ? `HTTP 200, status=ok, ready=true, version=${body.version}, commit=${commitLabel(body.commit)}${probeResult.attempts > 1 ? ` (attempt ${probeResult.attempts})` : ""}`
+    ? `HTTP 200, status=ok, ready=true, version=${body.version}, commit=${commitLabel(body)}${probeResult.attempts > 1 ? ` (attempt ${probeResult.attempts})` : ""}`
     : healthFailureDetail(
         response,
         body,
@@ -204,6 +222,9 @@ async function checkHealth(baseUrl, options) {
   return result("health", passed, detail, response.status, {
     version: body?.version ?? null,
     commit: body?.commit ?? null,
+    // 「键在不在」本身是一格证据：不在=那份构建早于上报 commit 的改动，与「键在但值为空」
+    // （构建时没注入 git 变量）是两种不同的故障，合成一格就没法分诊。
+    commitReported: Boolean(body) && Object.hasOwn(body, "commit"),
     expectedCommit: expectedCommit ?? null,
     attempts: probeResult.attempts,
   });
@@ -400,6 +421,7 @@ function summarizeReport(checks, config, baseUrl) {
     expectedVersion: config.expectedVersion ?? null,
     expectedCommit: config.expectedCommit ?? null,
     commit: health?.commit ?? null,
+    commitReported: health?.commitReported === true,
     passed: checks.every((check) => check.passed),
     checks,
   };
@@ -456,6 +478,8 @@ module.exports = {
   checkStaticAsset,
   checkUnauthorizedDashboard,
   checkWebhookRejection,
+  commitLabel,
+  describeEvidenceCommit,
   joinUrl,
   main,
   parseArgs,

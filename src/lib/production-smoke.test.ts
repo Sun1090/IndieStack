@@ -25,9 +25,14 @@ const smoke = require("../../scripts/production-smoke.js") as {
   ) => Promise<{
     passed: boolean;
     commit: string | null;
+    commitReported: boolean;
     expectedCommit: string | null;
     checks: Array<{ name: string; passed: boolean; detail: string; status: number | null }>;
   }>;
+  describeEvidenceCommit: (evidence: {
+    commit?: string | null;
+    commitReported?: boolean;
+  }) => string;
 };
 
 function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
@@ -198,13 +203,61 @@ describe("production smoke CLI", () => {
     // 早于本字段的构建：无法证明 commit 相同就是没证明，不得当成通过。
     const unknown = await runWithCommit({ status: "ok", ready: true, version: "0.11.0" }, "a322a4e");
     expect(unknown.passed).toBe(false);
-    expect(unknown.checks[0].detail).toContain("commit=unknown, expected=a322a4e");
+    expect(unknown.checks[0].detail).toContain("commit=not-reported, expected=a322a4e");
+    expect(unknown.commitReported).toBe(false);
 
     // 没有期望值时只记录，不新增失败面（定时漂移检查走的就是这条路）。
     const unasserted = await runWithCommit({ status: "ok", ready: true, version: "0.11.0" });
     expect(unasserted.passed).toBe(true);
     expect(unasserted.commit).toBeNull();
     expect(unasserted.expectedCommit).toBeNull();
+  });
+
+  it("把「没上报 commit」的两种原因读成两件事", async () => {
+    // 键根本不在 = 生产那份构建早于上报 commit 的改动（部署滞后）
+    const stale = await runWithCommit({ status: "ok", ready: true, version: "0.11.0" });
+    expect(stale.checks[0].detail).toContain("commit=not-reported");
+    expect(stale.commitReported).toBe(false);
+
+    // 键在而值为 null = 构建时没拿到 git 变量（平台配置），不是旧构建
+    const noEnv = await runWithCommit({
+      status: "ok",
+      ready: true,
+      version: "0.11.0",
+      commit: null,
+    });
+    expect(noEnv.passed).toBe(true);
+    expect(noEnv.checks[0].detail).toContain("commit=no-build-env");
+    expect(noEnv.commitReported).toBe(true);
+    expect(noEnv.commit).toBeNull();
+
+    // 空串同样读成「没拿到变量」，而不是当成一个合法 SHA
+    const blank = await runWithCommit({
+      status: "ok",
+      ready: true,
+      version: "0.11.0",
+      commit: "   ",
+    });
+    expect(blank.checks[0].detail).toContain("commit=no-build-env");
+
+    const sha = await runWithCommit({
+      status: "ok",
+      ready: true,
+      version: "0.11.0",
+      commit: "a322a4ed6a86a254b2cc8be98fe3c6a97d1d118d",
+    });
+    expect(sha.checks[0].detail).toContain("commit=a322a4e");
+    expect(sha.commitReported).toBe(true);
+
+    // 证据文件那一侧的读法：缺 `commitReported` 这一格的旧产物必须读成 not-reported
+    expect(smoke.describeEvidenceCommit({ commit: null, commitReported: true })).toBe("no-build-env");
+    expect(smoke.describeEvidenceCommit({ commit: "a322a4ed6a", commitReported: true })).toBe(
+      "a322a4e",
+    );
+    expect(smoke.describeEvidenceCommit({ commit: null, commitReported: false })).toBe(
+      "not-reported",
+    );
+    expect(smoke.describeEvidenceCommit({ commit: null })).toBe("not-reported");
   });
 
   it("rejects an expected commit short enough to match anything", () => {
