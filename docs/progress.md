@@ -1156,7 +1156,7 @@
 
 ## 2026-09-24 — 两条公开营销 token 端点补上限频：27 条路由普查里最后剩下的「既不限速也不带凭据」
 
-- 版本 / 里程碑：v0.12.0 安全面收口（C10）。分支 `fix/marketing-token-rate-limit`（base `main` = `ad4b029`）。
+- 里程碑 / 版本：v0.12.0 安全面收口（C10）。分支 `fix/marketing-token-rate-limit`（base `main` = `ad4b029`）。
 - 状态：已完成，本地全绿，等待合并。
 - 起因：PR #135 那条路由普查量到的读数——17 条 mutating 路由里，把守卫藏在小工具里的那些
   （`authorized()` / `safelyRequirePermission` / `guardUploadRequest`）递归展开之后，
