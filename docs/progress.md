@@ -1204,3 +1204,56 @@
   本地要用的话 `E2E_BEARER_TOKEN=anything` 一行解决，Playwright 已经带着它自己的值。
 - 下一项：跑一遍全量 E2E 确认这些 spec 不受影响；顺路审剩下的 19 个 API 路由的鉴权/限频形状（这次数出来的）。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 — 27 条 API 路由逐个展开后：收件箱 `GET` 是漏掉的那一层；`account-deletion` 的三条红是 CI 的 `retries=2` 在替它兜底
+
+- 版本 / 里程碑：v0.12.0 安全面收口。分支 `fix/e2e-bearer-unset-token`（PR #135），承接上一条的守卫集中化。
+- 状态：已完成，本地全绿，等待合并。
+- 触发：上一条写的「下一项」——跑全量 E2E 确认 spec 不受影响，顺路审剩下 19 条路由。
+- 全量 E2E（本机，`E2E_BASE_PORT=3120`，`retries=0`）：**109 例 = 106 passed / 3 failed**，
+  三条红全在 `e2e/account-deletion.spec.ts`（第 36 / 50 / 68 行），同文件另外两例是过的。
+  端口换成 3120 是因为 3100 被另一个项目（`~/Projects/trade-buty`）的 dev server 占着——
+  `reuseExistingServer: !CI` 会静默复用别人的服务器，那测出来的是别人。
+- 归因（先说结论：不是本分支，且不是产品缺陷，是测试的时序假设）：
+  - `git diff --name-only origin/main...HEAD` 14 个文件全在 `src/app/api/e2e/**`、`src/lib/{testing,security}/**` 和两份文档，
+    没有一行碰到 `/dashboard/settings` 或 `DeleteAccountSection`。
+  - 单独重跑这个 spec（3121）：**2 passed / 3 failed**，同样三条 → 与套件顺序、共享 mock 状态无关。
+  - 失败断言的 a11y 快照里 `Danger Zone` 标题、`Delete Account` 按钮都在，只缺第二步的输入框；
+    而 `delete-account-section.tsx` 的第二步是 `setConfirming(true)` 的纯客户端状态，不打服务端。
+    所以「点不动」＝事件被丢，而不是「服务端拒绝」。
+  - 探针（临时 spec，跑完即删）：同一个页面里 `click()` 后立刻 `count()` 得到 **0**，
+    隔 1 秒再 `click()` 得到 **1**；中间一次 `press("Enter")` 也得到 1。
+    即 hydration 已经完成、handler 是好的，丢的只是 hydration 之前那一次点击。
+    这正是 `e2e/keyboard.spec.ts:33` 写下的机制，和 #51 那次给 click-first spec 上 `retry(动作+断言)` 的同一类。
+  - 为什么 CI 看不见：`ci.yml` 的 e2e job 是 2 个 shard、每 shard 内部单 worker，`E2E_SERVERS` 没设 →
+    `warm-up.ts` 第一行 `if (SERVERS < 2) return;` 直接跳过预热，`/dashboard/settings` 由第一个打到它的用例付冷编译；
+    而 `ci.yml` 用默认的 `retries=2`，重跑时路由已编译好，点击就跟上了。
+    对照：`e2e-parallel.yml` 既预热（`E2E_SERVERS=3`）又 `--retries=0`，所以那条基线也不该红。
+    本机 `retries=0` + 串行 = 复现了 CI 的形状，只是没拿到它那两次重跑。
+  - 待办已开：把 `retry(动作+断言)` 补到 `account-deletion.spec.ts` 的三处 click（新分支，别混进 #135）。
+- 路由普查（27 条 `src/app/api/**/route.ts`，19 条非 e2e）：第一版扫描器只展开一层调用，
+  于是把守卫藏在小工具里的路由全读成「没守卫」——`contact-messages` 的 `authorized()`、
+  `invitations` 的 `safelyRequirePermission`、两条上传路由的 `guardUploadRequest`
+  （它内部才是 `sameOrigin` + `rateLimit.check` + 体积上限）。改成递归展开本地函数 + 按 `@/lib` 白名单补判据后：
+  17 条 mutating 路由里，**只有 `marketing/confirm` 与 `marketing/unsubscribe` 的 POST 没有限频**，
+  其余各自有 `rateLimit` / cron 密钥 / Stripe 签名 / Mock Bearer。
+  这两条的 token 是 48 位十六进制（≈192 bit）、按 sha256 查、长度和有效期都卡，所以「猜 token」不是问题，
+  问题是任何人都能不限速地打一次「命中即写库」的公开端点——限频要补，另开一条。
+- 这次真正改掉的一处：`email-inbox` 的 `GET` 补 `authOk()`。它是 9 处比较里唯一没要求凭据的一层，
+  而它返回的是「已寄出」邮件原文（含确认/退订链接），且 `?failNext=1` 会在一次读取里改写注入标志位——
+  按副作用看，它比 `POST`/`DELETE` 更该有凭据，之前只是恰好没人写。
+  spec 侧 4 处调用本来就带 `Bearer ${E2E_BEARER}`，所以零改动。
+- 验证：`npx tsc --noEmit` exit 0；`npx vitest run src/app/api/e2e src/lib/testing --project node` 3 文件 / 29 用例绿；
+  `pnpm test:e2e e2e/mail-flow.spec.ts`（3123，`retries=0`）**3 passed**，说明补上的这层没有把用例挡在门外；
+  真实起一台 mock 服务器（3124，`E2E_BEARER_TOKEN=probe-token`）直接打这条 `GET`：无头 **401**、
+  `Bearer `（空头）**401**、正确头 **200**，`?failNext=1` 无头也是 401——这条守卫能用，是量出来的不是推的。
+  探针服务器跑完已停，3100 上那个别的项目的进程不是我起的、也没被我动。
+- 与在审 PR 的重叠：本条只多改 1 个文件（`email-inbox/route.ts` 的 `GET`，+5 行），
+  该文件在 42 条 own-delta 里仍然只有 #112 之外的 0 条命中。
+- 阻塞：无。
+- 风险 / 回滚：开了 Mock 又没配 token 的环境，现在连「读收件箱」也调不到——这正是本分支的判据（没配凭据 ⇒ 任何请求都不合法）。
+  `docs/` 里若有抄了裸 `curl` 读 inbox 的片段需要跟着补一个头，本次已全仓搜过 `email-inbox`：只有 spec 与 `email-send.test.ts`
+  （它只比 URL 拼装，不发请求）。
+- 下一项：(1) `account-deletion.spec.ts` 上 `retry(动作+断言)`，用 `retries=0` 复跑到 5/5；
+  (2) 给 `marketing/{confirm,unsubscribe}` 的 POST 补 `rateLimit.check`，看有没有公开端点限频的门禁可挂。
+- 更新时间：2026-09-24。

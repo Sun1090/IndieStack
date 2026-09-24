@@ -218,6 +218,11 @@ All notable changes to IndieStack will be documented in this file.
   门禁 `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING` 原本要求 `E2E_BEARER_TOKEN` 这个字符串**出现在每个文件里**，
   集中化正好把它藏掉（第一次跑就红了），所以证据项现在支持「备选写法」：
   内联读环境变量或调用集中守卫，二者皆无仍然报缺失（两条新用例一边证可用、一边证不能白拿）。
+  同一次路由普查（27 条 `src/app/api/**`，逐个展开本地辅助函数后看谁做了什么守卫）还指出
+  `email-inbox` 的 `GET` 是 9 处比较里唯一漏掉的一层——而它既返回已寄出邮件的原文
+  （内含确认/退订链接），`?failNext=1` 又会在读取时改写注入标志位，比 `POST`/`DELETE` 更需要凭据。
+  补上同一句 `authOk()`：4 处 spec 调用本来就带 `Bearer`，`mail-flow` 3/3 未受影响；
+  真实服务上分别用「无头 / `Bearer ` 空头 / 正确头」打这条 `GET`，得到 401 / 401 / 200。
   过程中 `pnpm type-check` 抓了两处：新测试文件漏 `import { describe, expect, it } from "vitest"`，
   以及证据数组的类型没收窄。`CI=true pnpm check:all` exit 0（200 个测试文件）；
   变异核对是临时造一条内联拼头的路由 → 扫描用例红并点名该文件，删掉即绿。

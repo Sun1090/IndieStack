@@ -75,6 +75,11 @@ export async function GET(request: NextRequest) {
   if (!isMockEnabled) {
     return jsonNoStore({ error: "Not found" }, { status: 404 });
   }
+  // 收件箱里是「已发送」邮件的原文（含确认/退订链接），读取本身也是敏感操作；
+  // ?failNext=1 还会改写服务器的注入标志位，所以 GET 与 POST/DELETE 同级。
+  if (!authOk(request)) {
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
+  }
   const search = request.nextUrl.searchParams;
   const to = search.get("to") ?? "";
   // ?failNext=1 作为副作用标志位：置位失败开关后照常返回当前收件箱
