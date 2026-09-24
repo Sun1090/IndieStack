@@ -1188,7 +1188,13 @@
      反向：`map`/`join`/`find`/`subarray`/`bind`/`channel`/`subscribe` 一条都不许进结果集）；
      ② 每处 `.from(` 的归属都要认得（只允许认识得的 JS 原生 `from` 与 `.storage`），认不出的新写法就红并点名，
      防止「少扫一条链」把 ③ 扫成空洞；③ 表面覆盖本身。
-  4. 文档：两份 mock 文档按实测重列已实现算子，并写明「`update()`/`delete()` 链上的 `or()/contains()/not()`
+  4. 新增 `src/lib/repositories/marketing-mock-client.test.ts`（4 条）：静态扫描只看「链上写没写到这个方法名」，
+     看不见「这个仓储真的跑在替身上会怎样」——所以这一层是**动态对账**：`vi.mock("@/lib/supabase/admin")`
+     把 `createAdminClient()` 换成 `createMockSupabaseClient()`，然后直接调 `upsertPendingSubscription` /
+     `confirmSubscription` / `unsubscribeByToken` 真码。4 条分别是：订阅 → 确认落到 `subscribed`
+     （补 `gt` 之前这一步就是 TypeError）、过期 token → **`false` 而不是抛错**、退订链接同样吃这条闸门、
+     未知 token → `false`。
+  5. 文档：两份 mock 文档按实测重列已实现算子，并写明「`update()`/`delete()` 链上的 `or()/contains()/not()`
      会被接受但**忽略**（读路径全部生效）」——这是代码事实（`matchesFilters` 的跳过分支），
      以前文档没说过，读者会以为读写一致。
 - 量到的阴性（写下来免得下次重扫）：`src/**` 查询链上真正用到的构建器方法共 **19 个**，缺的就是 `gt` 一个；
@@ -1197,24 +1203,34 @@
   `notifications.ts:68,87,104,120`、`contact-messages.ts:106`、`api/e2e/seed-notifications/route.ts:108`）。
   也就是说 2 里那条不对称今天是**文档问题而不是在跑的缺陷**，按阴性记录、不改行为。
 - 变更文件：`src/lib/mock/index.ts`、`src/lib/mock/mock-query-gt.test.ts`（新增）、
-  `src/lib/mock/mock-query-surface.test.ts`（新增）、`docs-site/mock.md`、`docs-site/zh-CN/mock.md`、
+  `src/lib/mock/mock-query-surface.test.ts`（新增）、
+  `src/lib/repositories/marketing-mock-client.test.ts`（新增）、`docs-site/mock.md`、`docs-site/zh-CN/mock.md`、
   `CHANGELOG.md`、本条目。**没有改** `src/lib/repositories/marketing.ts`（属 #123）与
   `src/lib/repositories/test-helpers.ts`（手搓替身留着，它服务的是仓储层的错误注入，不是替身保真度）。
 - 验证命令与结果：
   - 先红：`typeof q.gt` 实测 `undefined`；`npx vitest run` 两个新文件 5 条红（surface 那条点名
     `gt()：1 处，例如 src/lib/repositories/marketing.ts:89`）。
-  - 修后：`npx vitest run src/lib/mock/mock-query-gt.test.ts src/lib/mock/mock-query-surface.test.ts` → 7 通过；
-    `npx vitest run` 全量 → **201 文件 / 2298 通过**（`main` 上 199 / 2291，即本条 +2 文件 / +7 用例，逐条对上）。
-  - 变异核对 3 项（每项先确认改动真的落地，再跑，再 `git checkout --` 还原并校验逐字节一致；未变异的正向对照 7 绿）：
+  - 修后：`npx vitest run src/lib/mock/mock-query-gt.test.ts src/lib/mock/mock-query-surface.test.ts src/lib/repositories/marketing-mock-client.test.ts` → 11 通过；
+    `npx vitest run` 全量 → **202 文件 / 2302 通过**（`main` 上 199 / 2291，即本条 +3 文件 / +11 用例，逐条对上）。
+  - 变异核对 5 项（每项先确认改动真的落地，再跑，再 `git checkout --` 还原并校验逐字节一致；未变异的正向对照 11 绿）：
     删掉 `gt()` → 4 条红（3 条语义 + surface 点名）；`:gt` 判成 `>=` → 恰好写/读两条严格大于红、`gte` 对照仍绿；
     只让写路径放过排序过滤器 → 写路径 3 条红、读路径仍绿。**第三条读起来像少了覆盖，其实是分工**：
     它证明读写两边各被独立钉住，而不是读路径顺带把写路径顶绿了。
+    后两项是**针对同一个 `gt()` 的两个不同破坏面**，专门用来问「静态对账够不够」：
+    Q1 再删一次 `gt()` → 8 红（原有 4 + 集成 4 全红，含「订阅 → 点确认链接」那条）；
+    Q2 把 `gt()` 收成空壳（接受参数、不写 `this.filters`）→ 恰好 5 红，红的正是两条过期闸门断言
+    （`token 过期 → false` 与 `退订链接同样吃这条闸门`），而静态 surface 对账**全绿**——
+    它只问「方法在不在」。这就是 4 存在的理由。
   - `pnpm --silent type-check` → exit 0；`CI=true pnpm check:all` 与 `pnpm build` 见 commit 之后补记。
 - 阻塞 / 风险 / 回滚：只动 mock 与文档，生产路径（真 supabase-js）一行未改；`gt` 语义与 PostgREST 的 `>` 一致，
   且 mock 模式下原先这条链**根本跑不通**，所以不存在「以前能跑现在变了」的回归面。
-  回滚 = revert 本 PR 两个 commit。
-- 下一项：`.auth.*` 与 realtime `.channel()` 的表面保真还没做对账（本次范围刻意止于查询构建器）；
-  先把已量到的 3 处补齐（`signInWithOtp`/`verify`/`refreshSession` 一类要逐个问「谁在链上调它」），
-  并且 AST 分类器现在认不出 `useMemo(() => createClient(), [])` 这类浏览器端拿法——
+  回滚 = revert 本 PR 三个 commit。
+- 下一项：realtime 那一族还没有对账——`.channel()/.on()/.subscribe()` 在 `src/**` 只有 1 个消费方
+  （`src/components/dashboard/notifications-live.tsx:48-59`），Mock 侧这三个方法**确实存在**
+  （`src/lib/mock/index.ts:1537,1567,1592`），所以今天没有缺口，只有「下次加一个订阅者就没人核对」的风险；
+  `.auth.*` 一族已经有人钉了（`src/lib/mock/auth-surface.test.ts`，正则文本扫描 + `KNOWN_GAPS` 每条带理由、
+  补上就变红），本次范围刻意止于查询构建器，不与它重复实现。
+  另外 AST 分类器现在认不出 `useMemo(() => createClient(), [])` 这类浏览器端拿法——
   它被第二条用例挡住了，将来出现会红并点名，而不是漏扫。
+  静态对账自身的边界也记一条：**Q2 那种「空壳 `gt()`」静态看不见**，所以 4 那个动态文件不是可选的补充。
 - 更新时间：2026-09-25（UTC 22:35 前后）。
