@@ -51,17 +51,19 @@ describe("mock storage 与驱动的表面一致", () => {
   });
 
   it("回滚不计入上传失败注入，否则注入 N 次的用例语义会被改变", async () => {
-    setMockUploadFailNext(1);
+    // 注入 2 而不是 1：只留 1 次的话上传就把它吃光了，回滚看到的预算本来就是 0，
+    // 「回滚也吃预算」这个变异在这种 setup 下根本测不出来（第一版就是这样漏的）。
+    setMockUploadFailNext(2);
     const client = bucket();
     const failed = await client.upload("avatars/u1/k.png", Buffer.from("x"));
     expect(failed.data).toBeNull();
     expect(failed.error).toBeTruthy();
-    expect(getMockUploadFailNext()).toBe(0);
+    expect(getMockUploadFailNext()).toBe(1);
 
-    // 紧接着的回滚必须成功：它是「把那个没写成的对象删掉」，不是一次新的上传。
+    // 预算还剩 1 的时候回滚必须成功：它是「把那个没写成的对象删掉」，不是一次新的上传。
     const removed = await client.remove(["avatars/u1/k.png"]);
     expect(removed.error).toBeNull();
-    expect(getMockUploadFailNext()).toBe(0);
+    expect(getMockUploadFailNext()).toBe(1);
   });
 
   it("驱动侧走同一个对象：cleanupStorageObject 不再被 TypeError 咽掉", async () => {
