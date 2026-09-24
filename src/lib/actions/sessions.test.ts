@@ -19,6 +19,7 @@ vi.mock("@/lib/api-log", () => ({
 }));
 
 import { recordCurrentSession, revokeSession } from "./sessions";
+import { headers } from "next/headers";
 import { sessionIdFromAccessToken } from "@/lib/session-id";
 
 const USER = { id: "u1", email: "a@b.c" };
@@ -116,6 +117,27 @@ describe("recordCurrentSession()", () => {
   it("数据库错误返回 databaseError", async () => {
     createClientMock.mockResolvedValue(clientMock({ upsertError: true }));
     await expect(recordCurrentSession()).resolves.toEqual({ ok: false, error: "databaseError" });
+  });
+
+  it("转发头里是畸形值时 ip_address 存 null，不把客户端字符串送进 inet 列", async () => {
+    // 直连部署（没有代理写 x-real-ip）时 x-forwarded-for 完全由客户端决定。
+    // `inet` 列收到 "evil:" 会让整条 upsert 报错，于是这台设备永远登记不上，
+    // 而 dashboard 布局的每次心跳都会留一条 databaseError。
+    vi.mocked(headers).mockResolvedValueOnce(
+      new Headers({ "user-agent": "curl/8", "x-forwarded-for": "evil:" }) as unknown as Awaited<
+        ReturnType<typeof headers>
+      >,
+    );
+    const client = clientMock();
+    createClientMock.mockResolvedValue(client);
+    await expect(recordCurrentSession()).resolves.toEqual({ ok: true });
+    const upsert = (
+      client as unknown as { sessionsTable: { upsert: ReturnType<typeof vi.fn> } }
+    ).sessionsTable.upsert;
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ user_agent: "curl/8", ip_address: null }),
+      { onConflict: "id" },
+    );
   });
 });
 

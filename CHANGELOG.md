@@ -204,6 +204,29 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`isIpLike()` 并没有在判断是不是 IP**：它是 `/^[\d.]+$/ || includes(":")`，而 `clientIpFromHeaders()`
+  拿它当唯一的闸门——文档注释写着「避免客户端伪造任意字符串或注入畸形值污染限流桶 key」，实际做不到。
+  与 `node:net` 的 `isIP()` 做差分（74 例语料）：**旧判据把其中 63 例判成「像 IP」，40 例与 `isIP()`
+  直接相反**（oracle 判 23 例合法、51 例非法），包括 `":"`、`"foo:"`、`"evil:"`、`"999.999.999.999"`、`"1.2.3.4.5"`、`"1:2:3:4:5:6:7"`
+  （七组不合法的 IPv6）、`"1::2::3"`、`":1:2:3:4:5:6:7:8"`。落地后果有两处：桶键/登录锁定键可以是
+  任意客户端字符串（`ip:` 与限流桶都按它分桶），以及 `recordCurrentSession()` 把它写进
+  `user_sessions.ip_address`——那一列是 `inet`（迁移 001 第 92 行），收到 `"evil:"` 会让整条 upsert
+  报错，于是这台设备永远登记不上，而 dashboard 布局的每次心跳都留一条 `databaseError`。
+  直连部署（没有代理写 `x-real-ip`）时 `x-forwarded-for` 完全由客户端决定，所以这不是理论路径。
+  这个函数此前**一条单测都没有**（main 上 168 个 `*.test.ts` 逐个统计，`isIpLike` / `clientIpFromHeaders`
+  合计出现 0 次），所以它一直不会自己变红。现在判据不自己发明：按 `isIP()` 逐例差分，唯一分歧点名放行
+  （IPv6 zone id `fe80::1%eth0` 判否——代理不会写进转发头，且它进 `inet` 列的形态存疑）。
+  没有 import `node:net`：本模块被 `@/lib/actions/*` 引用而那些文件被客户端组件 import。
+  **【当日订正 · 本条第一版漏了一半】** 形状闸门原本只装在 `x-forwarded-for` 那一支上：
+  `clientIpFromHeaders()` 写的是 `return realIp ?? (forwarded && isIpLike(forwarded) ? … : "anonymous")`，
+  也就是 **`x-real-ip` 原样返回、根本不判形状**，而 `??` 只挡 `null`/`undefined`——所以
+  `curl -H 'X-Real-IP: evil:'` 依旧能把任意字符串变成桶键，一个空值头（`x-real-ip:`）也会被当成
+  「一个合法身份」而不是「没有身份」。先写用例证明它是红的（`expected 'evil:' to be 'anonymous'`），
+  再把两支都接到闸门上：不合格就退回下一支，两支都不合格才是 `anonymous`。
+  **残留照实记录**：采信的是 `x-forwarded-for` 的**最左**段，也就是客户端自己写的那一段——形状修好之后，
+  用一个*合法*的假 IP 换桶依然可行；要收紧（改取最右段或要求显式配置受信代理）属于按部署拓扑定的
+  信任模型，已单独写成用例钉住当前行为，改动必须连带改那条断言。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
