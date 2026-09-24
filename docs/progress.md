@@ -1782,3 +1782,36 @@
 - 阻塞：无。风险 / 回滚：文档一条，revert 即回滚。
 - 下一项：把这份新矩阵同步进 PR #118 正文；顺手把 #135/#136 三条不合规的台账字段修掉。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 — 合并前最后一次预清：44 个 PR 自己写的台账条目全部过 #126 那道门禁，#125 的新 commit 也没添新的判断边
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 为什么做：#126 的 `check:progress` 一落地就会审**全部**历史条目，而它还没进 `main`——所以「合完
+  44 个 PR 之后 main 上这道门禁红不红」必须在合并之前量，而不是等红。今天已经在 #135/#136 上抓到
+  三条不合规（字段反写成 `- 版本 / 里程碑：`、订正条目缺字段），当时是手工发现的；这次把它变成
+  对整条队列的一次判定。
+- 完成内容：
+  1. 复用 #126 的判定本体（`git show pr/126:src/lib/docs/progress-ledger.ts` 直接 import，不重写规则），
+     对 44 个 open PR 的 head 逐个跑：只统计**该 PR 自己新增的条目**（按标题是否与 `origin/main` 的
+     条目集合重合来归属），只判 `heading-undated` 与 `missing-field` 两类；日期乱序与重复标题留给
+     合并时的排序步骤，本来就不属于单个 PR 的责任。结果：**0 条不合规**。
+  2. 判定器先给阳性对照再采信其沉默：拿 #135 修复前的 `7d3fd35` 跑同一段脚本 → 如实报出 3 条
+     （`missing-field` × 里程碑 / 里程碑 / 状态），与今天手工发现的那三条一字不差。
+  3. #125 分支今天新增一个 commit（`d71613f`，bundle 门禁的退出码被管道吞掉那次修复），重量了两次：
+     - 44 对 `git merge-tree --write-tree HEAD pr/<n>`：与每个在审 PR 的冲突**只出现在
+       `CHANGELOG.md` / `docs/progress.md`**（两块都是追加，删标记即可），`package.json`、
+       `docs/testing.md`、`docs-site/{,zh-CN/}scripts.md` 全部 Auto-merging 干净——判断边仍是 6 条，
+       没有新增。
+     - 队列里没有任何 PR 改 `verify` / `verify:build` / `check:bundle` 这三行
+       （逐个 `git diff origin/main...pr/<n> -- package.json` grep 过），所以 #125 重排这条链不会和
+       谁打架。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 验证命令与结果：`gh pr list --limit 100`（44）× 上述 sweep → 无输出；阳性对照 → 3 条红；
+  44 次 merge-tree → 冲突文件集合 = {CHANGELOG.md, docs/progress.md}。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。风险一条：这份归属判定用的是「标题是否已存在于
+  main」，如果某个 PR 改写过一条已存在的条目（而不是新增），它的问题不会算到它头上——那类条目由
+  `check:progress` 在合并后自己红，处置动作已经写在那道门禁的失败提示里。
+- 下一项：#125 的 bundle 门禁改动只在本地路径上验证过（pre-push 跑完整链），CI 结果随该 PR 的
+  11 项必需检查回来再补记。
+- 更新时间：2026-09-24（UTC 07:40 前后）。
