@@ -1212,7 +1212,7 @@
     `gt()：1 处，例如 src/lib/repositories/marketing.ts:89`）。
   - 修后：`npx vitest run src/lib/mock/mock-query-gt.test.ts src/lib/mock/mock-query-surface.test.ts src/lib/repositories/marketing-mock-client.test.ts` → 11 通过；
     `npx vitest run` 全量 → **202 文件 / 2302 通过**（`main` 上 199 / 2291，即本条 +3 文件 / +11 用例，逐条对上）。
-  - 变异核对 5 项（每项先确认改动真的落地，再跑，再 `git checkout --` 还原并校验逐字节一致；未变异的正向对照 11 绿）：
+  - 变异核对 6 项（每项先确认改动真的落地，再跑，再 `git checkout --` 还原并校验逐字节一致；未变异的正向对照 11 绿）：
     删掉 `gt()` → 4 条红（3 条语义 + surface 点名）；`:gt` 判成 `>=` → 恰好写/读两条严格大于红、`gte` 对照仍绿；
     只让写路径放过排序过滤器 → 写路径 3 条红、读路径仍绿。**第三条读起来像少了覆盖，其实是分工**：
     它证明读写两边各被独立钉住，而不是读路径顺带把写路径顶绿了。
@@ -1222,7 +1222,10 @@
     `token 过期 → false`），而静态 surface 对账**整份文件全绿**——它只问「方法在不在」，
     这就是 4 存在的理由。每步还原后用 `git hash-object` 与 `HEAD` 的 blob 比对逐字节一致，
     正向对照 11 绿。
-  - `pnpm --silent type-check` → exit 0；`CI=true pnpm check:all` 与 `pnpm build` 见 commit 之后补记。
+  - `pnpm --silent type-check` → exit 0；最终 head `ea51cb7e` 上 `CI=true pnpm check:all` **exit 0（37 步）**、
+    `npx vitest run` **202 文件 / 2302 通过**、`pnpm build` **exit 0**（pre-push 钩子又跑了一遍 test + build）。
+    同一 head 合进 57 条那棵树之后：`check:all` **exit 0 / 42 步 / 236 文件 / 2751 passed + 4 skipped**
+    （数字对得上：56 条那遍 2740 + 本条 11 条用例）。
 - **量到一条 `merge-tree` 看不见的边：#123 × #149，而且它一开始是红的**。逐条 `merge-tree` 的结论是
   「56/56 只撞台账、非台账冲突 0 个」，把 57 条按编号升序真合一遍之后 `pnpm test` **红 1 条**：
   `退订链接同样吃这条闸门；未过期时才真的落到 unsubscribed`（`expected true to be false`，
@@ -1239,7 +1242,7 @@
   语义却叠在同一个调用点上。唯一的照妖镜还是把那棵树真合一遍。
 - 阻塞 / 风险 / 回滚：只动 mock 与文档，生产路径（真 supabase-js）一行未改；`gt` 语义与 PostgREST 的 `>` 一致，
   且 mock 模式下原先这条链**根本跑不通**，所以不存在「以前能跑现在变了」的回归面。
-  回滚 = revert 本 PR 三个 commit。
+  回滚 = revert 本 PR 分支 `fix/mock-query-gt` 相对 `main` 的全部 5 个 commit。
 - 下一项：realtime 那一族还没有对账——`.channel()/.on()/.subscribe()` 在 `src/**` 只有 1 个消费方
   （`src/components/dashboard/notifications-live.tsx:48-59`），Mock 侧这三个方法**确实存在**
   （`src/lib/mock/index.ts:1537,1567,1592`），所以今天没有缺口，只有「下次加一个订阅者就没人核对」的风险；
@@ -1248,4 +1251,5 @@
   另外 AST 分类器现在认不出 `useMemo(() => createClient(), [])` 这类浏览器端拿法——
   它被第二条用例挡住了，将来出现会红并点名，而不是漏扫。
   静态对账自身的边界也记一条：**Q2 那种「空壳 `gt()`」静态看不见**，所以 4 那个动态文件不是可选的补充。
-- 更新时间：2026-09-25（UTC 22:35 前后）。
+- 更新时间：2026-09-25（本地 07:20 前后；此时 UTC 是 09-24 23:19——台账按本地日记账，
+  这一条把两个钟面都写下来，因为本条目跨了 UTC 的日历边界）。
