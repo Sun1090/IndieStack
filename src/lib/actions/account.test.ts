@@ -16,7 +16,7 @@ const { deleteAccountWithDataMock, createClientMock, rateLimitCheckMock, revalid
 
 vi.mock("@/lib/account/deletion", () => ({ deleteAccountWithData: deleteAccountWithDataMock }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
-vi.mock("@/lib/rate-limit", () => ({ rateLimit: { check: rateLimitCheckMock } }));
+vi.mock("@/lib/rate-limit", () => ({ checkActionRateLimit: rateLimitCheckMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 vi.mock("@/lib/api-log", () => ({ logActionError: logActionErrorMock }));
 
