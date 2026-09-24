@@ -1300,3 +1300,47 @@
   现在动就是在整条 C08-c 栈上造 8 条需要作者出场的边。等那批落地之后一次收完。
   然后再按 C08-b 的台账方式立 `AUTH_ERROR_CHANNEL` 豁免表，谈门禁接不接。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 — C09 第二个调用点：恢复码自救不再在一次失败的解绑后烧掉那张码
+
+- 里程碑 / 版本：v0.12.0 / C09（第二个「抹掉 `error` 之外还要调顺序」的站点）。分支
+  `feat/gate-query-error-channel`（PR #92，base `main`）——仍然**不新开 PR**：这是同一条错误通道上的第三个调用点，
+  另开只会在栈上多加一条评审边。
+- 状态：DONE。commit：`6831307`（代码 + 测试 + 两个 locale 的错误键），文档在同一条序列里。
+- 怎么选中这一处的：C09 剩下的站点按「这个文件在几条在审 PR 里被动过」排，只挑重叠为 0 的。
+  判据（2026-09-24 重跑，41 条 open PR 全部本地可测、无一条取不到对象）=
+  `git diff --name-only <merge-base origin/main <head>> <head>` 对文件全名匹配，**把栈上 PR 下游带来的改动也算进来**。
+  结果：`src/lib/actions/recovery-codes.ts` **0 条**，`src/lib/auth/guards.ts` 20 条（其中一条是它自己新建的），
+  `dashboard/notifications/page.tsx` 18 条。**这里踩过一次判据口径**：同一份脚本改用「只看这个 PR 自己的 delta」
+  （`merge-base <base-ref-oid> <head>`，栈上 PR 的 base 是父 PR 的 head）去数，`notifications/page.tsx` 从
+  18 条读成 **1** 条——那会把站点选到相反的一侧。两种口径都跑一遍、并拿已知文件当对照，才确认 0 这条是真的。
+- 修的是什么：`redeemRecoveryCode` 原次序是「扣恢复码 → 写审计 → 解绑 TOTP」，解绑那两步走 Auth **管理**端口，
+  `const { data: factors } = await admin.auth.admin.mfa.listFactors(...)` 连 `error` 都没绑定，
+  `deleteFactor` 的返回值整个丢掉。于是 Auth 一次抖动的后果是这个仓库里最坏的一种谎报：恢复码是**一次性**的、
+  扣掉回不来，一个因子也没解绑，用户仍被锁在**他丢掉的那把验证器**后面——也就是这条功能存在的理由没被解决，
+  还少了一次重试的机会——而动作回 `{ ok: true }`。
+- 改法：新增 `unbindTotpFactors()`（两步的 `error` 都读，任一失败把原因带回调用方），次序**反过来**——
+  先解绑、成功后才 `consumeRecoveryCode`。失败时 `logActionError` + 回新增错误键 `recoveryUnenrollFailed`
+  （en / zh-CN 各一条，文案明说「恢复码没有被扣、可以重试」）。偏保守一侧的代价只是一次失败的兑换把码留在库里；
+  「账号本来就没有 TOTP 因子」是合法状态，不算失败，照常扣码。
+- 测试：`recovery-codes.test.ts` 的 `mockAdminMfa()` 加 `failure` 注入参数（`list` / `delete` 两档），新增 3 条用例
+  ——列因子失败 → `recoveryUnenrollFailed` **且 `consumeRecoveryCode` 未被调用**、删因子失败同上、
+  没有 TOTP 因子照常扣码。单文件 `15 passed`。**变异核对**：删掉 `if (listed.error)` → `1 failed | 14 passed`，
+  红的正是「列因子失败」那条；还原后再删 `if (deleted.error)` → 红的正是「删因子失败」那条；两次都按字节 `cp` 还原。
+  两条 `not.toHaveBeenCalled()` 是顺序断言：把次序退回「先扣码」会让这两条一起红。
+- 验证命令与结果：`CI=true pnpm check:all` **exit 0**（`Test Files 203`、`Tests 2323`）；
+  `pnpm -s check:action-errors` 通过并打出 `44 个错误码 × 2 个 locale`。**这一条也是量过的**：临时把
+  zh-CN 的 `recoveryUnenrollFailed` 改成别的键名，门禁报
+  `[ACTION_ERROR_KEY_MISSING] …（src/lib/actions/recovery-codes.ts:125 产出）缺少 zh-CN 文案` 并 exit 1，
+  还原后 44 恢复——即新错误码确实被这道门禁管着，不是「加了个没人核对的字符串」。
+  `pnpm verify:build`（type-check + lint + `check-locales` + 全量测试 + `check:bundle` + `pnpm build`）**exit 0**：
+  `Test Files 203 passed (203)`、bundle `2846.4 kB / 基线 2733.8 kB` 在范围内、`✓ Compiled successfully`
+  且 23 个静态页全部生成（`MISSING_MESSAGE` 只有这一步能抓，所以新增的两个 locale 键必须由它收尾）。
+  文档改完之后又跑了一遍 `CI=true pnpm check:all`，同样 exit 0。
+- 阻塞：无（不需要外部权限）。Vercel 配额按既定口径记录并忽略。
+- 风险 / 回滚：行为面只有一处——解绑失败时不再报成功，代价是那张码还留在库里可重试。
+  回滚 = revert `6831307` 与文档 commit；无迁移、无数据面、不改任何已有错误键的语义。
+- 下一项：C09 剩余的可动站点要重新按同一把尺量一遍重叠（`site-header.tsx` 的 `signOut`、
+  `auth/mfa/page.tsx` 的 `refreshSession`）；那 8 处 `user!.id` 仍等 C08-c 那批 PR 落地；
+  之后立 `AUTH_ERROR_CHANNEL` 豁免台账再谈门禁接不接。
+- 更新时间：2026-09-24。

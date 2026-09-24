@@ -263,6 +263,16 @@ All notable changes to IndieStack will be documented in this file.
   `lib/auth/passkey-session.ts`（校验失败后的清理，本来就 `.catch()` 后照样 throw，属于刻意吞掉）——
   两者连同判据一起记进 roadmap C09，不在本条里顺手改。
 
+- **恢复码自救：解绑失败不再把码烧掉**（C09）：`redeemRecoveryCode` 原先的次序是「扣恢复码 → 写审计 → 解绑 TOTP」，
+  而解绑那两步走的是 Auth **管理**端口——`listFactors()` 与 `deleteFactor()` 同样只把失败放在返回的 `error` 上，
+  前者写的还是 `const { data: factors } = …`，`error` 连绑定都没有。于是 Auth 一次抖动就能造成这个仓库里
+  最坏的一种谎报：恢复码是**一次性**的，扣掉不可逆；而这次兑换一个因子都没解绑，用户仍然被锁在丢了的那把
+  验证器后面——也就是这条功能存在的理由没有解决——界面却收到 `{ ok: true }`。现在次序反过来：
+  **先解绑，成功后才扣码**，两步的 `error` 都要读，任一失败即记日志并回 `recoveryUnenrollFailed`
+  （新增键，en / zh-CN 各一条，文案明说「恢复码没有扣减、可以重试」）。方向是往保守一侧偏：
+  一次失败的兑换把码留在库里（可重试），代价远小于一个用掉的码配一把还在锁着的验证器。
+  「账号本来就没有 TOTP 因子」是合法状态，不算失败，照常扣码。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
