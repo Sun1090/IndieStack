@@ -26,7 +26,7 @@ import { ROUTES } from "@/lib/constants";
 const USER = { id: "u1", email: "a@b.c" };
 
 function client(user: unknown = USER) {
-  const signOut = vi.fn(async () => ({ error: null }));
+  const signOut = vi.fn(async (): Promise<{ error: Error | null }> => ({ error: null }));
   createClientMock.mockResolvedValue({
     auth: {
       getUser: async () => ({ data: { user } }),
@@ -109,5 +109,16 @@ describe("deleteAccountAction", () => {
     expect(signOut).not.toHaveBeenCalled();
     expect(revalidatePathMock).not.toHaveBeenCalled();
     expect(logActionErrorMock).toHaveBeenCalled();
+  });
+
+  it("会话清退失败时不谎报删号失败，但把这次失败记下来", async () => {
+    const signOut = client();
+    signOut.mockResolvedValue({ error: new Error("revocation rejected") });
+
+    await expect(deleteAccountAction({ confirm: "delete" })).resolves.toEqual({ ok: true });
+
+    expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardSettings);
+    expect(logActionErrorMock).toHaveBeenCalledTimes(1);
+    expect(logActionErrorMock.mock.calls[0][1]).toMatchObject({ message: "revocation rejected" });
   });
 });

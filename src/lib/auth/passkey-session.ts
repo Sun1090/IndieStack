@@ -7,6 +7,7 @@
  * Supabase SSR 会话 cookie。
  */
 
+import { logApiError } from "@/lib/api-log";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Factor } from "@supabase/supabase-js";
@@ -69,7 +70,19 @@ async function consumeMagicLink(
   }
 
   if (data.session) {
-    await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+    // 走到这里说明 magiclink 已被消费、会话**确实建立过**，这次登出是撤销它。
+    // 原来的 `.catch(() => undefined)` 把「撤销失败」和「已撤销」读成同一件事：
+    // 请求方拿到 "bridge failed"，浏览器却揣着一条建立成功的会话。
+    // 不改变本函数的结果（仍然失败关闭），但这条痕迹必须留下。
+    const { error } = await supabase
+      .auth.signOut({ scope: "local" })
+      .catch((thrown: unknown) => ({ error: thrown }));
+    if (error) {
+      await logApiError(
+        "[Passkey] 桥接失败后撤销本地会话未成功，会话可能仍然有效",
+        error,
+      );
+    }
   }
   throw new PasskeySessionError();
 }
