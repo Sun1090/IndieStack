@@ -1418,3 +1418,45 @@
 - 下一项：C12 要么并入 `check:route-auth`（省六处登记面）要么独立（CI 归因更清楚），先按 D01 口径
   把「谁调用了限流器工厂」的传递闭包跑一遍看误报率，再定形态。
 - 更新时间：2026-09-24（UTC 09:30 前后）。
+
+## 2026-09-24 — 把「这条路由有没有窗口」变成一条命令能现量的读数（C12 前半），它当场推翻了我几小时前的手抄结论
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施 + 安全面（分支 `feat/measure-route-rate-limits`，base = PR #137 的
+  `feat/gate-route-auth`）。
+- 状态：DONE（待合并）。
+- 为什么做：C12 记进任务池时我写的是「哪条路由有限频」的一份**手抄清单**，而手抄数字正是 D04 要消灭的形态。
+  更要紧的是那份清单会直接影响 ① （哪些端点必须有窗口）怎么定，定错方向的成本比多写一个 flag 高。
+- 完成内容：
+  1. `src/lib/security/route-auth.ts`：`RouteHandlerFact` 多一个 `limiters` 字段，`ModuleFacts` 多一个
+     `limiters` 集合，新增 `RATE_LIMIT_MODULE` 与 `limiterBindings()`。判据**从用法推**：
+     ① 顶层 `const x = <限流库的导出>(…)`（工厂实例）；② 被当对象取用的限流库导入（单例）。
+     收集点在既有的那次 BFS 里（`bare ∪ calls` ∩ 该文件的绑定），所以跨文件包装是**传递**到的，
+     不需要第二套遍历，也不维护任何名字表。
+  2. `scripts/lib/route-auth-check.js`：`--rate-limit-report` 逐条打印 `id [家族] [绑定]` + 分母。
+     **不判定**（① 还没定），唯一的失败封闭是「一条都没匹配到」——那更可能意味着判据自己坏了。
+  3. 12 → 33 条用例里新增 7 条（6 条合成 + 1 条真实仓库分母对账）。
+- **读数推翻了我几小时前写下的话**：本分支 45 个 handler 里 **14 个**闭包里有限流器绑定，
+  分布在 10 个路由文件；按家族 session 12/12、public 2/7、token 0/2、shared-secret 0/8、
+  signature 0/1、mock-only 0/15。而 C12 条目原文写的是「两条 uploads 只管同源与载荷、不计数」——
+  **错**：`src/app/api/uploads/*/route.ts` 确实没 import 限流库，但 `guardUploadRequest`
+  （`src/lib/uploads/request.ts:33`）第一句就是 `await rateLimit.check(request)`。
+  我几小时前是用 grep 数 import 列表得出那个结论的，而 grep 看不见「限流器躲在 helper 里」这一层。
+  roadmap 的 C12 条目已按这份读数重写，并把「第一版为什么错」留在原处而不是抹掉。
+- 变更文件：`src/lib/security/{route-auth.ts,route-auth.test.ts}`、`scripts/lib/route-auth-check.js`、
+  `docs/testing.md`、`docs/roadmap-0.12.0.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **33 passed**。
+  - `node scripts/check-route-auth.js` → 仍是 `✅ 45 个 handler 全部登记且守卫可达`（台账判定一字未动）。
+  - `node scripts/check-route-auth.js --rate-limit-report` → exit 0，分母行 `45 个 handler / 10 个路由文件`。
+  - `pnpm type-check` / `pnpm lint` → exit 0。
+  - **变异核对（四条判据各自都要证明会咬）**，每条改完跑同一份 33 条用例再 `git checkout --` 复原：
+    P1 去掉工厂实例那一支 → 2 红（工厂用例 + 真实仓库分母）；P2 去掉「对象取用」那一支 → 4 红
+    （单例 / 跨文件 helper / 同文件另一 handler 的精度用例 / 分母）；P3 放宽成「import 过就算」→ 3 红，
+    **其中一条正是 `isIpLike` 那个负例**（所以负例不是空断言）；P4 收集时不看绑定表 → 7 红，
+    两个负例都红。复原后复跑 33 passed，`check:route-auth` 仍是 45 个 handler 一字未变。
+- 阻塞 / 风险 / 回滚：C12 的 ① 仍是要人定的判断，本条**没有**给任何端点判对错，所以没有误报红的可能，
+  也没有回归面（唯一的运行时变化是多读一个字段）。回滚 = revert 本 commit。
+  风险一条：`limiters` 的键是 `文件#绑定`，跨文件包装会把 helper 的路径显示在路由那行上——读报告的人
+  需要知道那是「来路」而不是「这条路由自己的文件」，所以报告每行都带着这个前缀打印，不省略。
+- 下一项：把这条并到 #137 之后重定基（它依赖 C11 的解析器），或者直接随 #137 一起看。
+- 更新时间：2026-09-24（UTC 09:40 前后）。
