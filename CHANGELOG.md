@@ -204,6 +204,17 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **文档里那 7 个 commit 指针在任何克隆里都解析不出来**：`docs/progress.md`、两份 roadmap 与
+  v0.11.0 发布缺口审计里用反引号引用的 7 个 commit，全部不在 `main` 的历史里——它们是 rebase 落地前的
+  旧身份：任何分支头都不包含（默认克隆只取分支，于是 `git show <sha>` 报 unknown revision），只有
+  github.com 那侧还能解析（逐个走 REST 实测 7/7 返回 200）。其中两处写的是「回滚 = revert `<sha>`」
+  这种**照做会失败**的指令。逐个对回落地 commit：配对不靠 subject 相近猜——每个旧 sha 的 subject 在
+  `origin/main` 上有且只有一条命中，且两侧 tree hash 全等（同一份内容落地前后的两个身份）。
+  10 处引用按用途分两种写法：指令与达成证据直接换成落地 sha；「当时的 ref / 第几个 commit」这类历史
+  记录保留原值但去掉反引号，后面补「落地后 `<新 sha>`」。由此定下一条可读的约定：
+  **反引号里的 sha = 可从 `main` 解析的指针；纯文本 = 历史原值**。这条会长回来（只要 PR 以
+  rebase/squash 落地，作者在台账里写下的分支 sha 就在合并那一刻变成 main 之外的对象），
+  所以探测器与「合并后复跑一次」这一步一起记进了进度台账。
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

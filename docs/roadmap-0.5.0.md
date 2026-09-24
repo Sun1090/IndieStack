@@ -80,7 +80,7 @@
 | # | 任务 | 说明 |
 |---|------|------|
 | G01 | docs-site 新章节 | 邮件通道（digest/偏好/死信）与对象存储章节，中英双语 |
-| G02 | ADR 增补 | ADR-010 OSS / ADR-011 APM 状态从 proposed → accepted（2026-09-05 完成：两 ADR 当前已 accepted，发布基建 commit `60242cb` 内一并落地） |
+| G02 | ADR 增补 | ADR-010 OSS / ADR-011 APM 状态从 proposed → accepted（2026-09-05 完成：两 ADR 当前已 accepted，发布基建 commit `56aa4739` 内一并落地） |
 | H01 | v0.5.0 发布基建 | 版本号、CHANGELOG、roadmap 转正、docs-site 版本页 |
 
 ## 里程碑
@@ -95,7 +95,7 @@
 ## 退出标准（全部满足方可发布 v0.5.0）
 
 1. ✅ `pnpm verify:build` 全绿；覆盖率门禁不降低且 branches ≥85%（671 个单测 / branches 85.7）。
-2. ✅ `pnpm audit --prod` 无漏洞；CI 三件套（CI + CodeQL + Secrets Scan）全绿（2026-09-05 commit `9f11337`）。
+2. ✅ `pnpm audit --prod` 无漏洞；CI 三件套（CI + CodeQL + Secrets Scan）全绿（2026-09-05 commit `aa3b66f0`）。
 3. ✅ email-templates.md 中无 TODO/未实现字样。
 4. ✅ OSS 双驱动 + Appark 轻量接入已落地（feature flag 默认关闭，生产配置下可用）。
 5. ✅ `pnpm test:e2e` 29/29 全绿（F01 24 + F02 5）。

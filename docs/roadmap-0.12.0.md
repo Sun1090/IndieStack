@@ -153,12 +153,12 @@
     dev server」，同一份源码上第二台会直接退出 1。代价是 `next.config.ts` 多一个 distDir 开关，
     换来的是那 4 条按机制必然复现的冲突全部消失。
     **复跑三轮，把两种红分开**（用例总数 107，与本机 `playwright test --list` 一致）：
-    run `35742942744`（ref `30ec139`）106/1，run `35744080784`（同 ref）105/2——红的分别是
+    run `35742942744`（ref 30ec139，落地后 `67d3e53e`）106/1，run `35744080784`（同 ref）105/2——红的分别是
     `uploads`（登录导航 15s 超时）、`smoke`（`page.goto` 60s 超时 + `ERR_ABORTED`）、
     `webhook-events`（同一个 event id 的第二次投递没被认成 duplicate）。**没有一条是首跑那类
     「别人往我表里种数据」**，三条各不相同、换轮次就换一批；共同点只有一个：它们都是
     **第一个打到某台服务器的用例**，在付 `next dev` 的按路由冷编译。于是加了 `globalSetup` 预热
-    （`e2e/support/warm-up.ts`，只在 `E2E_SERVERS>1` 时生效），run `35746785602`（ref `3d624e5`）
+    （`e2e/support/warm-up.ts`，只在 `E2E_SERVERS>1` 时生效），run `35746785602`（ref 3d624e5，落地后 `8c510c84`）
     **107 passed / 0 failed**。结论分两层：并行不成立的根因是进程级共享 store，靠「一个 worker
     一台服务器」解决；解决之后剩下的红是冷编译计时，靠预热解决——两者都**不需要**动 mock 的
     状态模型，也**不需要**放宽任何断言。
