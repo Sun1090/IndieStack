@@ -204,6 +204,20 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **营销邮件的退订链接在订阅满 7 天后变成必然 404，而邮件还在继续寄**：
+  `updateStatusByToken()` 给确认与退订**同一条** `.gt("token_expires_at", now)`，而
+  `token_expires_at` 只在写入 pending 时算过一次（+7 天），确认成功不刷新它。于是第 8 天起，
+  那条 SHA-256 摘要还能对上、状态还是 `subscribed` 的行，会因为一次过期判定而命中 0 行，
+  路由回 404 `Invalid token`——用户唯一的出口正是邮件页脚那条链接，本仓库的 A05 设计段把它叫作
+  「合规链接」，而 `docs-site/email.md` 先前只写了「Token … 7 天后失效」，没区分这条有效期管谁，
+  所以缺陷是照着文档长出来的。现在有效期只约束确认（没被确认的 double opt-in 请求该过期），
+  退订不看它；token 轮换的约束原样保留（`token_expires_at` 为 null 的历史行也一并从「永远退不了」
+  变成「能退」）。文档三处同口径改：`docs-site/email.md` / `zh-CN/email.md` 那条摘要 + 有效期说明、
+  `docs/design/email-templates.md` 的 A05 段新增一条判据。用例打在查询构造上而不是 mock 的结果上：
+  确认必须带 `.gt("token_expires_at", …)`、退订必须不带；两个方向各做一次变异——折叠成「都判过期」
+  与「都不判」都红。刻意没动的相邻一项：凭旧 token 仍能把已退订的行确认回 `subscribed`，
+  那需要持有发给本人的那封邮件，不是攻击面，改它属于产品口径。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
