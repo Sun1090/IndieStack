@@ -169,7 +169,7 @@ flowchart TD
 | `/api/e2e/mock-reset` | POST | 清空进程级 Mock 缓存 |
 | `/api/e2e/seed-notifications` | GET, POST | 写入通知并派发实时事件 |
 | `/api/e2e/push-queue` | GET, POST | Push 订阅/投递记录与重试队列 |
-| `/api/e2e/mock-upload` | GET, POST | 注入 `storage.put()` 失败 |
+| `/api/e2e/mock-upload` | GET, POST | 注入 `storage.from(bucket).upload()` 失败 |
 | `/api/e2e/email-inbox` | GET, POST, DELETE | 本地邮件收件箱 |
 | `/api/e2e/email-worker-runs` | GET | cron worker run 记录 |
 | `/api/e2e/webhook-events` | GET, DELETE | webhook 事件占位记录 |
