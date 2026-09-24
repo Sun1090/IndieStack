@@ -1462,11 +1462,11 @@
     `git restore --source=HEAD --staged --worktree <path>`（新增且 HEAD 里没有的那个文件另需 `git rm --cached` + `rm`）。
     最终 `git status` 与 `git diff HEAD` 均为空，报告回到 14/10。
   - `pnpm type-check` / `pnpm lint` → exit 0。
-  - **变异核对（四条判据各自都要证明会咬）**，每条改完跑同一份 33 条用例再 `git checkout --` 复原：
+  - **变异核对（四条判据各自都要证明会咬）**，每条改完跑同一个文件的全部用例再 `git checkout --` 复原：
     P1 去掉工厂实例那一支 → 2 红（工厂用例 + 真实仓库分母）；P2 去掉「对象取用」那一支 → 4 红
     （单例 / 跨文件 helper / 同文件另一 handler 的精度用例 / 分母）；P3 放宽成「import 过就算」→ 3 红，
     **其中一条正是 `isIpLike` 那个负例**（所以负例不是空断言）；P4 收集时不看绑定表 → 7 红，
-    两个负例都红。复原后复跑 33 passed，`check:route-auth` 仍是 45 个 handler 一字未变。
+    两个负例都红。复原后复跑同一文件全绿，`check:route-auth` 仍是 45 个 handler 一字未变。
 - 阻塞 / 风险 / 回滚：C12 的 ① 仍是要人定的判断，本条**没有**给任何端点判对错，所以没有误报红的可能，
   也没有回归面（唯一的运行时变化是多读一个字段）。回滚 = revert 本 commit。
   风险一条：`limiters` 的键是 `文件#绑定`，跨文件包装会把 helper 的路径显示在路由那行上——读报告的人
