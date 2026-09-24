@@ -62,7 +62,7 @@
 | J04 / J05 CodeQL 与 Secrets 强度 | `check:codeql` + `codeql-alert-triage.md`、`check:secrets-scan` + 泄漏响应 runbook | 达成（真实告警列表需 Security 权限） |
 | J07 标签与 Release Notes 门禁 | `check:release-tag` + `release.yml` 的 `--notes-file` 路径 | 达成 |
 | D 域（未声称，见上） | 5 道 i18n / a11y 门禁 + 74 处物理方向类迁移 | 达成 |
-| 依赖稳定化 | `chore(deps): stabilize minor and patch updates`（`3b7a5df`） | 达成 |
+| 依赖稳定化 | `chore(deps): stabilize minor and patch updates`（`bbdd9318`） | 达成 |
 | 全量门禁 | `pnpm check:all` / `pnpm verify:build` / `pnpm test:coverage`（数量以命令输出为准） | 达成 |
 | 生产冒烟（J06 口径） | 无副作用 6/6；只读 3/6；隔离账号 0/14 | **未达成**（缺可牺牲账号与云端权限） |
 | tag / release | 只有 `v0.6.0` 一个标签 | **未执行**（前置未满足，见结论 3） |
