@@ -291,6 +291,22 @@ All notable changes to IndieStack will be documented in this file.
   （这是该路由的第一份测试）；变异核对两刀：只退回 metadata 标记 → `1 failed | 3 passed`；
   只退回那行日志 → 同一条用例红，说明断言两头都吃得住。
 
+- **「没有会话」不再被当成「服务不可用」**（C09 的自查修正）：本仓库今天早些时候给守卫层加的
+  「读 `error`」判据**错了一档**——`auth-js` 的 `getUser()` 在本地没有会话时返回的就是一个
+  `AuthSessionMissingError`（源码里 `_getUser`：没有 `access_token` 也没有自定义鉴权头时直接构造它），
+  也就是说**每一个匿名访客都会带着一个非空 `error`**。按「`error` 非空即故障」来答，守卫层会把匿名访问
+  一律报成 `SERVICE_UNAVAILABLE`（503），而 503 既不该靠重试解决、也不该靠重新登录解决——比它要修的那个
+  错更难解释；审计侧同一条判据会让 `sessionReadFailed` 打在**每一次失败登录**上，那个标记就读不出
+  任何东西了。现在新增 `src/lib/auth/session-error.ts` 只做一件事：把**能叫出名字**的读取故障分出来
+  （`AuthRetryableFetchError`＝fetch 本身失败；`AuthApiError` 且状态码 ≥500＝Auth 服务端答不上来），
+  认不出的一律维持 `main` 的既有答复（拒绝侧、可登录），不扩大 503 的面。
+  **这条判据是按方法分的，不是一条通用规则**：`getUser()` 匿名时给 error、`getSession()` 匿名时给
+  `{ session: null, error: null }`、`signOut()` 的 `_signOut` 自己就把 `AuthSessionMissingError` 滤掉了——
+  所以今天加的三处登出与恢复码修复不受影响（已逐条对着 `auth-js@2.116.0` 的源码核过），
+  受影响的正是那两处按 `getUser()` 的 `error` 判故障的地方。
+  变异核对两刀：把分类器退回「`error` 非空即故障」→ 4 个文件里 **7 条**用例红（全是匿名 / 4xx 那一侧）；
+  退回「永远不是故障」→ **6 条**红（网络型与 5xx 那一侧）。新增 `session-error.test.ts` 5 条用例。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
