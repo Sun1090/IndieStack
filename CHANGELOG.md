@@ -204,6 +204,19 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **发布证据里 `deployed commit unknown` 那一格拆成两种读数**：同一条 `unknown` 同时代表两件完全不同的事——
+  ①那个构建根本没有 `commit` 字段（生产**部署滞后**），②字段在但值为空（构建时没注入 git 变量，是平台侧
+  配置，与新旧无关）。分不开的实际代价是 2026-09-24 那次判断只能靠人翻
+  `gh api repos/<owner>/<repo>/deployments` 的部署记录才敢下结论，工具自己给不出。现在 `commitLabel()`
+  收整个 health body（于是能问键在不在），health 那条检查和证据文件顶层各多存一格 `commitReported`，
+  摘要行改用 `describeEvidenceCommit()`；**读缺这一格的旧产物时按 `not-reported` 处理**，不会误读成
+  `no-build-env`。当日直跑真生产验证：那行从 `deployed commit unknown` 变成
+  `deployed commit not-reported`（6/6 仍过），与手工翻部署记录的结论一致，从此不必再手工。
+  `main()` 会真发请求、单测里跑不了，所以摘要行的**接线**用源码契约钉（不许再自己写 `?? "unknown"`），
+  行为侧新增 1 条用例（该文件 7 → 8）+ 该契约 1 条（drift 文件 3 → 4）；变异核对 5 项各自抓红
+  （label 退回两态 2 条、`commitReported` 不看键在不在 2 条、摘要读法忽略那一格 1 条、
+  顶层不再存那一格 2 条、摘要行退回自写默认值 1 条），每步 `git checkout --` 还原并校验字节一致。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

@@ -1153,3 +1153,51 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — 发布证据那格 `commit=unknown` 拆成两种读数：旧构建与没拿到 git 变量不是一件事
+
+- 里程碑 / 版本：v0.12.0 的 B 域（发布证据链）；闭合的是「生产是不是旧构建」这个问题能不能由工具自己回答。
+- 状态：DONE。分支：`fix/smoke-commit-three-state`（本条目所在 PR），基于 `origin/main` = `ad4b0299`。
+- 怎么撞上的：不是计划里的改造。在给 #146 取证时直读了一次真生产 `/api/health` 的**键集合**
+  （`status,timestamp,uptime,uptimeFormatted,version,environment,mockMode,checks,allConfigured,ready,degraded`）
+  ——里面**没有 `commit`**。而 `main` 上那个 handler 是无条件带它的（`?? null`），所以这不是「值为空」，
+  是「那份构建还不认识这个字段」。旧的一行摘要把这两种情况印成同一条 `unknown`，
+  于是这个结论当时只能靠人再跑一遍部署记录才敢立：
+  `gh api repos/<owner>/<repo>/deployments?per_page=100` 取 `environment == "Production – indie-stack"`
+  （`per_page` 不能小——那 100 条里 62 条是 docs-site 的预览，`per_page=12` 一条生产记录都捞不到，
+  看起来像「从未部署过生产」）。复测结果：生产最近一条仍是 `a322a4e`（`6587025748`，09-22T08:56:51Z），
+  与「早于 `96fb4fa3`」互相印证。
+- 改动：`commitLabel()` 从「收那一个值」改成**收整个 health body**，于是能问键在不在，三种读法分开
+  （`not-reported` / `no-build-env` / 短 SHA）；health 那条检查与证据文件顶层各多存一格 `commitReported`；
+  摘要行改用 `describeEvidenceCommit(evidence)`。**默认方向选过一遍**：读缺 `commitReported` 这一格的
+  旧产物时按 `not-reported` 处理，因为 `no-build-env` 是在指控一个具体的平台配置原因，
+  证据不足时不该替人下那个结论。
+- 覆盖边界要说准：`main()` 会真发 HTTP 请求，单测里跑不了，所以摘要行那条**接线**是用源码契约钉的
+  （`toMatch(/describeEvidenceCommit\(/)` + 不许再出现 `?? "unknown"`），行为侧才是 12 条用例。
+  这个仓库已有同类先例（`src/lib/deployment/production-smoke-contract.test.ts` 钉的是 workflow YAML 文本），
+  所以这条不算新开路子，但也不假装它钉住了输出行为。
+- 验证：直跑真生产（只 GET）从
+  `6/6 passed, expected version 0.11.0, deployed commit unknown` 变成
+  `6/6 passed, expected version 0.11.0, deployed commit not-reported`，
+  证据 JSON 里 `{"commit":null,"commitReported":false}`——与手工翻部署记录的结论一致，只是不再需要手工。
+  用例 `src/lib/production-smoke.test.ts` 7 → 8、`src/lib/production-version-drift.test.ts` 3 → 4。
+  变异核对 5 项各自抓红（label 退回两态 2 条、`commitReported` 不看键在不在 2 条、摘要读法忽略那一格 1 条、
+  顶层不再存那一格 2 条、摘要行退回自写默认值 1 条），每步 `git checkout --` 还原并校验字节一致。
+- 门禁数字（本机）：`CI=true pnpm check:all` → **exit 0，37 步**，`pnpm test` **199 文件 / 2293 用例**；
+  `pnpm build` exit 0。**日志读法记一笔**：那份 check:all 日志里有三行
+  `❌ a11y 静态审计失败：1 个问题`，它们不是门禁红，是**用例自己在审计器上注入缺陷**时打出来的
+  （`src/lib/a11y*.test.ts`），整步仍是绿的——与 E2E 日志里那些故意注入的 `Error:` 同一族，
+  按行 grep `❌` 会把这套件读成满屏故障。
+- 不动的两处文档（量过归属）：`docs/operations/release-runbook-v0.11.0.md` 由 #118 占有，
+  `agents/10-release-manager.md` 由 #125 占有；而且前者开头明写「本文件不复述以免两处漂移」，
+  所以三种读法写在 `docs/operations/production-smoke-v0.11.0.md`（free）与代码注释里。
+- 队列影响：新增第 **55** 条 open PR，仍是升序表的最后一步。`scripts/production-smoke.js`、
+  `scripts/check-production-version.js`、`src/lib/production-smoke.test.ts`、
+  `src/lib/production-version-drift.test.ts`、`docs/operations/production-smoke-v0.11.0.md`
+  **逐个量过是 0 条在途 PR 碰**，重叠只在 `CHANGELOG.md` / `docs/progress.md` 那两处追加。
+- 下一项：「生产上报自己的 commit」这条待办（跟踪清单里的 task #28，属 roadmap 的 B 域）现在
+  **只差一次合并**——工具已经能报出
+  `not-reported`，合并落地、生产真的构建了 `main` 之后，那一格应变成短 SHA；
+  如果它变成 `no-build-env`，要查的是 Vercel 项目里 *Enable access to System Environment Variables*
+  而不是代码。这一条判据本身就写在这次的注释与文档里了。
+- 更新时间：2026-09-25（本机 UTC 09-24 21:1x 前后）。
