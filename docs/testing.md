@@ -539,8 +539,11 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 `scripts/lib/route-auth-check.js` 与 `scripts/check-route-auth.js`，由 `pnpm check:all` 与 CI 执行。
 解析范围与失败封闭：
 
-- 只认 `src/app/api/**` 下 `export async function GET|POST|PUT|PATCH|DELETE`（本仓库全部路由都是这个写法），
-  一条都解析不出来时报 `ROUTE_AUTH_NO_HANDLERS`，不报绿。
+- 只认 `src/app/api/**` 下 `export async function GET|POST|PUT|PATCH|DELETE` 与不带 `async` 的同一组写法
+  （本仓库全部路由都是这两种），一条都解析不出来时报 `ROUTE_AUTH_NO_HANDLERS`，不报绿。
+  **只认函数声明**：`export const GET = …` 这类箭头函数写法解析不到，但那条独立分母的用例会红——
+  它用 grep 从文件里数一遍 handler，与 AST 的结果双向对账，所以「换了写法而解析器没扩」不会静默漏。
+  只有声明没有函数体的重载签名不算 handler（它不是可执行体），这一条也有独立用例。
 - 调用图会展开同文件的局部函数与跨文件的 import（**必须**：`e2e/*` 的 `authOk` 是同文件局部函数，
   上传端点的 `guardUploadRequest` 在 `src/lib` 里），深度上限 `MAX_CALL_DEPTH = 5`；单测里用更大深度复算
   一遍并断言结论不变，所以「上限太浅把守卫藏在下面」会被自己的测试抓到。
