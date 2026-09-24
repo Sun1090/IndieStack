@@ -1950,8 +1950,16 @@
     行数 4365 → 4365 且内容多重集相同（脚本自己断言这两点才写盘），`check:progress` exit 0。
   - 等号修掉并再并一次之后 `CI=true pnpm check:all` → **exit 0**，
     `Test Files 229 passed (229)` / `Tests 2699 passed (2699)`。
+  - **队列里所有「CI 真的跑过」的 PR 此刻没有一条因代码红**：23 条 base `main` 的 PR 逐条
+    `gh pr checks --json name,bucket`，**23/23 扫到、共 297 行**，`bucket=="fail"` 的 **38 行全部**是
+    `Vercel – indie-stack` / `Vercel – indie-stack-docs-site`（部署配额，按既定口径记录并忽略）。
+    这条数字第一次跑出来是「0 红 / 283 行」——那是我自己把过滤器写成 `--jq -r '…'`（gh 没有 `-r`，
+    于是过滤器变成 `-r`、真正的过滤器成了位置参数），23 次调用全部报错而 `2>/dev/null` 把报错咽掉了。
+    同一趟里 #92 那次调用死在 `unexpected EOF`，所以 23/23 是先量到 22/23、再单独补测 #92
+    （14 行 / 1 红 = Vercel）才成立的。**一个空结果必须先证明读的人在场**，这是本仓库第四次踩同一类坑。
   - `pnpm test:coverage` → **exit 0**，`All files 97.46 / 92.37 / 98.27 / 98.63`
-    （阈值 91 / 90 / 93 / 92 一字未动；上一趟 97.46 / 92.38 / 98.27 / 98.62）。
+    （阈值 91 / 90 / 93 / 92 一字未动；上一趟 97.46 / 92.38 / 98.27 / 98.62，差的 0.01 在 branches 列，
+    这个量级我没有去归因）。
   - `node scripts/check-route-auth.js` → `✅ 45 个 handler 全部登记且守卫可达（6 个 public /
     调用图截断计数 792）`，与单分支一字不差；`--rate-limit-report` →
     **45 个 handler / 12 个路由文件**有限流器绑定，`token` 那两条报成
