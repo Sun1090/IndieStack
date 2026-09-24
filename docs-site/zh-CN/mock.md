@@ -156,7 +156,7 @@ curl -X POST http://localhost:3000/api/e2e/mock-reset \
 | `/api/e2e/mock-reset` | POST | 清空进程级 Mock 缓存 |
 | `/api/e2e/seed-notifications` | GET, POST | 写入通知行并派发实时事件 |
 | `/api/e2e/push-queue` | GET, POST | 写入 Push 订阅/投递记录并检查重试队列 |
-| `/api/e2e/mock-upload` | GET, POST | 读取/设置 `failNext`，让 `storage.put()` 确定性失败 |
+| `/api/e2e/mock-upload` | GET, POST | 读取/设置 `failNext`，让 Mock 的 `storage.from(bucket).upload()` 确定性失败 |
 | `/api/e2e/email-inbox` | GET, POST, DELETE | 本地邮件收件箱（`RESEND_API_URL` 指向它） |
 | `/api/e2e/email-worker-runs` | GET | 检查 cron 处理器写入的 worker run |
 | `/api/e2e/webhook-events` | GET, DELETE | 检查/清空已占位的 webhook 事件 |
