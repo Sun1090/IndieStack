@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as confirmPOST, GET as confirmGET } from "./route";
 import { POST as unsubscribePOST, GET as unsubscribeGET } from "../unsubscribe/route";
+import { clearMarketingTokenBucket } from "@/lib/marketing/request";
 
 const { confirmMock, unsubscribeMock } = vi.hoisted(() => ({
   confirmMock: vi.fn(),
@@ -19,6 +20,9 @@ vi.mock("@/lib/repositories/marketing", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 两只端点共用一只按 IP 的滑窗桶（C10）：不复位的话，先跑的用例会把后跑的打成 429，
+  // 整套用例就变成一条顺序依赖的 flake。
+  clearMarketingTokenBucket();
   process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com";
 });
 
@@ -101,5 +105,46 @@ describe("marketing routes do not mutate on GET", () => {
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
     expect(html).toContain('action="/api/marketing/unsubscribe"');
+  });
+});
+
+describe("公开 token 端点的限频（C10）", () => {
+  /** 阈值与 passkey 匿名入口同档：10 次 / 分钟 / IP。 */
+  const LIMIT = 10;
+
+  it("同一来源打到第 11 次返回 429，并且不再碰数据库", async () => {
+    confirmMock.mockResolvedValue(true);
+    const statuses: number[] = [];
+    for (let i = 0; i < LIMIT + 1; i += 1) {
+      const res = await confirmPOST(req("/api/marketing/confirm?token=t1"));
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, LIMIT)).toEqual(new Array(LIMIT).fill(302));
+    expect(statuses[LIMIT]).toBe(429);
+    // 被限频挡住的那些请求不能落到仓储层，否则限频只是改了个说法
+    expect(confirmMock).toHaveBeenCalledTimes(LIMIT);
+  });
+
+  it("确认与退订共用一只桶：它们是同一个滥用面，分开计数等于阈值翻倍", async () => {
+    unsubscribeMock.mockResolvedValue(true);
+    confirmMock.mockResolvedValue(true);
+    for (let i = 0; i < LIMIT; i += 1) {
+      const res = await unsubscribePOST(req("/api/marketing/unsubscribe?token=t1"));
+      expect(res.status).toBe(302);
+    }
+    const res = await confirmPOST(req("/api/marketing/confirm?token=t1"));
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(confirmMock).not.toHaveBeenCalled();
+  });
+
+  it("GET 只是渲染表单、不写库，所以不吃配额", async () => {
+    const token = "a".repeat(48);
+    for (let i = 0; i < LIMIT + 5; i += 1) {
+      expect((await confirmGET(req(`/api/marketing/confirm?token=${token}`))).status).toBe(200);
+    }
+    confirmMock.mockResolvedValue(true);
+    const res = await confirmPOST(req(`/api/marketing/confirm?token=${token}`));
+    expect(res.status).toBe(302);
   });
 });
