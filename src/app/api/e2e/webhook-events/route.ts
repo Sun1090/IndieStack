@@ -4,11 +4,12 @@ import { jsonNoStore } from "@/lib/api-response";
 import { isMockEnabled } from "@/lib/mock";
 import { listRecentWebhookEvents } from "@/lib/repositories/webhook-events";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { e2eBearerAuthorized } from "@/lib/testing/e2e-bearer";
 
 export const dynamic = "force-dynamic";
 
 function authorized(request: NextRequest): boolean {
-  return request.headers.get("authorization") === `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}`;
+  return e2eBearerAuthorized(request.headers.get("authorization"));
 }
 
 export async function GET(request: NextRequest) {
