@@ -88,7 +88,8 @@ if (shouldUseMock()) {
 | 能力 | 行为 |
 | ---- | ---- |
 | `select()` | 在本地应用过滤、`order()`、`limit()`/`range()`、`single()`/`maybeSingle()` |
-| `eq()` / `neq()` / `in()` / `is()` | 支持 |
+| `eq()` / `in()` / `is()` / `gt()` / `gte()` / `lt()` / `lte()` / `contains()` / `not()` / `or()` | 已实现的过滤器。PostgREST 词汇表里的其它方法（`neq()`、`like()`、`filter()`、`textSearch()`……）**没有**实现：在 Mock 模式链上调用会抛 `TypeError`。`src/lib/mock/mock-query-surface.test.ts` 会把 `src/**` 里真的链到的方法名与这个构建器对账，所以它先红，不用等到发请求 |
+| `update()` / `delete()` 上的过滤条件 | 只由 `eq` / `in` / `gt` / `gte` / `lt` / `lte` / `is null` 收窄目标行；`or()` / `contains()` / `not()` 在写链上会被接受但**忽略**（读路径是全部生效的）。目前 `src/**` 里没有「写操作 + 这三个算子」的调用点——真加一条，Mock 模式就会比生产多改行 |
 | `insert()` / `update()` / `delete()` | 就地修改缓存列表，后续读取可见 |
 | `rpc()` | 实现 `claim_webhook_event`、`erase_user_data`、`list_user_objects_for_erasure` 与 `find_orphan_upload_objects`，其它函数名返回 `null` 数据 |
 | 未知表名 | 读取返回 `[]`，写入不落库 |
