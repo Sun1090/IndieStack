@@ -1153,3 +1153,53 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — 客户端两处「会话快照盖掉实时答案」：回调页双花一次性 code，`useUser` 把刚退出的人写回来
+
+- 里程碑 / 版本：v0.12.0；不在 roadmap 条目里，是 C09 那条线往外扫时带出来的一族。
+- 状态：DONE。分支：`fix/auth-callback-once`（本条目所在 PR），基于 `origin/main` = `ad4b0299`。
+- 这一族怎么扫出来的：`src/**` 里 **19** 个文件提到 `useEffect`，其中 **7** 个既 `await` 又 `set*`，
+  **3** 个带了取消旗子、**4** 个没有。而**这 4 个里 2 个是检测器的假阳性**——
+  `reset-password-form.tsx` 的旗子叫 `mounted`、`push-notification-form.tsx` 的叫 `active`，
+  我的正则只认 `isMounted` / `alive` 那几种写法。记下来是因为这类判据下次还会用到：
+  旗子叫什么不重要，认出来才算。真正没人管的就是本条目的两处。
+- 回调页（`src/app/auth/callback/page.tsx`）的实测读数：`next.config.ts:26` 是 `reactStrictMode: true`，
+  开发期 effect 跑两遍，而这一页花的是**一次性**凭据。按「第二次交换必返回 `invalid_grant`」的
+  真实 PKCE 语义打桩：包 `StrictMode` 时 `exchangeCodeForSession` 调 **2** 次、状态文本停在
+  `callback.failed authOtpExpired`；不包时 **1** 次、`callback.success`。两行都在同一个用例文件里跑出来，
+  所以翻倍只能来自双跑。而 `router.push("/dashboard")` 两种情形下**都发出去了**——用户其实登录成功了，
+  页面念的是失败。第二个读数：失败分支那个「2 秒后回登录页」的定时器没人记账，
+  `unmount()` 之后把时钟推过 2 秒，`router.push("/auth/login")` 照样触发。
+- **方法上记一笔，这是个会重犯的坑**：第一版探针把 `useRouter()` mock 成每次返回**新对象**，
+  于是 `router` 这个 dep 每渲染都变，effect 被 mock 自己逼着重跑，量到的是 **3** 次而不是 2 次——
+  多出来的那次是我造的。真实 `next/navigation` 的 router 与 searchParams 都取自 context、
+  跨渲染同一身份，mock 必须照做；换成 stable 之后 2/1 这组对照才成立。
+  凡是被测对象的**身份稳定性**参与被测行为的，mock 就得先还它稳定。
+- 两处改动的取舍：
+  1. 回调页按**凭据**去重而不是按挂载次数（换一枚不同的 code 仍要去换，这条有用例钉着）。
+     刻意**没有**用「cleanup 里置 `cancelled`、回来先看旗子」那个常见写法——StrictMode 下第一遍的清理
+     先跑、第二遍又被去重挡掉，两边都不落地，等于把唯一一次真交换判死。定时器句柄进 ref，
+     被去重挡掉的那一遍也返回**同一个**清理函数，否则第一遍排下的那个定时器就没人负责。
+  2. `useUser()` 的快照与推送两路写同一个 state，改成快照只在没见过推送时才写。
+     这里**没有**加卸载旗子：那件事从组件外部观测不到，为它写用例只会得到一条永远绿的断言；
+     而 StrictMode 双跑的两次都是同一个纯读、回的是同一个用户，不产生可见差异。
+- 验证：`src/app/auth/callback/page.test.tsx` 新增 6 条、`src/hooks/use-user.test.tsx` 新增 4 条
+  （后者是 `src/hooks/` 的第一份直接单测）。先红后绿：改动前回调页 3 红 2 绿（那 2 条是正向对照）、
+  `useUser` 1 红 3 绿。变异核对 **8** 项各自抓红——回调页 P1 抓 3 条、P2（去重改成按挂载）只抓
+  「换 code」那 1 条、P3（定时器不记账）与 P4（清理里不 `clearTimeout`）各抓卸载那 1 条、
+  P5（删掉跳登录页）抓正向对照那 1 条；`useUser` U1（删闸门）与 U2（回调里不置旗子）各抓 1 条、
+  U3（闸门反过来）抓 3 条，其中含两条正向对照，所以这个方向不是靠巧合绿的。
+  每次跑完 `git checkout --` 还原，并校验与动手前字节一致。
+- 门禁数字（本机）：`pnpm lint`、`pnpm type-check`、`pnpm build` 均 exit 0；`pnpm test`
+  **201 文件 / 2301 用例** exit 0；`CI=true pnpm check:all` **37 个门禁步骤**全过。
+- 队列影响：新增第 **54** 条 open PR，落在 #118 附十三那张表的第 54 步。与在途 53 条的文件重叠
+  **只**发生在 `CHANGELOG.md` / `docs/progress.md` 的追加约定上——`src/app/auth/callback/**`、
+  `src/hooks/use-user.ts`、`src/hooks/use-user.test.tsx` 此前 **0** 条 PR 碰过
+  （`gh pr list --state open --json number,files` 53/53 都取到非空清单，所以这是个读数不是扫漏）。
+- 同一族里剩下的那一处：`dashboard/layout.tsx` 之外还有 **8** 个 dashboard 页面在 `user` 为空时
+  不分支、直接 `user!.id` 抛进错误边界（fail-closed，是 UX 不是权限洞）。**8/8 文件都被在途 PR 占有**，
+  按队列卫生只登记不改，读数与判据写在 #118 附十七。
+- 下一项：这一批合完之后按附十七那张表逐文件补页面判空；`src/hooks/` 另外四个 hook
+  从这条起有可复制的测试形状（`use-unread-notifications` 最值得先钉——它的轮询开关是
+  `enabled: Boolean(user)`，本条目修的就是那个 `user` 会被旧快照复活这件事）。
+- 更新时间：2026-09-25（本机 UTC 09-24 20:20 前后）。

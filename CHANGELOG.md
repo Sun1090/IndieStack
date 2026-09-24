@@ -204,6 +204,33 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`useUser()` 里迟到的会话快照不再盖掉实时推送的答案**：这个 hook 有两路写入同一个 state——
+  挂载时那一次 `getUser()`（**发起那一刻**的会话快照）与 `onAuthStateChange` 的实时推送，而原来两边
+  不分先后、谁最后 resolve 谁赢。探针量到的顺序是：先收到 `SIGNED_OUT`（界面已经落到 anon），那次
+  还没回来的 `getUser()` 随后 resolve 成发起时的用户，于是把刚退出的人又写了回去；消费方
+  （`site-header`、`use-is-admin`、`use-unread-notifications`）拿的是一个已经不存在的身份——
+  而最后那个的轮询开关正是 `enabled: Boolean(user)`，身份复活会让一个已退出的会话继续每 60 秒打一次。
+  现在快照只在没有推送到达时才写。刻意**没有**加「卸载旗子」：StrictMode 双跑时两次都是同一个纯读、
+  回的是同一个用户，写两次不产生可见差异，而「不写 state」这件事从组件外部根本观测不到——
+  为它写用例只会得到一条永远绿的断言。新增 4 条用例（`src/hooks/` 的第一份直接单测），
+  其中「快照先回来时正常给出用户」是正向对照；变异核对 3 项：删掉闸门抓 1 条、
+  推送回调里不置旗子抓 1 条、把闸门反过来（只有见过推送才写）抓 3 条——第三条同时抓掉两条正向对照，
+  说明这个方向不是靠巧合绿的。
+
+- **OAuth / 魔法链接回调页不再把一次成功的登录念成失败**：`reactStrictMode: true`（`next.config.ts`）
+  让 `src/app/auth/callback/page.tsx` 的 effect 在开发期跑两遍，而它花的是**一次性**凭据——第二遍拿着
+  同一枚已经消费掉的 code 再去 `exchangeCodeForSession`，服务端必拒，于是第一遍写下的「登录成功」被
+  随后那句「登录失败」盖掉。实测量到 `exchangeCodeForSession` 调 2 次，去掉 `StrictMode` 的对照是 1 次
+  （翻倍确实来自双跑，不是来自别处），而状态文本停在 `callback.failed`，尽管
+  `router.push("/dashboard")` 其实已经发出去了。去重按**凭据**而不是按挂载次数：换了一枚不同的 code
+  仍然要去换。这里没有采用「cleanup 里置 `cancelled`、异步回来先看旗子」那个常见写法——它会把唯一
+  一次真交换判死：第一遍的清理先跑，第二遍又被去重挡掉，两边都不落地。同一条失败分支还排了一个
+  「2 秒后回登录页」的定时器而**没人记账**：用户离开这一页之后它照样触发，把刚登录成功的人从
+  仪表盘推回 `/login`；现在句柄存进 ref，effect 的清理统一清掉它（被去重挡掉的那一遍也返回同一个清理
+  函数，否则第一遍排下的定时器就没有人负责）。新增 6 条用例覆盖四个行为，变异核对 5 项各自抓红：
+  去掉去重抓 3 条、去重改成按挂载只漏掉「换 code 还要再换」那条、定时器不记账与清理里不 `clearTimeout`
+  各抓卸载那条、删掉跳登录页抓正向对照那条。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
