@@ -13,6 +13,7 @@ import {
   collectRouteHandlers,
   formatRouteAuthIssues,
   MAX_CALL_DEPTH,
+  PROTECTION_SYMBOLS,
   ROUTE_AUTH_LEDGER,
   type RouteAuthEntry,
   type RouteAuthSource,
@@ -345,5 +346,17 @@ describe("真实仓库", () => {
 
   it("CLI 在真实仓库上退出 0", () => {
     expect(runRouteAuthCheck()).toBe(0);
+  });
+
+  it("词表里每个符号都真的存在于源码：一条不存在的守卫只会给读者一个错觉", () => {
+    // 排掉门禁自己的文件，否则「表里写了」就等于「源码里有」，这条断言恒真
+    const corpus = sources
+      .filter((item) => !item.file.endsWith("security/route-auth.ts"))
+      .map((item) => item.text)
+      .join("\n");
+    const dead = Object.keys(PROTECTION_SYMBOLS).filter(
+      (symbol) => !new RegExp(`\\b${symbol}\\b`).test(corpus),
+    );
+    expect(dead).toEqual([]);
   });
 });

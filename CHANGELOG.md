@@ -22,7 +22,9 @@ All notable changes to IndieStack will be documented in this file.
   `unsubscribe`，与推送订阅的 `.unsubscribe()` 同名，全仓库误报；③ 路径推导把 `/api` 前缀吃掉了。
   范围收窄都计数、并且能被自己的测试证伪：`MAX_CALL_DEPTH = 5`，单测用 depth+15 复算一遍断言结论一字不差
   （否则「上限太浅」和「范围本来就窄」在输出里分不开）；handler 条数另有一个 grep 出来的独立分母做交叉
-  核对，将来出现 `export const GET = …` 这种新写法会红着提醒扩解析器。26 项单测，其中一条就是**复现那个
+  核对，将来出现 `export const GET = …` 这种新写法会红着提醒扩解析器。守卫词表本身也有一条「不能写 fiction」
+  的用例钉着：它要求表里每个符号都能在源码里找到（排掉门禁自己的文件），初版里 `readSessionRole` 与
+  `verifyWebhookSignature` 就是这样两个「应该有」的名字，已删。27 项单测，其中一条就是**复现那个
   真实缺陷**：把收件箱 GET 的 `authOk` 摘掉，issues 恰好等于
   `ROUTE_AUTH_GUARD_MISSING GET /api/e2e/email-inbox` 一项。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，

@@ -240,7 +240,7 @@
     同文件 POST/DELETE 有（收件箱里是「已发送」邮件原文，含确认 / 退订 token），少一个守卫全部门禁照绿，
     因为仓库里没有任何机器可读的记录说「这条路由该有什么」。门禁只判两件可机械核对的事：每个 handler
     必须有台账条目、条目声明的守卫符号必须真的能从该 handler 走到；`reason` 强制存在且与 `via` 同家族。
-    45 条台账、26 项单测（含把那个真实缺陷复现成一条 `GUARD_MISSING` 的用例、以及放宽调用图深度后
+    45 条台账、27 项单测（含把那个真实缺陷复现成一条 `GUARD_MISSING` 的用例、放宽调用图深度后
     结论不变的自证）。规则与解析在 `src/lib/security/route-auth.ts`，IO/CLI 在
     `scripts/lib/route-auth-check.js` + `scripts/check-route-auth.js`。
 

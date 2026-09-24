@@ -1335,7 +1335,14 @@
   `scripts/check-all.sh`、`src/lib/testing/test-matrix.ts`、`docs/testing.md`、
   `docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`CHANGELOG.md`、本条目。
 - 验证命令与结果：
-  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **26 passed**。
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **27 passed**。
+    新增的那一条钉的是「词表不能写源码里不存在的守卫」：初版 18 个符号里的 `readSessionRole` 与
+    `verifyWebhookSignature` 是我按『应该有』写的，源码里找不到，已删（删完台账判定一字未变，
+    说明它们从来没被任何结论依赖过——但留在表里就是给下一个读者一个假的入口）。
+    探针本身也验过：往词表里种一个 `aGuardThatDoesNotExist` → 只有那一条红。
+    探针的撤销方式也记一笔：那次我用 `git checkout -- <file>` 复原，结果把同一文件里**我自己未提交的
+    删除**一起回滚了（这个仓库的台账已经写过「探针要用反向替换撤销，别用 checkout」，这次是自己踩给自己看）。
+    当场从测试输出发现（复原后仍 1 红），重贴一次删除即恢复。
   - `node scripts/check-route-auth.js` → exit 0，
     `✅ 路由鉴权清单一致：45 个 handler 全部登记且守卫可达（其中 6 个登记为 public / 无守卫符号，调用图截断计数 770）`。
   - **变异核对**（每条判定都要证明它会咬）：六种 issue 各有一条独立用例；此外一条用例真的把
