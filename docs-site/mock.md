@@ -162,7 +162,7 @@ mode and requires `Authorization: Bearer <E2E_BEARER_TOKEN>` unless noted.
 | `/api/e2e/mock-reset` | POST | Clear the process-wide Mock cache |
 | `/api/e2e/seed-notifications` | GET, POST | Seed notification rows and dispatch realtime events |
 | `/api/e2e/push-queue` | GET, POST | Seed push subscriptions/attempts and inspect the retry queue |
-| `/api/e2e/mock-upload` | GET, POST | Read/set `failNext` so `storage.put()` fails deterministically |
+| `/api/e2e/mock-upload` | GET, POST | Read/set `failNext` so mock `storage.from(bucket).upload()` fails deterministically |
 | `/api/e2e/email-inbox` | GET, POST, DELETE | Captured outbound email (`RESEND_API_URL` points here) |
 | `/api/e2e/email-worker-runs` | GET | Inspect worker run rows written by cron handlers |
 | `/api/e2e/webhook-events` | GET, DELETE | Inspect/clear claimed webhook events |
