@@ -204,6 +204,28 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **Mock/E2E 调试端点：「没配凭据」不再被当成「空凭据」**：8 个 `src/app/api/e2e/**` 路由都比的是
+  `` `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}` ``，并且 7 个前面写着 `if (!expected || …)`——
+  那句**永远不成立**，模板字符串先塞了 `"Bearer "` 前缀，`expected` 至少是真值。于是凭据未配置时
+  `Authorization: Bearer `（一个尾空格、空 token）就能通过，而这几条路由能读用户留言、清 mock 缓存、
+  注入上传失败、灌通知种子。生产不受影响（每条都有 `isMockEnabled` 前置，而 Mock 自动开启只发生在非生产），
+  暴露的正是「显式 `NEXT_PUBLIC_MOCK_ENABLED=true` 但没配 token」这一档——本地跑、手写预览、
+  照模板文档开 Mock 的人，恰好都是它。收进 `src/lib/testing/e2e-bearer.ts` 一处，判据只有一条：
+  **没配凭据 ⇒ 任何请求都不合法**；空串与未设置是同一件事。仓库里 `checkCronAuth` 早就是这个形状
+  （`secret_unconfigured` 单独一类），这次是让 e2e 对齐它。
+  防腐化用一条扫描：`src/app/api/e2e/**` 里再出现内联拼 `Bearer` 头就红，
+  而扫描器自己先断言「读到的路由文件数 > 8」——不然一个走错目录的 walker 会让它永远绿。
+  门禁 `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING` 原本要求 `E2E_BEARER_TOKEN` 这个字符串**出现在每个文件里**，
+  集中化正好把它藏掉（第一次跑就红了），所以证据项现在支持「备选写法」：
+  内联读环境变量或调用集中守卫，二者皆无仍然报缺失（两条新用例一边证可用、一边证不能白拿）。
+  同一次路由普查（27 条 `src/app/api/**`，逐个展开本地辅助函数后看谁做了什么守卫）还指出
+  `email-inbox` 的 `GET` 是 9 处比较里唯一漏掉的一层——而它既返回已寄出邮件的原文
+  （内含确认/退订链接），`?failNext=1` 又会在读取时改写注入标志位，比 `POST`/`DELETE` 更需要凭据。
+  补上同一句 `authOk()`：4 处 spec 调用本来就带 `Bearer`，`mail-flow` 3/3 未受影响；
+  真实服务上分别用「无头 / `Bearer ` 空头 / 正确头」打这条 `GET`，得到 401 / 401 / 200。
+  过程中 `pnpm type-check` 抓了两处：新测试文件漏 `import { describe, expect, it } from "vitest"`，
+  以及证据数组的类型没收窄。`CI=true pnpm check:all` exit 0（200 个测试文件）；
+  变异核对是临时造一条内联拼头的路由 → 扫描用例红并点名该文件，删掉即绿。
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

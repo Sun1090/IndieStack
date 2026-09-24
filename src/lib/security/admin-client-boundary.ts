@@ -57,8 +57,15 @@ export interface AdminClientInventoryEntry {
   authAdmin: string[];
   trust: {
     kind: AdminClientTrustKind;
-    /** Literal source fragments that must remain present to keep the audit honest. */
-    evidence: string[];
+    /**
+     * Literal source fragments that must remain present to keep the audit honest.
+     * An entry may also be a list of **alternatives**, any one of which satisfies it:
+     * a route that delegates to the centralized `e2eBearerAuthorized()` guard carries the
+     * same trust as one reading `E2E_BEARER_TOKEN` inline — and demanding the inline read
+     * would push every route back to hand-rolled comparisons, which is exactly the shape
+     * that let an unset token authenticate as `Authorization: Bearer `.
+     */
+    evidence: Array<string | readonly string[]>;
   };
   rationale: string;
 }
@@ -110,7 +117,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
-    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", "E2E_BEARER_TOKEN"] },
+    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", ["E2E_BEARER_TOKEN", "e2eBearerAuthorized"]] },
     rationale: "Mock-only E2E fixture endpoint for contact-message list, seed and reset.",
   },
   {
@@ -121,7 +128,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
-    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", "E2E_BEARER_TOKEN"] },
+    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", ["E2E_BEARER_TOKEN", "e2eBearerAuthorized"]] },
     rationale: "Mock-only E2E read endpoint for digest worker run records.",
   },
   {
@@ -139,7 +146,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
-    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", "E2E_BEARER_TOKEN"] },
+    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", ["E2E_BEARER_TOKEN", "e2eBearerAuthorized"]] },
     rationale: "Mock-only E2E push queue fixture for retry, backlog and cleanup assertions.",
   },
   {
@@ -150,7 +157,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
-    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", "E2E_BEARER_TOKEN"] },
+    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", ["E2E_BEARER_TOKEN", "e2eBearerAuthorized"]] },
     rationale: "Mock-only E2E notification fixture for realtime and mail-flow assertions.",
   },
   {
@@ -161,7 +168,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: [],
-    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", "E2E_BEARER_TOKEN"] },
+    trust: { kind: "mock-bearer", evidence: ["isMockEnabled", ["E2E_BEARER_TOKEN", "e2eBearerAuthorized"]] },
     rationale: "Mock-only E2E reset endpoint for webhook idempotency assertions.",
   },
   {
@@ -816,13 +823,15 @@ export function inspectAdminClientBoundary(
     issues.push(...compareEntry(fact, entry));
     const source = sourceByFile.get(fact.file) ?? "";
     for (const evidence of entry.trust.evidence) {
-      if (!source.includes(evidence)) {
-        issues.push({
-          code: "ADMIN_CLIENT_TRUST_EVIDENCE_MISSING",
-          file: fact.file,
-          message: `${fact.file}: trust evidence "${evidence}" is missing`,
-        });
-      }
+      const alternatives = typeof evidence === "string" ? [evidence] : evidence;
+      if (alternatives.some((alt) => source.includes(alt))) continue;
+      issues.push({
+        code: "ADMIN_CLIENT_TRUST_EVIDENCE_MISSING",
+        file: fact.file,
+        message:
+          `${fact.file}: trust evidence ${alternatives.map((alt) => `"${alt}"`).join(" or ")} ` +
+          "is missing",
+      });
     }
   }
 

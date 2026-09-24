@@ -43,6 +43,11 @@ export default defineConfig({
           environment: "node",
           include: ["src/**/*.test.ts"],
           exclude: ["node_modules", "docs-site", "src/**/*.dom.test.ts"],
+          // 全仓扫描类门禁用例（读遍 src/** 再判定）在空闲机器上实测单条 4.4-4.6 秒，
+          // 默认的 5 秒只剩 10% 余量：并发跑 jsdom 用例时同一条测到 9.2 秒，
+          // 于是 pre-push 的 `pnpm test` 随机红在两个与代码无关的超时上。
+          // 只放宽 node：jsdom 项目里没有一个用例读盘，它的 5 秒仍是有效的交互回归信号。
+          testTimeout: 20_000,
         },
       },
       {

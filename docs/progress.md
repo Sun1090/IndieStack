@@ -1153,3 +1153,152 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — Mock/E2E 端点的凭据比较把「没配」读成「空配」：`Authorization: Bearer ` 就能进门
+
+- 里程碑 / 版本：v0.12.0；分支 `fix/e2e-bearer-unset-token`（base `main`，独立于那条 20 长的栈）。
+- 状态：DONE。起因不是有人报障，是我在数「27 个 API 路由里谁做了限频」时顺路审到 `src/app/api/e2e/**` 的鉴权形状。
+- 量到的形状（**8 个文件、9 处比较**）：全部写成了
+  ``const expected = `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}` ``，其中 **7 处**前面还有一句
+  `if (!expected || got !== expected)`。那句**永远不成立**——模板字符串先放进了 `"Bearer "` 前缀，
+  `expected` 最短也是 7 个字符的真值。第 8 处（`webhook-events`）连这句都没有。
+  净效果：**凭据没配的时候，一个 `Authorization: Bearer `（尾空格 + 空 token）的请求就是合法的**，
+  而这些端点能读用户留言（`contact-messages`）、清 Mock 缓存（`mock-reset`）、注入上传失败（`mock-upload`）、
+  灌通知种子（`seed-notifications`）、写偏好（`push-queue`）。
+- 爆炸半径（这条要先说清，否则会把 low 说成 high）：每条路由都有 `if (!isMockEnabled) return 404` 前置，
+  而 `isMockEnabled = NEXT_PUBLIC_MOCK_ENABLED==="true" || (NODE_ENV!=="production" && 没配 Supabase URL)`
+  （`src/lib/mock/config.ts`）。所以**生产不会因为漏配而裸奔**；CI 的 Playwright 两个变量都设了
+  （`playwright.config.ts:21,38`）。敞开的窗口是「显式开了 Mock、又没配 token」的环境——
+  本地开发、手搓的预览、以及**照着模板文档把 Mock 打开的人**。仓库是模板，这一档用户量不小，
+  而那恰好是 Mock 模式的常态用法。
+- 改法：判据收进一处 `src/lib/testing/e2e-bearer.ts` 的 `e2eBearerAuthorized(header, token?)`，
+  规则只有一句——**没配凭据 ⇒ 任何请求都不合法**，空串与未设置是同一件事；比较仍是整串等值，
+  不给大小写、前缀、`Basic` 留门。仓库里其实早就有正确形状可抄：`checkCronAuth`（`src/lib/cron-auth.ts`）
+  第一行就是 `if (!expectedSecret) return "secret_unconfigured"`，还把三种拒绝原因分开返回。
+  `email-inbox` 那处的 `Boolean(process.env.X) && …` 本来就是对的，这次也一并换成集中守卫。
+- 顺手挖出来的一件事：**门禁会奖励错误的写法**。`ADMIN_CLIENT_TRUST_EVIDENCE_MISSING`
+  （`src/lib/security/admin-client-boundary.ts:826`）要求 `E2E_BEARER_TOKEN` 这个字符串出现在每个清单文件里，
+  集中化把它藏掉之后门禁当场红。也就是说这些路由当初内联各自比较，部分是被门禁推着写的。
+  现在证据项支持**备选写法**（内联读环境变量 **或** 调用集中守卫，二者皆无仍报缺失），
+  两条新用例一边证明可用、一边证明不能白拿；`evidence` 的类型从 `string[]` 放宽成
+  `Array<string | readonly string[]>`，第 197 行原来那条纯字符串用例照旧通过。
+- 防腐化（不新增门禁、不动 `check-all.sh`）：`e2e-bearer.test.ts` 里一条扫描，
+  `src/app/**/route.ts` 再出现内联拼 `Bearer` 头就红；**同文件先断言自己读到的路由文件数 > 8**，
+  否则一个走错目录的 walker 能让这条断言永远绿。变异核对就是拿这条做的：
+  临时造一条 `src/app/api/e2e/__probe__/route.ts`（内联拼头）→ 用例红且点名该文件；删掉 → 6/6 绿。
+- 变更文件：新增 `src/lib/testing/e2e-bearer.ts` + `.test.ts`；改 8 个 `src/app/api/e2e/*/route.ts`
+  （净 +17/−20，守卫从 3 行变 1 行）+ `src/lib/security/admin-client-boundary.ts`（类型、5 条清单证据、判定循环）
+  + 其测试（2 条新用例）+ `CHANGELOG.md` + 本条台账。
+- 与在审 PR 的重叠（42 条 own-delta 全扫，分母打印过）：`src/lib/security/admin-client-boundary.ts` **0 条**；
+  8 个 e2e 路由里只有 `push-queue` 被 #112 碰过，而它的改动在第 86-91 与 230-240 行，
+  离这里改的 70-75 行很远，实测合得动。
+- 验证：`npx tsc --noEmit` exit 0（中途抓到我两处错：新测试文件漏 `import { describe, expect, it } from "vitest"`；
+  以及第一版 `evidence` 类型没收窄导致 `source.includes(evidence)` 传数组）；
+  `npx vitest run src/lib/testing src/app/api/e2e --project node` → 3 文件 / 29 用例全绿；
+  `CI=true pnpm check:all` **exit 0**（`Test Files 200 passed`）。
+  读法提醒：那份日志里有 3 行 `❌ a11y 静态审计失败：1 个问题`，那是 a11y 门禁自己的**负控用例**在打印期望输出，
+  不是失败——聚合行是 `✅ 全部校验通过`。判断聚合结果要看 `门禁失败：…` 那一行有没有出现，不要看 `❌` 子串。
+- 阻塞：无。build 这一腿由恢复后的 `pre-push` 钩子（`pnpm verify:build`）在推送时补上。
+- 风险 / 回滚：只影响 Mock/E2E 面，生产路径一行没动；revert 本分支两个 commit 即回滚。
+  唯一行为变化：**没配 `E2E_BEARER_TOKEN` 且开了 Mock 的环境，从此调不到这些端点**——那扇门本来就不该开着；
+  本地要用的话 `E2E_BEARER_TOKEN=anything` 一行解决，Playwright 已经带着它自己的值。
+- 下一项：跑一遍全量 E2E 确认这些 spec 不受影响；顺路审剩下的 19 个 API 路由的鉴权/限频形状（这次数出来的）。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 27 条 API 路由逐个展开后：收件箱 `GET` 是漏掉的那一层；`account-deletion` 的三条红是 CI 的 `retries=2` 在替它兜底
+
+- 里程碑 / 版本：v0.12.0 安全面收口。分支 `fix/e2e-bearer-unset-token`（PR #135），承接上一条的守卫集中化。
+- 状态：已完成，本地全绿，等待合并。
+- 触发：上一条写的「下一项」——跑全量 E2E 确认 spec 不受影响，顺路审剩下 19 条路由。
+- 全量 E2E（本机，`E2E_BASE_PORT=3120`，`retries=0`）：**109 例 = 106 passed / 3 failed**，
+  三条红全在 `e2e/account-deletion.spec.ts`（第 36 / 50 / 68 行），同文件另外两例是过的。
+  端口换成 3120 是因为 3100 被另一个项目（`~/Projects/trade-buty`）的 dev server 占着——
+  `reuseExistingServer: !CI` 会静默复用别人的服务器，那测出来的是别人。
+- 归因（先说结论：不是本分支，且不是产品缺陷，是测试的时序假设）：
+  - `git diff --name-only origin/main...HEAD` 14 个文件全在 `src/app/api/e2e/**`、`src/lib/{testing,security}/**` 和两份文档，
+    没有一行碰到 `/dashboard/settings` 或 `DeleteAccountSection`。
+  - 单独重跑这个 spec（3121）：**2 passed / 3 failed**，同样三条 → 与套件顺序、共享 mock 状态无关。
+  - 失败断言的 a11y 快照里 `Danger Zone` 标题、`Delete Account` 按钮都在，只缺第二步的输入框；
+    而 `delete-account-section.tsx` 的第二步是 `setConfirming(true)` 的纯客户端状态，不打服务端。
+    所以「点不动」＝事件被丢，而不是「服务端拒绝」。
+  - 探针（临时 spec，跑完即删）：同一个页面里 `click()` 后立刻 `count()` 得到 **0**，
+    隔 1 秒再 `click()` 得到 **1**；中间一次 `press("Enter")` 也得到 1。
+    即 hydration 已经完成、handler 是好的，丢的只是 hydration 之前那一次点击。
+    这正是 `e2e/keyboard.spec.ts:33` 写下的机制，和 #51 那次给 click-first spec 上 `retry(动作+断言)` 的同一类。
+  - 为什么 CI 看不见：`ci.yml` 的 e2e job 是 2 个 shard、每 shard 内部单 worker，`E2E_SERVERS` 没设 →
+    `warm-up.ts` 第一行 `if (SERVERS < 2) return;` 直接跳过预热，`/dashboard/settings` 由第一个打到它的用例付冷编译；
+    而 `ci.yml` 用默认的 `retries=2`，重跑时路由已编译好，点击就跟上了。
+    对照：`e2e-parallel.yml` 既预热（`E2E_SERVERS=3`）又 `--retries=0`，所以那条基线也不该红。
+    本机 `retries=0` + 串行 = 复现了 CI 的形状，只是没拿到它那两次重跑。
+  - 待办已开：把 `retry(动作+断言)` 补到 `account-deletion.spec.ts` 的三处 click（新分支，别混进 #135）。
+  - 【同日晚些订正】上面这条待办是重复劳动，已作废。同一处竞态**早就在 #115（`fix/e2e-hydration-click-race`）
+    里修了**：它把这个文件四处点按（含键盘 `Enter` 那一例）统一收成共享的
+    `e2e/support/hydrated.ts` → `actUntilVisible(act, result)`，并用 `e2e/hydrated-click.spec.ts`
+    把「script 延迟 3 秒时点一次确实会被吞」钉住。我在本地另起分支写了一版同形的 `retry(动作+断言)`
+    （`--retries=0` 连跑两次各 5/5 绿），确认重复后整份丢弃、分支已删、**未推送、未建 PR**。
+    失误的形状值得留档：我 spot-check 了 #117、#119 两条的 `files`，两条都没有这个文件，就判了「无人认领」——
+    可 #117 是栈在 #115 之上的，`account-deletion.spec.ts` 的改动落在**它的 base 里**，
+    按 PR 列文件天生看不见。跨栈去重必须按**路径扫全队列**（补扫 43 条：`src/app/api/marketing/**`
+    与任何 `*rate-limit*` 文件都 0 命中，下一项因此是干净的）。
+    上面那段「CI 为什么看不见」（`ci.yml` 串行 ⇒ `warm-up.ts` 直接 return，再由 `retries=2` 兜住）
+    是 #115 的账里没写的读数，留在这里当那条修复的背景。
+- 路由普查（27 条 `src/app/api/**/route.ts`，19 条非 e2e）：第一版扫描器只展开一层调用，
+  于是把守卫藏在小工具里的路由全读成「没守卫」——`contact-messages` 的 `authorized()`、
+  `invitations` 的 `safelyRequirePermission`、两条上传路由的 `guardUploadRequest`
+  （它内部才是 `sameOrigin` + `rateLimit.check` + 体积上限）。改成递归展开本地函数 + 按 `@/lib` 白名单补判据后：
+  17 条 mutating 路由里，**只有 `marketing/confirm` 与 `marketing/unsubscribe` 的 POST 没有限频**，
+  其余各自有 `rateLimit` / cron 密钥 / Stripe 签名 / Mock Bearer。
+  这两条的 token 是 48 位十六进制（≈192 bit）、按 sha256 查、长度和有效期都卡，所以「猜 token」不是问题，
+  问题是任何人都能不限速地打一次「命中即写库」的公开端点——限频要补，另开一条。
+- 这次真正改掉的一处：`email-inbox` 的 `GET` 补 `authOk()`。它是 9 处比较里唯一没要求凭据的一层，
+  而它返回的是「已寄出」邮件原文（含确认/退订链接），且 `?failNext=1` 会在一次读取里改写注入标志位——
+  按副作用看，它比 `POST`/`DELETE` 更该有凭据，之前只是恰好没人写。
+  spec 侧 4 处调用本来就带 `Bearer ${E2E_BEARER}`，所以零改动。
+- 验证：`npx tsc --noEmit` exit 0；`npx vitest run src/app/api/e2e src/lib/testing --project node` 3 文件 / 29 用例绿；
+  `pnpm test:e2e e2e/mail-flow.spec.ts`（3123，`retries=0`）**3 passed**，说明补上的这层没有把用例挡在门外；
+  真实起一台 mock 服务器（3124，`E2E_BEARER_TOKEN=probe-token`）直接打这条 `GET`：无头 **401**、
+  `Bearer `（空头）**401**、正确头 **200**，`?failNext=1` 无头也是 401——这条守卫能用，是量出来的不是推的。
+  探针服务器跑完已停，3100 上那个别的项目的进程不是我起的、也没被我动。
+- 与在审 PR 的重叠：本条只多改 1 个文件（`email-inbox/route.ts` 的 `GET`，+5 行），
+  该文件在 42 条 own-delta 里仍然只有 #112 之外的 0 条命中。
+- 阻塞：无。
+- 风险 / 回滚：开了 Mock 又没配 token 的环境，现在连「读收件箱」也调不到——这正是本分支的判据（没配凭据 ⇒ 任何请求都不合法）。
+  `docs/` 里若有抄了裸 `curl` 读 inbox 的片段需要跟着补一个头，本次已全仓搜过 `email-inbox`：只有 spec 与 `email-send.test.ts`
+  （它只比 URL 拼装，不发请求）。
+- 下一项：(1) ~~把 `retry(动作+断言)` 补到 `account-deletion.spec.ts`~~ —— 已由 #115 覆盖，本条作废（见上面的订正）；
+  (2) 给 `marketing/{confirm,unsubscribe}` 的 POST 补限频（正在做；按路径扫过全部 43 条队列，
+      `src/app/api/marketing/**` 与任何 `*rate-limit*` 文件都 0 命中）；
+  (3) 这次普查量到的形状目前没有任何门禁承载：17 条 mutating 路由里，靠非限频手段挡住的是
+      cron 密钥 3 条、Mock Bearer 7 个文件、Stripe 签名 1 条（含 marketing 两条待补即 13 条），
+      要不要收成一条带豁免清单（每条写「为什么不需要限频」）的 inventory 规则，等 (2) 落地后再定——
+      清单大小约 13 条，远小于 C09 那条 58 点位的账，但同一条「两向对账会把顺手修和台账漂移混成一次红」的成本要先算。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 —【同日晚些订正】上面那条「本地全绿」被自己的 pre-push 钩子驳回了：两条全仓扫描用例卡在 5 秒默认预算上
+
+- 里程碑 / 版本：v0.12.0 安全面收口（承接上一条，同一分支 `fix/e2e-bearer-unset-token`，PR #135）。
+- 状态：已完成，本地全绿，等待合并。
+
+- 起因：上一条写完就推，钩子（`pnpm verify:build`）在 test 这一腿**挡下**了推送——
+  `Test Files 2 failed | 198 passed`，`EXIT=1`，远端还停在 `4c05d3b`。
+  红的是 `admin-client-boundary.test.ts > accepts the committed service-role inventory`（9207ms）
+  与 `db/query-columns.test.ts > 仓库里每个字面量列名都对得上生成的行类型`，两条都是
+  `Error: Test timed out in 5000ms`，不是断言失败。
+- 同一棵树、同一个套件，十几分钟前 `CI=true pnpm check:all` 是全绿（200 文件）——
+  这就是 flake 的定义，不是我改出来的逻辑错。本分支对这两条的净影响只有：
+  我给 `admin-client-boundary.test.ts` 加了 2 条用例，而其中一条也要读全仓。
+- 空闲复测（`npx vitest run <两个文件> --project node`）：那两条**单条**分别 4570ms / 4439ms，
+  也就是说默认 5 秒预算只剩 10% 余量；套件里还有 2858ms / 3216ms 两条在同一悬崖边上。
+  并发跑 jsdom 用例时同一条测到 9207ms ⇒ 任何一次推送都可能随机撞上它。
+- 修法：`vitest.config.ts` 的 **node project** 单独 `testTimeout: 20_000`，注释里写清实测数字与判据。
+  只放宽 node 的理由是量出来的：`grep -rln readFileSync src --include="*.test.tsx" --include="*.dom.test.ts"`
+  **返回空**——jsdom 项目里没有一个用例读盘，它那条 5 秒仍然是「交互回归」的有效信号，不该跟着一起松。
+  这也是仓库既有的立场：config 顶部那段注释说得很明白，之前是靠 `maxWorkers: 2` 而不是靠放松断言来消超时。
+- 正向对照（证明这个开关真的在管事，而不是我改了个没人读的文件）：临时放一条睡 7 秒的用例进 node 项目，
+  `npx vitest run --project node` → `✓ … 7003ms`（默认 5 秒下必然红），跑完删除，`git status` 只剩 config 一处改动。
+- 验证：`pnpm test` **EXIT=0**，`Test Files 200 passed`、`Tests 2299 passed (2299)`——就是钩子红掉的那一腿。
+- 与在审 PR 的重叠：把 43 条 open PR 的 own-delta（`git diff --name-only <baseRefOid> <headRefOid>`，
+  43/43 个 oid 本地都取得到、分母打印过）全扫了一遍，**碰 `vitest.config.ts` 的有 0 条**，
+  这一行配置不会和队列里任何一条抢。
+- 阻塞：无。风险 / 回滚：一行配置，revert 即回滚；放宽的是超时预算，不是任何断言的判据。
+- 更新时间：2026-09-24。

@@ -217,6 +217,50 @@ export function handler() { return createAdminClient(); }
     expect(codes(sourceFiles, [entry])).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
   });
 
+  it("一处集中守卫就算等价证据，不需要每条路由各自内联读环境变量", () => {
+    const sourceFiles = [
+      source(
+        "src/lib/repositories/example.ts",
+        `export async function handler(request: Request) {
+  if (!isMockEnabled) return new Response(null, { status: 404 });
+  if (!e2eBearerAuthorized(request.headers.get("authorization"))) return new Response(null, { status: 401 });
+  return createAdminClient().from("profiles").select("id");
+}
+`,
+      ),
+    ];
+    const entry = inventory({
+      surface: "e2e-mock-route",
+      trust: {
+        kind: "mock-bearer",
+        evidence: ["isMockEnabled", ["E2E_BEARER_TOKEN", "e2eBearerAuthorized"]],
+      },
+    });
+    expect(codes(sourceFiles, [entry])).toEqual([]);
+  });
+
+  it("备选证据也不能白拿：两个写法都不在时仍然报缺失", () => {
+    const sourceFiles = [
+      source(
+        "src/lib/repositories/example.ts",
+        `export async function handler() {
+  if (!isMockEnabled) return new Response(null, { status: 404 });
+  return createAdminClient().from("profiles").select("id");
+}
+`,
+      ),
+    ];
+    const entry = inventory({
+      surface: "e2e-mock-route",
+      trust: {
+        kind: "mock-bearer",
+        evidence: ["isMockEnabled", ["E2E_BEARER_TOKEN", "e2eBearerAuthorized"]],
+      },
+    });
+    const found = codes(sourceFiles, [entry]);
+    expect(found).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
+  });
+
   it("accepts the committed service-role inventory", () => {
     const srcDir = path.join(process.cwd(), "src");
     const sourceFiles = fs

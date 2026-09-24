@@ -14,6 +14,7 @@
 import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { isMockEnabled, getMockUploadFailNext, setMockUploadFailNext } from "@/lib/mock";
+import { e2eBearerAuthorized } from "@/lib/testing/e2e-bearer";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,7 @@ function unauthorized() {
 export async function POST(request: NextRequest) {
   if (!isMockEnabled) return jsonNoStore({ error: "Not found" }, { status: 404 });
 
-  const expected = `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}`;
-  if (!expected || request.headers.get("authorization") !== expected) return unauthorized();
+  if (!e2eBearerAuthorized(request.headers.get("authorization"))) return unauthorized();
 
   let failNext = 0;
   try {
@@ -48,8 +48,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   if (!isMockEnabled) return jsonNoStore({ error: "Not found" }, { status: 404 });
 
-  const expected = `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}`;
-  if (!expected || request.headers.get("authorization") !== expected) return unauthorized();
+  if (!e2eBearerAuthorized(request.headers.get("authorization"))) return unauthorized();
 
   return jsonNoStore({ ok: true, failNext: getMockUploadFailNext() });
 }

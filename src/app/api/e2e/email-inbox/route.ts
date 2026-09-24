@@ -13,6 +13,7 @@
 import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { isMockEnabled } from "@/lib/mock";
+import { e2eBearerAuthorized } from "@/lib/testing/e2e-bearer";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,7 @@ function authOk(request: NextRequest): boolean {
   const resendOk =
     Boolean(process.env.RESEND_API_KEY) && auth === `Bearer ${process.env.RESEND_API_KEY}`;
   // E2E 调试接口（DELETE/注入）：spec 持有 E2E_BEARER_TOKEN，与 RESEND_API_KEY 等价可信。
-  const e2eOk =
-    Boolean(process.env.E2E_BEARER_TOKEN) && auth === `Bearer ${process.env.E2E_BEARER_TOKEN}`;
+  const e2eOk = e2eBearerAuthorized(auth);
   return resendOk || e2eOk;
 }
 
@@ -74,6 +74,11 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   if (!isMockEnabled) {
     return jsonNoStore({ error: "Not found" }, { status: 404 });
+  }
+  // 收件箱里是「已发送」邮件的原文（含确认/退订链接），读取本身也是敏感操作；
+  // ?failNext=1 还会改写服务器的注入标志位，所以 GET 与 POST/DELETE 同级。
+  if (!authOk(request)) {
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
   const search = request.nextUrl.searchParams;
   const to = search.get("to") ?? "";
