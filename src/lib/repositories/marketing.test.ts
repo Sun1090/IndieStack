@@ -95,6 +95,27 @@ describe("confirmSubscription()/unsubscribeByToken()", () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
     await expect(confirmSubscription("a".repeat(48))).rejects.toThrow("db");
   });
+
+  // 这两个入口挂在公开路由上，token 直接来自查询串：形状闸门必须在建 admin client 之前拦下，
+  // 否则一次垃圾请求就换一个 service-role 连接。「不建连接」是本用例唯一的断言对象。
+  it("形状不合的 token 直接 false，不建 admin client", async () => {
+    createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ data: [{ id: "m1" }] })));
+    const bad: unknown[] = ["", "a".repeat(15), "a".repeat(257), undefined, 12345];
+    for (const value of bad) {
+      await expect(confirmSubscription(value as string)).resolves.toBe(false);
+      await expect(unsubscribeByToken(value as string)).resolves.toBe(false);
+    }
+    expect(createAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("长度边界 16 与 256 算合法，照常去查库", async () => {
+    for (const length of [16, 256]) {
+      const chain = chainMock({ data: [{ id: "m1" }] });
+      createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+      await expect(confirmSubscription("a".repeat(length))).resolves.toBe(true);
+    }
+    expect(createAdminClientMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("deactivateSubscription()", () => {

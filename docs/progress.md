@@ -1181,6 +1181,13 @@
      `.gt("token_expires_at", …)`，退订必须不带。
   4. 文档三处同口径：`docs-site/email.md` + `docs-site/zh-CN/email.md` 那条有效期说明改写，
      `docs/design/email-templates.md` 的 A05 段新增一条判据（下次实现者读得到「管谁」）。
+  5. 【2026-09-25 补记】同一函数里剩下的那条未覆盖分支也补上了：`updateStatusByToken()` 开头的
+     形状闸门（`typeof` / `< 16` / `> 256` → 直接 `false`）此前**两侧都没用例**，判据来自「把这份
+     报告里每个守卫的起始行对一遍分支覆盖」（44 条线索 → 5 条有未覆盖分支，其中 2 条已分别归 #140
+     与这条）。这两个入口挂在公开路由上、token 直接来自查询串，闸门唯一的作用是让一次垃圾请求
+     换不到一个 service-role 连接，所以用例断言的是 `createAdminClient` **一次都没被调用**，
+     而不是返回值。`marketing.test.ts` 现在 13 条（上面那句「10 → 11 条」是本条 commit 时的历史值，
+     别把它当现状读）。
 - 变更文件：`src/lib/repositories/marketing.ts`、`src/lib/repositories/marketing.test.ts`、
   `docs-site/email.md`、`docs-site/zh-CN/email.md`、`docs/design/email-templates.md`、
   `CHANGELOG.md`、本条目。
@@ -1191,6 +1198,10 @@
   - `vitest run src/lib/repositories/marketing.test.ts` → **11 passed**；`pnpm -s type-check` → 0；
   - 本机 push 前全量：`pnpm -s lint` / `pnpm -s type-check` → 0；`pnpm -s test` →
     **199 files / 2292 tests passed**；`CI=true pnpm -s check:all` → 0（「全部校验通过」）；`pnpm build` → 0。
+  - 【2026-09-25 补记】新用例的两个变异探针：删掉整行形状闸门 → `形状不合的 token 直接 false，不建
+    admin client` 红在 `AssertionError: expected true to be false`；把 `< 16` 改成 `<= 16` →
+    `长度边界 16 与 256 算合法，照常去查库` 红在同一条 `expected false to be true`。两次探针后
+    `git checkout -- src/lib/repositories/marketing.ts` 还原，`git status` 只剩测试文件一处改动。
 - 阻塞 / 风险：真实库里是否真有人被影响，取决于有没有人在跑 `listSubscribedEmails()`——
   本仓内没有任何调用方（它是模板交给用户的发送入口，`admin-client-boundary` 已登记），
   所以这条的严重性是「模板交付的合规语义」而不是「当前实例正在漏发」。
