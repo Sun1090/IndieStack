@@ -204,6 +204,23 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **CSV 导出把一个字段里的裸 CR 当成行界**：`toCsvString()` 的字段转义判的是
+  `includes(",") || includes('"') || includes("\n")`——函数头注释写着「处理包含逗号、引号、
+  换行符的情况」，而 CR 也是换行符。于是只含 `\r`（不含 `\n`）的字段**原样输出、不加引号**；
+  RFC 4180 与表格软件都按 CR 结束一行，所以那一格在打开的表里会变成两行——写入方能在自己的
+  字段里凭空造出一行记录。改成 `/["\r\n,]/`。
+  探针读数：`toCsvString([{ v: "a\rb" }])` 修复前是 `v\na\rb`，修复后是 `v\n"a\rb"`；
+  `"a\r\nb"` 因为含 `\n` 本来就加引号（补了一条用例钉住「两种换行都算」），另补一条把
+  「先加 `'` 防公式注入、再因 CR 整体加引号」的两步顺序钉住（`"\r=cmd"` → `"'\r=cmd"`）。
+  **说清影响面**：本仓库现有的两个导出点（管理端审计日志、分析时间线）导出的列是
+  `action` / `entity_type` / `entity_id` / 时间戳，全是代码常量或 uuid，而请求路径里的裸 CR
+  也过不了 HTTP 请求行解析，所以**今天这里没有一个可利用的入口**——这条补的是模板对外
+  提供的那个工具的契约，不是扑火。
+  顺带记一条测试质量观察：既有用例里已经有一行 `it.each` 用了 `"\r=cmd"` 这个变体，
+  但它的断言是 `expect(csv).toContain("'")`，**修复前后都绿**——带 CR 的样本出现在测试里
+  并不等于 CR 的行为被断言过。四条变异（去掉 CR / 去掉逗号 / 去掉引号 / 给注入前缀正则去掉锚）
+  各自红在对应的用例上，跑完逐字节还原。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

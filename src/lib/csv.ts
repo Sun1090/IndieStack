@@ -19,14 +19,16 @@ export function toCsvString(data: Record<string, unknown>[]): string {
 }
 
 /**
- * 转义 CSV 字段（处理包含逗号、引号、换行符的情况）
+ * 转义 CSV 字段（处理包含逗号、引号、**任意一种**换行符的情况）
  * 同时防御 CSV 公式注入：以 = + - @ 开头的字段加前缀单引号
  */
 function escapeCsvField(value: string): string {
   if (/^[=+\-@]/.test(value.trimStart())) {
     value = `'${value}`;
   }
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+  // CR 单独出现时也算行界：RFC 4180 要求 CR / LF / 引号任一命中都要给整个字段加引号，
+  // 否则表格软件把裸 CR 读成一行的结束，一个字段就能在表里造出额外一行。
+  if (/["\r\n,]/.test(value)) {
     return '"' + value.replace(/"/g, '""') + '"';
   }
   return value;
