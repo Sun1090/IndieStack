@@ -1179,22 +1179,39 @@
      于是这台设备永远登记不上，而 dashboard 布局的每次心跳各留一条 `databaseError`。
   5. **已知残留，写明不动**：采信的是 `x-forwarded-for` 的最左段，即客户端自己写的那一段；形状修好后
      用一个*合法*假 IP 换桶仍然可行。收紧（改取最右段 / 配置受信代理数）是按部署拓扑定信任模型的决定。
+  6. **【当日订正】上一条 PR 的第一版只关了一半**：形状闸门当时只装在 `x-forwarded-for` 那一支，
+     `x-real-ip` 走的是 `realIp ?? (…)`——原样返回、不判形状，且 `??` 只挡 `null`/`undefined`，
+     所以 `curl -H 'X-Real-IP: evil:'` 仍能把任意字符串变成桶键，空值头会被当成「一个合法身份」
+     而不是「没有身份」。先加用例证明它红（`expected 'evil:' to be 'anonymous'`），再改成
+     **两支都过闸门、不合格退回下一支、两支都不合格才是 `anonymous`**。上面第 5 点的措辞据此改写：
+     现在两个头都在闸门之后。
 - 验证命令与结果：
   1. `npx vitest run src/lib/rate-limit.test.ts src/lib/actions/sessions.test.ts` → **26 passed**
-     （差分用例的语料 74 例，两侧各 ≥15 例，所以「与 oracle 只剩 1 例点名分歧」不是空断言）。
-  2. 五道变异，各自红在该红的用例上，跑完文件**逐字节还原**（`restored byte-identical: true`）：
+     （差分用例的语料 74 例，两侧各 ≥15 例，所以「与 oracle 只剩 1 例点名分歧」不是空断言）；
+     订正之后加上 `login-attempts.test.ts` 一起跑 → **34 passed**。
+  2. 七道变异，各自红在该红的用例上，跑完文件**逐字节还原**（`restored byte-identical: true`）：
      M1 退回旧判据 → 4 红（差分、畸形形状、桶键退化、`inet` 存 null）；M2 删掉「`::` 最多一次」→ 差分红；
      M3 压缩上限 7→8 组 → 2 红；M4 未压缩 8 组→至少 8 组 → 差分红；M5 `clientIpFromHeaders` 不做形状判定
      → **只有桶键那条红**，`inet` 那条照旧绿——因为 `sessions.ts` 自己还会再判一次，列保护与桶键保护是
-     两道独立闸门（这一条是预期的绿，写进变异脚本的 `expectGreen` 而不是靠事后解释）。
+     两道独立闸门（这一条是预期的绿，写进变异脚本的 `expectGreen` 而不是靠事后解释）；
+     M6 `if (realIp) return realIp`（订正前的形状）→ 只红在新增的那条 `x-real-ip` 用例；
+     M7 第一支不合格就放弃、不再回落 XFF → 4 红。
+     M7 的 `expectRed` 里我原本还写了「畸形的 x-forwarded-for 退化成 anonymous」，它**没有红，而且不该红**：
+     那条断言判的是「畸形值不成为键」，一个永远返回 `anonymous` 的实现恰好满足它——是我的期望选错了用例，
+     真正钉住回落支的是 IPv6/多段那两条。
   3. **变异查出两处我自己的错**：① 第一版实现里 `if (groups.some((g) => g === "")) return false;` 是死代码
-     ——空段在下面的 `else return false` 同样落到拒绝，删掉后 26 条照旧绿（M2 当时"套件全绿"就是它的信号）；
+     ——空段在下面的 `else return false` 同样落到拒绝，删掉后 26 条照旧绿（M2 当时「套件全绿」就是它的信号）；
      ② 语料原本没有任何值能钉住「`::` 最多一次」，所以补了 `"1:2:3:4::5:6:7::8"`（`isIP()` 判 0，
      去掉上限后宽度正好凑到 8 组会被判真）。
   4. `pnpm type-check` / `pnpm lint` / `node scripts/check-changelog.js` / 台账门禁；
      推送时 `.husky/pre-push` 跑完整 `verify:build`（lint + type-check + test + build）。
+  5. CI（#140 第一次推送的那个 sha）：**11 项作业全绿**（含 `Build`、`E2E (Playwright)`、两个 shard），
+     红的两项是 `Vercel – indie-stack` 配额；`Vercel – indie-stack-docs-site` 当次**已经转绿**，
+     也就是 docs-site 项目的配额窗口在 09-24 13:4xZ 前后重新放行——一红一绿是配额状态而不是代码结论。
+     本条订正重推之后需要重新看一次。
 - 阻塞：无（不依赖凭据、不依赖合并）。
-- 风险 / 回滚：只收紧形状，没动额度、窗口与桶键算法；若某个代理确实往 `x-real-ip` 里写非 IP 值，
-  那个桶会从「任意字符串」变成 `anonymous`（与两个头都缺省时同一个桶）——回滚单位是一个 commit。
+- 风险 / 回滚：只收紧形状，没动额度、窗口与桶键算法。行为变化是：某个头写了非 IP 形态的值时，
+  先看另一个头（`x-real-ip` 坏了会退回 `x-forwarded-for`），两个都不合格才落到 `anonymous`
+  （与两个头都缺省时同一个桶）——回滚单位是一个 commit。
 - 下一项：等用户拍板「`x-forwarded-for` 的信任模型」（取最左还是最右、要不要显式配置受信代理数）。
 - 更新时间：2026-09-24（UTC 13:4x 前后）。

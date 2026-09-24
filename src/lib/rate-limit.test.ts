@@ -206,4 +206,16 @@ describe("clientIpFromHeaders()", () => {
   it("两个都缺省时是 anonymous", () => {
     expect(clientIpFromHeaders(new Headers())).toBe("anonymous");
   });
+
+  it("畸形的 x-real-ip 同样不算身份（直连部署时这个头也是客户端写的）", () => {
+    // 形状闸门此前只管 `x-forwarded-for` 那一支：`x-real-ip: evil:` 会原样变成桶键，
+    // 而 `x-real-ip: ""` 走的是 `?? `（只挡 null/undefined），空串也会当成一个身份。
+    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "evil:" }))).toBe("anonymous");
+    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "" }))).toBe("anonymous");
+    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "   " }))).toBe("anonymous");
+    // 这一支不合格时退回下一支，而不是直接放弃：代理写坏了 x-real-ip 不代表 XFF 也不可信。
+    expect(
+      clientIpFromHeaders(new Headers({ "x-real-ip": "evil:", "x-forwarded-for": "198.51.100.7" })),
+    ).toBe("198.51.100.7");
+  });
 });

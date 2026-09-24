@@ -57,19 +57,23 @@ export function isIpLike(value: string): boolean {
 
 /**
  * 从请求头提取客户端 IP（服务端 action 与 API 路由共用）：
- * 优先信任代理/边缘节点写入的 x-real-ip（客户端无法伪造）；
- * x-forwarded-for 仅在该值形如合法 IP（IPv4/IPv6）时采信，避免客户端伪造
- * 任意字符串或注入畸形值污染限流桶 key。
+ * 先看代理/边缘节点写的 x-real-ip，再退回 x-forwarded-for 的最左一段；**两支都要过
+ * `isIpLike()` 这道形状闸门**，不合格就继续退回下一支，两支都不合格才是 `"anonymous"`。
  *
- * 采信的那一段是 `x-forwarded-for` 的**最左**值，也就是客户端自己写的那一个——所以这一层只保证
- * 「key 一定是一个 IP 形状的字符串」，不保证它是真的来源地址：直连（没有代理写 x-real-ip）时
- * 任何人都能用 `X-Forwarded-For: 1.2.3.4` 换一个桶。要按部署拓扑收紧（改取最右段、或要求显式
- * 配置受信代理），是一个需要产品/运维拍板的决定，不在这里顺手改。
+ * 为什么 x-real-ip 也要判：在 Vercel 上它由边缘节点写、客户端改不动，但直连部署（本地、容器、
+ * 没配 `proxy_set_header X-Real-IP` 的反代）时它同样是客户端字符串——把形状闸门只装在回落支上，
+ * `curl -H 'X-Real-IP: evil:'` 就能原样成为桶键。空串同理：`??` 只挡 `null`/`undefined`，
+ * 一个被 trim 成空串的头会被当成一个合法身份。
+ *
+ * 闸门保证的是「key 一定是一个 IP 形状的字符串」，**不保证它是真的来源地址**：直连时任何人都能
+ * 用 `X-Forwarded-For: 1.2.3.4`（换一个合法假 IP）换一个桶。要收紧就是改信任模型——取最右段、
+ * 或要求显式配置受信代理跳数——那是按部署拓扑定的决定，不在这里顺手改（已钉成用例）。
  */
 export function clientIpFromHeaders(headers: Headers): string {
   const realIp = headers.get("x-real-ip")?.trim();
+  if (realIp && isIpLike(realIp)) return realIp;
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return realIp ?? (forwarded && isIpLike(forwarded) ? forwarded : "anonymous");
+  return forwarded && isIpLike(forwarded) ? forwarded : "anonymous";
 }
 
 function startCleanup(hits: Map<string, RateLimitEntry>): void {

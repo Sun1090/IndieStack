@@ -217,6 +217,12 @@ All notable changes to IndieStack will be documented in this file.
   合计出现 0 次），所以它一直不会自己变红。现在判据不自己发明：按 `isIP()` 逐例差分，唯一分歧点名放行
   （IPv6 zone id `fe80::1%eth0` 判否——代理不会写进转发头，且它进 `inet` 列的形态存疑）。
   没有 import `node:net`：本模块被 `@/lib/actions/*` 引用而那些文件被客户端组件 import。
+  **【当日订正 · 本条第一版漏了一半】** 形状闸门原本只装在 `x-forwarded-for` 那一支上：
+  `clientIpFromHeaders()` 写的是 `return realIp ?? (forwarded && isIpLike(forwarded) ? … : "anonymous")`，
+  也就是 **`x-real-ip` 原样返回、根本不判形状**，而 `??` 只挡 `null`/`undefined`——所以
+  `curl -H 'X-Real-IP: evil:'` 依旧能把任意字符串变成桶键，一个空值头（`x-real-ip:`）也会被当成
+  「一个合法身份」而不是「没有身份」。先写用例证明它是红的（`expected 'evil:' to be 'anonymous'`），
+  再把两支都接到闸门上：不合格就退回下一支，两支都不合格才是 `anonymous`。
   **残留照实记录**：采信的是 `x-forwarded-for` 的**最左**段，也就是客户端自己写的那一段——形状修好之后，
   用一个*合法*的假 IP 换桶依然可行；要收紧（改取最右段或要求显式配置受信代理）属于按部署拓扑定的
   信任模型，已单独写成用例钉住当前行为，改动必须连带改那条断言。
