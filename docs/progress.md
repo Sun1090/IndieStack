@@ -1153,3 +1153,80 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — C08 家族里最后一处「没有 PR 认领」的 error 抹除：PermissionGate 读不到角色时落到地板
+
+- 里程碑 / 版本：v0.12.0；C08（把查询结果断言成没有 `error` 通道）的补漏。
+- 状态：DONE。分支：`fix/permission-gate-fail-closed`（本条目所在 PR），基线 `origin/main` = `ad4b0299`。
+- 起点是一次数口径明确的清点，而不是一条灵感：把 `src/**`（排除测试）里每一处 `.single()` 映射到
+  52 条 open PR 的 diff 文件清单上。grep 命中 **32 处 / 22 个文件**，其中 `src/lib/mock/index.ts` 的
+  2 处是 mock 客户端自己的 `single()` 实现与一条注释、不是查询点，扣掉是 **30 处 / 21 文件**；
+  这 30 处里 7 处所在文件没有任何 open PR 碰过（含 1 处测试替身）。但「无主」不等于「缺陷」——真正的判据是这一次
+  查询的 `error` 通道有没有被类型断言抹掉，于是换一个检测器再量：**14 处抹除**，落在 10 个文件；
+  除 `permission-gate.tsx` 的 2 处之外，另外 12 处全部有主（#92 / #94 / #98 / #101 / #107）。
+  本条改掉那 2 处，改后 12 处、**无主的抹除** 0 处。无主的 `.single()` 查询点还剩 4 处
+  （`repositories/profiles.ts` 2、`hooks/use-is-admin.ts` 1、`repositories/notifications.ts` 1，
+  另有 1 处在 `repositories/test-helpers.ts` 是测试替身不是应用代码），逐个看过：`profiles.ts`
+  两处都是 `const { data, error } = await`、`notifications.ts` 插入后 `if (error) throw`，
+  `use-is-admin.ts` 是下面那条失明形态、失败方向本来就是低的。
+- 采信这个计数之前先做阳性对照：把 `ad4b0299` 的 `permission-gate.tsx` 覆盖回工作树重跑，
+  它准确报出 90、174 两处（正是那两处角色读取），总数从 14 回到 12 的差值等于本 PR 删掉的 2 处；
+  随后 `git checkout --` 还原并确认工作树干净。**没有这一步，「改后无主 0 处」这句话毫无价值**——
+  一个从不报警的检测器同样会报 0。
+- 但这把尺量的是**下界**，两个低估来源都实测过、不是猜的：一是它只认链尾断言，把类型写在回调参数上的
+  `.then(({ data }: { … }) => …)` 形态不在它眼里；二是把 `error: null` 写进断言的**更强**抹除，
+  在第一版判据里因为「字面上出现了 error」被放过（`src/app/dashboard/page.tsx:59` 就是一例；
+  这一子形态 #92 的门禁已经把它当抹除处理）。为覆盖第一个形态改写的那版检测器还给了我一个反例：
+  它在**本 PR 修好后的形状**上报假阳性——多行断言里内层 `{ role: string }` 的右花括号提前截断了
+  扫描，把已经绑了 `error` 的两处判成抹除（14→15，且正好包含刚改掉的两处）。两版对同一份代码给出
+  不同数字时以能过对照的那版为准。所以 **14 / 12 不是普查**，本条的结论只在「无主的链尾断言」
+  这个口径下成立——那个口径下的 2 处已清零。
+- 那条失明当场补齐量完，不留成口头保证：全仓（排除测试与 mock）`.then(` 出现 8 处，其中把 `data`
+  解构出来并就地写类型标注的 **2 处**——`src/hooks/use-is-admin.ts:29`（失败时 `isAdmin` 取 `false`）
+  与 `src/app/auth/reset-password/reset-password-form.tsx:56`（读不到 session 就显示「请重新登录」，
+  且该文件由 #119 认领）。两处失败方向都已经是低的，**没有第二处本条这种缺陷**，也就不顺手改：
+  改 `use-is-admin.ts` 只会把一句已经正确的代码绕一圈。
+- 缺陷本身：两处写成 `parseRole(profile?.role) ?? "member"`，且断言里根本没有 `error` 这一项。
+  看上去像「未知角色降级为普通成员」，但 `profiles.role` 的取值域**从迁移 002 起**就是
+  `super_admin / admin / member / viewer`（001 的 `'user' | 'admin'` 早被 002 drop + add 换掉，
+  遗留 `'user'` 行也被 002 `update` 成 `'member'`，默认值同步改掉）。于是 `parseRole()` 返回
+  `undefined` 只可能是「查询失败」或「没有 profile 行」，一次 DB 抖动给到 50 档、同组件 `catch` 分支
+  给 10 档，两条失败路径答案不同。
+- 第一版注释在这里写错过一次，记下来：我当时引的是 001 的域，并据此断言 `'user' → member` 是
+  **必需的映射**、还为此加了一个 `'user'` 分支。回头查 002 才发现那个分支不可达——
+  留着它等于把同一个过时认知继续写进代码。最终删掉分支、注释改引 002，并顺手改掉三处仍在复述
+  001 旧域的文档（`docs/architecture/06-database.md` 的 ER 图与字段表、`docs-site/supabase.md`
+  与 `docs-site/zh-CN/supabase.md` 的 profiles 段），外加一处把 `viewer` 写成团队角色的
+  `team_members` 段（`TeamRole` 只有 `owner / admin / member`，001 line 144 的 check 同样如此）。
+- 一处**没动**的同族陈旧片段：`docs-site/zh-CN/auth-flow.md` 里那段 `create table public.profiles
+  … default 'user' check (role in ('user','admin'))` 同样停留在 001，但该文件由 #144 拥有，
+  按队列卫生规则不跨 PR 抢改，留给 #144 落地后再补。同文件的 `### teams` 项目符号列表也把
+  `viewer` 混在团队角色里，属意图片段而非字段域声明，未改、只登记为线索。
+- 测试：`roles.test.ts` 新增 4 条（纯函数四态：error 优先、正常角色透传、无 error 但读不出角色、
+  遗留 `'user'`），新建 `permission-gate.test.tsx` 7 条。**该组件此前零测试**——这正是它能带着
+  一句站不住的 justified 豁免活到今天的原因，也和 #103（44 条「无测试的守卫」线索）接上。
+  组件测试刻意不走纯函数：mock `@/lib/supabase/client` 的查询链，从渲染结果反推档位。
+- 变异核对 4 项，全部被抓，且逐个确认红的是**目标用例**：
+  1. 删掉 `resolveProfileRole` 的 `error` 分支 → 红 3 条（纯函数 1 + 组件 1 + hook 1）。
+  2. 兜底从 `viewer` 改回 `member` → 红 2 条（纯函数「读不出角色」组 + 遗留 `'user'` 那条）。
+  3. 只把 `PermissionGate` 调用点退回「不绑 error」→ **只红 `PermissionGate > 查询报错时不放行`**。
+  4. 只把 `usePermissions` 调用点退回同样写法 → **只红 `usePermissions > 读不出答案时…同一个地板`**。
+  3、4 是分开的两次探针，各自还原；这一步的意义在于：两个调用点各自被钉住，纯函数测得再全也不能
+  证明调用点真的读了 `error`。
+- 严重性边界（写清楚，免得下次当漏洞处理）：**这不是提权通路**。授权仍由服务端说了算
+  （`requireRole` / RLS / Action 守卫），客户端档位只决定 UI 露不露入口。红的是契约：
+  组件自己声明「读不到就给最低权限」，代码给的不是。
+- 与 #92 的耦合（两条 PR 正文都写了）：#92 的 `src/lib/security/query-error-channel.ts` 豁免清单里
+  `permission-gate.tsx` 是一条 `sites: 2` 的 **justified**，理由句 `a failed role read resolves to
+  the least privileged role on purpose` 描述的是意图、不是代码。本 PR 让那句话变成真的，代价是
+  豁免不再需要：**若本 PR 先合，#92 落地时该条要删（sites 2 → 0）**，否则 #92 门禁的反向计数
+  会因为一条过期豁免而红。本地不会红——那份清单在 #92 的分支上，main 还没有这个门禁。
+- 验证（一次性跑完再推，只占一个 preview build）：`pnpm lint` exit 0；`pnpm type-check` exit 0；
+  `pnpm test` → 200 文件 / 2302 用例全绿；`CI=true pnpm check:all` → exit 0「✅ 全部校验通过」
+  （37 个门禁）；`pnpm build` exit 0。本轮第一次 `pnpm test` 有 2 条红，都是 CHANGELOG 结构校验：
+  我的条目里有一行以 `#92` 开头，被解析成标题层级——**是门禁抓对了写法**，改成 `PR #92` 后转绿。
+- 下一项：无主的链尾断言已清零、`.then` 形态已扫完，C08 剩余 12 处全部有主（#92 / #94 / #98 /
+  #101 / #107），等它们的 PR 落地；把它们对上号正是 #92 那份豁免清单要做的事。
+- 风险 / 回滚：回滚只需还原本 PR 两个源文件；不改任何服务端判定，最坏影响是数据库故障期间
+  客户端 UI 少露出一些入口（这正是想要的行为）。
+- 更新时间：2026-09-25。

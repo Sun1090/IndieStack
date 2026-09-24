@@ -285,6 +285,25 @@ All notable changes to IndieStack will be documented in this file.
   代码确实没往下走）；变异核对 4 项全部被抓，且逐个确认是**目标用例**变红而非别处连坐。
   全库还有 **29 处**同形状的「把查询结果断言成没有 error 通道」的写法（含 `lib/auth/guards.ts`
   与 `components/shared/permission-gate.tsx` 里的角色检查），已作为门禁候选登记在 roadmap。
+- **`PermissionGate` 读不出角色时不再凭空给到 member**：`permission-gate.tsx` 的两处角色读取写成
+  `parseRole(profile?.role) ?? "member"`，而那次查询的 `error` 被一个只声明 `data` 的类型断言挡在门外。
+  单看这句像是「未知角色降级为普通用户」，但 `profiles.role` 的取值域从迁移 002 起就是
+  `super_admin / admin / member / viewer`（002 顺手把遗留的 `'user'` 行改成 `'member'`，并把默认值也换掉），
+  所以 `parseRole()` 返回 `undefined` **只可能是查询失败或压根没有 profile 行**：一次数据库抖动给到 50 档
+  （连带打开 `user:write`、`project:write`、`billing:read`），而同一个组件的 `catch` 分支给的是地板 10 档。
+  PR #92 的豁免清单把这两处判成 `justified: … resolves to the least privileged role on purpose`——
+  那句说的是意图，不是代码。现在规则收成 `src/lib/auth/roles.ts` 里的 `resolveProfileRole({ error, role })`：
+  读到什么就是什么，读不出答案一律 `viewer`，两个调用点各自真的绑上 `error`。
+  新增 4 条用例（`roles.test.ts`）+ 新建 `permission-gate.test.tsx` 7 条；该组件此前**零测试**，
+  这正是它带着一句站不住的 justified 豁免活到今天的缘故。变异核对 4 项全部被抓：删掉 `error` 分支红 3 条、
+  兜底改回 `member` 红 2 条、把两个调用点分别退回「不读 error」**各自只红自己那一条**——
+  50/10 档的分歧钉在两处调用点上，不只是钉在那个纯函数上。
+  说清严重性边界：**这不是一条提权通路**，授权仍在服务端（`requireRole` / RLS / Action 守卫），
+  红的是「组件自己的契约说读不到就给最低权限，代码给的不是」，后果是数据库抖动时 UI 多露出几个入口。
+  顺带修掉三处仍在复述 001 旧域（`'user' | 'admin'`）的角色说明，和一处把 `viewer` 写成团队角色的
+  `team_members` 段落（`TeamRole` 只有 `owner / admin / member`，迁移 001 的 check 同样如此）。
+  **与 #92 的耦合**：本条若先合，#92 的 `ERROR_CHANNEL_EXEMPTIONS` 里 `permission-gate.tsx` 那条要删
+  （sites 2 → 0），否则那条门禁的反向计数会红。
 - **Push 重试从此有一道写失败也拖不上的上界**：`push-retry.ts` 的终止条件只有
   `attempt_count >= PUSH_MAX_ATTEMPTS`，而这个计数器**只有在重排回执写成功时才会前进**。
   `markPushDeliveryRetry` 抛错时旧代码只 `reportError` 一句然后照样 `return "retried"`——行仍是
