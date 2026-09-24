@@ -70,6 +70,7 @@
   "messageRequired": "请填写内容",
   "mfaEnrollFailed": "开启失败",
   "mfaInvalidCode": "验证码错误",
+  "recoveryUnenrollFailed": "没能解绑验证器，本次恢复码未扣减，请稍后重试。",
   "sessionNotFound": "未找到该会话，可能已被吊销。",
   "uploadCancelled": "上传已取消。",
   "confirmPhraseMismatch": "确认文本不匹配。",

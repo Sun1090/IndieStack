@@ -43,19 +43,26 @@ function mockServerClient(user: object | null = USER) {
   });
 }
 
-function mockAdminMfa(factors: Array<{ id: string; factor_type: string }> = []) {
-  const deleteFactor = vi.fn().mockResolvedValue({ data: {}, error: null });
-  createAdminClientMock.mockReturnValue({
-    auth: {
-      admin: {
-        mfa: {
-          listFactors: vi.fn().mockResolvedValue({ data: { factors }, error: null }),
-          deleteFactor,
-        },
-      },
-    },
+/**
+ * 管理端口的 Auth API 不把失败抛出来，只把它放在返回值的 `error` 上（C09）。
+ * `failure` 用来注入这两种失败：`list` = 列因子这一步失败，`delete` = 删因子这一步失败。
+ */
+function mockAdminMfa(
+  factors: Array<{ id: string; factor_type: string }> = [],
+  failure: { list?: boolean; delete?: boolean } = {},
+) {
+  const deleteFactor = vi.fn().mockResolvedValue({
+    data: {},
+    error: failure.delete ? { message: "delete factor failed" } : null,
   });
-  return { deleteFactor };
+  const listFactors = vi.fn().mockResolvedValue({
+    data: failure.list ? null : { factors },
+    error: failure.list ? { message: "list factors failed" } : null,
+  });
+  createAdminClientMock.mockReturnValue({
+    auth: { admin: { mfa: { listFactors, deleteFactor } } },
+  });
+  return { deleteFactor, listFactors };
 }
 
 beforeEach(() => {
@@ -180,5 +187,49 @@ describe("redeemRecoveryCode()", () => {
       ok: false,
       error: "mfaInvalidCode",
     });
+  });
+
+  it("列因子失败时回答解绑失败，并且不扣恢复码", async () => {
+    mockServerClient();
+    repo.listUnusedRecoveryCodes.mockResolvedValue([
+      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+    ]);
+    repo.consumeRecoveryCode.mockResolvedValue(true);
+    mockAdminMfa([], { list: true });
+    await expect(redeemRecoveryCode(PLAINTEXT)).resolves.toEqual({
+      ok: false,
+      error: "recoveryUnenrollFailed",
+    });
+    expect(repo.consumeRecoveryCode).not.toHaveBeenCalled();
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("删因子失败时回答解绑失败，而不是报成功", async () => {
+    mockServerClient();
+    repo.listUnusedRecoveryCodes.mockResolvedValue([
+      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+    ]);
+    repo.consumeRecoveryCode.mockResolvedValue(true);
+    const { deleteFactor } = mockAdminMfa([{ id: "f1", factor_type: "totp" }], {
+      delete: true,
+    });
+    await expect(redeemRecoveryCode(PLAINTEXT)).resolves.toEqual({
+      ok: false,
+      error: "recoveryUnenrollFailed",
+    });
+    expect(deleteFactor).toHaveBeenCalledTimes(1);
+    expect(repo.consumeRecoveryCode).not.toHaveBeenCalled();
+  });
+
+  it("本来就没有 TOTP 因子是合法状态，照常扣码", async () => {
+    mockServerClient();
+    repo.listUnusedRecoveryCodes.mockResolvedValue([
+      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+    ]);
+    repo.consumeRecoveryCode.mockResolvedValue(true);
+    const { deleteFactor } = mockAdminMfa([{ id: "f2", factor_type: "phone" }]);
+    await expect(redeemRecoveryCode(PLAINTEXT)).resolves.toEqual({ ok: true });
+    expect(deleteFactor).not.toHaveBeenCalled();
+    expect(repo.consumeRecoveryCode).toHaveBeenCalledWith("c1", "u1");
   });
 });
