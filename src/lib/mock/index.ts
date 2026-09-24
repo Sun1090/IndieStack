@@ -561,6 +561,24 @@ type MockRealtimeSubscription = {
   callback: (payload?: unknown) => void;
 };
 
+/** 排序类过滤器（gt/gte/lt/lte）的后缀；顺序要紧：`:gte` 必须先于 `:gt`、`:lte` 先于 `:lt` 判。 */
+const ORDERED_FILTER_SUFFIXES = [":gte", ":gt", ":lte", ":lt"] as const;
+
+function orderedFilterSuffix(key: string): string | null {
+  for (const suffix of ORDERED_FILTER_SUFFIXES) {
+    if (key.endsWith(suffix)) return suffix;
+  }
+  return null;
+}
+
+/** `comparison` 与 `expected` 的关系是否满足该排序算子（`gt` 与 `gte` 的差别只在边界那一条）。 */
+function passesOrdered(suffix: string, comparison: number): boolean {
+  if (suffix === ":gte") return comparison >= 0;
+  if (suffix === ":gt") return comparison > 0;
+  if (suffix === ":lt") return comparison < 0;
+  return comparison <= 0;
+}
+
 /**
  * Mock 查询构建器
  * 模拟 Supabase PostgREST 查询链
@@ -603,6 +621,12 @@ class MockQueryBuilder {
   /** 过滤条件 gte */
   gte(column: string, value: unknown) {
     this.filters[`${column}:gte`] = value;
+    return this;
+  }
+
+  /** 严格大于：与 `gte` 的区别只在边界那一条算不算（`gt` 不算）。 */
+  gt(column: string, value: unknown) {
+    this.filters[`${column}:gt`] = value;
     return this;
   }
 
@@ -997,18 +1021,11 @@ class MockQueryBuilder {
         if (!(value as unknown[]).includes(row[column])) return false;
         continue;
       }
-      if (key.endsWith(":gte") || key.endsWith(":lt") || key.endsWith(":lte")) {
-        const suffix = key.endsWith(":gte") ? ":gte" : key.endsWith(":lt") ? ":lt" : ":lte";
-        const column = key.slice(0, -suffix.length);
+      const orderedSuffix = orderedFilterSuffix(key);
+      if (orderedSuffix) {
+        const column = key.slice(0, -orderedSuffix.length);
         const comparison = this.compareOrdered(row[column], value);
-        if (
-          comparison === null ||
-          (suffix === ":gte" && comparison < 0) ||
-          (suffix === ":lt" && comparison >= 0) ||
-          (suffix === ":lte" && comparison > 0)
-        ) {
-          return false;
-        }
+        if (comparison === null || !passesOrdered(orderedSuffix, comparison)) return false;
         continue;
       }
       if (key.endsWith(":contains") || key.endsWith(":not") || key === ":or") continue;
@@ -1096,9 +1113,7 @@ class MockQueryBuilder {
     for (const [key, value] of Object.entries(this.filters)) {
       if (
         key.endsWith(":in") ||
-        key.endsWith(":gte") ||
-        key.endsWith(":lt") ||
-        key.endsWith(":lte") ||
+        orderedFilterSuffix(key) ||
         key.endsWith(":contains") ||
         key.endsWith(":not") ||
         key === ":or"
@@ -1115,15 +1130,12 @@ class MockQueryBuilder {
         result = result.filter((item: any) => values.includes(item[column]));
         return;
       }
-      if (key.endsWith(":gte") || key.endsWith(":lt") || key.endsWith(":lte")) {
-        const suffix = key.endsWith(":gte") ? ":gte" : key.endsWith(":lt") ? ":lt" : ":lte";
-        const column = key.slice(0, -suffix.length);
+      const orderedSuffix = orderedFilterSuffix(key);
+      if (orderedSuffix) {
+        const column = key.slice(0, -orderedSuffix.length);
         result = result.filter((item: any) => {
           const comparison = this.compareOrdered(this.readPath(item, column), value);
-          if (comparison === null) return false;
-          if (suffix === ":gte") return comparison >= 0;
-          if (suffix === ":lt") return comparison < 0;
-          return comparison <= 0;
+          return comparison !== null && passesOrdered(orderedSuffix, comparison);
         });
         return;
       }
