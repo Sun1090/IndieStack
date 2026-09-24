@@ -184,6 +184,7 @@ describe("auditRouteAuth：台账核对", () => {
     route: "/api/widgets",
     file: ROUTE_FILE,
     reachable: ["requireAuth"],
+    limiters: [],
     truncated: 0,
     ...overrides,
   });
@@ -283,6 +284,110 @@ export async function GET(request: Request) { return Response.json({}); }
   });
 });
 
+describe("限流器绑定（roadmap C12 的现量口径：只报数，不判定）", () => {
+  // 判据要求 import 真能解析到模块，所以夹具里也得摆上那个库——不然测的是「路径没解析动」而不是判据
+  const RATE_LIMIT_STUB = source(
+    "src/lib/rate-limit.ts",
+    `export function createRateLimit() { return { check: async () => ({ allowed: true, resetIn: 0 }) }; }
+export const rateLimit = createRateLimit();
+export function isIpLike(value: string) { return value.length > 0; }`,
+  );
+  const limitersOf = (list: RouteAuthSource[], method = "POST", file = ROUTE_FILE) =>
+    collectRouteHandlers([...list, RATE_LIMIT_STUB]).find(
+      (item) => item.method === method && item.file === file,
+    )?.limiters ?? [];
+
+  it("库导出的单例被当对象取成员：算", () => {
+    expect(
+      limitersOf([
+        source(
+          ROUTE_FILE,
+          `import { rateLimit } from "@/lib/rate-limit";
+export async function POST(request: Request) {
+  const limits = await rateLimit.check(request);
+  if (!limits.allowed) return Response.json({}, { status: 429 });
+  return Response.json({});
+}`,
+        ),
+      ]),
+    ).toEqual([`${ROUTE_FILE}#rateLimit`]);
+  });
+
+  it("工厂实例的绑定名由作者起，判据不靠名字表", () => {
+    const limiters = limitersOf([
+      source(
+        ROUTE_FILE,
+        `import { createRateLimit } from "@/lib/rate-limit";
+const whateverNameYouLike = createRateLimit({ maxRequests: 10, windowMs: 60_000 });
+export async function POST(request: Request) {
+  await whateverNameYouLike.check(request);
+  return Response.json({});
+}`,
+      ),
+    ]);
+    expect(limiters).toEqual([`${ROUTE_FILE}#whateverNameYouLike`]);
+    // 工厂本身不是限流器，它是造限流器的那只手；报出来只会让报告里每行都多一个噪音
+    expect(limiters).not.toContain(`${ROUTE_FILE}#createRateLimit`);
+  });
+
+  it("限流器在跨文件的 helper 里也算（上传端点就是这个形态）", () => {
+    expect(
+      limitersOf([
+        source(
+          ROUTE_FILE,
+          `import { guardUploadRequest } from "@/lib/uploads/request";
+export async function POST() { await guardUploadRequest(); return Response.json({}); }`,
+        ),
+        source(
+          "src/lib/uploads/request.ts",
+          `import { rateLimit } from "@/lib/rate-limit";
+export async function guardUploadRequest() {
+  const limits = await rateLimit.check(null);
+  return limits;
+}`,
+        ),
+      ]),
+    ).toEqual(["src/lib/uploads/request.ts#rateLimit"]);
+  });
+
+  it("只是从库里 import 一个函数来调用，不算限流器", () => {
+    expect(
+      limitersOf([
+        source(
+          ROUTE_FILE,
+          `import { isIpLike } from "@/lib/rate-limit";
+export async function POST() { if (!isIpLike("1.2.3.4")) return Response.json({}); return Response.json({}); }`,
+        ),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("同名但自己声明的对象不算：判据要的是来源", () => {
+    expect(
+      limitersOf([
+        source(
+          ROUTE_FILE,
+          `const rateLimit = { check: async () => ({ allowed: true }) };
+export async function POST() { await rateLimit.check(); return Response.json({}); }`,
+        ),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("同文件的另一个 handler 才用限流器时，本 handler 不被算成有覆盖", () => {
+    const list = [
+      source(
+        ROUTE_FILE,
+        `import { rateLimit } from "@/lib/rate-limit";
+export async function GET() { return Response.json({}); }
+export async function POST(request: Request) { await rateLimit.check(request); return Response.json({}); }`,
+      ),
+    ];
+    expect(limitersOf(list, "GET")).toEqual([]);
+    expect(limitersOf(list, "POST")).toEqual([`${ROUTE_FILE}#rateLimit`]);
+  });
+});
+
 describe("真实仓库", () => {
   // IO 层是 .js（无类型），这里显式标注，后面的闭包参数才不会退化成隐式 any
   const sources: RouteAuthSource[] = buildRouteAuthSources();
@@ -363,5 +468,40 @@ describe("真实仓库", () => {
       (symbol) => !new RegExp(`\\b${symbol}\\b`).test(corpus),
     );
     expect(dead).toEqual([]);
+  });
+
+  it("限流器读数与一个独立的 grep 分母一致，并且解释得清多出来的那几条", () => {
+    const withLimiters = handlers.filter((item) => item.limiters.length > 0);
+    // 分母用不着解析器：直接 import 了限流库的路由文件，它的每个 handler 都必须被读到
+    const direct = new Set(
+      sources
+        .filter((item) => item.file.startsWith("src/app/api/") && /from "@\/lib\/rate-limit"/.test(item.text))
+        .map((item) => item.file),
+    );
+    const reported = new Set(withLimiters.map((item) => item.file));
+    for (const file of direct) expect(reported.has(file), `${file} 自己 import 了限流库却没被读到`).toBe(true);
+    // 报出来的每一条来路都必须真能在那个文件里对上：那个文件确实 import 了限流库。
+    // 「多出来 2 条」只有在这种意义上才可核对，而不是因为 helper 文件存在于源码里就算解释过
+    const textByFile = new Map(sources.map((item) => [item.file, item.text]));
+    for (const item of withLimiters) {
+      for (const binding of item.limiters) {
+        const [file] = binding.split("#");
+        expect(textByFile.get(file) ?? "", `${file} 并没有 import 限流库`).toMatch(/from "@\/lib\/rate-limit"/);
+      }
+    }
+    // 上传两条是「限流器在 helper 里」的那个形态：路由自己不 import，靠 guardUploadRequest 走到
+    const uploads = handlers.filter((item) => item.route.startsWith("/api/uploads/"));
+    expect(uploads.map((item) => item.id).sort()).toEqual([
+      "POST /api/uploads/avatar",
+      "POST /api/uploads/project-cover",
+    ]);
+    for (const item of uploads) {
+      expect(item.limiters).toEqual(["src/lib/uploads/request.ts#rateLimit"]);
+    }
+    expect(withLimiters.length).toBe(14);
+    // 会话类端点全数覆盖；空的那几族就是 C12 要人先定范围的地方（mock-only / cron / token / signature）
+    const families = new Set(withLimiters.map((item) => ROUTE_AUTH_LEDGER[item.id].family));
+    expect(families).toEqual(new Set(["session", "public"]));
+    expect(handlers.filter((item) => ROUTE_AUTH_LEDGER[item.id].family === "session").every((item) => item.limiters.length > 0)).toBe(true);
   });
 });

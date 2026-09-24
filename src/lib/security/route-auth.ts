@@ -17,8 +17,13 @@
  *     或者把它换成一个不相干的调用，也红）。
  * `reason` 那一段是人写的判断，本模块强制的是它存在、并且与 reachable 的符号同一家族。
  *
- * 解析形态刻意收窄：只认 `src/app/api/**` 下 `export async function GET|POST|PUT|PATCH|DELETE`
- * （本仓库全部路由都是这个写法），一条 handler 都没解析出来时失败封闭。
+ * 解析形态刻意收窄：只认 `src/app/api/**` 下 `export [async] function GET|POST|PUT|PATCH|DELETE`
+ * 这一类函数声明（只有声明没有函数体的重载签名不算），一条 handler 都没解析出来时失败封闭。
+ *
+ * 同一个调用图还顺带回答另一半问题——**这条路由能被打多少次**。它不在台账判定里
+ * （哪些端点必须有窗口是产品判断，见 roadmap C12），只以 `limiters` 字段随解析结果打印出来，
+ * 供 `pnpm check:route-auth --rate-limit-report` 现量。判据从用法推出来，不维护限流器名字表：
+ * `createRateLimit()` 的实例名是任意的。
  */
 
 import ts from "typescript";
@@ -40,6 +45,11 @@ export interface RouteHandlerFact {
   file: string;
   /** 从 handler 出发（含同文件与跨文件 helper 展开）看得见的守卫符号，已排序去重。 */
   reachable: string[];
+  /**
+   * 看得见的限流器绑定，形如 `src/app/api/user/route.ts#rateLimit`。
+   * 只做现量报告用（roadmap C12），不参与台账判定。
+   */
+  limiters: string[];
   /** 展开到深度上限时放弃的调用名数量，用于暴露「范围被调空」而不是只报 0 命中。 */
   truncated: number;
 }
@@ -142,6 +152,8 @@ interface ModuleFacts {
   declarations: Map<string, ts.Node>;
   /** 局部名 → 来源文件（不含后缀）。 */
   imports: Map<string, string>;
+  /** 该文件里「是限流器」的顶层绑定名，见 `limiterBindings`。 */
+  limiters: Set<string>;
   source: ts.SourceFile;
 }
 
@@ -205,6 +217,7 @@ function buildModules(sources: readonly RouteAuthSource[]): Map<string, ModuleFa
     modules.set(file, {
       declarations: topLevelDeclarations(source),
       imports: new Map(),
+      limiters: new Set(),
       source,
     });
   }
@@ -230,6 +243,9 @@ function buildModules(sources: readonly RouteAuthSource[]): Map<string, ModuleFa
       }
     });
   }
+
+  // 限流器绑定要等 import 解析完才算（判据的一半是「这个导入来自限流库」）
+  for (const facts of modules.values()) facts.limiters = limiterBindings(facts);
   return modules;
 }
 
@@ -240,6 +256,49 @@ function routeOf(file: string): string {
 /** 只看自有键：`"toString" in obj` 会顺着原型链命中，把每个文件都判成有守卫。 */
 function isProtectionSymbol(symbol: string): symbol is keyof typeof PROTECTION_SYMBOLS {
   return Object.prototype.hasOwnProperty.call(PROTECTION_SYMBOLS, symbol);
+}
+
+/** `@/lib/rate-limit` 在仓库内的位置（不含后缀）；限流器判据只认这一个来源。 */
+export const RATE_LIMIT_MODULE = "src/lib/rate-limit";
+
+/** 一个模块路径是不是限流库（`index.ts` 那种目录形式也算）。 */
+function isRateLimitModule(file: string): boolean {
+  const base = file.replace(/\/index\.[tj]sx?$/, "").replace(/\.[tj]sx?$/, "");
+  return base === RATE_LIMIT_MODULE;
+}
+
+/**
+ * 该模块里「是限流器」的顶层绑定名。两条判据都从**用法**推，不维护名字表，
+ * 因为 `createRateLimit({…})` 的实例名是任意的（本仓库就有 `authOptionsRateLimit` 这种）：
+ *
+ * 1. 顶层 `const x = <限流库的导出>(…)` —— 工厂实例；
+ * 2. 被当对象取用的导入 `<导入>.<任意成员>(…)` —— 库导出的单例。
+ *
+ * 只是「导入了却没这么用」不算（`isIpLike(x)` 是函数调用，不是限流器），
+ * 所以跨文件包装（`#136` 的 `marketingTokenRateGuard`）也能被传递闭包查到：
+ * 报告里出现的是包装函数所在文件的那个绑定名。
+ */
+function limiterBindings(facts: ModuleFacts): Set<string> {
+  const limiters = new Set<string>();
+  const fromLib = new Set<string>();
+  for (const [name, file] of facts.imports) if (isRateLimitModule(file)) fromLib.add(name);
+  if (fromLib.size === 0) return limiters;
+
+  for (const statement of facts.source.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      const init = declaration.initializer;
+      if (!init || !ts.isCallExpression(init) || !ts.isIdentifier(init.expression)) continue;
+      if (!ts.isIdentifier(declaration.name)) continue;
+      if (fromLib.has(init.expression.text)) limiters.add(declaration.name.text);
+    }
+  }
+
+  walk(facts.source, (node) => {
+    if (!ts.isPropertyAccessExpression(node) || !ts.isIdentifier(node.expression)) return;
+    if (fromLib.has(node.expression.text)) limiters.add(node.expression.text);
+  });
+  return limiters;
 }
 
 /** 一个子树里看得见的守卫符号：函数名 / 属性名直接算，裸标识符要求它真是 import 或顶层声明。 */
@@ -285,8 +344,9 @@ function expandGuards(
   file: string,
   body: ts.Node,
   maxDepth: number,
-): { reachable: Set<string>; truncated: number } {
+): { reachable: Set<string>; limiters: Set<string>; truncated: number } {
   const reachable = new Set<string>();
+  const limiters = new Set<string>();
   let truncated = 0;
   const visited = new Set<string>();
   const queue: Array<{ node: ts.Node; file: string; depth: number }> = [{ node: body, file, depth: 0 }];
@@ -298,6 +358,10 @@ function expandGuards(
     if (!owner) continue;
     const names = referencedNames(current.node);
     for (const symbol of guardsIn(names, owner)) reachable.add(symbol);
+    // 限流器看的是「这个文件里的哪个绑定被这么用了」，所以按文件限定；跨文件包装由同一个闭包走进
+    for (const symbol of [...names.bare, ...names.calls]) {
+      if (owner.limiters.has(symbol)) limiters.add(`${current.file}#${symbol}`);
+    }
 
     for (const symbol of new Set([...names.calls, ...names.props, ...names.bare])) {
       const key = `${current.file}#${symbol}`;
@@ -312,7 +376,7 @@ function expandGuards(
       queue.push({ node: target.node, file: target.file, depth: current.depth + 1 });
     }
   }
-  return { reachable, truncated };
+  return { reachable, limiters, truncated };
 }
 
 /**
@@ -338,7 +402,7 @@ export function collectRouteHandlers(
       const modifiers = ts.getModifiers(declaration) ?? [];
       if (!modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
 
-      const { reachable, truncated } = expandGuards(modules, file, declaration.body, maxDepth);
+      const { reachable, limiters, truncated } = expandGuards(modules, file, declaration.body, maxDepth);
 
       handlers.push({
         id: `${name} ${routeOf(file)}`,
@@ -346,6 +410,7 @@ export function collectRouteHandlers(
         route: routeOf(file),
         file,
         reachable: [...reachable].sort(),
+        limiters: [...limiters].sort(),
         truncated,
       });
     }
