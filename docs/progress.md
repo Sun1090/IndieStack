@@ -1153,3 +1153,1101 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — 待合 PR 的合并顺序与 CI 证据范围：长栈会把 commit 留在 main 之外
+
+- 里程碑 / 版本：v0.12.0；本轮不改代码，只回答「这些 PR 怎么合才真的进 main」。
+  下面的计数是**一次性快照**（2026-09-23 09:20Z：29 个 open PR，#92–#120）。会过期的是数字，
+  不会过期的是判据——重算只要跑「量法」那几条命令（这也是 D04 的口径：文档不复述会漂移的数）。
+- 分支 / PR：`docs/pr-merge-order` → **PR #118**（基在 main `ad4b029`，停在 ready-for-review；
+  因为 base 是 main，CI 会真跑——这正是上面「事实二」里那 21 个 PR 拿不到的东西）。
+- 状态：DONE（PR 待 review 合并）。
+- 量法（全部可复跑）：`gh pr list --state open --json number,baseRefName,headRefName,mergeable,mergeStateStatus`、
+  逐个 `gh pr checks`、`gh api repos/…/branches/main/protection`、`git show <ref>:scripts/check-all.sh`。
+- 事实一：**29 个 PR（#92–#120）没有一个处于冲突态**——28 个 `MERGEABLE/UNSTABLE`，
+  第 29 个（#120）是 `MERGEABLE/BLOCKED`，因为推上来不到一分钟、必需检查还在跑。
+  `UNSTABLE` 的语义是「必需检查全过、有非必需检查红着」，而红的只有两个 Vercel 部署检查
+  （配额，按既定口径忽略）。
+  main 的必需上下文一共 7 个：`Lint & Type Check` / `Build` / `Build Docs Site` /
+  `E2E (Playwright)` / `security-config` / `Analyze (javascript-typescript)` / `Detect Secrets`；
+  Vercel 不在其中 → **平台的部署限制不挡合并**。保护规则 `required_pull_request_reviews: null`，
+  也没有「必须与 base 同步」，所以合并只等 CI。
+- 事实二（开这个 PR 的原因）：拓扑不是一条链，而是**一条 20 个 PR 的长栈 + 7 个基在 main 的独立 PR
+  + 2 个基在 #115 上的 PR**。每个长栈 PR 的 base 都是前一个的 head 分支，只有栈底 #92 基在 main：
+  `#92 → #93 → #94 → #98 → #99 → #100 → #101 → #102 → #103 → #104 → #105 → #106 → #107 → #108 →
+  #109 → #110 → #111 → #112 → #113 → #114`；基在 main 的是 #95、#96、#97、#115、#116、#118、#120；
+  #117 与 #119 基在 #115 的 head 上（都用 #115 引入的 `e2e/support/hydrated.ts`）。
+- 文件重叠是量过的（`git diff --name-only origin/main…<branch>` 求交集）：
+  #119 与长栈的交集**只有文档**（`CHANGELOG.md`、`docs/testing.md`、`docs-site/scripts.md` 双语、
+  `docs/progress.md`）——它改的 18 个表单组件、`src/lib/ui/form-field-rules.ts`、`scripts/lib/` 与三条
+  e2e 文件，长栈一个都没碰。#117 与 #119 的真实交集是 `e2e/admin-contact-mfa.spec.ts`
+  （#117 改 MFA 段的两处点按，#119 改 contact 段的提交判据，不同段落）加那几处文档尾巴；
+  `e2e/support/hydrated.ts` 只有 #119 在往里加函数。
+  结论：**#119 可以在这条栈的几乎任何位置落地**，代价只是文档尾部解一次冲突。
+- **按编号顺序直接点合并，会把 #93–#114 的工作留在 main 之外**：#92 落地后
+  `feat/gate-query-error-channel` 与 main 打平，此时把 #93 合进那条分支，main 拿不到它的 commit，
+  而那条分支上已经没有任何 PR 通向 main；往后 19 个依次同理。更糟的是它**不报错**——
+  仓库 `delete_branch_on_merge=false`，中间分支安静地留着，GitHub 侧每一步都显示成功。
+- 因此栈内每个 PR 要两条命令（不改历史、不 force push、不产生 merge commit）：
+  1. `gh pr edit <N> --base main` —— 前驱刚进 main，这一刻它的 diff 恰好等于自己那几个 commit；
+  2. 等它自己的 CI 跑完再合。
+  顺带解决第二个缺口：`ci.yml` 的触发条件是 `pull_request: branches: [main, develop]`，
+  **base 不是 main 的那 21 个 PR（长栈里除 #92 外的 19 个，加 #117、#119）从来没跑过 CI**——
+  它们头上只有 `security-config` 与 `Detect Secrets`（来自别的 workflow）加 Vercel，
+  5 个必需 CI 检查不是「过了」而是「根本没上报」。这 21 个 PR 现有的证据是本地在每个 SHA 上跑的全套
+  门禁（逐条写在各自条目里，口径见下）；retarget 之后 CI 会在同一个 SHA 上真跑一遍，含 E2E 分片。
+- 本地证据的确切口径，别写成做不到的事：`CI=true pnpm check:all` 在长栈的 tip
+  （`fix/c08-gate-range-holes`）跑过、exit 0，那是**整条栈叠加之后**的状态；
+  每个中间 SHA 也各自在自己的分支上跑过全套，但不是「相对当时 main」重跑。
+  门禁数量按实测：`check-all.sh` 在 main 上是 36 道，栈 tip 上是 37 道，多出来那道正是栈里加的
+  `check:query-errors`——不是记忆里的 38，草稿写 38 时被这条实测纠正了。
+- 冲突预期：#92、#96、#97、#115、#116、#118、#120 这些 main 基 PR 同时往 `CHANGELOG.md` 的
+  `### Fixed` / `### Added` 顶部与 `docs/progress.md` 末尾追加（本 PR 只动 `docs/progress.md`，
+  只会撞后半）。今天的全绿只是
+  「相对各自 base」的快照，一个落地后后面的大概率转 `DIRTY`；解法是仓库里已记过的那套：
+  只删三行冲突标记（两侧都是新增条目，「都保留」就是完整解）→ `git add -A` →
+  `GIT_EDITOR=true git rebase --continue` → 重跑门禁 → `git push --force-with-lease`
+  （仅限自己的 PR 传输分支）。
+- 顺序建议：先长栈 20 个（一次一个，每个先 retarget），再 #96、#97、#115 → #117、#119（两个都得等
+  #115 落地，retarget 后各自跑一遍 CI），最后 #116、#118、#120 这三个独立项（谁先谁后都行，只是
+  文档尾部要有人解冲突）。
+  #95 单独说一句：它是纯 progress 记录，其中「12 处就是 C08-c 的全部工作量」是**那版计数器的读数**，
+  #106 补上三类写法盲区后重测，实际清单比它长（#112 把 debt 清完，台账只剩 `justified`）。
+  想留完整日志就先合（后面的条目带着修正），不想再发一份过期数字就关掉——修正版在长栈的条目里已有。
+- 为什么不在本次就把 20 个 base 全改好：现在 retarget，每个栈内 PR 的 diff 会变成「它以下全部未合
+  commit」的累积，#114 一口气显示 20 个 commit，review 面反而变大、也没有 CI 证据增益。
+  retarget 的正确时机是「前驱刚落地」。`gh pr edit` 不改历史、可回退，但会动 20 个 PR 的可见状态，
+  所以这一步停在文档里等用户：要么合并时逐条执行，要么第一个 PR 落地后由我按顺序做完再逐个报状态。
+- 验证：本 PR 只动 `docs/progress.md`。分支 tip 上 `pnpm -s lint` / `pnpm -s type-check` → exit 0；
+  `CI=true pnpm check:all` → exit 0；`pnpm -s test` → exit 0（199 文件）；`pnpm build` → exit 0。
+- 风险 / 回滚：纯文档，revert 即回滚；没动任何 PR 的 base、没动分支保护、没合并任何 PR。
+- 下一件：#44 后半（结账路由的状态映射）仍等 #92 + #96 落地；等 review 期间继续从巡检里挑可自主开工的项。
+- 更新时间：2026-09-23（UTC）。
+
+### 快照之后又叠了四条（同日复测，原判据全部不变）
+
+- 复跑同一条 `gh pr list --state open --json number,baseRefName,…`：**33 个 open PR（#92–#124）**，
+  其中 base=main 的 11 个（#92 #95 #96 #97 #115 #116 #118 #120 #121 #122 #123），
+  base 是 topic 分支的从 21 个变成 **22 个**——多出来的边是 **`#122 → #124`**：
+  #124（passkey 删除的「0 行不等于成功」）与 #122 改同一段 `src/lib/repositories/webauthn.test.ts`，
+  独立基于 main 会留下一个必然冲突的重写，所以选择叠一层。
+  代价照旧：#124 现在拿不到那 5 个必需 CI 作业，已在 PR 里写明「本机全量是这条 SHA 目前唯一的证据」，
+  并且 **#122 合并后要 `gh pr edit 124 --base main`**——这条边因此加进了上面那份 retarget 清单。
+- 与长栈的文件交集逐条量过（`git diff --name-only origin/main…<branch>` 求交）：
+  #121 / #122 / #123 只撞 `CHANGELOG.md` + `docs/progress.md` 两处文档尾巴；
+  #124 额外撞 `messages/{en,zh-CN}/actions.json`——但栈里那几处新增分别落在
+  `@@ -1`、`@@ -19`、`@@ -59` 三个 hunk，#124 的 `passkeyNotFound` 在 `@@ -43`，
+  上下文行不重叠，**预期可自动合并**。这条判据别当保险：真要落地前仍该看一次 `mergeStateStatus`。
+- 顺带修正本文件自身的一处约定漂移：#121/#122/#123/#124 的条目当时插在了**文件顶部**，
+  而本文件（以及上面「冲突预期」那段）写的约定是**末尾追加**。搬运已在四条分支上各用一个普通
+  commit 做完（不改写任何已推送历史、不 force push）：#121 `ad7a1e9`、#122 `fabebe2`、
+  #123 `6e66dc4`、#124 `59b55db`。#124 那一个 commit 一次搬两条——它基于 #122 的旧 tip，
+  所以 #122 的条目在它上面也还在顶部；按合并顺序落成「#122 → #124」，这样 #122 进 main 之后
+  #124 相对 main 的增量就只剩自己那一条。搬运脚本每次都断言「非空行多重集不变 + `## ` 条目数不变」，
+  唯一的内容外副作用是把顶部多余的空行分隔归一成文件里通用的一个空行（行数因此少 1～2 行）。
+
+### 34 个 PR 按顺序合一遍会怎样（本机模拟，不动任何远端）
+
+- 做法：`git worktree add -b sim/merge-order /tmp/merge-sim origin/main`，按编号升序把
+  14 个「栈 tip 或 base=main 的独立 PR」逐个 `git merge --no-edit`；冲突就记下文件名并
+  `git merge --abort`（只回退那一次合并，模拟「后一个 PR 相对已合内容还剩什么」）。
+  跑完删工作区与模拟分支。
+- 结果：**第一条长栈（#92–#114，tip `fix/c08-gate-range-holes`）干净落地**；其后 13 个全部冲突，
+  但其中 12 个的冲突面只有 `CHANGELOG.md` + `docs/progress.md`（#95 与本 PR 连 CHANGELOG 都不撞，
+  只撞 `docs/progress.md`）。这是「同一个文件尾巴各自追加一条」的机械冲突，
+  解法永远是两块都留、按合并顺序排——不是需要判断的那种。
+- **唯一撞代码的是 #96 `fix/checkout-guard-fail-closed`**：
+  `src/app/api/stripe/checkout/route.ts`、`route.test.ts`、`messages/{en,zh-CN}/actions.json`。
+  逐行对过两侧实现：#96 和栈里的 #103 是**同一个缺陷的两份修法**——都是「两道前置读取读不到就
+  拒绝这次结账、回 503」，重复购买都回 409 `alreadySubscribed`，只是状态词汇不同
+  （#96：`failed` + `source` / `duplicate`，日志在调用点；#103：`unavailable` / `subscribed`，
+  日志在 helper 内）。两边测试各自钉住那两条 503 路径（栈侧 `route.test.ts:82` 与 `:101`，
+  #96 侧 `:86` 与 `:104`）。**建议 route.ts 与 route.test.ts 取栈侧**，让 #96 只保留它真正独有的
+  两样：`messages/{en,zh-CN}/actions.json` 里的 `alreadySubscribed`（main 至今没有这个键，
+  栈侧也没补，而 409 早就在发这个码），以及 `docs/reference/api-routes.md` 那段
+  「路由码 → 翻译」契约说明。按这个解法，#96 的净增量就是这两件事，不需要重跑它的实现。
+- #125（钩子层）与栈的文件交集实测 7 个：`package.json`、`scripts/check-all.sh`、
+  `docs-site/scripts.md`、`docs-site/testing.md` × 两个语言、`CHANGELOG.md`、`docs/progress.md`。
+  真跑模拟时只有后两个文档尾巴冲突，`package.json` 与 `check-all.sh` 被 git 自动合掉了——
+  **自动合掉不等于对**：合并后跑一次 `pnpm check:gates`，它重算门禁接线，漏接或重接都会红。
+- retarget 已执行（写上面那条时它还是一条待办）：#124 对它的 base（#122 的分支）报过 **CONFLICTING**，
+  起因是今天两边各自搬过一次 `docs/progress.md` 的同一段，不是代码分叉。改指前量了两边：
+  `git merge-tree --write-tree origin/main fix/passkey-delete-reports-actual-work` → **0 冲突**；
+  `git merge-tree --write-tree origin/fix/passkey-uncaught-reads <#124 tip>` → 唯一冲突文件就是
+  `docs/progress.md`，`webauthn.test.ts` **没有**进冲突列表（#124 是从 #122 的 tip `eec9e44` 长出来的，
+  那一段早就合过一次）。所以上面「独立基于 main 会留下一个必然冲突的重写、因此叠一层」那句理由**不成立**，
+  原文照留，用来记下这次判断被自己的测量推翻。已 `gh pr edit 124 --base main`，GitHub 现在报
+  **MERGEABLE**，那 5 个必需作业会在 `14cf8bd` 上真跑一遍；PR 正文和 #124 的条目都已同步改过。
+  队列因此回到 **0 个 CONFLICTING**。
+- 从这次提炼一条判据，用来和上面「刻意不提前 retarget」的约定对齐：CONFLICTING 有两种，先用
+  `git merge-tree --write-tree origin/main <head>` 判性质。对 main 干净 ⇒ 只是 base 的记账问题，
+  此时改指 base 是一笔有价交易——代价是 diff 会含前驱的 commit（review 面变大），收益是评审不再看到
+  假红色、并且那 5 个必需作业会在该 SHA 上真跑。**只有出现这两个阻塞信号之一才提前做**（#124 两个都占：
+  挂着 CONFLICTING + 从没跑过必需 CI）；否则仍按上面的约定等前驱落地再改，不要为了「看着是绿的」扩大
+  review 面。改完必须同步 PR 正文和 `docs/progress.md` 里关于 base 的那句——base 是事实陈述，过期就是谎。
+
+## 2026-09-24 — 队列涨到 40 个 PR，把 #131 的合并拓扑量完
+
+- 里程碑 / 版本：v0.12.0；上一条「待合 PR 的合并顺序与 CI 证据范围」的增量。
+- 状态：DONE。分支：`docs/pr-merge-order`（PR #118，base `main`）。
+- 上一条那份「34 个 PR 按顺序合一遍」的模拟，**成员已经过期**：现在 open PR 40 个（#92–#131），
+  其中 22 个 base 不是 `main`（它们至今没跑过那 5 个必需作业；判据仍是 `gh pr checks` 只列得出
+  `Detect Secrets` / `security-config`）。顺序模拟没有重跑——新增的 9 个（#123–#131）里只有 #129 叠在
+  #128 上，其余 8 个 base 都是 `main`，不改「第一条长栈干净落地、其余只撞账本」这个结论的形状。
+  过期的是成员清单，不是方法。
+- 新量出来的一条边（#131 `check:component-docs`）：对 39 个其他 open PR 逐个
+  `git merge-tree --write-tree feat/component-docs-gate pr/<n>` → **39/39 冲突，其中 38 个只撞
+  `CHANGELOG.md` / `docs/progress.md`**；唯一撞代码的是 **#126 `check:progress`，撞在
+  `scripts/check-all.sh`**（两边各插一行门禁调用）。这是继「#96 与栈里的 #103 是同一缺陷的两份修法」
+  之后第二条需要人判断的边，但性质轻得多：两行都留，然后跑 `pnpm check:gates` 重算接线即可。
+- #131 的 CI 证据范围：base = `main`，所以 5 个必需作业真的跑了——`Lint & Type Check` / `Unit Tests` /
+  `Build` / `E2E shard 1` / `E2E shard 2` 全绿，另 `Build Docs Site` / `E2E (Playwright)` / CodeQL /
+  Detect Secrets / Analyze 绿。两个 Vercel 检查红在 `Deployment rate limited — retry in 24 hours`
+  （`upgradeToPro=build-rate-limit`），按既定口径照实记录并忽略，不绕过、不放宽门禁。
+- 方法（免得下次重新推）：`git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 把全部 PR head
+  落成本地引用，之后判冲突是纯本地运算。**两个坑**：① `merge-tree --write-tree --name-only` 输出的
+  第一行是结果树的 OID，不剔掉它就会把每个 PR 都判成「撞代码」——我第一次跑就是这么得到 39/39 全红的，
+  判据没错，是读法错了；② 文件重叠 ≠ 冲突，`package.json` + `scripts/check-all.sh` 这一对被 22 个 PR
+  同时改过，git 全都自动合上了，只有 merge-tree 说了才算。
+- 一条自我更正：#131 开 PR 时正文写着「若与 #128/#129 相撞，只可能撞在 CHANGELOG.md 与
+  docs/progress.md」——那是没跑过的推测，而且漏了 #126 这条边。量完已经改掉正文，原句留在 PR 评论里。
+  冲突面跟 base 一样是事实陈述，过期就是谎。
+- 下一项：#126 与本 PR 谁后进 `main`，就在 `scripts/check-all.sh` 里保留对方的那一行并重跑
+  `pnpm check:gates`；#129 需要等 #128 落地后 `gh pr edit 129 --base main`。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 19 个栈尖整队列合一遍：门禁 41/41 绿，但台账顺序这一步谁都躲不掉
+
+- 里程碑 / 版本：v0.12.0；上一条「把 #131 的合并拓扑量完」只算了 #131 对别人的冲突面，这次把整条队列真合一遍。
+- 状态：DONE。分支：`docs/pr-merge-order`（PR #118，base `main`）。模拟发生在本地分支
+  `sim/queue-131`（tip `c8be836`），**没有推送、没有碰任何远端、没有对 `main` 做任何操作**。
+- 做法（可复跑）：`git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` → `git worktree add -b sim/queue-131 /tmp/merge-sim origin/main`
+  → 按编号升序 `git merge --no-edit pr/<n>`，覆盖 19 个栈尖（95 96 97 114 116 117 118 119 120 121 122 123 124 125 126 127 129 130 131，
+  另外 21 个 PR 的内容都在某条栈里）。冲突时套用台账已写好的解法：checkout 的 `route.ts` / `route.test.ts` 取栈侧、
+  `messages/*/actions.json` 深合并、`CHANGELOG.md` / `docs/progress.md` / `scripts/check-all.sh` / 追加型的 e2e 文件两块都留。
+  结果：**19 个全部落地，main 前进 110 个 commit，无一需要放弃**。
+- 验证命令与结果：`CI=true pnpm check:all` 在合并后的树上 **exit 0**——41 步（38 个 `check:*` 门禁 + `type-check` + `lint` + `test`），
+  `check:gates` 报 41 个门禁（本地 38 / CI 40 / 豁免 3），单测 223 文件 / 2601 用例全过。
+  也就是说：按编号升序 + 上面那套解法，这批 PR 合完之后 main 是绿的，不需要任何一次代码重写。
+  **但 `pnpm build` 不在这 41 步里**，这条绿灯不覆盖构建。
+- 两次红，都不是 PR 的错，是「合并之后」这件事本身的两个必需步骤：
+  1. **`check:progress` 红了**：`[date-out-of-order] 第 2383 行 — 日期 2026-09-23 早于上一条（第 2354 行的 2026-09-24）`。
+     成因是「两块都留」的解法只保证内容不丢，不保证顺序——后合的一方带着自己那条较早的日期，落在了一条较晚的条目后面。
+     这条是 #126 那个门禁带来的**新工作流空洞**：#126 进了 `main` 之后，任何一次「按台账解法解决 `docs/progress.md`」都可能让
+     `check:all`（CI 跑的就是它）在 `main` 上红，而红的原因看起来像台账腐化，其实是解法少了一步。
+     补上的那一步已验证够用：把条目**按日期稳定排序**（同一天的保持原相对顺序）。实测 70 条条目数不变、
+     非空行多重集不变、日期由非升序变为全升序；只有 1 条真的换了位置（本 PR 那条 09-24 从第 57 位移到第 67 位），
+     连带 11 个位置错位。模拟里落成 commit `ce5530b`。
+  2. **`type-check` 红了 28 个错，全部在 `e2e/support/warm-up.ts(23…26)`**（`TS1109 Expression expected` / `TS1127 Invalid character`）。
+     读报错位置而不是读退出码：那是我「两块都留」的脚本撞在一段 **modify/modify 的文档注释**上——两侧各自改过同一个注释块，
+     删掉标记等于把 #120 那段接在 `*/` 之后，注释体外泄成代码。
+     逐行对过合并结果与 `pr/116`、`pr/120` 两个版本：代码侧本来就是干净的并集（#116 的 `assertOurServer` 身份核对 + `repoVersion`，
+     #120 的 `WARM_ROUTES` 与 `startedAt` 计时都在），坏的只有注释。修法是把那段注释并回块里、`*/` 收回导入之前（`c8be836`），
+     之后 `pnpm -s type-check` exit 0。
+- 由这两次红提炼的判据：**「两块都留」只对追加型区域成立**。判断依据不是文件名而是冲突块的形状——两侧都在文件末尾各加一段
+  （`CHANGELOG.md`、`docs/progress.md`、e2e spec、`check-all.sh`）才算机械；同一区域两侧都改写（#116 与 #120 的注释块）就是
+  **需要作者出场的一条边**。所以上一条里那条 #131↔#126「两行都留」的结论仍然成立，而 #116↔#120 要归到「需要人判断」那一类，
+  与 #96↔#103 并列。顺带核了对机械的那对：#119 与 #117 撞在 e2e spec 与 `e2e/support/hydrated.ts`，合并后该文件同时导出
+  `actUntilVisible` / `watchServerActions` / `actUntilServerAction`，三者的用例各自取得自己需要的——这块确实是并集。
+- 变异核对：不采信「绿灯」本身——排序步骤是拿真实脏状态（#118 那条 09-24 在 09-23 一堆之前）量的，改完日期序列真的变升序；
+  `warm-up.ts` 的并集是拿 `diff` 对两个来源版本逐行核出来的，不是「它过了所以它对」。
+- 阻塞：无（本轮不需要外部权限）。Vercel 配额仍红，按既定口径记录并忽略。
+- 风险 / 回滚：本条只是文档；模拟分支是本地的，回滚 = `git branch -D sim/queue-131` +
+  `git for-each-ref --format='delete %(refname)' refs/remotes/pr | git update-ref --stdin`，远端无需任何动作。
+- 补记（同日，两件事都是本条目自己过期造成的）：
+  1. 上面那句「下一项：把排序这一步写进 #126 的失败提示」**已经做完了**：#126 的 `726b274` 把处置动作写进
+     `date-out-of-order` 的信息里（两种成因各一句），并新增 1 条单测钉住这段文字。变异核对：把信息里的
+     「按日期稳定排序」换成别的说法 → 只有那条新增用例红（1 failed / 14 passed），跑完从 `/tmp` 字节副本还原并 `cmp`。
+  2. 本条上面那句「#131 对其他 39 个 PR：39/39 冲突，其中 38 个只撞账本，唯一撞代码的是 #126」**已经不对了**。
+     #131 后续那个 commit（`033bfb6`：把 D05 登记回任务池，并把这道门禁写进 `docs/testing.md` 等四处文档）
+     自己新增了一条边。重测 39 个 peer：**仍 39/39 冲突，但只撞账本的降到 18 个，另外 21 个各多撞一个文件** ——
+     `docs/testing.md` × 20（整条 C08 栈 #92–#114）+ `scripts/check-all.sh` × 1（#126）。
+     形状是量出来的不是猜的：对 #92 与 #114 各跑一次 `git merge-file` 三方合并，`docs/testing.md` 的冲突块是
+     「两侧在同一处各插一行表格」（`check:query-errors` 那行 vs `check:component-docs` 那行），所以它属于
+     「两块都留」的机械边，不是 #116↔#120 那种要作者出场的边。判据仍是上面那条：**看冲突块的形状，不看文件名**。
+  3. 整队列模拟跟着刷新过一次（模拟分支 tip `5c82ab6`，`main` 之上 114 个 commit）：把 #126 / #131 的新 tip
+     再合进来，只产生 3 处冲突（`CHANGELOG.md`、`docs/progress.md`、`docs/testing.md`），全部按「删掉三行标记」解掉，
+     并且每次断言「非标记行多重集不变」；`CI=true pnpm check:all` 仍然 exit 0（41 步）。
+     这次 `check:progress` 直接就绿了（70 条、日期非递减）——排序做过一次之后，后续的 keep-both 合并不再破坏顺序，
+     所以那一步是**一次性整顿**而不是每次合并都要做的仪式。
+     （**这句已被下一条推翻**，错的不是观察而是适用域：那次是在已排序的树上增量再并两个 tip；从 `main` 从零重建时
+     排序第二次变红，见下一条「整队列模拟从 `main` 从零重建」。原文保留，因为它是那次测量的证据。）
+- 下一项：把这条新边写进 #131 的 PR 正文——它的 base 是 `main`，评审者看不到 #118 这份台账，只看到「与在审 PR
+  的交集是账本尾巴」这句过期陈述。判断型的边仍然只有两条：#96↔#103（同一缺陷的两份修法）与
+  #116↔#120（同一注释区的两侧改写）。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 生产还站在 #69 之前，而 `indie-stack` 的构建配额刚刚放行
+
+- 里程碑 / 版本：v0.11.0 发布冻结的前置②（「部署 commit == 验证 commit」）；与上面那条合并台账是同一条分支，
+  因为解锁它的动作就是「合并」。
+- 状态：DONE（测量与取证已完成；剩下的动作属于用户）。分支：`docs/pr-merge-order`（PR #118，base `main`）。
+- 量到的四件事，全部是不需要 Vercel 权限的读法：
+  1. **生产确实不带构建身份**：`GET https://indie-stack-theta.vercel.app/api/health` 的键是
+     `status,timestamp,uptime,uptimeFormatted,version,environment,mockMode,checks,allConfigured,ready,degraded`
+     ——**没有 `commit`**，`version` 是 `0.11.0`（18:51Z 本机 `node`+`fetch` 探测，`curl` 在这台机器上不存在）。
+  2. **原因不是「没实现」而是「没部署」**：实现它的 `96fb4fa` 已在 `main` 里（`git merge-base --is-ancestor 96fb4fa origin/main` 通过），
+     PR #69 的合并时间是 `2026-09-22T09:31:13Z`；而 `gh api repos/…/deployments?per_page=100` 里
+     `environment == "Production – indie-stack"`（必须精确匹配，前缀匹配会把 docs-site 那个项目捞进来）最新一条是
+     `a322a4e` @ `2026-09-22T08:56:51Z`——**比那次合并早 34 分钟**。`main` tip 现在是 `ad4b029`（09-23 06:15 +08:00），
+     所以生产落后 main 一整天的合并量，且这个落后不是版本号能看出的（两边都写着 0.11.0）。
+  3. **配额窗口此刻是开的，但只开在一个项目上**：#131 的 `Vercel – indie-stack` 检查在 tip `033bfb6` 上 **pass**
+     （对应的预览部署记录是 `033bfb6` @ `2026-09-23T18:41:54Z`），同一条 PR 的 `indie-stack-docs-site` 仍然 fail
+     （`?upgradeToPro=build-rate-limit`）。这条对照又一次证明限流按项目计，也说明「同一个 PR 两个 Vercel 检查一红一绿」是正常状态，
+     不是某条改动坏了。
+  4. **主动取了一份新证据**：`gh workflow run "Production Smoke" --ref main` → run `35905536165`
+     （18:53:02Z→18:53:39Z，job `107332168014`）**`✅ production smoke: 6/6 passed`**，其中 health 那一行自己写着
+     `version=0.11.0, commit=unknown`——冒烟脚本在字段缺失时报 `unknown` 而不是悄悄通过，这一点值得留在证据里。
+- 结论，写给下一步动作：**前置②现在只差「main 的一次新构建真的上生产」**，而这需要一次合并（合并属于用户）。
+  配额此刻可用，所以合并任意一条 base 为 `main` 的在审 PR 都会把 `main` 推到生产；那之后 `/api/health` 会带 `commit`，
+  ②才有可断言的身份。按既定口径：**不创建 tag、不把冒烟标成通过、不因为配额放行就宣布发布步骤完成**。
+- 验证命令与结果：上面每一条都附了可复跑的命令与读到的原文；额外一条陷阱——
+  `gh run view --log --job=…` 抓冒烟输出时，直接 `grep smoke` 只会命中 teardown 的凭据清理噪音，
+  要按步骤名（`Run production smoke`）或脚本自己那行 `✅ production smoke: 6/6 passed` 取。
+- 阻塞 / 风险：本条是带日期的快照，配额窗口可能几小时后又关；`indie-stack-docs-site` 仍在限流中，
+  所以 docs-site 的预览不会跟着好起来，别把它当作本条改动的失败。
+- 下一项：等一次合并落到 `main` 之后，重跑同一条 `Production Smoke` 并带上 `expected_commit`，
+  比较「部署记录里的 SHA == health 返回的 commit」；B02（回滚演练）也需要那时才有两个可切的生产构建。
+- 补记（同日）：上面这套读法在 `docs/operations/release-runbook-v0.11.0.md` 里有一份命令拷贝，
+  而它写的是 `deployments?per_page=12`。按那个数取，回来的前 20 条**全是 `Preview – …`**，一条生产记录都没有
+  （第一条生产记录排在第 35 位；100 条里只有 9 条是生产），于是「记录里没有这个 commit」会被读成
+  「从未部署过生产」——正好是那份文档想避免的那类误读。已改成 `per_page=100`，并把「预览部署也写进同一张表」
+  这句写进命令块上方的注释。`docs/progress.md` 里那条同样写着 `per_page=12` 的旧记录**保留原文**：
+  台账是带日期的证据，改它等于伪造当时的测量；权威读法以 runbook 为准。
+  另在 runbook 的「冻结状态与未完成步骤」里补上这次复测的四个数（部署早于 #69 合并 34 分钟、
+  冒烟 run `35905536165` 6/6 且自报 `commit=unknown`、配额此刻只对 `indie-stack` 开放、
+  仓库侧没有任何不推 `main` 就能触发生产部署的办法），②的剩余阻塞面因此从「配额」收窄成「一次合并」。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 整队列模拟从 `main` 从零重建：41 个 head 逐个证包含，台账排序第二次被量到
+
+- 里程碑 / 版本：v0.12.0；上一条把模拟刷到 `5c82ab6`（在已排序的树上增量再并两个 tip），这一条从 `main` 重新长一遍，
+  并补上那条绿灯**没覆盖**的两半——覆盖率与端到端。
+- 状态：DONE。分支：`docs/pr-merge-order`（PR #118，base `main`）。模拟发生在本地分支 `sim/queue-41`
+  （tip `094897d`，`main` 之上 117 个 commit），**没有推送、没有碰任何远端、没有对 `main` 做任何操作**。
+- 包含关系是逐个证出来的，不是数合并次数推出来的：`git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 一次把
+  41 个 head 取到本地，再对每个 head 跑 `git merge-base --is-ancestor <sha> sim/queue-41` → **41/41 通过，`missing=0`**。
+  树上只有 **19 个栈尖**（first-parent 合并 19 次），差额正是栈式 base 的意义：一条栈尖一次带回若干 PR。
+  这条判据替代了上一条那种「19 个栈尖 + 另外 21 个 PR 应该都在栈里」的口头推定——现在它是可重跑的。
+- 冲突仍然只落在那几类**追加型区域**（`CHANGELOG.md`、`docs/progress.md`、`scripts/check-all.sh`、e2e spec / support），
+  解法沿用上一条：两块都留 + 每次断言非空行多重集不变。三处例外按既有决定处理，并且落账前在合并结果上复核过：
+  `messages/*/actions.json` 取深合并（现在 `en` 与 `zh` 各 **81** 个键、键集完全相同，即那次「只有一个边有的键」被并集吃掉了）、
+  `checkout/route.ts` 与 `route.test.ts` 取栈侧、`e2e/support/warm-up.ts` 直接换成上一轮逐行验过的并集
+  （`assertOurServer` 的身份核对与 `WARM_ROUTES` 的预热清单同时在场）。
+- **`check:progress` 又红了，于是上一条的补记被推翻**：从零重建的树上 `pnpm -s check:progress` 报
+  `❌ 进度台账自检失败（1 项） → [date-out-of-order] 第 2484 行`。上一条补记里那句
+  「排序做过一次之后……那一步是一次性整顿而不是每次合并都要做的仪式」**是错的**。
+  错在哪说清楚：那次观察是在**已经排好序的树**上做增量再合并（只并 #126 / #131 两个新 tip），
+  这种情况确实不再打乱顺序；而**从 `main` 重新长一遍**时，每条栈各自带来的账本尾巴会重新互相插队。
+  规则因此是「每次从零集成都要排一次序」，不是「排过一次就一劳永逸」。
+- 排序的影响面是现算的（拿 `8453050` 与 `094897d` 两个 git object 比，不引用记忆里的数字）：
+  `## ` 条目 **73 → 73**、非空行 **3037** 行的多重集完全一致、**13** 个位置上的条目换了、
+  日期序列由「非升序」变「全升序」，第一处逆序落在第 **60** 个条目上（也就是 `第 2484 行`）。
+  排完门禁报 `✅ 进度台账自检通过：73 条条目，日期非递减且标题无重复`（commit `094897d`）。
+  变异核对：把排序**前**的文件原样放回工作区再跑一次，红的还是那一行 `第 2484 行`，然后按字节还原、
+  `git status --porcelain` 为空——这条绿灯不是「改完忘了测」。
+- 上一轮绿灯没测的两半，这轮补上了（对应 v0.12.0 退出判据第 4 条）：
+  - `pnpm test:coverage`：**exit 0**，`Test Files 223 passed (223)`、`Tests 2609 passed (2609)`、
+    `All files | 97.45 | 92.29 | 98.14 | 98.58`。
+  - `pnpm test:e2e`：**exit 0**，`113 passed (2.2m)`。日志里那些 `[WebServer] ⨯ Error: aborted` / `ECONNRESET`
+    是用例主动注入的失败路径（上传中断、mock storage 不可用），不是套件故障——判据取退出码与 Playwright 的汇总行，
+    不取 stderr 干不干净。
+  - `CI=true pnpm check:all`：**exit 0**，41 步全绿（38 个 `check:*` + `type-check` + `lint` + `test`）；
+    `check:gates` 报 41 个门禁（本地 38 / CI 40 / 豁免 3），套件 `Test Files 223 passed`、`Tests 2609 passed (2609)`、
+    `Duration 37.78s`。这一轮跑在**排序之后**的树上，所以「集成 + 排序 = 绿」是同一棵树上的结论，不是两次拼起来的。
+    两个读数陷阱值得留在证据里：日志里那句 `❌ node_modules/.bin 不存在` 出自 `hook-wiring.test.ts` 的临时仓库夹具
+    （它故意造一个引用缺失二进制的钩子），紧跟着的一行才是本仓库自检的
+    `✅ Git 钩子层自检通过：1 个钩子（pre-push），1 条命令全部可解析`——读日志要分清那一行属于谁，否则一次绿灯会被读成红；
+    而 `Tests 2609 passed` 那行带 ANSI，`grep -a "Tests  *[0-9]"` 直接读不到，必须先
+    `sed -e 's/\x1b\[[0-9;]*m//g'`（同一个坑今天踩了第二次）。
+- 一处测量口径的坑，值得单独记：`gh pr list --state open --json number --jq 'length'` 报 **30**，
+  而真实开放 PR 是 **41**——`gh pr list` 默认 `--limit 30`，那个 `length` 量的是「这次取回了几条」而不是「队列有多大」。
+  凡是数队列的读数一律显式带 `--limit`。上一条里「40 个 PR」那类数字当时就是用带 limit 的命令量的，
+  所以队列没被记错过，但差 11 个的读数足够让下一次判断（比如「还有没有栈没并进来」）出错。
+- 阻塞：无（本轮不需要外部权限）。Vercel 配额按既定口径记录并忽略。
+- 风险 / 回滚：本条只是文档；`sim/queue-41` 是本地分支，证据落账后 `git branch -D sim/queue-41` 就是全部回滚，
+  远端无需任何动作。
+- 下一项：等一次真正的合并（合并属于用户）。`main` 一旦前进，就用同一套命令重跑本条的集成与验证，
+  并把数字搬进 #118 的正文——评审者只看 PR 正文，看不到这份台账。
+- 补记（同日）：上面那次集成之后 **`main` 没动，但 #92 长了 5 个 commit**（`3f5fd55` → `6892d87`：
+  守卫层的会话读取不再把 Auth 抖动答成「你没登录」、登记 C09、审计行打 `sessionReadFailed`、
+  C09 的重叠判读、两个登出按钮不再在没登出时报完成）。重新量 #92 对 40 个 peer 的冲突面：
+  **40/40 冲突，其中 38 个只撞 `CHANGELOG.md` / `docs/progress.md` / `docs/roadmap-0.12.0.md` 这三本账**，
+  另外两条是本就存在的 #129（`docs-site/scripts.md` 两份）与 #131（`docs/testing.md`）。
+  **这一批新改动没有新增任何一条需要人判断的边**——特别是它往 `messages/{en,zh-CN}/dashboard.json`
+  加了两个键，而 #110 / #111 那几条在审 PR 也各自改过同一份文件，这次没撞上是形状错开的运气，
+  不是可以假设的性质。代价说清楚：**上面那三个「合并后是绿的」的读数是在 #92 的旧 tip 上取的**，
+  新的 5 个 commit 之后要重跑才算数（重跑就是本条上面那套命令，一次 `check:all` + coverage + E2E）。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 41 个 head 从零重跑整队列：绿灯覆盖到 build，另外量出三条需要人判断的边
+
+- 里程碑 / 版本：v0.12.0；上一条留下的那句话（「#92 新的 5 个 commit 之后要重跑才算数」）在这一条兑现。
+  分支 `docs/pr-merge-order`（PR #118，base `main`）。模拟发生在本地分支 `sim/queue-42`
+  （worktree `/tmp/merge-sim-42`，合并树 `c89d8a0`，加两条整理 commit 后 tip `d9d35bd`），
+  **没有推送、没有碰任何远端、没有对 `main` 做任何操作**。
+- 状态：DONE。重跑的范围是 41 条 open PR（`origin/main` 仍是 `ad4b029`，队列自上次模拟没有合进任何东西）。
+- 做法（与上一条同一套，多了两处修正）：`git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 把 41 个
+  head 取到本地 → `git worktree add -b sim/queue-42 /tmp/merge-sim-42 origin/main` → 按编号升序
+  `git merge --no-edit pr/<n>`，每次合并后**核对落地的第二父（或快进后的 HEAD）就是那条 PR 的 head**，
+  不匹配就停。包含关系仍是逐个证的：**41/41 通过、`missing=0`**；合并树 `c89d8a0` 上是 `main` 之上
+  **152 个 commit**、first-parent 合并 **40 次**（少的那一次是 #92 直接快进）。同一条断言在整理后的
+  tip `d9d35bd`（154 个 commit）上**重跑过一遍**，仍然 41/41——那两条整理 commit 没有丢掉任何 head。
+- 冲突只落在那几类共享追加区，每个文件的**独立编辑条数**（逐条 PR 自己的 delta，
+  `merge-base <base-ref-oid> <head>` 之后 diff 文件全名）是量出来的：`docs/progress.md` 41、
+  `CHANGELOG.md` 39、`docs/testing.md` 13、`messages/{en,zh-CN}/actions.json` 各 7、
+  `docs-site/scripts.md` 与 `docs-site/zh-CN/scripts.md` 各 7、`scripts/check-all.sh` 4、`package.json` 4、
+  `e2e/admin-contact-mfa.spec.ts` 2（#117 #119）、`e2e/support/warm-up.ts` 2（#116 #120）。
+- **三条需要人判断的边（前一轮没有量出来，因为判据本身不对）**：
+  1. `messages/{en,zh-CN}/actions.json` 的 **`checkoutUnavailable` 两侧各自定义、文案不同**——
+     #96 那条是泛化的「支付服务暂时不可用」，#109 那条点名了「确认不了团队当前订阅、本次没有发起结账」。
+     模拟里按「后合的覆盖」取了 #109。**要人确认最终寄给用户的到底是哪一句**，这不是 git 能决定的。
+  2. `e2e/support/warm-up.ts`：#116（服务器身份核对）与 #120（预热清单双向对账）是**兄弟不是父子**，
+     两份里各自都没有对方那半件。「两块都留」在这台机器上产出了**非法 TypeScript（53 处 type-check 错误）**，
+     只能手工并集：身份核对放在「只在并行时预热」那句早退**之前**、预热循环改用 `WARM_ROUTES`。
+  3. `src/app/api/stripe/checkout/route.test.ts`：#96 是 7 条用例 / 178 行，#109 是 5 条 / 127 行，
+     并集 = 12 条 / 298 行且重复声明。模拟按既定口径取了栈侧（#109），**代价写清楚：#96 那两条多的用例
+     没进这棵树**，得由作者确认它们断言的行为不是 #109 需要的。
+- **对上一条解法本身的两个修正**（这是本轮最有价值的产出，因为它影响每一批 PR 的重解）：
+  ① 「断言非空行多重集不变」这条判据**在两类文件上都不成立**。第一次实现按
+  `base + (ours−base) + (theirs−base)` 算期望值，栈式分支**共享的新增会被算两份**，于是把一次本来正确的
+  「两块都留」读成「丢了一行」；② 代码文件里对侧**删掉行是合法结果**，`⊇ 两侧`根本不是想要的性质。
+  现在的口径：纯追加的账（`docs/progress.md`、`CHANGELOG.md`、`docs/roadmap-0.12.0.md`、
+  `scripts/check-all.sh`）才做并集断言；代码与被删过的文档只做「标记清零」，交给 type-check / lint / test 判。
+  这条改完，之前那个「期望 4 得到 3」的假丢行消失了，而两处**真的**需要人判断的地方（上面 2、3）浮了出来。
+- 台账排序这一步仍然躲不掉：合并完 `pnpm -s check:progress` 在**未排序**的树上红两项
+  （`[date-out-of-order] 第 1470 行 / 第 2788 行`）。按日期稳定排序之后绿：79 条条目、非空行 3329 → 3329、
+  多重集一致、45 条换了位置。**每一次从零重建都要重跑这一步**，它不是一次性整顿。
+- 合并后同一棵树上的验证（这次比上一轮多跑了 build）：`CI=true pnpm check:all` **exit 0**，
+  `Test Files 226` / `Tests 2634`；`pnpm test:coverage` **exit 0**，
+  `All files | 97.46 | 92.33 | 98.14 | 98.59`；`pnpm test:e2e` **exit 0**，`113 passed (3.2m)`
+  （日志里那两条 `[ERROR] avatar upload failed / storage object cleanup failed` 是用例**故意注入**的
+  mock 故障路径，不是失败）；`pnpm build` **exit 0**，23 个静态页全部生成——
+  上一轮那句「`pnpm build` 不在 `check:all` 的 41 步里，所以这条绿灯不含构建」现在补上了。
+- 顺手清掉的队列卫生：重跑之前 `gh pr list` 全量扫 `mergeStateStatus`，**整条队列只有 #93 是 CONFLICTING**
+  （它的 base 就是 #92，而 #92 今天多了 7 个 commit）。按升序重放：#93 rebase 到 `605be71`（`5312e8f`）、
+  `check:all` 绿、`--force-with-lease` 推送；这又让 #94 CONFLICTING，同样处理（`4f61d42`，
+  `git range-diff` 证明它自己那条 commit 逐字节没变、只是换了父）。#93 的下游链深度实测只有 1
+  （唯一子分支是 #94），级联到此结束。
+- 这次模拟**没覆盖**的东西，别当成覆盖了：包含性与绿灯用的是 09:54 取到的 head，
+  之后 #93 / #94 的 rebase 换了 sha（内容按 `range-diff` 等价）；`main` 一旦前进，41/41 与这三条边都要重量。
+  Vercel 那条部署检查仍红（平台配额），按既定口径记录并忽略，不绕过、不因此削弱任何门禁。
+- 风险 / 回滚：本条只是文档；模拟分支是本地的，回滚 = `git worktree remove /tmp/merge-sim-42 --force` +
+  `git branch -D sim/queue-42` + `git for-each-ref --format='delete %(refname)' refs/remotes/pr | git update-ref --stdin`，
+  远端无需任何动作。#93 / #94 的 force-push 是既定生命周期内的分支更新，且各自 `check:all` 已在推送前跑绿。
+- 下一项：`main` 前进之后重跑本条（含那三条需要人判断的边，届时应已由作者定稿）；
+  `AUTH_ERROR_CHANNEL` 台账（C09 的门禁接不接）仍排在其后。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 上一条那三条「要人判断的边」：两条判完了，理由和落地规则写在这里
+
+- 里程碑 / 版本：v0.12.0；分支 `docs/pr-merge-order`（PR #118）。上一条目写着「届时应已由作者定稿」——
+  那三条边都是**我自己两条 PR 之间的分歧**，作者就是我，不必等人。这一条把能判的两条判掉，并把判据落成一条
+  合并时可执行的规则；判不了的那条留在原地。
+- 状态：DONE（三条边全部定案；边 2 是同日晚些补判的，见下面那条订正）。
+- **判据先说清楚，否则这条目就只是又一次「我说了算」**：三条边里前两条的共同点是 **#96 与 #109 把同一个守卫重写了两遍**
+  （`src/app/api/stripe/checkout/route.ts`：main 上 98 行，#96 版 139 行、#109 版 133 行；
+  `diff main→#96` 改 81 行、`diff main→#109` 改 79 行——两份都是整函数级重写，不是各加一处）。
+  所以这不是「两个都对、只能选一个文案」，而是**同一件事的两个实现要挑一个**，挑完另一份在这三个文件上的改动整体作废。
+- 逐行比过两份实现（`/tmp/r96.ts` vs `/tmp/r109.ts`，临时文件未入库）：**行为等价**，
+  差别只有三处——① #96 的失败结果带 `source`（`membership` / `subscription`），日志因此能说是哪一道读失败
+  （`FAILURE_LABEL`），#109 只回 `{status:"unavailable"}`，日志里分不出；② 状态命名（`duplicate`/`failed` vs
+  `subscribed`/`unavailable`）；③ 注释措辞。**#109 没有任何 #96 缺的行为**（两版对 `priceId` 白名单、
+  `createCheckoutSession` 参数、`idempotencyKey` 的处理逐行一致）。
+  反过来 #96 的测试文件里有 #109 没有的两条，其中一条是「**路由能返回的每个错误码都在两个 locale 里有文案**」——
+  那是 PR #96 那类缺陷（错误码没有对应文案）的门禁级用例，丢了就没有别的地方守着。
+- **定案（边 1）**：`checkoutUnavailable` 取 **#96 的泛化文案**（「支付服务暂时不可用，请稍后重试」/
+  "Payment is temporarily unavailable. Please try again."）。理由不是「#96 更早」，是**这个键服务于两种失败来源**：
+  `readCheckoutScope` 会在「团队归属读失败」和「现有订阅读失败」两种情况下都用它。
+  #109 那句「暂时无法确认你团队的当前订阅，本次没有发起结账」在团队归属读失败时是一句**假话**（没确认的是归属，不是订阅）。
+- **定案（边 3）**：`route.test.ts` 同样整体取 #96 版（7 条），#109 的 5 条不并进来——它们断言的行为是 #96 那 7 条的子集
+  （只是 `it()` 标题不同），做「按标题并集」只会产出同一行为的重复断言 + 重复声明（上一条模拟里已经量过：
+  强行并集 = 12 条 / 298 行且重复声明）。
+- **落地规则（合并时执行，零 rebase、零新增冲突边）**：#96 编号小于 #109，按升序先落地，所以到合 **#109** 时，
+  这几处**一律取 main 已有的那一版**（也就是 #96 落进去的那份）：`src/app/api/stripe/checkout/route.ts`、
+  `src/app/api/stripe/checkout/route.test.ts`、以及 `messages/en/actions.json` 与 `messages/zh-CN/actions.json` 里的
+  `checkoutUnavailable` 键。**#109 其余文件照常**（它真正的贡献是 `src/app/api/webhooks/stripe/route.ts` 及其测试，
+  #96 完全没碰），own-delta 全清单：`CHANGELOG.md`、`docs/progress.md`、`docs/roadmap-0.12.0.md`、
+  `messages/{en,zh-CN}/actions.json`、`stripe/checkout/route{,.test}.ts`、`webhooks/stripe/route{,.test}.ts`。
+  代价写清楚：#109 分支上那两处 checkout 改动就此作废，**#109 的 PR 正文应在合并前把这一点标注出来**，
+  否则它的 diff 看起来像是改了两遍。
+- **【同日晚些订正】边 2 也判完了，而且判法与边 1/3 不同**：`e2e/support/warm-up.ts` 的 #116 × #120 是
+  **兄弟不是父子**（服务器身份核对 vs 预热清单双向对账），没有「挑一份」这回事——上一条说「这条要写代码」是对的，
+  但代码**已经写完了**：整队列模拟的那棵树 `d9d35bd` 上就是并好的那份，而它跑过 `CI=true pnpm check:all` exit 0、
+  `pnpm test:e2e` 113 passed、`pnpm build` exit 0。所以剩下的不是判断，是**把那段已验证的文本送到合并现场**。
+  落地方式选了「写进 #120 的 PR 正文」而不是「改某个分支」，理由是量出来的：#116 与 #120 **都 base `main`、
+  都没有下游 PR**（`baseRefName` 命中 0），所以两条都不必 rebase；而把并集塞进任一条，要么让那条的 diff 里
+  长出对方的整个特性（#120 得连带新增 #116 的 `src/lib/testing/e2e-server-identity.ts`），要么改掉 base 之后
+  **让这条分支以后再也拿不到必需 CI**：`ci.yml` 的触发条件写着 `base == main || base == develop`，
+  base 一旦改到 topic 分支，之后的推送就再也不会跑那 5 个作业（旧 SHA 上那几次运行记录还在，
+  但它们不再代表将要被合并的内容）——两种代价都换不到任何东西，因为解法本身没有待定的部分。
+  规则写成三条（`diff #116版 合并版` = **27 行**，逐行核过没有第四类改动）：以 #116 那份为基底；
+  删掉 #116 那行本地 `const ROUTES = [...]`、改成本 PR 的 `WARM_ROUTES` 导入与循环；文档注释两边都留；
+  **`assertOurServer` 那段必须留在 `if (SERVERS < 2) return;` 之前**（串行才是最常用模式，放早退之后等于常跑的路上不设防）。
+  #120 的正文里带这三条 + 为什么，评审与合并都只看那一处。
+- 顺带更正一条与本条无关的口径：队列现在是 **42 条**（#134 `fix/c09-swallowed-signout`，base `main`，
+  与那 41 条零 own-delta 重叠），上面那套整队列模拟覆盖的是 #92–#133。傍晚逐条扫 `gh pr checks` 的桶：
+  41 条里 40 条唯一红项是 Vercel（配额），1 条全绿，**没有一条是因为代码红的**；#134 的必需 CI
+  （Build / Unit Tests / Lint & Type Check / CodeQL / E2E + 两个 shard）在 base `main` 上全 pass。
+- 验证：本条只是文档，判据本身来自 `git show <ref>:<file>` + `diff` 的逐行比对，命令都在上面；
+  两条 `route.ts` 的行数与 diff 规模、#109 的 own-delta 清单、#96 无下游（`baseRefName=="fix/checkout-guard-fail-closed"`
+  命中 0 条）/ #109 下游只有 #110，都是当场量的。
+- 风险 / 回滚：本条不改代码、不动任何 PR 的 base，回滚 = revert 本 commit。
+- 下一项：`main` 前进之后重跑整队列模拟（那时边 1、边 3 应已因这条规则自动消失，只剩边 2 与新的账）；
+  `AUTH_ERROR_CHANNEL` 台账仍排在 #92 与 #114 落地之后。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — C09 门禁的输入量好了：整队列自己在**减少**抹通道点（Δ −9，全部来自 #92），新增 0
+
+- 里程碑 / 版本：v0.12.0；分支 `docs/pr-merge-order`（PR #118）。这条是给「`AUTH_ERROR_CHANNEL` 台账接不接」
+  那个待定问题补的**输入**，不是决定本身。
+- 状态：DONE（测量）。决定仍按既定顺序排在 #92 与 #114 落地之后——理由在下面第三条。
+- 要回答的问题：#134 那条台账把 C09 的面量成了 90 个 await 点 / 58 个抹掉通道，但**没有回答「这个债还在不在长」**。
+  门禁值不值，取决于这个数，不取决于那个数。
+- 怎么量的（脚本 `/tmp/c09-delta.mjs`，未入库）：对 41 条 PR 各取 own-delta（`merge-base <base-ref-oid> <head>` 之后
+  的 `src/**` 非 `*.test.*` 文件），**同一套整文件 AST 判据**分别跑在 base 树与 head 树上，取差。
+  分母与失明面都打印出来：`PRs scanned: 41/41`、`files with parse failure: 0`。
+  **第一版这个测量是废的**：它把「新增行」单独包进函数体再解析，多行解构被截断就 `parseDiagnostics` 非空、
+  该文件直接不计——报出来是「队列新增 0 处」，而唯一有信号的 #92 有 6 个文件解析失败。
+  也就是说那个 0 是**没测到**，不是没有。教训与 #134 那条同型：一个计数器要先证明自己转起来了。
+- 结果：**整条队列对 C09 存量是净减少，Δ = −9，全部来自 #92（它改过的文件里 14 → 5）**；
+  另外 40 条**一条都没有新增**抹通道点。
+- 这条测量改变的是成本，不是结论：门禁现在要做的话，台账要装 **58 个点位、散在 33 个文件**
+  （比 C08-b 那份 11 条大得多；**58 已经是 #92 减完之后的数**，量在整队列合并树 `d9d35bd` 上，别拿 −9 再去减一次），
+  而这些文件正是队列在改的（`actions/team.ts` 5、`actions/mfa.ts` 4、
+  `actions/api-keys.ts` 4……）——门禁一接上，每条碰到这些文件的 PR 都要同时维护 `sites` 数字，
+  两向对账会把「顺手修一个」和「台账漂移」混成同一次红。
+  另一面也要记：这个缺陷家族在仓库历史上是**反复出现**的（58 处本身就是证据），而 `check:query-errors`
+  的模块头上明写「first increment 刻意只做查询链上的断言改写」，扩到 auth 本来就是它的第二步。
+  所以「接不接」仍然值得接，只是**接的位置在 #92/#114 落地之后**：判据模块（`session-error.ts`）与门禁本体
+  （`query-error-channel.ts`）都还在审，现在动它们等于给一条 20 深的栈再加一条重解分支。
+- 顺带把「C09 还剩几处」这个问题从「口头清单」改成「有判据可重跑的量」：两个数各自怎么来的写在上面
+  （面 = 整文件 AST 分类；增量 = 同判据跑在每条 PR own-delta 的两侧取差）。
+  **两个脚本本身是本轮的临时文件（`/tmp/measure-c09.mjs`、`/tmp/c09-delta.mjs`），没入库、重启即无**——
+  要复测按上面那段描述重建即可，重建出来的东西必须自己打印分母（扫了几条、几个文件解析失败），
+  否则拿到的 0 是「没有」还是「没测到」分不出来。
+- 验证：本条只是文档与测量，不改代码、不动任何 PR 的 base；回滚 = revert 本 commit。
+- 下一项：`main` 前进之后重跑整队列模拟（边 1、边 3 会因那两条定案自动消失，只剩边 2 的三行拼接与新长出来的账）；
+  `AUTH_ERROR_CHANNEL` 台账在 #92、#114 落地之后接，台账尺寸按本条量出的 58 点位 / 33 文件估。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 本地守卫全数清点：AGENTS.md 说「commitlint 强制」，而 commitlint 根本不是这个仓库的依赖
+
+- 里程碑 / 版本：v0.12.0；分支 `docs/pr-merge-order`（PR #118）。起因是 #134 那条台账里记下的「pre-push 静失明」，
+  顺着把 `.git/hooks/` 整个清点了一遍，结果比那一条大得多。
+- 状态：DONE（清点 + 一处已修）。剩下的接线**排在那几条门禁 PR 之后**，理由在末尾。
+- 撞上的过程：`.git/hooks/pre-push` 是指向 `/private/tmp/merge-sim-42/.husky/pre-push` 的软链
+  （今天做整队列模拟时在 worktree 里跑命令，把主仓库共享的 `.git/hooks/` 指到了那个临时目录）。
+  第一次推送目标还在，钩子跑了 958 行；`git worktree remove` 之后链接**悬空**，
+  随后两次推送钩子一行都没跑、退出码 0、推送成功。判据不是「有没有报错」，是**推送日志的行数**（958 → 2）。
+- 全数清点（`for h in …; do [ -L ] / [ -x ] / [ -e ]`）：
+  - `post-checkout`、`post-commit`：真实文件、可执行 ✅
+  - `pre-commit`、`commit-msg`：`.git/hooks/` 里**根本不存在**，而 `.husky/pre-commit`、`.husky/commit-msg` 是入库的 ❌
+  - `pre-push`：悬空软链 → 已修成 `ln -sfn ../../.husky/pre-push`（相对链接），本条之后的推送都真跑了 `verify:build`
+    （日志 946~953 行、build 23/23 静态页，四次）。
+- **为什么没有照同样办法去「修」另外两个**：`.husky/pre-commit` 与 `.husky/commit-msg` 头上都有
+  `. "$(dirname -- "$0")/_/husky.sh"`，而 `.husky/_/` **不存在**。把它软链进 `.git/hooks/` 之后 `$0` 变成
+  `.git/hooks/commit-msg`，于是它去找 `.git/hooks/_/husky.sh`——找不到就非零退出，**每一次提交都会被挡**。
+  `pre-push` 侥幸能用，只因为那份文件恰好没有这行 source。这是个反直觉的点：
+  「照抄上一个修复」在这里会把仓库变成不能提交。
+- 更深一层（这条才是结论）：`husky`、`@commitlint/cli`、`@commitlint/config-conventional`、`lint-staged`
+  **一个都不在 `package.json`，`pnpm-lock.yaml` 里也是 0 命中**；`.github/workflows/*.yml` 里
+  `grep commitlint|conventional` **零命中**。而 `AGENTS.md` 的 Maintenance 段写着
+  「Commit convention: Conventional Commits, **enforced by commitlint** (config in `commitlint.config.js`)」。
+  也就是说：配置文件在、钩子脚本在、话写在 AGENTS.md 上，**执行者一处都没有**——本地没装、CI 不查。
+  这与 task #63 修的是同一类（承诺的守卫不存在或存在但不生效），只是这次是提交规范那一层。
+- 那大家是不是在乱提交？没有。按 `commitlint.config.js` 的硬规则（`type-enum` 11 个、`scope-case: lower-case`、
+  `subject-empty`、`type-empty`，加上它 extends 的 `config-conventional` 默认 `header-max-length: 100` 与
+  `body-max-line-length: 100`）逐条量过 **`origin/main` 最近 200 个 commit**：**0 条违反**；
+  我自己最近 40 个也 0 条（最长 header 73 字符，无一条 body 行超 100）。
+  所以现状是**靠纪律维持，不是靠门禁**——这既是好消息（没有存量要清），也是坏消息（它随时可以静悄悄变成不一致，
+  而且今天已经证明了这一层守卫可以整层不存在而没人发现）。
+- 修法与为什么现在不做：正解是把 `@commitlint/cli` + `config-conventional` 加进 devDependencies，
+  用仓库自己的门禁形态（`src/lib/**` 纯规则 + `scripts/lib/*.js` IO + `scripts/*.js` 启动器 + 进 `check-all.sh`）
+  做一个「按区间校验 commit message」的门禁，这样 CI 真的会拦，不依赖谁本地装没装 husky。
+  **代价现在不做**：要动 `package.json` 与 `scripts/check-all.sh`，这两个文件各有 4 条 open PR 在改
+  （#113 / #114 / #126 / #131 正是门禁接线那几条），再加一条与之竞争的 PR 不划算；
+  `git config core.hooksPath .husky` 这一类本地环境改动**不替用户做**（它会改变用户自己每次提交的行为）。
+  已登记为待办（含「顺带把三个缺失钩子的存在性一起守住」）。
+- **把范围收窄，别读成「AGENTS.md 通篇过期」**：那份文件点名的东西我逐条核过——
+  5 条 `pnpm` 命令（`lint` / `type-check` / `test` / `build` / `verify:build`）全部存在于 `package.json`，
+  10 个 `agents/*.md` 相对链接全部存在，3 个反引号点名的文件全部存在。
+  **对不上的只有「enforced by commitlint」这一句**（外加「pre-push 钩子会自动跑」这句一度是真的坏了）。
+  这条核对本身差点又产出一次假发现：第一版脚本用 `"." + 相对路径` 拼路径，拼出来是 `.agents/…`，
+  于是报「20 个 agent 文件全都不在」——`ls agents` 一行就把这个结论推翻了。
+  **路径要 `path.join`，别用字符串加法**；任何「全部都不在」这种数一出现，第一动作是去目录里看一眼，不是写进文档。
+- 验证：以上每一条都是当场跑的命令 + 打印出来的数（钩子的 `-L`/`-x`/`-e` 三态、`ls .husky/_` 不存在、
+  `node -e` 读 package.json 与 lockfile 的命中数、`grep .github/workflows`、200/40 个 commit 的规则核对）。
+- 风险 / 回滚：本条只是文档；唯一的环境改动是 `.git/hooks/pre-push` 从悬空软链改成指向仓库自己的 `.husky/pre-push`，
+  反向操作是 `rm .git/hooks/pre-push`。
+- 下一项：门禁形态的 commit 校验排在 #113/#114/#126/#131 落地之后；
+  `AUTH_ERROR_CHANNEL` 与「已装钩子存在性」两条也排在同一批之后。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — #98 因我 rebase #94 而变 CONFLICTING：判性质、按例外判据改指 main，整队列 0 假红色
+
+- 里程碑 / 版本：v0.12.0；分支 `docs/pr-merge-order`（PR #118）。
+- 状态：DONE。触发点是傍晚一次全队列 `mergeStateStatus` 复扫：**42 条里 #98 一条 DIRTY**，
+  而一小时前同一把尺子是 0 条。
+- 起因是我自己的动作，不是别人的代码：上午为了清 #94 的冲突把它 rebase 过（`afeca14 → 4f61d42`，
+  `range-diff` 证明内容逐字节没变），而 **#98 的 base 就是 #94 那条分支**。base 换 sha 之后，
+  #98 底下还压着 #93/#94 的**旧副本**，GitHub 于是把「同一批改动的新旧两份」判成冲突。
+- 判性质的两条命令，结论相反才是重点（`merge-tree --write-tree --name-only`，第一行是树 OID、路径取到第一个空行为止）：
+  - `pr/98` vs `origin/main` → **零冲突**；
+  - `pr/98` vs `pr/94`（新 tip） → 冲突在 `CHANGELOG.md`、`docs/progress.md`、`docs/roadmap-0.12.0.md`、
+    `src/lib/security/query-error-channel.ts`。
+  也就是说红色是 base 记账造成的，不是这条 PR 有毛病。这正对上一早写进 #118 的那条例外判据：
+  **「假红色」+「从没跑过必需 CI」同时出现才提前改指 base**——#98 的 base 是 topic 分支，5 个必需作业本来就没上报。
+- 做了什么：`gh pr edit 98 --base main`（**没 rebase 任何分支、没推任何 sha、没合任何东西、没碰保护规则**）。
+  为什么不选另一条路：把 #98 rebase 到新 #94 上当然也能清，但 #99 的 base 是 #98 的分支，
+  于是 #99→#114 要连着 rebase **16 条**，每条都要重解同样那几个文件——零证据增益，全是风险。
+- 代价写在 #98 的正文里：它现在的 diff 显示 6 个 commit（5 个是 #92/#93/#94 的，就在这条分支底下），
+  那三条按升序落地之后自动缩回 1 个（`896f11e`）。
+- **但「改了 base 就会跑 CI」是错的，这条要单独记**：改完之后 `gh pr view --json mergeStateStatus` 从 `DIRTY`
+  变成 `BLOCKED`，而 `gh api repos/…/commits/896f11e/check-runs` 里仍然只有**昨天 09-23 那两条**
+  （`Detect Secrets`、`security-config`）——`pull_request` 工作流不会因为 base 被改就重新触发，
+  它挂在 `opened` / `synchronize` 这类事件上。#124 那天之所以有全绿的必需 CI，是因为**同一次操作里还推了分支**，
+  不是改 base 的功劳。所以 #98 现在停在「必需检查没上报」，要等它轮到时有一次真实推送（或界面上的重跑）才会真跑。
+  这一条已经把 #118 的合并动作建议改了：`gh pr edit <N> --base main` 之后**必须再推一次**才能拿到 CI 证据。
+- 顺手把这条链上的台账数字对死，免得谁去重算：`ERROR_CHANNEL_EXEMPTIONS` 是
+  **12（#92@`3f5fd55`）→ #93 拿掉 `projects.ts` = 11 → #94 拿掉 notifications / profile / profile-edit = 8
+  → #98 再拿掉 `invitations/route.ts` = 7**，而 #98 那份文件里的 7 条**已经是终态**，
+  所以那处冲突不需要两侧合并，取 #98 的即可。（测量方式：`git show <rev>:<file>` 数 `^  "..."` 的条目行，
+  再用 `comm` 求两侧删除集的交集——**交集为空**，这条链上没有人改同一个条目。）
+- 复扫结果（同一把尺子）：42 条 open PR 里 **0 条 DIRTY**、1 条 BLOCKED（#98，必需检查还没上报——见上一条），
+  1 条 CLEAN、40 条 UNSTABLE（全部只有 Vercel 配额那两条红）。
+- 验证：上面每个数都是当场命令的输出；改 base 前后的 `mergeStateStatus` 从 `DIRTY` 变 `BLOCKED` 是
+  `gh pr view --json mergeStateStatus` 读回来的，不是推的。
+- 风险 / 回滚：一条命令还原 `gh pr edit 98 --base fix/c08b-prefill-overwrite`。
+- 下一项：#98 的必需 CI 结果；`main` 前进之后重跑整队列模拟。
+- 更新时间：2026-09-24。
+
+
+## 2026-09-24 — 44 个 PR 从零重建第二遍：6 条边需要人判断，`check:progress` 顺手抓出我自己三条不合规的台账条目
+
+- 里程碑 / 版本：v0.12.0 收口期的合并证据。分支 `docs/pr-merge-order`（PR #118）。
+- 状态：已完成，等待合并。
+- 为什么要再跑一遍：上一轮模拟覆盖的是 41 个 PR，此后队列长出 #134/#135/#136 三条、`main` 仍是 `ad4b029`。
+  台账里自己写过的规则是「这份矩阵随队列每次变动即过期，要重跑而不是引用」，所以这次是按规则办事，
+  不是因为有人报了问题。
+- 做法（脚本化，不再手敲，理由见下面的「第一次作废」）：`sim/queue-44` 从 `origin/main` 起，
+  按编号升序并入 **24 个栈尖**（44 个 open PR 里其余 20 个是别人的 ancestor，剔除后仍全覆盖），
+  逐个用 `git merge-base --is-ancestor <每个 PR head> sim/queue-44` 证包含关系，
+  结果 **44/44**，`main` 之上 157 个 commit。
+  台账/CHANGELOG 的冲突一律走「两侧都是纯追加 ⇒ 两块都留」的判定器，
+  它对两侧各自与 merge base 做行多重集比较，任何一侧**删过**基线内容就拒绝合并并要求人工——
+  这一条是有牙齿的：中途一次我把 `--ours`/`--theirs` 之外的形状交给它，它直接 REFUSING 了。
+- 第一次整轮作废重跑（我的操作失误，记下来免得再犯）：驱动脚本在「同时有代码冲突」时会**先停下来**，
+  而我在那次停下后手工 `git add CHANGELOG.md docs/progress.md`——**冲突标记还在文件里**，
+  于是 #119、#120 两个 merge commit 把 `<<<<<<<` 提交进了模拟历史。
+  发现方式不是看日志，是下一轮合并时判定器报「a conflict marker survived in the reconstruction」。
+  处置：`reset --hard origin/main` 整轮重跑，把「先解文档、再决定要不要停」写进驱动脚本，
+  并在结尾加一道全索引 `git grep --cached "^<<<<<<< "` 的后检。模拟分支上的历史都是远端 ref 的重放，
+  重跑不丢东西；真实分支一条没动。
+- 六条需要人判断的边（其余全是两块都留）：
+  1. **#114 ↔ #94（两条都以 #92 为根的并行链）——豁免台账必须跟着 #114 走。**
+     我第一版按「两侧条目取并集」处理 `src/lib/security/query-error-channel.ts`，把 #94 那 7 条
+     `debt (C08-b)` 条目也搬了过来；`pnpm check:query-errors` 立刻逐文件点名：
+     `QUERY_ERROR_CHANNEL_EXEMPT_STALE: src/app/api/invitations/route.ts 登记台账 5 处，实际 0 处`
+     （另 6 处同形：`uploads/service.ts` 3、`team/page.tsx` 2、`analytics`、`billing`、`api-keys`、`sessions` 各 1）。
+     也就是说 #114 那条链上这些债务**已经还清**，并集等于把已还的债重新登记。改成整文件取 #114 侧之后门禁通过。
+     附带一条好消息：这道两向对账不是摆设，它在我判断错的方向上准确地红了。
+  2. **#114 ↔ #96（Stripe 结账）**：`route.ts` 两侧是同一个缺陷的两种写法（#96 在调用点按 `source` 打日志，
+     #114 在 helper 内部打），`route.test.ts` 更是整文件互斥 ⇒ 取 #114 侧（route + test 必须同侧，否则断言的是另一份契约）；
+     `messages/{en,zh-CN}/actions.json` 取**键的并集**（#96 带进 `alreadySubscribed`、`recoveryUnenrollFailed`，
+     #114 带进 `apiKeyNotFound`、`apiKeyRevokedButNotCreated`、`uploadUnavailable`，两侧对基线都是纯新增），
+     en 从 79 → **81 键**，两 locale 键集相等；唯一同名不同值的 `checkoutUnavailable` 跟随幸存的那份实现。
+  3. **#114 ↔ #129（`docs-site/scripts.md` 与 zh-CN）**：两侧都在重写 `check:query-columns` 这一行，
+     两块都留会产出一张表里的重复行 ⇒ 按命令取并集、同名行取 #129（那条 PR 正是把这个门禁扩到写入载荷的，描述更新）。
+  4. **#119 ↔ #117（`e2e/admin-contact-mfa.spec.ts`）**：两侧各 import `support/hydrated.ts` 的一个 helper，
+     合并后文件里三个 helper 都在、两个都被调用 ⇒ 解法是一条合并 import，不是两块都留。
+  5. **#120 ↔ #116（`e2e/support/warm-up.ts`）**：两侧都在同一段文档注释尾部各接一段，且各自带 import，
+     裸的 keep-both 会把注释体吐到代码里（历史上就是 28 个 type-check 错）⇒ 合成一个注释块 + 4 条 import 去重。
+  6. **#131 ↔ #126（`scripts/check-all.sh` + `docs/testing.md`）**：两侧加的是**不同**的门禁行 ⇒ keep-both 成立，
+     判定器先确认两侧没有重复行才落笔。
+- 合并之后仍要做的一步（不是可选）：`docs/progress.md` 按日期**稳定排序**。89 条条目里 50 条换了位置，
+  两处 `date-out-of-order` 全清。这条再次印证「增量合并不再破顺序，从零重建必然破」。
+- 这轮抓到的新问题，跟合并顺序有关：**#126 的 `check:progress` 会审所有条目的必填字段，而它还没进 `main`。**
+  判据是 `^-\\s*里程碑[^：:]*[：:]`——也就是接受 `- 里程碑：` 和 `- 里程碑 / 版本：`，
+  但**不接受我写的 `- 版本 / 里程碑：`**（复合词前缀不放行）。于是今天新开的两条 PR 里有三条条目
+  在本地全绿（因为本地没有这道门禁）、一合到 #126 之后就红：`[missing-field]` 共 4 项
+  （#135 两条、#136 一条，其中那条「同日晚些订正」连 `状态` 都没写）。
+  已在两个源分支上把字段改成合规写法并补上缺的两项，另开 PR 的人请注意同一条：**写 `- 里程碑 / 版本：`，不要反过来。**
+- 验证（整棵树 = 44 个 PR 全合完的形状）：`CI=true pnpm check:all` **exit 0**，
+  `Test Files 227 passed (227)`、`Tests 2649 passed (2649)`（`main` 自己是 200 / 2299），
+  `pnpm check:progress` 单跑 ✅「89 条条目，日期非递减且标题无重复」，`pnpm build` **exit 0**（23/23 静态页）。
+  这轮**没有**重跑 `pnpm test:coverage` 与全量 `pnpm test:e2e`（上一轮跑过：97.45/92.29/98.14/98.58 与 113 passed），
+  所以别说成「覆盖率和 E2E 也验过」——要的那两项得再花一轮。
+- 与在审 PR 的重叠：本条只改 `docs/progress.md`（+ 纯追加），代码零改动。
+- 阻塞：无。风险 / 回滚：文档一条，revert 即回滚。
+- 下一项：把这份新矩阵同步进 PR #118 正文；顺手把 #135/#136 三条不合规的台账字段修掉。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 合并前最后一次预清：44 个 PR 自己写的台账条目全部过 #126 那道门禁，#125 的新 commit 也没添新的判断边
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 为什么做：#126 的 `check:progress` 一落地就会审**全部**历史条目，而它还没进 `main`——所以「合完
+  44 个 PR 之后 main 上这道门禁红不红」必须在合并之前量，而不是等红。今天已经在 #135/#136 上抓到
+  三条不合规（字段反写成 `- 版本 / 里程碑：`、订正条目缺字段），当时是手工发现的；这次把它变成
+  对整条队列的一次判定。
+- 完成内容：
+  1. 复用 #126 的判定本体（`git show pr/126:src/lib/docs/progress-ledger.ts` 直接 import，不重写规则），
+     对 44 个 open PR 的 head 逐个跑：只统计**该 PR 自己新增的条目**（按标题是否与 `origin/main` 的
+     条目集合重合来归属），只判 `heading-undated` 与 `missing-field` 两类；日期乱序与重复标题留给
+     合并时的排序步骤，本来就不属于单个 PR 的责任。结果：**0 条不合规**。
+  2. 判定器先给阳性对照再采信其沉默：拿 #135 修复前的 `7d3fd35` 跑同一段脚本 → 如实报出 3 条
+     （`missing-field` × 里程碑 / 里程碑 / 状态），与今天手工发现的那三条一字不差。
+  3. #125 分支今天新增一个 commit（`d71613f`，bundle 门禁的退出码被管道吞掉那次修复），重量了两次：
+     - 44 对 `git merge-tree --write-tree HEAD pr/<n>`：与每个在审 PR 的冲突**只出现在
+       `CHANGELOG.md` / `docs/progress.md`**（两块都是追加，删标记即可），`package.json`、
+       `docs/testing.md`、`docs-site/{,zh-CN/}scripts.md` 全部 Auto-merging 干净——判断边仍是 6 条，
+       没有新增。
+     - 队列里没有任何 PR 改 `verify` / `verify:build` / `check:bundle` 这三行
+       （逐个 `git diff origin/main...pr/<n> -- package.json` grep 过），所以 #125 重排这条链不会和
+       谁打架。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 验证命令与结果：`gh pr list --limit 100`（44）× 上述 sweep → 无输出；阳性对照 → 3 条红；
+  44 次 merge-tree → 冲突文件集合 = {CHANGELOG.md, docs/progress.md}。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。风险一条：这份归属判定用的是「标题是否已存在于
+  main」，如果某个 PR 改写过一条已存在的条目（而不是新增），它的问题不会算到它头上——那类条目由
+  `check:progress` 在合并后自己红，处置动作已经写在那道门禁的失败提示里。
+- 下一项：#125 的 bundle 门禁改动只在本地路径上验证过（pre-push 跑完整链），CI 结果随该 PR 的
+  11 项必需检查回来再补记。
+- 更新时间：2026-09-24（UTC 07:40 前后）。
+
+## 2026-09-24 — 第三次从零重建（补上覆盖率这一半证据）：24 个栈尖 / 44 个 PR，判断边 5 条，`check:all` 与 `test:coverage` 同时 exit 0
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。这一条同时补上前一条「下一项」欠的 #125 CI 结果。
+- 为什么做：前一条只量了「#125 新 commit 与每个 PR 两两合得起来」，没有重跑整队列——而 #125 那次改动
+  动的是 `check:bundle` / `verify` 这两条链本身（新增一个 `src/lib/release/bundle-freshness.ts` +
+  13 项单测），恰好是最可能把**集成后**的覆盖率或门禁清单搞红的改动类型。上一轮 44-PR 模拟刻意没跑
+  覆盖率，这次把它补上，让「合完 44 个 PR 的 main 是绿的」这句话第一次同时有 `check:all` 与
+  `test:coverage` 两份数字。
+- 完成内容：
+  1. `git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 之后重算栈尖：44 个 open PR → **24 个 tip**
+     （判据仍是逐个 `git merge-base --is-ancestor`，不是数合并次数），`sim/queue-44b` 从 `origin/main`
+     起按编号升序并入，`main` 之上 162 个 commit，**44/44 个 PR head 逐个证为 ancestor**。
+  2. 判断边这次**不靠驱动脚本的 stdout**（上一次 `tail -32` 把前半段截掉了，那 6 条里只有 2 条是我亲眼
+     看着解的）。改成从合并历史反推：对 `origin/main..HEAD` 里每个 merge commit 跑一次
+     `git merge-tree --write-tree <m^1> <m^2>`，把冲突路径里除去 `CHANGELOG.md` / `docs/progress.md`
+     之后剩下的那些当作「需要人判断的边」。结果 **5 条**：#114（checkout route + 它的 test + 两份
+     `messages/*/actions.json` + `docs/roadmap-0.12.0.md` + `src/lib/security/query-error-channel.ts`）、
+     #119（`e2e/admin-contact-mfa.spec.ts`）、#120（`e2e/support/warm-up.ts`）、#129（两份
+     `docs-site/scripts.md`）、#131（`docs/testing.md` + `scripts/check-all.sh`）。其余 19 个 tip
+     要么干净、要么只撞那两份台账。上一条记录写的「6 条」是把 #114↔#96 单独数了一次，这次它落在 #114
+     那次合并里（`messages/*` + route + test 同时红），是同一处重叠的两种数法，不是队列变了。
+  3. 台账排序这一步又必须做一遍（第三次验证「从零重建必然破顺序」）：`check:progress` 红在 3 个位置，
+     `/tmp/sort-ledger.py` 稳定排序后 **92 条条目 / 53 条换位**，行数 4116 → 4116 且内容多重集相同
+     （脚本自己断言这两点才肯写盘），再跑 exit 0。
+- 验证命令与结果（全部在 `sim/queue-44b` 这棵集成树上跑，node_modules 与本 checkout 共用）：
+  - `CI=true pnpm check:all` → **exit 0**，`Test Files 228 passed`（上一轮 227，多的那 1 个文件就是
+    #125 新增的 `bundle-freshness.test.ts`）。
+  - `pnpm test:coverage` → **exit 0**，`All files 97.48 / 92.34 / 98.24 / 98.59`
+    （阈值 91 / 90 / 93 / 92，来自 `vitest.config.ts`，**没有降低任何阈值**）。
+  - 结尾一次 `git grep --cached "^<<<<<<< "` → 无命中。
+  - #125 自己的 CI 在 `d71613f` 上：14 项里 **13 项 pass**，唯一红的是 `Vercel – indie-stack`
+    （`Deployment rate limited — retry in 24 hours`，按定案照实记录并忽略）。同时刻 docs-site 那条
+    是绿的，所以「一红一绿」再次成立。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/queue-44b` 是**只在本地**的分支，从未推送、
+  从未建 PR、从未碰 `main` 或任何真实 PR 分支；它的数字已经全部写进本条，所以记完就删——留一个不可达
+  的本地 tip 正是 `ops:work-audit` 会点名的东西。风险一条：这份矩阵随队列每次变动即过期，
+  下一次合并动作之后要重跑而不是引用。
+- 下一项：把这轮的三份数字（`check:all` / `test:coverage` / 5 条边）同步进 PR #118 正文。
+- 更新时间：2026-09-24（UTC 08:40 前后）。
+
+## 2026-09-24 — 第四次从零重建（45 个 PR / 24 个栈尖）：判断边 5→6，新那条是 C11 自己贡献的
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：队列从 44 条涨到 45 条（新增 #137 = C11 路由鉴权台账），而 C11 是一条**会读全仓库代码**的门禁。
+  上一遍的结论只覆盖「没有 C11 的合成树」；台账是在 #135 分支的源码形状上手写的，它能不能在
+  别的 43 条 PR 都落地之后仍然绿，是一个真实的未知——`#136` 改了营销端点的守卫邻近代码、
+  `#98`–`#114` 改了一批 route 的鉴权与错误通道。所以重跑一遍，而不是引用上一遍。
+- 完成内容：
+  1. 重算栈尖：45 个 open PR → **24 个 tip**（判据仍是逐个 `git merge-base --is-ancestor`）。
+     `sim/queue-45b` 从 `origin/main` 起按编号升序并入 24 个 tip，`main` 之上 **164 个 commit / 24 个 merge**，
+     **45/45 个 PR head 逐个证为 ancestor**。
+  2. 判断边 **6 条**（上一遍 5 条），算法不变：对 `origin/main..HEAD` 每个 merge 跑
+     `git merge-tree --write-tree <m^1> <m^2>`，冲突路径去掉 `CHANGELOG.md` / `docs/progress.md` 之后剩下的算一条。
+     这次**先把边的字段取错过**：merge-tree 的冲突记录是 `mode oid stage\tpath` 四个字段，
+     我按六个字段去取 `$6`，于是扫出「零条边」——一个正好是我想要的回答的空结果。改成 `$4` 之后
+     6 条全数现形，分母也打印出来（`6 / 24 merges`）。
+     边清单：#114（checkout route + 它的 test + 两份 `messages/*/actions.json` + roadmap + `query-error-channel.ts`）、
+     #119（`e2e/admin-contact-mfa.spec.ts`）、#120（`e2e/support/warm-up.ts`）、#129（两份 `docs-site/scripts.md`）、
+     #131（`docs/testing.md` + `scripts/check-all.sh`）、**#137（新增：两份 `docs-site/scripts.md` + roadmap +
+     `docs/testing.md` + `package.json` + `scripts/check-all.sh`）**。
+  3. #96 与 #114 是**同一处修复的两个独立版本**（结账前置读取 fail-closed），这一遍把它们的关系量清楚了：
+     两份 `readCheckoutScope` 在合成树里**同时存在**（自动合并把两处定义都留下了 → 重复声明），
+     取 #96 的那一份（`failed` 带 `source` + 调用点 `logApiError`），丢弃 #114 的（`unavailable` / 在 helper 内记日志），
+     两侧对 `checkoutUnavailable` 的中英文案也因此各留一条。`query-error-channel.ts` 的台账方向相反：
+     取 #114 的（那 7 条 `debt` 已被 #98–#103 #110 逐条清掉），这一处**判据本身会双向对账**，
+     所以留错方向会当场红，不靠我判断得对。
+  4. C11 在合成树上 exit 0：`45 个 handler 全部登记且守卫可达（6 个无守卫符号 / 调用图截断计数 792）`。
+     与单分支相比 handler 数与 public 数一字不差，只有截断计数从 770 涨到 792——别的 PR 往 helper 里加了代码，
+     **没有加路由**，也没有把台账声明的守卫挪到走不到的位置。这正是这条门禁要能回答的问题。
+  5. 台账排序第四次验证「从零重建必然破顺序」：`check:progress` 红在 3 个位置，稳定排序后
+     **94 条条目 / 54 条换位**，行数 4211 → 4211 且内容多重集相同（脚本自己断言这两点才写盘），再跑 exit 0。
+- 验证命令与结果（全部在 `sim/queue-45b` 这棵合成树上跑）：
+  - `CI=true pnpm check:all` → **exit 0**，`Test Files 229 passed`（上一遍 228，多的那 1 个文件是
+    #137 新增的 `route-auth.test.ts`）。第一次跑是**红的**，红的就是 `check:progress` 那 3 个乱序点。
+  - `pnpm test:coverage` → **exit 0**，`All files 97.46 / 92.38 / 98.27 / 98.62`
+    （阈值 91 / 90 / 93 / 92 未动；上一遍是 97.48 / 92.34 / 98.24 / 98.59）。
+  - `git grep --cached "^<<<<<<< "` → 无命中。依赖面 `pnpm-lock.yaml` 零差异，所以这一遍不需要重装依赖。
+- 一处必须记下的异常（原因未定位）：第一趟驱动脚本汇报「#92 merged clean / #93 merged clean」，
+  紧接着 #94 冲突；但之后 HEAD 回到 `origin/main`，两条 merge **既不在 reflog 里、也不在对象库里**
+  （`git fsck --dangling` 63 个悬空 commit 中没有 `sim/queue-45` 的那两条）。单独复跑同一条 merge 可复现地
+  成功并留下 reflog，所以本条记录的数字全部来自第二趟（逐个调用、每步之后另外查一次 HEAD）。
+  **不写机制解释**：能确认的只有「驱动脚本的 stdout 不能当证据」，而这一点上一遍已经用 merge-tree 反推解决过。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/queue-45b` 只在本地，从未推送、从未建 PR、
+  从未碰 `main` 或任何真实 PR 分支；数字已全部写进本条，记完即删。风险同上一条：这份矩阵随队列每次
+  变动即过期，下一次合并动作之后要重跑而不是引用。
+- 下一项：把这一遍的四份数字（`check:all` / `test:coverage` / 6 条边 / C11 在合成树绿）同步进 PR #118 正文。
+- 更新时间：2026-09-24（UTC 09:05 前后）。
+
+## 2026-09-24 — 第五次从零重建（46 条 / 24 个栈尖）：上一遍那句「不重跑」被推翻，红的是 #138 自己的一条等号
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：本分支上一条（第四节最后那段）写着「#138 只是把 #137 顶成中间节点，因此这一遍不重跑整队列」。
+  那句的输入是**上一次模拟的冲突面**，而上一次量到的 `pr/137` 是 `09717e4`——本地 fetch 的 reflog 记着它
+  后来才 fast-forward 到 `ec7a6c1`。也就是说那是一个已经过时的测量被当成了事实用。合并动作在即，
+  这份地图过时比没有更糟，所以重跑。
+- 完成内容：
+  1. `sim/queue-46` 从 `origin/main`（仍是 `ad4b029`）按编号升序并入 **24 个栈尖**：`main` 之上
+     **173 个 commit / 24 个 merge**，**46/46 个 PR head 逐个 `git merge-base --is-ancestor` 证完**，
+     树里 `git grep --cached "^<<<<<<< "` 零命中，`pnpm-lock.yaml` 与 `main` 零差异（不需要重装依赖）。
+     修完下面第 3 点之后又并了一次，同一棵树到 **176 个 commit / 25 个 merge**；边数与包含性仍按
+     24 个 merge 那一棵扫，因为「一次合并 = 一条边」只在只有栈尖的那一遍里成立。
+  2. 判断边 **6 条 / 24 次合并**（`/tmp/edges46.js`：对每个 merge 跑 `git merge-tree --write-tree m^1 m^2`，
+     冲突记录取 `$4`，去掉两份台账）。边数与上一遍相同，**归属与文件集变了**：第六条从 #137 挪到 **#138**
+     （链尖带进 C11 那批文件），重叠面是 `docs-site/{,zh-CN/}scripts.md` + `docs/testing.md` +
+     `package.json` + `scripts/check-all.sh`，**roadmap 这一遍没撞**。对「消失」做了两步证伪：
+     ① 把 `pr/137` 单独合进同一个父树 `0f1b38a`，冲突文件集与合 `pr/138` 一字不差——不是 #138 挤掉的；
+     ② 把这条链上前后五个 commit 逐个对同一父树跑 `merge-tree`：`09717e4` 撞 roadmap（3 条记录 = 1 个文件
+     × 3 个 stage），`721f4c9`（任务池不再自己抄条数、C11 让开 19 号）起**不撞**，其后三个都不撞。
+     一条边的消失是一个 commit 的事，机制是量出来的不是猜的。
+  3. **这一遍唯一真实的红是 #138 自己带的一条断言**：合成树上 `CI=true pnpm check:all` 报
+     `expected 16 to be 14`。数字没错——#136 给两条营销端点加了窗口；错在把接线时量到的那一个数
+     写成等号，于是**谁按顺序合到 #138，CI 就在一条并不存在的回归上红一次**。已在 #138 分支修成
+     地板值 + 家族白名单（见 `feat/measure-route-rate-limits` 同日条目），修完合成树复跑全绿。
+  4. 六条边的**手工解法**逐条落进 PR #118 正文（合并的人要能照着做，而不是只知道「有冲突」）：
+     #114 那条不是 keep-both——两份 `readCheckoutScope` 与两份 `type CheckoutScope` 会同时留在文件里
+     （位置不同所以没有文本冲突），只有 `pnpm type-check` 看得见，必须手工删掉 #114 的那份 helper；
+     #119 两条 hydration helper 各用一个，import 合成一行；#120 顶部文档注释两段都留 + 两个 import
+     都留（只删标记会产出 28 个类型错）；#129 / #131 / #138 是表格行与脚本行的并集。
+- 验证命令与结果（全部在 `sim/queue-46` 这棵合成树上跑）：
+  - 第一次 `CI=true pnpm check:all` → **exit 1**，红在 `check:progress` 那 3 个乱序点；排完序复跑
+    → **exit 1**，红在 `pnpm test` 的那条等号（`Test Files 1 failed | 228 passed (229)`，
+    唯一失败用例就是 `route-auth.test.ts > 真实仓库 > 限流器读数…`，`expected 16 to be 14`）；
+    等号修掉并再并一次之后才全绿。
+  - 台账排序第五次验证「从零重建必然破顺序」：稳定排序后 **97 条条目 / 55 条换位**，
+    行数 4365 → 4365 且内容多重集相同（脚本自己断言这两点才写盘），`check:progress` exit 0。
+  - 等号修掉并再并一次之后 `CI=true pnpm check:all` → **exit 0**，
+    `Test Files 229 passed (229)` / `Tests 2699 passed (2699)`。
+  - **队列里所有「CI 真的跑过」的 PR 此刻没有一条因代码红**：23 条 base `main` 的 PR 逐条
+    `gh pr checks --json name,bucket`，**23/23 扫到、共 297 行**，`bucket=="fail"` 的 **38 行全部**是
+    `Vercel – indie-stack` / `Vercel – indie-stack-docs-site`（部署配额，按既定口径记录并忽略）。
+    这条数字第一次跑出来是「0 红 / 283 行」——那是我自己把过滤器写成 `--jq -r '…'`（gh 没有 `-r`，
+    于是过滤器变成 `-r`、真正的过滤器成了位置参数），23 次调用全部报错而 `2>/dev/null` 把报错咽掉了。
+    同一趟里 #92 那次调用死在 `unexpected EOF`，所以 23/23 是先量到 22/23、再单独补测 #92
+    （14 行 / 1 红 = Vercel）才成立的。**一个空结果必须先证明读的人在场**，这是本仓库第四次踩同一类坑。
+  - `pnpm test:coverage` → **exit 0**，`All files 97.46 / 92.37 / 98.27 / 98.63`
+    （阈值 91 / 90 / 93 / 92 一字未动；上一趟 97.46 / 92.38 / 98.27 / 98.62，差的 0.01 在 branches 列，
+    这个量级我没有去归因）。
+  - `node scripts/check-route-auth.js` → `✅ 45 个 handler 全部登记且守卫可达（6 个 public /
+    调用图截断计数 792）`，与单分支一字不差；`--rate-limit-report` →
+    **45 个 handler / 12 个路由文件**有限流器绑定，`token` 那两条报成
+    `src/lib/marketing/request.ts#marketingTokenLimit`（两条营销路由自己一行都没 import 限流库）。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/queue-46` 只在本地，从未推送、从未建 PR、
+  从未碰 `main` 或任何真实 PR 分支；数字已全部写进本条与 PR #118 正文，记完即删。
+  风险照旧一条：这份矩阵随队列每次变动即过期，下一次合并动作之后要重跑而不是引用——本条就是上一条
+  犯了这个错的现场。
+- 下一项：把这一遍的结果同步进 PR #118 正文（含对上一段「不重跑」的公开更正）。
+- 更新时间：2026-09-24（UTC 10:55 前后）。
+
+## 2026-09-24 — 合成树第一次跑完整 E2E：chromium 113/113 绿，而且合并配方重放出了同一棵树
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：前几遍整队列重建的证据停在 `check:all` 与 `test:coverage`，而 CI 那五个必需作业里
+  **E2E 从没在「46 条一起」的树上跑过**。这件事在本案里格外要紧，因为六条判断边有两条**就是 e2e 文件**
+  （#119 的 `e2e/admin-contact-mfa.spec.ts`、#120 的 `e2e/support/warm-up.ts`），它们的解法是人手写的——
+  解错了单测不会响，只有 E2E 会响。
+- 完成内容：
+  1. 把 `sim/queue-46` 的合并配方原样重放成 `sim/e2e`（同一批 24 个栈尖、同一套解法）。
+     **重放是逐字节可复现的**：每个手工解点前后的行数与第一遍一字不差
+     （`checkout/route.ts` 199→188→140、`route.test.ts` 305→179、`query-error-channel.ts` 745→705、
+     roadmap 527→508；`#119`/`#120` 之后 CHANGELOG 1831/1844、台账 3288/3328；
+     收尾 CHANGELOG 2128、台账 4365；稳定排序同样是 97 条 / 55 换位）。
+     这等于给 PR #118 正文里那份解法做了一次「照着做一遍能不能得到同一棵树」的核对——
+     合并的人照那份文本动手时，得到的不是我的树而是同一棵。
+  2. 重放里踩到的一次自己制造的污染，记下来因为它的判据可推广：`#129` 那处我把 `#138` 的锚点文本
+     用错了对象，`count==0` 断言失败了，**但脚本没有终止后续命令**，于是带冲突标记的两个
+     `docs-site/*.md` 被后面的 `git add -A` 当成「已解决」提交进去。发现方式是提交之后
+     `git grep -n "^<<<<<<< "` 仍然命中。修法是 `git merge --abort` + `git reset --hard <129 之前那一个>`,
+     然后照真实锚点重解——`sim/e2e` 是本地一次性分支、每一步都可复现，所以这里 reset 才安全。
+     重放时用过的锚点也订正了一处：`#129` 的真实冲突是「HEAD 侧短描述 + query-errors 行 / 来侧扩展描述」，
+     解法取扩展描述那一行再留 query-errors 行（与 PR #118 正文写的一致）；我最初误用了 `#138`
+     那次（两侧都有 query-columns）的锚点，所以才会 `count==0`。
+     **可推广的两条**：机械解冲突的脚本，锚点没命中必须终止整条链；提交后要用 `git grep --cached`
+     证明标记真的清零，而不是相信自己的解法。
+  3. 合成树上跑完整 E2E（并行基线：`PW_FULLY_PARALLEL=true E2E_SERVERS=3`，即 3 台 dev server / 3 worker）：
+     `Running 113 tests using 3 workers` → **`113 passed (4.8m)`、exit 0，零失败零重试**。
+     条数范围说清楚：`projects` 只有 chromium，所以这句话就是 chromium 的 113 条；
+     同一时刻 `main` 树是 **109 条**（`pnpm test:e2e --list` → `Total: 109 tests in 15 files`），
+     队列净增 4 条，全部来自改 e2e 的那几条 PR。
+- 验证命令与结果：
+  - 跑之前逐个端口确认空闲（`lsof -nP -iTCP:3100/3101/3102 -sTCP:LISTEN` 全空）——
+    `reuseExistingServer: false` 会让端口冲突变成响亮的启动失败，但前提是我没拿别人的服务当自己的结果。
+  - `PW_FULLY_PARALLEL=true E2E_SERVERS=3 pnpm test:e2e` → `113 passed (4.8m)` / `e2e exit=0`。
+    **条数取 runner 的汇总行**：我对日志数 `^ *✓` 得到的是 111，因为若干 ✓ 被 `[WebServer]`
+    的噪声挤进行内——日志里那些 `⨯ Error: aborted` 与 `e2e injected transient failure`
+    是用例自己注入的故障，不是失败。
+  - 跑之后：`git status` 干净、`git diff tsconfig.json` 零差异（`NEXT_DIST_DIR` 会往 tsconfig 里追加
+    且不会自己回收，这是本仓库量过第三次的坑）、三个 `.next-e2e-{0,1,2}`（合计 3.6 GB）已删。
+  - 同一棵树此前已复跑：`CI=true pnpm check:all` exit 0（229 files / 2699 tests）、
+    `pnpm test:coverage` exit 0（97.46 / 92.37 / 98.27 / 98.63）、`git grep --cached "^<<<<<<< "` 零命中。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/e2e` 只在本地、从未推送、记完即删。
+  风险两条：① 这份 E2E 结论跟着队列变，任何一条 PR 的 head 再动，「113/113」就只描述它那一刻的树；
+  ② 它只覆盖 chromium，webkit 侧（视觉基线那条链）仍只能由 CI runner 出证据。
+- 下一项：把 E2E 这一行与「配方可复现」一起补进 PR #118 正文。
+- 更新时间：2026-09-24（UTC 11:4x 前后）。
+
+## 2026-09-24 — 读了仓库保护规则本身：合并配方少了一步，而 Vercel 的红根本不挡合并
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：合并地图里「先合前驱、再把后继的 base 改成 main」那一步是我从**过去的现象**推出来的，
+  没有读过规则本身。趁队列静止，直接读 `gh api repos/Sun1090/IndieStack/branches/main/protection`。
+- 完成内容：
+  1. **量到的规则**：必需检查 7 个（`Lint & Type Check`、`Build`、`Build Docs Site`、
+     `E2E (Playwright)`、`security-config`、`Analyze (javascript-typescript)`、`Detect Secrets`），
+     `strict: true`、`enforce_admins: true`、`required_linear_history: true`，
+     仓库侧 `delete_branch_on_merge: false`。
+  2. **三条结论，两条推翻了我自己写过的话**：
+     ① `Vercel – indie-stack*` **不在必需清单里**——那条 `build-rate-limit` 红不挡任何一次合并。
+     以前我是从「红了很多天也合了几十条」归纳的，现在是读设置读出来的；
+     ② `strict: true` 意味着每合一条，其余每一条立刻变成不是最新 base，必须逐条更新分支——
+     46 条一起合的体力成本主要在这里，不在那 6 条冲突边；
+     ③ `required_linear_history` + `enforce_admins` 关掉了我一直默认的那条退路：
+     管理员**不能**绕过必需检查合并，也不能用 merge commit。
+  3. **因此合并配方缺一步**：栈内 PR 的正确顺序是
+     前驱落地 → `gh pr edit <n> --base main` → **`gh pr update-branch <n> --rebase`** → 等 7 项绿 → 合。
+     第 ③ 步不能省，因为**改 base 不触发 CI**（本仓库量过两次、当时只记成一条 trivia）：
+     只改 base 的话那 5 个必需检查会一直是「expected but not reported」，
+     而 `enforce_admins:true` 让 GitHub 把这条 PR 永远判成 `BLOCKED`，谁也点不动。
+     **【当日订正】「改 base 不触发 CI」是对的，但这里给的补救动作是错的**：
+     `update-branch --rebase` 在 base 已经是这条 head 的祖先时得到同一个 sha，不产生 `synchronize`，
+     所以它一次 CI 也唤不起来；能唤起来的是 `gh pr close <n>` + `gh pr reopen <n>`。详见下一条。
+  4. **队列现状按这个判据重扫**（46 条，逐条 `mergeStateStatus` + `mergeable`）：
+     `MERGEABLE=46`（没有一条 GitHub 侧冲突）；`BLOCKED=2` 是 **#98** 与 **#118**；`CLEAN=1`（#121）；
+     其余 43 条 `UNSTABLE` 的红全在 Vercel 那两个非必需检查上。
+     #98 的原因实测到位：它的 head 上只有 2 个 check run（`Detect Secrets`、`security-config`），
+     正是「本会话早些时候我把它改指 main、而改 base 不触发 CI」留下的后果——**是我这一步做出来的一堵墙**，
+     不是我发现的别人的问题。#118 是自己刚推送、CI 还在跑。
+- 验证命令与结果：
+  - `gh api repos/Sun1090/IndieStack/branches/main/protection`（读 `required_status_checks.contexts` /
+    `strict` / `enforce_admins` / `required_linear_history`）、
+    `gh api repos/Sun1090/IndieStack --jq '{delete_branch_on_merge,...}'`。
+  - `gh pr list --state open --limit 100 --json number,mergeable,mergeStateStatus`
+    → 分母 `PRs: 46`，`BLOCKED=2 CLEAN=1 UNSTABLE=43`，`MERGEABLE=46`。
+  - `gh pr checks 98` → 4 行：2 pass + 2 Vercel fail；
+    `gh api .../commits/$(git rev-parse pr/98)/check-runs` → `check runs: 2`，
+    两条命令互相印证「CI 从没在这个 head 上跑过」。
+  - `gh run list --limit 30` → `success=28`、`in_progress=2`（都是 #118 自己），最近 30 次没有 failure。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：**#98 我没有动**。修它需要一次能触发 `synchronize` 的推送，而它的分支是
+  #99–#114 那条 16 条长栈的地基：重推会牵动整条栈重排；`close` + `reopen` 也能触发，但仓库是否开了
+  「合并/关闭时自动删头分支」我**测不到**（REST 没有这个字段），而删掉 `fix/c08b-invitations-route`
+  会让那条栈全部塌掉——高爆破半径、不可逆，所以不做，改成把这一步写进正文交给合并的人：
+  ~~对 #98 直接执行 `gh pr update-branch 98 --rebase`（它 base 就是 main，rebase 是空操作但会产生一次推送，
+  从而触发 CI）~~。
+  **【当日订正，两处】**：① 那句 update-branch 是错的——rebase 到已是祖先的 base 得到同一个 sha，
+  不产生事件，唤不起 CI；② 被我当成理由的那条「关闭可能自动删头分支」当场证伪——
+  `delete_branch_on_merge` 管的是合并而不是关闭，`gh pr close 98` + `gh pr reopen 98` 之后
+  分支仍在同一个 `896f11e`、#98 回到 `OPEN`、#99 未受影响，并且这个 head 上 7 项必需检查转为全绿，
+  `BLOCKED` 就此解除。做这一步花了两条活动流记录，不花一次推送。回滚 = revert 本 commit。
+- 下一项：把这一节同步进 PR #118 正文的合并动作清单。
+- 更新时间：2026-09-24（UTC 11:5x 前后）。
+
+## 2026-09-24 — 推翻上一条交给合并的人那一步：`update-branch` 对 #98 是空操作，真正能用的是 close/reopen
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：上一条结尾写了一句「对 #98 直接执行 `gh pr update-branch 98 --rebase`（rebase 是空操作但会产生
+  一次推送，从而触发 CI）」，并且把它作为「交给合并的人」的动作发布出去。写完它我就去测了两件事，
+  两句都不成立。交给别人的错动作比不写更贵——它让人在一条根本不存在的路上等 CI。
+- 完成内容：
+  1. **推翻第 ③ 步的那个括号**：#98 的 base 已经是 `main`，而 `origin/main` 是它 head `896f11e` 的祖先，
+     所以 rebase 到一个「已经是祖先」的 base 得到的还是同一个 sha，不产生 `synchronize`，
+     也就不可能触发 CI。**我没有真的执行 `update-branch`**——真执行了就会对一条 16 条 PR 栈的地基分支
+     做 force-push；结论只依赖那条祖先测量，跟 GitHub 打印什么无关。
+  2. **上一条列为「不做」的 close/reopen 才是正解，而且是实测出来的**：`ci.yml` 的 `on.pull_request`
+     没有写 `types`，GitHub 的默认集合含 `reopened`。于是对 #98 做 `gh pr close` + `gh pr reopen`
+     （不推、不合、不改历史）就要回了 CI：同一 head `896f11e` 上新增
+     `CodeQL completed/success` + `CI in_progress`，此前这条分支上只有 `Secrets Scan` 与
+     `security-config` 两种运行。**我亲手垒的那堵墙，不用推任何东西就拆了。**
+     我上一条担心的「关闭时自动删头分支」也当场证伪：close/reopen 之后
+     `git ls-remote origin refs/heads/fix/c08b-invitations-route` 仍是 `896f11e`，
+     #98 回到 `OPEN/MERGEABLE`，后继 #99 的 base 一字未动。
+     （仓库级 `delete_branch_on_merge: false` 管的是合并，不是关闭——关闭本来就不删分支。）
+  3. **必需检查是按 base 分支的规则判的**，一组零歧义的对照：#98（base `main`）与 #114
+     （base `feat/c08c-gate-wiring`）在各自 head 上的 check 形状**完全一样**
+     （`Detect Secrets` + `security-config` 过、2 条 Vercel 红、5 项 CI/CodeQL 缺席），
+     GitHub 却分别判 `BLOCKED` 与 `UNSTABLE`；差别只在 base——
+     `gh api branches/feat/c08c-gate-wiring/protection` → 404 `Branch not protected`。
+     推论要记牢：**栈内 PR 在改指 main 之前，`mergeStateStatus` 是一个没有信息量的信号**，
+     它绿不红都跟进 main 的资格无关。
+  4. **按这个判据重扫 24 个栈尖**（分母 `tips scanned: 24/24`、`api failures: 0`）：
+     18 个 base 已是 main 且 7 项必需全绿；**6 个不是**——#94 #114 #117 #119 #129 #138，
+     它们的 base 是栈内分支、5 项 CI/CodeQL 从没在自己 head 上跑过
+     （#114 那条分支的历史里 CI/CodeQL 一次都没有，4 次运行全是 Secrets Scan 与 security-config）。
+     这 6 条一旦改指 main 会立刻变 `BLOCKED`，触发方式就是第 ② 条那句 close/reopen。
+  5. **而且第 ③ 步此刻对每一条都是空操作**：24 个栈尖逐个测
+     `git merge-base --is-ancestor origin/main <head>` → **24/24 全部 NOT-behind**
+     （main 停在 `ad4b029`，自上次合并以来队列没动过）。`update-branch` 要等到
+     「合了一条、其余落到后面」之后才第一次有意义——它是**合并过程中**的步骤，不是**合并开始前**的。
+     上一条把它写成了任何时刻都要做的第 ③ 步，这是它真正的错处。
+  6. **顺手否掉一条我准备推荐的省事方案**：「只合栈尖、让栈里其余的自动关闭」能把 46 次合并压成 24 次，
+     祖先内容确实全在栈尖里（#114 head 含 #98 head，实测 `merge-base --is-ancestor` 通过）。
+     但 `required_linear_history: true` 决定了进 main 走 rebase 类合并，栈内那些 PR 的**原始 head sha
+     不会成为 main 的祖先**（落进去的是改写后的新 sha），所以「祖先自动变 Merged」在这里没有依据；
+     本仓库最近 60 条合并记录里也没有任何同分钟级联（一直是一条一条合的）。方案不采用。
+  7. #118 自己的 `BLOCKED` 不是墙：6 项必需已 SUCCESS，只剩 `E2E shard 1/2` 在跑。
+- 验证命令与结果：
+  - `git merge-base --is-ancestor origin/main pr/98` → 成立（NOT-behind）；
+    `gh pr view 98 --json baseRefName,headRefOid,mergeStateStatus` → `main` / `896f11e` / `BLOCKED`。
+  - `grep` `ci.yml` 的 `on:` 块 → `push: branches:[main,develop]` + `pull_request: branches:[main,develop]`，
+    无 `types`；`E2E (Playwright)` 是 `ci.yml:212` 的 job（不在只有 `workflow_dispatch` 的
+    `e2e-parallel.yml` 里），所以 close/reopen 要回的是**全套**必需上下文，不是残缺的一套。
+  - `gh pr close 98 --comment ...` → `✓ Closed`；`gh pr reopen 98` → `✓ Reopened`；
+    `gh run list --branch fix/c08b-invitations-route --limit 6` → 同 sha 上 `CI in_progress` +
+    `CodeQL completed/success`（对照组：`--limit 5` 在动手之前只有 2 条）。
+  - `gh api repos/.../branches/feat/c08c-gate-wiring/protection` → 404 `Branch not protected`。
+  - 栈尖扫描脚本 `/tmp/tip-gate.js`（`gh pr list --json` + 逐条 `statusCheckRollup`，
+    打印 `tips scanned: 24/24 / api failures: 0` 作为分母）。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：~~#98 的 CI 此刻还在跑，我没等它绿~~
+  **【同日晚些订正】等完了，而且它绿了**：`gh pr view 98 --json mergeStateStatus,statusCheckRollup`
+  → 从 `BLOCKED` 变成 `UNSTABLE`，7 项必需上下文在这个**一字未动的 head `896f11e`** 上全部 `SUCCESS`
+  （`Lint & Type Check`、`Build`、`Build Docs Site`、`E2E (Playwright)`、`Unit Tests`、
+  `security-config`、`Analyze (javascript-typescript)`、`Detect Secrets`），
+  只剩两条 Vercel 配额红（非必需，按定案照实记录并忽略）。队列里那 2 个 `BLOCKED`，
+  现在只剩 #118 自己（它的 CI 在跑）。所以第 ② 条那个 close/reopen 不只是「能唤起 CI」，
+  它把一条 PR 从不能合变成了能合，全程没推任何东西。
+  close/reopen 会留下两条活动流记录（closed → reopened），这是本次唯一的可见副作用，
+  我认为它比一堵墙便宜。回滚 = revert 本 commit。
+- 下一项：把这一节与前两节一起同步进 PR #118 正文的合并动作清单（配方里那一步换成 close/reopen）。
+- 更新时间：2026-09-24（UTC 11:5x 之后）。
+
+## 2026-09-24 — 定时生产冒烟的真相：每天绿的是「版本漂移」那半个，而且我自己的 `on:` 判据截过图
+
+- 里程碑 / 版本：v0.12.0 发布证据（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：上一条为了判断「改 base 会不会触发 CI」去读各 workflow 的 `on:` 块，用的是
+  `awk '/^on:/{...}' | head -14`。判完才发现**这个 awk 会把 `on:` 块截断**——它让我以为
+  `production-smoke.yml` 只有 `workflow_dispatch`，而它其实挂着每日 `schedule`。
+  既然整份 workflow 触发清单可能是截断出来的，就重读一遍并顺手把那个定时作业看清了什么。
+- 完成内容：
+  1. **用真解析重读 `on:`（9 个 workflow，逐条打印触发与 cron）**：
+     `ci.yml` = `push` + `pull_request`、**无 `types`**、无 cron（上一条那个 close/reopen 结论依赖的
+     正是「无 types ⇒ 默认含 `reopened`」，这次是在**没有截断**的读取下重新确认的）；
+     `codeql` 周一 06:00、`security-config` 周一 05:17、`e2e-parallel` 周一 07:30（+dispatch）、
+     `health-check` 每日 03:17（+dispatch）、**`production-smoke` 每日 02:17（+dispatch）**、
+     `supabase-auto-restore` 每日 04:37（+dispatch）。`release.yml` 只有 `push: tags: v*`。
+  2. **每天那次「Production Smoke 绿」绿的是哪个作业，量清楚了**：workflow 里两个作业，
+     `smoke`（6 项零副作用冒烟）带 `if: github.event_name == 'workflow_dispatch'`，
+     `smoke-main`（`check-production-version.js`，期望版本取自 `package.json`）无条件跑。
+     `gh run view 35970360891 --json jobs` → 今天的定时运行是
+     **`Side-effect-free production smoke = skipped` + `Daily production version drift check = success`**。
+     也就是说**整个 workflow 绿、而真正的冒烟套件那天一次都没跑**——读法定为：
+     看 workflow 结论会高估覆盖面，要看作业。
+  3. 今天这次漂移检测的输出行：`✅ health: HTTP 200, status=ok, ready=true, version=0.11.0,
+     commit=unknown` —— `commit=unknown` 就是发布缺口②还没闭合的直接证据（生产仍是 09-22 08:56Z
+     那次部署的构建，早于 #69），task #28 继续保持 pending，**不用我再去 dispatch 一次**：
+     定时作业每天会自己把这个数报上来。
+  4. **09-22 那次定时失败不是生产出事**，是 `smoke` 作业当时没有 `if:` 守卫、被 `schedule` 一起带起来，
+     而它的参数全来自 dispatch inputs（定时触发时为空），于是
+     `production-smoke.js -- '' --timeout-ms ''` 抛 `--timeout-ms requires a value`
+     （`gh run view 35700843878 --log-failed` 读到）。这一条**文档里已经有了**
+     （`docs/operations/production-smoke-v0.11.0.md` 第 36–38 行，写明了成因与「已修」），
+     所以这次是复验别人的结论，不是新发现；但它顺带证明守卫是承重的：
+     去掉 `if:` 就会每天红一次，而且红的原因与生产无关。
+  5. **合完这 46 条不会把这台告警误触发**：`check-production-version.js` 拿 `package.json` 的
+     version 当期望值，所以只要有一条 PR 把版本抬到 0.12.0 而 Vercel 仍被配额挡着，这个每日作业就会
+     天天红（那属于「真漂移 = 生产落后于仓库」，按定案照实记录、不放宽门禁）。
+     逐个 head 量过：`git show pr/<n>:package.json` → **`PRs scanned: 46/46`、`unreadable: 0`、
+     改 version 字段的 0 条**，main 仍是 `0.11.0`。所以这批合并不会撞上它。
+  6. **一条解释不了就先记下来的观测**：两个每日定时作业的实际运行时间都比声明的 cron 晚约 5 小时
+     （`production-smoke` 声明 02:17 → 记录 07:34 / 07:43 / 07:41；`health-check` 声明 03:17 →
+     08:23 / 08:31 / 08:29，且 `createdAt == startedAt`）。GitHub 侧调度为什么整体后移我**没有归因**，
+     仓库里也看不出来；能确定的只有「它每天确实跑、偏移稳定」。
+     影响：拿定时冒烟的时间去推断「它跑的时候生产是哪个构建」，要用**日志里的时间戳**而不是 cron 声明。
+- 验证命令与结果：
+  - `gh api`／本地 `git show`：`PRs scanned: 46/46 / unreadable: 0 / 改 version: 0`。
+  - `gh run list --workflow "Production Smoke" / "Post-deploy health check"` 取 `createdAt` + `startedAt`；
+    `gh run view 35970360891 --json jobs` → skipped + success 两个作业；
+    `gh run view 35970360891 --log` → 那行 `commit=unknown`（注意日志里步骤名全是 `UNKNOWN STEP`，
+    按 `check-production-version` 或 `health:` 抓，别按步骤名抓）。
+  - `gh run view 35700843878 --log-failed` → `Error: --timeout-ms requires a value`。
+  - 触发清单重读：一个 `node -e` 小解析器，按「缩进退出 `on:`」终止而不是 `head -N`。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：定时作业整体晚约 5 小时这一条只记录了观测，未改任何 cron、未改 workflow；
+  如果以后要改，先确认 GitHub 的调度语义而不是照本地时间猜。回滚 = revert 本 commit。
+- 下一项：#118 的 CI（12:00Z 那次运行）跑完之后确认它从 `BLOCKED` 变成 `UNSTABLE`，
+  这样队列里就没有任何一条 PR 还缺必需 CI 证据（#98 今天已经闭合）。
+- 更新时间：2026-09-24（UTC 12:0x）。
+
+## 2026-09-24 — 把 46 条的执行顺序算出来贴进正文，顺带抓到 #115 是个分叉
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：正文里给的是「每个栈内 PR 两条命令」这条**规则**，而规则不能执行——46 条需要一份
+  按当前拓扑算出来的顺序表，合并的人照着往下走就行。顺手清一件本地的事：`pre-push` 软链漂回了绝对路径。
+- 完成内容：
+  1. **遍历生成 46 步顺序表并贴进 PR #118 正文**（新增一节「附：46 条的确切执行顺序」）。
+     判据：`baseRefName == "main"` 的是链根（量到 23 个根），「谁的 base 是别人的 head 分支」连成边，
+     从根深度优先展开，缩进表示父子。自检是脚本自己打印的分母
+     `emitted: 46 / 46 | none missing`。贴完读回正文再核一次：
+     **表里的 PR 号集合 == 当前 open 队列集合**（`diff` 空输出，46 行一步不多一步不少）。
+     两次假红都归因到了判据而不是数据：第一次报「缺 92–100」，是因为步骤号用 `padStart(2)` 补了空格，
+     我的正则写的是行首必须是数字；第二次报「多出 44 / 47」，是因为我把 PR **标题**里的
+     `（#47 + #48）`、`（#44 前半）` 也当成了步骤引用。教训同一条：核对集合时要先确定正则只吃步骤行。
+  2. **遍历抓到一条此前所有文档都没写的结构事实：#115 是分叉不是链。**
+     它的 head 分支 `fix/e2e-hydration-click-race` 同时是 **#117 与 #119** 的 base。
+     之前正文与台账一律按「链」说话（「栈尖往下」「前驱落地」），兄弟关系从没出现过。
+     对合并的人来说这条是必须的：两条先合哪条都行，但**后合的那条必须重定基到 `main` 再 rebase**，
+     否则它会显示成与已经落地的兄弟冲突——而那个冲突是记账冲突，不是代码冲突。
+     这条已经写进正文那一节。
+  3. **`.git/hooks/pre-push` 从绝对软链改回相对**：动手前它是
+     `→ /Users/mianbaopian/Projects/IndieStack/.husky/pre-push`（能用——今天四次推送日志都 ~950 行，
+     守卫确实跑了），但它把守卫重新绑在「仓库目录不能移动」上，而 09-24 那次清点后的正确形态是相对链接。
+     `ln -sfn ../../.husky/pre-push .git/hooks/pre-push`，改完 `readlink` 与 `test -x` 都通过，
+     而**本次推送本身就是它的复验**（见下面的日志行数）。
+- 验证命令与结果：
+  - `node -e` 遍历（`gh pr list --state open --limit 100 --json number,baseRefName,headRefName,title`）
+    → `roots: 23`、`emitted: 46 / 46 | none missing`、分叉处打印 `WARN fork at #115: #117 #119`。
+  - `gh pr view 118 --json body` 读回 → 与本地文件同为 46300/46301 字符（差一个尾换行），
+    严格正则集合比对 `STRICT MATCH: 46 step rows == 46 open PRs`。
+  - `readlink .git/hooks/pre-push` → `../../.husky/pre-push`；`test -x` → YES。
+- 变更文件：`docs/progress.md`（本条目，纯追加）；PR #118 正文（新增一节，不产生 commit）。
+- 阻塞 / 风险 / 回滚：顺序表**随队列变动即过期**，正文里就写了这句——合并中途若开了新 PR 或关了某条，
+  要重新走一遍遍历而不是照表硬合。回滚 = revert 本 commit（正文那一节可以整段删掉，它是纯增量）。
+- 下一项：#118 这次推送的 CI 跑完后确认队列 `BLOCKED` 归零（后台在盯）。之后再往下的每一条都要先跨过
+  一个停止条件：#28 要一次真实合并、#66 / C06 / A05 / C12 要产品决策、B02–B05 要云端凭据与可牺牲账号、
+  #85（commit 规范门禁）按上一条的理由排在 `package.json` / `check-all.sh` 那几条落地之后。
+  这个清单是按 `docs/roadmap-0.12.0.md` 22 项 +  tracker 里的 pending 项逐条过的，不是「想不出还能做什么」。
+- 更新时间：2026-09-24（UTC 12:2x）。
