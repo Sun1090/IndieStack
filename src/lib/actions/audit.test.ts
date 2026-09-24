@@ -3,6 +3,7 @@
  * mock server client、rate-limit 与 audit-logs 仓库，验证审计永不阻断主流程
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { AuthRetryableFetchError, AuthSessionMissingError } from "@supabase/supabase-js";
 
 const { createClientMock, rateLimitCheckMock, appendAuditLogMock } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
@@ -52,12 +53,12 @@ describe("logAuthEvent()", () => {
     );
   });
 
-  it("会话读不到时审计照写，但标上 sessionReadFailed，与「本来就没有会话」区分", async () => {
+  it("读取故障（AuthRetryableFetchError）时审计照写，但标上 sessionReadFailed", async () => {
     createClientMock.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: { user: null },
-          error: { message: "Auth retry-failed fetch" },
+          error: new AuthRetryableFetchError("Failed to fetch", 0),
         }),
       },
     });
@@ -69,6 +70,26 @@ describe("logAuthEvent()", () => {
         userId: null,
         entityId: null,
         metadata: expect.objectContaining({ email: "x@y.com", sessionReadFailed: true }),
+      }),
+    );
+  });
+
+  // 匿名访客走 getUser() 拿到的就是 AuthSessionMissingError（不是故障）。
+  // 若按「error 非空」打标，每一次失败登录都会被标成取证链断了，这个标记就再也读不出任何东西。
+  it("本来就没有会话（AuthSessionMissingError）不算读取故障，不打标", async () => {
+    createClientMock.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: new AuthSessionMissingError(),
+        }),
+      },
+    });
+    await logAuthEvent("auth.login_failed", { email: "x@y.com" });
+    expect(appendAuditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: null,
+        metadata: expect.not.objectContaining({ sessionReadFailed: true }),
       }),
     );
   });
