@@ -24,9 +24,35 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
-/** 判断字符串是否形如合法 IP（IPv4 点分或含冒号的 IPv6） */
+const IPV4_OCTET = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d?|\\d)";
+const IPV4_PATTERN = new RegExp(`^${IPV4_OCTET}(?:\\.${IPV4_OCTET}){3}$`);
+const HEX_GROUP = /^[0-9a-fA-F]{1,4}$/;
+
+/**
+ * 判断字符串是否形如合法 IP：IPv4 点分十进制，或 IPv6（含 `::` 压缩与内嵌 IPv4 尾巴）。
+ *
+ * 判据按 `node:net` 的 `isIP()` 逐例对齐（见 `rate-limit.test.ts` 的差分用例），但不 import
+ * `node:net`：本模块被 `@/lib/actions/*` 引用，而那些文件被客户端组件 import，带进 Node 内建模块
+ * 会污染客户端图。唯一有意分歧是 IPv6 zone id（`fe80::1%eth0`）——代理不会把它写进转发头，
+ * 而它进 `inet` 列的形态存疑，所以判否。
+ */
 export function isIpLike(value: string): boolean {
-  return /^[\d.]+$/.test(value) || value.includes(":");
+  if (IPV4_PATTERN.test(value)) return true;
+  if (!value.includes(":")) return false;
+
+  const halves = value.split("::");
+  if (halves.length > 2) return false; // `::` 最多一次
+  const groups = halves.map((half) => (half === "" ? [] : half.split(":"))).flat();
+
+  let width = 0;
+  for (const group of groups) {
+    // 空段（首尾或中间的裸冒号，如 `:1:2…`）走到下面两条正则都不成立，所以不必单独判一次。
+    if (IPV4_PATTERN.test(group)) width += 2; // 内嵌 IPv4 尾巴占两组
+    else if (HEX_GROUP.test(group)) width += 1;
+    else return false;
+  }
+  // `::` 必须至少压缩掉一组，所以压缩形态最多七组；未压缩时必须正好八组。
+  return halves.length === 2 ? width <= 7 : width === 8;
 }
 
 /**
@@ -34,6 +60,11 @@ export function isIpLike(value: string): boolean {
  * 优先信任代理/边缘节点写入的 x-real-ip（客户端无法伪造）；
  * x-forwarded-for 仅在该值形如合法 IP（IPv4/IPv6）时采信，避免客户端伪造
  * 任意字符串或注入畸形值污染限流桶 key。
+ *
+ * 采信的那一段是 `x-forwarded-for` 的**最左**值，也就是客户端自己写的那一个——所以这一层只保证
+ * 「key 一定是一个 IP 形状的字符串」，不保证它是真的来源地址：直连（没有代理写 x-real-ip）时
+ * 任何人都能用 `X-Forwarded-For: 1.2.3.4` 换一个桶。要按部署拓扑收紧（改取最右段、或要求显式
+ * 配置受信代理），是一个需要产品/运维拍板的决定，不在这里顺手改。
  */
 export function clientIpFromHeaders(headers: Headers): string {
   const realIp = headers.get("x-real-ip")?.trim();

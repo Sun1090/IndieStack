@@ -1153,3 +1153,48 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — `isIpLike()` 修形：限流桶键与 `inet` 列不再收任意客户端字符串
+
+- 里程碑 / 版本：v0.12.0 C 域（防滥用 + 数据形状），与 #139 是同一条链上的两件事。
+- 状态：READY FOR REVIEW（本机门禁全绿；base 是 main，所以推上去会跑全套必需作业）。
+- 分支 / commit：`fix/ip-shape-validation`（基于 `origin/main` = `ad4b029`）。
+- 为什么做：#139 让四处 Server Action 第一次真的拿到请求头，于是 `clientIpFromHeaders()` 的
+  `x-forwarded-for` 回落分支**第一次成为活跃路径**。它唯一的闸门 `isIpLike()` 是
+  `/^[\d.]+$/ || includes(":")`，而文档注释承诺「避免客户端伪造任意字符串或注入畸形值污染限流桶 key」。
+- 完成内容：
+  1. 差分测量（判据不自己发明，拿 `node:net` 的 `isIP()` 当 oracle，74 例语料、无重复）：旧判据把
+     **63/74 判成「像 IP」（oracle 只认 23 例），其中 40 例与 `isIP()` 直接相反**——`":"`、`"foo:"`、
+     `"evil:"`、`"999.999.999.999"`、`"1.2.3.4.5"`、七组不合法的 `"1:2:3:4:5:6:7"`、`"1::2::3"`、
+     `":1:2:3:4:5:6:7:8"`。
+  2. 覆盖分母：main 上 168 个 `*.test.ts` 逐个统计，`isIpLike` / `clientIpFromHeaders` **合计出现 0 次**
+     （所以这个形状错着不会变红）。
+  3. 重写 `isIpLike()`：IPv4 逐段 0–255、IPv6 含 `::` 压缩与内嵌 IPv4 尾巴，八组/压缩上限各自判。
+     新实现与 oracle **只剩 1 例分歧**（`fe80::1%eth0` 判否：代理不会写进转发头，且它进 `inet` 列的形态
+     存疑——没去实测 PG 对 zone id 的接受度，所以选择判否而不是依赖它）。不 import `node:net`：
+     本模块被 `@/lib/actions/*` 引用，而那些文件被客户端组件 import。
+  4. 后果钉成用例：`clientIpFromHeaders()` 畸形 XFF → `"anonymous"`（不再当来源地址）、合法 IPv6 采信、
+     多段取最左；`recordCurrentSession()` 在只有畸形 XFF 时 `ip_address` 存 `null`——那一列是 `inet`
+     （`supabase/migrations/001_initial_schema.sql:92`），收到 `"evil:"` 会让整条 upsert 报错，
+     于是这台设备永远登记不上，而 dashboard 布局的每次心跳各留一条 `databaseError`。
+  5. **已知残留，写明不动**：采信的是 `x-forwarded-for` 的最左段，即客户端自己写的那一段；形状修好后
+     用一个*合法*假 IP 换桶仍然可行。收紧（改取最右段 / 配置受信代理数）是按部署拓扑定信任模型的决定。
+- 验证命令与结果：
+  1. `npx vitest run src/lib/rate-limit.test.ts src/lib/actions/sessions.test.ts` → **26 passed**
+     （差分用例的语料 74 例，两侧各 ≥15 例，所以「与 oracle 只剩 1 例点名分歧」不是空断言）。
+  2. 五道变异，各自红在该红的用例上，跑完文件**逐字节还原**（`restored byte-identical: true`）：
+     M1 退回旧判据 → 4 红（差分、畸形形状、桶键退化、`inet` 存 null）；M2 删掉「`::` 最多一次」→ 差分红；
+     M3 压缩上限 7→8 组 → 2 红；M4 未压缩 8 组→至少 8 组 → 差分红；M5 `clientIpFromHeaders` 不做形状判定
+     → **只有桶键那条红**，`inet` 那条照旧绿——因为 `sessions.ts` 自己还会再判一次，列保护与桶键保护是
+     两道独立闸门（这一条是预期的绿，写进变异脚本的 `expectGreen` 而不是靠事后解释）。
+  3. **变异查出两处我自己的错**：① 第一版实现里 `if (groups.some((g) => g === "")) return false;` 是死代码
+     ——空段在下面的 `else return false` 同样落到拒绝，删掉后 26 条照旧绿（M2 当时"套件全绿"就是它的信号）；
+     ② 语料原本没有任何值能钉住「`::` 最多一次」，所以补了 `"1:2:3:4::5:6:7::8"`（`isIP()` 判 0，
+     去掉上限后宽度正好凑到 8 组会被判真）。
+  4. `pnpm type-check` / `pnpm lint` / `node scripts/check-changelog.js` / 台账门禁；
+     推送时 `.husky/pre-push` 跑完整 `verify:build`（lint + type-check + test + build）。
+- 阻塞：无（不依赖凭据、不依赖合并）。
+- 风险 / 回滚：只收紧形状，没动额度、窗口与桶键算法；若某个代理确实往 `x-real-ip` 里写非 IP 值，
+  那个桶会从「任意字符串」变成 `anonymous`（与两个头都缺省时同一个桶）——回滚单位是一个 commit。
+- 下一项：等用户拍板「`x-forwarded-for` 的信任模型」（取最左还是最右、要不要显式配置受信代理数）。
+- 更新时间：2026-09-24（UTC 13:4x 前后）。
