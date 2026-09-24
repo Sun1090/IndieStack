@@ -6,6 +6,27 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **一次读失败不再被断言成「这条查询不会出错」**（C08）：新增 `pnpm check:query-errors`，扫 `src/**`
+  里所有「`await` 一条 `.from()/.rpc()` 链的结果，再把它断言成一个不含 `error` 成员的类型」的写法。
+  这类断言不是普通的形式问题：它在类型上宣称错误不可能发生，于是下面的代码可以放心地把**读失败**当成
+  **查不到这一行**来回答。起因是 `src/lib/auth/guards.ts` 里两处 `(await …single()) as { data: { role: string } | null }`
+  ——数据库抖动一次，管理员就被降级成 `member`，日志里什么都没有；`actions/admin.ts` 则对一条根本没跑完的
+  查询回答「用户不存在」。规则在 `src/lib/security/query-error-channel.ts`（TypeScript AST、纯函数、单测覆盖），
+  IO 在 `scripts/lib/query-error-channel-check.js`。台账 `ERROR_CHANNEL_EXEMPTIONS` **按文件计数且双向对账**：
+  新增一处抹除报 `QUERY_ERROR_CHANNEL_CAST_AWAY`，修好一处却忘了下调数字报 `QUERY_ERROR_CHANNEL_EXEMPT_STALE`，
+  所以它既不会悄悄长胖、也不会悄悄烂成永久豁免表；条目分两种——`justified`（客户端组件 `permission-gate.tsx`
+  读角色失败时故意回落到最低权限，客户端没法 5xx）与 `debt (C08-b)`（代码确实在撒谎，等按影响面偿还）。
+
+  数量是先量后修的对照（同一套 AST，`main` vs 本 PR）：修之前 42 处 awaited 断言 / **27 处抹掉 `error`**，
+  修掉鉴权与管理路径那五处之后 37 处 / **22 处、12 个文件**，这 22 处全部进台账。**先前记在 roadmap 里的
+  「29 处 / 46 处」是错的**——那一版用单行 grep 数，多行断言整个漏掉。测量脚本本身
+  被修了三轮：链遍历只沿 `CallExpression` 走会在 `.select()` 就停住；未 await 的构造器断言
+  （`admin.from("contact_messages").select(…) as unknown as FilterChain`）是给 builder 定形状、不在射程内；
+  `x as unknown as T` 会算成两处。最后一条 `as` 换行是**被自己的测试 fixture 抓出来的**：TS 解析器在那里按
+  ASI 截断，于是该文件语法树不完整、门禁安静地判到 0 处——补了 `QUERY_ERROR_CHANNEL_PARSE`，解析不动的文件
+  必须点名而不是当作干净。变异核对：台账数字 5→4、拆掉 `as unknown` 穿透、删掉语法诊断循环、`rpc` 移出判定集、
+  `keepsErrorChannel` 恒真、去掉台账对账，逐项都让对应用例红。
+
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
@@ -203,6 +224,72 @@ All notable changes to IndieStack will be documented in this file.
   换两处的判定完全同源。
 
 ### Fixed
+
+- **团队邀请链上的每一次读取故障，不再被答成一条关于权限或注册状态的事实**（C08-b 第三批）：
+  `src/app/api/invitations/route.ts` 里五处 `(await …) as unknown as { data: … }` 断言（发起人的团队归属、
+  他在该团队的角色、对方是否已是成员、被移除的成员行、操作人角色）全部改为绑定 `error`，读失败时记日志并回
+  **503 + 一句「…请重试」**；顺带收掉同一条链上**门禁看不见的两处**（那两处没有类型断言，只是解构时没取
+  `error`）：`GET` 的团队成员身份校验原先顺着 `!membership` 长成 403 `Forbidden`——一次数据库抖动就把一个
+  权限从未变过的人挡在团队外，而他该做的只是再点一次；`POST` 按邮箱查 `profiles` 那处把读失败答成
+  「User not found. They need to register first.」，于是用户被劝着让对方去注册，而真正发生的是一次抖动。
+  `.limit(1).single()` 一并改成 `maybeSingle()`：`single()` 在**零行**时也返回 error，把「这个用户没有团队」
+  这种合法状态和读取故障压成同一个形状。现在缺行仍是 404 `No team found`、确实非管理员仍是 403、
+  确实已是成员仍是 409——**故障与合法状态的区分**是这一条的全部内容。
+  一处写进台账的理由是错的，顺手改对：它说「已是成员」探针失败会放过重复邀请，实际不会——
+  `team_members` 上有 `unique(team_id, user_id)`（迁移 001），读失败的后果是撞约束后一个与真实原因无关的
+  500，仍然是「把故障说成别的东西」，但严重性不同。
+  该路由此前**零单测**，补 15 条：每条「读失败必须 503」都配一条「合法状态必须仍是 404/403/409」当反向证据
+  （否则 503 可以靠把所有读取都判成失败来骗过测试），另钉一条邮箱小写归一（大小写不同就查不到已有账号）与
+  一条「缺 `id` 时 400 且一次读取都不发生」。变异核对 10 项（Z1–Z10）逐项红且只红对应那条。
+  响应文案沿用该文件既有的裸英文句子——**判据在消费方**：`grep` 过全仓库，`/api/invitations` 在仓库内没有
+  前端调用方（团队页走 Server Actions），没有 `t(payload.error)` 就不需要 i18n 键。
+  台账 16 → 11 处（debt 14 → 9，另 2 处为 `justified`）；`eslint` 复杂度豁免名单里该文件的 `POST`
+  从 17 涨到 21（上限 30），本次不新增豁免。
+
+- **个人资料页与通知偏好页不再把一次读失败渲染成一份合法的默认值**（C08-b 第二批）：
+  `dashboard/profile/edit/page.tsx`、`dashboard/profile/page.tsx`、`dashboard/notifications/page.tsx`
+  三处的 `profiles` 读取原先写成 `(await …single()) as unknown as { data: … }`，既不看 `error`，
+  也用 `single()` 把「这个账户还没有 profiles 行」也当成异常路径。读失败时页面照常渲染：
+  编辑页把姓名、简介预填成空、时区预填成 `UTC`、语言预填成 `en`，通知页把每一个偏好开关渲染成「关」，
+  个人资料页把角色显示成 `member`。**用户看不出这是读取失败**，而编辑页和通知页更糟——它们是表单，
+  用户顺手点一次「保存」，就把真实的资料与偏好按这份假默认值写回数据库。
+  现在三处都改用 `maybeSingle()` 并真正读 `error`：缺行仍按空值渲染（那确实是合法状态），
+  读失败则抛出，由 `dashboard/error.tsx` 渲染可重试的错误页。
+  **用户可见的变化**：数据库抖动时这三页显示「出错了 + 重试」，而不是一份看起来正常的空白资料；
+  页面上的字全部走 `errors.errorBoundary.*` 翻译键，抛出的中文只进服务端日志。
+  每页两条用例（读失败必须抛、缺行必须仍能渲染），变异核对：三处 `if (profileError)` 逐个短路成
+  `if (false)`，各自只让对应那条红。渲染侧另外量过一遍：`e2e/a11y.spec.ts` +
+  `notifications-realtime.spec.ts` + `uploads.spec.ts`（这三份会真的走进
+  `/dashboard/notifications` 与 `/dashboard/profile/edit`）20/20 通过，Mock 客户端的
+  `maybeSingle()` 与真客户端同形，所以 `single()` → `maybeSingle()` 的切换没有把 E2E 变成另一套语义。
+  台账 19 → 16 处（debt 17 → 14）。
+
+- **项目读取失败不再被答成「项目不存在」「只有管理员能操作」，也不再悄悄抹掉 config**（C08-b 第一批）：
+  `src/lib/actions/projects.ts` 里五处 awaited 查询——`createProject` / `deleteProject` / `updateProject`
+  的成员身份读取、两处项目行读取，以及 `updateProject` 合并写入前读回来的那份 `config`——原先都不读
+  `error`（其中三处的结果还被断言成不含 `error` 的类型，正是 C08 门禁抓的那一类）。
+  现在五处一律绑定 `error` 并让它决定回答：记日志后回 `databaseError`（「数据库操作失败，请稍后重试」），
+  而不是往下走成一条关于用户权限或数据的事实。**用户可见的变化**：数据库抖一下时，删除/编辑项目会看到
+  可以重试的失败提示，而不是「项目不存在」或「只有团队管理员能操作」这种把人送去开工单的假结论。
+  最贵的一处是 config：合并语义是「保留未提交的其他键」，而读失败时 `current?.config ?? {}` 会安静地
+  当成「原本没有键」，于是这次 update 把项目 config 里没提交的其他键全部抹掉——用户只是改了个开关，
+  别处的配置就没了，且全程没有任何报错。现在读不到就中止，一次都不写。
+  这条路径原本**零测试覆盖**（config 合并连一条用例都没有），所以补了六条：五处各自的读失败回答，
+  加上「config 合并保留未提交的其他键」这条正向断言（否则「中止」和「照样写」在测试里长得一样）。
+  变异核对：把五个 `if (xxxError)` 逐个短路成 `if (false)`，各自让对应那条用例红；正向那条在把合并
+  写成 `{ ...input.config }` 时红。台账里 `src/lib/actions/projects.ts` 的三条随之下线（22 → 19 处），
+  门禁的按文件对账保证这个数字没有靠嘴改。
+
+- **管理员不再在一次数据库抖动后被礼貌地请出后台**（C08 鉴权路径）：`src/lib/auth/guards.ts` 的角色读取改走
+  `maybeSingle()` 并真正读 `error`，读不出来时新增 `SERVICE_UNAVAILABLE`（`guardHttpStatus` 映射 503，
+  与「你没权限」的 403 分开）。`safelyRequireAuth()` 不让它落到最外层 catch——那里会回答 401，客户端于是清掉
+  会话跳登录页，而重新登录并不会让那次读取成功。
+
+  **用户可见的变化**：`/dashboard/admin` 与 `/dashboard/admin/audit-logs` 两个布局原先在角色查询失败时把登录者
+  当 `member` / 非 `super_admin` 处理（后者直接 redirect 回 `/dashboard`），现在改为抛出错误、由错误边界渲染
+  错误页——看到的不再是「你没权限」这条空话，而是一次可重试的失败；`updateUserRole` 对一条没跑完的查询也不再
+  回答 `userNotFoundAdmin`，而是记日志并回**新增的专用错误键** `roleReadFailedAdmin`（en/zh-CN 各一条文案），
+  不复用泛化的 `databaseError`——管理员看到的应该是「角色信息读不到、可重试」，不是「数据库操作失败」。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条

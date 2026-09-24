@@ -14,7 +14,7 @@
 > （见退出报告「与 roadmap 文本的矛盾」）。因此本文件要求：状态只在退出报告里维护，
 > roadmap 只写目标与验收口径。
 
-## 任务池（22 项）
+## 任务池（24 项）
 
 ### A. 通知投递语义（P0，来自 E03 与退出报告遗留项 1）
 
@@ -220,19 +220,49 @@
       fixture 的键集合；稀疏种子会把合法列判成错误，于是它产生的失败信号比它要保护的那类缺陷更难查。
       真要做，前置条件是先把 mock 的表结构对齐生成类型——那是另一件事，别顺手塞进这条。
 
-18. C08 （**待做，已量过规模**）把查询结果的 `as unknown as { data: … }` 断言变成门禁：这类写法
-    在类型上宣称「这条查询不会出错」，于是编译期再也逼不出 `error` 分支，运行期一次故障就被答成
-    一个确定的结论。测量（TypeScript AST，`await` 一条 `.from()/.rpc()` 链后再断言、断言类型里
-    不含 `error` 成员）：**全库 29 处 / 46 处断言改写**。里面不全是同一优先级——
-    `lib/auth/guards.ts:68,136` 与 `components/shared/permission-gate.tsx:86,170` 是角色检查
-    （故障时答成「你没有权限」，fail-closed 但话是假的），`app/dashboard/**` 是页面读数
-    （故障时渲染空态而不是错误态），`api/invitations/route.ts` 五处待随本条一起判。
-    2026-09-23 已单独修掉邀请链上的三处（`repositories/profiles.ts` 的 `findUserIdByEmail` 与
-    `actions/team.ts` 的角色检查、成员查重），因为那三处会**答错话**而不只是显示空态。
-    门禁的难点先记下来，别当免费的东西：判据必须是「断言后的类型里有没有 `error` 成员」，
-    只看 `as unknown as` 会误伤那些与查询无关的重型断言（如 `Row[]` 形状修正，46 − 29 = 17 处）；
-    以及豁免名单要区分「页面渲染路径」与「Action / 鉴权路径」——前者可以按空态处理，后者不行。
-    接线前按 D01 口径先量一遍，别写完再发现它永远不响。
+18. C08 （**2026-09-23 已完成，债务按文件登记**）把「被断言抹掉 `error` 通道的 awaited 查询结果」变成门禁：
+    这类写法在类型上宣称「这条查询不会出错」，于是编译期再也逼不出 `error` 分支，运行期一次故障就被答成
+    一个确定的结论。落地为 `pnpm check:query-errors`（规则 `src/lib/security/query-error-channel.ts`，
+    IO `scripts/lib/query-error-channel-check.js`，文档 `docs/testing.md`「查询错误通道门禁（C08）」）。
+    重测之后**先前那份规模估计不成立**：早期脚本用单行 grep 数，漏掉了多行断言；换成 AST 后判据改成
+    「`await` 一条 `.from()/.rpc()` 链的结果、且断言类型里没有 `error` 成员」，未 await 的构造器断言
+    （`… as unknown as FilterChain`）不再算数，`x as unknown as T` 只算一处而不是两处。
+    接线前实测（修掉鉴权路径之后）：358 个非测试文件里 37 处 awaited 断言，22 处抹掉 `error`，分布在 12 个文件。
+    本条修掉鉴权/管理路径上四个文件里的**五处**断言：`lib/auth/guards.ts`（两处，改为 `SERVICE_UNAVAILABLE` + `guardHttpStatus` 503，
+    读失败不再答成「你没登录」）、`app/dashboard/admin/layout.tsx`、`app/dashboard/admin/audit-logs/layout.tsx`
+    （不再把管理员静默降级成 member）、`actions/admin.ts`（读失败不再答 `userNotFound`）。
+    其余 22 处进台账：`permission-gate.tsx` 两处标为 justified（客户端组件无法 5xx，回落最低权限是刻意的），
+    其余 20 处标为 `debt (C08-b)`。台账按文件计数并双向对账——加一处红，修一处不改数字也红，
+    所以它既不会悄悄长胖也不会悄悄烂成永久豁免表。另加一条 `QUERY_ERROR_CHANNEL_PARSE`：
+    语法树不完整的文件必须点名，因为「解析不动」在门禁眼里等于「不存在」，这条是被自己的测试 fixture
+    抓出来的（`as` 换行会被 ASI 截断成语法错误，第一版因此悄悄不判那一处）
+19. C08-b 偿还错误通道台账：按影响面从大到小清 `ERROR_CHANNEL_EXEMPTIONS` 里标 `debt` 的条目。
+    顺序是**逐个读过代码之后**定的，不是按文件或字母序：
+    ① 会把**没提交的数据写掉**的三处——`actions/projects.ts` 的 config 合并**已于 2026-09-23 修好**
+    （读失败改为中止，一次都不写；顺带把该文件另外四处同源的身份/项目行读取一起收了，见 progress 同日条目）；
+    ~~`dashboard/profile/edit/page.tsx` / `profile/page.tsx` / `notifications/page.tsx`~~ ——
+    **2026-09-23 已完成**：三处的 `profiles` 读取改用 `maybeSingle()` 并真正读 `error`，
+    读失败抛给错误边界；缺行仍按空值渲染（那是合法状态），表单不再拿假默认值等人保存；
+    ② 鉴权与所有权判定（`lib/uploads/service.ts` 封面上传把角色读失败答成 `onlyAdminsCreateProject`、
+    ~~`api/invitations/route.ts` 五处~~ —— **2026-09-23 已完成**：五处断言全部改为绑定 `error`，
+    顺带收掉同一条链上门禁看不见的两处（GET 的成员身份校验、POST 按邮箱查 profiles），
+    见 progress 同日条目；`src/app/api/invitations/route.ts` 此前**零单测**，补了 15 条）、
+    `lib/actions/sessions.ts` 把读失败答成 `sessionNotFound`、
+    `lib/actions/api-keys.ts` 让「密钥不存在」与「读失败」共用一个 `databaseError`）；
+    ③ 页面读数（`dashboard/team/page.tsx` 渲染成「你还没有团队」、`dashboard/billing/page.tsx`
+    把套餐显示成 `free`、~~`dashboard/profile/page.tsx` 把角色显示成 `member`~~ ——
+    **2026-09-23 第二批已随 ① 一起收掉**，它在 ① 与 ③ 里被列了两次，是同一处读取）。
+    每清一处必须同时下调台账数字，否则 `QUERY_ERROR_CHANNEL_EXEMPT_STALE` 会红。
+    台账规模以 `pnpm check:query-errors` 的输出为准——这里原先每清一批就要手写一次数字，
+    按 D04 口径不再抄
+20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的），
+    接线时按同一套 AST 实测到 12 处：`api/e2e/push-queue/route.ts:86,230`、`api/invitations/route.ts:56,166`、
+    `api/stripe/checkout/route.ts:58,68`、`api/webhooks/stripe/route.ts:256,263`、
+    `dashboard/admin/page.tsx:47,50,53`、`dashboard/team/page.tsx:110`。C08 看不见它们（判据是断言），
+    要么把门禁扩成「awaited 查询结果必须绑定 `error` 或使用它」，要么单独一条——扩之前先量误报。
+    上面那份是**接线时的快照**，此后有两处已随别的 PR 消失：`api/invitations/route.ts:56,166`
+    （C08-b 第三批，与那五处断言一起收掉）与 `api/stripe/checkout/route.ts:58,68`（PR #96 的
+    `readCheckoutScope`）。开工前按当前代码重量，不要照这份清单点名
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 

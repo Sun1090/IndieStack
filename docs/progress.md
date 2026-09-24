@@ -1153,3 +1153,209 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-23 — C08：错误通道门禁接线，鉴权路径先止血
+
+- 里程碑 / 版本：v0.12.0 / C08（任务池 22 → 24 项，新增 C08-b、C08-c）。
+- 分支 / commit：`feat/gate-query-error-channel`（基于 `main`）。
+- 状态：DONE（PR 待 review 合并）。
+- 这一条修的是本仓库连续第五次遇到的同一类缺陷：**一次读失败被答成一个确定的结论**。
+  前四次（digest 轮次、未读数、`teams.member_count`、Stripe 事件状态）都是记录在撒谎，
+  这一次撒谎的是**类型**——`(await supabase.from(...)single()) as { data: { role: string } | null }`
+  不只是关掉一个告警，它断言「这条查询不可能出错」，于是下面的代码可以放心地把读失败当成
+  「没有这一行」。`src/lib/auth/guards.ts` 里两处这种写法意味着：数据库抖一下，管理员被降级成
+  `member`，日志里一行记录都没有。
+- 做了什么：
+  1. **先量后写（D01 口径）**：`src/**` 358 个非测试文件里 37 处 awaited 查询结果断言，
+     其中 **22 处抹掉 `error`，分布在 12 个文件**。roadmap 里原先记的「29 处 / 46 处」是错的——
+     那一版用单行 grep 数，多行断言整个漏掉；条目里已按实测改写并说明为什么错。
+     测量脚本本身改了三轮才对：链遍历只沿 `CallExpression` 走会在 `.select()` 处停住（与 C07
+     第一版同型错误）；未 await 的构造器断言（`admin.from("contact_messages").select(…) as unknown as FilterChain`）
+     是给 builder 定形状、不该在射程内；`x as unknown as T` 会被数成两处。
+  2. **鉴权路径先止血**（本条唯一的运行期行为改动）：`guards.ts` 两处收敛成一个 `readSessionRole()`，
+     走 `maybeSingle()` 并真正读 `error`；读不出来抛新增的 `SERVICE_UNAVAILABLE`，
+     `guardHttpStatus` 映射 **503**（403 是「你没权限」，重试多少次都一样；503 是可重试）。
+     `safelyRequireAuth()` 内层单独 catch，不让它落到最外层那个会回答 401 的 catch——401 会让客户端
+     清会话跳登录页，而重新登录并不会让那次读取成功。另修 `dashboard/admin/layout.tsx`、
+     `dashboard/admin/audit-logs/layout.tsx`（原来把读失败当非管理员 redirect）与
+     `actions/admin.ts` 的 `updateUserRole`（原来对没跑完的查询回答 `userNotFoundAdmin`）。
+     **用户看到的变化**：管理员在数据库抖动时不再被无声降权或踢回 `/dashboard`，而是看到
+     `dashboard/error.tsx` 的错误页（可点重试）；抛出的中文文案只进服务端日志，错误页走的是
+     `errors.errorBoundary.*` 翻译键，不泄露内部信息。
+  3. **门禁落地**：纯规则 `src/lib/security/query-error-channel.ts` + 单测、IO
+     `scripts/lib/query-error-channel-check.js`、薄壳 `scripts/check-query-error-channel.js`、
+     `pnpm check:query-errors` 进 `scripts/check-all.sh`（CI 经 C04 的聚合入口自动覆盖）。
+     文档：`docs/testing.md`「查询错误通道门禁（C08）」+ 命令表行、`docs-site/scripts.md`（双语）
+     与 `docs-site/testing.md`（双语）的 `rls-security` 行、`src/lib/testing/test-matrix.ts`。
+- 台账而不是豁免表：`ERROR_CHANNEL_EXEMPTIONS` 按文件记数量，**双向对账**——新增一处抹除报
+  `QUERY_ERROR_CHANNEL_CAST_AWAY`，修好一处却忘改数字报 `QUERY_ERROR_CHANNEL_EXEMPT_STALE`。
+  条目分 `justified`（`permission-gate.tsx`：客户端组件无法 5xx，读角色失败回落最低权限是刻意的）
+  与 `debt (C08-b)`（其余 20 处确实在撒谎）。要说清楚：**这一版门禁把台账里的 22 处全部放行**，
+  它的价值是「从今天起不能再多一处」，不是「问题清完了」。
+  数量对照（同一套 AST，`main` vs 本 PR）：修之前 **42 处 awaited 断言 / 27 处抹掉 `error`**，
+  修掉鉴权与管理路径那五处之后 **37 处 / 22 处、12 个文件**。清偿顺序写在 C08-b，排最前的是
+  **两处「用户一保存就把真数据覆盖掉」**：`actions/projects.ts:183`（config 合并读失败 → 写入
+  `{ ...(current?.config ?? {}), ...input }`，没提交的其他键静默消失）与
+  `dashboard/profile/edit/page.tsx:33`（表单预填 `""` / `UTC` / `en`）。
+- 一条门禁自检的收获：`QUERY_ERROR_CHANNEL_PARSE` 是**被自己的测试 fixture 抓出来的**——
+  把 `as { data: … }` 换行写，TS 解析器按 ASI 截断，该文件语法树不完整，于是门禁安静地判到 0 处、
+  测试还绿。解析不动的文件在门禁眼里等于不存在，这是比误报更坏的一种绿，现在它必须点名。
+- 两条写下来免得下次重推：① `redirect()` 的 mock **必须照抄它抛 NEXT_REDIRECT 的行为**——第一版让它正常返回，于是「读失败抛错」那条路径一路走到渲染，测试仍然是绿的（假绿）；改成抛之后，`未登录` 那条用例立刻红，说明两条路径此前根本没被区分。② 台账里三处理由最初是**按文件名猜的**（billing 写「隐藏套餐」、api-keys 写「答 notFound」），逐行读过代码后全部改写：billing 是 `?? "free"` **把付费账户显示成免费**，api-keys 是「不存在」与「读失败」共用一个 `databaseError`，profile/edit 与 notifications 是**预填默认值、用户一保存就把真数据覆盖掉**——理由写错比不写更糟，因为下一个动手的人会照它排优先级。
+- 验证（全部在最后一次改动之后重跑）：
+  - `CI=true pnpm check:all` → **exit 0**，38 道门禁、202 个测试文件全过；`pnpm build` → exit 0。
+  - 新增/改动的测试：`query-error-channel.test.ts` 10 passed、`guards.test.ts` 33 passed、
+    `admin.test.ts` 18 passed、两个 admin 布局测试各 4 passed。
+  - 变异核对 15 项，逐项红且只红对应的那条：门禁侧 8 项（台账 5→4、拆掉 `as unknown` 穿透、
+    删掉语法诊断循环、`rpc` 移出判定集、`keepsErrorChannel` 恒真 → 红 6 条、跳过台账对账、
+    「豁免覆盖任意数量」、去掉 VACUOUS 封闭），鉴权侧 7 项（`readSessionRole` 吞掉 error、
+    `safelyRequireAuth` 落到 401、`requireAuth` 不抛 503、`guardHttpStatus` 折回 403、
+    去掉 `console.error`、`updateUserRole` 回 `userNotFoundAdmin`、admin 布局的 throw 分支短路）。
+    每次变异前后都用 `diff -q` 与备份比对确认源码已还原——变异脚本崩在中途把改动留下来过一次（C07 的教训）。
+  - 新门禁的红色能力单独验：临时放一个真实违规形状的 `src/lib/security/c08-probe.ts` → 退出 1 并点名
+    `c08-probe.ts:5`，删除后恢复绿，`git status` 确认探针已清理。
+  - `pnpm lint` / `pnpm type-check` → exit 0（`inspectQueryErrorChannel` 一度因复杂度 18 > 15 被 ESLint
+    拦下，按规则拆成 `castAwayIssues` / `staleLedgerIssues` / `countByFile`，没有用 disable 绕过；
+    顺带去掉两处**其实不需要**的 `as string | undefined`——生成类型本来就给得出 `role: string`）。
+  - i18n 面：`check:locales`（en/zh-CN 各 1243 键对称）、`check:action-errors`（43 个错误码 × 2 locale、
+    163 个前端文件无裸渲染）、`check:i18n` / `check:dynamic-keys` / `check:glossary` 全绿。
+  - 文档面：`check:changelog` / `check:release-docs` / `check:test-matrix`（11 领域 / 104 条门禁 × 2 份文档）/
+    `check:bilingual-docs` / `check:docs` / `check:gates`（38 个门禁，本地 35 / CI 37 / 豁免 3）全绿。
+- 仍未闭环：C08-b（20 处债务，顺序已按读过的代码定：先把两处「保存即覆盖真数据」的排最前）、
+  C08-c（12 处解构时压根不取 `error`，本门禁看不见它）、A05 出队语义与 A01 `profiles.timezone` 等用户拍板、
+  B 域演练与生产冒烟等外部权限。
+- 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-b 第一批：项目操作的五处读取不再猜答案（其中一处是数据丢失）
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 22 → 19 处）。
+- 分支 / commit：`fix/c08b-projects-error-channel`（栈在 `feat/gate-query-error-channel` 之上，
+  因为台账与门禁都住在那个还没合并的 PR #92 里；#92 合并后 GitHub 会把本 PR 的 base 自动接回 main）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么先动 `src/lib/actions/projects.ts`：C08 接线时逐行读过台账，`updateProject` 的 config 合并是
+  **22 处里唯一一处会丢数据的**——合并语义是「保留未提交的其他键」，靠的是先读回 `config`，
+  而那次读取不接 `error`，读失败时 `current?.config ?? {}` 就把「没读到」当成「原本没有键」，
+  于是这次 update 真的写下去，把用户没提交的其他键全部抹掉。用户只是改了个开关，别处的配置没了，
+  全程没有任何一处报错。其余四处（两处成员身份、两处项目行）是同一条链上的前置读取：
+  读失败时分别答成「你还没有团队」「项目不存在」「只有团队管理员能操作」。
+- 做了什么：五处一律绑定 `error` 并让它决定回答（记日志 + `fail("databaseError")`），
+  删掉三处把结果断言成不含 `error` 的 `as unknown as { … }`（门禁的 22 → 19 就是这么来的），
+  config 读失败时**在写之前就返回**，一次都不写。
+- **用户可见的变化**：数据库抖动时删除/编辑项目会看到「数据库操作失败，请稍后重试」这条可重试的提示，
+  而不是「项目不存在」或「只有团队管理员能操作」——后者会把人送去开工单，而真正该做的只是再点一次。
+- 覆盖：这条路径原本**零测试**（config 合并连一条用例都没有）。补了 7 条：`createProject` 一处、
+  `deleteProject` 两处、`updateProject` 三处读失败，外加一条正向断言「config 合并保留未提交的其他键」
+  ——没有这条，「中止不写」和「照样写」在测试里长得一模一样。测试桩改成按 `select` 的列分派，
+  否则 `select("config")` 会复用项目行的形状，config 分支永远测不到。
+- 变异核对 6 项：五个 `if (xxxError)` 逐个短路成 `if (false)`，各自只让对应那条红；
+  合并写成 `{ ...input.config }` 时正向那条红。前后用 `diff -q` 与备份比对确认源码还原。
+- 门禁的账是真的：删掉 `src/lib/actions/projects.ts` 台账条目时 `check:query-errors` 先报
+  `QUERY_ERROR_CHANNEL_EXEMPT_STALE（登记 3 处，实际 0 处）`，改完才恢复绿；
+  单测里那条「逐文件对账」也同步从写死的地板值 30 改成挂在台账总数上——
+  一个「改进会让它红」的地板值迟早教会人跳过它。
+- 验证：`CI=true pnpm check:all` → **exit 0**（38 道门禁、202 个测试文件全过）；`pnpm build` → exit 0；
+  `pnpm check:query-errors` → 358 文件 / 31 处 awaited 断言 / 台账 19 处；
+  `npx vitest run src/lib/actions src/app/dashboard` → 20 文件 / 223 passed。
+  一条方法上的教训：中途我**同时**开了两个 vitest 全量进程，其中一个报
+  `src/app/dashboard/admin/page.test.tsx` 一条红；单独跑该文件、以及后来干净的全量跑都是绿的——
+  那是并发进程互相干扰出来的假红，不是回归。以后不在同一个工作目录里并跑两套全量。
+- 下一批（顺序已写在 roadmap C08-b ②）：`dashboard/profile/edit/page.tsx:33` 与
+  `notifications/page.tsx:46` —— 同属「保存即覆盖真数据」，读完代码才发现它们和 config 是一族。
+- 更新时间：2026-09-23（UTC）。
+
+## 2026-09-23 — C08-b 第二批：三处「渲染成合法默认值」的读取改成显形失败
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 19 → 16 处，debt 17 → 14）。
+- 分支 / commit：`fix/c08b-prefill-overwrite`（栈在 #93 之上，#93 又栈在 #92 之上；三个 PR 合并后
+  GitHub 会依次把 base 接回 main）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么这一批是三页一起动：它们的行为完全同型，而且都不是「显示空态」那么无害——
+  `profile/edit` 与 `notifications` 是**表单**，读失败时预填的是 `""` / `UTC` / `en` 与「所有开关为关」，
+  用户看不出异常、点一次保存就把真实资料与偏好写回数据库；`profile`（查看页）则把角色显示成 `member`。
+  同一处还把 `single()` 用错了：`select("*")` 之后 `.single()` 在**零行**时也返回 error，
+  于是「这个账户还没有 profiles 行」这个合法状态和「查询失败」被混成同一件事——
+  现在统一成 `maybeSingle()`：缺行按空值渲染，读失败抛出。
+- 做了什么：三处绑定 `error` 并在渲染前 `throw`，交给既有的 `src/app/dashboard/error.tsx`
+  （渲染 `errors.errorBoundary.*` 的翻译文案 + 重试按钮 + digest，不泄露抛出的中文）；
+  台账里三条随之下线，`check:query-errors` 先报三条 `EXEMPT_STALE`、删条目后才恢复绿——
+  这条链子中的一次都没少。
+- 验证：
+  - 每页 2 条用例（读失败必抛 / 缺行仍渲染），6 passed；变异核对 3 项：三处 `if (profileError)`
+    逐个短路成 `if (false)`，各自只让对应那条红。
+  - 渲染侧真实取证：`e2e/a11y.spec.ts` + `e2e/notifications-realtime.spec.ts` + `e2e/uploads.spec.ts`
+    → **20/20 通过**，这三份会真的访问 `/dashboard/notifications` 与 `/dashboard/profile/edit`，
+    证明 Mock 客户端的 `maybeSingle()` 与真客户端同形，切换没有把 E2E 变成另一套语义。
+  - `pnpm check:query-errors` → 358 文件 / 28 处 awaited 断言 / 台账 16 处；
+    `CI=true pnpm check:all` → **exit 0**（38 道门禁、202 个测试文件全过）；`pnpm build` → exit 0。
+  - 一条与本条改动无关但要记下的事实：栈在未完成 PR 之上的分支**不会触发 CI**——
+    `ci.yml` 的 `pull_request` 只在 base 为 `main|develop` 时跑。所以 #93 / #94 的页面上是零检查，
+    我在两处 PR 描述里都写明了「不是红了，是没接」，并把本地 `check:all` 的等价性（C04 之后同一份清单）
+    与结果一并贴出来。
+- 下一批（C08-b ③）：鉴权与所有权判定——`lib/uploads/service.ts` 三处（封面上传把角色读失败答成
+  `onlyAdminsCreateProject`）、`api/invitations/route.ts` 五处、`lib/actions/sessions.ts` 与
+  `lib/actions/api-keys.ts` 各一处。
+- 更新时间：2026-09-23（UTC）。
+
+
+## 2026-09-23 — C08-b 第三批：邀请 API 的七处读取分开「没读到」与「没有这一行」
+
+- 里程碑 / 版本：v0.12.0 / C08-b（台账 16 → 11 处，debt 14 → 9）。
+- 分支 / commit：`fix/c08b-invitations-route`（栈在 #94 之上，#94 栈在 #93、#93 栈在 #92；
+  台账与门禁都住在那个还没合并的 PR #92 里，合并后 GitHub 会依次把 base 接回 main）。
+- 状态：DONE（PR 待 review 合并）。
+- 为什么先动这个文件而不是 `lib/uploads/service.ts`：它是台账里**单文件最大的一条**（5 处断言），
+  而且五处全部站在授权与幂等判定的上游——读失败的答案直接决定「谁能为这个团队添人」。
+  另一个原因是这条链**在仓库里被修过两次，每次都只修一半**：UI 走的 Server Action
+  （`actions/team.ts` 的 `inviteMember` / `removeMember`）在 #35 与 C08 那几批里已经收敛过，
+  而 `/api/invitations` 这个 REST 孪生一次都没动过——因为**没有任何前端调用它**，
+  测试与页面都不会替它说话。模板用户恰恰是直接调 REST 的那批人。
+- 做了什么：
+  1. **五处断言**（发起人的团队归属、他在该团队的角色、对方是否已是成员、被移除的成员行、操作人角色）
+     删掉 `as unknown as { data: … }`，改为绑定 `error` 并让它决定回答：`logApiError` + 503 +
+     一句「… Please retry.」。
+  2. **两处门禁看不见的同型缺陷**（没有类型断言，只是解构时没取 `error`，属于 C08-c 那一族）一起收掉：
+     `GET` 的团队成员身份校验顺着 `!membership` 长成 403 `Forbidden`——一次抖动就把一个权限从未变过的
+     人挡在团队外，他该做的只是重试；`POST` 按邮箱查 `profiles` 那处把读失败答成
+     「User not found. They need to register first.」，于是用户被劝着让对方去注册。
+  3. `.limit(1).single()` → `maybeSingle()`（`single()` 在**零行**时也返回 error，
+     把「这个用户没有团队」这种合法状态和读取故障压成同一个形状）。
+     缺行仍回 404 `No team found`、非管理员仍 403、已是成员仍 409、`owner` 仍不可移除 403。
+- **用户可见的变化**：数据库抖动时邀请/移除成员会看到一句可重试的失败（503），
+  而不是「你没有团队」「只有管理员能邀请」「这个人还没注册」「这个成员不存在」这四条假结论；
+  后三条尤其坏，它们会把人送去开工单或让对方去注册，而真正该做的只是再点一次。
+- 覆盖：该文件此前**零单测**，补 15 条。设计上有两条规矩：① 每条「读失败必须 503」都配一条
+  「合法状态必须仍是 404/403/409」当反向证据——只有前者时，把所有读取都判成失败也能骗过测试；
+  ② 假客户端按「表名 + 该表第几次读取」返回，才能指名道姓地让 POST 那三道 `team_members` 读取中的某一道失败。
+  另外钉住两条不属于 C08 但同样没人管的行为：邮箱小写归一（`Invited@Example.com` → `invited@example.com`，
+  否则大小写不同就查不到已有账号），以及缺 `id` 时 400 且**一次数据库读取都不发生**。
+- 一处台账理由写错了，顺手改对：它写「『已是成员』探针读失败会放过重复邀请」。实际不会——
+  `team_members` 上有 `unique(team_id, user_id)`（迁移 001），读失败的后果是撞约束、
+  回一个与真实原因无关的 500。仍然是「把故障说成别的东西」，但严重性与排序权重完全不同；
+  理由写错比不写更糟，因为下一个动手的人会照它排优先级（这条在 C08 接线时已经栽过一次）。
+- 文案约定：响应仍是裸英文句子，沿用该文件既有写法。**判据在消费方不在生产方**（PR #96 量的那条）——
+  `grep` 过整个仓库，`/api/invitations` 没有任何 `src/` 下的调用方，也就不存在 `t(payload.error)`，
+  给它加 i18n 键是为一个不存在的消费方做设计。
+- 验证（全部在最后一次改动之后重跑，包括只改文档之前那一版代码）：
+  - `CI=true pnpm check:all` → **exit 0**（38 道门禁、206 个测试文件全过，其中本文件 15 条）；
+    `pnpm build` → exit 0；`pnpm lint` / `pnpm type-check` → exit 0。
+  - `pnpm check:query-errors` → 「358 个文件 / 23 处 awaited 查询结果断言，无未登记的抹除
+    （台账 11 处，其中未解析文件 0 个）」。这条账不是靠嘴认的：代码改完而台账条目还在时它报
+    `QUERY_ERROR_CHANNEL_EXEMPT_STALE: src/app/api/invitations/route.ts 登记台账 5 处，实际 0 处`，
+    删掉条目才恢复绿；收尾时又把那条条目按原样加回去重跑一次，确认它仍然红（门禁的红色能力
+    要在最终形态上重验，不能引用改动过程中的那一次）。
+  - 变异核对 10 项（Z1–Z10），**逐项红且只红对应那一条**：七处 guard 空转各红自己那条；
+    反向的三条（把 404「确实没有团队」改成 503、去掉邮箱小写归一、把 403「确实不是管理员」改成 503）
+    证明这套用例不是「只要返回 503 就算对」。每次变异前后用 `git diff` 与计数比对确认源码已还原
+    （最终 `status: 503` 恰为 7 处、变异注入的 `void` 残留 0 处）。
+  - 该路由**没有 E2E 覆盖也没有前端调用方**（`grep` 过 `/api/invitations`：只出现在文档、
+    eslint 豁免名单与 `admin-client-boundary` 清单里），所以这 15 条单测是它唯一的证据来源。
+    这既是它一直烂着的原因，也是这次必须自带测试的原因。
+- 顺带清掉的三处易漂移数字（D04 口径）：`docs/testing.md` 的 C08 段不再抄「358 / 37 / 22 / 12」，
+  改为指向现量命令与 `ERROR_CHANNEL_EXEMPTIONS`；roadmap C08-b 末尾的「当前台账 16 处」同理；
+  roadmap C08-c 那份 12 处清单补了「其中两处已随别的 PR 消失」的标注——它是接线时的快照，
+  照它点名会白跑两个文件。另外发现 C08-b 的 ① 与 ③ **重复列了同一个文件**
+  （`dashboard/profile/page.tsx`，第二批已修），已在 ③ 里划掉并注明是同处读取。
+- 下一批（C08-b ②收尾）：`lib/uploads/service.ts` 三处（封面上传把角色读失败答成
+  `onlyAdminsCreateProject`）、`lib/actions/sessions.ts` 与 `lib/actions/api-keys.ts` 各一处，
+  再往后是 ③ 的两处页面读数（`team/page.tsx`、`billing/page.tsx`）。`permission-gate.tsx` 两处是
+  `justified`，不在清偿范围内。
+- 更新时间：2026-09-23（UTC）。

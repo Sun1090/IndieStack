@@ -30,6 +30,7 @@
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
 | `pnpm check:production-smoke`       | 校验 Production Smoke workflow 的手动/定时入口、URL、cron、证据留存契约，以及「读 inputs 的手动作业必须排除 schedule 触发」与两个作业各自的 artifact 名 |
 | `pnpm check:query-columns`         | 校验查询链里每个字面量列名都存在于生成的行类型中（C07）                          |
+| `pnpm check:query-errors`          | 校验 awaited 查询结果没有被断言抹掉 `error` 通道；债务台账按文件按数量对账（C08） |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
 ## 贡献者测试矩阵（I09）
@@ -518,6 +519,52 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 `.filter()` / `.or()` 与 `insert`/`update` 的 payload 键不在门禁内：前者的参数是一门小表达式语言（`and(col.eq.x)`），
 后者由生成的行类型直接约束。
+
+## 查询错误通道门禁（C08）
+
+`pnpm check:query-errors` 校验**没有任何一处 awaited 的 Supabase 查询结果被断言成不含 `error` 的类型**。
+动机是本仓库连续修过的同一类缺陷：查询结果是 `{ data, error, count }`，而
+
+```ts
+const { data: profile } = (await supabase
+  .from("profiles")
+  .select("role")
+  .eq("id", user.id)
+  .single()) as { data: { role: string } | null };
+```
+
+不只是「关掉了告警」，它断言了「这一行不可能有 error」。于是下面的代码可以放心地把**读失败**当成
+**查不到这一行**来回答：`src/lib/auth/guards.ts` 在一次数据库抖动后把管理员降级成 `member`，
+`src/lib/actions/admin.ts` 对一次根本没跑完的查询回答「用户不存在」，日志里什么都没有——
+看起来是用户在撒谎，系统很健康。类型系统拦不住它，因为断言本来就比推断更权威。
+
+规则实现位于 `src/lib/security/query-error-channel.ts`（TypeScript AST、纯函数、单测覆盖），IO/CLI 位于
+`scripts/lib/query-error-channel-check.js` 与 `scripts/check-query-error-channel.js`，`pnpm check:all` 与 CI 均会执行。
+
+判定范围与它的自我证明：
+
+- 只判断**外层** `as`，且括号与 `as unknown` 会被穿透（`x as unknown as T` 是一处而不是两处）；
+  被断言的东西必须是 `await` 下来的 `.from()` / `.rpc()` 链结果。未 await 的构造器断言
+  （`const query = admin.from("x").select(...) as unknown as FilterChain`）是给 builder 定形状，不在射程内。
+- 断言类型里仍带 `error:` 的写法合规——门禁要的是「错误通道还在」，不是某种特定写法。
+- `ERROR_CHANNEL_EXEMPTIONS` 是**按文件计数**的台账，两种条目含义不同：`justified`（客户端组件
+  `permission-gate.tsx`，读角色失败时故意回落到最低权限，客户端无法 5xx）与 `debt (C08-b)`
+  （代码确实在撒谎，等待按影响面从大到小偿还）。台账**双向对账**：新增一处抹除报错，
+  修好一处不改数字也报错（`QUERY_ERROR_CHANNEL_EXEMPT_STALE`），所以它不会悄悄长胖，也不会悄悄烂成永久豁免表。
+- 语法树不完整的文件报 `QUERY_ERROR_CHANNEL_PARSE` 而不是安静地贡献 0 处——解析不动的文件在门禁眼里
+  不存在，是最坏的一种「绿」。这条是被自己的测试 fixture 证出来的：`as` 换行会被 ASI 截断成语法错误。
+- 扫不到文件报 `QUERY_ERROR_CHANNEL_NO_SOURCES`，文件全空报 `QUERY_ERROR_CHANNEL_SOURCE_EMPTY`，
+  扫到了文件却一处 awaited 查询结果都没判到报 `QUERY_ERROR_CHANNEL_VACUOUS`。
+
+规模**不在这里抄数字**——台账会随清偿一处处变小，把计数抄进文档就是造一条会过期的断言（v0.12.0 D04）。
+现量用 `node --experimental-strip-types scripts/lib/query-error-channel-check.js`（输出即「文件数 / awaited
+断言数 / 台账数」），逐条债务读 `src/lib/security/query-error-channel.ts` 里的 `ERROR_CHANNEL_EXEMPTIONS`，
+每条都写明「这一处把读失败答成了什么事实」；清偿顺序与已完成部分写在 roadmap C08-b。
+门禁先落地是为了**止住新增**，不是为了宣称问题已清完。
+
+**不在门禁内**：解构时压根不取 `error`（`const { data } = await supabase.from(...)`，接线时实测有一批，
+清单记在 `docs/progress.md` 的 C08 条目里）与 `.single()` 的「零行即错误」语义。前者不看断言就看不到，
+是本门禁的邻居而非子集；后者由调用方的 `error` 处理决定，属于 Code Reviewer 的检查项。
 
 ## 依赖与 secrets 扫描门禁（H10）
 

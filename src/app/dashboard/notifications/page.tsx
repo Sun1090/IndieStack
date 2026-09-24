@@ -43,11 +43,17 @@ export default async function NotificationsPage({
   } = await supabase.auth.getUser();
   const t = await getTranslations("dashboard");
 
-  const { data: profile } = (await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user!.id)
-    .single()) as unknown as { data: Record<string, unknown> | null };
+    .maybeSingle();
+
+  if (profileError) {
+    // 偏好开关会全部渲染成「关」，用户顺手点保存就把真实设置落库了——读失败必须显形，
+    // 不能伪装成一份合法的默认偏好。
+    throw new Error(`读取通知偏好失败：${profileError.message}`);
+  }
 
   let notifications: Awaited<ReturnType<typeof listRecentNotifications>> | null = null;
   let loadError = false;
@@ -61,9 +67,7 @@ export default async function NotificationsPage({
   const locale = await getLocale();
   const { filter } = await searchParams;
   const showUnreadOnly = filter === "unread";
-  const visibleNotifications = (notifications ?? []).filter(
-    (n) => !showUnreadOnly || !n.is_read,
-  );
+  const visibleNotifications = (notifications ?? []).filter((n) => !showUnreadOnly || !n.is_read);
 
   // 类型 → 徽标样式；未知类型回退 secondary + 原文
   const badgeVariant = (type: string) => {
@@ -170,10 +174,10 @@ export default async function NotificationsPage({
                       )}
                     </div>
                     {notification.body && (
-                      <p className="text-sm text-muted-foreground">{notification.body}</p>
+                      <p className="text-muted-foreground text-sm">{notification.body}</p>
                     )}
                   </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">
+                  <span className="text-muted-foreground shrink-0 text-xs">
                     {formatRelativeTime(notification.created_at, { locale })}
                   </span>
                 </div>
