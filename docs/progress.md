@@ -1231,6 +1231,17 @@
     对照：`e2e-parallel.yml` 既预热（`E2E_SERVERS=3`）又 `--retries=0`，所以那条基线也不该红。
     本机 `retries=0` + 串行 = 复现了 CI 的形状，只是没拿到它那两次重跑。
   - 待办已开：把 `retry(动作+断言)` 补到 `account-deletion.spec.ts` 的三处 click（新分支，别混进 #135）。
+  - 【同日晚些订正】上面这条待办是重复劳动，已作废。同一处竞态**早就在 #115（`fix/e2e-hydration-click-race`）
+    里修了**：它把这个文件四处点按（含键盘 `Enter` 那一例）统一收成共享的
+    `e2e/support/hydrated.ts` → `actUntilVisible(act, result)`，并用 `e2e/hydrated-click.spec.ts`
+    把「script 延迟 3 秒时点一次确实会被吞」钉住。我在本地另起分支写了一版同形的 `retry(动作+断言)`
+    （`--retries=0` 连跑两次各 5/5 绿），确认重复后整份丢弃、分支已删、**未推送、未建 PR**。
+    失误的形状值得留档：我 spot-check 了 #117、#119 两条的 `files`，两条都没有这个文件，就判了「无人认领」——
+    可 #117 是栈在 #115 之上的，`account-deletion.spec.ts` 的改动落在**它的 base 里**，
+    按 PR 列文件天生看不见。跨栈去重必须按**路径扫全队列**（补扫 43 条：`src/app/api/marketing/**`
+    与任何 `*rate-limit*` 文件都 0 命中，下一项因此是干净的）。
+    上面那段「CI 为什么看不见」（`ci.yml` 串行 ⇒ `warm-up.ts` 直接 return，再由 `retries=2` 兜住）
+    是 #115 的账里没写的读数，留在这里当那条修复的背景。
 - 路由普查（27 条 `src/app/api/**/route.ts`，19 条非 e2e）：第一版扫描器只展开一层调用，
   于是把守卫藏在小工具里的路由全读成「没守卫」——`contact-messages` 的 `authorized()`、
   `invitations` 的 `safelyRequirePermission`、两条上传路由的 `guardUploadRequest`
@@ -1254,8 +1265,13 @@
 - 风险 / 回滚：开了 Mock 又没配 token 的环境，现在连「读收件箱」也调不到——这正是本分支的判据（没配凭据 ⇒ 任何请求都不合法）。
   `docs/` 里若有抄了裸 `curl` 读 inbox 的片段需要跟着补一个头，本次已全仓搜过 `email-inbox`：只有 spec 与 `email-send.test.ts`
   （它只比 URL 拼装，不发请求）。
-- 下一项：(1) `account-deletion.spec.ts` 上 `retry(动作+断言)`，用 `retries=0` 复跑到 5/5；
-  (2) 给 `marketing/{confirm,unsubscribe}` 的 POST 补 `rateLimit.check`，看有没有公开端点限频的门禁可挂。
+- 下一项：(1) ~~把 `retry(动作+断言)` 补到 `account-deletion.spec.ts`~~ —— 已由 #115 覆盖，本条作废（见上面的订正）；
+  (2) 给 `marketing/{confirm,unsubscribe}` 的 POST 补限频（正在做；按路径扫过全部 43 条队列，
+      `src/app/api/marketing/**` 与任何 `*rate-limit*` 文件都 0 命中）；
+  (3) 这次普查量到的形状目前没有任何门禁承载：17 条 mutating 路由里，靠非限频手段挡住的是
+      cron 密钥 3 条、Mock Bearer 7 个文件、Stripe 签名 1 条（含 marketing 两条待补即 13 条），
+      要不要收成一条带豁免清单（每条写「为什么不需要限频」）的 inventory 规则，等 (2) 落地后再定——
+      清单大小约 13 条，远小于 C09 那条 58 点位的账，但同一条「两向对账会把顺手修和台账漂移混成一次红」的成本要先算。
 - 更新时间：2026-09-24。
 
 ## 2026-09-24 —【同日晚些订正】上面那条「本地全绿」被自己的 pre-push 钩子驳回了：两条全仓扫描用例卡在 5 秒默认预算上
