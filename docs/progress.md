@@ -2142,3 +2142,62 @@
   我认为它比一堵墙便宜。回滚 = revert 本 commit。
 - 下一项：把这一节与前两节一起同步进 PR #118 正文的合并动作清单（配方里那一步换成 close/reopen）。
 - 更新时间：2026-09-24（UTC 11:5x 之后）。
+
+## 2026-09-24 — 定时生产冒烟的真相：每天绿的是「版本漂移」那半个，而且我自己的 `on:` 判据截过图
+
+- 里程碑 / 版本：v0.12.0 发布证据（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：上一条为了判断「改 base 会不会触发 CI」去读各 workflow 的 `on:` 块，用的是
+  `awk '/^on:/{...}' | head -14`。判完才发现**这个 awk 会把 `on:` 块截断**——它让我以为
+  `production-smoke.yml` 只有 `workflow_dispatch`，而它其实挂着每日 `schedule`。
+  既然整份 workflow 触发清单可能是截断出来的，就重读一遍并顺手把那个定时作业看清了什么。
+- 完成内容：
+  1. **用真解析重读 `on:`（9 个 workflow，逐条打印触发与 cron）**：
+     `ci.yml` = `push` + `pull_request`、**无 `types`**、无 cron（上一条那个 close/reopen 结论依赖的
+     正是「无 types ⇒ 默认含 `reopened`」，这次是在**没有截断**的读取下重新确认的）；
+     `codeql` 周一 06:00、`security-config` 周一 05:17、`e2e-parallel` 周一 07:30（+dispatch）、
+     `health-check` 每日 03:17（+dispatch）、**`production-smoke` 每日 02:17（+dispatch）**、
+     `supabase-auto-restore` 每日 04:37（+dispatch）。`release.yml` 只有 `push: tags: v*`。
+  2. **每天那次「Production Smoke 绿」绿的是哪个作业，量清楚了**：workflow 里两个作业，
+     `smoke`（6 项零副作用冒烟）带 `if: github.event_name == 'workflow_dispatch'`，
+     `smoke-main`（`check-production-version.js`，期望版本取自 `package.json`）无条件跑。
+     `gh run view 35970360891 --json jobs` → 今天的定时运行是
+     **`Side-effect-free production smoke = skipped` + `Daily production version drift check = success`**。
+     也就是说**整个 workflow 绿、而真正的冒烟套件那天一次都没跑**——读法定为：
+     看 workflow 结论会高估覆盖面，要看作业。
+  3. 今天这次漂移检测的输出行：`✅ health: HTTP 200, status=ok, ready=true, version=0.11.0,
+     commit=unknown` —— `commit=unknown` 就是发布缺口②还没闭合的直接证据（生产仍是 09-22 08:56Z
+     那次部署的构建，早于 #69），task #28 继续保持 pending，**不用我再去 dispatch 一次**：
+     定时作业每天会自己把这个数报上来。
+  4. **09-22 那次定时失败不是生产出事**，是 `smoke` 作业当时没有 `if:` 守卫、被 `schedule` 一起带起来，
+     而它的参数全来自 dispatch inputs（定时触发时为空），于是
+     `production-smoke.js -- '' --timeout-ms ''` 抛 `--timeout-ms requires a value`
+     （`gh run view 35700843878 --log-failed` 读到）。这一条**文档里已经有了**
+     （`docs/operations/production-smoke-v0.11.0.md` 第 36–38 行，写明了成因与「已修」），
+     所以这次是复验别人的结论，不是新发现；但它顺带证明守卫是承重的：
+     去掉 `if:` 就会每天红一次，而且红的原因与生产无关。
+  5. **合完这 46 条不会把这台告警误触发**：`check-production-version.js` 拿 `package.json` 的
+     version 当期望值，所以只要有一条 PR 把版本抬到 0.12.0 而 Vercel 仍被配额挡着，这个每日作业就会
+     天天红（那属于「真漂移 = 生产落后于仓库」，按定案照实记录、不放宽门禁）。
+     逐个 head 量过：`git show pr/<n>:package.json` → **`PRs scanned: 46/46`、`unreadable: 0`、
+     改 version 字段的 0 条**，main 仍是 `0.11.0`。所以这批合并不会撞上它。
+  6. **一条解释不了就先记下来的观测**：两个每日定时作业的实际运行时间都比声明的 cron 晚约 5 小时
+     （`production-smoke` 声明 02:17 → 记录 07:34 / 07:43 / 07:41；`health-check` 声明 03:17 →
+     08:23 / 08:31 / 08:29，且 `createdAt == startedAt`）。GitHub 侧调度为什么整体后移我**没有归因**，
+     仓库里也看不出来；能确定的只有「它每天确实跑、偏移稳定」。
+     影响：拿定时冒烟的时间去推断「它跑的时候生产是哪个构建」，要用**日志里的时间戳**而不是 cron 声明。
+- 验证命令与结果：
+  - `gh api`／本地 `git show`：`PRs scanned: 46/46 / unreadable: 0 / 改 version: 0`。
+  - `gh run list --workflow "Production Smoke" / "Post-deploy health check"` 取 `createdAt` + `startedAt`；
+    `gh run view 35970360891 --json jobs` → skipped + success 两个作业；
+    `gh run view 35970360891 --log` → 那行 `commit=unknown`（注意日志里步骤名全是 `UNKNOWN STEP`，
+    按 `check-production-version` 或 `health:` 抓，别按步骤名抓）。
+  - `gh run view 35700843878 --log-failed` → `Error: --timeout-ms requires a value`。
+  - 触发清单重读：一个 `node -e` 小解析器，按「缩进退出 `on:`」终止而不是 `head -N`。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：定时作业整体晚约 5 小时这一条只记录了观测，未改任何 cron、未改 workflow；
+  如果以后要改，先确认 GitHub 的调度语义而不是照本地时间猜。回滚 = revert 本 commit。
+- 下一项：#118 的 CI（12:00Z 那次运行）跑完之后确认它从 `BLOCKED` 变成 `UNSTABLE`，
+  这样队列里就没有任何一条 PR 还缺必需 CI 证据（#98 今天已经闭合）。
+- 更新时间：2026-09-24（UTC 12:0x）。
