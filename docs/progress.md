@@ -1302,3 +1302,119 @@
   这一行配置不会和队列里任何一条抢。
 - 阻塞：无。风险 / 回滚：一行配置，revert 即回滚；放宽的是超时预算，不是任何断言的判据。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 — 每条 API 路由靠什么保护，从「问人」变成一份会被核对的台账（C11 / `check:route-auth`）
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施 + 安全面（任务池 C 段新增一条，编号 C11）。
+- 状态：DONE（待合并），分支 `feat/gate-route-auth`（base = PR #135 分支
+  `fix/e2e-bearer-unset-token`，因为台账要断言的正是那条修完之后 `email-inbox` 三个方法都有 bearer 的状态；
+  #135 落地后按惯例 `gh pr edit --base main` 重定基）。
+- 为什么做：直接动机是今天修的那个收件箱 GET——**少了一个守卫而 27 条路由、5 个门禁全都没红**，
+  因为「这条路由该有什么保护」在仓库里没有任何机器可读的记录。量了一遍发现结构性原因：
+  `src/proxy.ts` 的 `protectedRoutes` 是 `/dashboard` 与 `/dashboard/(.*)`，`/api/*` 一条都不在，
+  也就是每个 API handler 的鉴权完全在它自己（或它调用的 helper）身上，而中间件的名字
+  （Next 16 里叫 proxy）很容易让人以为它管着全站入口。
+- 完成内容：
+  1. `src/lib/security/route-auth.ts`：守卫词表（`PROTECTION_SYMBOLS`，符号 → 保护家族）、
+     TypeScript AST 调用图解析 `collectRouteHandlers`、台账 `ROUTE_AUTH_LEDGER`（45 条）、
+     六种偏差 `auditRouteAuth`（`NO_HANDLERS` / `UNLEDGED` / `STALE` / `GUARD_MISSING` /
+     `REASON_MISSING` / `FAMILY_MISMATCH`）。IO 在 `scripts/lib/route-auth-check.js`（读 `src/**`
+     全部非测试源码，一次读全），`scripts/check-route-auth.js` 只是 type-stripping 启动器。
+  2. 台账 45 条按家族分布：session 12、shared-secret 8（3 条 cron + 运维状态 + 收件箱三个方法）、
+     mock-only 15、public 7、token 2、signature 1。`public` 的 reason 必须写满，测试断言每条 >20 字
+     且 `via` 为空——「先这样吧」进不来。（CLI 那句「6 个无守卫符号」数的是解析结果里 `reachable` 为空的
+     条数：7 条 public 里 `auth/callback` 有 `getUser`，但那是换完会话之后回读，不是入口守卫。）
+  3. 接线：`package.json`、`scripts/check-all.sh`（CI 的静态作业跑聚合入口，因此自动进 CI）、
+     `src/lib/testing/test-matrix.ts` 的 api-routes 领域、`docs-site/scripts.md` ×两个语言、
+     `docs-site/testing.md` ×两个语言（贡献者矩阵的领域行）、`docs/testing.md`（命令表 + 一节
+     「路由鉴权清单门禁（C11）」）。**第一趟 `check:all` 就是红的，红的正是我漏登记的
+     `docs-site/testing.md` 两份**（`MATRIX_MISSING_COMMAND`）——这条门禁的登记面比一个人记得住的宽，
+     而它是靠另一条已有门禁兜住的，不是靠我细心。
+- 变更文件：`src/lib/security/{route-auth.ts,route-auth.test.ts}`（新）、
+  `scripts/{check-route-auth.js,lib/route-auth-check.js}`（新）、`package.json`、
+  `scripts/check-all.sh`、`src/lib/testing/test-matrix.ts`、`docs/testing.md`、
+  `docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **27 passed**。
+    新增的那一条钉的是「词表不能写源码里不存在的守卫」：初版 18 个符号里的 `readSessionRole` 与
+    `verifyWebhookSignature` 是我按『应该有』写的，源码里找不到，已删（删完台账判定一字未变，
+    说明它们从来没被任何结论依赖过——但留在表里就是给下一个读者一个假的入口）。
+    探针本身也验过：往词表里种一个 `aGuardThatDoesNotExist` → 只有那一条红。
+    探针的撤销方式也记一笔：那次我用 `git checkout -- <file>` 复原，结果把同一文件里**我自己未提交的
+    删除**一起回滚了（这个仓库的台账已经写过「探针要用反向替换撤销，别用 checkout」，这次是自己踩给自己看）。
+    当场从测试输出发现（复原后仍 1 红），重贴一次删除即恢复。
+  - `node scripts/check-route-auth.js` → exit 0，
+    `✅ 路由鉴权清单一致：45 个 handler 全部登记且守卫可达（其中 6 个登记为 public / 无守卫符号，调用图截断计数 770）`。
+  - **变异核对**（每条判定都要证明它会咬）：六种 issue 各有一条独立用例；此外一条用例真的把
+    `email-inbox` GET 的 `if (!authOk(request))` 改成 `if (false)`，断言结果恰好只有
+    `GUARD_MISSING GET /api/e2e/email-inbox` 一项——这就是 2026-09-24 那个缺陷的形状。
+  - 第一版红了两处，都不是判据错而是我自己写错：`truncated` 断言（名字在被展开的子树里就已经收集，
+    不必然要继续往里走）与 `STALE`（我一度把过期判定限制在需要理由的家族里，那是没道理的收窄，删掉条件）。
+  - 三处解析失明是量出来的，不是设想：`in` 顺原型链命中（`toString` 让每个文件都「有守卫」）、
+    `unsubscribe` 与推送订阅的 `.unsubscribe()` 同名（全仓库误报，改成真名 `unsubscribeByToken`）、
+    路径推导吃掉 `/api` 前缀。前两条都以「阳性对照先红再绿」的方式确认修好了。
+  - 【当日订正】上面「真实仓库」那一层里的 `expect(handlers.length).toBe(45)` 当场改成地板值
+    `toBeGreaterThanOrEqual(45)`，用例标题里的「45 个」一并去掉。改的不是数字而是它的**形状**：45 是从
+    全仓库读出来的量，加一条端点就涨一次，而那个 PR 没有任何理由知道要回来改测试里的这个数——于是一次
+    正常的新增会在合并之后的 main 上红成一场不存在的回归。地板要的不对称是「往上不挡、往下才挡」：解析
+    范围被调窄时条数会往下掉，而「掉了一半」和「路由本来就这么几条」在输出里长得一样；新增没登记的路由
+    本来就红在 `UNLEDGED`，用不着一个魔数来替它说话。精确读数交给 `pnpm check:route-auth` 现量。
+    自相矛盾的地方在于：同一个门禁在 #138 里给限流读数用的正是地板值（`toBeGreaterThanOrEqual(14)`，
+    注释写着「钉成等号就是给每个后来的 PR 埋一次红灯」），两条 PR 叠在同一个 `describe` 里才看得见。
+    - 变异核对：把地板临时改成 46 → `AssertionError: expected 45 to be greater than or equal to 46`
+      （一条红，其余 26 条绿），既证明这条断言会咬，也顺带现量了当前真实条数就是 45；随后改回 45，
+      `git diff` 复核为两 hunk、无残留。
+    - 队列侧实测这条红灯**当时还没亮**：49 个 open PR 逐个对 `origin/main` 做 diff，新增
+      `export [async] function GET|POST|PUT|PATCH|DELETE` 合计 0 条、删除 0 条，也没有 PR 写
+      `export const GET` 那种变体（独立分母那条 canary 不会被踩）。计数器的阳性对照：同一正则喂
+      `+export const GET = (req) => {}` 与 `+export { handle as POST }` 各命中 1，喂
+      `+export async function DELETE(){}` 命中 0——所以那个 0 是「没有」，不是「看不见」。
+- 阻塞 / 风险 / 回滚：不碰任何运行时行为——这条门禁只读代码，不改代码，回滚 = revert 本 commit。
+  风险三条，都记下：① 守卫按**名字**识别，所以 `getUser` 这类常见方法名有误认空间（台账要求的是
+  「声明的符号可达」而不是「可达集合非空」，因此误认不会让一条真没守卫的路由蒙过去）；
+  ② 只认 `export [async] function METHOD` 这一类函数声明写法（带不带 `async` 都收，只有声明没有函数体的
+  重载签名不算），换写法会由独立分母那条用例红，不会静默漏；
+  ③ base 是 #135 的分支，先合 #137 会带上那 6 个 commit——所以要按 #135 → #137 的顺序合，
+  或者等 #135 落地后我重定基。
+- 下一项：#135 合并后把本分支 `gh pr edit --base main` 重定基（台账断言的是修完之后的状态）。
+- 更新时间：2026-09-24（UTC 08:50 前后）。
+
+## 2026-09-24 — 第四遍整队列重建把 C11 的台账验绿了，顺手量出限频这一维的覆盖面（C12 记入任务池）
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施 + 安全面（本分支 `feat/gate-route-auth`，PR #137）。
+- 状态：DONE（待合并）。
+- 为什么做：C11 落地后，「一条路由的可达闭包里有什么」第一次成了机器可答的问题，于是限频这一维
+  不再是「感觉没人管」而是可以五分钟量出来的东西。动机也不是设想：`#136` 正因为营销那两条
+  公开 POST 没窗口才存在。
+- 完成内容：
+  1. `docs/roadmap-0.12.0.md` 新增 C 段第 24 项（C12），写的是**量出来的覆盖面**而不是判断：
+     `main`（`ad4b029`）45 个 handler / 27 个路由文件里只有 **8 个文件** import 了 `@/lib/rate-limit`
+     （passkey 四条各自 `createRateLimit({maxRequests:10,windowMs:60_000})` 的局部实例，
+     user / analytics / stripe checkout / invitations 用导出的单例）；零窗口的含营销两条 POST、
+     3 条 cron + `push-retry` 的 GET、15 条 mock-only、两条 uploads（`guardUploadRequest` 只管同源与载荷）、
+     webhook、health、og、auth/callback。
+  2. 把**接这条门禁的两个前置**写进任务条目，因为它比 C11 更容易造出假清白：
+     ① 哪些写入端点必须有窗口是产品判断（给 cron 加 IP 窗口只会让重试丢邮件），所以要先有一份
+     `debt` / `justified` 两态的豁免台账；② 判据**不能按名字表**认限流器——C11 的
+     `PROTECTION_SYMBOLS` 在写它的当天就量出三处失明，而 `const authOptionsRateLimit = createRateLimit(...)`
+     的实例名是任意的。可判定的形状应从模块图推出：import 了 `@/lib/rate-limit` 的绑定、或顶层常量其初始化
+     调用了该模块的工厂，都算限流器；handler 被限频当且仅当可达闭包里出现这样的绑定或出现一个自身满足条件的
+     函数（`#136` 的 `marketingTokenRateGuard` 正是跨文件的第二层）。
+  3. 一次**自己差点被自己的工具骗了**的读数：先按「名字表」写了探针（`rateLimit` /
+     `marketingTokenRateGuard` / …）跑 `collectRouteHandlers`，输出 `family=* rateLimited=no` 全表为零——
+     看着像「全仓库没有一处限频」。真原因是 C11 的 `handler.reachable` **只收 `PROTECTION_SYMBOLS` 里的符号**
+     （`guardsIn` 第一支就过滤），限流器名字根本不会出现在那个集合里。所以那条 0 是探针的形状错了，
+     不是仓库的形状错了；改成数「哪些文件 import 了 `@/lib/rate-limit`」（上面那个 8）才是这一维的读数。
+     记下来是因为同一句话对 C12 本身成立：**复用别人的可达集合，要先确认它没在往里筛东西**。
+  4. 同一趟把 C11 在整队列合成树上的读数补进 PR 正文：45 个 PR / 24 个栈尖 / 164 commit，
+     `check:all` 与 `test:coverage` 均 exit 0，`check:route-auth` 在合成树上仍报 45 个 handler、
+     6 条无守卫符号，调用图截断计数 770 → 792。
+- 变更文件：`docs/roadmap-0.12.0.md`、本条目。
+- 验证命令与结果：`pnpm check:cron-contract` / `check:docs` / `check:adr` 各自 exit 0
+  （roadmap 里点了 `/api/cron/*` 的名字，最先可能红的就是它）；纯文档改动，push 时仍按约定跑完整
+  `pnpm verify:build`。
+- 阻塞 / 风险 / 回滚：不动任何代码路径，回滚 = revert 本 commit。风险一条：C12 的两个前置里
+  ①（哪些端点必须有窗口）是要人定的判断，不是我能从代码里读出来的，写条目时没有替它决定。
+- 下一项：C12 要么并入 `check:route-auth`（省六处登记面）要么独立（CI 归因更清楚），先按 D01 口径
+  把「谁调用了限流器工厂」的传递闭包跑一遍看误报率，再定形态。
+- 更新时间：2026-09-24（UTC 09:30 前后）。
