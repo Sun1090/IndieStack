@@ -244,26 +244,41 @@
     结论不变的自证）。规则与解析在 `src/lib/security/route-auth.ts`，IO/CLI 在
     `scripts/lib/route-auth-check.js` + `scripts/check-route-auth.js`。
 
-24. C12 把 C11 的同一套解析用于**限频**：`check:route-auth` 现在只回答「这条路由靠什么挡住未授权」，
-    不回答「这条路由能被打多少次」。这不是设想——写 C11 时顺手量过一遍，`main`（`ad4b029`）上
-    45 个 handler / 27 个路由文件里，只有 **8 个文件** import 了 `@/lib/rate-limit`：
-    passkey 的 auth-options / auth-verify / register-options / register-verify（各自
-    `createRateLimit({maxRequests:10, windowMs:60_000})` 的**局部实例**）与 user / analytics /
-    stripe checkout / invitations（用导出的单例 `rateLimit.check`）。**零限频**的是：营销
-    confirm/unsubscribe 两条 POST（凭 token 而非会话，`#136` 正在修这一条）、3 条 cron + `cron/push-retry`
-    的 GET、15 条 mock-only e2e、`ops/supabase-restore`、两条 uploads（`guardUploadRequest` 只管同源与
-    载荷，不计数）、stripe webhook、health、og、auth/callback。
-    接入前有两件事必须先定，否则这条门禁会是**假清白**的制造者：① **哪些写入端点必须有窗口**是产品判断
-    （cron 由平台调度、密钥门控，给它加 IP 窗口只会让重试丢邮件；e2e 只在 Mock 档存在），所以要有
-    一份带理由的豁免台账，形如 C08 的 `debt` / `justified` 两态；② 判据**不能按名字表**认限流器——
-    C11 那张 `PROTECTION_SYMBOLS` 名单在写的当天就量出三处失明（原型链命中、同名误报、路径吃前缀），
-    而限流器更糟：`const authOptionsRateLimit = createRateLimit(...)` 的实例名是任意的。
-    可判定的形状应当从模块图推出来：**凡是 import 了 `@/lib/rate-limit` 的绑定、或顶层常量其初始化调用了
-    该模块导出的工厂，都算限流器**；一个 handler「被限频」当且仅当它的可达闭包里出现这样的绑定，
-    或出现一个自身满足该条件的函数（`#136` 的 `marketingTokenRateGuard` 正是这种跨文件的第二层）。
-    好处是这条判据不维护名单，坏处是要把「谁调用了限流器工厂」做成图上的传递闭包——所以先在
-    `MAX_CALL_DEPTH` 已放开的那套 walk 上量一遍误报，再决定它是否独立成一条门禁还是并入 `check:route-auth`
-    （并入省掉六处登记面，独立则 CI 归因更清楚）。按 D01 口径：**接线前先量，别写完再发现它永远不响**。
+24. C12 把 C11 的同一套解析用于**限频**：`check:route-auth` 回答「这条路由靠什么挡住未授权」，
+    现在多答一句「这条路由的闭包里有没有窗口」——**只现量、不判定**：
+    `node scripts/check-route-auth.js --rate-limit-report` 逐条打印 `id [家族] [限流器绑定]` 并给分母。
+    本分支的读数：**45 个 handler 里 14 个有限流器绑定，分布在 10 个路由文件**；按家族是
+    session 12/12 全覆盖、public 2/7（passkey 的两条 auth 端点）、token 0/2（营销 confirm/unsubscribe
+    两条 POST，`#136` 正在修）、shared-secret 0/8（3 条 cron + `push-retry` 的 GET +
+    `ops/supabase-restore` + 收件箱三个方法）、signature 0/1（stripe webhook）、mock-only 0/15，
+    外加 health / og / auth-callback 三条 GET。
+    **这份读数推翻了我第一版手抄的结论**：先前写「两条 uploads 只管同源与载荷、不计数」是错的——
+    路由文件确实没 import 限流库，但 `guardUploadRequest`（`src/lib/uploads/request.ts`）第一句就是
+    `rateLimit.check(request)`，两条上传都在覆盖内。「grep 路由文件的 import 列表」看不见这个形态，
+    这正是判据要走调用图而不是走文本的理由。
+    判据从**用法**推、不维护名单：① 顶层 `const x = <限流库的导出>(…)`（工厂实例，名字随作者起，
+    本仓库就有 `authOptionsRateLimit` 这种）；② 被当对象取用的限流库导入（`rateLimit.check(…)` 那个单例）。
+    handler 被限频当且仅当它的可达闭包里出现这样的绑定，所以跨文件包装（`#136` 的
+    `marketingTokenRateGuard`）由同一次遍历传递到。只是从库里 import 一个函数来调用（`isIpLike(x)`）不算。
+    剩下的两个前置：① **哪些写入端点必须有窗口**仍然是产品判断（给 cron 加 IP 窗口只会让重试丢邮件；
+    e2e 只在 Mock 档存在），要有一份 C08 那种 `debt` / `justified` 两态的豁免台账；② 并进门禁还是独立成一条
+    （并入省掉六处登记面，独立则 CI 归因更清楚）。误报面已经先量过：6 条合成用例（含两种负例）+
+    一条真实仓库分母对账——每条上报的绑定都必须能在其来源文件里对上 `@/lib/rate-limit` 的 import，
+    且直接 import 了该库的路由文件一个都不能漏。按 D01 口径，剩下的只是等 ① 定范围。
+    **队列落地之后的读数也量过了**（不是推的）：把 `#136` 的三个文件
+    （`src/lib/marketing/request.ts` 与两条营销路由）临时摆进工作树重跑一次报告，覆盖从 14/45 涨到
+    **16/45**、路由文件从 10 涨到 **12**，`token` 那一族从 0/2 变成 2/2，而报告给出的绑定是
+    `src/lib/marketing/request.ts#marketingTokenLimit` —— 限流器在包装函数所在的模块里，两条营销路由
+    自己一行都没 import 限流库。这正是跨文件判据要抓的形态，也是「按名字表」永远抓不到的那一类
+    （名字表里得先有人想到要把 `marketingTokenLimit` 写进去）。探针跑完已复原，`git status` 干净。
+    也就是说：① 要等的不是数据，是范围。
+    **一条自己踩到的坑（判据没错，钉数字的测试错了）**：把 24 个栈尖整队列合一遍之后，这条测试
+    在合成树上红了——期望 16、断言写的是 14，因为 `#136` 给两条营销端点加了窗口。合成树的数字
+    没有一个是错的，错的是把「接线时量到的那一个数」写成等号：它等于给每个再加一条窗口的 PR
+    埋一次红灯，而红灯那一刻 nobody 会先想到这是设计问题。现在这条断言是**地板值 + 家族白名单**
+    （`public` / `session` / `token` 之外多出一族就红，红话写着「这条测试不认识它」），
+    精确读数交给 `--rate-limit-report`。地板仍然有意义：判据坏掉时读数掉到 0，而 0 看起来
+    和「没人加窗口」一样干净。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 

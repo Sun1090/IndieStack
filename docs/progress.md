@@ -1418,3 +1418,108 @@
 - 下一项：C12 要么并入 `check:route-auth`（省六处登记面）要么独立（CI 归因更清楚），先按 D01 口径
   把「谁调用了限流器工厂」的传递闭包跑一遍看误报率，再定形态。
 - 更新时间：2026-09-24（UTC 09:30 前后）。
+
+## 2026-09-24 — 把「这条路由有没有窗口」变成一条命令能现量的读数（C12 前半），它当场推翻了我几小时前的手抄结论
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施 + 安全面（分支 `feat/measure-route-rate-limits`，base = PR #137 的
+  `feat/gate-route-auth`）。
+- 状态：DONE（待合并）。
+- 为什么做：C12 记进任务池时我写的是「哪条路由有限频」的一份**手抄清单**，而手抄数字正是 D04 要消灭的形态。
+  更要紧的是那份清单会直接影响 ① （哪些端点必须有窗口）怎么定，定错方向的成本比多写一个 flag 高。
+- 完成内容：
+  1. `src/lib/security/route-auth.ts`：`RouteHandlerFact` 多一个 `limiters` 字段，`ModuleFacts` 多一个
+     `limiters` 集合，新增 `RATE_LIMIT_MODULE` 与 `limiterBindings()`。判据**从用法推**：
+     ① 顶层 `const x = <限流库的导出>(…)`（工厂实例）；② 被当对象取用的限流库导入（单例）。
+     收集点在既有的那次 BFS 里（`bare ∪ calls` ∩ 该文件的绑定），所以跨文件包装是**传递**到的，
+     不需要第二套遍历，也不维护任何名字表。
+  2. `scripts/lib/route-auth-check.js`：`--rate-limit-report` 逐条打印 `id [家族] [绑定]` + 分母。
+     **不判定**（① 还没定），唯一的失败封闭是「一条都没匹配到」——那更可能意味着判据自己坏了。
+  3. 用例从 26 条涨到 34 条：8 条新的 = 6 条合成（含两种负例）+ 1 条真实仓库分母对账 +
+     1 条给报告退出码本身做的控制（真仓库 0、一棵只有一条无限频路由的临时仓库 1）。
+- **读数推翻了我几小时前写下的话**：本分支 45 个 handler 里 **14 个**闭包里有限流器绑定，
+  分布在 10 个路由文件；按家族 session 12/12、public 2/7、token 0/2、shared-secret 0/8、
+  signature 0/1、mock-only 0/15。而 C12 条目原文写的是「两条 uploads 只管同源与载荷、不计数」——
+  **错**：`src/app/api/uploads/*/route.ts` 确实没 import 限流库，但 `guardUploadRequest`
+  （`src/lib/uploads/request.ts:33`）第一句就是 `await rateLimit.check(request)`。
+  我几小时前是用 grep 数 import 列表得出那个结论的，而 grep 看不见「限流器躲在 helper 里」这一层。
+  roadmap 的 C12 条目已按这份读数重写，并把「第一版为什么错」留在原处而不是抹掉。
+- 变更文件：`src/lib/security/{route-auth.ts,route-auth.test.ts}`、`scripts/lib/route-auth-check.js`、
+  `docs/testing.md`、`docs/roadmap-0.12.0.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **34 passed**。
+  - `node scripts/check-route-auth.js` → 仍是 `✅ 45 个 handler 全部登记且守卫可达`（台账判定一字未动）。
+  - `node scripts/check-route-auth.js --rate-limit-report` → exit 0，分母行 `45 个 handler / 10 个路由文件`。
+  - **真实树上的一次性正控**（不是夹具）：临时新建 `src/app/api/tmp-probe/route.ts`，限流器放在两跳之外
+    的 `src/lib/tmp-probe-guard.ts` 里 → 报告如实打出
+    `POST /api/tmp-probe\t[未登记]\t[src/lib/tmp-probe-guard.ts#rateLimit]`，分母同步走到 46/11；
+    同一棵树上台账门禁按预期红在 `ROUTE_AUTH_UNLEDGED POST /api/tmp-probe`。两个 scratch 文件已删，
+    `git status` 干净。
+  - **队列落地后的读数**（同一个报告，换一组文件跑）：把 `#136` 的三个文件临时摆进工作树 →
+    覆盖 14/45 → **16/45**、路由文件 10 → **12**，`token` 族 0/2 → 2/2，绑定报成
+    `src/lib/marketing/request.ts#marketingTokenLimit`（限流器在包装函数的模块里，两条路由自己没 import 过限流库）。
+    撤销时踩了一下自己写过的坑：`git checkout <commit> -- <path>` 是**同时写索引与工作树**的，所以随后
+    `git checkout -- <path>` 只是把索引里那份又恢复了一遍，报告仍然读到 12 个文件才发现。正确的撤销是
+    `git restore --source=HEAD --staged --worktree <path>`（新增且 HEAD 里没有的那个文件另需 `git rm --cached` + `rm`）。
+    最终 `git status` 与 `git diff HEAD` 均为空，报告回到 14/10。
+  - `pnpm type-check` / `pnpm lint` → exit 0。
+  - **变异核对（四条判据各自都要证明会咬）**，每条改完跑同一个文件的全部用例再 `git checkout --` 复原：
+    P1 去掉工厂实例那一支 → 2 红（工厂用例 + 真实仓库分母）；P2 去掉「对象取用」那一支 → 4 红
+    （单例 / 跨文件 helper / 同文件另一 handler 的精度用例 / 分母）；P3 放宽成「import 过就算」→ 3 红，
+    **其中一条正是 `isIpLike` 那个负例**（所以负例不是空断言）；P4 收集时不看绑定表 → 7 红，
+    两个负例都红。复原后复跑同一文件全绿，`check:route-auth` 仍是 45 个 handler 一字未变。
+- 阻塞 / 风险 / 回滚：C12 的 ① 仍是要人定的判断，本条**没有**给任何端点判对错，所以没有误报红的可能，
+  也没有回归面（唯一的运行时变化是多读一个字段）。回滚 = revert 本 commit。
+  风险一条：`limiters` 的键是 `文件#绑定`，跨文件包装会把 helper 的路径显示在路由那行上——读报告的人
+  需要知道那是「来路」而不是「这条路由自己的文件」，所以报告每行都带着这个前缀打印，不省略。
+- 下一项：把这条并到 #137 之后重定基（它依赖 C11 的解析器），或者直接随 #137 一起看。
+- 更新时间：2026-09-24（UTC 09:40 前后）。
+
+## 2026-09-24 — 合成树把本 PR 自己跑红了：一条等号断言改成地板值 + 家族白名单
+
+- 里程碑 / 版本：v0.12.0 门禁基建 C12（PR #138，base `feat/gate-route-auth` = #137）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`feat/measure-route-rate-limits`（本条目）。
+- 为什么做：第五次整队列重建（记录在 `docs/pr-merge-order` 分支）在合成树上跑 `pnpm check:all`，
+  唯一由代码带来的红就是本分支的一条断言：`expected 16 to be 14`。合成树的数字是对的——`#136`
+  给两条营销端点加了窗口，覆盖从 14/45 涨到 16/45；被钉成等号的那个 14 是我接线时的一次性读数。
+  这不只是「测试写得严」：按编号顺序合并的人会在一条**并不存在的回归**上撞一次红灯。
+- 完成内容：
+  1. `toBe(14)` → `toBeGreaterThanOrEqual(14)`，理由写在断言旁边：地板要防的是判据死掉时读数掉到 0，
+     而 0 看起来和「没人加窗口」一样干净；精确读数交给 `--rate-limit-report`。
+  2. 家族集合的等号 → 两条各管一头的断言：`session` 与 `public` 必须有窗口；读数里出现的每一族必须
+     在这份点名清单（`public` / `session` / `token`）里，多一族就红且红话点名那一族。原先那句
+     「mock-only / cron / signature 今天不该有窗口」只是注释，没有任何东西守着它，现在由白名单守。
+  3. roadmap 的 C12 条目末尾补下这次踩坑的原文（数字全对、错在断言的形状），以及它对合并动作的后果。
+  4. 同日上一条里的两处自相矛盾的用例数（同一条目先写 `34 passed`、变异复原后又写 `33 passed`，
+     读起来像复原动作删掉了一条用例）改成不带条数的说法，条数交给命令本身。
+- 验证命令与结果：
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **35 passed**。
+  - `pnpm lint` → exit 0；`pnpm type-check` 第一次**红**：`families.has(family)` 里 `family` 被推成
+    `string`、与 `Set<ProtectionFamily>` 不兼容（`TS2345`），加 `as const` 之后 exit 0。
+  - **三条活性核对**（每条改完跑同一个文件，再 `git checkout --` 复原；每次复原后 `git status` 为空）：
+    地板从 14 抬到 15 → 红，`expected 14 to be greater than or equal to 15`；
+    白名单去掉 `public` → 红，消息写着「public 族读到了限流器，但这条测试不认识它」；
+    把判据 `isRateLimitModule` 改成恒 false（模拟检测器死掉）→ **6 条红**，其中包含这条分母对账
+    （地板与 `session`/`public` 都在它名下）和「报告在真实仓库退出 0、在为空的仓库退出 1」那条控制。
+  - 合成树复跑：`sim/queue-46` 再并一次本分支（`main` 之上 176 个 commit / 25 个 merge）后
+    `CI=true pnpm check:all` → **exit 0**，`Test Files 229 passed (229)` / `Tests 2699 passed (2699)`；
+    `pnpm test:coverage` → exit 0，`All files 97.46 / 92.37 / 98.27 / 98.63`（阈值 91/90/93/92 未动）。
+- 补记（同日）：上面这条把 `toBe(14)` 换地板值的道理，在**同一个 `describe("真实仓库")` 的上一格**还有一份
+  同形的没被改掉——`expect(handlers.length).toBe(45)`。已在 #137 的分支修成 `toBeGreaterThanOrEqual(45)`
+  （commit `5b0e3f1b`，本分支 rebase 之后继承），用例标题里的「45 个」一并去掉，文件头注释改成写明
+  「条数只作地板值」。两处唯一的差别是**有没有当场亮**：14 那处是整队列重建跑红的（`expected 16 to be 14`），
+  45 这处还没亮——49 个 open PR 逐个对 `origin/main` 做 diff，新增与删除的 handler 各 0 条，也没有 PR 写
+  `export const GET` 那种变体（所以独立分母那条 canary 同样不会被踩）。不亮不等于不会亮：下一个加端点的 PR
+  没有任何理由知道要回来改测试里这个数，它就会在合并后的 main 上红成一场不存在的回归，正是 14 那次的剧本。
+  活性核对在**两棵树各跑一次**：#137 那份文件（27 项）与本分支 rebase 之后的这份（35 项），把地板抬到 46
+  都是 `AssertionError: expected 45 to be greater than or equal to 46`，且各自只红这一条
+  （本分支实测汇总 `Tests 1 failed | 34 passed (35)`），顺带现量确认合并前分母确实是 45；
+  复原用 `git checkout -- <file>`（这一次文件里没有我自己未提交的改动，`git status` 复原后为空）。
+  本次补记只动本文件。
+- 变更文件：`src/lib/security/route-auth.test.ts`、`docs/roadmap-0.12.0.md`、`docs/progress.md`
+  （本条目 + 上述两处数字更正）。
+- 阻塞 / 风险 / 回滚：C12 的 ①（哪些写入端点必须有窗口）仍是要人定的判断，本条**没有**给任何端点判对错。
+  回滚 = revert 本 commit。风险一条：白名单是一份会被顺手加长的清单，所以红话特意写成「这条测试不认识它」——
+  要加长它的那次改动必须先给出理由。
+- 下一项：把这个结果写进 PR #138 正文，并同步 PR #118 的合并地图。
+- 更新时间：2026-09-24（UTC 10:55 前后）。

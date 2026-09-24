@@ -29,6 +29,23 @@ All notable changes to IndieStack will be documented in this file.
   `verifyWebhookSignature` 就是这样两个「应该有」的名字，已删。27 项单测，其中一条就是**复现那个
   真实缺陷**：把收件箱 GET 的 `authOk` 摘掉，issues 恰好等于
   `ROUTE_AUTH_GUARD_MISSING GET /api/e2e/email-inbox` 一项。
+- **限频这一维从「感觉没人管」变成一条可现量的读数**（C12 的前半，只做测量不做判定）：
+  `node scripts/check-route-auth.js --rate-limit-report` 逐条打印 `id [家族] [限流器绑定]` 并给分母。
+  判据从**用法**推而不从名字表推——`createRateLimit()` 的实例名是作者随口起的（本仓库就有
+  `authOptionsRateLimit`），所以规则是「顶层 `const x = <限流库的导出>(…)`」或「被当对象取用的限流库导入」，
+  再顺着 C11 那套调用图传递：限流器躲在跨文件 helper 里也算。当前读数 45 个 handler 里 14 个有窗口，
+  按家族 session 12/12、public 2/7、token 0/2、shared-secret 0/8、signature 0/1、mock-only 0/15。
+  **这条读数推翻了我几小时前手抄的结论**：那时 grep 了一遍路由文件的 import 列表，写下「两条 uploads
+  只管同源与载荷、不计数」，而 `guardUploadRequest` 第一句就是 `rateLimit.check(request)`——
+  限流器在 helper 那个文件里，grep import 看不见。剩下的前置是要人定「哪些写入端点必须有窗口」
+  （给 cron 加 IP 窗口只会让重试丢邮件），所以这条先不红：报告唯一的失败封闭是「一条都没匹配到」，
+  那更可能意味着判据自己坏了。8 条新用例：6 条合成（含两种负例——只是 import 一个函数来调用不算、
+  同名但自己声明的对象不算）、1 条真实仓库分母对账（每条上报的绑定都要能在来源文件里对上那行 import，
+  且直接 import 限流库的路由文件一个都不能漏）、1 条给「全空就要红」这句承诺本身做的控制
+  （真仓库退出 0、一棵只有一条无限频路由的临时仓库退出 1）。另在真实树上跑了一次一次性正控：
+  新建一条 scratch 路由，限流器放在两跳之外的 helper 里，报告如实记成
+  `POST /api/tmp-probe → src/lib/tmp-probe-guard.ts#rateLimit`，分母同时从 45/10 走到 46/11；
+  同一棵树上台账门禁按预期红了 `ROUTE_AUTH_UNLEDGED`。scratch 文件已删。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
