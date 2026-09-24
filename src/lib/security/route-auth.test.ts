@@ -8,7 +8,14 @@
  * 它是会随仓库增长的量，钉成等号就是给每个新增端点的 PR 埋一次红灯。
  */
 import { describe, expect, it } from "vitest";
-import { buildRouteAuthSources, runRouteAuthCheck } from "../../../scripts/lib/route-auth-check.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {
+  buildRouteAuthSources,
+  rateLimitReport,
+  runRouteAuthCheck,
+} from "../../../scripts/lib/route-auth-check.js";
 import {
   auditRouteAuth,
   collectRouteHandlers,
@@ -385,6 +392,24 @@ export async function POST(request: Request) { await rateLimit.check(request); r
     ];
     expect(limitersOf(list, "GET")).toEqual([]);
     expect(limitersOf(list, "POST")).toEqual([`${ROUTE_FILE}#rateLimit`]);
+  });
+
+  // 报告的「一条都没匹配到」那一支是一次真的控制：没有它，判据整体失效也会打印一张全空的表并退出 0
+  it("报告在真实仓库上退出 0，在为空的仓库里退出 1（而不是安静地给一张全空的表）", () => {
+    expect(rateLimitReport()).toBe(0);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "rate-report-"));
+    try {
+      const dir = path.join(root, "src/app/api/probe");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "route.ts"),
+        `export async function POST() { return Response.json({}); }\n`,
+        "utf8",
+      );
+      expect(rateLimitReport(root)).toBe(1);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
