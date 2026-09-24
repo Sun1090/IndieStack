@@ -277,11 +277,31 @@
     与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好；
     审计侧 `actions/audit.ts` 打上 `sessionReadFailed` 标记；两个登出按钮读 `signOut` 的 `error`；
     恢复码自救读 `listFactors` / `deleteFactor` 的 `error`，并把扣码挪到解绑成功之后。
-    **按「这个文件在几条在审 PR 里被动过」量的零重叠口径**（2026-09-24 重跑，41 条 open PR 全部本地可测、
-    无一条取不到对象；判据 = `git diff --name-only <merge-base origin/main <head>> <head>` 对文件全名匹配，
-    也就是**把栈上 PR 下游带来的改动也算进去**的保守口径——只看单个 PR 自己的 delta 会把 `notifications/page.tsx`
-    从 18 条读成 1 条，那样选站点会选错）：C09 的站点里只有 `actions/recovery-codes.ts` 是 **0 条**，
-    所以本条只收它。同一把尺下 `guards.ts` 20 条、`logout-all-button.tsx` 1 条（就是 #92 自己新建的）。
+    **但「绑定并使用 `error`」不是一条通用判据，本池在这上面自己踩过一次**（2026-09-24 当天发现并修回）：
+    Auth 客户端各方法对「没有会话」的表达方式**不一样**，对着 `auth-js@2.116.0` 源码逐条核过的三档是——
+    `getUser()` 在本地没有 `access_token` 时**直接返回一个 `AuthSessionMissingError`**（匿名访客就是这个形状）；
+    `getSession()` 匿名时返回 `{ session: null, error: null }`；`signOut()` 的 `_signOut` 自己就把
+    `AuthSessionMissingError` 滤掉、且对 401/403/404 选择忽略。于是「`error` 非空就是故障」在 `getUser()`
+    上是错的（守卫层会把每个匿名访问答成 503，审计会把每次失败登录标成取证链断裂），在 `signOut()` /
+    管理端口的 `listFactors` / `deleteFactor` 上是对的。收口方式是把判据收敛成一个具名函数
+    （`src/lib/auth/session-error.ts`：只认 `AuthRetryableFetchError` 与状态码 ≥500 的 `AuthApiError`，
+    其余维持既有答复），而不是在每个站点各写一遍条件。**后续偿还这 45+8 处时，先判断该处读的是哪个方法**；
+    把 `getUser()` 的 `error` 直接映射成 503 是本池已经付出过一次代价的错。
+    **挑站点用的重叠尺子，两个数要分开**（2026-09-24 重跑，41 条 open PR 全部本地可测、无一条取不到对象）：
+    *独立编辑数* = 逐条 PR 自己的 delta（`git diff --name-only <merge-base <base-ref-oid> <head>> <head>`）
+    里出现这个文件的条数，回答「有几处改动会和我的撞」；*栈上携带数* = 对 `origin/main` 取 merge-base 之后
+    再 diff，回答「合并时有多少条分支要重放这个文件」。本池是栈式的，所以两个数常常差一个数量级，
+    **而选型只看第一个**（第二个再大也只是同一条改动在下游重放）。
+    **这里我先前记错过一次**：第一次写这条时把第二个数当成了「几条 PR 各自改过」，于是记成
+    「`notifications/page.tsx` 被 18 条在审 PR 各自改过」——实测**每个页面都只有 1 条 PR 真的在改它**
+    （`notifications` 与 `profile` 都是 #94，`billing` 与 `team` 都是 #101，`page.tsx` #110，`projects` 两条都是 #105，
+    `settings` #111，`actions/projects.ts` #93，`api/invitations` #98，`uploads/service` #99），
+    18/14/10/4 那些是携带数。推迟这些站点的真实理由因此从「要叫 18 个作者」改成
+    「**有一条在审分支正在重写这个文件**，我改一次就要沿它下游的 17 条重放一遍」。
+    按独立编辑数，C09 剩下的站点里为 0 的有四处：`actions/recovery-codes.ts`、`components/layout/site-header.tsx`、
+    `api/auth/callback/route.ts`、`hooks/use-user.ts`（连同 `middleware.ts`、`proxy.ts`、两个 hook 消费者也都是 0），
+    **四处里本轮收了前三处**；`app/auth/mfa/page.tsx` 的独立编辑是 #119。
+    同一把尺下 `guards.ts` 与 `logout-all-button.tsx` 的独立编辑数都是 **1**，就是 #92 自己。
     **射程随后从 `getUser/getSession` 扩到整个 Auth 客户端**（同一条判据：`await x.auth.<method>()`
     的结果有没有绑定并使用 `error`）：**90 处** awaited 调用里 **27 处绑定**、**63 处不绑定**；
     不绑定的按方法分：`getUser` 55、**`signOut` 4**、`admin.mfa.listFactors` 1、`admin.mfa.deleteFactor` 1、
@@ -320,11 +340,12 @@
     照样 throw，属于**已判定**的吞掉而不是漏看；`app/auth/mfa/page.tsx:85` 的 `refreshSession`
     在 `try` 里、外层 catch 读的是**异常**而不是 `error` 对象，「服务端返回 `error`」这条路径会静默往下走——
     它要连 MFA 流程一起判，单独改一处会把成功路径改坏，而且 #119 正在改这个文件。
-    **那 8 处 `user!.id` 现在不能动，原因是重叠而不是难度**（2026-09-24 量的：逐条 open PR 的
-    `git diff --name-only <merge-base origin/main <head>> <head>` 对文件全名匹配，即上面那条保守口径）
-    ——`dashboard/notifications/page.tsx`
-    与 `profile/page.tsx` 被 **18 条**在审 PR 各自改过，`billing`、`team` 14 条，`page.tsx` 5 条，
-    `settings` 4 条。也就是这一批改法会同时在整条 C08-c 栈上造出 8 条需要作者出场的边。
+    **那 8 处 `user!.id` 现在不动，原因是重叠而不是难度**（判据按上面那条订正后的口径重跑：
+    8 个页面的**独立编辑各只有 1 条 PR**，共涉及 5 条分支——`notifications` 与 `profile`（含 `profile/edit`）
+    都是 #94，`billing` 与 `team` 都是 #101，`page.tsx` #110，`projects` 与 `projects/[id]` #105，`settings` #111；
+    先前记的 18 / 14 / 5 / 4 是这些改动在栈上被多少条下游分支**带着走**，不是有人在各自改它）。
+    推迟的理由仍然成立，但要说准：不是「要叫 8 个作者出场」，而是「这 5 条分支正在重写同一批文件，
+    我在这里改一次，就要沿它们下游最多 17 条分支各重放一次」。
     时机是**等那批 PR 落地之后**，按同一形状（先判空、再答「暂时不可用」）一次收完。
     **暂不接门禁**，理由与 C08-c 同源：合法状态（确实没有会话 → 回落登录页是对的）与「没读到」在 AST 上
     都只是「没取 `error`」，先接会把正常写法一并点掉；先照 C08-b 的办法立台账再逐文件偿还。

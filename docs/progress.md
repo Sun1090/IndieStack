@@ -1298,6 +1298,9 @@
   先 `if (!user)` 再答「暂时不可用」——但**时机不是现在**：逐条量过重叠，`dashboard/notifications/page.tsx`
   与 `profile/page.tsx` 各有 **18 条在审 PR** 改过、`billing` 与 `team` 14 条、`page.tsx` 5 条、`settings` 4 条，
   现在动就是在整条 C08-c 栈上造 8 条需要作者出场的边。等那批落地之后一次收完。
+  **【2026-09-24 当日订正】这条里的 18 / 14 / 5 / 4 不是「各自改过」的条数**：那是「相对 `origin/main`
+  带着这个文件改动」的分支数，独立编辑每个页面都只有 **1** 条（#94、#101、#105、#110、#111 五条覆盖 8 个页面）。
+  推迟的结论不变，理由改写见下面那条「重叠的两个数」。
   然后再按 C08-b 的台账方式立 `AUTH_ERROR_CHANNEL` 豁免表，谈门禁接不接。
 - 更新时间：2026-09-24。
 
@@ -1314,6 +1317,10 @@
   `dashboard/notifications/page.tsx` 18 条。**这里踩过一次判据口径**：同一份脚本改用「只看这个 PR 自己的 delta」
   （`merge-base <base-ref-oid> <head>`，栈上 PR 的 base 是父 PR 的 head）去数，`notifications/page.tsx` 从
   18 条读成 **1** 条——那会把站点选到相反的一侧。两种口径都跑一遍、并拿已知文件当对照，才确认 0 这条是真的。
+  **【同日晚些订正：这句话本身是错的】**两个口径在「0 还是非 0」上**给的是同一个答案**，
+  所以选站点不会因为换口径选反；它们差的是**量纲**——自己的 delta 数是「几处独立改动会撞我」，
+  相对 main 的数是「合并时多少条分支要重放这个文件」。把后者读成「18 条 PR 各自改过」是把量纲读错了，
+  订正与两张表见最后一条。
 - 修的是什么：`redeemRecoveryCode` 原次序是「扣恢复码 → 写审计 → 解绑 TOTP」，解绑那两步走 Auth **管理**端口，
   `const { data: factors } = await admin.auth.admin.mfa.listFactors(...)` 连 `error` 都没绑定，
   `deleteFactor` 的返回值整个丢掉。于是 Auth 一次抖动的后果是这个仓库里最坏的一种谎报：恢复码是**一次性**的、
@@ -1381,4 +1388,82 @@
   无迁移、无数据面，回调那条只往既有审计行的 metadata 里多写一个布尔。
 - 下一项：C09 还剩的是那 8 处 `user!.id`（等 C08-c 那批落地）、`use-user.ts` 的接口决定、
   `app/auth/mfa/page.tsx`（#119 落地之后），以及立 `AUTH_ERROR_CHANNEL` 台账再谈门禁接不接。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 重叠的两个数：「18 条在审 PR 改过」是把携带数当成了作者数
+
+- 里程碑 / 版本：v0.12.0 / 文档治理（订正今天自己写进 roadmap C09 与两条台账的测量口径）。
+  分支 `feat/gate-query-error-channel`（PR #92，base `main`）。
+- 状态：DONE。这一条不动代码，只把一条**已经引用过三次**的读数改对。
+- 怎么发现的：上一轮收完两处 0 重叠站点之后，本来要回答的问题是「C08-b 排第一的那两处数据丢失
+  （`actions/projects.ts` 的 config 合并、`profile/edit/page.tsx` 的表单预填）现在能不能动」。
+  按老的读法它们各有 19 / 18 条在审 PR 改过，是「全队列最脏的两块地」，结论只能是继续等。
+  这次把两个口径分开重跑（41 条 open PR、全部本地可测）：
+  *独立编辑* = `git diff --name-only <merge-base <base-ref-oid> <head>> <head>` 里出现该文件的条数；
+  *栈上携带* = 对 `origin/main` 取 merge-base 之后再 diff。**结果：所有被查文件的独立编辑数都是 0 或 1**——
+  `actions/projects.ts` 1（#93）、`profile/edit/page.tsx` 1（#94）、`api/invitations/route.ts` 1（#98）、
+  `uploads/service.ts` 1（#99）、`notifications` 与 `profile` 各 1（都是 #94）、`billing` 与 `team` 各 1（#101）、
+  `page.tsx` 1（#110）、`projects` 与 `projects/[id]` 1（#105）、`settings` 1（#111）、`guards.ts` 1（#92 自己）；
+  而携带数是 19 / 18 / 17 / 16 / 18 / 14 / 5 / 10 / 4 / 20。**没有一个文件是「多条 PR 各自在改」**。
+- 为什么之前会读错：本池是栈式的，一条改动会被它下游的每条分支带着走。
+  相对 main 的 diff 把「下游重放」也算成了「有人也在改这个文件」，于是把一个作者读成了十八个。
+  两个数都合法，但**回答的是不同问题**：选站点看独立编辑（有几处会和我撞），
+  排合并顺序看携带数（多少条分支要重解）。
+- 订正了什么：roadmap C09 里那段判据重写成了两把尺并列、并写明选型只看前者；
+  「那 8 处 `user!.id` 现在不能动」的理由从「造出 8 条需要作者出场的边」改成
+  「5 条分支正在重写这批文件，我改一次要沿它们下游最多 17 条分支各重放一次」；
+  今天早些那两条台账里被引用过的 18 / 14 / 5 / 4 就地标注【当日订正】并留了原文（不抹，按本仓库惯例）。
+  顺带一句自我核对：我上一轮刚写下的「换口径会把站点选到相反的一侧」也是错的——
+  两个口径在 0 / 非 0 上给同一个答案，差的只是量纲，那句也已就地订正。
+- 对排期的实际影响：**C08-b 那两处数据丢失并没有被 18 条 PR 挡住**，各自只挡在一条分支上
+  （#93 与 #94）。它们是不是现在就动，取决于「一条重放」的代价，而不是「叫几个作者」——
+  这条判断留给下一次动手时写，本条只把数落准。
+- 验证命令与结果：本条只改文档，`CI=true pnpm check:all` 的结果记在下面那条 commit 之前跑的复跑里。
+- 阻塞：无。
+- 风险 / 回滚：读数的订正不改变任何行为；回滚 = revert 本文档 commit。
+- 下一项：按订正后的口径重排 C08-b 的清偿顺序（先看独立编辑为 0 或 1 的文件里哪些真的是数据丢失），
+  以及 `AUTH_ERROR_CHANNEL` 台账。
+- 更新时间：2026-09-24。
+
+## 2026-09-24 — 自查修正：Auth 的「没有会话」也是一个 error，按「error 非空即故障」会把匿名访问答成 503
+
+- 里程碑 / 版本：v0.12.0 / C09（修的是**本仓库当天早些时候自己引入的那一档**，不是外部报的缺陷）。
+  分支 `feat/gate-query-error-channel`（PR #92，base `main`）。
+- 状态：DONE。commit `7836b5c`（代码 + 测试），文档在同一条序列里。
+- 怎么撞上的：排完 C08-b 的清偿顺序之后准备动 `use-user.ts`，动手前照例先去
+  `node_modules/@supabase/auth-js@2.116.0` 读 `getUser` 的真实行为，结果在 `_getUser` 里读到
+  `if (!data.session?.access_token && !this.hasCustomAuthorizationHeader) return { data: { user: null }, error: new AuthSessionMissingError() }`
+  ——**匿名访客拿到的 `error` 是非空的**。而当天早些时候我给守卫层加的判据是
+  `if (error) throw new Error(error.message)`，映射到 `SERVICE_UNAVAILABLE`（503）：
+  每一次匿名访问 `/api/*`（中间件不保护 API 路由）都会从「请先登录」变成「服务暂时不可用」，
+  而 503 既不该重试也不该重新登录——比我要修的那个错更难解释。审计侧同一条判据让
+  `sessionReadFailed` 打在**每一次失败登录**上，那个标记等于没有。
+- 各方法的行为**不通用**，这是这次错误的根因（都对着源码核过）：`getUser()` 匿名时给
+  `AuthSessionMissingError`；`getSession()` 匿名时给 `{ session: null, error: null }`；
+  `signOut()` 的 `_signOut` 自己滤掉 `AuthSessionMissingError`、并且对 401/403/404 选忽略；
+  管理端口的 `listFactors` / `deleteFactor` 用 service role，没有「匿名」这档。
+  所以当天那三处登出与恢复码的修复**不受影响**，受影响的是两处按 `getUser()` 的 `error` 判故障的地方
+  （守卫层、审计标记）与一处顺带（回调路由）。
+- 改法：新增 `src/lib/auth/session-error.ts`，只把**能叫出名字**的读取故障分出来——
+  `AuthRetryableFetchError`（fetch 本身失败）与状态码 ≥500 的 `AuthApiError`；其余一律维持 `main`
+  的既有答复（拒绝侧、可以登录）。判不准的宁可归到「没有会话」那侧：这个模块的职责是把被误报成
+  「你没登录」的故障救出来，不是扩大 503 的面。守卫层、审计标记、回调路由三处改为调用它。
+- 测试：新增 `session-error.test.ts` 5 条；`guards.test.ts` 补两条匿名用例
+  （`requireAuth` 仍重定向、`safelyRequireAuth` 仍 `UNAUTHORIZED`），并把当天早些那条
+  「返回 error 对象」的 mock 从**手写的假对象**换成真的 `AuthRetryableFetchError`——
+  旧 mock 恰好长得像 `AuthSessionMissingError`，这就是它当初没拦住这档错的原因；
+  `audit.test.ts` 补「匿名不打标」、`callback/route.test.ts` 补「匿名不打标也不记故障日志」。
+  变异核对两刀：分类器退回「`error` 非空即故障」→ 4 个文件 **7 failed**（全在匿名 / 4xx 那一侧）；
+  退回「永远不是故障」→ **6 failed**（网络型与 5xx 那一侧）；两刀都用 `git checkout --` 还原。
+- 顺带一条流程账：这一档**是 `pnpm type-check` 抓出来的**——新增测试里 `new AuthApiError(msg, 502)`
+  少传了类型上必填的第三个参数，`CI=true pnpm check:all` 直接红在 `==> type-check`。
+  按 AGENTS.md 的口径，push 前那四步（lint → type-check → test → build）一步都不能省。
+- 验证命令与结果：`CI=true pnpm check:all` **exit 0**（38 道门禁；`Test Files 205`、`Tests 2338`）。
+- 阻塞：无。
+- 风险 / 回滚：这处回滚等于把匿名访问退回 503，所以它应当**先于**任何依赖守卫层新语义的消费者落地；
+  回滚 = revert `7836b5c` 与文档 commit，无迁移、无数据面。
+- 下一项：`use-user.ts` 的接口决定现在有了可复用的判据（`isRetryableSessionReadFailure`），
+  代价从「改契约」降到「在三个消费者里各自决定怎么答」；C08-b 的清偿顺序按上一条的口径重排——
+  那两处数据丢失各只挡在一条分支上（#93 已在做 `actions/projects.ts`，#94 在做 profiles 那三处），
+  先确认不重复再动。
 - 更新时间：2026-09-24。
