@@ -210,8 +210,12 @@ describe("真实仓库快照", () => {
   it("通过，并且确实读到了可判定的量（不是无事可做的绿）", () => {
     const report = auditComponentDocs(buildSnapshot());
     expect(report.issues.map((issue) => issue.message).join("\n")).toBe("");
-    // 两份参考各 5 处目录树数量 + CLAUDE.md 5 处路径数量 = 15；行数与枚举数低于下限说明解析停摆了。
-    expect(report.stats.counts).toBe(15);
+    // 地板值，不是等号：15 是接线时现量的「文档里共有几处数量断言」，而断言数是会长出来的——多一个
+    // 目录就多两处（中英两半各一处）。钉成等号等于要求每个改组件文档的 PR 回来改这个测试里的魔数，
+    // 忘了不会挡住任何错误，只会在合并后的 main 上红成一场不存在的回归。地板防的是另一件事：解析
+    // 停摆时读数是 0，而「一处都没读到」和「文档本来就没写数量」在输出里长得一样。精确读数交给
+    // `pnpm check:component-docs` 现量。
+    expect(report.stats.counts).toBeGreaterThanOrEqual(15);
     expect(report.stats.enumeratedModules).toBeGreaterThanOrEqual(62);
     expect(report.stats.rows).toBeGreaterThanOrEqual(160);
     expect(report.stats.docs).toBe(5);

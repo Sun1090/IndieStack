@@ -1210,4 +1210,18 @@
   这道门禁当时没进 `src/lib/testing/test-matrix.ts` 的 `docs` 领域，也没进两份 `docs-site/scripts.md`
   与 `docs/testing.md` 的命令表——也就是**负责核组件文档的门禁，自己不在任何文档里**，
   贡献者按矩阵办事永远不会知道改组件参考要跑它。现在登记了，`check:test-matrix` 会强制两份矩阵文档跟着它。
+- 补记二（同日，另一处「把一次性的读数钉成等号」）：上面那条「15 处数量声明 × 5 份文档」的读数被写进了
+  单测，形如 `expect(report.stats.counts).toBe(15)`，而**同一个 `it()` 里另外两条都是地板值**
+  （`rows >= 160`、`enumeratedModules >= 62`）——只有 `counts` 用了等号。已改成
+  `toBeGreaterThanOrEqual(15)`，理由写在断言旁边。`counts` 是「文档里共有几处数量断言」，多一个目录就多两处
+  （中英两半各一处），钉成等号等于要求每个改组件文档的 PR 回来改这个测试里的魔数：忘了不会挡住任何错误，
+  只会在合并后的 main 上红成一场不存在的回归。地板防的是另一件事——解析停摆时读数是 0，而「一处都没读到」
+  和「文档本来就没写数量」在输出里长得一样。精确读数交给 `pnpm check:component-docs` 现量。
+  - 活性核对：地板抬到 16 → `AssertionError: expected 15 to be greater than or equal to 16`
+    （该文件 17 项里 1 红 16 绿），顺带现量确认 `counts` 今天确实是 15；改回 15 后 17 项全绿，
+    `git diff` 复核只剩预期的那一处。
+  - 同一条线索顺手把上面 状态 里那个分支名订正成 `feat/component-docs-gate`（本条目原先写的是
+    `docs/components-reference-counts`）：那个名字现在既不在本地分支里、也不在 `git ls-remote --heads origin`
+    里，49 个 open PR 与全部历史 PR 的 head 也没有一个是它——也就是说台账留着的是一个 PR 正文里都没引用过的
+    分支名，按它去找分支的人会一无所获。这次改的是**指向**，条目内容一字未动。
 - 更新时间：2026-09-24。
