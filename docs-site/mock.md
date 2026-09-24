@@ -92,7 +92,8 @@ returns an empty result (reads) or a no-op (writes).
 | Feature | Behaviour |
 | ------- | --------- |
 | `select()` | Filters, `order()`, `limit()`/`range()` and `single()`/`maybeSingle()` are applied locally |
-| `eq()` / `neq()` / `in()` / `is()` | Supported filters |
+| `eq()` / `in()` / `is()` / `gt()` / `gte()` / `lt()` / `lte()` / `contains()` / `not()` / `or()` | Implemented filters. Anything else in the PostgREST vocabulary (`neq()`, `like()`, `filter()`, `textSearch()`, …) is **not** implemented: chaining one throws `TypeError` in Mock mode. `src/lib/mock/mock-query-surface.test.ts` compares the methods actually chained in `src/**` against this builder, so it fails before a request does |
+| Filters on `update()` / `delete()` | Narrowed by `eq` / `in` / `gt` / `gte` / `lt` / `lte` / `is null`; `or()` / `contains()` / `not()` are accepted but **ignored** on a write chain (reads do apply them). No call site in `src/**` combines them with a write today — adding one makes Mock mode touch more rows than production would |
 | `insert()` / `update()` / `delete()` | Mutate the cached list in place so later reads see the write |
 | `rpc()` | Implements `claim_webhook_event`, `erase_user_data`, `list_user_objects_for_erasure` and `find_orphan_upload_objects`; other names return `null` data |
 | Unknown table | Reads resolve `[]`, writes resolve without persisting |

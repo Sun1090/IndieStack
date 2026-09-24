@@ -1153,3 +1153,68 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — Mock 查询链缺 `gt()`：营销确认/退订在 mock 模式下点了就是 500，并把这类「替身表面漂移」做成对账
+
+- 里程碑 / 版本：v0.12.0；与同日 `storage.remove` 那条同族（「替身绿」不等于「替身像」），是第二实例。
+- 状态：DONE，已开 PR #149（base `main`，分支 `fix/mock-query-gt`）。
+- 起因（代码路径读完 + 链上实测，不是推测）：`src/lib/repositories/marketing.ts:89` 的 token 过期闸门用
+  `.gt("token_expires_at", now)`，而 `MockQueryBuilder` 只有 `eq / in / gte / lt / lte / contains / not / or / is /
+  order / range / limit / select / insert / update / delete / upsert / single / maybeSingle`——**没有 `gt`**。
+  `.gt(...)` 是同步抛 `TypeError`，穿过 `updateStatusByToken` → `confirmSubscription`，被
+  `src/app/api/marketing/confirm/route.ts:30` 的 catch 收成 **HTTP 500**；`unsubscribe` 同形状。
+  所以 mock 模式（E2E、`pnpm dev:mock`）里点邮件里的确认/退订链接必然报错。E2E 为什么没抓到：
+  `e2e/mail-flow.spec.ts:84` 只断言「邮件 HTML 里含 `/api/marketing/confirm?token=`」，从没 POST 过那条链接。
+- 三层盲区（同一件事的三个侧面，逐条量过）：
+  1. 仓储层单测 `marketing.test.ts` 用的是 `src/lib/repositories/test-helpers.ts:18` 的手搓 `chainMock`，
+     **那份清单里写着 `gt` 与 `neq`** —— 替身比真替身更宽容，于是永远绿。
+  2. 双语 mock 文档 `docs-site/{mock,zh-CN/mock}.md` 声明支持 `eq() / neq() / in() / is()`，
+     而 **`neq()` 从来没实现**（链上一调用就是同一个 TypeError）。这是「假说明书」，不是笔误：
+     读文档的人会以为 mock 覆盖整个 PostgREST 过滤词汇。
+  3. 没有任何东西把「调用点真的链到的方法」与「替身有的方法」放在一起比过。
+- 完成内容：
+  1. `MockQueryBuilder.gt()` 补齐，且**读写两条路径都落**：`matchesFilters`（服务 `update`/`delete`）与
+     `applyFiltersAndPagination`（服务 `select`）在 mock 里是两处独立实现，只补一边就是留一个下次会踩的洞。
+     排序算子的判定抽成模块级 `orderedFilterSuffix()` + `passesOrdered()`：边界语义只写一次。
+     这层抽取同时是**合规要求**——直接在 `matchesFilters` 里加 `:gt` 分支会让 ESLint 红在
+     `complexity 34 > 30`，而本仓库对这条规则不用 `eslint-disable` 豁免（全仓库仅 1 处 disable，是
+     `@next/next/no-img-element`），所以要重构而不是关掉。
+  2. 新增 `src/lib/mock/mock-query-gt.test.ts`（4 条）：写路径严格大于、`gte` 正向对照（边界那条要收进来，
+     证明两个算子不是一回事）、读路径同语义、以及仓储那条链的形状（`eq` + `gt` 同时生效，含一条不匹配的对照）。
+  3. 新增 `src/lib/mock/mock-query-surface.test.ts`（3 条）：用 TypeScript AST 从 `src/**`（排除 mock 自身与
+     `*.test.*`、`test-helpers.ts`）现取「挂在查询构建器上的方法名」，逐个问 Mock 的构建器实例
+     （`createMockSupabaseClient().from("profiles")`）可不可调用。**不手写清单**——那份清单自己就是会腐烂的第二次实现。
+     三条用例分工：① 扫描有效性（正向：文件数 > 200、链上命中 > 200、`eq`/`select` 必须在场；
+     反向：`map`/`join`/`find`/`subarray`/`bind`/`channel`/`subscribe` 一条都不许进结果集）；
+     ② 每处 `.from(` 的归属都要认得（只允许认识得的 JS 原生 `from` 与 `.storage`），认不出的新写法就红并点名，
+     防止「少扫一条链」把 ③ 扫成空洞；③ 表面覆盖本身。
+  4. 文档：两份 mock 文档按实测重列已实现算子，并写明「`update()`/`delete()` 链上的 `or()/contains()/not()`
+     会被接受但**忽略**（读路径全部生效）」——这是代码事实（`matchesFilters` 的跳过分支），
+     以前文档没说过，读者会以为读写一致。
+- 量到的阴性（写下来免得下次重扫）：`src/**` 查询链上真正用到的构建器方法共 **19 个**，缺的就是 `gt` 一个；
+  `neq / like / ilike / filter / match / textSearch / containedBy / overlaps` 的链上使用数**全为 0**；
+  写路径会忽略的三个算子与写操作的组合数 **0**（6 处 `.or(` 逐条看过，全在 `select` 链上：
+  `notifications.ts:68,87,104,120`、`contact-messages.ts:106`、`api/e2e/seed-notifications/route.ts:108`）。
+  也就是说 2 里那条不对称今天是**文档问题而不是在跑的缺陷**，按阴性记录、不改行为。
+- 变更文件：`src/lib/mock/index.ts`、`src/lib/mock/mock-query-gt.test.ts`（新增）、
+  `src/lib/mock/mock-query-surface.test.ts`（新增）、`docs-site/mock.md`、`docs-site/zh-CN/mock.md`、
+  `CHANGELOG.md`、本条目。**没有改** `src/lib/repositories/marketing.ts`（属 #123）与
+  `src/lib/repositories/test-helpers.ts`（手搓替身留着，它服务的是仓储层的错误注入，不是替身保真度）。
+- 验证命令与结果：
+  - 先红：`typeof q.gt` 实测 `undefined`；`npx vitest run` 两个新文件 5 条红（surface 那条点名
+    `gt()：1 处，例如 src/lib/repositories/marketing.ts:89`）。
+  - 修后：`npx vitest run src/lib/mock/mock-query-gt.test.ts src/lib/mock/mock-query-surface.test.ts` → 7 通过；
+    `npx vitest run` 全量 → **201 文件 / 2298 通过**（`main` 上 199 / 2291，即本条 +2 文件 / +7 用例，逐条对上）。
+  - 变异核对 3 项（每项先确认改动真的落地，再跑，再 `git checkout --` 还原并校验逐字节一致；未变异的正向对照 7 绿）：
+    删掉 `gt()` → 4 条红（3 条语义 + surface 点名）；`:gt` 判成 `>=` → 恰好写/读两条严格大于红、`gte` 对照仍绿；
+    只让写路径放过排序过滤器 → 写路径 3 条红、读路径仍绿。**第三条读起来像少了覆盖，其实是分工**：
+    它证明读写两边各被独立钉住，而不是读路径顺带把写路径顶绿了。
+  - `pnpm --silent type-check` → exit 0；`CI=true pnpm check:all` 与 `pnpm build` 见 commit 之后补记。
+- 阻塞 / 风险 / 回滚：只动 mock 与文档，生产路径（真 supabase-js）一行未改；`gt` 语义与 PostgREST 的 `>` 一致，
+  且 mock 模式下原先这条链**根本跑不通**，所以不存在「以前能跑现在变了」的回归面。
+  回滚 = revert 本 PR 两个 commit。
+- 下一项：`.auth.*` 与 realtime `.channel()` 的表面保真还没做对账（本次范围刻意止于查询构建器）；
+  先把已量到的 3 处补齐（`signInWithOtp`/`verify`/`refreshSession` 一类要逐个问「谁在链上调它」），
+  并且 AST 分类器现在认不出 `useMemo(() => createClient(), [])` 这类浏览器端拿法——
+  它被第二条用例挡住了，将来出现会红并点名，而不是漏扫。
+- 更新时间：2026-09-25（UTC 22:35 前后）。
