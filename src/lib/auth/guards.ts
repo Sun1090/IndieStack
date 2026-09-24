@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants";
 import { hasPermission, parseRole, type Role } from "./roles";
+import { isRetryableSessionReadFailure } from "./session-error";
 import type { Permission } from "./permissions";
 
 // ============================================================
@@ -47,9 +48,11 @@ export const FORBIDDEN = new AuthGuardError("您没有足够的权限访问此�
  * 于是管理员在一次数据库抖动后被礼貌地请出后台，而日志里什么都不会留下——看起来是权限问题，
  * 其实是「我们没读到」。二者必须分开，因为修法完全不同。
  *
- * 会话读取同理但更要紧：`auth.getUser()` 把失败装在 `error` 里返回（不抛），旧实现连 `error`
+ * 会话读取同理但更窄：`auth.getUser()` 把失败装在 `error` 里返回（不抛），旧实现连 `error`
  * 都不取，于是 Auth 服务一次抖动被答成「你没登录」——客户端清掉本地会话并跳登录页，而重新登录
- * 走的正是同一条读取，用户除了被登出之外得不到任何新信息。
+ * 走的正是同一条读取，用户除了被登出之外得不到任何新信息。**但 `error` 非空不等于抖动**：
+ * 没有会话的访客同样拿到一个 `error`（`AuthSessionMissingError`），那仍该答「请登录」。
+ * 只有 `session-error` 认得出的读取故障才走到这里。
  */
 export const SERVICE_UNAVAILABLE = new AuthGuardError(
   "权限校验暂时不可用，请稍后重试",
@@ -74,12 +77,15 @@ async function readSessionRole(
 /** 会话里的用户；只需要这两个字段，故不依赖 AuthUserIdentity 的具体形状。 */
 type SessionUser = { id: string; email?: string | null };
 
-/** 读取当前会话用户。`error` 与「确实没有会话」在这里是分开的两件事。 */
+/**
+ * 读取当前会话用户。`error` 与「确实没有会话」在这里是分开的两件事——但**不是**「`error` 非空就是故障」：
+ * 匿名访客走这条路拿到的就是 `AuthSessionMissingError`。分类由 `session-error` 负责。
+ */
 async function readSessionUser(
   supabase: Awaited<ReturnType<typeof createClient>>,
 ): Promise<SessionUser | null> {
   const { data, error } = await supabase.auth.getUser();
-  if (error) throw new Error(error.message);
+  if (error && isRetryableSessionReadFailure(error)) throw new Error(error.message);
   return data.user ?? null;
 }
 
