@@ -1454,6 +1454,13 @@
     `POST /api/tmp-probe\t[未登记]\t[src/lib/tmp-probe-guard.ts#rateLimit]`，分母同步走到 46/11；
     同一棵树上台账门禁按预期红在 `ROUTE_AUTH_UNLEDGED POST /api/tmp-probe`。两个 scratch 文件已删，
     `git status` 干净。
+  - **队列落地后的读数**（同一个报告，换一组文件跑）：把 `#136` 的三个文件临时摆进工作树 →
+    覆盖 14/45 → **16/45**、路由文件 10 → **12**，`token` 族 0/2 → 2/2，绑定报成
+    `src/lib/marketing/request.ts#marketingTokenLimit`（限流器在包装函数的模块里，两条路由自己没 import 过限流库）。
+    撤销时踩了一下自己写过的坑：`git checkout <commit> -- <path>` 是**同时写索引与工作树**的，所以随后
+    `git checkout -- <path>` 只是把索引里那份又恢复了一遍，报告仍然读到 12 个文件才发现。正确的撤销是
+    `git restore --source=HEAD --staged --worktree <path>`（新增且 HEAD 里没有的那个文件另需 `git rm --cached` + `rm`）。
+    最终 `git status` 与 `git diff HEAD` 均为空，报告回到 14/10。
   - `pnpm type-check` / `pnpm lint` → exit 0。
   - **变异核对（四条判据各自都要证明会咬）**，每条改完跑同一份 33 条用例再 `git checkout --` 复原：
     P1 去掉工厂实例那一支 → 2 红（工厂用例 + 真实仓库分母）；P2 去掉「对象取用」那一支 → 4 红
