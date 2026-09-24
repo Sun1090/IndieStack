@@ -1682,3 +1682,41 @@
   `AUTH_ERROR_CHANNEL` 与「已装钩子存在性」两条也排在同一批之后。
 - 更新时间：2026-09-24。
 
+## 2026-09-24 — #98 因我 rebase #94 而变 CONFLICTING：判性质、按例外判据改指 main，整队列 0 假红色
+
+- 里程碑 / 版本：v0.12.0；分支 `docs/pr-merge-order`（PR #118）。
+- 状态：DONE。触发点是傍晚一次全队列 `mergeStateStatus` 复扫：**42 条里 #98 一条 DIRTY**，
+  而一小时前同一把尺子是 0 条。
+- 起因是我自己的动作，不是别人的代码：上午为了清 #94 的冲突把它 rebase 过（`afeca14 → 4f61d42`，
+  `range-diff` 证明内容逐字节没变），而 **#98 的 base 就是 #94 那条分支**。base 换 sha 之后，
+  #98 底下还压着 #93/#94 的**旧副本**，GitHub 于是把「同一批改动的新旧两份」判成冲突。
+- 判性质的两条命令，结论相反才是重点（`merge-tree --write-tree --name-only`，第一行是树 OID、路径取到第一个空行为止）：
+  - `pr/98` vs `origin/main` → **零冲突**；
+  - `pr/98` vs `pr/94`（新 tip） → 冲突在 `CHANGELOG.md`、`docs/progress.md`、`docs/roadmap-0.12.0.md`、
+    `src/lib/security/query-error-channel.ts`。
+  也就是说红色是 base 记账造成的，不是这条 PR 有毛病。这正对上一早写进 #118 的那条例外判据：
+  **「假红色」+「从没跑过必需 CI」同时出现才提前改指 base**——#98 的 base 是 topic 分支，5 个必需作业本来就没上报。
+- 做了什么：`gh pr edit 98 --base main`（**没 rebase 任何分支、没推任何 sha、没合任何东西、没碰保护规则**）。
+  为什么不选另一条路：把 #98 rebase 到新 #94 上当然也能清，但 #99 的 base 是 #98 的分支，
+  于是 #99→#114 要连着 rebase **16 条**，每条都要重解同样那几个文件——零证据增益，全是风险。
+- 代价写在 #98 的正文里：它现在的 diff 显示 6 个 commit（5 个是 #92/#93/#94 的，就在这条分支底下），
+  那三条按升序落地之后自动缩回 1 个（`896f11e`）。
+- **但「改了 base 就会跑 CI」是错的，这条要单独记**：改完之后 `gh pr view --json mergeStateStatus` 从 `DIRTY`
+  变成 `BLOCKED`，而 `gh api repos/…/commits/896f11e/check-runs` 里仍然只有**昨天 09-23 那两条**
+  （`Detect Secrets`、`security-config`）——`pull_request` 工作流不会因为 base 被改就重新触发，
+  它挂在 `opened` / `synchronize` 这类事件上。#124 那天之所以有全绿的必需 CI，是因为**同一次操作里还推了分支**，
+  不是改 base 的功劳。所以 #98 现在停在「必需检查没上报」，要等它轮到时有一次真实推送（或界面上的重跑）才会真跑。
+  这一条已经把 #118 的合并动作建议改了：`gh pr edit <N> --base main` 之后**必须再推一次**才能拿到 CI 证据。
+- 顺手把这条链上的台账数字对死，免得谁去重算：`ERROR_CHANNEL_EXEMPTIONS` 是
+  **12（#92@`3f5fd55`）→ #93 拿掉 `projects.ts` = 11 → #94 拿掉 notifications / profile / profile-edit = 8
+  → #98 再拿掉 `invitations/route.ts` = 7**，而 #98 那份文件里的 7 条**已经是终态**，
+  所以那处冲突不需要两侧合并，取 #98 的即可。（测量方式：`git show <rev>:<file>` 数 `^  "..."` 的条目行，
+  再用 `comm` 求两侧删除集的交集——**交集为空**，这条链上没有人改同一个条目。）
+- 复扫结果（同一把尺子）：42 条 open PR 里 **0 条 DIRTY**、1 条 BLOCKED（#98，必需检查还没上报——见上一条），
+  1 条 CLEAN、40 条 UNSTABLE（全部只有 Vercel 配额那两条红）。
+- 验证：上面每个数都是当场命令的输出；改 base 前后的 `mergeStateStatus` 从 `DIRTY` 变 `BLOCKED` 是
+  `gh pr view --json mergeStateStatus` 读回来的，不是推的。
+- 风险 / 回滚：一条命令还原 `gh pr edit 98 --base fix/c08b-prefill-overwrite`。
+- 下一项：#98 的必需 CI 结果；`main` 前进之后重跑整队列模拟。
+- 更新时间：2026-09-24。
+
