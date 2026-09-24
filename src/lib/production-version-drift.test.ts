@@ -6,6 +6,8 @@
  * 必须保持「只记录、不新增失败面」——定时检查红应当只意味着生产落后于仓库版本。
  */
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -51,5 +53,19 @@ describe("check-production-version CLI", () => {
     vi.stubEnv("EXPECTED_APP_COMMIT", "abc");
     expect(() => drift.parseArgs(["--base-url", "https://example.com"])).toThrow(/at least 7 characters/);
     expect(() => drift.parseArgs(["--expected-commit", "a322a4ed"])).toThrow(/--base-url requires a value/);
+  });
+
+  /**
+   * 这一格的读法只有 production-smoke 里那一个来源，定时作业那行摘要才可能说得出
+   * 「旧构建」与「没拿到 git 变量」的区别。这里钉的是**接线**而不是行为：`main()` 会真发请求，
+   * 没法在单测里跑，所以用源码契约守住「不许再自己写一个默认值」这条。
+   */
+  it("delegates the deployed-commit label instead of re-deriving a default", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../../scripts/check-production-version.js", import.meta.url)),
+      "utf8",
+    );
+    expect(source).toMatch(/describeEvidenceCommit\(/);
+    expect(source).not.toMatch(/\?\? "unknown"/);
   });
 });
