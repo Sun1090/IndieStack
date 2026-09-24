@@ -1302,3 +1302,55 @@
   这一行配置不会和队列里任何一条抢。
 - 阻塞：无。风险 / 回滚：一行配置，revert 即回滚；放宽的是超时预算，不是任何断言的判据。
 - 更新时间：2026-09-24。
+
+## 2026-09-24 — 每条 API 路由靠什么保护，从「问人」变成一份会被核对的台账（C11 / `check:route-auth`）
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施 + 安全面（任务池 C 段新增一条，编号 C11）。
+- 状态：DONE（待合并），分支 `feat/gate-route-auth`（base = PR #135 分支
+  `fix/e2e-bearer-unset-token`，因为台账要断言的正是那条修完之后 `email-inbox` 三个方法都有 bearer 的状态；
+  #135 落地后按惯例 `gh pr edit --base main` 重定基）。
+- 为什么做：直接动机是今天修的那个收件箱 GET——**少了一个守卫而 27 条路由、5 个门禁全都没红**，
+  因为「这条路由该有什么保护」在仓库里没有任何机器可读的记录。量了一遍发现结构性原因：
+  `src/proxy.ts` 的 `protectedRoutes` 是 `/dashboard` 与 `/dashboard/(.*)`，`/api/*` 一条都不在，
+  也就是每个 API handler 的鉴权完全在它自己（或它调用的 helper）身上，而中间件的名字
+  （Next 16 里叫 proxy）很容易让人以为它管着全站入口。
+- 完成内容：
+  1. `src/lib/security/route-auth.ts`：守卫词表（`PROTECTION_SYMBOLS`，符号 → 保护家族）、
+     TypeScript AST 调用图解析 `collectRouteHandlers`、台账 `ROUTE_AUTH_LEDGER`（45 条）、
+     六种偏差 `auditRouteAuth`（`NO_HANDLERS` / `UNLEDGED` / `STALE` / `GUARD_MISSING` /
+     `REASON_MISSING` / `FAMILY_MISMATCH`）。IO 在 `scripts/lib/route-auth-check.js`（读 `src/**`
+     全部非测试源码，一次读全），`scripts/check-route-auth.js` 只是 type-stripping 启动器。
+  2. 台账 45 条按家族分布：session 12、shared-secret 8（3 条 cron + 运维状态 + 收件箱三个方法）、
+     mock-only 15、public 7、token 2、signature 1。`public` 的 reason 必须写满，测试断言每条 >20 字
+     且 `via` 为空——「先这样吧」进不来。（CLI 那句「6 个无守卫符号」数的是解析结果里 `reachable` 为空的
+     条数：7 条 public 里 `auth/callback` 有 `getUser`，但那是换完会话之后回读，不是入口守卫。）
+  3. 接线：`package.json`、`scripts/check-all.sh`（CI 的静态作业跑聚合入口，因此自动进 CI）、
+     `src/lib/testing/test-matrix.ts` 的 api-routes 领域、`docs-site/scripts.md` ×两个语言、
+     `docs-site/testing.md` ×两个语言（贡献者矩阵的领域行）、`docs/testing.md`（命令表 + 一节
+     「路由鉴权清单门禁（C11）」）。**第一趟 `check:all` 就是红的，红的正是我漏登记的
+     `docs-site/testing.md` 两份**（`MATRIX_MISSING_COMMAND`）——这条门禁的登记面比一个人记得住的宽，
+     而它是靠另一条已有门禁兜住的，不是靠我细心。
+- 变更文件：`src/lib/security/{route-auth.ts,route-auth.test.ts}`（新）、
+  `scripts/{check-route-auth.js,lib/route-auth-check.js}`（新）、`package.json`、
+  `scripts/check-all.sh`、`src/lib/testing/test-matrix.ts`、`docs/testing.md`、
+  `docs-site/scripts.md`、`docs-site/zh-CN/scripts.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - `npx vitest run --project node src/lib/security/route-auth.test.ts` → **26 passed**。
+  - `node scripts/check-route-auth.js` → exit 0，
+    `✅ 路由鉴权清单一致：45 个 handler 全部登记且守卫可达（其中 6 个登记为 public / 无守卫符号，调用图截断计数 770）`。
+  - **变异核对**（每条判定都要证明它会咬）：六种 issue 各有一条独立用例；此外一条用例真的把
+    `email-inbox` GET 的 `if (!authOk(request))` 改成 `if (false)`，断言结果恰好只有
+    `GUARD_MISSING GET /api/e2e/email-inbox` 一项——这就是 2026-09-24 那个缺陷的形状。
+  - 第一版红了两处，都不是判据错而是我自己写错：`truncated` 断言（名字在被展开的子树里就已经收集，
+    不必然要继续往里走）与 `STALE`（我一度把过期判定限制在需要理由的家族里，那是没道理的收窄，删掉条件）。
+  - 三处解析失明是量出来的，不是设想：`in` 顺原型链命中（`toString` 让每个文件都「有守卫」）、
+    `unsubscribe` 与推送订阅的 `.unsubscribe()` 同名（全仓库误报，改成真名 `unsubscribeByToken`）、
+    路径推导吃掉 `/api` 前缀。前两条都以「阳性对照先红再绿」的方式确认修好了。
+- 阻塞 / 风险 / 回滚：不碰任何运行时行为——这条门禁只读代码，不改代码，回滚 = revert 本 commit。
+  风险三条，都记下：① 守卫按**名字**识别，所以 `getUser` 这类常见方法名有误认空间（台账要求的是
+  「声明的符号可达」而不是「可达集合非空」，因此误认不会让一条真没守卫的路由蒙过去）；
+  ② 只认 `export async function METHOD` 这一种写法，换写法会由独立分母那条用例红，不会静默漏；
+  ③ base 是 #135 的分支，先合 #137 会带上那 6 个 commit——所以要按 #135 → #137 的顺序合，
+  或者等 #135 落地后我重定基。
+- 下一项：#135 合并后把本分支 `gh pr edit --base main` 重定基（台账断言的是修完之后的状态）。
+- 更新时间：2026-09-24（UTC 08:50 前后）。

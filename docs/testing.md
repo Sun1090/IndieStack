@@ -30,6 +30,7 @@
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
 | `pnpm check:production-smoke`       | 校验 Production Smoke workflow 的手动/定时入口、URL、cron、证据留存契约，以及「读 inputs 的手动作业必须排除 schedule 触发」与两个作业各自的 artifact 名 |
 | `pnpm check:query-columns`         | 校验查询链里每个字面量列名都存在于生成的行类型中（C07）                          |
+| `pnpm check:route-auth`           | 校验每个 API handler 都在鉴权台账里登记，且登记的守卫可从该 handler 走到（C11）        |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
 ## 贡献者测试矩阵（I09）
@@ -518,6 +519,33 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
 
 `.filter()` / `.or()` 与 `insert`/`update` 的 payload 键不在门禁内：前者的参数是一门小表达式语言（`and(col.eq.x)`），
 后者由生成的行类型直接约束。
+
+## 路由鉴权清单门禁（C11）
+
+`pnpm check:route-auth` 核对「每条 API 路由靠什么保护」这份台账（`ROUTE_AUTH_LEDGER`）与代码是否仍然一致。
+动机不是一个假设，而是两件事：
+
+1. `src/proxy.ts` 的 `protectedRoutes` 只有 `/dashboard` 与 `/dashboard/(.*)`——**`/api/*` 一条都不在**，
+   所以每个 handler 的鉴权完全在它自己（或它调用的 helper）身上，而页面级重定向很容易让人以为 API 也被挡住了。
+2. 这个形态已经红过一次：`api/e2e/email-inbox` 的 GET 在 2026-09-24 之前没有任何鉴权，同文件的
+   POST/DELETE 却有——收件箱里装的是「已发送」邮件原文（含确认 / 退订 token）。当时没有任何门禁发现
+   少了守卫，因为没有任何地方记录着「这条路由本来该有什么」。
+
+于是它只判两件可机械核对的事：**每个 handler 必须有台账条目**，并且**条目声明的守卫符号必须真的能从
+该 handler 走到**。新加一条没登记的路由会红；把 `safelyRequirePermission` 删掉或改名也会红。
+`reason` 那一段是人写的判断，门禁强制的是它存在、并且与 `via` 属于同一保护家族。
+
+规则与解析都在 `src/lib/security/route-auth.ts`（TypeScript AST、纯函数、单测覆盖），IO/CLI 位于
+`scripts/lib/route-auth-check.js` 与 `scripts/check-route-auth.js`，由 `pnpm check:all` 与 CI 执行。
+解析范围与失败封闭：
+
+- 只认 `src/app/api/**` 下 `export async function GET|POST|PUT|PATCH|DELETE`（本仓库全部路由都是这个写法），
+  一条都解析不出来时报 `ROUTE_AUTH_NO_HANDLERS`，不报绿。
+- 调用图会展开同文件的局部函数与跨文件的 import（**必须**：`e2e/*` 的 `authOk` 是同文件局部函数，
+  上传端点的 `guardUploadRequest` 在 `src/lib` 里），深度上限 `MAX_CALL_DEPTH = 5`；单测里用更大深度复算
+  一遍并断言结论不变，所以「上限太浅把守卫藏在下面」会被自己的测试抓到。
+- 守卫按名字识别，因此 `getUser` 这类常见方法名存在误认空间——台账要求声明的符号**可达**，
+  而不是「可达集合恰好非空」，误认不会让一条没有守卫的路由蒙过去。
 
 ## 依赖与 secrets 扫描门禁（H10）
 
