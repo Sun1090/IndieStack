@@ -1491,8 +1491,12 @@ export class MockSupabaseClient {
   };
 
 
-  // 对象存储（v0.6.0 F07）：镜像 supabase-js storage API（upload/getPublicUrl），
+  // 对象存储（v0.6.0 F07）：镜像 supabase-js storage API，
   // 供 E2E/本地开发验证上传动作（成功与注入失败路径），不依赖真实 bucket。
+  // 表面必须盖住 `src/lib/storage` 驱动**真的会调**的那几个方法：
+  // 这里曾经只有 upload/getPublicUrl，于是上传失败后的回滚在 mock 模式下抛
+  // `storage.from(...).remove is not a function`，被驱动的 catch 咽成一条 error 日志——
+  // 对账用例见 `src/lib/storage/mock-parity.test.ts`。
   storage = {
     from: (bucket: string) => ({
       upload: async (
@@ -1514,6 +1518,16 @@ export class MockSupabaseClient {
         data: {
           publicUrl: `https://mock.supabase.co/storage/v1/object/public/${bucket}/${path}`,
         },
+      }),
+      // 刻意**不**消费 UploadFailNext：回滚是「把没写成的那个对象删掉」，不是一次新的上传，
+      // 让它计入就会把「注入 N 次失败」那批 E2E 用例的语义改掉。
+      remove: async (paths: string[]) => ({
+        data: paths.map((path) => ({
+          path,
+          bucket_id: bucket,
+          id: `${bucket}/${path}`,
+        })),
+        error: null,
       }),
     }),
   };
