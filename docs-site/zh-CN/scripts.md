@@ -94,7 +94,7 @@
  ## Git Hooks
 
  `pnpm install` 会通过 `prepare` 把 `.husky/pre-push` 软链进 `.git/hooks`，推送前跑
- `pnpm verify:build`（lint + 类型检查 + 单测 + 生产构建）。刻意**没有**用
+ `pnpm verify:build`（lint + 类型检查 + 单测 + 生产构建 + 对刚产出的构建产物跑体积/性能断言）。刻意**没有**用
  `core.hooksPath`：那会连带屏蔽别的工具已经放在 `.git/hooks` 里的钩子。
  装钩子用 `INDIESTACK_SKIP_HOOKS=1` 跳过，单次推送跳过用 `git push --no-verify`。
  `pnpm check:hooks` 会在钩子引用了仓库里不存在的脚本、二进制或安装入口时直接失败。
@@ -128,5 +128,5 @@
 | `pnpm check:locales` | 校验中英键对称，并确认值真的翻译了 |
 | `pnpm check:agents` | 校验 AGENTS.md 索引一致性 |
 | `pnpm check:rls` | RLS 迁移静态检查（USING/WITH CHECK） |
-| `pnpm check:bundle` | 客户端体积门禁（构建+基线对比） |
+| `pnpm check:bundle` | 客户端体积门禁：读 `.next/static` 与基线比较；有输入文件比构建更新时直接失败（先跑 `pnpm build`） |
 | `pnpm dep:health` | 依赖健康报告（major/minor 分级） |

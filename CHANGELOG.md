@@ -227,6 +227,30 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **bundle 门禁用不再构建的产物报绿**：`check:bundle` 的命令是
+  `bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'`——管道右边那个脚本从不读 stdin，只看
+  `.next/static`，于是它的退出码就是门禁的退出码（bash 不带 `pipefail` 时取管道最后一个命令）。
+  实测：往 `src/lib/api-response.ts` 追加一行 `const deliberatelyBroken = ;`（硬语法错误），
+  `pnpm check:bundle` **退出 0**，还打印「Bundle 体积在基线范围内」和 `2846.4 kB`——那个数字来自
+  上一次成功构建留在 `.next/static` 里的目录，构建本身报没报错、产物新不新鲜，全都被吞掉。
+  `pnpm verify:build` 当天仍然拦得住，靠的是它尾巴上又独立跑了一次 `pnpm build`——一次是意外冗余，
+  一次是把门禁的失明补上了，两个原因都没写在任何地方。修法分三层：
+  ① `check:bundle` 改成 `node scripts/check-bundle.js`，与 CI Build job 的用法一致（构建归调用方），
+  ② `scripts/check-bundle.js` 换成 type-stripping 启动器（与 `check-gates.js` 同形态），实现落到
+  `scripts/lib/bundle-freshness-check.js`，纯判定在 `src/lib/release/bundle-freshness.ts`：量体积之前
+  先比对源码与产物的 mtime，有输入文件比 `.next/static` 最新那个文件新就直接失败并列出文件名——
+  「调用方没构建」这个失败模式从此不依赖调用方的自觉，③ `verify` 自己按 `check → test → build →
+  check:bundle → check:perf` 顺序跑一次构建，产物只构建一次，`verify:build` 退化成 `pnpm verify` 的
+  同义名（`.husky/pre-push`、README、AGENTS.md、各版 Runbook 写的是这个名字，`check:release-docs` 还
+  按字面核对，所以留着）。顺带把 `check:perf` 接进本地路径——它的豁免理由一直写着「由 pnpm verify 覆盖」，
+  而 verify 里从来没有它，这条门禁此前只在 CI 跑。
+  新鲜度判定 13 项单测（临时目录里用 `fs.utimesSync` 定时间戳，不靠机器时钟），两个方向都实测过：
+  源码新于产物 ⇒ `❌ 构建产物比源码旧：1 个输入文件晚于最近一次构建`，把产物 touch 新 ⇒ 照旧
+  `✅ Bundle 体积在基线范围内`。第一版跑测试时被自己的用例抓到一次——没给 `messages/en.json` 设定
+  时间戳，它按真实时钟落盘因此永远比 fixture 里的「构建」新，判定器如实报出了它。
+  `check:gates` 的 `wiredInScriptList` 认「直接跑实现脚本」这一形态，所以 `check:bundle` 在 CI 的接线
+  不受命令改写成度量-only 影响；`GATE_EXCEPTIONS` 与 `docs/testing.md` 的门禁清单段同步改写成新的口径。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

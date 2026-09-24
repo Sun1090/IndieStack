@@ -92,7 +92,8 @@
  
  ## Git Hooks
 
- `.husky/pre-push` runs `pnpm verify:build` (lint + type-check + unit tests + production build).
+ `.husky/pre-push` runs `pnpm verify:build` (lint + type-check + unit tests + production build +
+ bundle/perf assertions on the artifact that build just produced).
  `pnpm install` symlinks it into `.git/hooks` through the `prepare` script — deliberately **not**
  `core.hooksPath`, because that would also disable hooks other tools already put in `.git/hooks`.
  Skip the wiring with `INDIESTACK_SKIP_HOOKS=1`, or skip a single push with `git push --no-verify`.
@@ -107,5 +108,5 @@
 | `pnpm check:locales` | Verify en/zh-CN key symmetry and that values are actually translated |
 | `pnpm check:agents` | Verify AGENTS.md index consistency |
 | `pnpm check:rls` | Static check of RLS migrations (USING/WITH CHECK) |
-| `pnpm check:bundle` | Client bundle size gate (build + baseline compare) |
+| `pnpm check:bundle` | Client bundle size gate: reads `.next/static` and compares to the baseline; fails closed when an input is newer than the build (run `pnpm build` first) |
 | `pnpm dep:health` | Dependency health report (major/minor breakdown) |
