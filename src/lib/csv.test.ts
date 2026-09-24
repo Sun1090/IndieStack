@@ -39,6 +39,21 @@ describe("toCsvString()", () => {
     expect(toCsvString([{ note: "line1\nline2" }])).toBe('note\n"line1\nline2"');
   });
 
+  it("裸 CR 也算行界：字段必须整体加引号", () => {
+    // RFC 4180 要求字段内的 CR / LF / 引号都触发加引号，而这里此前只判 `\n`。
+    // 后果不是「少一层引号」这种格式瑕疵：表格软件把裸 CR 当成一行的结束，
+    // 于是一个字段在打开的表里变成两行——写入方那一格能凭空造出一行记录。
+    expect(toCsvString([{ v: "a\rb" }])).toBe('v\n"a\rb"');
+    expect(toCsvString([{ v: "one\rtwo\rthree" }])).toBe('v\n"one\rtwo\rthree"');
+    // CRLF 里含 `\n`，本来就加引号；补一条钉住「两种换行都算」这件事。
+    expect(toCsvString([{ v: "a\r\nb" }])).toBe('v\n"a\r\nb"');
+  });
+
+  it("公式注入前缀与裸 CR 同时出现时，两步处理都要留下痕迹", () => {
+    // 先加 `'` 防注入，再因为含 CR 整体加引号——顺序反了会得到一个没引号的 CR。
+    expect(toCsvString([{ v: "\r=cmd" }])).toBe('v\n"\'\r=cmd"');
+  });
+
   it("防御公式注入：= + - @ 前缀加单引号", () => {
     expect(toCsvString([{ v: "=SUM(A1:A2)" }])).toBe("v\n'=SUM(A1:A2)");
     expect(toCsvString([{ v: "+12345" }])).toBe("v\n'+12345");
