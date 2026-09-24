@@ -14,7 +14,7 @@
 > （见退出报告「与 roadmap 文本的矛盾」）。因此本文件要求：状态只在退出报告里维护，
 > roadmap 只写目标与验收口径。
 
-## 任务池（22 项）
+## 任务池（引用一律用 ID；条数不写在这里，现量：`awk '/^## 任务池/{f=1;next} /^## 里程碑/{f=0} f && /^[0-9]+\. [A-Z][0-9]+/' docs/roadmap-0.12.0.md | wc -l`）
 
 ### A. 通知投递语义（P0，来自 E03 与退出报告遗留项 1）
 
@@ -220,19 +220,141 @@
       fixture 的键集合；稀疏种子会把合法列判成错误，于是它产生的失败信号比它要保护的那类缺陷更难查。
       真要做，前置条件是先把 mock 的表结构对齐生成类型——那是另一件事，别顺手塞进这条。
 
-18. C08 （**待做，已量过规模**）把查询结果的 `as unknown as { data: … }` 断言变成门禁：这类写法
-    在类型上宣称「这条查询不会出错」，于是编译期再也逼不出 `error` 分支，运行期一次故障就被答成
-    一个确定的结论。测量（TypeScript AST，`await` 一条 `.from()/.rpc()` 链后再断言、断言类型里
-    不含 `error` 成员）：**全库 29 处 / 46 处断言改写**。里面不全是同一优先级——
-    `lib/auth/guards.ts:68,136` 与 `components/shared/permission-gate.tsx:86,170` 是角色检查
-    （故障时答成「你没有权限」，fail-closed 但话是假的），`app/dashboard/**` 是页面读数
-    （故障时渲染空态而不是错误态），`api/invitations/route.ts` 五处待随本条一起判。
-    2026-09-23 已单独修掉邀请链上的三处（`repositories/profiles.ts` 的 `findUserIdByEmail` 与
-    `actions/team.ts` 的角色检查、成员查重），因为那三处会**答错话**而不只是显示空态。
-    门禁的难点先记下来，别当免费的东西：判据必须是「断言后的类型里有没有 `error` 成员」，
-    只看 `as unknown as` 会误伤那些与查询无关的重型断言（如 `Row[]` 形状修正，46 − 29 = 17 处）；
-    以及豁免名单要区分「页面渲染路径」与「Action / 鉴权路径」——前者可以按空态处理，后者不行。
-    接线前按 D01 口径先量一遍，别写完再发现它永远不响。
+18. C08 （**2026-09-23 已完成，债务按文件登记**）把「被断言抹掉 `error` 通道的 awaited 查询结果」变成门禁：
+    这类写法在类型上宣称「这条查询不会出错」，于是编译期再也逼不出 `error` 分支，运行期一次故障就被答成
+    一个确定的结论。落地为 `pnpm check:query-errors`（规则 `src/lib/security/query-error-channel.ts`，
+    IO `scripts/lib/query-error-channel-check.js`，文档 `docs/testing.md`「查询错误通道门禁（C08）」）。
+    重测之后**先前那份规模估计不成立**：早期脚本用单行 grep 数，漏掉了多行断言；换成 AST 后判据改成
+    「`await` 一条 `.from()/.rpc()` 链的结果、且断言类型里没有 `error` 成员」，未 await 的构造器断言
+    （`… as unknown as FilterChain`）不再算数，`x as unknown as T` 只算一处而不是两处。
+    接线前实测（修掉鉴权路径之后）：358 个非测试文件里 37 处 awaited 断言，22 处抹掉 `error`，分布在 12 个文件。
+    本条修掉鉴权/管理路径上四个文件里的**五处**断言：`lib/auth/guards.ts`（两处，改为 `SERVICE_UNAVAILABLE` + `guardHttpStatus` 503，
+    读失败不再答成「你没登录」）、`app/dashboard/admin/layout.tsx`、`app/dashboard/admin/audit-logs/layout.tsx`
+    （不再把管理员静默降级成 member）、`actions/admin.ts`（读失败不再答 `userNotFound`）。
+    其余 22 处进台账：`permission-gate.tsx` 两处标为 justified（客户端组件无法 5xx，回落最低权限是刻意的），
+    其余 20 处标为 `debt (C08-b)`。台账按文件计数并双向对账——加一处红，修一处不改数字也红，
+    所以它既不会悄悄长胖也不会悄悄烂成永久豁免表。另加一条 `QUERY_ERROR_CHANNEL_PARSE`：
+    语法树不完整的文件必须点名，因为「解析不动」在门禁眼里等于「不存在」，这条是被自己的测试 fixture
+    抓出来的（`as` 换行会被 ASI 截断成语法错误，第一版因此悄悄不判那一处）
+19. C08-b 偿还错误通道台账：按影响面从大到小清 `ERROR_CHANNEL_EXEMPTIONS` 里标 `debt` 的 20 处。
+    顺序是**逐个读过代码之后**定的，不是按文件或字母序：① 会把**没提交的数据写掉**的两处——
+    `actions/projects.ts:183`（config 合并读失败后写入 `{ ...(current?.config ?? {}), ...input.config }`，
+    项目 config 里其他键静默消失）与 `dashboard/profile/edit/page.tsx:33`（表单预填 `""` / `UTC` / `en`，
+    用户点保存就把真实资料覆盖掉；`notifications/page.tsx:46` 同型，开关全渲染成关，保存即落库）；
+    ② 鉴权与所有权判定（`lib/uploads/service.ts` 封面上传把角色读失败答成 `onlyAdminsCreateProject`、
+    `api/invitations/route.ts` 五处、`lib/actions/projects.ts` 另两处、`lib/actions/sessions.ts` 把读失败答成
+    `sessionNotFound`、`lib/actions/api-keys.ts` 让「密钥不存在」与「读失败」共用一个 `databaseError`）；
+    ③ 页面读数（`dashboard/team/page.tsx` 渲染成「你还没有团队」、`dashboard/billing/page.tsx`
+    把套餐显示成 `free`、`dashboard/profile/page.tsx` 把角色显示成 `member`）。
+    每清一处必须同时下调台账数字，否则 `QUERY_ERROR_CHANNEL_EXEMPT_STALE` 会红
+20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的），
+    接线时按同一套 AST 实测到 12 处：`api/e2e/push-queue/route.ts:86,230`、`api/invitations/route.ts:56,166`、
+    `api/stripe/checkout/route.ts:58,68`、`api/webhooks/stripe/route.ts:256,263`、
+    `dashboard/admin/page.tsx:47,50,53`、`dashboard/team/page.tsx:110`。C08 看不见它们（判据是断言），
+    要么把门禁扩成「awaited 查询结果必须绑定 `error` 或使用它」，要么单独一条——扩之前先量误报
+
+21. C09 会话读取的错误通道（`auth.getUser()` / `getSession()` / `getClaims()`）：C08 的**同形状邻居**，
+    只是数据源从 PostgREST 换成 Auth——**这个客户端也是把失败装在 `error` 里返回而不是抛出**，所以
+    「连 `error` 都不取」在这里同样会把一次基础设施抖动说成一个关于用户的事实。
+    读数（2026-09-24，AST 扫 `src/**` 非测试文件；判据：调用形如 `supabase.auth.getUser()`、结果做解构绑定、
+    绑定成员里没有 `error`）：**62 处**，其中 **1 处绑定 `error`**（`src/app/auth/callback/page.tsx`）、
+    2 处不是解构绑定（`reset-password-form.tsx`、`dashboard/settings/page.tsx`，都当布尔用）。
+    剩下 59 处按下游第一个 `if (!user)` 分支答复什么归类：**39 处答「没登录」/401**、**4 处 redirect 到登录页**、
+    **1 处返回 null**（`actions/team.ts` 的 `getCurrentTeam()`，调用方据此回答 `noTeam`——「你没有团队」
+    也是读出来的事实）。**没有一处把 `error` 当成「已登录」**，路由层同样是 fail-closed
+    （`src/proxy.ts` 里 `isProtected && !user` 一律重定向登录页），所以这条不是 P0。
+    第二遍判读换了判据（下游 45 行内「有没有自己的判空」vs「有没有 `user!.` 强解引用」），
+    并且是在本 PR 修完守卫层之后量的（`main` 上 62 处，这里 61 处）：**45 处有自己的判空**（上面那三档）、
+    **8 处没有判空却直接 `user!.id`**（`dashboard/page.tsx`、`billing`、`notifications`、`profile`、`projects`、
+    `projects/[id]`、`settings`、`team` —— 读失败时抛 `TypeError` 由错误边界兜住：不是撒谎，
+    但是一次没有分类的崩溃，修法和守卫层同一形状——先判空、再答「暂时不可用」）、
+    **3 处两者都没有**（`api/auth/callback/route.ts`、`hooks/use-user.ts`、`lib/supabase/middleware.ts`：
+    前两处把 null 当合法值往下传，第三处只是把 `user` 交回 `proxy.ts` 做重定向判定，方向仍是拒绝）。
+    还有一处形状不同：`actions/audit.ts` 用 `user?.id ?? null` 直接落审计表——**「读不到会话」与
+    「失败登录时本来就没有会话」在 `user_id` 这一列上完全同形**，而取证时这是两件相反的事；
+    本条已修（审计照写，但 metadata 打 `sessionReadFailed`，见 CHANGELOG）。
+    **已收口的部分**：守卫层（`src/lib/auth/guards.ts`）改走 `readSessionUser()`，`requireAuth/Role/Permission`
+    与三个 `safely*` 变体全部受益，`guardHttpStatus` 的 503 一档由本池的 C08 早就备好；
+    审计侧 `actions/audit.ts` 打上 `sessionReadFailed` 标记；两个登出按钮读 `signOut` 的 `error`；
+    恢复码自救读 `listFactors` / `deleteFactor` 的 `error`，并把扣码挪到解绑成功之后。
+    **但「绑定并使用 `error`」不是一条通用判据，本池在这上面自己踩过一次**（2026-09-24 当天发现并修回）：
+    Auth 客户端各方法对「没有会话」的表达方式**不一样**，对着 `auth-js@2.116.0` 源码逐条核过的三档是——
+    `getUser()` 在本地没有 `access_token` 时**直接返回一个 `AuthSessionMissingError`**（匿名访客就是这个形状）；
+    `getSession()` 匿名时返回 `{ session: null, error: null }`；`signOut()` 的 `_signOut` 自己就把
+    `AuthSessionMissingError` 滤掉、且对 401/403/404 选择忽略。于是「`error` 非空就是故障」在 `getUser()`
+    上是错的（守卫层会把每个匿名访问答成 503，审计会把每次失败登录标成取证链断裂），在 `signOut()` /
+    管理端口的 `listFactors` / `deleteFactor` 上是对的。收口方式是把判据收敛成一个具名函数
+    （`src/lib/auth/session-error.ts`：只认 `AuthRetryableFetchError` 与状态码 ≥500 的 `AuthApiError`，
+    其余维持既有答复），而不是在每个站点各写一遍条件。**后续偿还这 45+8 处时，先判断该处读的是哪个方法**；
+    把 `getUser()` 的 `error` 直接映射成 503 是本池已经付出过一次代价的错。
+    **挑站点用的重叠尺子，两个数要分开**（2026-09-24 重跑，41 条 open PR 全部本地可测、无一条取不到对象）：
+    *独立编辑数* = 逐条 PR 自己的 delta（`git diff --name-only <merge-base <base-ref-oid> <head>> <head>`）
+    里出现这个文件的条数，回答「有几处改动会和我的撞」；*栈上携带数* = 对 `origin/main` 取 merge-base 之后
+    再 diff，回答「合并时有多少条分支要重放这个文件」。本池是栈式的，所以两个数常常差一个数量级，
+    **而选型只看第一个**（第二个再大也只是同一条改动在下游重放）。
+    **这里我先前记错过一次**：第一次写这条时把第二个数当成了「几条 PR 各自改过」，于是记成
+    「`notifications/page.tsx` 被 18 条在审 PR 各自改过」——实测**每个页面都只有 1 条 PR 真的在改它**
+    （`notifications` 与 `profile` 都是 #94，`billing` 与 `team` 都是 #101，`page.tsx` #110，`projects` 两条都是 #105，
+    `settings` #111，`actions/projects.ts` #93，`api/invitations` #98，`uploads/service` #99），
+    18/14/10/4 那些是携带数。推迟这些站点的真实理由因此从「要叫 18 个作者」改成
+    「**有一条在审分支正在重写这个文件**，我改一次就要沿它下游的 17 条重放一遍」。
+    按独立编辑数，C09 剩下的站点里为 0 的有四处：`actions/recovery-codes.ts`、`components/layout/site-header.tsx`、
+    `api/auth/callback/route.ts`、`hooks/use-user.ts`（连同 `middleware.ts`、`proxy.ts`、两个 hook 消费者也都是 0），
+    **四处里本轮收了前三处**；`app/auth/mfa/page.tsx` 的独立编辑是 #119。
+    同一把尺下 `guards.ts` 与 `logout-all-button.tsx` 的独立编辑数都是 **1**，就是 #92 自己。
+    **射程随后从 `getUser/getSession` 扩到整个 Auth 客户端**（同一条判据：`await x.auth.<method>()`
+    的结果有没有绑定并使用 `error`）：**90 处** awaited 调用里 **27 处绑定**、**63 处不绑定**；
+    不绑定的按方法分：`getUser` 55、**`signOut` 4**、`admin.mfa.listFactors` 1、`admin.mfa.deleteFactor` 1、
+    `refreshSession` 1、`getSession` 1。**`signOut` 那一档方向最坏**——两个承诺「所有设备 /
+    其他设备登出」的按钮过去无条件往下走，Auth 抖动时**在没登出的情况下报告已登出**
+    （一个把用户送去登录页，一个把界面切成完成态，而后者正是共用电脑上要防的那件事）；
+    **本条已修**：读 `error`、失败留在原地给可重试文案（`logoutAllFailed` / `signOutOthersFailed`）。
+    **`admin.mfa.*` 那两处是同一个调用点**——`actions/recovery-codes.ts` 的 `redeemRecoveryCode` 用
+    `listFactors` + `deleteFactor` 解绑该用户的全部 TOTP 因子。它比 `signOut` 那一档更糟，因为这里抹掉的
+    不是一个可以重试的提示，而是一次**不可逆的扣减**：原次序是「扣恢复码 → 写审计 → 解绑」，恢复码一次性、
+    扣掉回不来，而解绑失败只出现在返回的 `error` 上（`listFactors` 那处连绑定都没有），于是动作照样回
+    `{ ok: true }`——用户烧掉了唯一的自救码，并且仍然被锁在**他丢掉的那把验证器**后面，也就是这条功能
+    存在的理由没有被解决、还少了一次重试机会。现在次序反过来：**先解绑、成功后才扣码**，两步的 `error`
+    都读，任一失败记日志并回 `recoveryUnenrollFailed`（en / zh-CN 各一条，文案明说码没有被扣、可以重试）。
+    偏向保守一侧的代价只是一次失败的兑换把码留在库里；「账号本来就没有 TOTP 因子」是合法状态，照常扣码。
+    **这是目前 C09 里唯一一处「抹掉 `error` 之外还要靠调顺序才能修」的站点**，其余都是补绑定 `error` 即可。
+    **同一次重叠测量里剩下的 0 重叠站点也收了**（`site-header.tsx`、`api/auth/callback/route.ts`、
+    `hooks/use-user.ts`、`lib/supabase/middleware.ts` 各 **0** 条；`app/auth/mfa/page.tsx` 是 **1** 条 = #119）：
+    ①`components/layout/site-header.tsx` 的 `handleSignOut` 丢掉 `signOut()` 的返回值后照样跳首页——
+    入口比设置页那两个按钮更常被打到，读 `error`、失败弹可重试 toast（`common.signOutFailed`）；
+    ②`api/auth/callback/route.ts` 在 `exchangeCodeForSession` **成功之后**再 `getUser()`，那一处不取 `error`
+    就把 `user?.id ?? null` 落审计——一次确实成功的登录被写成没有主人，与「失败登录时本来就没有 session」同形。
+    改成绑定 `error` + metadata `sessionReadFailed` + `logApiError`（跳转方向不动：拦一次已经成功的登录
+    不是这条路由的职责），并补上该路由的第一份测试（4 条用例）。
+    **两处量完之后不改，理由各不相同**：`hooks/use-user.ts` 的修法要么改钩子契约
+    （`{ user, loading }` → 多一个「没读到」），要么在三个消费者里判空——三个文件都是 0 重叠
+    （`use-is-admin.ts`、`use-unread-notifications.ts` 各 0），但这不是补一处 `error` 绑定的形状，
+    是一次接口决定，方向上也全是拒绝侧（头像是登出态、`useIsAdmin()` 为假、未读数为 0），所以留在这里等决定。
+    `lib/supabase/middleware.ts` **这条判据在它身上不成立，理由是它答的其实不是同一个问题**：
+    那里的 `getUser()` 走的是**浏览器带来的 cookie**，读失败最常见的成因就是「这份会话已经不再有效」
+    （access token 过期且刷新失败、token 被撤销）——对中间件而言那不是基础设施抖动，而是关于用户的真事实。
+    所以 `user = null` → `proxy.ts` 重定向登录页**是正确答案**；把「error」单独拎出来放行，
+    会把一次普通的过期会话变成一个错误边界页。它不该进债务清单，该记在这里——`proxy.ts` 本身也是 0 重叠，
+    也就是说不动它不是因为动不了，是因为动它会把对的行为改错。
+    `lib/auth/passkey-session.ts:72` 是 magic link 校验失败后的清理，`.catch(() => undefined)` 之后
+    照样 throw，属于**已判定**的吞掉而不是漏看；`app/auth/mfa/page.tsx:85` 的 `refreshSession`
+    在 `try` 里、外层 catch 读的是**异常**而不是 `error` 对象，「服务端返回 `error`」这条路径会静默往下走——
+    它要连 MFA 流程一起判，单独改一处会把成功路径改坏，而且 #119 正在改这个文件。
+    **那 8 处 `user!.id` 现在不动，原因是重叠而不是难度**（判据按上面那条订正后的口径重跑：
+    8 个页面的**独立编辑各只有 1 条 PR**，共涉及 5 条分支——`notifications` 与 `profile`（含 `profile/edit`）
+    都是 #94，`billing` 与 `team` 都是 #101，`page.tsx` #110，`projects` 与 `projects/[id]` #105，`settings` #111；
+    先前记的 18 / 14 / 5 / 4 是这些改动在栈上被多少条下游分支**带着走**，不是有人在各自改它）。
+    推迟的理由仍然成立，但要说准：不是「要叫 8 个作者出场」，而是「这 5 条分支正在重写同一批文件，
+    我在这里改一次，就要沿它们下游最多 17 条分支各重放一次」。
+    时机是**等那批 PR 落地之后**，按同一形状（先判空、再答「暂时不可用」）一次收完。
+    **暂不接门禁**，理由与 C08-c 同源：合法状态（确实没有会话 → 回落登录页是对的）与「没读到」在 AST 上
+    都只是「没取 `error`」，先接会把正常写法一并点掉；先照 C08-b 的办法立台账再逐文件偿还。
+    两个已知消费者不在本条射程：`api/analytics/route.ts` 与 `api/stripe/checkout/route.ts` 现在仍把
+    守卫失败一律写成 401，那两处分别由 #103（analytics，#44 前半）与 #96（checkout）处理。
+    顺带一条治理观察，不在本条范围内但记下来免得重新发现：**本池的序号已经不复用不行了**——
+    C08 / C08-b / C08-c 在源码里占 18 / 19 / 20，而 D01 / D02 / D03 也是 18 / 19 / 20（本条写作 21，
+    与 D04 撞号）。渲染时有序列表按位置重编号，所以只有源码读者会被误导；引用一律用 ID（C09、D04），
+    别用序号。要不要给任务池加一条「ID 唯一 + 序号不撞」的门禁，等有第二次踩到再说。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 

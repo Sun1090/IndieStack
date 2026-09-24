@@ -101,11 +101,19 @@ export async function updateUserRole(
 
   try {
     const admin = createAdminClient();
-    const { data: target } = (await admin
+    const { data: target, error: targetError } = await admin
       .from("profiles")
       .select("role")
       .eq("id", userId)
-      .maybeSingle()) as { data: { role: string } | null };
+      .maybeSingle();
+
+    if (targetError) {
+      // 专门的错误键，而不是复用 `databaseError`：管理员看到的「数据库操作失败」既没说明
+      // 坏了什么，也没说明这是可重试的。落下去更糟——`!target` 会回答「这个用户不存在」，
+      // 把一次读取失败说成一条关于用户的事实。
+      await logActionError("[admin] 目标账户角色读取失败", targetError);
+      return fail("roleReadFailedAdmin");
+    }
 
     if (!target) {
       return fail("userNotFoundAdmin");

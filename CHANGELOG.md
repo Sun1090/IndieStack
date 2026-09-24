@@ -6,6 +6,27 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **一次读失败不再被断言成「这条查询不会出错」**（C08）：新增 `pnpm check:query-errors`，扫 `src/**`
+  里所有「`await` 一条 `.from()/.rpc()` 链的结果，再把它断言成一个不含 `error` 成员的类型」的写法。
+  这类断言不是普通的形式问题：它在类型上宣称错误不可能发生，于是下面的代码可以放心地把**读失败**当成
+  **查不到这一行**来回答。起因是 `src/lib/auth/guards.ts` 里两处 `(await …single()) as { data: { role: string } | null }`
+  ——数据库抖动一次，管理员就被降级成 `member`，日志里什么都没有；`actions/admin.ts` 则对一条根本没跑完的
+  查询回答「用户不存在」。规则在 `src/lib/security/query-error-channel.ts`（TypeScript AST、纯函数、单测覆盖），
+  IO 在 `scripts/lib/query-error-channel-check.js`。台账 `ERROR_CHANNEL_EXEMPTIONS` **按文件计数且双向对账**：
+  新增一处抹除报 `QUERY_ERROR_CHANNEL_CAST_AWAY`，修好一处却忘了下调数字报 `QUERY_ERROR_CHANNEL_EXEMPT_STALE`，
+  所以它既不会悄悄长胖、也不会悄悄烂成永久豁免表；条目分两种——`justified`（客户端组件 `permission-gate.tsx`
+  读角色失败时故意回落到最低权限，客户端没法 5xx）与 `debt (C08-b)`（代码确实在撒谎，等按影响面偿还）。
+
+  数量是先量后修的对照（同一套 AST，`main` vs 本 PR）：修之前 42 处 awaited 断言 / **27 处抹掉 `error`**，
+  修掉鉴权与管理路径那五处之后 37 处 / **22 处、12 个文件**，这 22 处全部进台账。**先前记在 roadmap 里的
+  「29 处 / 46 处」是错的**——那一版用单行 grep 数，多行断言整个漏掉。测量脚本本身
+  被修了三轮：链遍历只沿 `CallExpression` 走会在 `.select()` 就停住；未 await 的构造器断言
+  （`admin.from("contact_messages").select(…) as unknown as FilterChain`）是给 builder 定形状、不在射程内；
+  `x as unknown as T` 会算成两处。最后一条 `as` 换行是**被自己的测试 fixture 抓出来的**：TS 解析器在那里按
+  ASI 截断，于是该文件语法树不完整、门禁安静地判到 0 处——补了 `QUERY_ERROR_CHANNEL_PARSE`，解析不动的文件
+  必须点名而不是当作干净。变异核对：台账数字 5→4、拆掉 `as unknown` 穿透、删掉语法诊断循环、`rpc` 移出判定集、
+  `keepsErrorChannel` 恒真、去掉台账对账，逐项都让对应用例红。
+
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而
@@ -203,6 +224,88 @@ All notable changes to IndieStack will be documented in this file.
   换两处的判定完全同源。
 
 ### Fixed
+
+- **管理员不再在一次数据库抖动后被礼貌地请出后台**（C08 鉴权路径）：`src/lib/auth/guards.ts` 的角色读取改走
+  `maybeSingle()` 并真正读 `error`，读不出来时新增 `SERVICE_UNAVAILABLE`（`guardHttpStatus` 映射 503，
+  与「你没权限」的 403 分开）。`safelyRequireAuth()` 不让它落到最外层 catch——那里会回答 401，客户端于是清掉
+  会话跳登录页，而重新登录并不会让那次读取成功。
+
+  **用户可见的变化**：`/dashboard/admin` 与 `/dashboard/admin/audit-logs` 两个布局原先在角色查询失败时把登录者
+  当 `member` / 非 `super_admin` 处理（后者直接 redirect 回 `/dashboard`），现在改为抛出错误、由错误边界渲染
+  错误页——看到的不再是「你没权限」这条空话，而是一次可重试的失败；`updateUserRole` 对一条没跑完的查询也不再
+  回答 `userNotFoundAdmin`，而是记日志并回**新增的专用错误键** `roleReadFailedAdmin`（en/zh-CN 各一条文案），
+  不复用泛化的 `databaseError`——管理员看到的应该是「角色信息读不到、可重试」，不是「数据库操作失败」。
+
+- **同一个守卫里，「会话读不到」以前也答成「你没登录」**（C09 第一步）：上一条修的是 `auth.getUser()`
+  下面那处角色读取，而它上面这一行连 `error` 都不取。这不是 PostgREST 的特例——**Auth 客户端同样把失败
+  装在 `error` 里返回而不抛**，所以同一形状的错误在鉴权入口又发生一次：页面侧 `requireAuth()` 执行
+  `redirect(/login)`、API 侧 `safelyRequireAuth()` 返回 401，客户端于是清掉一个仍然有效的本地会话并跳登录页，
+  而重新登录走的正是同一条读取。两处统一收进 `readSessionUser()`（绑定 `error`，交调用方映射），
+  `safelyRequireAuth()` 的最外层 catch 也从「一律 UNAUTHORIZED」改成 `SERVICE_UNAVAILABLE`（503）——
+  走到那里的一定是「读取本身没成功」，那不是一个关于用户的事实。**拒绝的方向没有放宽**：失败仍然 deny，
+  只是不再撒谎，而且变成可重试。同一次测量在 `main` 上还有 61 处这样的读取（只有 1 处绑定 `error`），
+  已登记为 roadmap C09，本条只收口守卫层这一个入口——它覆盖了 `requireAuth/Role/Permission`
+  与三个 `safely*` 变体的全部消费者。
+
+- **审计表不再把「读不到会话」写成「本来就没有会话」**（C09）：`logAuthEvent` 过去用
+  `user?.id ?? null` 落库，于是 Auth 服务一次抖动写出的行，与失败登录（那时确实还没有 session）
+  写出的行在 `user_id` 这一列上**完全同形**——而取证时这是两件相反的事：前者是链条断了一截。
+  现在绑定 `error` 并在 metadata 里打 `sessionReadFailed: true`；审计照写、不阻断登录流程，
+  **不加列也不做迁移**（审计表是既有的 append-only 面），约定写进 roadmap C09。
+
+- **两个登出按钮不再在没登出的时候报告成功**（C09）：`退出所有设备` 与 `退出其他设备` 过去写的是
+  `await supabase.auth.signOut(...)` 然后无条件往下走——而 **`signOut()` 和这个客户端的其它方法一样，
+  失败只出现在返回的 `error` 上，不抛异常**。于是 Auth 一次抖动之后：前者把用户送去登录页
+  （所有设备的会话其实都还活着），后者直接把界面切成「其他设备已登出」，而那正是这条控制要防的场景
+  ——在共用电脑上以为已经踢掉了别人。现在读 `error`：失败时留在原地、`role="alert"` 给出可重试的文案
+  （新增 `logoutAllFailed` / `signOutOthersFailed`，en 与 zh-CN 各一条），成功才进入原有跳转 / 完成态。
+  同一次清点里剩下的 `signOut` 站点：`site-header.tsx`（默认 local scope，方向较轻）与
+  `lib/auth/passkey-session.ts`（校验失败后的清理，本来就 `.catch()` 后照样 throw，属于刻意吞掉）——
+  两者连同判据一起记进 roadmap C09，不在本条里顺手改。（`site-header.tsx` 在**本 PR 后面的 commit 里收了**，
+  见下面那条；没动的只剩 `passkey-session.ts` 那一处已判定的吞掉。）
+
+- **恢复码自救：解绑失败不再把码烧掉**（C09）：`redeemRecoveryCode` 原先的次序是「扣恢复码 → 写审计 → 解绑 TOTP」，
+  而解绑那两步走的是 Auth **管理**端口——`listFactors()` 与 `deleteFactor()` 同样只把失败放在返回的 `error` 上，
+  前者写的还是 `const { data: factors } = …`，`error` 连绑定都没有。于是 Auth 一次抖动就能造成这个仓库里
+  最坏的一种谎报：恢复码是**一次性**的，扣掉不可逆；而这次兑换一个因子都没解绑，用户仍然被锁在丢了的那把
+  验证器后面——也就是这条功能存在的理由没有解决——界面却收到 `{ ok: true }`。现在次序反过来：
+  **先解绑，成功后才扣码**，两步的 `error` 都要读，任一失败即记日志并回 `recoveryUnenrollFailed`
+  （新增键，en / zh-CN 各一条，文案明说「恢复码没有扣减、可以重试」）。方向是往保守一侧偏：
+  一次失败的兑换把码留在库里（可重试），代价远小于一个用掉的码配一把还在锁着的验证器。
+  「账号本来就没有 TOTP 因子」是合法状态，不算失败，照常扣码。
+
+- **顶栏「退出登录」没退成时不再照样跳走**（C09）：`site-header.tsx` 的 `handleSignOut` 丢掉 `signOut()`
+  的返回值，然后无条件 `router.push(首页)` + `router.refresh()`。后果和上面那两个按钮同源，只是这个入口
+  更常被打到：用户点了退出、页面跳回首页，于是**以为这台电脑上的会话已经没了**——而它还活着。
+  现在读 `error`：失败弹一条可重试的 destructive toast（新增 `common.signOutFailed`，en / zh-CN 各一条），
+  成功才进入原有的跳转 + 刷新。测试把 Radix 下拉换成普通元素（jsdom 没有 `ResizeObserver`，被测的是
+  「这一步失败时组件做了什么」，不是下拉的展开实现）；变异核对：把组件退回旧写法 → `1 failed | 5 passed`，
+  红的正是失败路径那条，成功那条照绿。
+
+- **一次确实成功的 OAuth 登录不再被审计写成没有主人**（C09）：`api/auth/callback/route.ts` 在
+  `exchangeCodeForSession` **已经成功**之后再去 `getUser()`，那一处原本连 `error` 都不取、直接
+  `user?.id ?? null` 落审计表。于是 Auth 一次抖动会写出一行 `user_id` 为空的 `auth.oauth_login`，
+  与「失败登录时本来就没有 session」完全同形——而这里的真事实恰恰相反：**会话已经换到了**。
+  现在绑定 `error`：审计照写、跳转方向不变（拦一次已经成功的登录不是这条路由的职责），metadata 打
+  `sessionReadFailed: true`，并把这次读取失败记进 `logApiError`。新增 `route.test.ts` 4 条用例
+  （这是该路由的第一份测试）；变异核对两刀：只退回 metadata 标记 → `1 failed | 3 passed`；
+  只退回那行日志 → 同一条用例红，说明断言两头都吃得住。
+
+- **「没有会话」不再被当成「服务不可用」**（C09 的自查修正）：本仓库今天早些时候给守卫层加的
+  「读 `error`」判据**错了一档**——`auth-js` 的 `getUser()` 在本地没有会话时返回的就是一个
+  `AuthSessionMissingError`（源码里 `_getUser`：没有 `access_token` 也没有自定义鉴权头时直接构造它），
+  也就是说**每一个匿名访客都会带着一个非空 `error`**。按「`error` 非空即故障」来答，守卫层会把匿名访问
+  一律报成 `SERVICE_UNAVAILABLE`（503），而 503 既不该靠重试解决、也不该靠重新登录解决——比它要修的那个
+  错更难解释；审计侧同一条判据会让 `sessionReadFailed` 打在**每一次失败登录**上，那个标记就读不出
+  任何东西了。现在新增 `src/lib/auth/session-error.ts` 只做一件事：把**能叫出名字**的读取故障分出来
+  （`AuthRetryableFetchError`＝fetch 本身失败；`AuthApiError` 且状态码 ≥500＝Auth 服务端答不上来），
+  认不出的一律维持 `main` 的既有答复（拒绝侧、可登录），不扩大 503 的面。
+  **这条判据是按方法分的，不是一条通用规则**：`getUser()` 匿名时给 error、`getSession()` 匿名时给
+  `{ session: null, error: null }`、`signOut()` 的 `_signOut` 自己就把 `AuthSessionMissingError` 滤掉了——
+  所以今天加的三处登出与恢复码修复不受影响（已逐条对着 `auth-js@2.116.0` 的源码核过），
+  受影响的正是那两处按 `getUser()` 的 `error` 判故障的地方。
+  变异核对两刀：把分类器退回「`error` 非空即故障」→ 4 个文件里 **7 条**用例红（全是匿名 / 4xx 那一侧）；
+  退回「永远不是故障」→ **6 条**红（网络型与 5xx 那一侧）。新增 `session-error.test.ts` 5 条用例。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条

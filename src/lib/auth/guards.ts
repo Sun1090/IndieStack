@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants";
 import { hasPermission, parseRole, type Role } from "./roles";
+import { isRetryableSessionReadFailure } from "./session-error";
 import type { Permission } from "./permissions";
 
 // ============================================================
@@ -29,7 +30,7 @@ import type { Permission } from "./permissions";
 export class AuthGuardError extends Error {
   constructor(
     message: string,
-    public code: "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND",
+    public code: "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "SERVICE_UNAVAILABLE",
   ) {
     super(message);
     this.name = "AuthGuardError";
@@ -39,6 +40,54 @@ export class AuthGuardError extends Error {
 export const UNAUTHORIZED = new AuthGuardError("请先登录后再访问此页面", "UNAUTHORIZED");
 
 export const FORBIDDEN = new AuthGuardError("您没有足够的权限访问此页面", "FORBIDDEN");
+
+/**
+ * 会话或角色读不出来时会用它。
+ *
+ * 旧实现在这里把失败的查询按「查不到这一行」处理：`profile` 为 null → 角色降级成 `member`，
+ * 于是管理员在一次数据库抖动后被礼貌地请出后台，而日志里什么都不会留下——看起来是权限问题，
+ * 其实是「我们没读到」。二者必须分开，因为修法完全不同。
+ *
+ * 会话读取同理但更窄：`auth.getUser()` 把失败装在 `error` 里返回（不抛），旧实现连 `error`
+ * 都不取，于是 Auth 服务一次抖动被答成「你没登录」——客户端清掉本地会话并跳登录页，而重新登录
+ * 走的正是同一条读取，用户除了被登出之外得不到任何新信息。**但 `error` 非空不等于抖动**：
+ * 没有会话的访客同样拿到一个 `error`（`AuthSessionMissingError`），那仍该答「请登录」。
+ * 只有 `session-error` 认得出的读取故障才走到这里。
+ */
+export const SERVICE_UNAVAILABLE = new AuthGuardError(
+  "权限校验暂时不可用，请稍后重试",
+  "SERVICE_UNAVAILABLE",
+);
+
+/** 读取当前会话用户的角色；`error` 与「没有 profiles 行」在这里是分开的两件事。 */
+async function readSessionRole(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    // maybeSingle：缺行是正常结果（回落 member），只有查询真的失败才需要报错。
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.role ?? null;
+}
+
+/** 会话里的用户；只需要这两个字段，故不依赖 AuthUserIdentity 的具体形状。 */
+type SessionUser = { id: string; email?: string | null };
+
+/**
+ * 读取当前会话用户。`error` 与「确实没有会话」在这里是分开的两件事——但**不是**「`error` 非空就是故障」：
+ * 匿名访客走这条路拿到的就是 `AuthSessionMissingError`。分类由 `session-error` 负责。
+ */
+async function readSessionUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<SessionUser | null> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error && isRetryableSessionReadFailure(error)) throw new Error(error.message);
+  return data.user ?? null;
+}
 
 // ============================================================
 // 守卫函数
@@ -56,26 +105,33 @@ export type AuthUser = {
  */
 export async function requireAuth(): Promise<AuthUser> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
+  let session: SessionUser | null;
+  try {
+    session = await readSessionUser(supabase);
+  } catch (error) {
+    console.error("[guards] 读取会话失败", error);
+    throw SERVICE_UNAVAILABLE;
+  }
+
+  if (!session) {
     redirect(ROUTES.login);
   }
 
   // 从 profiles 表中获取角色
-  const { data: profile } = (await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()) as { data: { role: string } | null };
+  let rawRole: string | null;
+  try {
+    rawRole = await readSessionRole(supabase, session.id);
+  } catch (error) {
+    console.error("[guards] 读取会话角色失败", error);
+    throw SERVICE_UNAVAILABLE;
+  }
 
-  const role = parseRole(profile?.role as string | undefined) ?? "member";
+  const role = parseRole(rawRole ?? undefined) ?? "member";
 
   return {
-    id: user.id,
-    email: user.email ?? undefined,
+    id: session.id,
+    email: session.email ?? undefined,
     role,
   };
 }
@@ -125,28 +181,32 @@ export type GuardResult<T> = { success: true; data: T } | { success: false; erro
 export async function safelyRequireAuth(): Promise<GuardResult<AuthUser>> {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const session = await readSessionUser(supabase);
 
-    if (!user) {
+    if (!session) {
       return { success: false, error: UNAUTHORIZED };
     }
 
-    const { data: profile } = (await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()) as { data: { role: string } | null };
+    let rawRole: string | null;
+    try {
+      rawRole = await readSessionRole(supabase, session.id);
+    } catch (error) {
+      console.error("[guards] 读取会话角色失败", error);
+      // 不能落到最外层 catch：那会把「读不到角色」答成「你没登录」，
+      // 客户端于是清会话、跳登录页，而重新登录并不会让那次读取成功。
+      return { success: false, error: SERVICE_UNAVAILABLE };
+    }
 
-    const role = parseRole(profile?.role as string | undefined) ?? "member";
+    const role = parseRole(rawRole ?? undefined) ?? "member";
 
     return {
       success: true,
-      data: { id: user.id, email: user.email ?? undefined, role },
+      data: { id: session.id, email: session.email ?? undefined, role },
     };
-  } catch {
-    return { success: false, error: UNAUTHORIZED };
+  } catch (error) {
+    // 走到这里的一定是「读取本身没成功」，那不是一个关于用户的事实。
+    console.error("[guards] 鉴权检查未能完成", error);
+    return { success: false, error: SERVICE_UNAVAILABLE };
   }
 }
 
@@ -191,6 +251,10 @@ export async function safelyRequireRole(minRole: Role): Promise<GuardResult<Auth
  * 将守卫失败错误映射为 HTTP 状态码（API Route 使用）
  * 未登录 → 401 Unauthorized；已登录但无权限 → 403 Forbidden
  */
-export function guardHttpStatus(error: AuthGuardError): 401 | 403 {
-  return error.code === "UNAUTHORIZED" ? 401 : 403;
+export function guardHttpStatus(error: AuthGuardError): 401 | 403 | 503 {
+  if (error.code === "UNAUTHORIZED") return 401;
+  // 503 而不是 403：让调用方（和监控）能分清「你没权限」与「我们没读到」，
+  // 前者重投多少次都一样，后者重试就可能成功。
+  if (error.code === "SERVICE_UNAVAILABLE") return 503;
+  return 403;
 }

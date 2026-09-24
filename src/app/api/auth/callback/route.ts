@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
+import { isRetryableSessionReadFailure } from "@/lib/auth/session-error";
 import { recordCurrentSession } from "@/lib/actions/sessions";
 import { logApiError } from "@/lib/api-log";
 
@@ -28,16 +29,22 @@ export async function GET(request: NextRequest) {
       await logApiError("[Auth Callback] 交换会话失败", error);
       return NextResponse.redirect(`${origin}/auth/login`);
     }
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data, error: sessionError } = await supabase.auth.getUser();
+    const readFailed = isRetryableSessionReadFailure(sessionError);
+    if (readFailed) {
+      await logApiError("[Auth Callback] 会话交换成功但用户读取失败", sessionError);
+    }
     try {
       await appendAuditLog({
-        userId: user?.id ?? null,
+        userId: data.user?.id ?? null,
         action: "auth.oauth_login",
         entityType: "auth",
-        entityId: user?.id ?? null,
-        metadata: { method: "oauth" },
+        entityId: data.user?.id ?? null,
+        // 走到这里交换是**成功**的，所以这一行的 `user_id` 为空只可能是「没读到」而不是
+        // 「本来就没有会话」。两者在 `user_id` 列上同形，对读审计的人是两件相反的事：
+        // 一次成功的登录被记成没有主人。标出来，不加列、不动迁移（与 actions/audit.ts 同一约定）。
+        // 判据同样只看「能叫出名字的读取故障」——匿名访客的 getUser() 也带一个 error。
+        metadata: readFailed ? { method: "oauth", sessionReadFailed: true } : { method: "oauth" },
       });
     } catch (auditError) {
       await logApiError("[Auth Callback] 审计写入失败", auditError);

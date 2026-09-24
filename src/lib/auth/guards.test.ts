@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ROUTES } from "@/lib/constants";
+import { AuthRetryableFetchError, AuthSessionMissingError } from "@supabase/supabase-js";
 
 const { createClientMock, redirectMock } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
@@ -17,6 +18,7 @@ import {
   AuthGuardError,
   UNAUTHORIZED,
   FORBIDDEN,
+  SERVICE_UNAVAILABLE,
   requireAuth,
   requireRole,
   requirePermission,
@@ -33,26 +35,51 @@ function mockSupabase(
     user?: { id: string; email?: string | null } | null;
     profileRole?: string | null;
     getUserError?: boolean;
+    getUserErrorObject?: boolean;
+    /** 匿名访客：没有本地会话时 Auth 返回的就是这个 error，它不是故障。 */
+    noSessionError?: boolean;
+    profileQueryError?: boolean;
   } = {},
 ) {
   const {
     user = { id: "u1", email: "a@b.com" },
     profileRole = "member",
     getUserError = false,
+    getUserErrorObject = false,
+    noSessionError = false,
+    profileQueryError = false,
   } = overrides;
 
   return {
     auth: {
-      getUser: vi
-        .fn()
-        .mockResolvedValue(
-          getUserError ? Promise.reject(new Error("network")) : { data: { user } },
-        ),
+      getUser: vi.fn().mockImplementation(() => {
+        if (getUserError) return Promise.reject(new Error("network"));
+        // supabase-js 的抖动是「返回 error」而不是抛：旧实现在这里连 error 都不取。
+        if (getUserErrorObject) {
+          return Promise.resolve({
+            data: { user: null },
+            error: new AuthRetryableFetchError("Failed to fetch", 0),
+          });
+        }
+        if (noSessionError) {
+          return Promise.resolve({
+            data: { user: null },
+            error: new AuthSessionMissingError(),
+          });
+        }
+        return Promise.resolve({ data: { user }, error: null });
+      }),
     },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: profileRole ? { role: profileRole } : null }),
+          maybeSingle: vi
+            .fn()
+            .mockResolvedValue(
+              profileQueryError
+                ? { data: null, error: { message: "connection terminated" } }
+                : { data: profileRole ? { role: profileRole } : null, error: null },
+            ),
         }),
       }),
     }),
@@ -86,6 +113,20 @@ describe("requireAuth()", () => {
 
     createClientMock.mockResolvedValue(mockSupabase({ profileRole: "owner" }));
     await expect(requireAuth()).resolves.toEqual({ ...adminUser, role: "member" });
+  });
+
+  it("会话读取是网络型故障（AuthRetryableFetchError）时抛 SERVICE_UNAVAILABLE，而不是把已登录的用户送去登录页", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ getUserErrorObject: true }));
+    await expect(requireAuth()).rejects.toBe(SERVICE_UNAVAILABLE);
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  // Auth 给匿名访客返回的就是一个 error，这不是故障：答成 503 会让人既登不进也退不出，
+  // 比它要修的那个错更难解释。这一条钉住的是「error 非空 ≠ 服务不可用」。
+  it("没有会话（AuthSessionMissingError）仍然重定向登录页，不答 503", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ noSessionError: true }));
+    await expect(requireAuth()).rejects.toThrow("NEXT_REDIRECT");
+    expect(redirectMock).toHaveBeenCalledWith(ROUTES.login);
   });
 });
 
@@ -125,19 +166,39 @@ describe("认证边界回归", () => {
     });
   });
 
-  it("profile 查询异常时安全守卫拒绝请求", async () => {
+  it("profile 查询返回 error 时回答 SERVICE_UNAVAILABLE，而不是没登录", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ profileQueryError: true }));
+
+    const result = await safelyRequireAuth();
+    expect(result).toEqual({ success: false, error: SERVICE_UNAVAILABLE });
+    expect((result as { error: AuthGuardError }).error.code).toBe("SERVICE_UNAVAILABLE");
+  });
+
+  it("profile 查询本身抛异常时安全守卫同样拒绝，且不是 UNAUTHORIZED", async () => {
     const supabase = mockSupabase();
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockRejectedValue(new Error("profile unavailable")),
+          maybeSingle: vi.fn().mockRejectedValue(new Error("profile unavailable")),
         }),
       }),
     });
     createClientMock.mockResolvedValue(supabase);
 
     const result = await safelyRequireAuth();
-    expect(result).toEqual({ success: false, error: UNAUTHORIZED });
+    expect(result).toEqual({ success: false, error: SERVICE_UNAVAILABLE });
+  });
+
+  it("requireAuth 在角色读取失败时抛 SERVICE_UNAVAILABLE 并记录原因", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    createClientMock.mockResolvedValue(mockSupabase({ profileQueryError: true }));
+
+    await expect(requireAuth()).rejects.toBe(SERVICE_UNAVAILABLE);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[guards] 读取会话角色失败",
+      expect.objectContaining({ message: "connection terminated" }),
+    );
+    consoleError.mockRestore();
   });
 
   it("认证用户的非法 profile role 按最低权限 member 处理", async () => {
@@ -161,11 +222,27 @@ describe("safelyRequireAuth()", () => {
     if (!result.success) expect(result.error).toBe(UNAUTHORIZED);
   });
 
-  it("supabase 异常时捕获为 UNAUTHORIZED", async () => {
-    createClientMock.mockResolvedValue(mockSupabase({ getUserError: true }));
+  // API 路由上的匿名调用走的就是这条路（中间件不保护 /api/*）。把 AuthSessionMissingError
+  // 当故障会返回 503，客户端于是清不掉会话也拿不到「请重新登录」——那是一次自我造成的停机。
+  it("匿名调用（AuthSessionMissingError）返回 UNAUTHORIZED，不是 SERVICE_UNAVAILABLE", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ noSessionError: true }));
     const result = await safelyRequireAuth();
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error).toBe(UNAUTHORIZED);
+  });
+
+  it("会话读取抛异常时回答 SERVICE_UNAVAILABLE，而不是没登录", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ getUserError: true }));
+    const result = await safelyRequireAuth();
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("SERVICE_UNAVAILABLE");
+  });
+
+  it("会话读取返回网络型 error（不抛）时同样回答 SERVICE_UNAVAILABLE", async () => {
+    createClientMock.mockResolvedValue(mockSupabase({ getUserErrorObject: true }));
+    const result = await safelyRequireAuth();
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("已登录返回用户数据", async () => {
@@ -220,6 +297,10 @@ describe("guardHttpStatus()", () => {
     expect(guardHttpStatus(UNAUTHORIZED)).toBe(401);
     expect(guardHttpStatus(FORBIDDEN)).toBe(403);
     expect(guardHttpStatus(new AuthGuardError("x", "NOT_FOUND"))).toBe(403);
+  });
+
+  it("SERVICE_UNAVAILABLE → 503，与「无权限」分开", () => {
+    expect(guardHttpStatus(SERVICE_UNAVAILABLE)).toBe(503);
   });
 });
 
