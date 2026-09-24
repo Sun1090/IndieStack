@@ -27,7 +27,8 @@
 | `pnpm test:visual`                   | 对比 Linux Chromium 视觉基线（CI 自动执行）                                     |
 | `pnpm test:visual:update`            | 在 Linux 容器中更新视觉基线，不从 macOS 直接生成                                |
 | `pnpm smoke:supabase-identity`       | 本地/staging Supabase 真实身份矩阵（anon/authenticated/service_role + Storage） |
-| `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
+| `pnpm verify`                        | 一次构建的完整本地发布门禁：check（类型/lint/i18n 键对称）+ test + build + bundle/性能产物门禁 |
+| `pnpm verify:build`                  | `pnpm verify` 的同义入口（`.husky/pre-push` 用的就是这个名字；构建已含在其中，不再重复跑一次）  |
 | `pnpm check:production-smoke`       | 校验 Production Smoke workflow 的手动/定时入口、URL、cron、证据留存契约，以及「读 inputs 的手动作业必须排除 schedule 触发」与两个作业各自的 artifact 名 |
 | `pnpm check:query-columns`         | 校验查询链里每个字面量列名都存在于生成的行类型中（C07）                          |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
@@ -322,9 +323,13 @@ Lint & Type Check job 均会执行。门禁只验证治理结构和引用完整�
 5. 检查清单「打标签」章节的 `git tag vX.Y.Z` 必须与 `package.json` 版本一致 → `CHECKLIST_TAG_VERSION`。
 
 当前豁免只有三条，且都写明替代覆盖方式：`check:migration-history`（需要本地 Supabase）、
-`check:bundle`（本地需要完整生产构建，由 `pnpm verify:build` 覆盖；CI 的 Build job 在
-`pnpm build` 之后直接跑 `node scripts/check-bundle.js`，复用同一份产物，不需要再构建）、
-`check:perf`（本地需要 `.next` 产物，CI 由 Build job 执行）。
+`check:bundle`（只读 `.next/static`，check-all 不触发构建；本地由 `pnpm verify` 在建完之后跑它，
+CI 的 Build job 在 `pnpm build` 之后直接跑 `node scripts/check-bundle.js`，复用同一份产物，不需要再构建）、
+`check:perf`（本地需要 `.next` 产物，本地同样由 `pnpm verify` 覆盖，CI 由 Build job 执行）。
+`check:bundle` 在量体积之前先判一次新鲜度（规则 `src/lib/release/bundle-freshness.ts`，IO 在
+`scripts/lib/bundle-freshness-check.js`）：只要有输入文件比产物新就直接失败，因为这条门禁
+自己不构建，调用方漏了构建时它量到的是上一次成功构建的目录——2026-09-24 实测过一次，源码里
+有硬语法错误，`pnpm check:bundle` 仍然退出 0 并报出正常体积。
 规则实现位于 `src/lib/release/gate-wiring.ts`（纯函数，单测覆盖），IO/CLI 位于
 `scripts/lib/gate-wiring-check.js`，由 `scripts/check-gates.js` 经 Node 原生 type stripping 调用；
 `pnpm check:all` 与 CI 的 Lint & Type Check job 均会执行。它只证明门禁被接线，不证明门禁本身的强度。

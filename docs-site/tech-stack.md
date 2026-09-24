@@ -71,7 +71,8 @@ When `NEXT_PUBLIC_MOCK_ENABLED=true`, all Supabase queries use `@faker-js/faker`
 
 ## Version Management
 
-- **Code Quality**: ESLint (Next.js ruleset) + Prettier + husky (pre-commit + commit-msg hooks)
-- **Commit Convention**: Conventional Commits (`feat`/`fix`/`docs`/`chore`/`refactor`/`test`)
+- **Code Quality**: ESLint (Next.js ruleset) + Prettier
+- **Git Hooks**: `.husky/pre-push` → `pnpm verify:build`, wired by `scripts/install-hooks.sh` on install
+- **Commit Convention**: Conventional Commits (`feat`/`fix`/`docs`/`chore`/`refactor`/`test`), reviewed — commitlint isn't a dependency here
 - **Branch Strategy**: `main` (production) → `develop` → `feature/*`
 - **CI Pipeline**: PR → lint + type-check + test → merge → auto deploy

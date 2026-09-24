@@ -5,6 +5,12 @@
  * 示例: feat(auth): 添加 OAuth 登录功能
  *        fix(api): 修复用户查询分页问题
  *        docs: 更新部署文档
+ *
+ * 注意：本仓库没有把 @commitlint/cli 装成依赖，也没有 commit-msg 钩子，所以这份规则
+ * 目前是「登记在册、由 review 执行」，不是机器强制。要启用机器校验：
+ * `pnpm add -D @commitlint/cli @commitlint/config-conventional`，再补一个
+ * `.husky/commit-msg` 调 `pnpm exec commitlint --edit "$1"`——`pnpm check:hooks`
+ * 会在依赖没装齐之前拒绝任何引用 commitlint 的钩子，免得再留下一个跑不了的钩子。
  */
 module.exports = {
   extends: ["@commitlint/config-conventional"],

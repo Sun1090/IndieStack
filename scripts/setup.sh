@@ -42,6 +42,9 @@ fi
 info "Installing dependencies with pnpm..."
 pnpm install
 
+# Git hooks (`prepare` already wires them during install; repeated here for --ignore-scripts runs)
+sh scripts/install-hooks.sh
+
 # Setup environment
 if [ ! -f .env.local ]; then
   info "Creating .env.local from .env.example..."
