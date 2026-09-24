@@ -1908,3 +1908,58 @@
   变动即过期，下一次合并动作之后要重跑而不是引用。
 - 下一项：把这一遍的四份数字（`check:all` / `test:coverage` / 6 条边 / C11 在合成树绿）同步进 PR #118 正文。
 - 更新时间：2026-09-24（UTC 09:05 前后）。
+
+## 2026-09-24 — 第五次从零重建（46 条 / 24 个栈尖）：上一遍那句「不重跑」被推翻，红的是 #138 自己的一条等号
+
+- 里程碑 / 版本：v0.12.0 文档治理（PR #118 分支，base `main` = `ad4b029`）。
+- 状态：DONE（待合并）。
+- 分支 / commit：`docs/pr-merge-order`（本条目）。
+- 为什么做：本分支上一条（第四节最后那段）写着「#138 只是把 #137 顶成中间节点，因此这一遍不重跑整队列」。
+  那句的输入是**上一次模拟的冲突面**，而上一次量到的 `pr/137` 是 `09717e4`——本地 fetch 的 reflog 记着它
+  后来才 fast-forward 到 `ec7a6c1`。也就是说那是一个已经过时的测量被当成了事实用。合并动作在即，
+  这份地图过时比没有更糟，所以重跑。
+- 完成内容：
+  1. `sim/queue-46` 从 `origin/main`（仍是 `ad4b029`）按编号升序并入 **24 个栈尖**：`main` 之上
+     **173 个 commit / 24 个 merge**，**46/46 个 PR head 逐个 `git merge-base --is-ancestor` 证完**，
+     树里 `git grep --cached "^<<<<<<< "` 零命中，`pnpm-lock.yaml` 与 `main` 零差异（不需要重装依赖）。
+     修完下面第 3 点之后又并了一次，同一棵树到 **176 个 commit / 25 个 merge**；边数与包含性仍按
+     24 个 merge 那一棵扫，因为「一次合并 = 一条边」只在只有栈尖的那一遍里成立。
+  2. 判断边 **6 条 / 24 次合并**（`/tmp/edges46.js`：对每个 merge 跑 `git merge-tree --write-tree m^1 m^2`，
+     冲突记录取 `$4`，去掉两份台账）。边数与上一遍相同，**归属与文件集变了**：第六条从 #137 挪到 **#138**
+     （链尖带进 C11 那批文件），重叠面是 `docs-site/{,zh-CN/}scripts.md` + `docs/testing.md` +
+     `package.json` + `scripts/check-all.sh`，**roadmap 这一遍没撞**。对「消失」做了两步证伪：
+     ① 把 `pr/137` 单独合进同一个父树 `0f1b38a`，冲突文件集与合 `pr/138` 一字不差——不是 #138 挤掉的；
+     ② 把这条链上前后五个 commit 逐个对同一父树跑 `merge-tree`：`09717e4` 撞 roadmap（3 条记录 = 1 个文件
+     × 3 个 stage），`721f4c9`（任务池不再自己抄条数、C11 让开 19 号）起**不撞**，其后三个都不撞。
+     一条边的消失是一个 commit 的事，机制是量出来的不是猜的。
+  3. **这一遍唯一真实的红是 #138 自己带的一条断言**：合成树上 `CI=true pnpm check:all` 报
+     `expected 16 to be 14`。数字没错——#136 给两条营销端点加了窗口；错在把接线时量到的那一个数
+     写成等号，于是**谁按顺序合到 #138，CI 就在一条并不存在的回归上红一次**。已在 #138 分支修成
+     地板值 + 家族白名单（见 `feat/measure-route-rate-limits` 同日条目），修完合成树复跑全绿。
+  4. 六条边的**手工解法**逐条落进 PR #118 正文（合并的人要能照着做，而不是只知道「有冲突」）：
+     #114 那条不是 keep-both——两份 `readCheckoutScope` 与两份 `type CheckoutScope` 会同时留在文件里
+     （位置不同所以没有文本冲突），只有 `pnpm type-check` 看得见，必须手工删掉 #114 的那份 helper；
+     #119 两条 hydration helper 各用一个，import 合成一行；#120 顶部文档注释两段都留 + 两个 import
+     都留（只删标记会产出 28 个类型错）；#129 / #131 / #138 是表格行与脚本行的并集。
+- 验证命令与结果（全部在 `sim/queue-46` 这棵合成树上跑）：
+  - 第一次 `CI=true pnpm check:all` → **exit 1**，红在 `check:progress` 那 3 个乱序点；排完序复跑
+    → **exit 1**，红在 `pnpm test` 的那条等号（`Test Files 1 failed | 228 passed (229)`，
+    唯一失败用例就是 `route-auth.test.ts > 真实仓库 > 限流器读数…`，`expected 16 to be 14`）；
+    等号修掉并再并一次之后才全绿。
+  - 台账排序第五次验证「从零重建必然破顺序」：稳定排序后 **97 条条目 / 55 条换位**，
+    行数 4365 → 4365 且内容多重集相同（脚本自己断言这两点才写盘），`check:progress` exit 0。
+  - 等号修掉并再并一次之后 `CI=true pnpm check:all` → **exit 0**，
+    `Test Files 229 passed (229)` / `Tests 2699 passed (2699)`。
+  - `pnpm test:coverage` → **exit 0**，`All files 97.46 / 92.37 / 98.27 / 98.63`
+    （阈值 91 / 90 / 93 / 92 一字未动；上一趟 97.46 / 92.38 / 98.27 / 98.62）。
+  - `node scripts/check-route-auth.js` → `✅ 45 个 handler 全部登记且守卫可达（6 个 public /
+    调用图截断计数 792）`，与单分支一字不差；`--rate-limit-report` →
+    **45 个 handler / 12 个路由文件**有限流器绑定，`token` 那两条报成
+    `src/lib/marketing/request.ts#marketingTokenLimit`（两条营销路由自己一行都没 import 限流库）。
+- 变更文件：`docs/progress.md`（本条目，纯追加）。
+- 阻塞 / 风险 / 回滚：纯记账，回滚 = revert 本 commit。`sim/queue-46` 只在本地，从未推送、从未建 PR、
+  从未碰 `main` 或任何真实 PR 分支；数字已全部写进本条与 PR #118 正文，记完即删。
+  风险照旧一条：这份矩阵随队列每次变动即过期，下一次合并动作之后要重跑而不是引用——本条就是上一条
+  犯了这个错的现场。
+- 下一项：把这一遍的结果同步进 PR #118 正文（含对上一段「不重跑」的公开更正）。
+- 更新时间：2026-09-24（UTC 10:55 前后）。
