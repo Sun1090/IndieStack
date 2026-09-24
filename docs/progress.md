@@ -1153,3 +1153,60 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — Mock 替身缺 `remove()`：上传失败的回滚在 mock 模式下一次都没做成过
+
+- 里程碑 / 版本：v0.12.0；不在 roadmap 条目里，是「替身与被替身的表面漂移」这一族的新实例。
+- 状态：DONE，已开 PR #148（base `main`，分支 `fix/mock-storage-remove`）。
+- 起因（不是推测，是日志）：跑 `e2e/uploads.spec.ts` 的注入失败用例时，worker 服务端日志里有一条
+  `[ERROR] storage object cleanup failed { operation: "avatar-upload-rollback", resourceId: "mock-user-001", key: "avatars/mock-user-001/…png" }`
+  后面跟 `TypeError: createAdminClient(...).storage.from(...).remove is not a function`。
+  调用点在 `src/lib/storage/index.ts:100`，替身在 `src/lib/mock/index.ts` 的 `storage.from()`——那里只有
+  `upload` 与 `getPublicUrl`。`cleanupStorageObject` 把失败 catch 成日志并返回 `false`（设计上刻意非阻塞），
+  所以用户看到的还是「上传失败」那条正确消息，E2E 五条用例全绿：**坏掉的只有孤儿对象清理，而且只坏在 mock 模式**。
+- 为什么门禁没抓到：`src/lib/storage/index.test.ts` 那份手搓替身**自带 `remove`**（26 条用例覆盖驱动的
+  `put/publicUrl/signedUrl/remove` 与 provider 选择），驱动侧一直是真的在被替身满足；而 mock 客户端这边
+  从来没有一条用例问过「驱动会调的方法你都有吗」。仓库里已有 C07（列名 vs 生成类型）、C11（路由 vs 鉴权清单）
+  两个「两个真相源对账」门禁，替身表面是同一族的第三个位置。
+- 完成内容：
+  1. `src/lib/mock/index.ts` 的 `storage.from()` 补 `remove(paths)`，返回 supabase-js 的形状
+     `{ data: [{ path, bucket_id, id }], error: null }`；**刻意不消费 `UploadFailNext`**——回滚是「把没写成的那个对象删掉」，
+     不是一次新的上传，让它计入就会把「注入 N 次失败」那批用例的语义改掉（这条决定下面有用例钉住，且它自己差点钉不住）。
+  2. 新增 `src/lib/storage/mock-parity.test.ts` 4 条：表面存在（逐个问方法名，缺哪个点名哪个）、返回形状、
+     回滚不消费注入预算、驱动侧 `getStorageDriver().remove()` 真的走到同一个客户端。
+  3. 三处文档把注入打错方法名说了：`docs/architecture/13-mock-system.md`、`docs-site/mock.md`、
+     `docs-site/zh-CN/mock.md` 都写「`failNext` 让 `storage.put()` 失败」，而真正返回注入错误的是
+     `storage.from(bucket).upload()`；`put` 是**驱动对象自己**的方法名（编译栈帧里就是 `Object.put`，推测这个说法
+     从那里来），OSS 驱动的 `store.put()`（`src/lib/storage/index.ts:120`）压根不读那个计数器。
+- 方法上值得记住的一条（第一版用例是**测不出来的**）：注入独立性那条原本写 `setMockUploadFailNext(1)` 再
+  `upload` → 预算被上传自己吃光，`remove` 时读到的本来就是 0——把 `remove` 改成「也扣一次」之后**四条全绿**，
+  变异活了下来。改成 `setMockUploadFailNext(2)`、断言回滚后预算仍是 `1`，同一个变异才恰好红 1 条。
+  教训：**断言「A 不消耗共享计数器」时，必须在 A 执行前还剩着预算**，否则这条断言恒真。
+- 变更文件：`src/lib/mock/index.ts`、`src/lib/storage/mock-parity.test.ts`（新增）、
+  `docs/architecture/13-mock-system.md`、`docs-site/mock.md`、`docs-site/zh-CN/mock.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - `npx vitest run src/lib/storage/mock-parity.test.ts src/lib/storage/index.test.ts` → 30 通过（新增 4 条）。
+  - 变异核对 3 项，每项都先确认改动落地再跑，`git checkout --` 还原并校验逐字节一致：
+    删掉整个 `remove` → **4 条全红**（表面缺失点名 `['remove']`、形状/独立性 `client.remove is not a function`、
+    驱动侧 promise rejected）；返回形状改成 `{data:null,error:null}` → **恰好红形状那条**（另外三条仍绿，
+    说明三条各判各的事，不是重复覆盖）；`remove` 改成消费 `UploadFailNext` → 第一版 **0 红（幸存者）**，
+    加固后恰好红独立性那条；未变异的正向对照 4 绿。
+  - `CI=true pnpm check:all` → **exit 0**，37 步、`200 文件 / 2295 用例`（`main` 上是 199 文件 / 2291 用例，
+    即本条 +1 文件 / +4 用例）。
+  - `pnpm build` → exit 0。
+  - **真环境复验**：`npx playwright test e2e/uploads.spec.ts` → 5 passed（22.6s），同一份
+    `.next-e2e-0/dev/logs/next-development.log` 里那行从修前的 `[ERROR] storage object cleanup failed … TypeError`
+    变成修后的 `[INFO] storage object cleaned`（`operation: "avatar-upload-rollback"`）。这条 INFO 只在
+    `driver.remove()` 不抛时才打，所以「0 个 ERROR」不是空读数——同一份日志里仍然有 1 条
+    `avatar upload failed`（那是被注入的失败，本来就该有）。
+- 归属检查（动手前量的，55 条 open PR、`--json files` 全部非空）：`src/lib/mock/index.ts`、
+  `src/lib/storage/*`、`e2e/uploads.spec.ts` 与上述三份文档**全部 FREE**；
+  `src/app/api/e2e/mock-upload/route.ts` 属于 **#135**，所以它头部那句同样写错的 `storage.put()` 注释
+  **本条没动**——留给 #135 的作者或合并时顺手改，不跨 PR 抢文件。
+- 阻塞 / 风险 / 回滚：不改生产路径（生产走真 supabase-js，那里 `remove` 一直存在），mock 行为只多不少；
+  唯一潜在影响是若将来有 E2E 用例想让**回滚**失败，需要新开关而不是复用 `UploadFailNext`。
+  回滚 = revert 本 PR 的两个 commit。
+- 下一项：本条只补了 storage 一族；Mock 客户端其余表面（`from()` 的链式方法、`auth.*`）与被替身调用点的
+  对账还没有测——按 C11 的做法可以做成门禁（「驱动/调用方真的调到的方法，替身必须有」），但要先量命中面，
+  命中为 0 就不值得开门禁，只留这条对账用例。
+- 更新时间：2026-09-25（UTC 21:25 前后）。

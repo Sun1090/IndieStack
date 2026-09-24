@@ -204,6 +204,25 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **上传失败后的回滚在 Mock 模式下从来没真的删过对象**：`src/lib/storage/index.ts:100` 调
+  `storage.from("avatars").remove([key])`，而 Mock 客户端的 `from()` 只有 `upload` 与 `getPublicUrl`——于是每次注入失败
+  都抛 `TypeError: ... remove is not a function`，被 `cleanupStorageObject` 的 catch 咽成一条
+  `[ERROR] storage object cleanup failed`（E2E 服务端日志实测到 1 次，`operation: "avatar-upload-rollback"`）。
+  驱动自己的 26 条用例全是绿的，因为它那份手搓替身**本来就带 `remove`**：缺的是「驱动会调的方法，替身必须也有」这层对账。
+  新增 `src/lib/storage/mock-parity.test.ts` 4 条：表面存在（按驱动真的会调的方法名逐个问）、返回形状
+  （`{data:[{path,bucket_id,id}], error:null}`）、**回滚不消费 `UploadFailNext`**（回滚不是一次新的上传，计入会改掉
+  「注入 N 次失败」那批 E2E 用例的语义）、驱动侧真的走到同一个客户端。修之前第三条是**测不出来的**：注入值写 1 时
+  上传自己就把预算吃光，回滚看到的本来就是 0，「回滚也扣一次」这个变异在 4 绿里活了下来——改成注入 2、断言回滚后
+  预算仍是 1，它才恰好红。变异核对 3 项：删掉整个 `remove` 抓 4 条、返回形状改成 `data: null` 恰好抓形状那条
+  （另外三条各判各的事，不互相顶）、`remove` 消费注入预算恰好抓独立性那条；每步 `git checkout --` 还原并校验逐字节一致。
+  真环境复验：`npx playwright test e2e/uploads.spec.ts` 5 passed，同一份 worker 日志里那行由
+  `[ERROR] storage object cleanup failed … TypeError` 变成 `[INFO] storage object cleaned`（这条 INFO 只在
+  `remove` 不抛的时候才打，所以「没有 ERROR」不是空读数）。
+  顺手把三处文档里「`failNext` 让 `storage.put()` 确定性失败」改成真正返回错误的是
+  `storage.from(bucket).upload()`——`put` 是驱动对象自己的方法名（编译栈帧里的 `Object.put`），而 OSS 驱动的
+  `store.put()` 根本不读这个计数器；`src/app/api/e2e/mock-upload/route.ts` 头部注释同样写着 `storage.put()`，
+  但该文件属于 PR #135，本条**没有**动它。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
