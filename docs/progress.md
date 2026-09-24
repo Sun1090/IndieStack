@@ -1484,13 +1484,15 @@
 
 - 里程碑 / 版本：v0.12.0；上一条留下的那句话（「#92 新的 5 个 commit 之后要重跑才算数」）在这一条兑现。
   分支 `docs/pr-merge-order`（PR #118，base `main`）。模拟发生在本地分支 `sim/queue-42`
-  （`/tmp/merge-sim-42`，tip `c89d8a0` 之后再两条整理 commit），**没有推送、没有碰任何远端、没有对 `main` 做任何操作**。
+  （worktree `/tmp/merge-sim-42`，合并树 `c89d8a0`，加两条整理 commit 后 tip `d9d35bd`），
+  **没有推送、没有碰任何远端、没有对 `main` 做任何操作**。
 - 状态：DONE。重跑的范围是 41 条 open PR（`origin/main` 仍是 `ad4b029`，队列自上次模拟没有合进任何东西）。
 - 做法（与上一条同一套，多了两处修正）：`git fetch origin '+refs/pull/*/head:refs/remotes/pr/*'` 把 41 个
   head 取到本地 → `git worktree add -b sim/queue-42 /tmp/merge-sim-42 origin/main` → 按编号升序
   `git merge --no-edit pr/<n>`，每次合并后**核对落地的第二父（或快进后的 HEAD）就是那条 PR 的 head**，
-  不匹配就停。包含关系仍是逐个证的：**41/41 通过、`missing=0`**；树上是 `main` 之上 **152 个 commit**、
-  first-parent 合并 **40 次**（少的那一次是 #92 直接快进）。
+  不匹配就停。包含关系仍是逐个证的：**41/41 通过、`missing=0`**；合并树 `c89d8a0` 上是 `main` 之上
+  **152 个 commit**、first-parent 合并 **40 次**（少的那一次是 #92 直接快进）。同一条断言在整理后的
+  tip `d9d35bd`（154 个 commit）上**重跑过一遍**，仍然 41/41——那两条整理 commit 没有丢掉任何 head。
 - 冲突只落在那几类共享追加区，每个文件的**独立编辑条数**（逐条 PR 自己的 delta，
   `merge-base <base-ref-oid> <head>` 之后 diff 文件全名）是量出来的：`docs/progress.md` 41、
   `CHANGELOG.md` 39、`docs/testing.md` 13、`messages/{en,zh-CN}/actions.json` 各 7、
