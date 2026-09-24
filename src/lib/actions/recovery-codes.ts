@@ -69,7 +69,28 @@ export async function hasRecoveryCodes(): Promise<ActionResult<{ has: boolean }>
   }
 }
 
-/** 兑换恢复码：消费并解绑全部 TOTP 因子（aal1 会话即可调用，用于登录挑战页自救） */
+/**
+ * 解绑该用户的全部 TOTP 因子（删掉 verified factor 会登出所有会话）。
+ * `listFactors()` / `deleteFactor()` 都走 Supabase Auth 管理端口：失败只出现在返回的 `error` 上，
+ * 不抛异常——所以这里必须把它带回去，否则「一个因子都没解绑」会长成一次成功的自救。
+ * 返回 null 表示成功；「本来就没有 TOTP 因子」是合法结果，不算失败。
+ */
+async function unbindTotpFactors(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+): Promise<Error | null> {
+  const listed = await admin.auth.admin.mfa.listFactors({ userId });
+  if (listed.error) return new Error(listed.error.message);
+
+  for (const factor of listed.data?.factors ?? []) {
+    if (factor.factor_type !== "totp") continue;
+    const deleted = await admin.auth.admin.mfa.deleteFactor({ id: factor.id, userId });
+    if (deleted.error) return new Error(deleted.error.message);
+  }
+  return null;
+}
+
+/** 兑换恢复码：先解绑全部 TOTP 因子，成功后才消费这一条码（aal1 会话即可调用，用于登录挑战页自救） */
 export async function redeemRecoveryCode(code: string): Promise<ActionResult> {
   const limits = await rateLimit.check(new Request("http://local/redeem"));
   if (!limits.allowed) return fail("rateLimited");
@@ -95,10 +116,18 @@ export async function redeemRecoveryCode(code: string): Promise<ActionResult> {
     });
     if (!match) return fail("mfaInvalidCode");
 
+    // 先解绑 TOTP，再扣恢复码。顺序反过来的话，一次解绑失败会同时留下两件坏事：
+    // 恢复码已经用掉（不可逆），而把他锁在门外的验证器还在——而这个功能存在的理由正是
+    // 「验证器丢了」。宁可让一次失败的兑换把码留着（可以重试），也不能报「已解绑」。
+    const unbindFailure = await unbindTotpFactors(createAdminClient(), user.id);
+    if (unbindFailure) {
+      await logActionError("[redeemRecoveryCode] 解绑 TOTP 因子失败", unbindFailure);
+      return fail("recoveryUnenrollFailed");
+    }
+
     const consumed = await recoveryRepo.consumeRecoveryCode(match.id, user.id);
     if (!consumed) return fail("mfaInvalidCode");
 
-    // 先记审计（随后解绑会登出所有会话）
     await appendAuditLog({
       userId: user.id,
       action: "auth.recovery_redeemed",
@@ -106,15 +135,6 @@ export async function redeemRecoveryCode(code: string): Promise<ActionResult> {
       entityId: user.id,
       metadata: {},
     });
-
-    // 解绑该用户全部 TOTP 因子；删 verified factor 会登出所有会话，前端引导重新登录
-    const admin = createAdminClient();
-    const { data: factors } = await admin.auth.admin.mfa.listFactors({ userId: user.id });
-    for (const factor of factors?.factors ?? []) {
-      if (factor.factor_type === "totp") {
-        await admin.auth.admin.mfa.deleteFactor({ id: factor.id, userId: user.id });
-      }
-    }
 
     revalidatePath(ROUTES.login);
     return ok();
