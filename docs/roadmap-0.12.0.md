@@ -461,6 +461,16 @@
     与 D04 撞号）。渲染时有序列表按位置重编号，所以只有源码读者会被误导；引用一律用 ID（C09、D04），
     别用序号。要不要给任务池加一条「ID 唯一 + 序号不撞」的门禁，等有第二次踩到再说。
 
+19. C11 （**2026-09-24 已完成**）`pnpm check:route-auth`：把「每条 API 路由靠什么保护」变成一份会被
+    核对的台账。动机不是假设——`src/proxy.ts` 的 `protectedRoutes` 只有 `/dashboard` 与
+    `/dashboard/(.*)`，`/api/*` 一条都不在里面；而 `api/e2e/email-inbox` 的 GET 确实曾经没有鉴权、
+    同文件 POST/DELETE 有（收件箱里是「已发送」邮件原文，含确认 / 退订 token），少一个守卫全部门禁照绿，
+    因为仓库里没有任何机器可读的记录说「这条路由该有什么」。门禁只判两件可机械核对的事：每个 handler
+    必须有台账条目、条目声明的守卫符号必须真的能从该 handler 走到；`reason` 强制存在且与 `via` 同家族。
+    45 条台账、26 项单测（含把那个真实缺陷复现成一条 `GUARD_MISSING` 的用例、以及放宽调用图深度后
+    结论不变的自证）。规则与解析在 `src/lib/security/route-auth.ts`，IO/CLI 在
+    `scripts/lib/route-auth-check.js` + `scripts/check-route-auth.js`。
+
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 
 18. D01 （**2026-09-22 已完成，范围按实测收窄**）：`pnpm check:cron-contract` 现在核对
