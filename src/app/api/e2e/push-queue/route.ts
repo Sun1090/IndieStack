@@ -41,6 +41,7 @@ import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { isMockEnabled } from "@/lib/mock";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { e2eBearerAuthorized } from "@/lib/testing/e2e-bearer";
 
 export const dynamic = "force-dynamic";
 
@@ -69,8 +70,7 @@ function authOrThrow(request: NextRequest): Response | null {
   if (!isMockEnabled) {
     return jsonNoStore({ error: "Not found" }, { status: 404 });
   }
-  const expected = `Bearer ${process.env.E2E_BEARER_TOKEN ?? ""}`;
-  if (!expected || request.headers.get("authorization") !== expected) {
+  if (!e2eBearerAuthorized(request.headers.get("authorization"))) {
     return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
   return null;

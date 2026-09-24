@@ -13,6 +13,7 @@
 import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { isMockEnabled } from "@/lib/mock";
+import { e2eBearerAuthorized } from "@/lib/testing/e2e-bearer";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,7 @@ function authOk(request: NextRequest): boolean {
   const resendOk =
     Boolean(process.env.RESEND_API_KEY) && auth === `Bearer ${process.env.RESEND_API_KEY}`;
   // E2E 调试接口（DELETE/注入）：spec 持有 E2E_BEARER_TOKEN，与 RESEND_API_KEY 等价可信。
-  const e2eOk =
-    Boolean(process.env.E2E_BEARER_TOKEN) && auth === `Bearer ${process.env.E2E_BEARER_TOKEN}`;
+  const e2eOk = e2eBearerAuthorized(auth);
   return resendOk || e2eOk;
 }
 
