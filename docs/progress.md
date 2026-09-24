@@ -1153,3 +1153,73 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — 三条线索扫到底，三条都是阴性：把分母和探测器的坏法一起记下来
+
+- 里程碑 / 版本：v0.12.0 的测量收口（不改任何行为，价值在于关掉重复挖掘）。
+- 状态：DONE，本条目所在的 PR（base `main` 的独立叶子；编号以 PR 头部为准，条目里不写死——
+  写完这条再去开 PR 的话，硬编码的编号就是下一处「合并之后才发现写错」的东西）。
+- 分支 / commit：`docs/measurement-closures`（基于 `origin/main` `ad4b0299`）。
+- 为什么做：#141（CSV 裸 CR）是从「函数名字声称做 A、实际只做 A 的一半、而且测试里从没点过它的名」
+  这条线索掉出来的。同一族的其余部分、以及两条相邻的「文档说有的东西代码里没有」族，这轮一次扫完。
+  **三条结论全部是阴性**——没有代码改动，但每一条都包含一个「探测器第一版是坏的」的故事，
+  那部分才是下次不用重新踩的东西。
+- 三条结论：
+  1. **「守卫没有任何用例点名」→ 44 条线索，0 条真缺口。** 判据是对 `git ls-files src` 的
+     **357 个文件**找带判定形状的声明（`test(` / `includes(` / `>=` / `length <` …），要求这个名字
+     不出现在 **199 个 `*.test.ts(x)` + `e2e/*.ts`** 全文里；44 条跨 30 个文件，函数体逐条读完。
+     用覆盖率报告交叉验证时**第一版探测器是坏的**：它把一条语句摊到 start..end 的所有行，再用
+     「任何一条有命中的语句也摊到这一行」去减，于是外层长语句盖掉了自己首行的内层语句——
+     报出 `uncovered=0`。正对照（`push-retry.ts:121` / `appark.ts:67` / `metrics.ts:32` 三条已知
+     有 0 命中语句的行）返回「三条都不 uncovered」，当场作废。改成「某行**起始**有 0 命中语句 →
+     该行未覆盖」后正对照 3/3 变红，真读数才是：**44 条里 0 条的函数体从未被执行**
+     （3 条所在的文件压根不在报告里：`components/layout/site-header.tsx`、`i18n/routing.ts`、
+     `lib/mock/mock-docs.ts`，那是「未知」不是「已覆盖」；报告只含 134 个 src 文件）。
+     真正有信息量的是 v8 的 `branchMap`（全仓库 `untaken=313 / total=3896` 作为探测器能跑的证据）：
+     44 条里 **5 条有从未走过的分支**——`rate-limit.ts` 的 `isIpLike` IPv6 侧（**#140 在做**）、
+     `repositories/marketing.ts` 的 `updateStatusByToken` 形状闸门（**已补进 #123**，断言打在
+     `createAdminClient` 的调用次数上，两个方向的探针都红）、`ci/workflow-policy.ts` 的
+     「触发器同行内联写法」返回路径、`migrations/migration-drift.ts` 缺号 >8 时的截断显示、
+     `security/client-write-policies.ts` 的 `dollarTagAt` 兜底。后三条读到底、写法与名字一致、
+     失败方向朝闭，**各开一条 PR 不值**，作为已知未覆盖记下。
+     顺手两条与「未点名」无关的：`site-header.tsx` 的 `isExternalUrl` 六个入参全来自 `ROUTES.*`
+     相对路径，那条外链分支在本仓库永远走不到（死代码，不是缺陷）；`ui/a11y-rules.ts` 的 `hasAlt`
+     写作 `/\balt=/`，`data-alt=` 会被误判成「有 alt」，按 `[^"'\s-]alt=|data-alt` 扫全部 `.tsx`
+     **当前实例 0 命中**，所以也只是记下。
+  2. **「文档里写的 `pnpm <命令>` 其实不存在」→ 1297 次提及，0 个真死命令。** 语料 152 个 `.md`。
+     11 次未解析，去掉之后是零：4 次是散文截断（「逐个 `pnpm check:*`」、句子里紧跟 `pnpm audit` 的冒号）、
+     1 次是模板占位（`docs/operations/release-audit-template.md` 里的 `pnpm check:x` 讲的就是「任何一条门禁」）、
+     1 次是 pnpm 自己的子命令（`pnpm peers`，pnpm 11 的新命令，实跑会打印 peer 依赖告警），
+     最后一次最有迷惑性：`agents/06-documentation-writer.md` 让人跑 `pnpm deploy:vercel`，而根
+     `package.json` 里没有——**但那个代码块第一行是 `cd docs-site`**，`deploy:vercel` 是
+     `docs-site/package.json` 的脚本（`vercel --prod`），`pnpm-workspace.yaml` 里 `.` 与 `docs-site` 两个包。
+     判据因此是：**按工作区逐包收脚本名，再判定**；并且对幸存项**真的跑一次**看
+     `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL`。
+  3. **环境变量双向核对 → 0 个只写不读，也 0 个只读不写。** 正向：357 个非测试 src 文件里
+     直接读到的 37 个变量名，逐个能归位——平台注入的（`NODE_ENV` / `NEXT_RUNTIME` / `VERCEL_ENV` /
+     `VERCEL_GIT_COMMIT_SHA` 及其 `NEXT_PUBLIC_` 构建期内联版）、测试装置自己塞的
+     （`E2E_BEARER_TOKEN` 在 `playwright.config.ts:38`，且 `docs-site/mock.md` 两份与
+     `docs/architecture/13-mock-system.md` 都写了），以及走非常规写法读的三个
+     （`process.env[APPARK_SAMPLE_RATE_KEY]`、模板串 `NEXT_PUBLIC_FEATURE_${name}`、
+     `OSS_VARIABLES.filter(...)`）。反向：`.env.example` 的 37 条在 939 个文件的语料里
+     **每条都有消费者**，`SENTRY_AUTH_TOKEN/ORG/PROJECT` 与 `SUPABASE_DB_URL` 不在 src 而在
+     sentry 配置、脚本与工作流里。**两条都干净 = 不需要改动，但这是模板产品最该长期干净的地方**，
+     下次谁再扫这三族，直接引用本条。
+- 为什么不顺手做成门禁：第 2 条最适合（它防的就是文档腐烂），但它要维护一份 pnpm 内建命令清单，
+  而这份清单**随 pnpm 版本增长**（`peers` 就是 11 里新加的）；门禁会红在「代理升级」这种与本仓库
+  无关的事件上，红在合并之后——正是 #137 / #131 这几轮在修的同一族。真要收，收法应该是
+  「从每个工作区包解析脚本名 + 用 `pnpm <cmd>` 的退出码判定，不维护内建清单」，那是一条独立的活。
+- 变更文件：本条目（`docs/progress.md`）。
+- 验证命令与结果：三个扫描脚本都是只读的（`/private/tmp/scan-untested-guards.mjs`、
+  `cov-leads.mjs`、`cov-branches.mjs`、`dump-leads.mjs`，以及内联的 pnpm / env 两遍），
+  分母印在各自输出里；`pnpm test:coverage` → exit 0（HEAD `e951b03b`，即 #142 的分支头，
+  本报告就是它，所以「已覆盖」的读数以该 commit 为准）；`vitest run src/lib/repositories/marketing.test.ts`
+  → 13 passed（#123 的追加用例）；本机 push 前 `pnpm -s lint` / `pnpm -s type-check` / `pnpm -s test` /
+  `CI=true pnpm -s check:all` / `pnpm build` 的逐项结果记在本条目的 PR 正文里。
+- 阻塞 / 风险：无代码风险（不改行为）。风险只有一个：阴性结论会被读成「查过了所以不用再查」，
+  而这三族的判据都依赖**当前的文件清单**——新增一个 `src/lib/**` 守卫、往 `.env.example` 加一行、
+  或改一次 pnpm 大版本，读数都会变。所以每条都印了分母，re-scan 的成本是几条命令。
+- 下一项：仓库侧没有不依赖用户动作就能推进的活了——生产构建 commit 的证明（B 域）等一次合并，
+  C06 / A05 出队语义 / C12 是否升级为判定 / `x-forwarded-for` 信任模型 / `profiles.language`
+  与邮件语言等产品口径，都需要拍板。
+- 更新时间：2026-09-25（UTC 17:5x 前后）。
