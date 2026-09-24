@@ -206,14 +206,14 @@ graph LR
 
 | 类型 | 规范 | 示例 |
 |------|------|------|
-| 页面文件 | `page.tsx` | `app/dashboard/page.tsx` |
-| 布局文件 | `layout.tsx` | `app/dashboard/layout.tsx` |
-| API 路由 | `route.ts` | `app/api/teams/route.ts` |
-| 加载状态 | `loading.tsx` | `app/dashboard/loading.tsx` |
-| 错误边界 | `error.tsx` | `app/dashboard/error.tsx` |
-| 未找到 | `not-found.tsx` | `app/not-found.tsx` |
-| Server Actions | `*.ts`（含 `"use server"`） | `lib/actions/team.ts` |
-| 客户端组件 | `"use client"` 声明 | `components/providers/theme-provider.tsx` |
-| 验证 Schema | `*.ts`（Zod） | `lib/validations/auth.ts` |
-| 测试文件 | `*.test.ts` | `lib/utils.test.ts` |
+| 页面文件 | `page.tsx` | `src/app/dashboard/page.tsx` |
+| 布局文件 | `layout.tsx` | `src/app/dashboard/layout.tsx` |
+| API 路由 | `route.ts` | `src/app/api/teams/route.ts` |
+| 加载状态 | `loading.tsx` | `src/app/dashboard/loading.tsx` |
+| 错误边界 | `error.tsx` | `src/app/dashboard/error.tsx` |
+| 未找到 | `not-found.tsx` | `src/app/not-found.tsx` |
+| Server Actions | `*.ts`（含 `"use server"`） | `src/lib/actions/team.ts` |
+| 客户端组件 | `"use client"` 声明 | `src/components/providers/theme-provider.tsx` |
+| 验证 Schema | `*.ts`（Zod） | `src/lib/validations/auth.ts` |
+| 测试文件 | `*.test.ts` | `src/lib/utils.test.ts` |
 | i18n 消息 | `{namespace}.json` | `messages/zh-CN/dashboard.json` |

@@ -204,6 +204,21 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **文档里有指向不存在的文件的路径，还有一份「proxy 会写语言 Cookie」的假说明书**：Next 16 把
+  middleware 改名成 proxy 之后真文件是 `src/proxy.ts`，而 `docs-site/auth-flow.md`（中英两半）与
+  `docs/architecture/04-routing.md` 还在写 `src/middleware.ts`，并把「检测浏览器语言偏好 → 设置语言
+  Cookie」列成这条链路的第一步——`src/proxy.ts` 里没有任何 locale / Cookie 逻辑，locale 是
+  `src/i18n/request.ts` 从 Cookie 读的。照文档找文件、或照文档预期「proxy 会写语言 Cookie」去排查的人
+  会走进一个不存在的目录。同一次扫描（152 个 `.md`、1451 处路径引用）另外修掉 6 处指向不存在的写法：
+  `agents/01-code-writer.md` 让人往 `src/lib/i18n/messages/` 加文案（真实位置是 `messages/en/` 与
+  `messages/zh-CN/`，且 `check:locales` 要求两侧键集对称）、`agents/07-dba.md` 的 `supabase/admin.ts`
+  （实为 `src/lib/supabase/admin.ts`）、`CONTRIBUTING.md` 的 `docs-site/index.html`（VitePress 的源文件是
+  `docs-site/index.md`）、`CLAUDE.md` 的 `lib/types/action-result.ts`、
+  `docs/architecture/02-tech-stack.md` 的 `app/api/`，以及 `03-project-structure.md` 命名表里省略 `src/`
+  的 10 行示例——那张表所在文件的目录树自己就写着 `src/app/`。顺带补上 `04-routing.md` 里
+  `authRoutes` 漏掉的 `/auth/mfa`（代码里有，文档没有）。**没有改的**：`04-routing.md` 那 33 行路由表按
+  App Router 根写路径，改法是在表前加一句约定说明而不是重写整表；CHANGELOG 与 `docs/progress.md`
+  里的历史文本按原样保留（台账是 append-only，改写它等于伪造当时看到的东西）。
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

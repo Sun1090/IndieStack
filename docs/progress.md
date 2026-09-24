@@ -1153,3 +1153,60 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — 文档里的路径引用全量核了一遍：6 处指向不存在的文件，最坏的一处是假说明书
+
+- 里程碑 / 版本：v0.12.0 文档治理（D 族）的一次全量核对 + 收口。
+- 状态：DONE，本条目所在的 PR（base `main` 的独立叶子；编号以 PR 头部为准）。
+- 分支 / commit：`docs/dead-doc-paths`（基于 `origin/main` `ad4b0299`）。
+- 为什么做：#143 记了三条阴性线索，同一套「文档说有的东西代码里没有」的判据换到**路径**上不是阴性——
+  模板产品里最贵的错误就是读者照着文档打不开文件。扫描是上一条里那版探测器的改型。
+- 扫描口径与分母（脚本 `/private/tmp/scan-doc-paths2.mjs`，只读）：152 个 `.md`、**1451 处**
+  `src|scripts|docs|docs-site|e2e|supabase|agents|public|app|lib` 开头的路径 token，
+  未解析 116 处，分三桶：A「补 `src/` 就存在」62 处、B「散文截断」12 处、C「两边都不是」42 处。
+  逐条读 A/C 之后，**真正的缺陷是 7 类**（其中 6 类是路径、1 类是随之暴露的行为描述错误）。
+- 完成内容：
+  1. **`src/middleware.ts` 在任何地方都不存在**（Next 16 已把 middleware 改名 proxy，真文件 `src/proxy.ts`）。
+     写错的地方：`docs-site/auth-flow.md`（英文产品文档）、`docs-site/zh-CN/auth-flow.md` 两处、
+     `docs/architecture/04-routing.md` 的代码示例头。**顺着这条还挖出更要紧的**：那两处文档把
+     「检测浏览器语言偏好 → 设置语言 Cookie」列为这条链路的第一步，而 `src/proxy.ts` 全文没有
+     `locale` / `language` / cookie 相关代码（文件头注释自己写着「中间件不再负责语言检测」），
+     locale 实际由 `src/i18n/request.ts` 从 Cookie 读。照文档去 proxy 里找语言逻辑的人会一直找不到。
+     修法：文件名与函数名改成 `proxy`，六步流程按代码真实顺序重写（CSP nonce + trace-id → `updateSession`
+     → Mock 短路 → 受保护路由 → 认证页重定向 → 放行），并显式写一句「语言不在这里处理」。中英两半同步改。
+  2. `agents/01-code-writer.md` 让代理「添加国际化文本 → `src/lib/i18n/messages/`」——该目录不存在，
+     真实位置 `messages/en/*.json` 与 `messages/zh-CN/*.json`；补一句「两半必须同时加」，因为
+     `check:locales` 的判据写在 `scripts/lib/locales-check.js` 头部：**en 与 zh-CN 的嵌套键集合必须完全一致**
+     （只加一侧就是门禁红，不是风格问题）。同文件另有一处 `lib/types/action-result.ts` 少了 `src/`。
+  3. `agents/07-dba.md` 把 Service Role 客户端写成 `supabase/admin.ts`，实为 `src/lib/supabase/admin.ts`。
+  4. `CONTRIBUTING.md` 让改 `docs-site/index.html`；VitePress 的源文件是 `docs-site/index.md`。
+  5. `CLAUDE.md` 的 `lib/types/action-result.ts` → `src/lib/...`。
+  6. `docs/architecture/02-tech-stack.md` 的 `app/api/` → `src/app/api/`。
+  7. `docs/architecture/03-project-structure.md` 命名表 10 行示例全部省略 `src/`，而**同一份文件**
+     上面的目录树写着 `src/app/`——同页自相矛盾。逐行补前缀（10 个目标都 `ls` 过存在）。
+     另外 `04-routing.md` 的 `authRoutes` 示例漏了 `"/auth/mfa"`（`src/proxy.ts:22` 里有三项），
+     连同下面的那条说明一起补上。
+- 刻意没做的两件事（写下来免得下次又手痒）：
+  1. `04-routing.md` 那 33 行「路由 → 文件」表整体按 App Router 根写路径（`app/dashboard/page.tsx`），
+     文件内部**没有**自相矛盾，属于约定而非错误。重写成 33 行 `src/` 前缀是一次纯风格改动，
+     还会与同时在改 roadmap / docs 的 PR 抢更多行；改成在表前加一句约定说明。
+  2. `CHANGELOG.md`、`docs/progress.md`、`docs/operations/release-exit-report-v0.6.0.md` 里的
+     `lib/auth/guards.ts` 之类简写**原样保留**：那些是 append-only 历史文本，改写等于伪造当时看到的东西
+     （A 桶 62 处里落在历史文本 / 有意约定上的正是这类，剩下的 42 处 C 桶也逐条读过：临时探针
+     `__gate-probe` / `__storage-probe` 明确写了「验证后已清理」，`004_your_feature.sql` 是占位示例，
+     带右括号的 `docs/...md)` 是 markdown 链接语法）。
+- 探测器的坑（下次改判据前先看这段）：**A 桶「补 src/ 就存在」不能整桶当缺陷**——它同时装着
+  真缺陷（命名表示例）与两种假阳性（约定简写、历史文本）。第一版扫描还把 README 的
+  `docs/...md)` 三处当成未解析，因为我只在 token 结尾去掉了 `.` 没去掉 `)`；
+  判据是「同一个文件第 152 行连续三个 token 都以 `)` 结尾」这种不成形的读数。
+- 变更文件：`docs-site/auth-flow.md`、`docs-site/zh-CN/auth-flow.md`、`docs/architecture/02-tech-stack.md`、
+  `docs/architecture/03-project-structure.md`、`docs/architecture/04-routing.md`、`agents/01-code-writer.md`、
+  `agents/07-dba.md`、`CONTRIBUTING.md`、`CLAUDE.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：改完后复跑同一支扫描——**A 桶在活文档里剩下的全部是有意约定（路由表），
+  C 桶数量不变（都是占位 / 探针 / 链接语法）**，`src/middleware.ts` 在全仓库 `.md` 里 0 命中
+  （`git grep` 复核）；改动的每条目标路径都 `ls` 过存在。全量门禁逐项数字记在本条目所在 PR 的正文里。
+- 阻塞 / 风险：零代码行为改动，风险是文档措辞与产品口径不一致（语言 Cookie 那一段）。
+  回滚 = revert 本 PR。
+- 下一项：同族还可以往「文档里的行号引用」走（`route.ts:29` 这类），那是另一种会腐烂的指针；
+  但**它需要一次能定位符号的解析**，不是 existsSync 能判的，先记着不当作本轮。
+- 更新时间：2026-09-25（UTC 18:5x 前后）。

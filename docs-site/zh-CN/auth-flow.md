@@ -25,28 +25,31 @@
  项目使用 `@supabase/ssr` 包实现服务端渲染会话管理：
  
  - **Cookie 存储**: Session 信息存储在 HttpOnly + Secure + SameSite Cookie 中
- - **自动刷新**: Middleware 在每个请求中自动检查并刷新过期会话
+ - **自动刷新**: 代理（`src/proxy.ts`）在每个请求中自动检查并刷新过期会话
  - **Mock 模式**: 开发环境下 `NEXT_PUBLIC_MOCK_ENABLED=true` 时跳过真实认证，使用 `@faker-js/faker` 生成模拟用户数据
  - **未认证保护**: 未登录用户访问 `/dashboard/*` 自动重定向到登录页
  
- ## 中间件保护逻辑
- 
- 中间件（`src/middleware.ts`）在每个请求中执行以下流程：
+ ## 代理（Proxy）保护逻辑
+
+ 代理（`src/proxy.ts`，Next 16 之前称作「middleware / 中间件」）在每个请求中执行以下流程：
  
  ```
- 1. 检测用户浏览器语言偏好 → 设置语言 Cookie
+ 1. 为本次请求生成 CSP nonce 与 trace-id，写入请求头
  2. 刷新 Supabase 会话（自动处理 Token 刷新）
- 3. 检查请求路径是否匹配受保护路由
- 4. 未认证 → 重定向到 /auth/login?redirect=原路径
- 5. 已认证 → 继续请求，传递用户信息
- 6. 已登录用户访问 /auth/login 或 /auth/register → 重定向到 /dashboard
+ 3. Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`）→ 跳过所有路由保护
+ 4. 受保护路由 + 未登录 → 重定向到 /auth/login?redirect=原路径
+ 5. 已登录用户访问 /auth/login 或 /auth/register → 重定向到 /dashboard
+ 6. 其余情况 → 继续请求，传递用户信息
  ```
+
+ 语言不在这里处理：locale 由 `src/i18n/request.ts` 从 Cookie 读取，代理只保留单一职责
+ （会话、路由保护、CSP / trace 头）。
  
  ```typescript
- // src/middleware.ts 核心逻辑
+ // src/proxy.ts 核心逻辑
  import { updateSession } from "@/lib/supabase/middleware";
  
- export async function middleware(request: NextRequest) {
+ export async function proxy(request: NextRequest) {
    const { supabaseResponse, user } = await updateSession(request);
    if (isProtectedRoute(pathname) && !user) {
      const loginUrl = new URL(ROUTES.login, request.url);
@@ -147,5 +150,5 @@
  
  - 固定模拟用户：`dev@indiestack.local`
  - 所有 Auth API 返回模拟成功响应
- - Middleware 跳过实际会话检查，返回 Mock 用户
+ - 代理跳过实际会话检查，返回 Mock 用户
  - 无需数据库即可开发仪表盘所有页面
