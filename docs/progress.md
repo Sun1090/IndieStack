@@ -1722,3 +1722,63 @@
 - 下一项：#98 的必需 CI 结果；`main` 前进之后重跑整队列模拟。
 - 更新时间：2026-09-24。
 
+
+## 2026-09-24 — 44 个 PR 从零重建第二遍：6 条边需要人判断，`check:progress` 顺手抓出我自己三条不合规的台账条目
+
+- 里程碑 / 版本：v0.12.0 收口期的合并证据。分支 `docs/pr-merge-order`（PR #118）。
+- 状态：已完成，等待合并。
+- 为什么要再跑一遍：上一轮模拟覆盖的是 41 个 PR，此后队列长出 #134/#135/#136 三条、`main` 仍是 `ad4b029`。
+  台账里自己写过的规则是「这份矩阵随队列每次变动即过期，要重跑而不是引用」，所以这次是按规则办事，
+  不是因为有人报了问题。
+- 做法（脚本化，不再手敲，理由见下面的「第一次作废」）：`sim/queue-44` 从 `origin/main` 起，
+  按编号升序并入 **24 个栈尖**（44 个 open PR 里其余 20 个是别人的 ancestor，剔除后仍全覆盖），
+  逐个用 `git merge-base --is-ancestor <每个 PR head> sim/queue-44` 证包含关系，
+  结果 **44/44**，`main` 之上 157 个 commit。
+  台账/CHANGELOG 的冲突一律走「两侧都是纯追加 ⇒ 两块都留」的判定器，
+  它对两侧各自与 merge base 做行多重集比较，任何一侧**删过**基线内容就拒绝合并并要求人工——
+  这一条是有牙齿的：中途一次我把 `--ours`/`--theirs` 之外的形状交给它，它直接 REFUSING 了。
+- 第一次整轮作废重跑（我的操作失误，记下来免得再犯）：驱动脚本在「同时有代码冲突」时会**先停下来**，
+  而我在那次停下后手工 `git add CHANGELOG.md docs/progress.md`——**冲突标记还在文件里**，
+  于是 #119、#120 两个 merge commit 把 `<<<<<<<` 提交进了模拟历史。
+  发现方式不是看日志，是下一轮合并时判定器报「a conflict marker survived in the reconstruction」。
+  处置：`reset --hard origin/main` 整轮重跑，把「先解文档、再决定要不要停」写进驱动脚本，
+  并在结尾加一道全索引 `git grep --cached "^<<<<<<< "` 的后检。模拟分支上的历史都是远端 ref 的重放，
+  重跑不丢东西；真实分支一条没动。
+- 六条需要人判断的边（其余全是两块都留）：
+  1. **#114 ↔ #94（两条都以 #92 为根的并行链）——豁免台账必须跟着 #114 走。**
+     我第一版按「两侧条目取并集」处理 `src/lib/security/query-error-channel.ts`，把 #94 那 7 条
+     `debt (C08-b)` 条目也搬了过来；`pnpm check:query-errors` 立刻逐文件点名：
+     `QUERY_ERROR_CHANNEL_EXEMPT_STALE: src/app/api/invitations/route.ts 登记台账 5 处，实际 0 处`
+     （另 6 处同形：`uploads/service.ts` 3、`team/page.tsx` 2、`analytics`、`billing`、`api-keys`、`sessions` 各 1）。
+     也就是说 #114 那条链上这些债务**已经还清**，并集等于把已还的债重新登记。改成整文件取 #114 侧之后门禁通过。
+     附带一条好消息：这道两向对账不是摆设，它在我判断错的方向上准确地红了。
+  2. **#114 ↔ #96（Stripe 结账）**：`route.ts` 两侧是同一个缺陷的两种写法（#96 在调用点按 `source` 打日志，
+     #114 在 helper 内部打），`route.test.ts` 更是整文件互斥 ⇒ 取 #114 侧（route + test 必须同侧，否则断言的是另一份契约）；
+     `messages/{en,zh-CN}/actions.json` 取**键的并集**（#96 带进 `alreadySubscribed`、`recoveryUnenrollFailed`，
+     #114 带进 `apiKeyNotFound`、`apiKeyRevokedButNotCreated`、`uploadUnavailable`，两侧对基线都是纯新增），
+     en 从 79 → **81 键**，两 locale 键集相等；唯一同名不同值的 `checkoutUnavailable` 跟随幸存的那份实现。
+  3. **#114 ↔ #129（`docs-site/scripts.md` 与 zh-CN）**：两侧都在重写 `check:query-columns` 这一行，
+     两块都留会产出一张表里的重复行 ⇒ 按命令取并集、同名行取 #129（那条 PR 正是把这个门禁扩到写入载荷的，描述更新）。
+  4. **#119 ↔ #117（`e2e/admin-contact-mfa.spec.ts`）**：两侧各 import `support/hydrated.ts` 的一个 helper，
+     合并后文件里三个 helper 都在、两个都被调用 ⇒ 解法是一条合并 import，不是两块都留。
+  5. **#120 ↔ #116（`e2e/support/warm-up.ts`）**：两侧都在同一段文档注释尾部各接一段，且各自带 import，
+     裸的 keep-both 会把注释体吐到代码里（历史上就是 28 个 type-check 错）⇒ 合成一个注释块 + 4 条 import 去重。
+  6. **#131 ↔ #126（`scripts/check-all.sh` + `docs/testing.md`）**：两侧加的是**不同**的门禁行 ⇒ keep-both 成立，
+     判定器先确认两侧没有重复行才落笔。
+- 合并之后仍要做的一步（不是可选）：`docs/progress.md` 按日期**稳定排序**。89 条条目里 50 条换了位置，
+  两处 `date-out-of-order` 全清。这条再次印证「增量合并不再破顺序，从零重建必然破」。
+- 这轮抓到的新问题，跟合并顺序有关：**#126 的 `check:progress` 会审所有条目的必填字段，而它还没进 `main`。**
+  判据是 `^-\\s*里程碑[^：:]*[：:]`——也就是接受 `- 里程碑：` 和 `- 里程碑 / 版本：`，
+  但**不接受我写的 `- 版本 / 里程碑：`**（复合词前缀不放行）。于是今天新开的两条 PR 里有三条条目
+  在本地全绿（因为本地没有这道门禁）、一合到 #126 之后就红：`[missing-field]` 共 4 项
+  （#135 两条、#136 一条，其中那条「同日晚些订正」连 `状态` 都没写）。
+  已在两个源分支上把字段改成合规写法并补上缺的两项，另开 PR 的人请注意同一条：**写 `- 里程碑 / 版本：`，不要反过来。**
+- 验证（整棵树 = 44 个 PR 全合完的形状）：`CI=true pnpm check:all` **exit 0**，
+  `Test Files 227 passed (227)`、`Tests 2649 passed (2649)`（`main` 自己是 200 / 2299），
+  `pnpm check:progress` 单跑 ✅「89 条条目，日期非递减且标题无重复」，`pnpm build` **exit 0**（23/23 静态页）。
+  这轮**没有**重跑 `pnpm test:coverage` 与全量 `pnpm test:e2e`（上一轮跑过：97.45/92.29/98.14/98.58 与 113 passed），
+  所以别说成「覆盖率和 E2E 也验过」——要的那两项得再花一轮。
+- 与在审 PR 的重叠：本条只改 `docs/progress.md`（+ 纯追加），代码零改动。
+- 阻塞：无。风险 / 回滚：文档一条，revert 即回滚。
+- 下一项：把这份新矩阵同步进 PR #118 正文；顺手把 #135/#136 三条不合规的台账字段修掉。
+- 更新时间：2026-09-24。
