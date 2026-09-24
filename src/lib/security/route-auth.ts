@@ -81,14 +81,14 @@ export interface RouteAuthIssue {
  * 于是「新守卫没人认领」会显形在这里，而不是散落在各条 reason 的文字里。
  */
 export const PROTECTION_SYMBOLS: Readonly<Record<string, ProtectionFamily>> = {
-  // 会话 / 角色 / 权限
+  // 会话 / 角色 / 权限。这张表只能写**仓库里真的存在**的名字：
+  // 一条不存在的守卫永远不会被走到，于是它除了给读者一个「有这个东西」的错觉之外没有任何作用。
   requireAuth: "session",
   requireRole: "session",
   requirePermission: "session",
   safelyRequireAuth: "session",
   safelyRequireRole: "session",
   safelyRequirePermission: "session",
-  readSessionRole: "session",
   getUser: "session",
   getSession: "session",
   // 请求来源与上传边界
@@ -96,7 +96,6 @@ export const PROTECTION_SYMBOLS: Readonly<Record<string, ProtectionFamily>> = {
   guardUploadRequest: "origin",
   // 第三方签名
   constructEvent: "signature",
-  verifyWebhookSignature: "signature",
   // 共享密钥（cron / 运维端点，以及 e2e 收件箱的 bearer 比对）
   CRON_SECRET: "shared-secret",
   authOk: "shared-secret",
