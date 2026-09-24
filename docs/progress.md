@@ -1153,3 +1153,51 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-24 — C09 面量出来是 90 个 await 点、58 个把 error 通道抹掉；先修掉两处「登出失败读成已登出」
+
+- 里程碑 / 版本：v0.12.0；分支 `fix/c09-swallowed-signout`（base `main`，独立于那条 20 长的栈）。
+- 状态：DONE（两处修复 + 4 项用例）；量出来的剩余面登记，门禁接不接仍未决定。
+- 为什么要量：#92 把 `getUser()` 的语义订正之后，「C09 还剩多少」这个问题在仓库里没有任何读数——
+  之前所有关于 C09 的话都是按站点清单说的，不是按 `await` 点数的。
+- 怎么量的（脚本在本地 `/tmp/measure-c09.mjs`，未入库）：用门禁同一套判据（TypeScript AST，不用正则），
+  把 `src/**`（排除 `*.test.*`）里每个 **await 且调用链上出现过 `.auth`** 的表达式取出来，按「error 通道还剩多少」分类：
+  `destructured-with-error`（绑了）/ `DESTRUCTURED-WITHOUT-ERROR`（解构里没有 `error`，信号不可达）/
+  `result-discarded`（`await x.signOut().catch(()=>undefined)` 这类整个丢弃）/ `assigned-whole`（绑给了变量，还要看数据流）。
+  **量的是整条队列合并后的那棵树 `d9d35bd`，不是 `main`**——分母要的是「41 个 PR 都合完之后代码长什么样」。
+  中途一次假读数：先在 `777ac9e`（#114 的 tip）上量的，那条链**不包含 #92**（`git merge-base --is-ancestor 605be71 777ac9e`
+  退出码非 0），所以 `site-header` 的登出还显示成 `result-discarded`。栈式分支的 tip 不等于「队列的内容」，这条对任何
+  按分支量的度量都成立。
+- 量到的数（`d9d35bd`）：**90 个 await 点 / 23 个不同方法**。分类：绑了 `error` 28、`DESTRUCTURED-WITHOUT-ERROR` 55、
+  `result-discarded` 3、`assigned-whole` 4。**抹掉通道的 58 个里，`getUser` 占 54**（散在 **31** 个文件，
+  其中 12 个是 `src/app/dashboard/**`：
+  `actions/team.ts` 5、`actions/mfa.ts` 4、`actions/api-keys.ts` 4、`actions/{projects,notifications,recovery-codes}.ts` /
+  `api/user/route.ts` 各 3……），另有 `src/lib/supabase/middleware.ts` 1（**这条已判定为正当**：它读的是浏览器 cookie，
+  出错通常就意味着会话无效，跳转是对的）、`hooks/use-user.ts` 1、`permission-gate.tsx` 2（客户端组件，降级即正解）。
+  这 54 个的失败形状是同一个：会话读失败被答成「未登录」（`fail("notAuthenticated")`），失败关闭但诊断是假的。
+- 这一条修的两个点（都是 `result-discarded`，都不是 `getUser`）：
+  1. `src/lib/auth/passkey-session.ts` `consumeMagicLink`：magiclink 已消费、返回 user 与断言者不符时，
+     先撤销那条刚建立的本地会话——写的是 `signOut({scope:"local"}).catch(() => undefined)`，
+     于是「撤销失败」和「已撤销」在代码里同形：请求方拿到 "bridge failed"，浏览器揣着一条有效会话，日志里什么都没有。
+     改成失败经 `logApiError` 留痕（抛出去的那条也接），返回值与失败关闭不变。
+  2. `src/lib/actions/account.ts` `deleteAccountAction`：`signOut({scope:"global"})` 的返回值整个丢弃。
+     账户已经删掉，回头报 `accountDeleteFailed` 会让人去删一个不存在的账户，所以仍返回 `ok`；
+     但文件头上承诺的「清掉本设备会话」没做成时不能读成做成了，改成记一条 `logActionError`。
+- 刻意没碰的：同文件 `account.ts:25` 那条 `getUser` 抹通道（判据 `isRetryableSessionReadFailure` 还在 #92 里审，
+  本条要独立、不背那条栈的级联）；`src/app/auth/mfa/page.tsx:85` 的 `refreshSession` 丢弃——**#119 正在改这个文件**
+  （41 条 PR 的 own-delta 全扫：它唯一命中的就是这里），留到 #119 落地之后。
+  那条 `page.tsx` 里还有一句写在错误前提上的注释（「supabase-js 在网络断开或服务端错误时是抛异常而不是返回 error 对象」），
+  正是 C09 已经推翻的说法，一并留给 #119 的作者或下一轮。
+- 验证：`npx vitest run src/lib/auth/passkey-session.test.ts src/lib/actions/account.test.ts --project node`
+  → 2 文件 / **18 用例全绿**（用例数 7+7 → 10+8）；`npx tsc --noEmit` 退出 0（第一版在 `signOut` 的 mock 上被它抓住：
+  `vi.fn(async () => ({error: null}))` 把返回类型钉成 `{error: null}`，新用例的 `{error: new Error(...)}` 报
+  TS2322——是 `check:all` 里那步 type-check 的又一次立功）；`npx eslint` 4 个文件退出 0。
+  **变异核对**：`git checkout HEAD~1 --` 退回两个源文件，重跑 → `3 failed | 15 passed`，红的正是三条「失败要留痕迹」；
+  「撤销成功时不记日志」那条保持绿（它本来就该绿，测的是不该记的时候不记）。然后 `git checkout HEAD --` 还原、复跑 18 绿。
+- 阻塞：无。门禁那条路（把 auth 也纳入 `check:query-errors`，即 `AUTH_ERROR_CHANNEL` 台账）**仍未决定接不接**，
+  现在有了分母才谈得上：58 个点位里 54 个是同一个 `getUser` 形状，台账要么按文件给 sites/reason（和 C08-b 一样两向对账），
+  要么先只禁「新增抹通道」而不追认存量。这一步排在 #92 与 #114 落地之后，因为判据模块和门禁本体都还在审。
+- 风险 / 回滚：两个文件与 `main` 逐字节相同、且 41 条 own-delta 全扫无人碰（`src/app/auth/mfa/page.tsx` 除外，已避开），
+  所以本 PR 不引入冲突边；回滚 = revert 那一个 commit。
+- 下一项：`CHANGELOG.md` 已补一条 Fixed；#118 分支上的整队列模拟在 `main` 前进之后要重跑（本条会让它多一个合并点）。
+- 更新时间：2026-09-24。
