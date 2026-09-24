@@ -19,7 +19,7 @@ erDiagram
         text email
         text full_name
         text avatar_url
-        text role "user / admin"
+        text role "super_admin / admin / member / viewer"
         text bio
         text timezone "default UTC"
         text language "default en"
@@ -93,7 +93,7 @@ erDiagram
 | email | text | — | 用户邮箱 |
 | full_name | text | — | 全名 |
 | avatar_url | text | — | 头像 URL（OSS） |
-| role | text | 'user' | 系统角色（user / admin） |
+| role | text | 'member' | 系统角色（super_admin / admin / member / viewer），取值域由迁移 002 收紧 |
 | bio | text | — | 个人简介 |
 | timezone | text | 'UTC' | 时区 |
 | language | text | 'en' | 语言偏好 |

@@ -22,7 +22,7 @@
  email      TEXT
  full_name  TEXT
  avatar_url TEXT
- role       TEXT → 'user' | 'admin'
+ role       TEXT → 'super_admin' | 'admin' | 'member' | 'viewer'
  ```
  
  ### teams (Multi-tenant)
@@ -40,7 +40,7 @@
  id         UUID PRIMARY KEY
  team_id    UUID → teams(id)
  user_id    UUID → auth.users(id)
- role       TEXT → 'owner' | 'admin' | 'member' | 'viewer'
+ role       TEXT → 'owner' | 'admin' | 'member'
  ```
  
  ### projects

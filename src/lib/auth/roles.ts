@@ -218,3 +218,17 @@ export function teamRoleToSystemRole(teamRole: TeamRole): Role {
       return "member";
   }
 }
+
+/**
+ * 把「读 `profiles.role` 的那一次查询」的结果解析成一个 Role，读不出答案就落到最低档。
+ *
+ * `profiles.role` 的取值域从迁移 002 起就是这四个角色（002 同时把遗留的 `'user'` 行改成了
+ * `'member'`，并把默认值换成 `'member'`），所以 `parseRole()` 返回 `undefined` 只可能是
+ * 「查询失败 / 压根没有 profile 行」，不是「这是个普通用户」。写成 `?? "member"` 的那句
+ * 把这两件事混为一谈：一次数据库抖动给到 50 档，而同一个组件的 catch 分支给的是地板 10 档。
+ * 失败路径统一取地板。
+ */
+export function resolveProfileRole(result: { error?: unknown; role?: string | null }): Role {
+  if (result.error) return "viewer";
+  return parseRole(result.role) ?? "viewer";
+}
