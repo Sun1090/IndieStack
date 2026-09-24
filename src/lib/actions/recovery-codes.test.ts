@@ -16,7 +16,7 @@ const { createClientMock, createAdminClientMock, revalidatePathMock, rateLimitCh
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: createAdminClientMock }));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
-vi.mock("@/lib/rate-limit", () => ({ rateLimit: { check: rateLimitCheckMock } }));
+vi.mock("@/lib/rate-limit", () => ({ checkActionRateLimit: rateLimitCheckMock }));
 vi.mock("@/lib/repositories/mfa-recovery-codes", () => ({
   listUnusedRecoveryCodes: vi.fn(),
   hasUnusedRecoveryCodes: vi.fn(),

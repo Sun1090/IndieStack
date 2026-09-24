@@ -12,13 +12,13 @@ import { deleteAccountWithData } from "@/lib/account/deletion";
 import { ROUTES } from "@/lib/constants";
 import { logActionError } from "@/lib/api-log";
 import { isAccountDeletionConfirmed } from "@/lib/privacy/data-policy";
-import { rateLimit } from "@/lib/rate-limit";
+import { checkActionRateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 
 export async function deleteAccountAction(input: { confirm?: unknown }): Promise<ActionResult> {
-  const limits = await rateLimit.check(new Request("http://local/account-delete"));
+  const limits = await checkActionRateLimit();
   if (!limits.allowed) return fail("rateLimited");
 
   const supabase = await createClient();

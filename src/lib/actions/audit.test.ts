@@ -11,7 +11,7 @@ const { createClientMock, rateLimitCheckMock, appendAuditLogMock } = vi.hoisted(
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
-vi.mock("@/lib/rate-limit", () => ({ rateLimit: { check: rateLimitCheckMock } }));
+vi.mock("@/lib/rate-limit", () => ({ checkActionRateLimit: rateLimitCheckMock }));
 vi.mock("@/lib/repositories/audit-logs", () => ({ appendAuditLog: appendAuditLogMock }));
 
 import { logAuthEvent } from "./audit";

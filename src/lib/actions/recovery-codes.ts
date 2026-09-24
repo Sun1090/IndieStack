@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 // Turbopack 客户端代理的导出分析，导致构建失败。
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { rateLimit } from "@/lib/rate-limit";
+import { checkActionRateLimit } from "@/lib/rate-limit";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import {
@@ -71,7 +71,7 @@ export async function hasRecoveryCodes(): Promise<ActionResult<{ has: boolean }>
 
 /** 兑换恢复码：消费并解绑全部 TOTP 因子（aal1 会话即可调用，用于登录挑战页自救） */
 export async function redeemRecoveryCode(code: string): Promise<ActionResult> {
-  const limits = await rateLimit.check(new Request("http://local/redeem"));
+  const limits = await checkActionRateLimit();
   if (!limits.allowed) return fail("rateLimited");
 
   const normalized = normalizeRecoveryCode(code);

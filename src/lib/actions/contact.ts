@@ -6,7 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { rateLimit } from "@/lib/rate-limit";
+import { checkActionRateLimit } from "@/lib/rate-limit";
 import { logActionError } from "@/lib/api-log";
 import { logger } from "@/lib/logger";
 import { contactSchema, isSpam, scoreSpam } from "@/lib/validations/contact";
@@ -14,7 +14,7 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 
 export async function submitContactMessage(formData: FormData): Promise<ActionResult> {
-  const limits = await rateLimit.check(new Request("http://local/contact"));
+  const limits = await checkActionRateLimit();
   if (!limits.allowed) return fail("rateLimited");
 
   const parsed = contactSchema.safeParse({

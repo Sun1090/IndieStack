@@ -5,7 +5,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { rateLimit } from "@/lib/rate-limit";
+import { checkActionRateLimit } from "@/lib/rate-limit";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
 import { logActionError } from "@/lib/api-log";
 
@@ -68,7 +68,7 @@ export async function logAuthEvent(
   metadata: Record<string, unknown> = {},
 ): Promise<{ ok: true }> {
   try {
-    const limits = await rateLimit.check(new Request("http://local/audit"));
+    const limits = await checkActionRateLimit();
     if (!limits.allowed) return { ok: true };
 
     const supabase = await createClient();
