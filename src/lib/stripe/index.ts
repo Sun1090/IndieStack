@@ -12,7 +12,7 @@
  */
 
 import type { Stripe } from "@stripe/stripe-js";
-import { trackEvent } from "@/lib/appark";
+import { flushEvents, trackEvent } from "@/lib/appark";
 
 export interface CheckoutSessionParams {
   customerId?: string;
@@ -123,6 +123,11 @@ async function createCheckoutSession(
     userId: params?.userId ?? null,
     teamId: params?.teamId ?? null,
   });
+  // 埋点进的是 `src/lib/appark.ts` 的**进程内**队列，而队列不会自己出去——必须有人调 flushEvents。
+  // 全仓此前唯一的 flush 调用点在 cron 那个函数里，而它在 Vercel 上是**另一个** serverless 实例，
+  // 所以这条结账埋点从来没离开过本进程（ADR-011 写的「关键流程均在请求尾部主动 flush」在这里没落地）。
+  // 不 await：那是把一次第三方收集端的往返塞进跳 Stripe 的路上，而 flushEvents 自己吞掉所有异常。
+  void flushEvents();
   return { url: session.url, sessionId: session.id };
 }
 

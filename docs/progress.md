@@ -1153,3 +1153,57 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — Appark 的结账埋点进了队列就没人送：唯一的 flush 点在另一个 serverless 函数里
+
+- 里程碑 / 版本：v0.12.0 的旁路可观测（不在 roadmap 条目里，是 ADR-011 那句「关键流程均在请求尾部
+  主动 flush」从来没落地）。
+- 状态：DONE。分支：`fix/appark-producer-flush`，基于 `origin/main` = `ad4b0299`。
+- 怎么撞上的：不是在找 APM 的 bug，是在扫「调用点存在但永远不会被执行到」这一族。
+  `src/lib/appark.ts` 的头部写着事件进**内存队列**、由 `flushEvents()` 批量 POST，那就有一个问题值得问：
+  谁调它。数出来 `git grep -n "flushEvents(" -- 'src/**'` 全仓**只有两个**文件命中——
+  `src/lib/appark.ts` 里的定义与内部调用，和 `src/app/api/cron/digest/route.ts` 结尾那一次
+  （生产者侧同一条 grep 换个词：`trackEvent(`/`trackError(` 命中 `src/lib/stripe/index.ts:122`、
+  cron 那一处，另有 `src/lib/i18n/dynamic-keys.ts` 命中一次，但那是文档注释里的**反例举例**，不是调用）。
+  队列是进程内的，而 cron 在 Vercel 上是**另一个函数实例**：它 flush 的是自己那份队列。
+  所以 `checkout.session_created` 这条埋点从接线那天起就没离开过进程——
+  `trackEvent` 一切正常、没有日志、没有失败码，配置了收集端的模板用户看到的是一个**永远空白的事件流**。
+- 改动：
+  1. `src/lib/stripe/index.ts` 在埋点之后加 `void flushEvents()`。**刻意不 await**：await 等于把一次
+     第三方收集端的往返塞进「跳 Stripe」那条路上，而这个模块的全部设计约束是旁路
+     （`flushEvents` 自己 catch 掉 fetch 异常，非 2xx 也只是把批次留在队列里）。
+     未启用 Appark 时它只把队列清空、不发网络请求，所以默认路径仍然是零开销。
+  2. 新增 `src/lib/appark-flush-coverage.test.ts`：扫 `src/**`（跳过测试与 `appark.ts` / `appark-config.ts`
+     自身），任何出现 `trackEvent(` / `trackError(` **调用**的文件必须自己出现 `flushEvents(`，
+     否则点名红。判据把注释行单独摘出去（`//`、`*`、`/*` 开头），因为 `src/lib/i18n/dynamic-keys.ts`
+     的文档注释里正好有一句 `trackEvent(...)` 的反例——不摘的话会把一份纯规则模块报成生产者。
+     与 `src/lib/mock/auth-surface.test.ts` 同族，跑在 `pnpm test` 里，不再往
+     `scripts/check-*` + CI + 双语 docs-site 那套接线复制第三遍。
+  3. `src/lib/appark.ts` 头部补一条契约（队列不会自己出去 / 谁入队谁负责送 / 由哪份测试核对），
+     `docs/adr/adr-011-appark-apm.md` 就地更正那句括号：它写的不是事实，更正以当时的形状记在里面。
+- 验证：
+  - `npx vitest run src/lib/appark-flush-coverage.test.ts` → **5 通过**。
+  - **正向对照（这条测试真的有牙齿）**：把 `void flushEvents()` 那一行删掉再跑 →
+    真实仓库那条用例红，消息点名 `src/lib/stripe/index.ts`；`git checkout --` 还原后重新绿。
+    fixture 侧另钉两条：有生产者没 flush ⇒ `flushes:false`；补上 flush ⇒ `flushes:true`。
+  - **失败封闭**：那条用例同时断言「扫出来的生产者数量 > 0」，并把文件数写进消息——
+    否则将来判据或目录形状一变，全仓扫出 0 个生产者会打印成「0 个缺失」的漂亮绿灯。
+  - 注释甄别也钉了一条：拿真实那份 `src/lib/i18n/dynamic-keys.ts` 断言它**不是**生产者。
+  - **变异核对 3 项**（每项先 `assert` 改动真的落地、跑完 `git checkout --` 还原并比对 blob 一致）：
+    M1 删掉 `src/lib/stripe/index.ts` 的 `void flushEvents()` ⇒ 恰好 1 条红，点名 `src/lib/stripe/index.ts`；
+    M2 把 `isCommentLine` 打成恒 `false` ⇒ 3 条红，其中真实仓库那条点名
+    `src/lib/i18n/dynamic-keys.ts`（正是那句文档注释里的反例），证明这层甄别不是装饰；
+    M3 把 `PRODUCER_CALL` 换成一个永不匹配的正则 ⇒ 3 条红，包含那条「生产者数量 > 0」的封闭断言。
+    未变异的正向对照 5 绿。
+  - 门禁（本机，最终形态）：`pnpm lint` / `pnpm type-check` 各 exit 0、
+    `CI=true pnpm check:all` **exit 0 / 37 步**、`npx vitest run` **200 文件 / 2296 通过**、
+    `pnpm build` exit 0。
+  - 用例数：本条新增 **5 条**（`199 文件 / 2291 用例` ⇒ `200 文件 / 2296 用例`，逐条对得上）。
+- 队列影响：`src/lib/appark.ts`、`src/lib/stripe/index.ts`、`docs/adr/adr-011-appark-apm.md`、
+  `src/lib/appark-flush-coverage.test.ts`（新增）**逐个按 blob 扫过全部 57 条在途 PR**
+  （`git ls-tree <ref> <path>` 取第三列与 `origin/main` 比，分母 57/57），命中 **0 条**；
+  新测试读的那三个源路径同样 0 条与 `main` 不同，所以这条没有 `merge-tree` 看不见的语义边。
+  重叠仍只在 `CHANGELOG.md` / `docs/progress.md` 两处追加。
+- 下一项：同一条判据现在只覆盖 Appark。`src/lib/metrics.ts` 与 Sentry 那两族是否也有
+  「入队了但没人 flush / 没人 init」的形状，按同一套扫法量一遍再说。
+- 更新时间：2026-09-25（本机 UTC 09-25 09:3x 前后）。
