@@ -28,6 +28,8 @@ import {
   countUnsentEmailNotifications,
   markEmailSent,
   markEmailFailed,
+  markEmailSkipped,
+  type EmailSkipReason,
   EMAIL_BACKLOG_ALERT_THRESHOLD,
   type Notification,
 } from "@/lib/repositories/notifications";
@@ -73,6 +75,35 @@ function failureText(error: unknown): string {
     if (typeof message === "string") return message;
   }
   return String(error);
+}
+
+/**
+ * 跳过回执（A05）：写进原因才算「这行真的离开了队列」。
+ *
+ * 这里**不**把异常抛穿出去，理由与 #33 修掉的那件事同一条：抛穿会落到 `POST` 的 catch 里
+ * 记一轮 `pulled>0 / sent=0 / failed=0`，正好命中「空发送轮次」的定义，把一轮确实处理过的
+ * 运行说成空转。抛穿也不能让写入变成功——那一行仍会留在队列里下一轮被拉起。
+ * 所以报 `cron.digest.receipt_failed{stage="skip"}` 加一条日志：可见，但不伪造。
+ */
+async function markSkippedWithReceipt(
+  items: Notification[],
+  reason: EmailSkipReason,
+): Promise<void> {
+  try {
+    await markEmailSkipped(
+      items.map((n) => n.id),
+      reason,
+    );
+  } catch (error) {
+    recordMetric("cron.digest.receipt_failed", 1, {
+      unit: "count",
+      attributes: { stage: "skip" },
+    });
+    await logApiError(
+      "[Cron Digest] 跳过原因写入失败（这些行仍留在待发队列里，下一轮还会被拉起）",
+      error,
+    );
+  }
 }
 
 /** 单用户发送失败回执：保留既有 metadata，累加重试计数并记录错误（达到上限由拉取侧死信过滤跳过） */
@@ -143,15 +174,18 @@ async function runDigest(
 
   for (const [userId, items] of byUser) {
     const profile = profiles.get(userId);
-    // 没有邮箱就没有可投递目标。这类条目既不发送也不累加 `email_attempts`，因此永远留在队列里：
-    // 靠 `email.backlog` 可见，但同时长期占住按 `created_at` 升序的前 100 条拉取窗口
-    // （偏好全关时实时通道 `email-notify.ts:91` 同样早退，所以条目会持续积累）——
-    // 让跳过的条目真正出队属于 v0.12.0 的 A05，不要在这里用 `markEmailSent` 假装发过。
+    // 没有邮箱就没有可投递目标。这不是故障，所以既不 `markEmailSent`（伪造投递事实）也不
+    // `markEmailFailed`（没有「重试几次」可言）——A05 定的口径是写原因让它**离开队列**：
+    // 在此之前这类行永远占住 `created_at` 升序 + limit 100 的队首，攒够 100 条之后
+    // 新的、可投递的通知再也拉不到（实时通道 `email-notify.ts` 对同样条件也是早退，条目会持续产生）。
+    // 原因写入失败时**不**降级成「照样跳过就算完」：那一行会留在队列里被反复拉起，
+    // 所以照 `receipt_failed{stage="skip"}` 报出去，让「跳过了但没出队」这件事可见。
     if (!profile?.email) {
       recordMetric("cron.digest.skipped", items.length, {
         unit: "count",
         attributes: { reason: "no_email" },
       });
+      await markSkippedWithReceipt(items, "no_email");
       continue;
     }
 
@@ -164,6 +198,7 @@ async function runDigest(
         unit: "count",
         attributes: { reason: "preference" },
       });
+      await markSkippedWithReceipt(items, "preferences_off");
       continue;
     }
 

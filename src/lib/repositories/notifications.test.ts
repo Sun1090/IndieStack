@@ -3,7 +3,9 @@
  * mock server client，验证列表/批量标已读/单条标已读与错误抛错
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { chainMock, dbClientMock } from "./test-helpers";
+import fs from "node:fs";
+import path from "node:path";
+import { chainMock, dbClientMock, CHAIN_FILTER_METHODS } from "./test-helpers";
 
 const { createClientMock, createAdminClientMock } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
@@ -25,8 +27,12 @@ import {
   listDeadLetterNotifications,
   listNotificationsByIds,
   countUnsentEmailNotifications,
+  countEmailSkippedByReason,
+  countReadBeforeSendEmailNotifications,
+  markEmailSkipped,
   EMAIL_MAX_ATTEMPTS,
   EMAIL_NOTIFICATION_TYPES,
+  EMAIL_SKIP_REASONS,
   NOTIFICATION_TYPES,
 } from "./notifications";
 
@@ -242,10 +248,12 @@ describe("countUnsentEmailNotifications()", () => {
   });
 });
 
-/** 待发队列的过滤条件走这三个方法；select/order/limit 允许各自不同。 */
+/** 比对所有过滤谓词的调用记录；select/order/limit 允许每条查询各自不同。 */
 function filterCalls(chain: ReturnType<typeof chainMock>) {
   const spied = chain as unknown as Record<string, { mock: { calls: unknown[][] } }>;
-  return ["eq", "in", "or"].map((method) => spied[method].mock.calls);
+  // 谓词全集取自 mock 的构造表，而不是这里再抄一遍：抄的那份漏掉一个方法，
+  // 「同一段过滤」就对该方法完全无感（第五段谓词加进来时正是这样逃过一次核对）
+  return CHAIN_FILTER_METHODS.map((method) => spied[method].mock.calls);
 }
 
 describe("oldestUnsentEmailCreatedAt()", () => {
@@ -327,5 +335,86 @@ describe("markNotificationRead()", () => {
   it("数据库错误抛错", async () => {
     createClientMock.mockResolvedValue(dbClientMock(() => chainMock({ error: { message: "db" } })));
     await expect(markNotificationRead("u1", "n1")).rejects.toThrow("db");
+  });
+});
+
+describe("A05 出队：原因列的写入、计数与迁移对账", () => {
+  const REPO_ROOT = path.resolve(__dirname, "../../..");
+
+  it("空 id 列表不开第二次 admin 客户端", async () => {
+    await markEmailSkipped([], "no_email");
+    expect(createAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("按 id 批量写原因：payload 里只有这一列，不带 email_sent", async () => {
+    const chain = chainMock({ data: [] });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await markEmailSkipped(["n1", "n2"], "preferences_off");
+    expect(chain.update).toHaveBeenCalledWith({ email_skipped_reason: "preferences_off" });
+    expect(chain.in).toHaveBeenCalledWith("id", ["n1", "n2"]);
+  });
+
+  it("写入失败抛错（是调用方决定怎么可见，而不是这里吞掉）", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(markEmailSkipped(["n1"], "no_email")).rejects.toThrow("db");
+  });
+
+  it("按登记的原因逐个计数：库里没这种行时补 0，而不是留 undefined", async () => {
+    const chains = [chainMock({ count: 4 }), chainMock({})];
+    let index = 0;
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chains[index++]),
+    });
+    await expect(countEmailSkippedByReason()).resolves.toEqual({
+      no_email: 4,
+      preferences_off: 0,
+    });
+    expect(index).toBe(EMAIL_SKIP_REASONS.length);
+  });
+
+  it("任一原因计数失败即抛错，不返回半张表", async () => {
+    const chains = [chainMock({ count: 1 }), chainMock({ error: { message: "db" } })];
+    let index = 0;
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chains[index++]) });
+    await expect(countEmailSkippedByReason()).rejects.toThrow("db");
+  });
+
+  it("「站内先读掉」那一笔的口径是 is_read=true + email_sent=false + 队列类型", async () => {
+    const chain = chainMock({ count: 9 });
+    const from = vi.fn(() => chain);
+    createAdminClientMock.mockReturnValue({ from });
+    await expect(countReadBeforeSendEmailNotifications()).resolves.toBe(9);
+    expect(from).toHaveBeenCalledWith("notifications");
+    expect(chain.eq).toHaveBeenCalledWith("email_sent", false);
+    expect(chain.eq).toHaveBeenCalledWith("is_read", true);
+    expect(chain.in).toHaveBeenCalledWith("type", [...EMAIL_NOTIFICATION_TYPES]);
+  });
+
+  it("读掉那一笔查询失败抛错，不把「看不见」说成「没有」", async () => {
+    createAdminClientMock.mockReturnValue(
+      dbClientMock(() => chainMock({ error: { message: "db" } })),
+    );
+    await expect(countReadBeforeSendEmailNotifications()).rejects.toThrow("db");
+  });
+
+  // 这一条钉的是跨语言层的等式：原因取值集合在 TS 里一份、在库的 CHECK 里一份。
+  // 漂移的后果不是「语义变宽」而是写入直接被数据库拒绝，所以必须在 PR 阶段红。
+  it("EMAIL_SKIP_REASONS 与 034 迁移的 CHECK 取值完全一致（顺序也算）", () => {
+    const sql = fs.readFileSync(
+      path.join(REPO_ROOT, "supabase/migrations/034_email_skip_reason.sql"),
+      "utf8",
+    );
+    const match = /email_skipped_reason[\s\S]{0,200}?in\s*\(([^)]*)\)/i.exec(sql);
+    if (!match) {
+      // 读不到取值就等于这条对账没跑——必须红，不能静默通过
+      throw new Error("034 迁移里找不到 email_skipped_reason 的 CHECK 取值列表");
+    }
+    const values = match[1]
+      .split(",")
+      .map((part) => part.trim().replace(/^'|'$/g, ""))
+      .filter((part) => part.length > 0);
+    expect(values).toEqual([...EMAIL_SKIP_REASONS]);
   });
 });

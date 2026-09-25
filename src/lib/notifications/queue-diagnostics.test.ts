@@ -22,6 +22,8 @@ function diagnose(overrides: Partial<Parameters<typeof deriveQueueDiagnostics>[0
     pending: 0,
     oldestCreatedAt: null,
     recentRuns: [],
+    skippedByReason: {},
+    readBeforeSend: 0,
     nowMs: NOW,
     ...overrides,
   });
@@ -38,7 +40,46 @@ describe("deriveQueueDiagnostics()", () => {
       oldestAgeMs: null,
       emptySendRounds: 0,
       stale: false,
+      skippedByReason: { no_email: 0, preferences_off: 0 },
+      skippedTotal: 0,
+      readBeforeSend: 0,
     });
+  });
+
+  it("没出现过的原因补 0，而不是留成 undefined：面板那一栏必须存在且说的是 0", () => {
+    const result = diagnose({ pending: 1, oldestCreatedAt: new Date(NOW - HOUR).toISOString() });
+    expect(result.skippedByReason).toEqual({ no_email: 0, preferences_off: 0 });
+    expect("no_email" in result.skippedByReason).toBe(true);
+    expect("preferences_off" in result.skippedByReason).toBe(true);
+  });
+
+  it("skippedTotal 是各原因之和；readBeforeSend 原样透传，两笔账不得互相顶掉", () => {
+    const result = diagnose({
+      pending: 7,
+      oldestCreatedAt: new Date(NOW - HOUR).toISOString(),
+      skippedByReason: { no_email: 90, preferences_off: 12 },
+      readBeforeSend: 5,
+    });
+    expect(result.skippedByReason).toEqual({ no_email: 90, preferences_off: 12 });
+    expect(result.skippedTotal).toBe(102);
+    expect(result.readBeforeSend).toBe(5);
+    // 队列已经空了（pending=0 才是空），但这三笔「不会再寄出」的账必须仍然报得出来
+    const drained = diagnose({
+      pending: 0,
+      skippedByReason: { no_email: 100 },
+      readBeforeSend: 3,
+    });
+    expect(drained.pending).toBe(0);
+    expect(drained.skippedTotal).toBe(100);
+    expect(drained.readBeforeSend).toBe(3);
+  });
+
+  it("集合之外的原因键直接丢掉：新增原因必须走 EMAIL_SKIP_REASONS，不能从数据里悄悄长出来", () => {
+    const result = diagnose({
+      skippedByReason: { no_email: 2, provider_down: 40 } as never,
+    });
+    expect(result.skippedByReason).toEqual({ no_email: 2, preferences_off: 0 });
+    expect(result.skippedTotal).toBe(2);
   });
 
   it("有积压才计算年龄", () => {

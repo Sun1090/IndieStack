@@ -24,7 +24,11 @@
       "queueAgeMinutes": "{value, plural, one {# minute} other {# minutes}}",
       "queueAgeHours": "{value, plural, one {# hour} other {# hours}}",
       "queueAgeDays": "{value, plural, one {# day} other {# days}}",
-      "queueAgeUnknown": "an unknown time"
+      "queueAgeUnknown": "an unknown time",
+      "skipReasonNoEmail": "no email address",
+      "skipReasonPreferencesOff": "email turned off",
+      "queueSkippedDesc": "Left the queue unsent: {reasons}.",
+      "queueReadBeforeSendDesc": "{count} more were read in the app first, so the digest will never send them."
     },
     "roleDistribution": "Role Distribution",
     "roleDistributionDesc": "Platform user role distribution",

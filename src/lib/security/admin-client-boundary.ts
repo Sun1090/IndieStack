@@ -367,6 +367,8 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     file: "src/lib/repositories/notifications.ts",
     surface: "data-access",
     calls: [
+      "countEmailSkippedByReason",
+      "countReadBeforeSendEmailNotifications",
       "countUnsentEmailNotifications",
       "createNotification",
       "listDeadLetterNotifications",
@@ -374,6 +376,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
       "listUnsentEmailNotifications",
       "markEmailFailed",
       "markEmailSent",
+      "markEmailSkipped",
       "oldestUnsentEmailCreatedAt",
     ],
     tables: ["notifications"],
@@ -382,7 +385,7 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     authAdmin: [],
     trust: { kind: "server-internal", evidence: [] },
     rationale:
-      "Notification queue and delivery state are maintained by trusted server workers and read back by the admin overview panel.",
+      "Notification queue and delivery state are maintained by trusted server workers and read back by the admin overview panel; markEmailSkipped writes the A05 dequeue reason and the two count*Email functions only aggregate the same queue predicates.",
   },
   {
     file: "src/lib/repositories/profiles.ts",

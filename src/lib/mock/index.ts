@@ -1101,6 +1101,7 @@ class MockQueryBuilder {
         key.endsWith(":lte") ||
         key.endsWith(":contains") ||
         key.endsWith(":not") ||
+        key.endsWith(":isnull") ||
         key === ":or"
       ) {
         continue;

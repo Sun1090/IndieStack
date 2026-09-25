@@ -7,11 +7,12 @@ import { metricEvents } from "@/lib/testing/metric-events";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
-const { listUnsentEmailNotificationsMock, countUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, recordWorkerRunMock, logApiErrorMock, createAdminClientMock, renderEmailHtmlMock } = vi.hoisted(() => ({
+const { listUnsentEmailNotificationsMock, countUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, markEmailSkippedMock, recordWorkerRunMock, logApiErrorMock, createAdminClientMock, renderEmailHtmlMock } = vi.hoisted(() => ({
   listUnsentEmailNotificationsMock: vi.fn(),
   countUnsentEmailNotificationsMock: vi.fn(async () => 0),
   markEmailSentMock: vi.fn(async () => {}),
   markEmailFailedMock: vi.fn(async () => {}),
+  markEmailSkippedMock: vi.fn(async () => {}),
   recordWorkerRunMock: vi.fn(async () => {}),
   logApiErrorMock: vi.fn(async () => {}),
   createAdminClientMock: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("@/lib/repositories/notifications", () => ({
   countUnsentEmailNotifications: countUnsentEmailNotificationsMock,
   markEmailSent: markEmailSentMock,
   markEmailFailed: markEmailFailedMock,
+  markEmailSkipped: markEmailSkippedMock,
   EMAIL_BACKLOG_ALERT_THRESHOLD: 500,
   NOTIFICATION_TYPES: [] as string[],
 }));
@@ -231,10 +233,13 @@ describe("POST /api/cron/digest", () => {
         attributes: { reason: "no_email" },
       }),
     );
-    // 没有可投递目标：不发、不标已发、也不累加重试（条目留在队列里由 backlog/skipped 暴露）
+    // 没有可投递目标：不发、不标已发、也不累加重试（那不是故障），但**必须当场出队**，
+    // 否则这些行永远占住 created_at 升序 + limit 100 的队首（A05 要修的正是这个）。
     expect(fetchMock).not.toHaveBeenCalled();
     expect(markEmailSentMock).not.toHaveBeenCalled();
     expect(markEmailFailedMock).not.toHaveBeenCalled();
+    expect(markEmailSkippedMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSkippedMock).toHaveBeenCalledWith(["n1", "n2"], "no_email");
   });
 
   it("用户关掉所有相关类型时跳过，并上报 reason=preference", async () => {
@@ -260,6 +265,9 @@ describe("POST /api/cron/digest", () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
     expect(markEmailSentMock).not.toHaveBeenCalled();
+    // 偏好全关是用户的选择：出队原因是 preferences_off，不是失败重试
+    expect(markEmailSkippedMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSkippedMock).toHaveBeenCalledWith(["n1"], "preferences_off");
   });
 
   it("正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出", async () => {
@@ -489,6 +497,43 @@ describe("POST /api/cron/digest", () => {
     await POST(req());
     expect(recordWorkerRunMock).toHaveBeenCalledWith(
       expect.objectContaining({ pulled: 1, sent: 1, groups: 1, failed: 0, durationMs: expect.any(Number) }),
+    );
+  });
+
+  it("跳过原因写不进去时报 receipt_failed{stage=skip}，且不把整轮抛穿成「空发送轮次」", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "security_alert", title: "A", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: null, notification_settings: null }] })),
+    });
+    markEmailSkippedMock.mockRejectedValueOnce(new Error("receipt down"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    const events = metricEvents(log);
+    log.mockRestore();
+
+    // 抛穿会落到 POST 的 catch 里记一轮 pulled>0 / sent=0 / failed=0，正好命中
+    // 「空发送轮次」的定义——那才是 A05 面板最不该说出口的话。
+    expect(res.status).toBe(200);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.receipt_failed",
+        value: 1,
+        attributes: { stage: "skip" },
+      }),
+    );
+    expect(logApiErrorMock).toHaveBeenCalledTimes(1);
+    // 整轮走到底：轮次记录里 pulled 说的是拉到了 1 条，而它不是失败轮次
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pulled: 1, sent: 0, groups: 0, failed: 0, durationMs: expect.any(Number) }),
+    );
+    expect(events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "cron.digest.completed" })]),
+    );
+    expect(events).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "cron.digest.failed" })]),
     );
   });
 });

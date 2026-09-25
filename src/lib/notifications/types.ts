@@ -24,3 +24,14 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/**
+ * 邮件「根本寄不出去」的原因（A05）。放在同一个无依赖模块里，因为写它的 worker 与
+ * 读它做读数的面板两侧都要用，而诊断模块不该为了读一个数组去初始化 Supabase 客户端。
+ *
+ * 取值必须与 `supabase/migrations/034_email_skip_reason.sql` 的 CHECK 完全一致，
+ * 由 `src/lib/repositories/notifications.test.ts` 直接读迁移文件对账。
+ */
+export const EMAIL_SKIP_REASONS = ["no_email", "preferences_off"] as const;
+
+export type EmailSkipReason = (typeof EMAIL_SKIP_REASONS)[number];
