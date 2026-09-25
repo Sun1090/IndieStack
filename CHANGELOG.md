@@ -204,6 +204,34 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **生产构型里被忘掉的 `NEXT_PUBLIC_MOCK_ENABLED=true` 不再能把站点变成假登录**（roadmap C13）：
+  `src/lib/mock/config.ts` 的判定有两条来源，而生产闸门只写在「自动降级」那一半（那里的注释就是
+  「避免生产环境误配时静默绕过认证」），显式开关那一半没有闸门。`NEXT_PUBLIC_*` 是构建期内联进产物的，
+  所以部署平台上一个忘掉的 `true` 会跟着产物一路进生产，`server.ts` / `client.ts` / `middleware.ts`
+  全部改发 Mock 客户端，中间件看到的就是「已登录」。**这条按实测收口**（同一份生产构建，只换判定函数）：
+  修复前 `/dashboard` 回 **200**，且 `/api/health` 报 `mockMode=true`、Supabase `skipped`、`ready=true`
+  ——readiness 对着一次认证绕过点头；修复后同一入口回 **307 → `/auth/login`**，健康检查按缺凭据如实降级。
+  修法是把真值表收成一条纯函数 `evaluateMockMode(env)`（生产一律 `false`，两条来源共用这道闸），并让此前
+  **各自抄了一遍**这个条件的 `/api/health` 与 provider 诊断改调它——三处拷贝各写一遍正是这次漂移的发生方式，
+  也是为什么健康检查会比应用更乐观。新增 `src/lib/mock/config.test.ts`（10 条，含「生产 + 显式 true」
+  那一格）与两个消费方各一条生产用例。**变异核对四刀**，分母都是同一批 3 个测试文件里的 39 条用例：
+  只删 `evaluateMockMode` 里那行闸门 → **7 红 / 32 绿**（其中 2 条是本条之前就有的生产用例——它们当时
+  只测了自动降级那一半，绿灯是半个真话）；三个源文件整体退回修复前 → **11 红 / 28 绿**；
+  两道生产判断一起删 → **9 红 / 30 绿**；只把常量退回函数调用（运行时行为不变、构建期折叠丢失）→
+  **1 红 / 38 绿**。
+  同一个常量还顺带决定了**产物形状**：`NEXT_PUBLIC_MOCK_ENABLED=true` 时旧写法折成 `true`，真实客户端的
+  realtime/Phoenix 那一截被摇掉，客户端产物 2846.4 kB；把真值表写成函数调用之后折不出常量，两侧都留下，
+  涨到 2951.7 kB。所以模块级常量保留 `process.env.NODE_ENV === "production" ? false : …` 这层**折叠提示**，
+  实测折叠后 2926.8 kB，且这个开关 true / false 两种构建**产物相同**：最大的那个 chunk 在 `origin/main`
+  （mock 关）与本分支（mock 开/关）三次构建里 sha256 一字不差（`0q8j5g_fowmqu.js`，743,012 字节）——
+  一个生产误配从此既不能把站点变成假登录，也不能让产物看起来更小。
+  **代价要说清楚**：这层三元在运行时也是一道生产判断，于是「删掉函数里那行闸门」不再能让认证路径那条用例变红
+  （变异杀伤面从 8 降到 7）。两道的分工是：函数那道守着 `/api/health` 与 provider 诊断（它们拿注入的 env
+  直接调它），常量那道守着中间件走的模块级路径——所以函数那行并非没有用例点名，只是不再独扛认证路径。
+  `.bundle-baseline` 跟着改成 2926.8：旧基线量的是「mock 误配把真实客户端摇掉」那一 shape，C13 之后那个
+  shape 在生产构建里已经不存在；24.9 kB 只占基线 0.9%，落在 5% 预算之内、`check:bundle` 拦不住，
+  所以由 `config.test.ts` 钉住这个写法。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

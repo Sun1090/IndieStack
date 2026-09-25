@@ -38,6 +38,19 @@ describe("provider diagnostics", () => {
     });
   });
 
+  it("生产构型里显式开 mock 也不算 mock 模式（C13）", () => {
+    // 上面那条只测「没配 Supabase」那一半（自动兜底），生产里本来就关着；
+    // 真正没人管的是**显式** true 这一格——部署平台上一个忘掉的开关就会把整站变成假登录。
+    const report = diagnoseProviders({
+      ...BASE_SUPABASE,
+      NODE_ENV: "production",
+      NEXT_PUBLIC_MOCK_ENABLED: "true",
+    });
+    expect(report.mockMode).toBe(false);
+    expect(report.ok).toBe(true);
+    expect(provider(report, "storage")).not.toMatchObject({ provider: "mock" });
+  });
+
   it("fails closed when production Supabase configuration is missing", () => {
     const report = diagnoseProviders({ NODE_ENV: "production" });
     expect(report.mockMode).toBe(false);

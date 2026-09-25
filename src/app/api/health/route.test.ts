@@ -81,6 +81,19 @@ describe("GET /api/health", () => {
     expect(blank.commit).toBeNull();
   });
 
+  it("生产构型里显式开 mock 也不能把健康检查变成「一切正常」（C13）", async () => {
+    // 修之前这一格是：mockMode=true ⇒ Supabase 探测被跳成 "skipped" ⇒ 200/ok，
+    // 而实际产物在用假用户——readiness 因此对一次认证绕过点头。现在生产里两条来源都被闸住，
+    // 缺凭据就照实 503。
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_MOCK_ENABLED", "true");
+    const res = await GET();
+    const body = await res.json();
+    expect(body.mockMode).toBe(false);
+    expect(res.status).toBe(503);
+    expect(body.checks.supabase.status).toBe("missing");
+  });
+
   it("生产环境缺少 required Supabase 配置时返回 503，而不是伪装为 ok", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const res = await GET();

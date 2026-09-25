@@ -26,7 +26,11 @@
 ## Preview 安全
 
 - Vercel Deployment Protection 建议开启（防止 preview 被搜索引擎收录）
-- Preview 环境的 `NEXT_PUBLIC_MOCK_ENABLED` 保持未设置（走真实 Supabase）
+- Preview 环境的 `NEXT_PUBLIC_MOCK_ENABLED` 保持未设置（走真实 Supabase）。这条约定过去只靠人守：
+  Vercel 的 preview 与 production 跑的是同一种构型（`NODE_ENV === "production"`），而显式开关当时
+  **没有**生产闸门，一个忘在 Preview 环境组里的 `true` 就会让对外可见的预览站发假登录用户。
+  现在 `evaluateMockMode()` 对生产构型一律返回 `false`，误设的结果是「按真实凭据走、缺凭据就如实失败」，
+  不再是静默的 mock。
 - Stripe 使用 test key；生产 webhook secret 不进 preview
 
 ## 免费版保活与自动恢复

@@ -1153,3 +1153,121 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — C13：生产构型不许开 mock（缺闸门的只有显式那一半）
+
+- 里程碑 / 版本：v0.12.0；C 组（门禁与安全语义），roadmap 里 C13 那条由 #153 登记。
+- 状态：DONE。分支：`fix/mock-production-guard` → **PR #155**（base `main`）。
+- 缺陷的形状：`src/lib/mock/config.ts` 的判定有两条来源，**生产闸门只写在第二条上**。
+  第一条 `NEXT_PUBLIC_MOCK_ENABLED === "true"` 什么都不问，第二条（自动降级）的注释正是
+  「避免生产环境误配时静默绕过认证」。同一个文件里两种语义，危险的那一种胜出：
+  `NEXT_PUBLIC_*` 是构建期内联进产物的，一个忘在部署平台上的 `true` 会跟产物进生产，
+  `server.ts` / `client.ts` / `middleware.ts` 改发 Mock 客户端，中间件看到的就是「已登录」。
+  而 Vercel 的 Preview 与 Production 是同一种构型（`NODE_ENV === "production"`），
+  所以 `docs/operations/environments.md` 那条「Preview 保持未设置」的约定过去只靠人守。
+- **这条不是读代码读出来的结论，是跑出来的**（差分探针，两次跑法只差那三行源码）：
+  `NEXT_PUBLIC_MOCK_ENABLED=true pnpm build` → `NEXT_PUBLIC_MOCK_ENABLED=true next start -p <随机空闲端口>`
+  → `redirect:"manual"`。修复前：`/dashboard` **200 不重定向**，`/api/health` 回 200 且
+  `mockMode=true`、Supabase `status="skipped"`、`ready=true`（**readiness 对着一次认证绕过点头**）；
+  修复后：`/dashboard` **307 → `/auth/login?redirect=%2Fdashboard`**、`mockMode=false`。
+  如实记一条边界：探针里「HTML 像不像 mock 内容」那个正则没命中，所以判定只依赖上面两格，不依赖页面文案。
+- 修法：真值表收成一条纯函数 `evaluateMockMode(env)`（生产一律 `false`，两条来源共用这道闸），
+  `isMockEnabled` 由它算出；并把此前**各自抄了一遍**这个条件的两处消费方（`/api/health` 的 `isMockMode()`、
+  provider 诊断的 `isMockMode(env)`）改为调用它——三处拷贝各写一遍正是这次漂移的发生方式，
+  也是为什么健康检查会比应用更乐观。
+- 变更文件：`src/lib/mock/config.ts`、`src/lib/mock/config.test.ts`（新增 9 条）、
+  `src/lib/providers/diagnostics.ts` + 其测试（+1 条生产用例）、`src/app/api/health/route.ts` + 其测试
+  （+1 条）、`docs-site/mock.md` 与 `docs-site/zh-CN/mock.md`、`docs/architecture/13-mock-system.md`
+  （条件表 + mermaid 入口节点）、`docs/operations/environments.md`、`.env.example`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`CI=true pnpm check:all` → **exit 0，37 步全过，200 文件 / 2302 用例**
+  （`+1 文件 / +11 用例`；`check:mock-docs` 仍报「18 张表 / 8 个 E2E 端点 × 3 份文档」，
+  说明两份 mock 文档的改动没破坏它比对的那一层）；`pnpm build` → **exit 0**（就是上面那次探针构建）；
+  `pnpm type-check` → 0 错。
+- 变异核对（两次，都被抓）：① 只删 `if (env.NODE_ENV === "production") return false;` 这一行 →
+  3 个测试文件 **8 条红 / 30 条绿**，其中 **2 条是本条之前就存在的生产用例**
+  （`fails closed when production Supabase configuration is missing`、
+  「生产环境缺少 required Supabase 配置时返回 503」）——**它们当时只测自动降级那一半，
+  所以那两条绿灯只说了半个真话**；② 把三个源文件整体退回 `origin/main` 的版本、只留新测试 →
+  6 个文件 **10 条红 / 62 条绿**。两个脚本都 `trap` 还原，跑完 `git status` 对涉及路径为空（`dirty=0`）。
+- 阻塞 / 风险 / 回滚：改的是「生产 + 显式 true」这一格的行为：以前发 Mock 客户端，现在发真实客户端，
+  缺凭据就如实失败（这是 fail-closed 的方向，也是文档一直写的方向）。开发、`dev:mock`、E2E、
+  视觉基线都不受影响——`playwright.config.ts` 与 `playwright.visual.config.ts` 起的都是 `pnpm dev`。
+  回滚 = revert 本 commit。
+- 冲突面（队列现况 62 条 open，见 #118 附二十九；逐路径扫 61 条 + 本分支自己）：
+  **本条那五个代码文件（`src/lib/mock/config.ts`、`config.test.ts`、`diagnostics.ts` 与其测试、
+  `api/health/route.ts` 与其测试）在整条队列里命中 0 条**，没有语义边要预防；
+  同文件的只有文档三处——`docs-site/{,zh-CN/}mock.md`（#148、#149）、
+  `docs/architecture/13-mock-system.md`（#148），都是不同区域的追加，`merge-tree` 自动合上。
+  整分支对 62 个 head 逐个跑 `merge-tree`：**62/62 与本条冲突，冲突文件只有台账尾部**
+  （`docs/progress.md` 62、`CHANGELOG.md` 50），**非台账冲突 0 个**，代码/配置/迁移零冲突。
+  这一串数字第一次跑出来是「冲突 0 条、非台账 0 条」——看着像好消息，其实是 62 条全部 `FETCH_FAIL`、
+  合并检查一条都没跑过：喂给脚本的那份 `gh pr list --json` 没有 `headRefName` 字段，ref 名全是 `undefined`。
+  救回来的是脚本里那句 `fetchFail: 154,153,…` 把整串列出来了：**分母与「取到的是什么」要和结论同行打印**，
+  否则一个坏掉的输入与一个干净的结果长得一样。
+- **一条 merge-tree 看不见的边，要人做一次动作**：roadmap C13 的文案登记在 **#153 的分支**上，
+  写的是「给 `check:security-config` 加一条拒绝生产开 mock 的规则」。本条的判定是**不加那条门禁**：
+  那个变量活在部署平台而不是仓库里，想证明「生产没设它」要读 Vercel 的项目环境变量，
+  而本机 `VERCEL_TOKEN` 对 env 端点回 `403 invalidToken`（量不到就不是能写进门禁的事实）；
+  闸门放进判定函数之后，「配错」不再等于「假登录」，这是行为层面的收口而不是清单层面的。**因此
+  #153 落地后要把它那节 C13 改成「由 `evaluateMockMode()` 的生产闸门关闭，不另建门禁」**——
+  谁后合谁做，两侧文本零冲突，所以只有读台账的人会漏。
+- 同一个常量还管着**产物形状**，这条是本条目补测出来的第二件事（起因是 `e078275b` 推不上去：
+  `check:bundle` 红在 `2951.7 kB / 基线 2733.8 kB`）。逐层量下来的结论（每次 `rm -rf .next` 干净构建、
+  同一台机器、`.env.local` 里 `NEXT_PUBLIC_MOCK_ENABLED=true`）：
+  - `origin/main` = **2846.4 kB**；本分支修复后 = **2951.7 kB**（+105.3）；只把 `src/lib/mock/config.ts`
+    单独拿进 main 的树 → **2951.7 kB**，**一字不差**。所以整个差额来自这一个文件，不是那三份文档；
+  - 机制不是"真实客户端被摇回来"这种好事，而是**构建期折叠丢了**：Next 只把 `process.env.X` 这类成员表达式
+    替换成字面量，`evaluateMockMode(process.env)` 把整个对象传进函数，打包器就折不出常量，
+    `if (isMockEnabled)` 两侧都留在产物里。用 chunk 内容证实：main 那份最大的客户端 chunk 里
+    Phoenix/realtime 的 `pendingDiffs`/`rejoinTimer`/`Presence` **一个都没有**，而 faker 的
+    `iataTypeCode`（310 次）两边都在——被摇掉的是真实客户端，不是 mock 数据；
+    - 修法：模块级常量保留 `process.env.NODE_ENV === "production" ? false : evaluateMockMode(process.env)`。
+    真值表仍然只有 `evaluateMockMode` 一份，这层三元是折叠提示（删掉它运行时行为不变，函数里那道闸再判一次），
+    改完客户端产物 **2926.8 kB**。**代价记下来**：这层三元在运行时同样生效，所以「只删函数里那道闸」
+    不再能动到认证路径。四刀变异核对（分母都是 `config.test.ts` + `diagnostics.test.ts` +
+    `api/health/route.test.ts` 这三个文件的 **39 条用例**）：
+    ① 只删函数里 `if (env.NODE_ENV === "production") return false;` → **7 红 / 32 绿**
+    （红的是真值表三条生产格 + 两个消费方各 2 条，其中 `fails closed when production Supabase
+    configuration is missing` 与 `生产环境缺少 required Supabase 配置时返回 503` **是本条之前就有的**
+    ——它们当时只测自动降级那一半，绿灯只说了半个真话）；② 三个源文件整体退回 `origin/main` → **11 红 / 28 绿**；
+    ③ 两道生产判断一起删 → **9 红 / 30 绿**（这时「导入时判定」那条才红，证明常量那道确实独扛认证路径）；
+    ④ 只把常量退回函数调用（运行时行为不变、折叠丢失）→ **1 红 / 38 绿**，红的只有形状那条。
+    先前那两处 "8 条红 / 30 条绿" 与 "6 个文件 10 条红 / 62 条绿" 的读数**是在还没有这层三元的树上量的**，
+    杀伤面差异正是上面那句代价；本条按当前树重量之后已在 CHANGELOG 里就地更正；
+
+  - **并且生产产物不再受这个开关影响**：`NEXT_PUBLIC_MOCK_ENABLED` true / false 两次构建总字节
+    2,997,011 / 2,997,015（差的 4 字节是内嵌 chunk id 字符串长度），最大的那个 chunk
+    `0q8j5g_fowmqu.js`（743,012 字节）在 main(mock 关) / 本分支(mock 关) / 本分支(mock 开)
+    **三次构建里 sha256 相同**（`b4fc187d70b71672…`）——本条对生产客户端的净增量是 0 字节；
+  - 顺手把这个文件头部那句「零依赖轻量模块，免得把 faker 打进 Edge 运行时」**量了一遍**（此前没有任何
+    用例或文档给它数字）：`.next/server/edge` 下 3 个 `.js` 合计 **183,021 字节**，main 与本分支
+    **逐文件同大小**，`iataTypeCode` 命中 0 次。所以那句承诺是真的，而且改动没碰它。
+    （一次失败的探针值得记下来：我用 `createServerClient` / `GoTrueClient` / `traceContextExtractor`
+    在 Edge 产物里找 Supabase，全部 0 命中 —— 服务端 Edge 包会被改名，**类名与导入名不是可搜的标记**，
+    要搜就搜字符串常量（`iataTypeCode` 这类）或直接比字节数。）
+  - `.bundle-baseline` 因此从 2733.8 改成 **2926.8**：旧基线量的是"生产误配把真实客户端摇掉"那个 shape，
+    而 C13 之后那个 shape 在生产构建里已经不存在（main 用真实生产构型构建也是 2926.8，比基线高 7.1%——
+    这份增长是 v0.6.0 以来攒的，不是本条带来的，本条只是让它没法再被误配隐藏）。
+    **不放宽判据**：5% 预算、脚本、`verify` 接线一字未动，只换被记录的读数；
+  - 24.9 kB 只占基线 0.9%，落在 5% 预算内 ⇒ `check:bundle` 拦不住"折叠又丢了"这类退化，
+    所以由 `config.test.ts` 钉住写法（断言声明里直接出现 `process.env.NODE_ENV === "production"` 与
+    `? false :`）。变异核对：把声明退回 `evaluateMockMode(process.env)` → **只有那 1 条红，其余 9 条绿**；
+  - 顺手量到一条**会污染任何本地体积测量**的事实（先给出观察，再给未证实的部分）：仓库根下一个
+    **未被 `.gitignore` 收录**的临时目录会改变 `check:bundle` 的读数。同一批 ref 在 `.gate-logs/` 里
+    堆了约 240 个日志与构建产物副本之后，两次重复构建各自稳定地比干净树高 8.9 kB
+    （main 2855.3 vs 2846.4、未折叠分支 2960.6 vs 2951.7），而且其中一次一侧的 CSS 比另一次多出
+    9,069 字节 / 77 个 utility 选择器（83,809 与 855 vs 74,740 与 778）——**同一份源码的产物形状被一个
+    无关目录改了**。机制我没有证实（怀疑方向：Tailwind 的自动内容扫描把该目录当源码），能证实的是
+    处置动作有效：把临时目录挪出仓库根之后，每个 ref 的读数在重复构建间逐字节稳定，改动与差值一一对应。
+    #151 正是把 `.gate-logs` 写进 `.gitignore` 的那条 PR（还没合进 `main`）；在它落地之前，
+    任何按体积取证都要先清掉仓库根里的临时目录，或者按这里的姿势先量一遍自己的"空载"读数。
+    这次踩到之前我先把两组 A/B 跑了个遍：**结论方向没错（差额确实只来自那一个文件），但数值是错的**
+    （当时量的 96.4 kB 与那条"CSS 少 8.9 kB"的假线索都来自被污染的树）。
+- 明确**不**做的：① 不新增 `check:*` 门禁（理由见上一条）；② 不给「生产跑 mock」留逃生开关
+  （仓库里没有任何文档把它写成承诺，加一个 `ALLOW_MOCK_IN_PRODUCTION` 只是把这次收口的口子重新打开）；
+  ③ 不改 mock 客户端本身与 `.env.example` 的取值（只加注释）；④ 不动 Preview 的环境变量——那要 Vercel 权限。
+- 下一项：v0.12.0 任务池在 `main` 上读到的剩余未收口项已经全部不在「可自主开工」这一类——
+  B02–B05 与 C05 要外部权限（云端 Supabase / Vercel / provider），C06 由 #151 收口、C08 由 #92 那条链
+  在做、A05 由 #152、C12 由 #153（都还没合进 `main`，所以 `main` 上的 roadmap 读起来仍是「待做」）。
+  因此接下来的自主工作是**继续找缺陷**（安全线例行扫、未测件、合并后才会红的那类写法），不是开新的池项。
+- 更新时间：2026-09-25（UTC）。
