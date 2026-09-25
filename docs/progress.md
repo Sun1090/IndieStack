@@ -1259,8 +1259,14 @@
   - `pnpm --silent type-check` → exit 0；本条最终形态下 `CI=true pnpm check:all` **exit 0（37 步）**、
     `npx vitest run` **202 文件 / 2313 通过**、`pnpm build` **exit 0**（pre-push 钩子又跑了一遍 test + build）。
     用例数逐条对得上：`main` 上 2291 + `gt` 语义 4 + 静态对账 3 + 动态对账 4 + `check:mock-docs` 新增 11 = **2313**。
-    同一棵树合进 57 条队列之后：`check:all` **exit 0 / 42 步**、vitest **236 文件 / 2762 passed + 4 skipped**
-    （= 56 条那遍的 2740 + 本条 22 条用例），`e2e/mail-flow.spec.ts` 4 passed。
+    同一棵树合进 57 条队列（`sim/queue-57` = `sim/queue-56` + 本分支 `31fc91a7`）之后：
+    vitest **236 文件 / 2762 passed + 4 skipped**（= 56 条那遍的 2740 + 本条 22 条用例），
+    `e2e/mail-flow.spec.ts` **4 passed**。
+    **`CI=true pnpm check:all` 在那棵树的第一遍是 exit 1（42 步跑到 `pnpm test` 红 1 条）**，
+    红的不是本条：`src/components/layout/shortcuts-dialog.test.tsx > 默认关闭，按 ? 打开`
+    报 `Error: Test timed out in 5000ms`。单跑该文件 7 条全绿，整仓重跑 **236 文件 / 2762 passed 全绿**，
+    所以判它是满载下的 5s 超时抖动（本机第一次观察到；那条用例本来就有 `userEvent` + 真实计时器）。
+    记下而不改写：这一遍不能说「42 步 exit 0」。
 - **量到一条 `merge-tree` 看不见的边：#123 × #149，而且它一开始是红的**。逐条 `merge-tree` 的结论是
   「56/56 只撞台账、非台账冲突 0 个」，把 57 条按编号升序真合一遍之后 `pnpm test` **红 1 条**：
   `退订链接同样吃这条闸门；未过期时才真的落到 unsubscribed`（`expected true to be false`，
