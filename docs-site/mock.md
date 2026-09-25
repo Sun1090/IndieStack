@@ -28,6 +28,13 @@ Mock mode is enabled by a single runtime check in `src/lib/mock/config.ts`.
 NEXT_PUBLIC_MOCK_ENABLED=true
 ```
 
+The flag is a **development** affordance: `src/lib/mock/config.ts` returns `false` for any
+production build, so a `true` left behind on a hosting provider cannot turn a deployed app into a
+fabricated session. That was not always the case — the guard used to sit only on the automatic
+fallback below, while `NEXT_PUBLIC_*` values are inlined into the build artifact, so one forgotten
+variable made the app serve a fake logged-in user **and** made `/api/health` report Supabase as
+`skipped` with a 200. Both branches now go through the same production check.
+
 ### 2. Automatic fallback (non-production only)
 
 If `NEXT_PUBLIC_MOCK_ENABLED` is unset, Mock mode still activates when **all** of the
@@ -39,6 +46,9 @@ following hold:
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` is irrelevant to this decision. Production builds never
 fall back automatically: a production deploy with a missing Supabase URL fails loudly
 instead of silently serving mock users.
+
+`/api/health` and the provider diagnostics report the same value rather than recomputing it, so
+`mockMode` in those outputs describes what the request pipeline actually does.
 
 ### 3. CLI scripts
 

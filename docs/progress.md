@@ -1153,3 +1153,62 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — C13：生产构型不许开 mock（缺闸门的只有显式那一半）
+
+- 里程碑 / 版本：v0.12.0；C 组（门禁与安全语义），roadmap 里 C13 那条由 #153 登记。
+- 状态：DONE。分支：`fix/mock-production-guard` → PR（编号见本条目末尾的补记）。
+- 缺陷的形状：`src/lib/mock/config.ts` 的判定有两条来源，**生产闸门只写在第二条上**。
+  第一条 `NEXT_PUBLIC_MOCK_ENABLED === "true"` 什么都不问，第二条（自动降级）的注释正是
+  「避免生产环境误配时静默绕过认证」。同一个文件里两种语义，危险的那一种胜出：
+  `NEXT_PUBLIC_*` 是构建期内联进产物的，一个忘在部署平台上的 `true` 会跟产物进生产，
+  `server.ts` / `client.ts` / `middleware.ts` 改发 Mock 客户端，中间件看到的就是「已登录」。
+  而 Vercel 的 Preview 与 Production 是同一种构型（`NODE_ENV === "production"`），
+  所以 `docs/operations/environments.md` 那条「Preview 保持未设置」的约定过去只靠人守。
+- **这条不是读代码读出来的结论，是跑出来的**（差分探针，两次跑法只差那三行源码）：
+  `NEXT_PUBLIC_MOCK_ENABLED=true pnpm build` → `NEXT_PUBLIC_MOCK_ENABLED=true next start -p <随机空闲端口>`
+  → `redirect:"manual"`。修复前：`/dashboard` **200 不重定向**，`/api/health` 回 200 且
+  `mockMode=true`、Supabase `status="skipped"`、`ready=true`（**readiness 对着一次认证绕过点头**）；
+  修复后：`/dashboard` **307 → `/auth/login?redirect=%2Fdashboard`**、`mockMode=false`。
+  如实记一条边界：探针里「HTML 像不像 mock 内容」那个正则没命中，所以判定只依赖上面两格，不依赖页面文案。
+- 修法：真值表收成一条纯函数 `evaluateMockMode(env)`（生产一律 `false`，两条来源共用这道闸），
+  `isMockEnabled` 由它算出；并把此前**各自抄了一遍**这个条件的两处消费方（`/api/health` 的 `isMockMode()`、
+  provider 诊断的 `isMockMode(env)`）改为调用它——三处拷贝各写一遍正是这次漂移的发生方式，
+  也是为什么健康检查会比应用更乐观。
+- 变更文件：`src/lib/mock/config.ts`、`src/lib/mock/config.test.ts`（新增 9 条）、
+  `src/lib/providers/diagnostics.ts` + 其测试（+1 条生产用例）、`src/app/api/health/route.ts` + 其测试
+  （+1 条）、`docs-site/mock.md` 与 `docs-site/zh-CN/mock.md`、`docs/architecture/13-mock-system.md`
+  （条件表 + mermaid 入口节点）、`docs/operations/environments.md`、`.env.example`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`CI=true pnpm check:all` → **exit 0，37 步全过，200 文件 / 2302 用例**
+  （`+1 文件 / +11 用例`；`check:mock-docs` 仍报「18 张表 / 8 个 E2E 端点 × 3 份文档」，
+  说明两份 mock 文档的改动没破坏它比对的那一层）；`pnpm build` → **exit 0**（就是上面那次探针构建）；
+  `pnpm type-check` → 0 错。
+- 变异核对（两次，都被抓）：① 只删 `if (env.NODE_ENV === "production") return false;` 这一行 →
+  3 个测试文件 **8 条红 / 30 条绿**，其中 **2 条是本条之前就存在的生产用例**
+  （`fails closed when production Supabase configuration is missing`、
+  「生产环境缺少 required Supabase 配置时返回 503」）——**它们当时只测自动降级那一半，
+  所以那两条绿灯只说了半个真话**；② 把三个源文件整体退回 `origin/main` 的版本、只留新测试 →
+  6 个文件 **10 条红 / 62 条绿**。两个脚本都 `trap` 还原，跑完 `git status` 对涉及路径为空（`dirty=0`）。
+- 阻塞 / 风险 / 回滚：改的是「生产 + 显式 true」这一格的行为：以前发 Mock 客户端，现在发真实客户端，
+  缺凭据就如实失败（这是 fail-closed 的方向，也是文档一直写的方向）。开发、`dev:mock`、E2E、
+  视觉基线都不受影响——`playwright.config.ts` 与 `playwright.visual.config.ts` 起的都是 `pnpm dev`。
+  回滚 = revert 本 commit。
+- 冲突面（61 条 open 逐路径扫，队列现况见 #118 附二十九）：**本条那五个代码文件在整条队列里命中 0 条**，
+  没有语义边要预防；同文件的只有文档三处——`docs-site/{,zh-CN/}mock.md`（#148、#149）、
+  `docs/architecture/13-mock-system.md`（#148），都是不同区域的追加，`merge-tree` 自动合上；
+  台账尾部照例 `CHANGELOG.md` 58 / `docs/progress.md` 61。
+- **一条 merge-tree 看不见的边，要人做一次动作**：roadmap C13 的文案登记在 **#153 的分支**上，
+  写的是「给 `check:security-config` 加一条拒绝生产开 mock 的规则」。本条的判定是**不加那条门禁**：
+  那个变量活在部署平台而不是仓库里，想证明「生产没设它」要读 Vercel 的项目环境变量，
+  而本机 `VERCEL_TOKEN` 对 env 端点回 `403 invalidToken`（量不到就不是能写进门禁的事实）；
+  闸门放进判定函数之后，「配错」不再等于「假登录」，这是行为层面的收口而不是清单层面的。**因此
+  #153 落地后要把它那节 C13 改成「由 `evaluateMockMode()` 的生产闸门关闭，不另建门禁」**——
+  谁后合谁做，两侧文本零冲突，所以只有读台账的人会漏。
+- 明确**不**做的：① 不新增 `check:*` 门禁（理由见上一条）；② 不给「生产跑 mock」留逃生开关
+  （仓库里没有任何文档把它写成承诺，加一个 `ALLOW_MOCK_IN_PRODUCTION` 只是把这次收口的口子重新打开）；
+  ③ 不改 mock 客户端本身与 `.env.example` 的取值（只加注释）；④ 不动 Preview 的环境变量——那要 Vercel 权限。
+- 下一项：v0.12.0 任务池在 `main` 上读到的剩余未收口项已经全部不在「可自主开工」这一类——
+  B02–B05 与 C05 要外部权限（云端 Supabase / Vercel / provider），C06 由 #151 收口、C08 由 #92 那条链
+  在做、A05 由 #152、C12 由 #153（都还没合进 `main`，所以 `main` 上的 roadmap 读起来仍是「待做」）。
+  因此接下来的自主工作是**继续找缺陷**（安全线例行扫、未测件、合并后才会红的那类写法），不是开新的池项。
+- 更新时间：2026-09-25（UTC）。

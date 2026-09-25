@@ -204,6 +204,20 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **生产构型里被忘掉的 `NEXT_PUBLIC_MOCK_ENABLED=true` 不再能把站点变成假登录**（roadmap C13）：
+  `src/lib/mock/config.ts` 的判定有两条来源，而生产闸门只写在「自动降级」那一半（那里的注释就是
+  「避免生产环境误配时静默绕过认证」），显式开关那一半没有闸门。`NEXT_PUBLIC_*` 是构建期内联进产物的，
+  所以部署平台上一个忘掉的 `true` 会跟着产物一路进生产，`server.ts` / `client.ts` / `middleware.ts`
+  全部改发 Mock 客户端，中间件看到的就是「已登录」。**这条按实测收口**（同一份生产构建，只换判定函数）：
+  修复前 `/dashboard` 回 **200**，且 `/api/health` 报 `mockMode=true`、Supabase `skipped`、`ready=true`
+  ——readiness 对着一次认证绕过点头；修复后同一入口回 **307 → `/auth/login`**，健康检查按缺凭据如实降级。
+  修法是把真值表收成一条纯函数 `evaluateMockMode(env)`（生产一律 `false`，两条来源共用这道闸），并让此前
+  **各自抄了一遍**这个条件的 `/api/health` 与 provider 诊断改调它——三处拷贝各写一遍正是这次漂移的发生方式，
+  也是为什么健康检查会比应用更乐观。新增 `src/lib/mock/config.test.ts`（9 条真值表，含「生产 + 显式 true」
+  那一格）与两个消费方各一条生产用例；变异核对两次：只删闸门那一行 → 3 个测试文件 **8 条红 / 30 条绿**
+  （其中 2 条是本条之前就有的生产用例——它们当时只测了自动降级那一半，绿灯是半个真话）；
+  把三个源文件整体退回修复前 → 6 个文件 10 条红 / 62 条绿。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
