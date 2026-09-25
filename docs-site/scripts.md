@@ -67,7 +67,7 @@
 | `pnpm db:status` | Check Supabase local service status |
 | `pnpm check:migrations` | Enforce immutable migration checksums + filename/ordering rules |
 | `pnpm check:query-columns` | Check every literal column name in a Supabase query chain against the generated row types |
-| `pnpm check:route-auth` | Verify every API route handler is registered in the route authorization ledger, and that the guard it claims is actually reachable |
+| `pnpm check:route-auth` | Verify every API route handler is registered in the route authorization ledger, that the guard it claims is actually reachable, and that the two-state rate-limit ledger agrees: each handler either has a window or carries a written reason |
 | `pnpm update:migrations-manifest` | Re-baseline the migration checksum manifest (append-only) |
 | `pnpm check:migration-history` | Compare local Supabase migration history (needs `supabase start`) |
 | `pnpm check:migration-runbook` | Audit that the migration rollback runbook matches the migration manifest |

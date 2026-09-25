@@ -67,7 +67,7 @@
 | `pnpm db:status` | 查看 Supabase 本地服务状态 |
 | `pnpm check:migrations` | 校验迁移不可变校验和与命名/顺序规则 |
 | `pnpm check:query-columns` | 校验查询链里每个字面量列名都存在于生成的行类型中 |
-| `pnpm check:route-auth` | 校验每个 API handler 都在路由鉴权台账里登记，且登记的守卫确实能从该 handler 走到 |
+| `pnpm check:route-auth` | 校验每个 API handler 都在路由鉴权台账里登记、登记的守卫确实能从该 handler 走到，并且限流两态台账一致：每条要么有窗口，要么写明它为什么可以没有 |
 | `pnpm update:migrations-manifest` | 重新生成迁移校验和清单（仅允许追加） |
 | `pnpm check:migration-history` | 比对本地 Supabase 迁移历史（需 `supabase start`） |
 | `pnpm check:migration-runbook` | 校验迁移回滚 runbook 与迁移清单保持一致 |

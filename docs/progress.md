@@ -1523,3 +1523,40 @@
   要加长它的那次改动必须先给出理由。
 - 下一项：把这个结果写进 PR #138 正文，并同步 PR #118 的合并地图。
 - 更新时间：2026-09-24（UTC 10:55 前后）。
+
+## 2026-09-25 — C12 定案并落地：限流变成两态判定「有窗口，或写明理由」，台账里另立 4 条自我标注的缺口
+
+- 里程碑 / 版本：v0.12.0；roadmap **C12** 的后半（前半是 2026-09-24 的 `--rate-limit-report`，只现量不判定）。
+  两个前置由用户在 2026-09-25 拍板：① 取**两态台账**（有窗口或写明理由），② 判定**并入** `check:route-auth`。
+- 状态：DONE（代码侧完成，等 PR 合并）。分支：`feat/rate-limit-ledger-gate`（base `feat/measure-route-rate-limits`，即 PR #138）。
+- 落地的东西：
+  - `src/lib/security/rate-limit-policy.ts`：`RATE_LIMIT_LEDGER` 只登记**没有窗口**的那一侧（31 条），
+    因为「有没有窗口」是调用图现量的事实，写成文字就会和代码各说各话。四种偏差各有其码：
+    `RATE_LIMIT_UNLEDGED` / `RATE_LIMIT_STALE` / `RATE_LIMIT_ORPHAN` / `RATE_LIMIT_REASON_MISSING`，
+    外加两条失败封闭（一个 handler 都没解析出来；**全仓库匹配不到任何限流器绑定**——那一刻
+    「有窗口」这个状态本身已经不可观测，报绿比报红更危险）。
+  - `scripts/lib/route-auth-check.js`：默认路径现在跑两份核对，绿话多打一行读数。
+  - 读数：**45 个 handler = 14 个有窗口 + 31 个写明理由（其中 4 条标注为已知缺口）**。
+  - 文档：`docs/testing.md` 新增「限流两态台账门禁（C12）」一节、`docs-site/scripts.md`（双语）那一行、
+    roadmap C12 的状态段、CHANGELOG。
+- 三条判断写在这里，因为它们不在代码里：
+  1. **31 条豁免不是一句「它们都不需要」**，而是三种不同性质的判断，理由段各自承担：
+     mock / E2E 面（不触达真实数据，但把残余暴露写清楚——假 store 是进程内数组、追加无上界，
+     开着 mock 的生产部署会被打满内存）；cron / 签名面（重复调用不会把工作放大到超过队列本身，
+     加 IP 窗口只会把平台调度读成 429）；以及 4 条**明确标成缺口的**（两条营销 token POST 等 #136、
+     `GET /api/health`、`GET /api/og`）。
+  2. **缺口必须带关法才成立**：以 `RATE_LIMIT_GAP_MARKER` 开头的理由如果既没有 PR 号也没有判据句，
+     照样红在 `RATE_LIMIT_REASON_MISSING` 上；条数每次 CI 印在读数里。台账最容易烂掉的方式不是漏登记，
+     是把「还没做」写成一副已经想清楚的样子。
+  3. **#136 合并之后本门禁会立刻把那两条营销端点报成 `RATE_LIMIT_STALE`，这是预期的红灯**，
+     合入方删掉那两行即可——豁免台账存在的意义就是让「已经补上了」这件事也变成一个会被发现的变更。
+- 顺手量出来的新洞，登记为 **C13**：上面第 1 条判断的前提是「生产不会开 mock」，而这句话**当前没有
+  任何门禁在管**——`isMockEnabled` 只看 `NEXT_PUBLIC_MOCK_ENABLED === "true"`，那个 `NODE_ENV` 判断
+  只护住「Supabase 未配置时自动启用」那一支；`scripts/check-security-config.js` 里没有 `MOCK` 字样（grep 确认）。
+- 验证：新增 16 条用例（`src/lib/security/rate-limit-policy.test.ts`），`src/lib/security` 11 文件 / 278 用例全绿；
+  其中一条**正反控制**（合成输入里「有窗口」与「写明理由」各半时必须零问题，防判定退化成「凡是没窗口都红」）、
+  一条**复现门禁要拦的形状**（临时塞进一个没窗口没登记的 handler，issues 恰好等于那一条 `RATE_LIMIT_UNLEDGED`）、
+  一条「豁免里不许出现会话面端点」。`pnpm check:all` 38 步 exit 0。
+- 仍未闭环：4 条缺口本身没有关（关法写在条目上，不在这次改动里顺手做）；C13 只是登记；
+  本条压在 #138 上，合并顺序必须 #138 在前。
+- 更新时间：2026-09-25（UTC 04:45 前后）。

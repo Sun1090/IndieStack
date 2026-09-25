@@ -279,6 +279,27 @@
     （`public` / `session` / `token` 之外多出一族就红，红话写着「这条测试不认识它」），
     精确读数交给 `--rate-limit-report`。地板仍然有意义：判据坏掉时读数掉到 0，而 0 看起来
     和「没人加窗口」一样干净。
+    **2026-09-25 定案并落地（后半）**：用户拍板取**两态台账**——每个 handler 要么有窗口，要么写明
+    它为什么可以没有；上面那两个前置由此一并解决：判定**并入** `pnpm check:route-auth`（省掉第二套登记面，
+    失败信息里 `[ROUTE_AUTH_*]` 与 `[RATE_LIMIT_*]` 的码本身就能归因），豁免台账落在
+    `src/lib/security/rate-limit-policy.ts`。落地读数：**45 = 14 有窗口 + 31 写明理由**，
+    其中 4 条自我标注为**已知缺口**（两条营销 token POST 等 #136、`GET /api/health`、`GET /api/og`），
+    关法写在条目自己身上，条数每次 CI 印在读数里。
+    **这一遍顺带量出来一条新的、不属于本条的洞**：mock / E2E 那 15+3 条端点的整个判断建立在
+    「生产不许开 mock」之上，而这句话**当前没有任何门禁在管**——`isMockEnabled` 只看
+    `NEXT_PUBLIC_MOCK_ENABLED === "true"`，注释里那句「仅在非生产环境自动启用」管的是*自动*启用那一支，
+    显式把这个变量带进生产就没人拦（`scripts/check-security-config.js` 里没有 `MOCK` 字样，已 grep 确认）。
+    登记为 C13。
+
+25. C13 **生产构型不许开着 mock**（C12 落地时量出来的，不是设想出来的）：
+    `src/lib/mock/config.ts` 的 `isMockEnabled` 只要 `NEXT_PUBLIC_MOCK_ENABLED === "true"` 就为真，
+    **不看 `NODE_ENV`**——那个环境判断只护住「Supabase 未配置时自动启用」那一支。于是带着这个变量的
+    生产部署会把 15 条 `/api/e2e/*` mock 端点与假收件箱原样暴露出去，而 `RATE_LIMIT_LEDGER` 里
+    那 18 条豁免的判断前提恰恰是「它们只在 mock 构型下存在」。判据该长什么样：
+    `pnpm check:security` 里加一条——生产环境文件（`.env.production`、CI/CD 与 vercel 配置里可见的
+    生产变量）出现 `NEXT_PUBLIC_MOCK_ENABLED=true` 即红；`next build` 阶段能读到变量的一侧
+    也可以直接 fail。范围只有这一个文件与这条规则，**不要**顺手把 mock store 改成请求级
+    （那会重演 C01 记下的「Action 写进去、RSC 读不到」）。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 
