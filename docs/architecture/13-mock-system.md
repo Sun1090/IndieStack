@@ -24,7 +24,7 @@ graph TD
         RealDB["PostgreSQL"]
     end
 
-    EnvVar["NEXT_PUBLIC_MOCK_ENABLED=true"] --> Config
+    EnvVar["NEXT_PUBLIC_MOCK_ENABLED=true<br/>（仅非生产生效）"] --> Config
     NoSupabase["NODE_ENV !== production<br/>且缺少 NEXT_PUBLIC_SUPABASE_URL"] --> Config
     Config -->|Mock 模式| MockClient
     Config -->|真实模式| RealClient
@@ -41,11 +41,16 @@ graph TD
 
 | 条件 | 说明 |
 | ---- | ---- |
-| `NEXT_PUBLIC_MOCK_ENABLED=true` | 显式启用 |
+| `NEXT_PUBLIC_MOCK_ENABLED=true` | 显式启用，**同样仅限非生产**：`NODE_ENV === "production"` 时该值一律被忽略 |
 | `NODE_ENV !== "production"` 且缺少 `NEXT_PUBLIC_SUPABASE_URL` | 自动降级，仅限非生产环境 |
 
 生产环境**不会**自动降级：缺少 Supabase URL 的线上部署应当显式失败，而不是静默返回
 Mock 用户。`NEXT_PUBLIC_SUPABASE_ANON_KEY` 与该判断无关。
+
+显式开关过去**不带**这道闸门，而 `NEXT_PUBLIC_*` 是构建期内联进产物的：部署平台上一个忘掉的
+`true` 就会让线上发假登录用户，且 `/api/health` 同时把 Supabase 报成 `skipped` 并回 200。
+现在两条来源过 `evaluateMockMode()` 这同一个函数，`/api/health` 与 provider 诊断也调它，
+不再各自抄一遍条件（三处拷贝里各写一遍正是那次漂移的发生方式）。
 
 ```bash
 # 启动 Mock 模式开发
