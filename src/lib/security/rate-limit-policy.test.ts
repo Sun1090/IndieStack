@@ -186,7 +186,7 @@ describe("真实仓库", () => {
   it("缺口这一类不为空，且读数里带着它的条数（不把「还没做」写成「已判定」）", () => {
     const gaps = Object.entries(RATE_LIMIT_LEDGER).filter(([id, entry]) => {
       const marked = entry.reason.startsWith(RATE_LIMIT_GAP_MARKER);
-      if (marked) expect(entry.reason).toMatch(/#\d+|关掉它的判据|怎么关/, id);
+      if (marked) expect(entry.reason, id).toMatch(/#\d+|关掉它的判据|怎么关/);
       return marked;
     });
     expect(gaps.length).toBeGreaterThan(0);

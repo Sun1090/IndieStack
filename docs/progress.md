@@ -4983,6 +4983,23 @@
   在做、A05 由 #152、C12 由 #153（都还没合进 `main`，所以 `main` 上的 roadmap 读起来仍是「待做」）。
   因此接下来的自主工作是**继续找缺陷**（安全线例行扫、未测件、合并后才会红的那类写法），不是开新的池项。
 
+## 2026-09-25 — C12 的限流两态台账接进门禁，第一天就抓到两条到期豁免
+
+- 里程碑 / 版本：v0.12.0 门禁基础设施 + 安全面（本分支 `feat/rate-limit-ledger-gate`，PR #153）。
+- 状态：DONE（PR 待合并；门禁与全量门禁本地已跑通）。
+- 合并时的订正（门禁自己抓到的）：`check:route-auth` 落地后第一次跑真实仓库就红了 **2 项
+  `RATE_LIMIT_STALE`**——`POST /api/marketing/confirm` 与 `POST /api/marketing/unsubscribe`
+  在台账里登记为「已知缺口」，而调用图已经看得见窗口（`src/lib/marketing/request.ts#marketingTokenLimit`）。
+  成因是这两条豁免的 `reason` 里**自己写好了关闭条件**：「#136 正在补按 IP 的滑窗，那条合并之后
+  本条会被 `RATE_LIMIT_STALE` 报出来，届时删掉这两行」。#136 确实合了，于是这道判据按设计响了。
+  按它自己的判词删掉那两行，没有顺手把 `RATE_LIMIT_GAP_MARKER` 一起放宽。
+- 这条是「两态台账」这个形状的第一次真实回报：豁免不是永久选项，它带一个到期条件和一个
+  会响的检查。读数从 45 个 handler = 16 有窗口 + 31 写明理由（含 2 条已知缺口）变成
+  **45 = 16 + 29**，缺口从 2 降到 0。
+- 验证：`node scripts/check-route-auth.js` → exit 0（`✅ 限流两态台账一致`）；
+  `CI=true pnpm check:all` → **exit 0，✅ 全部校验通过**。
+- 回滚：还原本 PR 即可；那两行豁免不恢复——恢复会让 `RATE_LIMIT_STALE` 重新变红。
+
 ## 2026-09-25 — `NEXT_PUBLIC_FEATURE_*` 开关在客户端一侧从来没生效过（计算式 `process.env` 不会被内联）
 
 - 里程碑 / 版本：v0.12.0；「文档/断言说假话」这一族之外的一例——**开关本身说假话**。
