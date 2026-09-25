@@ -204,6 +204,22 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **配置了 Appark 之后，结账埋点第一次真的会离开那个进程**：`src/lib/appark.ts` 的事件队列是
+  **进程内**的，而队列不会自己出去——必须有人调 `flushEvents()`。全仓此前唯一的 flush 调用点在
+  `src/app/api/cron/digest/route.ts` 的结尾，而它在 Vercel 上是**另一个 serverless 函数**：cron 的模块实例
+  里只有它自己入过队，`src/lib/stripe/index.ts` 那条 `checkout.session_created` 进队之后谁都不再碰，
+  随实例回收丢掉。`trackEvent` 那侧一切正常、没有任何一条日志会说谎说它失败了，
+  而 ADR-011 的「后果」里写着「关键流程均在请求尾部主动 flush」——那句话在结账这一处从来不是事实。
+  现在生产者自己负责送：`createCheckoutSession` 在埋点之后 `void flushEvents()`
+  （**不 await**：那是把一次第三方收集端的往返塞进跳 Stripe 的路上，而 `flushEvents` 自己吞掉所有异常；
+  未启用 Appark 时它只清空队列，零网络开销）。
+  约束反过来由机器核对：新增 `src/lib/appark-flush-coverage.test.ts` 扫 `src/**`，
+  任何**调用**了 `trackEvent` / `trackError` 的文件都必须自己出现 `flushEvents(`，否则点名红
+  （注释里的举例不算——`src/lib/i18n/dynamic-keys.ts` 的文档注释里就有一句 `trackEvent(...)` 的反例，
+  不做区分会把一份纯规则模块报成生产者）。它跑在 `pnpm test` 里，与
+  `src/lib/mock/auth-surface.test.ts` 同族，不再往 `scripts/check-*` + CI + 双语 docs-site 那套接线复制第三遍。
+  变异核对：把 `void flushEvents()` 从 `src/lib/stripe/index.ts` 删掉 → 真实仓库那条用例红并点名
+  `src/lib/stripe/index.ts`；fixture 侧「有生产者没 flush」也各自钉了一条。
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。
