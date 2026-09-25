@@ -449,6 +449,23 @@ All notable changes to IndieStack will be documented in this file.
   **运行时的默认 store 仍然全局共享，这是设计而不是遗留**：理由写在
   `docs/architecture/13-mock-system.md`，顺手改成请求级会重演 v0.5.0 的「写进去了、读不到」。
 
+- **`NEXT_PUBLIC_FEATURE_*` 开关在客户端从来没生效过**（`src/lib/feature-flags.ts`）：判定写成
+  `process.env[` + 反引号模板键这种**计算式**，而 Next 只内联静态成员表达式（`process.env.NEXT_PUBLIC_X`）。
+  实测一份设了 `NEXT_PUBLIC_FEATURE_AUDIT_LOG_EXPORT=false` 的生产构建：客户端 chunk 里关于这一族只剩
+  模板前缀 `NEXT_PUBLIC_FEATURE_` 一个字符串，那个 `false` 根本不在产物里；浏览器中
+  `typeof process === "undefined"`（Playwright 起真实 `next start` 量的），代码退到 `process` 空垫片
+  ⇒ 永远读到 `undefined` ⇒ **永远走默认值**。服务端渲染读的是真实 env，于是 `auditLogExport`（默认开）
+  在客户端唯一的消费方 `audit-logs-page.tsx`（`"use client"`）上两侧不一致：服务端不渲染导出按钮，
+  客户端 hydration 之后又把它补出来。修法是把键摊平成一张静态读法表（`RAW_FLAGS`，配
+  `FlagName = keyof typeof` 让新开关必须登记），同一份构建里 `AUDIT_LOG_EXPORT:"false"` 就成了内联字面量
+  （未设置的其它开关仍是垫片读取，行为不变）。**为什么用源码形状断言而不是运行时用例**：
+  vitest 的 jsdom 里 `process.env` 是真的，修复前后那 5 条运行时用例同样全绿——这条缺陷在单测环境里
+  结构性看不见。新增两条形状断言（禁止计算式访问、`flag("X")` 与静态读法两侧一一对应），变异核对两刀：
+  只把查表改回计算式 → **1 红 / 6 绿**；整个文件退回修复前 → **2 红 / 5 绿**（第二条正是
+  「调用点为 0 说明判定被搬走了」那条防空转断言在响）。顺手把这条运维事实写进
+  `docs/operations/environments.md`（新节「`NEXT_PUBLIC_*` 是构建期常量」），并在 `.env.example`
+  登记此前没有记录的 `NEXT_PUBLIC_FEATURE_AUDIT_LOG_EXPORT`。
+
 ### Known Limitations
 
 - **从未登记过的 bucket 对象对数据库不可见**：`find_orphan_upload_objects()` 的真相来源是
