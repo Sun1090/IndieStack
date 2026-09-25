@@ -1,6 +1,6 @@
 /**
  * E2E 专用：mock storage 上传失败注入（仅 Mock 模式启用）
- * 让 uploadAvatar 在浏览器端稳定走出「失败 → 重试成功」闭环：
+ * 让浏览器头像上传（`avatar-upload-form` → `POST /api/uploads/avatar`）稳定走出「失败 → 重试成功」闭环：
  *   failNext = N 时，后续 N 次 storage.put() 返回错误，随后恢复成功。
  *
  * POST /api/e2e/mock-upload

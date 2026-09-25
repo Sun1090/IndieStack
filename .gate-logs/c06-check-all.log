@@ -1,0 +1,854 @@
+$ bash scripts/check-all.sh
+==> check:locales
+✅ 翻译对称性校验通过：en/zh-CN 各 1242 个 key 完全一致（值审计 2484 条文案，86 条登记为无需翻译）
+==> check:i18n
+✅ next-intl missing-key 门禁通过：扫描 868 个静态翻译调用，en/zh-CN 均存在
+==> check:action-errors
+✅ 错误码翻译审计通过：42 个错误码 × 2 个 locale，163 个前端文件无裸渲染
+==> check:glossary
+✅ 术语一致性检查通过：14 个术语，命中 272 次 (键, 术语)、可比对 272 次，263 次使用指定译法
+==> check:dynamic-keys
+✅ 动态翻译键契约通过：9 个契约 × 2 个 locale、64 个取值全覆盖；源码中 12 处动态键模板均已登记
+==> check:direction
+✅ 书写方向检查通过：133 个应用层文件无物理方向类（src/components/ui/** 按设计排除）
+==> check:agents
+✅ Agent 索引一致：10 个文件全部正确索引
+==> check:rls
+✅ RLS 全表回归通过：33 个迁移、20 张 public 表、35 条生效策略均带 USING / WITH CHECK，且每张表都已分类
+==> check:migrations
+✅ migration drift check passed: 33 immutable migrations match SHA-256 manifest
+==> check:supabase-security
+✅ Supabase security audit passed: 33 migrations, 20 public tables, server-only service role checks, 39 effective RLS policies, 32 classified service-role call sites
+==> check:query-columns
+✅ 查询列名校验通过：21 张表 / 174 处 .from() / 361 个字面量列名，跳过 4 条含关联查询的链、43 个非纯列名参数
+==> check:security
+✅ security/config checks passed: 947 tracked files, 554 source files, 9 workflows
+==> check:release-docs
+✅ release documentation checks passed (v0.11.0, 7 artifacts)
+==> check:changelog
+✅ CHANGELOG 结构校验通过：11 个已发布版本，1 个 Unreleased 章节
+==> check:gates
+✅ 门禁接线审计通过：37 个门禁（本地 34 / CI 36 / 豁免 3），9 个工作流
+==> check:workflows
+✅ CI 工作流校验通过：9 个工作流 / 15 个作业 / 46 个 action 引用
+==> check:production-smoke
+✅ Production Smoke 工作流契约校验通过：9 个工作流
+==> check:codeql
+✅ CodeQL 策略校验通过：github/codeql-action@v4 / javascript-typescript / security-extended / 严重度 ≥ 7 阻断 / 分诊 SLA 5 个工作日 （21 条契约断言）
+==> check:secrets-scan
+✅ Secrets Scan 策略校验通过：gitleaks/gitleaks-action@v3 / fetch-depth 0 / push main,develop / 首次响应 10 分钟 / 轮换 24 小时（20 条契约断言）
+==> check:trace-coverage
+✅ 请求追踪覆盖校验通过：45 个服务端边界 / 28 个使用带 trace 的错误入口 / 0 个豁免；proxy、trace-id 与错误入口契约一致
+==> check:cron-contract
+✅ cron 调度与指标契约通过：3 个 worker（/api/cron/digest、/api/cron/push-retry、/api/cron/retention）/ 16 个指标 / 2 处条件跳过均有计数证据 / 调度表达式与 vercel.json 及运维文档一致 / 84 篇文档里的调度事实都能在仓库里找到对应 / 2 个平台级豁免
+==> check:bilingual-docs
+✅ 双语调度事实一致：27 对文档 / 8 个 cron 表达式 / 4 个 UTC 时刻两边写法相同
+==> check:release-tag
+✅ 发布标签校验通过：v0.11.0（22 条契约断言）
+==> check:adr
+✅ ADR 治理通过：14 篇（接受 12 / 提议 0 / 已废弃 2），索引 14 条
+==> check:mock-docs
+✅ Mock 文档一致性通过：18 张表 / 8 个 E2E 端点 × 3 份文档
+==> check:test-matrix
+✅ 贡献者测试矩阵通过：11 个领域 / 102 条门禁 × 2 份文档
+==> check:migration-runbook
+✅ 迁移回滚 runbook 通过：33 条迁移，最新 033_upload_object_orphan_audit.sql
+==> check:provider-docs
+✅ provider 文档一致性通过：9 个 provider / 29 个环境变量 × 2 份文档
+==> check:tailwind
+⚠️ [TW_RENAMED_UTILITY] src/components/ui:1 上游 shadcn 基元里还有 25 处 v3 类名待跟随上游收口（非阻断）
+✅ Tailwind v4 原生主题校验通过：无 @config/JS 配置，1 个样式文件、319 个应用层文件写法合规
+==> check:tokens
+✅ 设计 token 校验通过：40 个已登记 token（39 个深色覆盖、39 条 @theme 映射），319 个应用层文件未使用原生状态调色板
+==> check:fields
+✅ 共享表单字段校验通过：133 个应用层文件统一走 FormField / NativeSelect，无原生 <select> 与复制类名
+==> check:states
+✅ 状态组件校验通过：133 个应用层文件、14 个 loading.tsx 统一走 PageLoading / EmptyState / ErrorState
+==> check:docs
+✅ docs-site scripts 文档与 package.json 同步
+==> check:a11y
+✅ a11y 静态审计通过：133 个文件、128 个按钮（5 个纯图标按钮均已标注）、1 个 <img> 均带 alt（src/components/ui/** 按设计排除）
+==> type-check
+==> lint
+==> test
+$ vitest run
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.1 [39m[90m/Users/mianbaopian/Projects/IndieStack[39m
+
+ [32m✓[39m [30m[45m jsdom [49m[39m src/app/auth/mfa/page.test.tsx [2m([22m[2m13 tests[22m[2m)[22m[33m 544[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/auth/login-form.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 550[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/delete-account-section.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 250[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/mobile-dashboard-nav.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 327[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/layout/command-palette.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 229[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/data-tables/data-table.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 257[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/forms/invite-member-form.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 234[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/forms/password-form.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 226[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/confirm-dialog.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 234[2mms[22m[39m
+[90mstderr[2m | src/components/layout/shortcuts-dialog.test.tsx[2m > [22m[2mShortcutsDialog[2m > [22m[2m在 contenteditable 里输入 ? 不触发
+[22m[39mAn update to ShortcutsDialog inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(Portal) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(Portal) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(DialogOverlayImpl) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Dialog inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Dialog inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(FocusScope) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(DismissableLayer) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Presence inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(DismissableLayer) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/layout/shortcuts-dialog.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[32m 221[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/forms/profile-edit-form.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 149[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/layout/site-header.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 168[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/dashboard-sidebar.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 206[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/remove-member-button.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 190[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/forms/avatar-upload-form.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 175[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/layout/locale-switcher.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 182[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/project-delete-button.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 169[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/forms/notification-settings-form.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 162[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/mark-all-read-button.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 119[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/checkout-button.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 140[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/forms/push-notification-form.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 103[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/query-error-state.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 103[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/form-field.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[32m 109[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/layout/theme-toggle.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 107[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/page-loading.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 102[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/empty-state.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 83[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/dashboard/notifications-live.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 93[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/error-state.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 89[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/native-select.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 108[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/password-strength.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/components/shared/initial-avatar.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/lib/theme/theme.dom.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/lib/uploads/client.dom.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[45m jsdom [49m[39m src/lib/csv.dom.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+[90mstdout[2m | src/lib/i18n/action-errors-check.test.ts[2m > [22m[2m错误码翻译门禁（真实仓库）[2m > [22m[2m当前仓库通过审计
+[22m[39m✅ 错误码翻译审计通过：42 个错误码 × 2 个 locale，163 个前端文件无裸渲染
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/db/query-columns.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 363[2mms[22m[39m
+   [32m✓[39m 仓库现状 [2m(1)[22m
+     [33m[2m✓[22m[39m 仓库里每个字面量列名都对得上生成的行类型[33m 345[2mms[22m[39m
+[90mstderr[2m | src/lib/i18n/action-errors-check.test.ts[2m > [22m[2m错误码翻译门禁（真实仓库）[2m > [22m[2m反例：扫描范围写错（零错误码）时失败封闭
+[22m[39m[ACTION_ERROR_NO_PRODUCER_CODES] src/lib/actions/empty.ts：未从 1 个产出侧文件中提取到任何错误码，扫描范围或提取规则已失效
+❌ 错误码翻译审计失败：1 个问题（0 个错误码）
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/action-errors-check.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 565[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/admin-client-boundary.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 399[2mms[22m[39m
+   [32m✓[39m inspectAdminClientBoundary [2m(12)[22m
+     [33m[2m✓[22m[39m accepts the committed service-role inventory[33m 387[2mms[22m[39m
+[90mstdout[2m | src/lib/security/security-definer-grants.test.ts[2m > [22m[2mrunSupabaseSecurityCheck[2m > [22m[2mpasses against the committed repository
+[22m[39m✅ Supabase security audit passed: 33 migrations, 20 public tables, server-only service role checks, 39 effective RLS policies, 32 classified service-role call sites
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/security-definer-grants.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 330[2mms[22m[39m
+   [32m✓[39m runSupabaseSecurityCheck [2m(1)[22m
+     [33m[2m✓[22m[39m passes against the committed repository[33m 303[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/logger.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/security-config-check.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 252[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/cron-contract-check.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 129[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/trace-coverage-check.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 85[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/mock/mock-docs.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+[90mstdout[2m | src/lib/styling/direction-check.test.ts[2m > [22m[2m书写方向门禁（真实仓库）[2m > [22m[2m当前仓库的应用层没有物理方向类
+[22m[39m✅ 书写方向检查通过：133 个应用层文件无物理方向类（src/components/ui/** 按设计排除）
+
+[90mstdout[2m | src/lib/i18n/dynamic-keys-check.test.ts[2m > [22m[2m动态键门禁读真实仓库[2m > [22m[2m当前仓库通过，且计数器证明契约与模板都不是零
+[22m[39m✅ 动态翻译键契约通过：9 个契约 × 2 个 locale、64 个取值全覆盖；源码中 12 处动态键模板均已登记
+
+[90mstderr[2m | src/lib/styling/direction-check.test.ts[2m > [22m[2m书写方向门禁：临时仓库[2m > [22m[2msrc 不存在时失败而不是通过
+[22m[39m[DIRECTION_NO_FILES] src · *：一个受审文件都没扫到，扫描范围或排除规则已失效
+❌ 书写方向检查失败：1 个问题
+
+[90mstderr[2m | src/lib/styling/direction-check.test.ts[2m > [22m[2m书写方向门禁：临时仓库[2m > [22m[2m物理方向类失败，逻辑方向类通过
+[22m[39m[DIRECTION_PHYSICAL_UTILITY] src/app/page.tsx · MARGIN_EDGE：物理方向类 mr-2 应改用逻辑方向 me-（LTR 下渲染结果一致，RTL 下才正确）
+❌ 书写方向检查失败：1 个问题
+
+[90mstdout[2m | src/lib/styling/direction-check.test.ts[2m > [22m[2m书写方向门禁：临时仓库[2m > [22m[2m物理方向类失败，逻辑方向类通过
+[22m[39m✅ 书写方向检查通过：1 个应用层文件无物理方向类（src/components/ui/** 按设计排除）
+
+[90mstderr[2m | src/lib/styling/direction-check.test.ts[2m > [22m[2m书写方向门禁：临时仓库[2m > [22m[2m只有 ui 基元时视为没有可审文件，失败封闭
+[22m[39m[DIRECTION_NO_FILES] src · *：一个受审文件都没扫到，扫描范围或排除规则已失效
+❌ 书写方向检查失败：1 个问题
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/styling/direction-check.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 71[2mms[22m[39m
+[90mstderr[2m | src/lib/i18n/dynamic-keys-check.test.ts[2m > [22m[2m动态键门禁：临时仓库[2m > [22m[2m缺一个 locale 的键 → DYNAMIC_KEY_MISSING
+[22m[39m[DYNAMIC_KEY_MISSING] zh-CN demo.things.beta 取值 `beta`（来自 @/lib/demo#THINGS）在 zh-CN 里没有 `demo.things.beta`，运行时只会显示原始英文枚举
+❌ 动态翻译键契约失败：1 个问题
+
+[90mstderr[2m | src/lib/i18n/dynamic-keys-check.test.ts[2m > [22m[2m动态键门禁：临时仓库[2m > [22m[2m前缀下有集合之外的键 → DYNAMIC_KEY_ORPHAN
+[22m[39m[DYNAMIC_KEY_ORPHAN] en demo.things.gamma en 里有 `demo.things.gamma`，但它不在 @/lib/demo#THINGS 的取值集合里（枚举已删或有人绕过枚举）
+❌ 动态翻译键契约失败：1 个问题
+
+[90mstderr[2m | src/lib/i18n/dynamic-keys-check.test.ts[2m > [22m[2m动态键门禁：临时仓库[2m > [22m[2m源码里出现未登记的动态前缀 → DYNAMIC_KEY_UNREGISTERED_TEMPLATE
+[22m[39m[DYNAMIC_KEY_UNREGISTERED_TEMPLATE] - demo.widgets src/app/other.tsx:2 用了动态键 `widgets.${w}`，但没有登记契约；在 DYNAMIC_KEY_CONTRACTS 里补一条，声明它的权威取值集合
+❌ 动态翻译键契约失败：1 个问题
+
+[90mstderr[2m | src/lib/i18n/dynamic-keys-check.test.ts[2m > [22m[2m动态键门禁：临时仓库[2m > [22m[2m消息目录不存在 → 失败封闭而不是空循环通过
+[22m[39m[DYNAMIC_KEY_NO_LOCALES] - - 一个 locale 都没读到，消息目录或读取逻辑已失效
+❌ 动态翻译键契约失败：1 个问题
+
+[90mstderr[2m | src/lib/i18n/dynamic-keys-check.test.ts[2m > [22m[2m动态键门禁：临时仓库[2m > [22m[2m契约集合被清空 → DYNAMIC_KEY_NO_CONTRACTS
+[22m[39m[DYNAMIC_KEY_NO_CONTRACTS] - - 一个动态键契约都没有，要么盲区又回来了，要么扫描范围失效
+❌ 动态翻译键契约失败：1 个问题
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/dynamic-keys-check.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 75[2mms[22m[39m
+[90mstdout[2m | src/lib/i18n/translation-values-check.test.ts[2m > [22m[2m翻译完整性门禁（真实仓库）[2m > [22m[2m当前仓库通过键对称与值审计
+[22m[39m✅ 翻译对称性校验通过：en/zh-CN 各 1242 个 key 完全一致（值审计 2484 条文案，86 条登记为无需翻译）
+
+[90mstderr[2m | src/lib/i18n/translation-values-check.test.ts[2m > [22m[2m翻译完整性门禁：失败封闭[2m > [22m[2m消息目录不存在时失败
+[22m[39m[I18N_NO_MESSAGE_VALUES] messages · *：一个字符串消息都没抽到，扫描范围或解析规则已失效
+❌ 翻译值审计失败：1 个问题
+
+[90mstderr[2m | src/lib/i18n/translation-values-check.test.ts[2m > [22m[2m翻译完整性门禁：失败封闭[2m > [22m[2m一个字符串值都没有时失败
+[22m[39m❌ zh-CN 缺失 1 个 key:
+  common.common.save
+
+[90mstderr[2m | src/lib/i18n/translation-values-check.test.ts[2m > [22m[2m翻译完整性门禁：失败封闭[2m > [22m[2mJSON 损坏时失败而不是崩溃
+[22m[39m❌ 消息文件解析失败:
+  messages/zh-CN/common.json: Expected property name or '}' in JSON at position 2 (line 1 column 3)
+
+[90mstderr[2m | src/lib/i18n/translation-values-check.test.ts[2m > [22m[2m翻译完整性门禁：失败封闭[2m > [22m[2m值未翻译时失败，补上中文后通过
+[22m[39m[I18N_VALUE_UNTRANSLATED] messages/zh-CN/common.json · common.common.save：值里没有任何该 locale 期望的文字（"Save"），疑似漏翻译；确实不翻译请登记理由
+❌ 翻译值审计失败：1 个问题
+
+[90mstdout[2m | src/lib/i18n/translation-values-check.test.ts[2m > [22m[2m翻译完整性门禁：失败封闭[2m > [22m[2m值未翻译时失败，补上中文后通过
+[22m[39m✅ 翻译对称性校验通过：en/zh-CN 各 1 个 key 完全一致（值审计 2 条文案，0 条登记为无需翻译）
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/translation-values-check.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+[90mstdout[2m | src/lib/tailwind/tailwind-check.test.ts[2m > [22m[2mrunTailwindNativeCheck()[2m > [22m[2m上游基元的 v3 类名只告警不阻断
+[22m[39m✅ Tailwind v4 原生主题校验通过：无 @config/JS 配置，1 个样式文件、1 个应用层文件写法合规
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/tailwind/tailwind-check.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/rate-limit.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+[90mstdout[2m | src/lib/ui/a11y-check.test.ts[2m > [22m[2ma11y 门禁读真实仓库[2m > [22m[2m当前仓库没有未标注的图标按钮，也没有缺 alt 的图片
+[22m[39m✅ a11y 静态审计通过：133 个文件、128 个按钮（5 个纯图标按钮均已标注）、1 个 <img> 均带 alt（src/components/ui/** 按设计排除）
+
+[90mstdout[2m | src/lib/ui/a11y-check.test.ts[2m > [22m[2ma11y 门禁读真实仓库[2m > [22m[2m计数器证明规则可达：纯图标按钮数量必须大于 0
+[22m[39m✅ a11y 静态审计通过：133 个文件、128 个按钮（5 个纯图标按钮均已标注）、1 个 <img> 均带 alt（src/components/ui/** 按设计排除）
+
+[90mstderr[2m | src/lib/ui/a11y-check.test.ts[2m > [22m[2ma11y 门禁读真实仓库[2m > [22m[2m去掉 <img> 的 alt 同样会失败
+[22m[39m[IMG_MISSING_ALT] src/app/page.tsx:1 <img> 缺少 alt 属性；装饰性图片请显式写 alt=""
+❌ a11y 静态审计失败：1 个问题
+
+[90mstderr[2m | src/lib/ui/a11y-check.test.ts[2m > [22m[2ma11y 门禁：临时仓库[2m > [22m[2m未标注图标按钮 → 退出码语义为失败
+[22m[39m[ICON_BUTTON_UNLABELED] src/app/x/page.tsx:2 <Button> 只有图标却没有可访问名称，屏幕阅读器只会念出「按钮」；补 aria-label 或 sr-only 文本
+❌ a11y 静态审计失败：1 个问题
+
+[90mstdout[2m | src/lib/ui/a11y-check.test.ts[2m > [22m[2ma11y 门禁：临时仓库[2m > [22m[2m标注齐全 + 图标与文本混排 → 通过
+[22m[39m✅ a11y 静态审计通过：1 个文件、2 个按钮（1 个纯图标按钮均已标注）、0 个 <img> 均带 alt（src/components/ui/** 按设计排除）
+
+[90mstderr[2m | src/lib/ui/a11y-check.test.ts[2m > [22m[2ma11y 门禁：临时仓库[2m > [22m[2m只有 ui 基元时视为没有可审文件，失败封闭
+[22m[39m[A11Y_NO_FILES] src:0 一个受审文件都没扫到，扫描范围或排除规则已失效
+❌ a11y 静态审计失败：1 个问题
+
+[90mstderr[2m | src/lib/ui/a11y-check.test.ts[2m > [22m[2ma11y 门禁：临时仓库[2m > [22m[2msrc 不存在时失败而不是通过
+[22m[39m[A11Y_NO_FILES] src:0 一个受审文件都没扫到，扫描范围或排除规则已失效
+❌ a11y 静态审计失败：1 个问题
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/ui/a11y-check.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+[90mstdout[2m | src/lib/i18n/glossary-check.test.ts[2m > [22m[2m术语一致性门禁（真实仓库）[2m > [22m[2m当前仓库通过术语一致性检查
+[22m[39m✅ 术语一致性检查通过：14 个术语，命中 272 次 (键, 术语)、可比对 272 次，263 次使用指定译法
+
+[90mstderr[2m | src/lib/i18n/glossary-check.test.ts[2m > [22m[2m术语一致性门禁：失败封闭[2m > [22m[2m中文用词不一致时失败
+[22m[39m[GLOSSARY_TERM_FORBIDDEN] messages/zh-CN/common.json · common.account："account" 应译为「账户」，实际用了「账号」（全站统一用「账户」）
+[GLOSSARY_ENTRY_UNUSED] src/lib/i18n/glossary.ts · account：该术语在中文文案里一次都没用过指定译法，规则是僵尸条目，请删除或修正译法
+❌ 术语一致性检查失败：2 个问题
+
+[90mstdout[2m | src/lib/i18n/glossary-check.test.ts[2m > [22m[2m术语一致性门禁：失败封闭[2m > [22m[2m术语一致时通过
+[22m[39m✅ 术语一致性检查通过：1 个术语，命中 1 次 (键, 术语)、可比对 1 次，1 次使用指定译法
+
+[90mstderr[2m | src/lib/i18n/glossary-check.test.ts[2m > [22m[2m术语一致性门禁：失败封闭[2m > [22m[2m术语表文档缺失时失败，而不是跳过比对
+[22m[39m[GLOSSARY_DOC_MISMATCH] docs/architecture/10-i18n.md · *：术语表表格为空，文档与规则的比对失效
+❌ 术语一致性检查失败：1 个问题
+
+[90mstderr[2m | src/lib/i18n/glossary-check.test.ts[2m > [22m[2m术语一致性门禁：失败封闭[2m > [22m[2m一个术语都没命中（消息被清空）时失败
+[22m[39m[GLOSSARY_ENTRY_UNUSED] src/lib/i18n/glossary.ts · account：该术语在中文文案里一次都没用过指定译法，规则是僵尸条目，请删除或修正译法
+[GLOSSARY_NO_MATCHED_KEYS] messages/en · *：没有一条英文文案命中术语表，扫描范围或匹配规则已失效
+❌ 术语一致性检查失败：2 个问题
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/glossary-check.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 54[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/design/design-token-check.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/mock/auth-surface.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 51[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/mock.test.ts [2m([22m[2m53 tests[22m[2m)[22m[32m 49[2mms[22m[39m
+[90mstderr[2m | src/lib/production-smoke.test.ts[2m > [22m[2mproduction smoke CLI[2m > [22m[2mpasses all side-effect-free checks
+[22m[39m⚠️ health attempt 1/3 failed (HTTP 503); retrying
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/ui/form-field-rules.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+[90mstderr[2m | src/lib/production-smoke.test.ts[2m > [22m[2mproduction smoke CLI[2m > [22m[2mrecords and asserts the commit production is actually running
+[22m[39m⚠️ health attempt 1/3 failed (HTTP 200); retrying
+
+[90mstderr[2m | src/lib/production-smoke.test.ts[2m > [22m[2mproduction smoke CLI[2m > [22m[2mrecords and asserts the commit production is actually running
+[22m[39m⚠️ health attempt 2/3 failed (HTTP 200); retrying
+
+[90mstderr[2m | src/lib/production-smoke.test.ts[2m > [22m[2mproduction smoke CLI[2m > [22m[2mrecords and asserts the commit production is actually running
+[22m[39m⚠️ health attempt 1/3 failed (HTTP 200); retrying
+
+[90mstderr[2m | src/lib/production-smoke.test.ts[2m > [22m[2mproduction smoke CLI[2m > [22m[2mrecords and asserts the commit production is actually running
+[22m[39m⚠️ health attempt 2/3 failed (HTTP 200); retrying
+
+[90mstderr[2m | src/lib/production-smoke.test.ts[2m > [22m[2mproduction smoke CLI[2m > [22m[2mreports individual failures while continuing the suite
+[22m[39m⚠️ health attempt 1/3 failed (HTTP 503); retrying
+
+[90mstderr[2m | src/lib/production-smoke.test.ts[2m > [22m[2mproduction smoke CLI[2m > [22m[2mreports individual failures while continuing the suite
+[22m[39m⚠️ health attempt 2/3 failed (HTTP 503); retrying
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/production-smoke.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/auth-email-templates.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/storage-policies.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/release/gate-wiring.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/ops/supabase-restore.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/migrations/migration-check.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/team.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/ui/state-rules.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/release/release-tag-policy.test.ts [2m([22m[2m47 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/utils.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/cron-contract.test.ts [2m([22m[2m37 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/health-probe.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/trace-coverage.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/docs/bilingual-docs-check.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/sessions.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/supabase/middleware.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/login-attempts.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/privacy/data-policy.test.ts [2m([22m[2m40 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m按用户分组发送并标记已发送
+[22m[39m{"type":"metric","name":"email.backlog","value":500,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:49.995Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m按用户分组发送并标记已发送
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:49.996Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m按用户分组发送并标记已发送
+[22m[39m{"type":"metric","name":"cron.digest.completed","value":0,"unit":"ms","attributes":{"pulled":2,"sent":2,"groups":1,"failed":0},"timestamp":"2026-09-25T03:05:49.996Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m单用户发送失败计入 failed 并累加重试计数，不阻断整轮
+[22m[39m{"type":"metric","name":"email.backlog","value":500,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:49.997Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m单用户发送失败计入 failed 并累加重试计数，不阻断整轮
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"failure","status":null},"timestamp":"2026-09-25T03:05:49.997Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m单用户发送失败计入 failed 并累加重试计数，不阻断整轮
+[22m[39m{"type":"metric","name":"cron.digest.completed","value":0,"unit":"ms","attributes":{"pulled":1,"sent":0,"groups":0,"failed":1},"timestamp":"2026-09-25T03:05:49.997Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m任意时区的用户在一次调度里都会收到摘要（错峰门控已移除）
+[22m[39m{"type":"metric","name":"email.backlog","value":500,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:49.998Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m任意时区的用户在一次调度里都会收到摘要（错峰门控已移除）
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:49.998Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m任意时区的用户在一次调度里都会收到摘要（错峰门控已移除）
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:49.998Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m任意时区的用户在一次调度里都会收到摘要（错峰门控已移除）
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:49.998Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m任意时区的用户在一次调度里都会收到摘要（错峰门控已移除）
+[22m[39m{"type":"metric","name":"cron.digest.completed","value":0,"unit":"ms","attributes":{"pulled":3,"sent":3,"groups":3,"failed":0},"timestamp":"2026-09-25T03:05:49.998Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出
+[22m[39m{"type":"metric","name":"email.backlog","value":500,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:50.000Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:50.000Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出
+[22m[39m{"type":"metric","name":"cron.digest.completed","value":0,"unit":"ms","attributes":{"pulled":4,"sent":4,"groups":1,"failed":0},"timestamp":"2026-09-25T03:05:50.000Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m执行后落一行运行记录（C02）
+[22m[39m{"type":"metric","name":"email.backlog","value":1,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:50.005Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m执行后落一行运行记录（C02）
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:50.006Z"}
+
+[90mstdout[2m | src/app/api/cron/digest/route.test.ts[2m > [22m[2mPOST /api/cron/digest[2m > [22m[2m执行后落一行运行记录（C02）
+[22m[39m{"type":"metric","name":"cron.digest.completed","value":0,"unit":"ms","attributes":{"pulled":1,"sent":1,"groups":1,"failed":0},"timestamp":"2026-09-25T03:05:50.006Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/cron/digest/route.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m未登录不读取文件
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.098Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m请求已取消时不写入存储
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"cancelled"},"timestamp":"2026-09-25T03:05:50.100Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m伪造图片 MIME 被文件头拦截
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.101Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m存储过程中取消会清理已写入对象
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"cancelled"},"timestamp":"2026-09-25T03:05:50.101Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m元数据写入失败会回滚对象
+[22m[39m{"type":"metric","name":"upload.request.completed","value":1,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.102Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m存储异常返回稳定错误
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.102Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m成功上传先落元数据再回写 profiles，并记录 bucket/所有者/大小/哈希
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"success"},"timestamp":"2026-09-25T03:05:50.103Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m元数据写入失败时删除已上传对象并返回 uploadFailed
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.104Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m替换头像成功后把旧对象标记为 deleted
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"success"},"timestamp":"2026-09-25T03:05:50.104Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadAvatarFile[2m > [22m[2m旧对象删除失败时不标记 deleted（对象可能仍在 bucket 里）
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"avatar-upload","outcome":"success"},"timestamp":"2026-09-25T03:05:50.105Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadProjectCoverFile[2m > [22m[2m项目不存在返回 projectNotFound
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"project-cover-upload","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.107Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadProjectCoverFile[2m > [22m[2m普通成员不能上传封面
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"project-cover-upload","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.108Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadProjectCoverFile[2m > [22m[2mowner/admin 可成功上传
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"project-cover-upload","outcome":"success"},"timestamp":"2026-09-25T03:05:50.108Z"}
+
+[90mstdout[2m | src/lib/uploads/service.test.ts[2m > [22m[2muploadProjectCoverFile[2m > [22m[2m封面成功上传同样落元数据，owner 是上传者而不是 projectId
+[22m[39m{"type":"metric","name":"upload.request.completed","value":0,"unit":"ms","attributes":{"operation":"project-cover-upload","outcome":"success"},"timestamp":"2026-09-25T03:05:50.108Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/uploads/service.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/notifications.test.ts [2m([22m[2m35 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/trace.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/auth/passkey/passkey.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/uploads/orphan-audit-cli.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/push-delivery-attempts.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/auth/guards.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+[90mstdout[2m | src/lib/storage/index.test.ts[2m > [22m[2mgetStorageDriver()[2m > [22m[2mOSS 配置不完整时明确回退 Supabase，能力集合保持一致
+[22m[39m{"type":"metric","name":"provider.fallback","value":1,"unit":"count","attributes":{"provider":"supabase","reason":"oss-incomplete","missing":"OSS_ACCESS_KEY_ID,OSS_ACCESS_KEY_SECRET"},"timestamp":"2026-09-25T03:05:50.531Z"}
+
+[90mstdout[2m | src/lib/storage/index.test.ts[2m > [22m[2mgetStorageDriver()[2m > [22m[2m默认回退 Supabase 驱动：上传成功返回公共 URL
+[22m[39m{"type":"metric","name":"storage.upload.completed","value":0,"unit":"ms","attributes":{"provider":"supabase","outcome":"success"},"timestamp":"2026-09-25T03:05:50.534Z"}
+
+[90mstdout[2m | src/lib/storage/index.test.ts[2m > [22m[2mgetStorageDriver()[2m > [22m[2mSupabase 上传失败抛错
+[22m[39m{"type":"metric","name":"storage.upload.completed","value":0,"unit":"ms","attributes":{"provider":"supabase","outcome":"failure"},"timestamp":"2026-09-25T03:05:50.536Z"}
+
+[90mstdout[2m | src/lib/storage/index.test.ts[2m > [22m[2mgetStorageDriver()[2m > [22m[2mOSS 配置齐备时切换 OSS 驱动并支持签名 URL与删除
+[22m[39m{"type":"metric","name":"storage.upload.completed","value":0,"unit":"ms","attributes":{"provider":"oss","outcome":"success"},"timestamp":"2026-09-25T03:05:50.536Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/storage/index.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/cron-skip-coverage.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/action-errors.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/webhooks/stripe/route.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/adr/adr-rules.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/user/route.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/marketing.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/analytics/route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/marketing/confirm/route.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/ops/supabase-restore/route.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/audit-logs.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/ci/workflow-policy.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/api-keys.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m接受 Bearer CRON_SECRET（Vercel Cron 语义）
+[22m[39m{"type":"metric","name":"push.backlog","value":0,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:51.744Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m接受 Bearer CRON_SECRET（Vercel Cron 语义）
+[22m[39m{"type":"metric","name":"push.queue.pruned","value":0,"unit":"count","attributes":{"status":"sent","retention_days":7},"timestamp":"2026-09-25T03:05:51.745Z"}
+{"type":"metric","name":"push.queue.pruned","value":0,"unit":"count","attributes":{"status":"dead","retention_days":30},"timestamp":"2026-09-25T03:05:51.745Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m接受 Bearer CRON_SECRET（Vercel Cron 语义）
+[22m[39m{"type":"metric","name":"cron.push-retry.completed","value":1,"unit":"ms","attributes":{"pulled":0,"sent":0,"retried":0,"dead":0,"revoked":0},"timestamp":"2026-09-25T03:05:51.745Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m空队列返回全零计数且不回显敏感信息
+[22m[39m{"type":"metric","name":"push.backlog","value":0,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:51.745Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m空队列返回全零计数且不回显敏感信息
+[22m[39m{"type":"metric","name":"push.queue.pruned","value":0,"unit":"count","attributes":{"status":"sent","retention_days":7},"timestamp":"2026-09-25T03:05:51.745Z"}
+{"type":"metric","name":"push.queue.pruned","value":0,"unit":"count","attributes":{"status":"dead","retention_days":30},"timestamp":"2026-09-25T03:05:51.745Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m空队列返回全零计数且不回显敏感信息
+[22m[39m{"type":"metric","name":"cron.push-retry.completed","value":0,"unit":"ms","attributes":{"pulled":0,"sent":0,"retried":0,"dead":0,"revoked":0},"timestamp":"2026-09-25T03:05:51.745Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m返回脱敏后的成功/重试/死信计数
+[22m[39m{"type":"metric","name":"push.backlog","value":0,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:51.746Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m返回脱敏后的成功/重试/死信计数
+[22m[39m{"type":"metric","name":"push.queue.pruned","value":0,"unit":"count","attributes":{"status":"sent","retention_days":7},"timestamp":"2026-09-25T03:05:51.746Z"}
+{"type":"metric","name":"push.queue.pruned","value":0,"unit":"count","attributes":{"status":"dead","retention_days":30},"timestamp":"2026-09-25T03:05:51.746Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m返回脱敏后的成功/重试/死信计数
+[22m[39m{"type":"metric","name":"cron.push-retry.completed","value":0,"unit":"ms","attributes":{"pulled":4,"sent":2,"retried":1,"dead":1,"revoked":1},"timestamp":"2026-09-25T03:05:51.746Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m每轮回报保留策略清理计数
+[22m[39m{"type":"metric","name":"push.backlog","value":0,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:51.747Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m每轮回报保留策略清理计数
+[22m[39m{"type":"metric","name":"push.queue.pruned","value":12,"unit":"count","attributes":{"status":"sent","retention_days":7},"timestamp":"2026-09-25T03:05:51.747Z"}
+{"type":"metric","name":"push.queue.pruned","value":3,"unit":"count","attributes":{"status":"dead","retention_days":30},"timestamp":"2026-09-25T03:05:51.747Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m每轮回报保留策略清理计数
+[22m[39m{"type":"metric","name":"cron.push-retry.completed","value":0,"unit":"ms","attributes":{"pulled":1,"sent":1,"retried":0,"dead":0,"revoked":0},"timestamp":"2026-09-25T03:05:51.747Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m清理失败不影响投递结果，仍返回 200 且 pruned 为 null
+[22m[39m{"type":"metric","name":"push.backlog","value":0,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:51.747Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m清理失败不影响投递结果，仍返回 200 且 pruned 为 null
+[22m[39m{"type":"metric","name":"push.queue.prune_failed","value":1,"unit":"count","attributes":{"error_type":"Error"},"timestamp":"2026-09-25T03:05:51.747Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2m清理失败不影响投递结果，仍返回 200 且 pruned 为 null
+[22m[39m{"type":"metric","name":"cron.push-retry.completed","value":0,"unit":"ms","attributes":{"pulled":1,"sent":1,"retried":0,"dead":0,"revoked":0},"timestamp":"2026-09-25T03:05:51.747Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2mworker 抛错时返回 500 并上报
+[22m[39m{"type":"metric","name":"push.backlog","value":0,"unit":"count","attributes":{},"timestamp":"2026-09-25T03:05:51.748Z"}
+
+[90mstdout[2m | src/app/api/cron/push-retry/route.test.ts[2m > [22m[2m/api/cron/push-retry[2m > [22m[2mworker 抛错时返回 500 并上报
+[22m[39m{"type":"metric","name":"cron.push-retry.failed","value":1,"unit":"count","attributes":{"error_type":"Error"},"timestamp":"2026-09-25T03:05:51.748Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/cron/push-retry/route.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/cron/retention/route.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/webhook-events.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/codeql-alert-policy.test.ts [2m([22m[2m44 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/secrets-scan-policy.test.ts [2m([22m[2m48 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/contact-messages.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/uploads/request.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/env.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/changelog/parse-changelog.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser()[2m > [22m[2m实时类型且偏好开启：即时发送并回执 email_sent
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:52.299Z"}
+
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser()[2m > [22m[2mPush 投递失败不影响实时邮件
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:52.301Z"}
+
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser()[2m > [22m[2m邮件已发出后回执写失败：不得谎报成「发送失败，留待 cron 重试」
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:52.302Z"}
+
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser()[2m > [22m[2m发送失败吞错不抛出，不回执，留待 cron 重试
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"failure","status":null},"timestamp":"2026-09-25T03:05:52.302Z"}
+
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser()[2m > [22m[2m站内通知写入未返回 id：仍发送邮件但跳过回执
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:52.303Z"}
+
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser() 边界分支[2m > [22m[2mNEXT_PUBLIC_APP_URL 未设置时回落 localhost
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:52.304Z"}
+
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser() 边界分支[2m > [22m[2mprofile 缺 notification_settings 字段时兜底空对象仍可发
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:52.304Z"}
+
+[90mstdout[2m | src/lib/email-notify.test.ts[2m > [22m[2mnotifyUser() 边界分支[2m > [22m[2mbody/link 缺省时置 null 仍正常发送
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:52.304Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/email-notify.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/mfa-recovery-codes.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/push-retry.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/changelog/changelog-check.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/proxy.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/health/route.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2m默认端点：POST 到 DEFAULT_RESEND_ENDPOINT
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":200},"timestamp":"2026-09-25T03:05:52.736Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2mRESEND_API_URL 覆盖端点（E2E 捕获端点同机制）
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":200},"timestamp":"2026-09-25T03:05:52.738Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2m鉴权与内容头：Bearer {key} + application/json
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":200},"timestamp":"2026-09-25T03:05:52.738Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2mbody 契约：from 默认、to 为数组、subject/html 原样透传
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":200},"timestamp":"2026-09-25T03:05:52.739Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2mRESEND_FROM 覆盖发件人
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":200},"timestamp":"2026-09-25T03:05:52.739Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2mRESEND_API_KEY 缺失：抛 RESEND_API_KEY missing 且不发起请求
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"failure","reason":"not-configured"},"timestamp":"2026-09-25T03:05:52.739Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2m2xx：静默 resolve，不读取也不依赖响应体
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":200},"timestamp":"2026-09-25T03:05:52.741Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2m非 2xx：抛 `resend {status}: {detail}`，detail 来自响应体
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"failure","status":503},"timestamp":"2026-09-25T03:05:52.741Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2m非 2xx 且响应体读取失败：仍以状态码抛出（detail 置空）
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"failure","status":503},"timestamp":"2026-09-25T03:05:52.741Z"}
+
+[90mstdout[2m | src/lib/email-send.test.ts[2m > [22m[2msendResendEmail(): Resend provider contract[2m > [22m[2m网络错误：原样上抛且不重试（fetch 仅一次），重试语义归调用方
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"failure"},"timestamp":"2026-09-25T03:05:52.742Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/email-send.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/settings.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/webauthn.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/uploads/project-cover/route.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/deployment/production-smoke-contract.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/push-subscriptions.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/recovery-codes.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/security-config.test.ts [2m([22m[2m52 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/appark.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/profiles.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/push-notify.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/contact.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/app/api/uploads/avatar/route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/admin.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/design/tokens.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/projects.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/mock/data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/mfa.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/testing/test-matrix.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/profile.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/audit.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/migrations/migration-drift.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/db/migration-runbook.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/date.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/api-keys.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/projects.mutations.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/infra.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/tailwind/native-theme.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/uploads/orphan-audit.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/providers/diagnostics.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+[90mstdout[2m | src/lib/email-marketing.test.ts[2m > [22m[2msendMarketingConfirmationEmail()[2m > [22m[2m正文含确认链接与退订链接
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:55.605Z"}
+
+[90mstdout[2m | src/lib/email-marketing.test.ts[2m > [22m[2m站点 URL 回退[2m > [22m[2m未设 NEXT_PUBLIC_APP_URL：确认与退订链接回退 localhost 默认值
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:55.607Z"}
+
+[90mstdout[2m | src/lib/email-marketing.test.ts[2m > [22m[2msendMarketingEmail()[2m > [22m[2m强制附加该收件人的退订页脚
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"success","status":null},"timestamp":"2026-09-25T03:05:55.607Z"}
+
+[90mstdout[2m | src/lib/email-marketing.test.ts[2m > [22m[2msendMarketingEmail()[2m > [22m[2mAPI key 缺失抛错
+[22m[39m{"type":"metric","name":"email.send.completed","value":0,"unit":"ms","attributes":{"provider":"resend","outcome":"failure","reason":"not-configured"},"timestamp":"2026-09-25T03:05:55.607Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/email-marketing.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/teams.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/validations/auth.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/rls-coverage.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+[90mstdout[2m | src/lib/push-provider.test.ts[2m > [22m[2mcreatePushProvider[2m > [22m[2mreports missing configuration and fails explicitly
+[22m[39m{"type":"metric","name":"push.send.failed","value":1,"unit":"count","attributes":{"provider":"web-push","reason":"not-configured"},"timestamp":"2026-09-25T03:05:55.844Z"}
+
+[90mstdout[2m | src/lib/push-provider.test.ts[2m > [22m[2mcreatePushProvider[2m > [22m[2msends a structured notification with VAPID details
+[22m[39m{"type":"metric","name":"push.send.completed","value":1,"unit":"count","attributes":{"provider":"web-push","status_code":201},"timestamp":"2026-09-25T03:05:55.847Z"}
+
+[90mstdout[2m | src/lib/push-provider.test.ts[2m > [22m[2mcreatePushProvider[2m > [22m[2muses a safe mailto subject when the app URL is not https
+[22m[39m{"type":"metric","name":"push.send.completed","value":1,"unit":"count","attributes":{"provider":"web-push","status_code":201},"timestamp":"2026-09-25T03:05:55.847Z"}
+
+[90mstdout[2m | src/lib/push-provider.test.ts[2m > [22m[2mcreatePushProvider[2m > [22m[2mrethrows transport errors after recording failure
+[22m[39m{"type":"metric","name":"push.send.failed","value":1,"unit":"count","attributes":{"provider":"web-push","reason":"subscription-gone"},"timestamp":"2026-09-25T03:05:55.847Z"}
+
+ [32m✓[39m [30m[43m node [49m[39m src/lib/push-provider.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/storage-metrics.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/testing/e2e-shard-policy.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/glossary.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/notifications.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/ops-metrics.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/account/deletion.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/auth/roles.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/worker-runs.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/provider-metrics.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/auth/passkey-session.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/metrics.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/ui/a11y-rules.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/contact-messages.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/account.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/translation-values.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/validations/contact.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/security/client-write-policies.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/i18n/dynamic-keys.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/notifications/queue-observability.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/styling/direction.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/upload-objects.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/admin-users.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/providers/provider-docs.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/trace-id.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/notifications/queue-diagnostics.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/actions/webhooks.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/validations/settings.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/docs/bilingual-facts.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/validations/team.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/retention.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/validations/profile.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/uploads/erasure.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/repositories/account-erasure.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/api-log.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/constants.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/cron-metrics.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/production-version-drift.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/safe-redirect.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/email-digest.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/csv.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/auth/permissions.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/stripe/webhook-mappers.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/appark-config.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/feature-flags.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/components/dashboard/dashboard-nav-links.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/theme/theme.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/types/action-result.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/observability/alert-thresholds.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/query-cache.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/cron-auth.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/notification-prefs.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/validations/mfa.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/uploads/checksum.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/mock/store.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m node [49m[39m src/lib/auth/errors.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m198 passed[39m[22m[90m (198)[39m
+[2m      Tests [22m [1m[32m2276 passed[39m[22m[90m (2276)[39m
+[2m   Start at [22m 11:05:31
+[2m   Duration [22m 27.18s[2m (environment 33%, import 27%, tests 26%, setup 7%, transform 6%, worker 2%)[22m
+
+[2mEnvironment [22m [30m[45m jsdom [49m[39m [33mjsdom was created 34 times[39m[2m · 12.35s total, 51% of tracked time[22m
+[2m            [22m [2mcreate it once per worker with [22m[33mpool: 'vmThreads'[39m[2m (keeps per-file isolation) or [22m[33misolate: false[39m[2m (shares it across files)[22m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#test-environments[22m
+
+✅ 全部校验通过

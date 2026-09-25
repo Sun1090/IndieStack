@@ -189,6 +189,27 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Changed
 
+- **删掉两个零调用方的上传 Server Action，因为「共用同一服务层」从来不等于「共用同一套守卫」**（C06）：
+  `src/lib/actions/uploads.ts` 的 `uploadAvatar` / `uploadProjectCover` 除了自己那份测试（15 条用例）
+  之外没有任何调用方，action id 也不出现在任何服务端渲染的 HTML 里；仓库里活着的上传入口只有
+  `POST /api/uploads/avatar` 与 `POST /api/uploads/project-cover`（`avatar-upload-form` 走同源 XHR，
+  为的是进度与取消）。判定这件事的不是「多一个入口」本身，而是两个入口的守卫不同形：路由经
+  `src/lib/uploads/request.ts` 拿到三道请求边界（同源校验、限流、解析 multipart **之前**的请求体上限），
+  action 一道都没有，连路由里那句 `projectId` 长度检查也没有。今天它不可利用，但对一个模板仓库来说
+  这就是一份「接上就能用」的弱守卫副本——下游把表单连到 action 上，得到的是一个没有窗口的写 Storage
+  的口子，而代码与文档没有任何一处这么说。
+  **处置是删而不是补**：`AGENTS.md` 的 reuse-first 与「一条操作一条活路」在这里比一个编程入口的说法更
+  吃得住；非浏览器调用方本来就该直接 import `src/lib/uploads/service.ts`，而现在那条边界是显式的——
+  service 文件头新增了一句「三道请求边界守卫只作用于走 HTTP 路由的调用方，直接调用本文件的函数拿不到
+  它们」。覆盖没有丢：被删的 15 条用例测的判定，`src/lib/uploads/service.test.ts`（22 条）与两个路由
+  测试（3 + 4 条）都在测，本分支 `pnpm test` 为 198 文件 / 2276 passed。
+  同批改掉的是随之变假的四处描述：service 文件头原来那句「Server Action 与 Route Handler 共用…避免
+  安全规则分叉」（分叉恰恰在这里）、两个路由头注释里点名的 action、`src/lib/mock/index.ts` 与
+  `/api/e2e/mock-upload` 注释里点名的 `uploadAvatar`，以及 `docs-site/storage.md`（双语）那句把守卫写成
+  路由属性、只说「与 Server Action 共用同一服务层」——读者从那句话看不出 action 少了什么，现在两句都
+  写清守卫的适用范围。`docs/architecture/11-integrations.md` 的「头像与项目封面通过 Server Actions 完成
+  鉴权、白名单校验…」一并改为指向两个路由：那正是 v0.6.0 退出报告点名的「标注与代码相反」，删掉 action
+  之后它从夸张变成不存在，属于不得回流的旧表述。
 - **CI 的静态门禁与本地聚合从此只有一份清单**（C04 的剩余部分）：`ci.yml` 的 `Lint & Type Check` job
   过去逐个写 30 步 `pnpm check:*`，与 `scripts/check-all.sh` 是两份各自手工维护的清单——历史上确实
   出现过「只在本地聚合里有」和「只在 CI 里有」的门禁（`check:gates` 就是为这件事存在的）。现在那 30 步

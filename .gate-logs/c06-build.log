@@ -1,0 +1,113 @@
+$ next build
+▲ Next.js 16.3.5 (Turbopack)
+- Environments: .env.local, .env.production
+✓ Running next.config.ts took 171ms
+- Experiments (use with caution):
+  · serverActions
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.6s
+  Running TypeScript ...
+  Finished TypeScript in 3.6s ...
+  Collecting page data using 7 workers ...
+(node:80919) ExperimentalWarning: The supports Web Crypto API method is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:80919) ExperimentalWarning: The ML-DSA-44 Web Crypto API algorithm is an experimental feature and might change at any time
+(node:80918) ExperimentalWarning: The supports Web Crypto API method is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:80918) ExperimentalWarning: The ML-DSA-44 Web Crypto API algorithm is an experimental feature and might change at any time
+(node:80922) ExperimentalWarning: The supports Web Crypto API method is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:80922) ExperimentalWarning: The ML-DSA-44 Web Crypto API algorithm is an experimental feature and might change at any time
+(node:80917) ExperimentalWarning: The supports Web Crypto API method is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:80917) ExperimentalWarning: The ML-DSA-44 Web Crypto API algorithm is an experimental feature and might change at any time
+  Generating static pages using 7 workers (0/23) ...
+  Generating static pages using 7 workers (5/23) 
+  Generating static pages using 7 workers (11/23) 
+  Generating static pages using 7 workers (17/23) 
+`z-index` is currently not supported.
+✓ Generating static pages using 7 workers (23/23) in 549ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /about
+├ ƒ /api/analytics
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/passkey/auth-options
+├ ƒ /api/auth/passkey/auth-verify
+├ ƒ /api/auth/passkey/register-options
+├ ƒ /api/auth/passkey/register-verify
+├ ƒ /api/cron/digest
+├ ƒ /api/cron/push-retry
+├ ƒ /api/cron/retention
+├ ƒ /api/e2e/contact-messages
+├ ƒ /api/e2e/email-inbox
+├ ƒ /api/e2e/email-worker-runs
+├ ƒ /api/e2e/mock-reset
+├ ƒ /api/e2e/mock-upload
+├ ƒ /api/e2e/push-queue
+├ ƒ /api/e2e/seed-notifications
+├ ƒ /api/e2e/webhook-events
+├ ƒ /api/health
+├ ƒ /api/invitations
+├ ƒ /api/marketing/confirm
+├ ƒ /api/marketing/unsubscribe
+├ ƒ /api/og
+├ ƒ /api/ops/supabase-restore
+├ ƒ /api/stripe/checkout
+├ ƒ /api/uploads/avatar
+├ ƒ /api/uploads/project-cover
+├ ƒ /api/user
+├ ƒ /api/webhooks/stripe
+├ ƒ /auth/callback
+├ ƒ /auth/forgot-password
+├ ƒ /auth/login
+├ ƒ /auth/mfa
+├ ƒ /auth/register
+├ ƒ /auth/reset-password
+├ ƒ /blog
+├ ƒ /blog/[slug]
+├ ƒ /changelog
+├ ƒ /contact
+├ ƒ /dashboard
+├ ƒ /dashboard/admin
+├ ƒ /dashboard/admin/audit-logs
+├ ƒ /dashboard/admin/messages
+├ ƒ /dashboard/admin/users
+├ ƒ /dashboard/admin/webhooks
+├ ƒ /dashboard/analytics
+├ ƒ /dashboard/api-keys
+├ ƒ /dashboard/billing
+├ ƒ /dashboard/integrations
+├ ƒ /dashboard/notifications
+├ ƒ /dashboard/profile
+├ ƒ /dashboard/profile/edit
+├ ƒ /dashboard/projects
+├ ƒ /dashboard/projects/[id]
+├ ƒ /dashboard/projects/new
+├ ƒ /dashboard/settings
+├ ƒ /dashboard/team
+├ ƒ /dashboard/team/create
+├ ƒ /dashboard/team/invite
+├ ƒ /faq
+├ ƒ /features
+├ ƒ /feed.xml
+├ ○ /icon.svg
+├ ○ /manifest.webmanifest
+├ ○ /opengraph-image
+├ ƒ /pricing
+├ ƒ /privacy
+├ ○ /robots.txt
+├ ○ /sitemap.xml
+└ ƒ /terms
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+build exit=0
