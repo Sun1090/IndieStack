@@ -1116,6 +1116,7 @@ class MockQueryBuilder {
         orderedFilterSuffix(key) ||
         key.endsWith(":contains") ||
         key.endsWith(":not") ||
+        key.endsWith(":isnull") ||
         key === ":or"
       ) {
         continue;

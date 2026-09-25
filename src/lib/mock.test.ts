@@ -215,6 +215,41 @@ describe("Mock 写操作与真实 PostgREST 行为对齐", () => {
     expect(rows[0]).toMatchObject({ email_sent: false, is_read: false });
   });
 
+  it("is(col, null) 认「没有这一列」也认「这一列是 null」，但不放行有值的行", async () => {
+    const client = createMockSupabaseClient();
+    // 真实库里每行都有 email_skipped_reason（默认 NULL），mock 的行是普通对象：
+    // 「键不存在」与「键等于 null」在 SQL 里是同一件事。判错方向就是邮件 worker 一条都拉不到，
+    // 而这条谓词是待发队列的第五段（A05），所以它红的时候整队看起来是空的。
+    await client
+      .from("notifications")
+      .insert({ user_id: MOCK_USER_ID, type: "system", title: "isprobe-缺列" });
+    await client
+      .from("notifications")
+      .insert({ user_id: MOCK_USER_ID, type: "system", title: "isprobe-显式null", email_skipped_reason: null });
+    await client
+      .from("notifications")
+      .insert({
+        user_id: MOCK_USER_ID,
+        type: "system",
+        title: "isprobe-已判跳过",
+        email_skipped_reason: "no_email",
+      });
+
+    const { data } = await client
+      .from("notifications")
+      .select("title")
+      .eq("user_id", MOCK_USER_ID)
+      .is("email_skipped_reason", null);
+    // 只比对本次探针写入的行，避免与默认种子数据纠缠
+    const titles = asRows(data)
+      .map((row) => String(row.title))
+      .filter((title) => title.startsWith("isprobe-"));
+    expect(titles).toHaveLength(2);
+    expect(titles).toContain("isprobe-缺列");
+    expect(titles).toContain("isprobe-显式null");
+    expect(titles).not.toContain("isprobe-已判跳过");
+  });
+
   it("delete 从列表中移除匹配行", async () => {
     const client = createMockSupabaseClient();
     const { data: before } = await client.from("team_members").select("*");
