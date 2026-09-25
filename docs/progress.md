@@ -1153,3 +1153,45 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — A01 留下的「时区 / 语言」定案：把它说明白是偏好，而不是让它生效
+
+- 里程碑 / 版本：v0.12.0；收口 A01（2026-09-22「放宽窗口、一天一封」）末尾那条
+  「要么在文档与 UI 上说明它只是偏好，要么删掉这条链路」的产品决策。
+- 状态：DONE。分支：`fix/profile-preference-semantics`（本条目所在 PR）。
+- 决策来源：用户 2026-09-24 一次性授权的四个产品判断之一，选**「文档 + UI 说明是偏好」**
+  （另两个方向——删链路、让字段真正生效——都没选；生效的代价记在 roadmap A01 新的小节里）。
+- 动手前先把「有没有消费方」量出来，别凭印象写文案：`timezone` 全仓命中只有资料页展示
+  （`src/app/dashboard/profile/page.tsx:98,100`）、编辑表单（`profile-edit-form.tsx:65`）、
+  两条写入校验（`src/lib/validations/profile.ts:16`、`src/app/api/user/route.ts:29`）、
+  完整度计分（`profile-completeness-card.tsx:18`）与 mock/类型；`language` 同形，展示侧多一个
+  `t.has()` 兜未知值（`page.tsx:109`）。digest 路由自 A01 起不读这两列，
+  所以「不影响发送时刻」这句话是有依据的事实陈述，不是免责声明。
+- 变更文件：`messages/{en,zh-CN}/dashboard.json`（各 +2 个 key）、
+  `src/components/forms/profile-edit-form.tsx`（两个 `FormField` 各加 `description`）、
+  `src/components/forms/profile-edit-form.test.tsx`（+1 用例：说明渲染出来且绑进 `aria-describedby`）、
+  `docs-site/email.md` + `docs-site/zh-CN/email.md`（「偏好与重试」小节各加一段）、
+  `docs/architecture/06-database.md`（`profiles` 字段表两行说明）、`docs/roadmap-0.12.0.md`（A01 定案小节）、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：`CI=true pnpm check:all` → **exit 0，37 步全过，199 文件 / 2292 用例**（+1，文件数不变）；
+  新 key 过三道 i18n 门禁的具体读数：`check:locales` en/zh-CN 各 1244 键对称、
+  `check:i18n` 870 个静态调用两侧均存在、`check:glossary` 与 `check:dynamic-keys`（9 契约 × 2 locale、
+  64 取值全覆盖）不受影响。`pnpm build` → **exit 0**，`/dashboard/profile` 与 `/dashboard/profile/edit`
+  两页正常生成（这条改动只加文案，但 `MISSING_MESSAGE` 只有静态生成会现形，所以按 AGENTS.md 的
+  pre-push 顺序它必须跑）。
+- 变异核对（2 项，都被抓）：① 删掉时区那行的 `description={t("timezoneDesc")}` →
+  恰好新增那条用例红（`1 failed | 3 passed`）；② 把时区的 key 换成 `languageDesc`（说明接错字段、
+  两栏文案对调）→ 同一条红。第二次容易漏：只测「删掉」证明不了文案与字段的对应关系，
+  而这条改动的全部价值就在那个对应关系上。两次还原后 `shasum -c` 逐字节一致、复跑 4 通过。
+- 阻塞 / 风险 / 回滚：不改任何发送、写入、鉴权行为，只加文案与一条组件用例；回滚 = revert 本 commit。
+  冲突面（2026-09-25 重扫，队列 30 条 open）：`profile-edit-form.tsx` 与其测试只有 **#127** 在动
+  （它把 `language` 的 `<option>` 换成映射 `PROFILE_LANGUAGES`），与本条同文件不同区域，
+  两边都保留即可；`docs-site/email.md` 另有 #152、#123；`docs/architecture/06-database.md` 另有 #145；
+  `CHANGELOG.md` / `docs/progress.md` 是 29 / 30 条的公共尾部，按 #118 台账里那套「只删冲突标记、两侧都留」处理。
+- 明确**不**做的：① 不让 `timezone` 参与投递（要第二条 cron 路径，不是放宽门控——A01 正文已写）；
+  ② 不做邮件本地化（要先拍「邮件要不要本地化」和「`ja`/`ko` 算不算支持语言」，因为它连已存库的
+  通知标题都得一起本地化）；③ 不收窄 `language` 的写入校验（两条写路径目前都只 `z.string().max(50)`，
+  取值词表 `en/zh/ja/ko` 与站点真实 locale `zh-CN/en` 的分歧由 #127 收窄到权威常量，是否据此校验仍未定）；
+  ④ 不删字段、不写归一化迁移。
+- 下一项：C13（roadmap 已登记，#153 分支上）——生产构型里禁止开 mock；本条不与之耦合。
+- 更新时间：2026-09-25（UTC）。

@@ -89,6 +89,13 @@ The email preference matrix applies to both immediate sends and digest delivery.
 `emailNotifications` switch disables product email; `securityAlerts` and `productUpdates` provide
 type-level control.
 
+Two profile fields are saved preferences that deliberately have no delivery effect: `timezone` does
+not shift when a digest goes out (delivery follows the one shared schedule described above), and
+`language` does not translate outgoing mail — digest copy is currently Chinese-only, and the site's
+own interface language comes from the `app-locale` cookie rather than this column. The profile edit
+form states both limits under the corresponding selector, so the settings page does not promise
+behaviour it does not have.
+
 Each failed send increments `metadata.email_attempts` and records `metadata.email_error`. Once the
 attempt count reaches 3, the notification becomes a dead letter and is excluded from further
 digest pulls. Operators can query dead letters through the notification repository API.

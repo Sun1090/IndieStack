@@ -189,6 +189,16 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Changed
 
+- **资料页的「时区」「语言」不再假装自己会生效**（A01 在 2026-09-22 留下的那个产品决策，
+  2026-09-25 定案为「说明它只是偏好」）：两个选择器各拿到一行 `FormField` 说明（`timezoneDesc` /
+  `languageDesc`，en + zh-CN），文案只陈述事实——摘要邮件按统一调度发送（`profiles.timezone` 自错峰门控
+  删除后就**没有功能消费方**：改动前按 grep 数过，剩下的引用只有资料页展示与编辑、两条写入校验和完整度
+  计分），界面语言由语言切换器（`app-locale` cookie）决定，出站邮件不翻译。说明走共享原语已有的
+  `description` 插槽，因此由 `FormFieldControl` 并进控件的 `aria-describedby`，屏幕阅读器读得到；回归钉子
+  是新增那条组件用例，两个变异都被抓（删掉 `description` 属性、把两个 key 对调）。本条**不让字段生效，
+  也不删这条链路**——生效的代价与仍未定的取值词表收窄都记在 `docs/roadmap-0.12.0.md` A01。
+  `docs-site/email.md`（双语）的「偏好与重试」小节与 `docs/architecture/06-database.md` 的 `profiles`
+  字段表同步了同一口径。
 - **CI 的静态门禁与本地聚合从此只有一份清单**（C04 的剩余部分）：`ci.yml` 的 `Lint & Type Check` job
   过去逐个写 30 步 `pnpm check:*`，与 `scripts/check-all.sh` 是两份各自手工维护的清单——历史上确实
   出现过「只在本地聚合里有」和「只在 CI 里有」的门禁（`check:gates` 就是为这件事存在的）。现在那 30 步

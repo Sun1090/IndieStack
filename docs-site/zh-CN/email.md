@@ -75,6 +75,11 @@ Hobby plan 下每个 cron 路径每天最多运行一次，一个固定的 UTC �
 邮件偏好矩阵同时作用于实时单发和 digest。全局 `emailNotifications` 开关会关闭产品邮件；
 `securityAlerts` 和 `productUpdates` 提供按类型控制。
 
+资料页上有两个字段是刻意**只保存、不影响投递**的偏好：`timezone` 不会改变摘要邮件的发送时刻（投递
+走上文那个统一调度），`language` 也不会翻译要发出的邮件——摘要正文目前恒为中文，而本站界面语言取自
+`app-locale` cookie，与这一列无关。个人资料编辑表单在对应的选择器下方写明了这两条限制，避免设置页
+承诺它并不具备的行为。
+
 每次发送失败都会累加 `metadata.email_attempts` 并记录 `metadata.email_error`。达到 3 次后，该通知
 进入死信，不再被 digest 拉取；运维可通过通知 repository API 查询死信。
 
