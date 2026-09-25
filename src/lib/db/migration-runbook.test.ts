@@ -251,6 +251,12 @@ describe("migration rollback runbook in this repository", () => {
       scripts,
     });
     expect(report.issues).toEqual([]);
-    expect(report.latest).toBe("033_upload_object_orphan_audit.sql");
+    // 期望值从 manifest 推导，而不是把某个迁移名抄在这里：抄的那个数每加一条迁移就得改一次，
+    // 而它并没有多证明任何事——「标记必须等于真实最新迁移」这件事由上面那条
+    // `RUNBOOK_STALE_LATEST` 判定负责，这里只核对报告读到的确实是那一条。
+    const newest = manifest.reduce((max: MigrationManifestEntry, entry: MigrationManifestEntry) =>
+      Number(entry.version) > Number(max.version) ? entry : max,
+    );
+    expect(report.latest).toBe(newest.fileName);
   });
 });

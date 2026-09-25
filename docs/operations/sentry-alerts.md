@@ -46,7 +46,7 @@
 | `cron.digest.skipped` | `count` | `reason` | 每轮 digest 里被条件跳过的通知条数（`no_email` = 该用户资料没有邮箱，`preference` = 该用户把队列里涉及的类型全关了） |
 | `cron.digest.completed` | `ms` | `pulled`, `sent`, `groups`, `failed` | 每轮 digest 成功结束（含空队列） |
 | `cron.digest.failed` | `count` | `error_type` | 每轮 digest 未处理异常 |
-| `cron.digest.receipt_failed` | `count` | `stage` | digest 的**回执**写不进去：`stage=sent` 表示邮件已寄出但 `email_sent` 没写上（下一轮可能重复寄出），`stage=retry` 表示发送确实失败但 `email_attempts` 没累加（下一轮还会重发） |
+| `cron.digest.receipt_failed` | `count` | `stage` | digest 的**回执**写不进去：`stage=sent` 表示邮件已寄出但 `email_sent` 没写上（下一轮可能重复寄出），`stage=retry` 表示发送确实失败但 `email_attempts` 没累加（下一轮还会重发），`stage=skip` 表示判定「根本寄不出去」那笔出队写入没落库（本轮仍按跳过计数，但那些行仍留在队列里，下一轮还会被拉起来） |
 | `cron.auth.rejected` | `count` | `worker`, `reason` | 任一 cron worker 返回 401（`secret_unconfigured` / `missing_credentials` / `invalid_credentials`） |
 | `storage.upload.completed` | `ms` | `provider`, `outcome` | 每次对象写入结束 |
 | `upload.request.completed` | `ms` | `operation`, `outcome` | 每次上传请求结束（成功 / 失败 / 取消） |

@@ -166,6 +166,11 @@
       "version": "033",
       "fileName": "033_upload_object_orphan_audit.sql",
       "sha256": "817aea7a7b9e6001095b4bba00d9fa22f5d132f463ba0ad1143c9e0e4e7b536e"
+    },
+    {
+      "version": "034",
+      "fileName": "034_email_skip_reason.sql",
+      "sha256": "639d3b54f4013333c3fc434c321f16e3aedc4129b07ce631288bb707b068085c"
     }
   ]
 }

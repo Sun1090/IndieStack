@@ -24,7 +24,11 @@
       "queueAgeMinutes": "{value} 分钟",
       "queueAgeHours": "{value} 小时",
       "queueAgeDays": "{value} 天",
-      "queueAgeUnknown": "未知时长"
+      "queueAgeUnknown": "未知时长",
+      "skipReasonNoEmail": "没有邮箱地址",
+      "skipReasonPreferencesOff": "邮件通知已关掉",
+      "queueSkippedDesc": "已离开队列且从未发出：{reasons}。",
+      "queueReadBeforeSendDesc": "另有 {count} 条在站内先被读过，摘要再也不会寄出它们。"
     },
     "roleDistribution": "角色分布",
     "roleDistributionDesc": "平台用户角色占比",

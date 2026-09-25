@@ -1153,3 +1153,44 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — A05 后半落地：判定「根本寄不出去」的当场写原因出队，面板把两笔静默账拆开
+
+- 里程碑 / 版本：v0.12.0；roadmap **A05** 的后半（前半是 2026-09-23 的可观测卡片）。
+  三个候选口径（复用死信 / 新增过滤列 / 拉取侧翻页）2026-09-25 由用户拍板：**新增原因列**。
+- 状态：DONE（代码侧完成，等 PR 合并）。分支：`feat/email-skip-reason-dequeue`（base `main`）。
+- 落地的东西，按「谁写、谁读、谁说」三段：
+  - **谁写**：迁移 `supabase/migrations/034_email_skip_reason.sql` 给 `notifications` 加可空列
+    `email_skipped_reason`，`CHECK` 取值 `no_email` / `preferences_off`；manifest 追加第 34 条并核对
+    SHA-256，`migration-rollback-runbook.md` 的机器可读「最新迁移」标记同步前进。
+    `src/app/api/cron/digest/route.ts` 的两个跳过分支当场为放弃的那批 id 写原因；
+    写入本身失败时不抛穿整轮，走 `cron.digest.receipt_failed{stage="skip"}` —— 抛穿会把一轮
+    处理过的运行记成 `pulled>0 && sent===0 && failed===0`，正好命中面板「空发送轮次」的定义，
+    那是本仓库前一天刚修过的假信号种类，不再制造第二个。
+  - **谁读**：待发队列谓词多出第五段「未被判定为不可投递」，worker 拉取 / 积压计数 / 最老一条年龄
+    三处整段同改（原有「同一段过滤逐项相等」的用例继续钉住）；新增
+    `countEmailSkippedByReason()` 与 `countReadBeforeSendEmailNotifications()`，
+    后者量的是那条一直在但没人看的静默出队（队列含 `is_read=false`，站内读过就不会再寄，
+    而且连 `email.backlog` 都不计入——只看积压数会把一次堵塞读成一次缩小）。
+  - **谁说**：admin 概览页的邮件队列卡片按原因分组报数并把「读掉」那笔单列；原因标签用
+    `Record<EmailSkipReason, string>` 而不是拼出来的动态键，加第三种原因却忘补文案时编译期就红；
+    `docs-site/email.md`（双语）、`docs/operations/sentry-alerts.md` 的 `stage` 取值、
+    roadmap 里那句「出队语义仍未决」一并改掉。
+- 验证（两边同一条命令）：`pnpm test` 从 `main` 的 199 文件 / 2291 用例变成 **199 文件 / 2303 用例**
+  （+12：仓储 8 + 诊断纯函数 3 + worker 回执 1），`pnpm check:all` **exit 0 / 37 步全过**（含
+  type-check、lint、test），`pnpm build` exit 0。service-role 清点表的调用点预算由 89 改为 **92**
+  （新增 3 个 admin 客户端函数，分类与理由登记在同一处）。
+- 两条方法上的收获，记下来免得下次重新踩：
+  1. **一条 false green 被自己的改动照出来了**：digest 路由测试用显式清单 mock 仓储模块，
+     里面没有 `markEmailSkipped`，于是跳过分支跑起来是 `TypeError`，恰好被我新加的 `try/catch`
+     吞掉——补齐 mock 之前，那两条「跳过」用例全绿却什么都没测。补上 mock 并断言
+     `toHaveBeenCalledWith(["n1","n2"], "no_email")` 之后才有牙齿。给一段自带吞错语义的代码加
+     调用，必须先确认测试替身真的在场。
+  2. **钉死「最新迁移名」的测试是每条迁移都要改一次的税**：
+     `src/lib/db/migration-runbook.test.ts` 原来把 `report.latest` 断言成字面量 `033_...sql`，
+     而「标记必须等于真实最新迁移」这件事已由 `RUNBOOK_STALE_LATEST` 判定负责——那条断言只是把
+     每次加迁移都必然失败的噪声留在仓库里。改成按 manifest 推导之后，判定强度不变、维护面少一处。
+- 仍未闭环：`is_read` 免寄的口径**没有**改变（本轮只让它可见）；邮件侧依然没有行龄上界；
+  生产复验要等下一次部署（B 域仍缺外部权限）。上一条里「等用户拍板」的三项，本轮定案两项
+  （A05、C06），剩下 `profiles.timezone` / `profiles.language` 去留一项按「文档+UI 说明是偏好」处理。
+- 更新时间：2026-09-25（UTC 04:05 前后）。

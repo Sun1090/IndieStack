@@ -204,6 +204,28 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **被跳过的邮件通知不再永远占住队列头部**（v0.12.0 A05 的后半）：digest worker 有两个按用户条件的
+  跳过分支——该用户资料里没有邮箱、以及他把涉及的类型全关了。两条都只上报
+  `cron.digest.skipped{reason}` 就 `continue`，既不 `markEmailSent` 也不 `markEmailFailed`，
+  于是 `metadata.email_attempts` 永不增长、永远碰不到 `EMAIL_MAX_ATTEMPTS` 的死信门槛。
+  后果不是「少发一封」而是**队列被焊死**：`listUnsentEmailNotifications` 按 `created_at` 升序取前 100 条
+  （实时通道 `email-notify.ts` 对同样两种条件也是早退，所以这类行持续产生），攒够 100 条之后
+  **新的、本来可投递的通知再也拉不到**，表现为每天 `pulled=100, sent=0` 而 `email.backlog` 单调增长——
+  那个阈值 500 的告警只说规模、不说原因。现在跳过当场写 `notifications.email_skipped_reason`
+  （迁移 `034_email_skip_reason.sql`，取值 `no_email` / `preferences_off`），队列谓词多出
+  「未被判定为不可投递」这一条，三个消费方（worker 拉取、积压计数、最老一条的年龄）整段一起改，
+  仍由原有的「同一段过滤逐项相等」用例钉住。
+  语义上写清楚的代价：出队**不复活**——用户后来补了邮箱或重新打开偏好，已跳过的那批留在站内不再寄，
+  下一条通知照常走。原因取值集合有两份（`src/lib/notifications/types#EMAIL_SKIP_REASONS` 与迁移里的
+  `CHECK`），漂移的表现是生产写入被数据库拒绝，所以加了一条直接读迁移文件、把两者按顺序对账的测试；
+  回执写入本身失败时不抛穿整轮，走 `cron.digest.receipt_failed{stage="skip"}`
+  （抛穿会把一轮处理过的运行记成 `pulled>0 && sent===0 && failed===0`，正好命中面板
+  「空发送轮次」的定义——那是本仓库刚修过的那类假信号，不再制造第二个）。
+  同一个面板另拆开第二笔静默出队：队列谓词含 `is_read=false`，所以在站内先被读过的通知
+  既不会寄出、也不再计入 `email.backlog`——只看积压数会把一次堵塞读成一次缩小，
+  现在那一笔按条数单列。**发送行为一字未改**，改的是「哪些行已经不会再被拉起、以及为什么」；
+  邮件侧依然没有行龄上界（丢掉一封排了 N 天的信是送达语义变化，不在本条决定里）。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

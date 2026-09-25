@@ -53,6 +53,18 @@ bounded. For operational monitoring it emits backlog and run metrics, plus
 has no address; `preference` — the user switched those types off). Skipping is never silent:
 `pnpm check:cron-contract` statically fails a worker route whose conditional skip has no counter.
 
+Skipping is also how a row leaves the queue now (A05): the same branch writes
+`notifications.email_skipped_reason` for the ids it is giving up on, so those rows stop occupying the
+`created_at`-ascending head of the pull window. A reason is not a delivery attempt and not a send —
+those rows never get `email_sent`, and their retry counter stays where it was, because "this user has
+no address" is not a failure that a retry can fix. The consequence is stated in the schema and here,
+not in code comments only: if that user later adds an email address or switches the types back on,
+the already-skipped notifications are **not** resurrected — they stay in the app and the next
+notification is delivered normally. The allowed reasons are one list in
+`src/lib/notifications/types#EMAIL_SKIP_REASONS` and one `CHECK` in
+`supabase/migrations/034_email_skip_reason.sql`; a test reads the migration and compares them, so the
+drift shows up as a rejected write in production or a red test here, never as a silently wider column.
+
 Receipt writes are separated from delivery in the other direction too: a group counts as sent the
 moment the provider accepts it, and a receipt write that then fails is reported on its own
 (`cron.digest.receipt_failed{stage="sent"}`) instead of aborting the run — the row stays queued, so a
@@ -60,17 +72,21 @@ later run may send that user a second digest. The mirror case (`stage="retry"`) 
 *and* whose `email_attempts` increment could not be written: the group still counts as failed, but the
 retry counter did not move, and nothing on the email side bounds it — unlike Web Push there is no
 row-age ceiling, because dropping a queued email after N days changes delivery semantics and that
-belongs to the A05 decision below. Neither case may erase the round's own record any more: a run that
+belongs to the A05 semantics described above. A third stage, `stage="skip"`, is the dequeue write
+itself failing: the metric still counts that group as skipped and the run completes, but those rows
+stayed in the queue, so the next run pulls them again. None of these receipt cases may erase the round's own record any more: a run that
 dies mid-way logs `pulled` / `sent` / `groups` / `failed` exactly as they stood, because the panel's
 "empty send round" reading is defined as `pulled > 0 && sent === 0 && failed === 0`, and a round that
 had already delivered mail must never appear there.
 
 The admin overview panel shows the queue itself: how many notifications are pending, how long the
 oldest one has been waiting (past 48 h — two daily cycles — it reads as stuck), and how many recent
-runs pulled items yet sent none. All three go through exactly the filter the worker pulls with, so
-the age on the panel describes that same queue. This is visibility only: items skipped for
-`no_email` or `preference` still never leave the queue, and **how** they should be dequeued is an
-open decision (v0.12.0 A05).
+runs pulled items yet sent none. All of those go through exactly the filter the worker pulls with, so
+the age on the panel describes that same queue. On top of them the panel breaks out the two populations that
+already left it: rows dequeued by the worker, counted per `email_skipped_reason`, and rows taken out
+because they were read in the app first (the queue predicate includes `is_read = false`, so those stop
+counting toward `email.backlog` — the backlog number alone would read a jam as a shrink). Neither
+figure changes what gets sent; they say which rows are gone and why.
 
 Digest delivery is **one email per run, per user, with something queued**. It deliberately does not
 try to hit each user's local morning: on the Hobby plan a cron path can run at most once a day, so a
