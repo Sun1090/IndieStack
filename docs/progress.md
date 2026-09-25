@@ -1193,10 +1193,17 @@
   缺凭据就如实失败（这是 fail-closed 的方向，也是文档一直写的方向）。开发、`dev:mock`、E2E、
   视觉基线都不受影响——`playwright.config.ts` 与 `playwright.visual.config.ts` 起的都是 `pnpm dev`。
   回滚 = revert 本 commit。
-- 冲突面（61 条 open 逐路径扫，队列现况见 #118 附二十九）：**本条那五个代码文件在整条队列里命中 0 条**，
-  没有语义边要预防；同文件的只有文档三处——`docs-site/{,zh-CN/}mock.md`（#148、#149）、
-  `docs/architecture/13-mock-system.md`（#148），都是不同区域的追加，`merge-tree` 自动合上；
-  台账尾部照例 `CHANGELOG.md` 58 / `docs/progress.md` 61。
+- 冲突面（队列现况 62 条 open，见 #118 附二十九；逐路径扫 61 条 + 本分支自己）：
+  **本条那五个代码文件（`src/lib/mock/config.ts`、`config.test.ts`、`diagnostics.ts` 与其测试、
+  `api/health/route.ts` 与其测试）在整条队列里命中 0 条**，没有语义边要预防；
+  同文件的只有文档三处——`docs-site/{,zh-CN/}mock.md`（#148、#149）、
+  `docs/architecture/13-mock-system.md`（#148），都是不同区域的追加，`merge-tree` 自动合上。
+  整分支对 62 个 head 逐个跑 `merge-tree`：**62/62 与本条冲突，冲突文件只有台账尾部**
+  （`docs/progress.md` 62、`CHANGELOG.md` 50），**非台账冲突 0 个**，代码/配置/迁移零冲突。
+  这一串数字第一次跑出来是「冲突 0 条、非台账 0 条」——看着像好消息，其实是 62 条全部 `FETCH_FAIL`、
+  合并检查一条都没跑过：喂给脚本的那份 `gh pr list --json` 没有 `headRefName` 字段，ref 名全是 `undefined`。
+  救回来的是脚本里那句 `fetchFail: 154,153,…` 把整串列出来了：**分母与「取到的是什么」要和结论同行打印**，
+  否则一个坏掉的输入与一个干净的结果长得一样。
 - **一条 merge-tree 看不见的边，要人做一次动作**：roadmap C13 的文案登记在 **#153 的分支**上，
   写的是「给 `check:security-config` 加一条拒绝生产开 mock 的规则」。本条的判定是**不加那条门禁**：
   那个变量活在部署平台而不是仓库里，想证明「生产没设它」要读 Vercel 的项目环境变量，
