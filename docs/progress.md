@@ -1153,3 +1153,42 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — C06 定案：删掉两个零调用方的上传 Server Action，因为「共用服务层」不等于「共用守卫」
+
+- 里程碑 / 版本：v0.12.0；roadmap C 域 **C06**（缺口审计里标为「产品决策（保留为编程入口或删除）」，
+  2026-09-25 由用户拍板：**删**）。上一条里那条「等用户拍板」的三项之一就此闭环。
+- 状态：DONE（代码侧完成，等 PR 合并）。分支：`chore/remove-upload-server-actions`（base `main`）。
+- 判定依据三条，全部今天量过：
+  1. **零调用方**：`src/lib/actions/uploads.ts` 的 `uploadAvatar` / `uploadProjectCover` 除自己那份
+     `uploads.test.ts`（15 条用例）之外无人 import；仓库里活着的上传入口是
+     `POST /api/uploads/avatar` 与 `POST /api/uploads/project-cover`，`avatar-upload-form` 走同源 XHR。
+     action id 不出现在任何服务端渲染的 HTML 里，所以**今天不可利用**——留着它的代价不在今天。
+  2. **两个入口的守卫不同形**（这条是删的真正理由）：路由经 `src/lib/uploads/request.ts` 拿三道请求边界
+     ——同源校验、限流、解析 multipart **之前**的请求体上限；action 三道全空，连路由里那句
+     `projectId` 长度检查也没有。service 文件头原来写着「Server Action 与 Route Handler 共用……避免
+     安全规则分叉」，而分叉恰好就在这一行下面：领域规则同源，边界守卫不同源。
+  3. **覆盖不因删除而丢**：`src/lib/uploads/service.test.ts` 22 条用例直接测领域规则，两个路由测试
+     3 + 4 条测边界与状态映射；被删的 15 条测的是同一批判定的 action 外壳。
+- 结果与验证（同一条 `pnpm test` 口径，两边都是实跑，不是推算）：
+
+  | 度量 | 删除前（`main` = `ad4b0299`） | 删除后（本分支） |
+  | --- | --- | --- |
+  | 测试文件 | 199 | 198 |
+  | 用例 | 2291 passed | 2276 passed |
+  | `pnpm check:all` | — | exit 0，37 步全过（含 type-check / lint / test） |
+  | `pnpm build` | — | exit 0 |
+
+  差值 1 文件 / 15 用例，与被删文件里的 `it(` 计数**逐条对上**（15 条：头像 9 + 封面 6）。
+- 随删除一起改掉的是「随之变假」的描述，四处代码注释加两处文档：service 文件头（改成写清三道守卫
+  只作用于走 HTTP 路由的调用方，直接 import 本文件的函数拿不到）、两个路由头注释里点名的 action、
+  `src/lib/mock/index.ts` 与 `src/app/api/e2e/mock-upload/route.ts` 注释里点名的 `uploadAvatar`、
+  `docs-site/storage.md`（双语）那句把守卫写成路由属性的话，以及
+  `docs/architecture/11-integrations.md` 的「头像与项目封面通过 Server Actions 完成……」——那正是
+  v0.6.0 退出报告点名的「标注与代码相反」，删掉 action 之后它从夸张变成不存在，属于不得回流的旧表述。
+- 明确**没有**改的：`messages/{en,zh-CN}/**` 里的 `uploadAvatar` 键（那是头像按钮的文案键，与被删的
+  符号无关）、`docs/roadmap-0.6.0.md` 里那句「统一经 Server Actions」（带日期的历史证据，按 D04 口径
+  就地保留，其错误已由 v0.6.0 退出报告记录）。
+- 仍未闭环的（沿用上一条的三分法）：等用户拍板的还剩 A05 出队语义（含 `is_read` 那条静默出队）与
+  A01 留下的 `profiles.timezone` / `profiles.language` 去留。
+- 更新时间：2026-09-25（UTC 03:10 前后）。

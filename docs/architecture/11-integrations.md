@@ -203,8 +203,9 @@ pnpm sentry:sourcemaps
 ## 阿里云 OSS 文件存储
 
 > 状态：**已接线（默认安全回退 Supabase Storage）**。
-> `src/lib/storage/index.ts` 提供统一 `StorageDriver` contract；头像与项目封面通过 Server Actions
-> 完成鉴权、白名单校验、服务端中转上传、数据库回写和对象生命周期清理。仅当 OSS 四项凭据
+> `src/lib/storage/index.ts` 提供统一 `StorageDriver` contract；头像与项目封面经 `/api/uploads/*`
+> 两个路由完成鉴权、白名单校验、服务端中转上传、数据库回写和对象生命周期清理（领域规则在
+> `src/lib/uploads/service.ts`，请求边界守卫在 `src/lib/uploads/request.ts`）。仅当 OSS 四项凭据
 > (`OSS_BUCKET`、`OSS_REGION`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`) 完整时才启用 OSS，
 > 配置不完整会显式诊断并回退 Supabase。
 

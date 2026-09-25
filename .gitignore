@@ -38,6 +38,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# 本地门禁的原始输出（诊断用，不进版本库）
+.gate-logs/
+
 # Sentry
 .sentryclirc
 

@@ -507,7 +507,7 @@ function eraseMockUserData(
 
 /**
  * E2E 注入：让 mock storage 连续失败 N 次（上传失败/重试场景）
- * 写入共享缓存（与路由/action 同一 globalThis store），供 uploadAvatar 等动作读取。
+ * 写入共享缓存（与上传路由同一 globalThis store），供 mock storage driver 在写入时读取。
  */
 const MOCK_UPLOAD_FAIL_NEXT_KEY = "UploadFailNext";
 

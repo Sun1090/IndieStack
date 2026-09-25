@@ -62,8 +62,11 @@ cancel an in-flight request:
 | `POST /api/uploads/avatar` | Current user's avatar | Authenticated user |
 | `POST /api/uploads/project-cover` | Project cover | Team owner or admin |
 
-Both routes reject cross-origin requests, enforce rate limits and body limits, and reuse the same
-service layer as the server actions.
+All upload rules — authentication, the MIME allowlist, the size limit, the database write-back and
+orphan cleanup — live in `src/lib/uploads/service.ts`. The three request-boundary guards
+(same-origin, rate limit, request body cap applied before multipart parsing) live in
+`src/lib/uploads/request.ts` and apply **only to these two routes**: a non-browser caller that
+imports the service functions directly gets none of them and has to supply its own.
 
 ## Supabase Bucket
 
