@@ -1157,7 +1157,7 @@
 ## 2026-09-25 — C13：生产构型不许开 mock（缺闸门的只有显式那一半）
 
 - 里程碑 / 版本：v0.12.0；C 组（门禁与安全语义），roadmap 里 C13 那条由 #153 登记。
-- 状态：DONE。分支：`fix/mock-production-guard` → PR（编号见本条目末尾的补记）。
+- 状态：DONE。分支：`fix/mock-production-guard` → **PR #155**（base `main`）。
 - 缺陷的形状：`src/lib/mock/config.ts` 的判定有两条来源，**生产闸门只写在第二条上**。
   第一条 `NEXT_PUBLIC_MOCK_ENABLED === "true"` 什么都不问，第二条（自动降级）的注释正是
   「避免生产环境误配时静默绕过认证」。同一个文件里两种语义，危险的那一种胜出：
