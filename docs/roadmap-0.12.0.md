@@ -28,6 +28,18 @@
      写入校验（`api/user/route.ts:29`、`lib/actions/profile.ts:32`）和完整度计分
      （`profile-completeness-card.tsx:18`）。也就是说用户仍被要求填一个**当前什么都不影响**的字段。
      要么在文档与 UI 上说明它只是偏好，要么删掉这条链路——属产品决策，不与其他条目耦合
+   - **2026-09-25 定案并落地（选「说明它只是偏好」）**：资料编辑表单的时区与语言两个选择器各加了
+     `FormField` 的 `description`（`timezoneDesc` / `languageDesc`，双语），文案写明「只保存偏好：
+     摘要邮件按统一调度发送、界面语言由语言切换器决定、出站邮件不翻译」，回归钉子是那条
+     「说明绑到控件的 `aria-describedby` 上」的组件测试；`docs-site/email.md`（双语）的
+     「偏好与重试」小节与 `docs/architecture/06-database.md` 的 `profiles` 字段表同步了同一口径。
+     **没有让这两个字段生效**，也没有删链路——生效（按用户本地时刻发送、按语言本地化邮件）仍然是
+     另一个决策：前者的代价在 A01 正文里已经写清（要第二条 cron 路径，而不是放宽门控），后者要先决定
+     「邮件要不要本地化」以及「`ja`/`ko` 算不算支持语言」，因为它连**已存库的通知标题**都得一起本地化
+     （`docs/design/email-templates.md` 的原则 3 那句「英文为主、附中文摘要」只管 Supabase Dashboard 里的
+     Auth 模板，应用自己发出的摘要正文目前恒为中文）。
+     同一条链上还剩一件没做：`language` 的取值词表（`en/zh/ja/ko` vs 站点真实 locale `zh-CN/en`）
+     由 PR #127 收窄到权威常量 `PROFILE_LANGUAGES`，但校验是否收窄仍未定
 2. A02 （随 A01 完成：门控既然移除，临时指标 `cron.digest.deferred` 已删除，注册表回到 14 个指标；
    若将来重新引入任何「按条件跳过」的门控，必须同时带回对应的可见性指标与告警规则）
 3. A03 （2026-09-22 已核对，**push 链路没有同型缺陷**）：`src/lib/push-retry.ts` 与
