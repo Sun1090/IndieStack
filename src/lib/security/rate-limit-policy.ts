@@ -99,20 +99,6 @@ export const RATE_LIMIT_LEDGER: Readonly<Record<string, RateLimitEntry>> = {
     "POST 把整个假 store 重置回初始值——它的「杀伤力」恰好是让测试回到干净状态" +
       "；能重置假数据的人本来也能写假数据，这两件事在同一个开关后面",
   ),
-  "POST /api/marketing/confirm": {
-    reason:
-      `${RATE_LIMIT_GAP_MARKER}，不是判定为无需窗口。**怎么关：#136 正在补按 IP 的滑窗，` +
-      "那条合并之后本条会被 `RATE_LIMIT_STALE` 报出来，届时删掉这两行**——这正是留着这条判据的目的。" +
-      "现状是：凭 URL / 表单里的一次性 token 改订阅状态，token 由服务端随机生成、不可猜测，" +
-      "重放同一个 token 只会得到同一状态（幂等）；剩下的暴露是拿着一个未消费 token 的人可以反复打它刷错误回执。",
-  },
-  "POST /api/marketing/unsubscribe": {
-    reason:
-      `${RATE_LIMIT_GAP_MARKER}，与 confirm 同一形态、同一个 PR 关：**#136 补按 IP 的滑窗，` +
-      "合并后这条转成 `RATE_LIMIT_STALE`，删掉即可**。" +
-      "退订链接的 POST，一次性 token、幂等改写状态。",
-  },
-
   // ---------------------------------------------------------- 共享密钥面（8）
   "POST /api/cron/digest": {
     reason:
