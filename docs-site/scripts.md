@@ -38,7 +38,7 @@
 | `pnpm check:bilingual-docs` | Compare scheduling facts (cron expressions, `HH:MM UTC` times) between each `docs-site` page and its `zh-CN` counterpart; one-sided edits fail |
 | `pnpm check:cron-contract` | Audit Vercel cron schedules, route methods, rejection observability, documented metrics, that every conditional skip in a worker route reports a counter, and that every cron expression / `/api/cron/*` path quoted in `docs-site` and `docs` actually exists in the repository |
 | `pnpm check:release-tag` | Verify a `vX.Y.Z` tag matches `package.json`, the CHANGELOG has a dated release section, and `release.yml` publishes reviewed notes only after all gates |
-| `pnpm check:mock-docs` | Audit that the Mock docs match the Mock client tables and E2E endpoints |
+| `pnpm check:mock-docs` | Audit that the Mock docs match the Mock client tables, E2E endpoints and implemented filter operators |
 | `pnpm check:test-matrix` | Audit that the contributor test matrix documents every change area and real script |
 | `pnpm check:provider-docs` | Audit that both provider diagnostics guides document every provider and environment key |
 | `pnpm provider:doctor` | Print a credential-free provider configuration report and fail on partial setups |

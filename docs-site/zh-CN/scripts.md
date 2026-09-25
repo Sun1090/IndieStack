@@ -38,7 +38,7 @@
 | `pnpm check:bilingual-docs` | 逐页比对 `docs-site` 与其 `zh-CN` 版本的调度事实（cron 表达式、`HH:MM UTC` 时刻），只改一种语言就失败 |
 | `pnpm check:cron-contract` | 校验每个 cron worker 的 Vercel 调度、路由方法、鉴权拒绝可观测性、文档中的指标契约、「按条件跳过投递时有没有上报跳过计数」，以及 `docs-site` 与 `docs` 里引用的 cron 表达式和 `/api/cron/*` 路径是否真的存在于仓库 |
 | `pnpm check:release-tag` | 校验 `vX.Y.Z` 标签与 `package.json` 一致、CHANGELOG 存在带日期的对应章节，并要求 `release.yml` 跑完全部门禁后才发布审核过的 Notes |
-| `pnpm check:mock-docs` | 校验 Mock 文档的表名清单与 E2E 端点同实现保持一致 |
+| `pnpm check:mock-docs` | 校验 Mock 文档的表名清单、E2E 端点与「已实现的过滤器」算子同实现保持一致 |
 | `pnpm check:test-matrix` | 校验贡献者测试矩阵登记了全部改动领域与真实存在的脚本 |
 | `pnpm check:provider-docs` | 校验两份 provider 诊断指南都记录了全部 provider 与环境变量 |
 | `pnpm provider:doctor` | 输出不含凭据的 provider 配置报告，并在半套配置时失败 |

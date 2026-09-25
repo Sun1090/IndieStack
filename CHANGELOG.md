@@ -204,6 +204,53 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **营销确认/退订链接在 mock 模式下点了就是 HTTP 500**：`src/lib/repositories/marketing.ts:89` 的过期闸门是
+  `.update(...).eq("token_hash", …).gt("token_expires_at", now).select("id")`，而 Mock 的查询构建器只有
+  `gte / lt / lte`——`.gt(...)` 是**同步**抛 `TypeError`，冒出 `confirmSubscription` 后被路由的 catch 收成 500
+  （`src/app/api/marketing/confirm/route.ts:30`），E2E 与 `pnpm dev:mock` 里点确认/退订必然失败，
+  而 `e2e/mail-flow.spec.ts` 只验到「邮件里有这条链接」，从没 POST 过它。
+  与 `storage.remove` 是同一族的第二个实例：**仓储层单测抓不到它，因为它用的手搓 `chainMock` 自带 `gt`**——
+  `src/lib/repositories/test-helpers.ts:18` 那份清单里有 `gt`、`neq`，而真正的替身没有。
+  修法分四层：① `MockQueryBuilder` 补 `gt()`，并且**读写两条路径都要落**（mock 里 `matchesFilters` 服务
+  update/delete、`applyFiltersAndPagination` 服务 select，是两处独立实现），顺手把排序算子的判定抽成
+  `passesOrdered()`，边界语义不再各写一遍（也是为了让 `matchesFilters` 留在 ESLint 的复杂度上限内——
+  直接加分支会红在 `complexity 34 > 30`，本仓库不用 `eslint-disable` 豁免这条规则）；
+  ② `src/lib/mock/mock-query-gt.test.ts` 4 条钉语义，含「恰好等于 `now` 的那条**不能**被更新」与 `gte` 正向对照；
+  ③ `src/lib/mock/mock-query-surface.test.ts` 钉这一类本身：用 TypeScript AST 从 `src/**` 现取
+  「挂在查询构建器上的方法名」（不手写清单，清单自己会腐烂），逐个问 Mock 的构建器有没有。
+  三条用例各钉一件事：扫描有效性（正向要看到 `eq`/`select`、反向不许把 `Array.from(...).join()`、
+  `Buffer.from(...).subarray()`、`supabase.removeChannel?.bind(supabase)` 当算子——第一版就是这么报了
+  9 个「缺失」而其中只有 1 个是真的）、「每一处 `.from(` 的归属都要认得」（出现认不出的客户端拿法就红并点名，
+  防止少扫一条链把对账扫成空洞）、以及表面覆盖。
+  ④ `src/lib/repositories/marketing-mock-client.test.ts` 4 条：静态对账只看「链上写没写到这个方法名」，
+  把 `gt()` 留成一个吃掉参数不起作用的空壳它就照样绿。所以这一层是动态的——`vi.mock("@/lib/supabase/admin")`
+  换成真 Mock 客户端、不 mock 任何查询，直接跑 `upsertPendingSubscription` → `confirmSubscription` →
+  `unsubscribeByToken`，并断言**过期 token 返回 `false` 而不是抛错**（这才逼 `gt` 真的在过滤）。
+  ⑤ 那条假说明书不再只靠人来发现：`check:mock-docs` 原来只核对表名与 E2E 端点，过滤器词汇表没人管，
+  现在它用 TypeScript AST 抽出**方法体里真的有 `this.filters[...] =` 赋值**的那些算子
+  （判行为，不判名字——名字还在、什么都不写的空壳不算实现），与两份文档「已实现的过滤器」那一行
+  逐字对账，两个方向都报错，抽取为空时失败封闭。
+  实测定过它自己能红：把 `gt()` 从构建器删掉 → 两份文档各报 `MOCK_FILTER_UNSUPPORTED`；
+  往英文那行的清单里塞一个 `neq()` → 恰好 1 条 `文档登记了 neq()，而 MockQueryBuilder 没有这个方法`
+  （这正是过去被写进文档而没人发现的那一类）。
+  顺带修文档里的假声明：双语 mock 文档写着 Mock 支持 `eq() / neq() / in() / is()`，**`neq()` 从来没实现**
+  （链上一调用就是同一个 TypeError）；现在按实测列出已实现的算子，并写下没实现的行为。
+  E2E 侧把那个盲区关掉：`e2e/mail-flow.spec.ts` 现在会从收件箱里取出真 token，GET 自动提交页、
+  POST 确认（期望 302 而不是 500）、POST 假 token（期望 404，作为对照）、POST 退订（期望 302）。
+  删掉 `gt()` 会让这条 spec 红在 302 那一行（实际 500），把结果打成恒 `true` 会让它红在 404 那一行——
+  两侧都有牙齿，不是「跑过一次就好」。
+  同一趟量到的阴性（别重扫）：`src/**` 的查询链上只用到 19 个构建器方法，缺的就是 `gt` 那一个；
+  `neq / like / ilike / filter / match / textSearch / containedBy / overlaps` 的链上使用数**全为 0**；
+  写路径会忽略的 `or() / contains() / not()` 与写操作的组合也是 0（6 处 `.or(` 逐条看过，全在 `select` 链上）。
+  变异核对 5 项，各自抓红：删掉 `gt()` → 3 条语义 + surface 点名共 4 条；把 `:gt` 判成 `>=` → 恰好写/读
+  两条严格大于红而 `gte` 对照仍绿；只让写路径放过排序过滤器 → 写路径 3 条红而读路径仍绿
+  （证明两边是被独立钉住的，不是读路径顺带覆盖）；再删一次 `gt()` → 8 条红（上面 4 条 + ④ 的 4 条全红）；
+  把 `gt()` 收成空壳 → **4 条红**（语义那 3 条 + 确认的过期闸门），而 **③ 的静态对账整份文件全绿**——
+  它只问「方法在不在」，这正是 ④ 存在的理由。每步 `git checkout --` 还原并校验逐字节一致。
+  这条动态对账还顺带抓出一整类合并时才会现形的边：它第一版断言的是「退订也吃过期的 token 就返回
+  `false`」，而队列里的 #123 正在把退订的有效期语义改成「不设时间窗」——两侧改的是不同文件，
+  `merge-tree` 说「不冲突」，真把那棵树合一遍才红。现在过期闸门只由确认路径钉，改完两侧都成立。
+
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

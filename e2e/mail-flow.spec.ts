@@ -5,6 +5,7 @@
  *   1) 设置页开启营销邮件 → double opt-in 确认邮件落到 email-inbox
  *   2) 种通知 → POST /api/cron/digest → 摘要邮件落到 email-inbox + worker_runs 落表
  *   3) 注入 failNext → digest 失败回执：email_attempts 累加 + worker_runs.failed>0
+ *   4) 邮件里的确认/退订链接**真的被点下去**：GET 自动提交页 + POST 302（假 token 404 作对照）
  *
  * 全部 mock：Resend → /api/e2e/email-inbox，cron secret 已注入；digest 不再看用户时区
  */
@@ -134,6 +135,72 @@ test.describe("邮件全链路 (F01)", () => {
     expect(latestRun.sent).toBe(2);
     expect(latestRun.groups).toBe(1);
     expect(latestRun.failed).toBe(0);
+  });
+
+  test("邮件里的确认/退订链接真的能被点：POST 落到 302，而不是 500", async ({ page }) => {
+    // 这条用例的存在理由：F01 的 happy path 只断言「邮件 HTML 里含这条链接」，从没点过它。
+    // 于是 mock 模式下必然 500 的两件事（`MockQueryBuilder` 缺 `gt`、mock 客户端缺 `remove`）
+    // 都在这个盲区里活着——见 #149 / #148。
+    await page.goto(`${appUrl()}/auth/login`);
+    await page.locator("input[type=email]").first().fill(MOCK_EMAIL);
+    await page.locator("input[type=password]").first().fill("password123");
+    await page.getByRole("button", { name: /sign in|登录/i }).click();
+    await page.waitForURL("**/dashboard", { timeout: 15_000 });
+
+    await page.goto(`${appUrl()}/dashboard/settings`);
+    const marketingSwitch = page.locator("#marketingEmails");
+    await expect(marketingSwitch).toBeVisible();
+    if (!(await marketingSwitch.isChecked())) {
+      await marketingSwitch.click();
+    }
+    await page.getByRole("button", { name: /Save Preferences|保存更改/i }).first().click();
+
+    // 从确认邮件里取出真 token——取的就是用户会点到的那串
+    let token = "";
+    await expect
+      .poll(
+        async () => {
+          const inbox = await api.get(
+            `${appUrl()}/api/e2e/email-inbox?to=${encodeURIComponent(MOCK_EMAIL)}`,
+            { headers: { authorization: `Bearer ${E2E_BEARER}` } },
+          );
+          const body = (await inbox.json()) as { emails: { subject: string; html: string }[] };
+          const mail = body.emails?.find((e) => e.subject.includes("确认订阅"));
+          token = mail?.html.match(/\/api\/marketing\/confirm\?token=([0-9a-f]{48})/)?.[1] ?? "";
+          return token.length;
+        },
+        { timeout: 20_000, message: "确认邮件里应有一条 48 位 hex token 的确认链接" },
+      )
+      .toBeGreaterThan(0);
+
+    // GET 那一跳是自动提交页，先确认它给的是指向 confirm 的表单
+    const landing = await api.fetch(`${appUrl()}/api/marketing/confirm?token=${token}`);
+    expect(landing.status()).toBe(200);
+    expect(await landing.text()).toContain('action="/api/marketing/confirm"');
+
+    // 真 token 点下去：302 回站点并带 marketing=confirmed。补 `gt` 之前这里就是 500。
+    const confirmed = await api.fetch(`${appUrl()}/api/marketing/confirm?token=${token}`, {
+      method: "POST",
+      maxRedirects: 0,
+    });
+    expect(confirmed.status()).toBe(302);
+    expect(confirmed.headers()["location"] ?? "").toContain("marketing=confirmed");
+
+    // 正向对照：假 token 必须 404。没有这一条，上面的 302 可能是路由无条件发的。
+    const bogus = await api.fetch(`${appUrl()}/api/marketing/confirm?token=${"f".repeat(48)}`, {
+      method: "POST",
+      maxRedirects: 0,
+    });
+    expect(bogus.status()).toBe(404);
+
+    // 退订链接同样能被点。点完这一下把状态留在 unsubscribed，
+    // 于是后面的用例再开营销开关会重新发一封确认邮件——这条用例不会把 happy path 顶成 pending 缺失。
+    const unsubscribed = await api.fetch(`${appUrl()}/api/marketing/unsubscribe?token=${token}`, {
+      method: "POST",
+      maxRedirects: 0,
+    });
+    expect(unsubscribed.status()).toBe(302);
+    expect(unsubscribed.headers()["location"] ?? "").toContain("marketing=unsubscribed");
   });
 
   test("failure path: 注入 failNext → email_attempts 累加 + worker_runs.failed>0", async ({

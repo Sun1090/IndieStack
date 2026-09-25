@@ -10,6 +10,8 @@
  *
  *   - 客户端的每个表名必须出现在每份文档的「表名清单」里，反之亦然；
  *   - `src/app/api/e2e/*` 下的每个端点必须被文档登记，文档不得引用已删除的端点；
+ *   - 「已实现的过滤器」那一行列出的算子必须与查询构建器真的写了 `this.filters[...]`
+ *     的那一组**逐字相等**，两个方向都报错；
  *   - 每份文档必须覆盖开启条件、自动降级边界、proxy 接入点与状态重置入口；
  *   - 已核验为错的旧表述不得回流（STALE_DOC_CLAIMS）；
  *   - 抽取结果为空时失败封闭，避免正则失效被当成「零问题」。
@@ -17,11 +19,16 @@
  * 规则只判断文档与代码的事实一致性，不判断文案质量。
  */
 
+import * as ts from "typescript";
+
 export type MockDocIssueCode =
   | "MOCK_TABLE_UNDOCUMENTED"
   | "MOCK_TABLE_UNKNOWN"
   | "MOCK_ENDPOINT_UNDOCUMENTED"
   | "MOCK_ENDPOINT_UNKNOWN"
+  | "MOCK_FILTER_UNDOCUMENTED"
+  | "MOCK_FILTER_UNSUPPORTED"
+  | "MOCK_FILTER_ROW_MISSING"
   | "MOCK_REQUIRED_FACT_MISSING"
   | "MOCK_STALE_CLAIM"
   | "MOCK_DOC_SOURCE_EMPTY";
@@ -53,6 +60,8 @@ export interface MockDocsReport {
   tables: string[];
   /** 从 e2e 路由目录抽出的端点（已排序）。 */
   endpoints: string[];
+  /** 查询构建器真的写入 `this.filters[...]` 的算子名（已排序）。 */
+  filters: string[];
 }
 
 export interface MockDocPhrase {
@@ -99,6 +108,15 @@ const MARKDOWN_SEPARATOR_ROW = /^\|[\s:|-]*-[\s:|-]*\|/;
 const INLINE_CODE_TABLE_NAME = /^`([a-z][a-z0-9_]*)`$/;
 const TABLE_LISTING_HEADERS = new Set(["表名", "数据表", "表清单"]);
 
+/** 「已实现的过滤器」那一行第二格的开头；两份文档各用自己的语言写，都认。 */
+const FILTER_ROW_HEADINGS = ["Implemented filters", "已实现的过滤器"] as const;
+
+/**
+ * 必须出现这一行的文档。`docs/architecture/13-mock-system.md` 刻意不在这里：
+ * 它讲的是客户端怎么搭的，不列过滤器词汇表；但**只要它列了就必须对上**（见 auditFilterParity）。
+ */
+const FILTER_ROW_REQUIRED_DOCS = ["docs-site/mock.md", "docs-site/zh-CN/mock.md"] as const;
+
 /**
  * 从 Mock 客户端源码抽取受支持的表名。
  * 目前 index.ts 只有按表名分支的字符串 switch；若将来新增其它字符串 switch，
@@ -108,6 +126,54 @@ export function extractClientTables(source: string): string[] {
   const names = new Set<string>();
   for (const match of source.matchAll(CLIENT_TABLE_CASE)) names.add(match[1]);
   return [...names].sort();
+}
+
+/**
+ * Mock 查询构建器**真的实现了哪些过滤算子**——判据是方法体里有没有往
+ * `this.filters[...]` 写条件，而不是数方法名。起因不是推测：`docs-site/mock.md` 与
+ * 它的中文版长期写着「支持 `eq() / neq() / in() / is()`」，而 `neq()` 从来没实现，
+ * 同期真正在用的 `gt()` 却没被登记（见 #149）。两侧都错过一次，说明「写进文档的词汇表」
+ * 必须有东西回头对着实现核——本仓库的 Mock 客户端是唯一的替身，它的表面就是文档的上界。
+ */
+export function extractClientFilters(source: string): string[] {
+  const file = ts.createSourceFile("mock-index.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const names = new Set<string>();
+  const writesFilters = (node: ts.Node): boolean =>
+    ts.isBinaryExpression(node)
+    && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && ts.isElementAccessExpression(node.left)
+    && ts.isPropertyAccessExpression(node.left.expression)
+    && node.left.expression.name.text === "filters";
+  const visit = (node: ts.Node): void => {
+    if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name) && node.body) {
+      let writes = false;
+      const scan = (inner: ts.Node): void => {
+        if (writesFilters(inner)) writes = true;
+        ts.forEachChild(inner, scan);
+      };
+      scan(node.body);
+      if (writes) names.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return [...names].sort();
+}
+
+/**
+ * 文档里那一行「已实现的过滤器 / Implemented filters」列出的算子名。
+ * 返回 `null` 表示这份文档根本没有这一行（由调用方决定是缺失还是不检查）。
+ */
+export function extractDocumentedFilters(content: string): string[] | null {
+  for (const line of content.split("\n")) {
+    if (!line.startsWith("|")) continue;
+    const cells = line.split("|").slice(1, -1);
+    if (cells.length < 2) continue;
+    const heading = cells[1].trim();
+    if (!FILTER_ROW_HEADINGS.some((anchor) => heading.startsWith(anchor))) continue;
+    return [...cells[0].matchAll(/`([a-z][A-Za-z]*)\(\)`/g)].map((match) => match[1]).sort();
+  }
+  return null;
 }
 
 /** 把 `src/app/api/e2e/<name>/route.ts` 归一化成 `/api/e2e/<name>`。 */
@@ -218,14 +284,49 @@ function auditEndpointParity(
   }
 }
 
+function auditFilterParity(
+  document: MockDocDocument,
+  filters: readonly string[],
+  issues: MockDocIssue[],
+): void {
+  const documented = extractDocumentedFilters(document.content);
+  if (documented === null) {
+    if ((FILTER_ROW_REQUIRED_DOCS as readonly string[]).includes(document.path)) {
+      issues.push({
+        code: "MOCK_FILTER_ROW_MISSING",
+        document: document.path,
+        detail: `没有「已实现的过滤器」这一行；实现里有 ${filters.length} 个算子，读者无从对照`,
+      });
+    }
+    return;
+  }
+  const { missing, unknown } = diffSets(filters, documented);
+  for (const name of missing) {
+    issues.push({
+      code: "MOCK_FILTER_UNDOCUMENTED",
+      document: document.path,
+      detail: `${name}() 在查询构建器里真的写 this.filters，但文档那一行没登记`,
+    });
+  }
+  for (const name of unknown) {
+    issues.push({
+      code: "MOCK_FILTER_UNSUPPORTED",
+      document: document.path,
+      detail: `文档登记了 ${name}()，而 MockQueryBuilder 没有这个方法（一调用就是 TypeError）`,
+    });
+  }
+}
+
 function auditDocument(
   document: MockDocDocument,
   tables: readonly string[],
   endpoints: readonly string[],
+  filters: readonly string[],
   issues: MockDocIssue[],
 ): void {
   auditTableParity(document, tables, issues);
   auditEndpointParity(document, endpoints, issues);
+  auditFilterParity(document, filters, issues);
   for (const fact of REQUIRED_DOC_FACTS) {
     if (!document.content.includes(fact.phrase)) {
       issues.push({
@@ -250,6 +351,7 @@ function auditInputs(
   input: MockDocsInput,
   tables: string[],
   endpoints: string[],
+  filters: string[],
   issues: MockDocIssue[],
 ) {
   if (input.documents.length === 0) {
@@ -269,20 +371,28 @@ function auditInputs(
       detail: "未能抽出任何 E2E 端点，抽取规则可能已失效",
     });
   }
+  if (filters.length === 0) {
+    issues.push({
+      code: "MOCK_DOC_SOURCE_EMPTY",
+      document: "src/lib/mock/index.ts",
+      detail: "未能从查询构建器抽出任何过滤算子，`this.filters[...]` 的写法可能已改，抽取规则失效",
+    });
+  }
 }
 
 /** 审计 Mock 文档与实现的一致性；纯函数，不读取文件系统。 */
 export function auditMockDocs(input: MockDocsInput): MockDocsReport {
   const tables = extractClientTables(input.mockIndexSource);
   const endpoints = extractE2eEndpoints(input.e2eRoutePaths);
+  const filters = extractClientFilters(input.mockIndexSource);
   const issues: MockDocIssue[] = [];
 
-  auditInputs(input, tables, endpoints, issues);
+  auditInputs(input, tables, endpoints, filters, issues);
   for (const document of input.documents) {
-    auditDocument(document, tables, endpoints, issues);
+    auditDocument(document, tables, endpoints, filters, issues);
   }
 
-  return { issues, tables, endpoints };
+  return { issues, tables, endpoints, filters };
 }
 
 /** 格式化为带规则码的文本，供 CLI 和测试复用。 */
