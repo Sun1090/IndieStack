@@ -46,4 +46,10 @@ v0.5.0 C01 要求将其落为生产代码。厂商 SDK 的可用性与初始化�
   收集端去重或配额替代品，生产调整前应以实际流量估算事件量。
 - 队列在进程内存中，serverless 环境下未 flush 的事件随实例回收丢失——
   首版接受（关键流程均在请求尾部主动 flush）。
+  - **2026-09-25 更正这条括号的适用范围**：那句话当时并不是事实。全仓唯一的 flush 调用点在
+    `src/app/api/cron/digest/route.ts`，而队列是**各自实例**的进程内存——Vercel 上 cron 与结账那条
+    路由不共享它，所以 `src/lib/stripe/index.ts` 入队的 `checkout.session_created` 从未离开过本进程，
+    且没有任何一处日志会说谎说它失败了。现在这条约束反过来由代码保证：
+    **谁入队谁负责送**（结账流程自己 `void flushEvents()`），并由
+    `src/lib/appark-flush-coverage.test.ts` 扫 `src/**` 核对——新增了生产者却没人 flush，红的是那份测试。
 - 注册流程埋点未包含（auth 流程在 Supabase 侧），列为后续增强。

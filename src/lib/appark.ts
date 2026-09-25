@@ -10,6 +10,10 @@
  *   0 可静音，非法值告警后回退到 1，避免配置笔误静默关闭可观测性。
  * - 失败不抛：APM 属旁路，flush 失败保留事件待下次 flush（队列满丢最旧），
  *   不影响业务主流程。
+ * - **队列不会自己出去**：`track*` 只入队，必须有人调 `flushEvents()`。
+ *   队列是进程内的，而 serverless 上每个函数是各自的实例——在 A 里入队、在 B 里 flush
+ *   等于没 flush。所以约定是「谁入队谁负责送」，这条由
+ *   `src/lib/appark-flush-coverage.test.ts` 扫源码核对（起因见那个文件的头部）。
  */
 import { logger } from "@/lib/logger";
 import {
