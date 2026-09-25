@@ -1200,10 +1200,10 @@
     `pnpm build` exit 0。
   - 用例数：本条新增 **5 条**（`199 文件 / 2291 用例` ⇒ `200 文件 / 2296 用例`，逐条对得上）。
 - 队列影响：`src/lib/appark.ts`、`src/lib/stripe/index.ts`、`docs/adr/adr-011-appark-apm.md`、
-  `src/lib/appark-flush-coverage.test.ts`（新增）**逐个按路径扫过全部 57 条在途 PR**，
-  命中 **0 条**；重叠仍只在 `CHANGELOG.md` / `docs/progress.md` 两处追加。
-  语义边也量过：新测试读的是 `src/**` 的源码文本，它依赖的那两个生产者文件在 57 条里 0 条与 `main` 不同，
-  所以不会像 #123 × #149 那样合并之后才红。
+  `src/lib/appark-flush-coverage.test.ts`（新增）**逐个按 blob 扫过全部 57 条在途 PR**
+  （`git ls-tree <ref> <path>` 取第三列与 `origin/main` 比，分母 57/57），命中 **0 条**；
+  新测试读的那三个源路径同样 0 条与 `main` 不同，所以这条没有 `merge-tree` 看不见的语义边。
+  重叠仍只在 `CHANGELOG.md` / `docs/progress.md` 两处追加。
 - 下一项：同一条判据现在只覆盖 Appark。`src/lib/metrics.ts` 与 Sentry 那两族是否也有
   「入队了但没人 flush / 没人 init」的形状，按同一套扫法量一遍再说。
 - 更新时间：2026-09-25（本机 UTC 09-25 09:3x 前后）。
