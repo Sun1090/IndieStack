@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { chainMock, dbClientMock } from "./test-helpers";
+import { chainMock, dbClientMock, CHAIN_FILTER_METHODS } from "./test-helpers";
 
 const { createClientMock, createAdminClientMock } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
@@ -248,10 +248,12 @@ describe("countUnsentEmailNotifications()", () => {
   });
 });
 
-/** 待发队列的过滤条件走这三个方法；select/order/limit 允许各自不同。 */
+/** 比对所有过滤谓词的调用记录；select/order/limit 允许每条查询各自不同。 */
 function filterCalls(chain: ReturnType<typeof chainMock>) {
   const spied = chain as unknown as Record<string, { mock: { calls: unknown[][] } }>;
-  return ["eq", "in", "or"].map((method) => spied[method].mock.calls);
+  // 谓词全集取自 mock 的构造表，而不是这里再抄一遍：抄的那份漏掉一个方法，
+  // 「同一段过滤」就对该方法完全无感（第五段谓词加进来时正是这样逃过一次核对）
+  return CHAIN_FILTER_METHODS.map((method) => spied[method].mock.calls);
 }
 
 describe("oldestUnsentEmailCreatedAt()", () => {
