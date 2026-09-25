@@ -27,14 +27,18 @@ export function evaluateMockMode(env: MockModeEnv): boolean {
 /**
  * 是否启用 Mock 模式。
  *
- * `NODE_ENV === "production"` 这一层在 `evaluateMockMode` 里已经判过一次，这里不是第二份真值表，
+ * 外面这层 `NODE_ENV === "production"` 在 `evaluateMockMode` 里已经判过一次，但**不是**第二份真值表，
  * 而是一条**构建期折叠提示**：Next 只把 `process.env.X` 这样的成员表达式替换成字面量，写成三元表达式
  * 才能让打包器把整个常量折成 `false`，进而把走不通的那一侧客户端依赖摇掉。
  * 实测（同一台机器、`rm -rf .next` 后干净构建）：直接写 `evaluateMockMode(process.env)` 折不出来，
  * 生产构建的客户端产物 2951.7 kB；写成下面这样折成常量后 2926.8 kB，而且
  * `NEXT_PUBLIC_MOCK_ENABLED` true / false 两种构建体积相同（2,997,015 / 2,997,011 字节，差的 4 字节
  * 是内嵌的 chunk id 字符串长度）——生产产物不再受这个开关影响。
- * 这 24.9 kB 只占基线的 0.9%，`check:bundle` 的 5% 预算拦不住，所以由 config.test.ts 钉住写法。
+ *
+ * 代价也要写在旁边：这层三元在运行时同样生效，所以「只删函数里那道闸」不再能动到认证路径
+ * （变异核对：杀伤面从 8 降到 7；两道一起删才红回那一条）。分工是函数那道守 `/api/health`
+ * 与 provider 诊断（它们拿注入的 env 直接调它），常量这道守中间件走的模块级路径。
+ * 24.9 kB 只占基线 0.9%，`check:bundle` 的 5% 预算拦不住折叠丢失，所以由 config.test.ts 钉住写法。
  */
 export const isMockEnabled =
   process.env.NODE_ENV === "production" ? false : evaluateMockMode(process.env);
