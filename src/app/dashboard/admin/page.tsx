@@ -16,7 +16,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { countContactMessages } from "@/lib/repositories/contact-messages";
 import { countWebhookEvents } from "@/lib/repositories/webhook-events";
 import { readEmailQueueDiagnostics } from "@/lib/notifications/queue-observability";
-import { describePendingAge, type PendingAgeParts } from "@/lib/notifications/queue-diagnostics";import { Users, Activity, Shield, AlertTriangle, Mail, Webhook, Inbox } from "lucide-react";
+import { describePendingAge, type PendingAgeParts } from "@/lib/notifications/queue-diagnostics";
+import { EMAIL_SKIP_REASONS, type EmailSkipReason } from "@/lib/notifications/types";import { Users, Activity, Shield, AlertTriangle, Mail, Webhook, Inbox } from "lucide-react";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin");
@@ -65,12 +66,38 @@ export default async function AdminPage() {
   const [messagesTotal, webhookTotal, emailQueue] = await Promise.all([
     countContactMessages(),
     countWebhookEvents(),
-    // A05：出队语义还没定，但这三个数必须先看得见——队列规模、最老一条卡了多久、
-    // 以及「拉到东西却一封没发出去」的轮次。跳过条目的原因（无邮箱 / 偏好全关）由
-    // `cron.digest.skipped` 指标表达，这里只报后果。
+    // A05：队列规模、最老一条卡了多久、「拉到东西却一封没发出去」的轮次，
+    // 外加**两笔已经离开队列的账**：worker 当场判定寄不出去（按原因分），以及用户在站内先读掉。
+    // 后一笔不经任何指标，只看积压数会把「越堵」读成「越小」，所以它必须和积压数同栏说。
     readEmailQueueDiagnostics(),
   ]);
   const queueAge = describePendingAge(emailQueue.oldestAgeMs);
+  // A05：原因标签走 `Record<EmailSkipReason, string>` 而不是拼出来的动态键——
+  // 加了第三种原因却忘了补文案时，前者在编译期就红，后者只在面板上悄悄少一栏。
+  const skipReasonLabels: Record<EmailSkipReason, string> = {
+    no_email: t("overview.stats.skipReasonNoEmail"),
+    preferences_off: t("overview.stats.skipReasonPreferencesOff"),
+  };
+  const skippedParts = EMAIL_SKIP_REASONS.filter(
+    (reason) => emailQueue.skippedByReason[reason] > 0,
+  ).map(
+    (reason) =>
+      `${skipReasonLabels[reason]} ${emailQueue.skippedByReason[reason].toLocaleString("en-US")}`,
+  );
+  const queueLeftSentences: string[] = [];
+  if (skippedParts.length > 0) {
+    queueLeftSentences.push(
+      t("overview.stats.queueSkippedDesc", { reasons: skippedParts.join(", ") }),
+    );
+  }
+  if (emailQueue.readBeforeSend > 0) {
+    queueLeftSentences.push(
+      t("overview.stats.queueReadBeforeSendDesc", {
+        count: emailQueue.readBeforeSend.toLocaleString("en-US"),
+      }),
+    );
+  }
+  const queueLeftSentence = queueLeftSentences.join(" ");
   const queueAgeLabel = (parts: PendingAgeParts | null): string => {
     if (parts === null) return t("overview.stats.queueAgeUnknown");
     if (parts.unit === "days") return t("overview.stats.queueAgeDays", { value: parts.value });
@@ -120,16 +147,16 @@ export default async function AdminPage() {
       value: emailQueue.pending,
       desc:
         emailQueue.pending === 0
-          ? t("overview.stats.emailQueueEmptyDesc")
+          ? t("overview.stats.emailQueueEmptyDesc") + queueLeftSentence
           : emailQueue.stale
             ? t("overview.stats.emailQueueStaleDesc", {
                 age: queueAgeLabel(queueAge),
                 rounds: emailQueue.emptySendRounds,
-              })
+              }) + queueLeftSentence
             : t("overview.stats.emailQueueDesc", {
                 age: queueAgeLabel(queueAge),
                 rounds: emailQueue.emptySendRounds,
-              }),
+              }) + queueLeftSentence,
       icon: Inbox,
     },
   ];

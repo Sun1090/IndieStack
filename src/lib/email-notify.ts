@@ -104,6 +104,9 @@ export async function notifyUser(input: NewNotification): Promise<void> {
       created_at: new Date().toISOString(),
       is_read: false,
       email_sent: false,
+      // 这条对象只用于「马上要寄」的那封信：它刚通过上面两道判定（有邮箱、偏好允许），
+      // 所以「根本寄不出去」的原因在这里必须是 null，而不是缺字段。
+      email_skipped_reason: null,
     };
     const subject = `IndieStack 通知：${input.title}`;
     await sendResendEmail({
