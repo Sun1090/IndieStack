@@ -213,10 +213,19 @@ All notable changes to IndieStack will be documented in this file.
   ——readiness 对着一次认证绕过点头；修复后同一入口回 **307 → `/auth/login`**，健康检查按缺凭据如实降级。
   修法是把真值表收成一条纯函数 `evaluateMockMode(env)`（生产一律 `false`，两条来源共用这道闸），并让此前
   **各自抄了一遍**这个条件的 `/api/health` 与 provider 诊断改调它——三处拷贝各写一遍正是这次漂移的发生方式，
-  也是为什么健康检查会比应用更乐观。新增 `src/lib/mock/config.test.ts`（9 条真值表，含「生产 + 显式 true」
+  也是为什么健康检查会比应用更乐观。新增 `src/lib/mock/config.test.ts`（10 条，含「生产 + 显式 true」
   那一格）与两个消费方各一条生产用例；变异核对两次：只删闸门那一行 → 3 个测试文件 **8 条红 / 30 条绿**
   （其中 2 条是本条之前就有的生产用例——它们当时只测了自动降级那一半，绿灯是半个真话）；
   把三个源文件整体退回修复前 → 6 个文件 10 条红 / 62 条绿。
+  同一个常量还顺带决定了**产物形状**：`NEXT_PUBLIC_MOCK_ENABLED=true` 时旧写法折成 `true`，真实客户端的
+  realtime/Phoenix 那一截被摇掉，客户端产物 2846.4 kB；把真值表写成函数调用之后折不出常量，两侧都留下，
+  涨到 2951.7 kB。所以模块级常量保留 `process.env.NODE_ENV === "production" ? false : …` 这层**折叠提示**
+  （运行时行为完全由函数决定，删掉它只是产物变大），实测折叠后 2926.8 kB，且这个开关 true / false 两种构建
+  **产物相同**：最大的那个 chunk 在 `origin/main`（mock 关）与本分支（mock 开/关）三次构建里
+  sha256 一字不差（`0q8j5g_fowmqu.js`，743,012 字节）——一个生产误配从此既不能把站点变成假登录，
+  也不能让产物看起来更小。`.bundle-baseline` 跟着改成 2926.8：旧基线量的是「mock 误配把真实客户端摇掉」
+  那一 shape，C13 之后那个 shape 在生产构建里已经不存在；24.9 kB 只占基线 0.9%，落在 5% 预算之内、
+  `check:bundle` 拦不住，所以由 `config.test.ts` 钉住这个写法。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
