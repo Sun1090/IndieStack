@@ -347,7 +347,12 @@ E2E 端点新增，`docs-site/mock.md`、`docs-site/zh-CN/mock.md` 与
    → `MOCK_REQUIRED_FACT_MISSING`；
 4. 已核验为错的旧表述不得回流（`STALE_DOC_CLAIMS`：请求级缓存、路由保护全部失效）
    → `MOCK_STALE_CLAIM`；
-5. 抽不到表名/端点/文档时失败封闭 → `MOCK_DOC_SOURCE_EMPTY`。
+5. 文档里「已实现的过滤器 / Implemented filters」那一行，必须与查询构建器**真的实现了的**过滤算子
+   逐字相等 → `MOCK_FILTER_UNDOCUMENTED` / `MOCK_FILTER_UNSUPPORTED`；两份 docs-site 文档缺这一行
+   报 `MOCK_FILTER_ROW_MISSING`（`docs/architecture/13-mock-system.md` 不强制列，但一旦列了就要对上）。
+   「实现了」的判据是行为而不是名字：AST 里该方法体存在 `this.filters[...] =` 赋值才算——
+   名字还在、什么都不写的空壳不算，只**读** `this.filters` 的判断函数也不算；
+6. 抽不到表名/端点/算子/文档时失败封闭 → `MOCK_DOC_SOURCE_EMPTY`。
 
 「表名清单」只认首列表头为 `Table` / `表名` 且数据行首列是行内代码的 markdown 表格，示例代码里的
 表名不计入登记。规则实现位于 `src/lib/mock/mock-docs.ts`（纯函数，单测覆盖），IO/CLI 位于

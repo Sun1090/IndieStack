@@ -1215,6 +1215,9 @@
      架构文档不强制但一旦列了就要对上，抽取为空时失败封闭（`MOCK_DOC_SOURCE_EMPTY`）。
      这条规则的存在理由就是 2 里那句假说明书：`neq()` 被写成支持而从来没实现，
      同期真正在用的 `gt()` 反倒没登记——那份词汇表从来没有东西回头核。
+     规则本身也已登记：`docs/testing.md` 的门禁清单加了一条（原「失败封闭」项改成第 6 项），
+     两份 `docs-site/{scripts,zh-CN/scripts}.md` 的那一行说明从「表名 + E2E 端点」补成
+     「表名 + E2E 端点 + 已实现的过滤器算子」；`check:docs` 与 `check:bilingual-docs` 都过。
 - 量到的阴性（写下来免得下次重扫）：`src/**` 查询链上真正用到的构建器方法共 **19 个**，缺的就是 `gt` 一个；
   `neq / like / ilike / filter / match / textSearch / containedBy / overlaps` 的链上使用数**全为 0**；
   写路径会忽略的三个算子与写操作的组合数 **0**（6 处 `.or(` 逐条看过，全在 `select` 链上：
