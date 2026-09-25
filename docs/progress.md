@@ -1176,8 +1176,8 @@
     `Record<EmailSkipReason, string>` 而不是拼出来的动态键，加第三种原因却忘补文案时编译期就红；
     `docs-site/email.md`（双语）、`docs/operations/sentry-alerts.md` 的 `stage` 取值、
     roadmap 里那句「出队语义仍未决」一并改掉。
-- 验证（两边同一条命令）：`pnpm test` 从 `main` 的 199 文件 / 2291 用例变成 **199 文件 / 2303 用例**
-  （+12：仓储 8 + 诊断纯函数 3 + worker 回执 1），`pnpm check:all` **exit 0 / 37 步全过**（含
+- 验证（两边同一条命令）：`pnpm test` 从 `main` 的 199 文件 / 2291 用例变成 **199 文件 / 2304 用例**
+  （+13：仓储 8 + 诊断纯函数 3 + worker 回执 1 + mock 语义对账 1），`pnpm check:all` **exit 0 / 37 步全过**（含
   type-check、lint、test），`pnpm build` exit 0。service-role 清点表的调用点预算由 89 改为 **92**
   （新增 3 个 admin 客户端函数，分类与理由登记在同一处）。
 - 三条方法上的收获，记下来免得下次重新踩：
@@ -1196,6 +1196,16 @@
      方法名补全（下次再加一种过滤又会漏），而是让 `chainMock` 公布自己的构造表
      （`src/lib/repositories/test-helpers.ts` 的 `CHAIN_FILTER_METHODS`），对账用例直接取它：
      mock 支持一种新过滤，比对就自动多比一项。重跑三个变异全部当场被杀，改一句日志文案的对照组仍存活。
+- **PR 推上去之后 E2E 红了 3 条，根因在 mock 不在业务代码**：`mail-flow` 的两条与
+  `admin-contact-mfa` 那条「面板数字与队列一致」全部失败，`digest` 报 `sent=0`。
+  变异探针（把三处第五段谓词整段删掉再跑同一 spec → 1 passed）把范围锁死在 `.is()` 本身：
+  `src/lib/mock/index.ts` 里消费 `filters` 的两个循环中，notifications 走的那一个不认识 `:isnull` 后缀，
+  于是 `email_skipped_reason:isnull` 被当成一个普通列名做等值比较，条件恒假——**mock 模式下整条队列看起来是空的**。
+  已修（补后缀识别）并加一条单测钉住「缺键 ≡ null」这条 SQL 语义。
+  值得记的是这一层的分工：仓储层单测全绿不是假绿，`chainMock` 声明了自己不实现过滤语义；
+  真正覆盖「mock 与 PostgREST 行为一致」的只有 E2E，而它是 CI 的独立 job、**不在 `pnpm check:all` 里**。
+  下一次给通知表加谓词的人不必再踩这一次，但 `#149` 那条 `check:mock-docs` 对账的是文档与操作符**清单**，
+  管不到「同一个操作符在两个循环里行为不同」这种形态。
 - 仍未闭环：`is_read` 免寄的口径**没有**改变（本轮只让它可见）；邮件侧依然没有行龄上界；
   生产复验要等下一次部署（B 域仍缺外部权限）。上一条里「等用户拍板」的三项，本轮定案两项
   （A05、C06），剩下 `profiles.timezone` / `profiles.language` 去留一项按「文档+UI 说明是偏好」处理。

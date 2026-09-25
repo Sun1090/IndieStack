@@ -204,6 +204,19 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **Mock 的查询链把 `.is(col, null)` 当成等值条件，于是「过滤一个真实存在但没人写过的列」必然返回空**：
+  `src/lib/mock/index.ts` 里有两处消费 `filters` 的循环，其中 notifications 这类表走的那一处
+  （通用的「非操作符键按 `eq` 处理」循环）认 `:in` / `:gte` / `:lt` / `:lte` / `:contains` / `:not` / `:or`
+  这些后缀并跳过、交给下面的专分支，唯独漏了 `is()` 写下的 `"<column>:isnull"` 后缀——于是它落到
+  `matchValue(row["email_skipped_reason:isnull"], true)`，而行上永远没有这个名字的键，条件恒假。
+  症状是整条待发队列在 mock 模式下**看起来是空的**：digest 报 `sent=0`、`email_attempts` 永不累加、
+  admin 概览页那个数字变成 0。这条是随 A05 的第五段谓词一起暴露的，但缺陷本身在 mock 侧早就存在
+  （全仓库此前没有任何代码对通知表用过 `is()`，所以没人踩过）；另一处循环（`matchRow`）本来就跳过了
+  `:isnull`，两条路径因此行为不一致。现在补上后缀识别，并加一条单测钉住语义：
+  **「行里没有这个键」与「键等于 null」在 SQL 里是同一件事，都算匹配，而有值的行不放行**。
+  方向值得记一下：这条是 E2E（`mail-flow`、`admin-contact-mfa` 共 3 条用例）抓的，
+  仓储层单测全绿——那里用的是 `chainMock`，它不实现任何过滤语义。
+
 - **被跳过的邮件通知不再永远占住队列头部**（v0.12.0 A05 的后半）：digest worker 有两个按用户条件的
   跳过分支——该用户资料里没有邮箱、以及他把涉及的类型全关了。两条都只上报
   `cron.digest.skipped{reason}` 就 `continue`，既不 `markEmailSent` 也不 `markEmailFailed`，
