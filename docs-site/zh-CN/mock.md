@@ -27,6 +27,11 @@ Mock 模式**不构成**任何安全边界成立的证据。真实边界由数�
 NEXT_PUBLIC_MOCK_ENABLED=true
 ```
 
+这个开关是**开发用**的：`src/lib/mock/config.ts` 对任何生产构型都返回 `false`，所以落在部署平台上
+忘掉的 `true` 不会把部署出去的应用变成假会话。此前并非如此——生产闸门只写在下面那条自动降级上，
+而 `NEXT_PUBLIC_*` 是构建期内联进产物的，一个被忘掉的变量就会让应用发一个假登录用户，
+并且让 `/api/health` 把 Supabase 报成 `skipped` 还回 200。现在两条来源过同一道闸门。
+
 ### 方式二：自动降级（仅限非生产环境）
 
 未设置 `NEXT_PUBLIC_MOCK_ENABLED` 时，下列条件**同时**成立才会自动启用：
@@ -36,6 +41,9 @@ NEXT_PUBLIC_MOCK_ENABLED=true
 
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 与该判断无关。生产构建永不自动降级：生产环境缺少
 Supabase URL 会直接报错，而不是静默地给出 Mock 用户。
+
+`/api/health` 与 provider 诊断报的是同一个值，而不是各算一遍，因此那些输出里的 `mockMode`
+说的就是请求链路实际在走哪条路。
 
 ### 方式三：命令行脚本
 
