@@ -11,11 +11,30 @@ export interface ChainOutcome {
   count?: number | null;
 }
 
+/**
+ * 链上的过滤谓词全集。对账「多处走同一段过滤」的测试要用它，而不是自己抄一份方法名——
+ * 抄的那份会漏：队列谓词加上 `.is("email_skipped_reason", null)` 那天，
+ * 只比 `eq/in/or` 的对账用例对第三段完全无感，删掉一处也照样全绿。
+ */
+export const CHAIN_FILTER_METHODS = ["eq", "gt", "gte", "lt", "lte", "neq", "is", "in", "or"] as const;
+
+/** 不是过滤条件、因而不参与「同一段过滤」对账的链方法。 */
+const CHAIN_OTHER_METHODS = [
+  "select",
+  "order",
+  "limit",
+  "range",
+  "update",
+  "insert",
+  "upsert",
+  "delete",
+] as const;
+
 /** 链式查询 mock：await chain → outcome；.single()/.maybeSingle() → Promise<outcome> */
 export function chainMock(outcome: ChainOutcome = {}) {
   const full = { data: null, error: null, count: null, ...outcome };
   const chain: Record<string, (...args: unknown[]) => unknown> = {};
-  for (const m of ["select", "eq", "gt", "gte", "lt", "lte", "neq", "order", "limit", "range", "update", "insert", "upsert", "is", "delete", "in", "or"]) {
+  for (const m of [...CHAIN_FILTER_METHODS, ...CHAIN_OTHER_METHODS]) {
     chain[m] = vi.fn(() => chain);
   }
   chain.single = vi.fn(() => Promise.resolve(full));
