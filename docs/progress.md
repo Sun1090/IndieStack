@@ -1188,6 +1188,14 @@
   （它把 `language` 的 `<option>` 换成映射 `PROFILE_LANGUAGES`），与本条同文件不同区域，
   两边都保留即可；`docs-site/email.md` 另有 #152、#123；`docs/architecture/06-database.md` 另有 #145；
   `CHANGELOG.md` / `docs/progress.md` 是 29 / 30 条的公共尾部，按 #118 台账里那套「只删冲突标记、两侧都留」处理。
+- **就地补记上一条里「两边都保留即可」那句的实测**（台账约定：判错要就地标注，别只留在对话里）：
+  整队列 `merge-tree` 扫完 30 条，**冲突文件只有 `docs/progress.md`（30/30）与 `CHANGELOG.md`（#127、#151）**，
+  代码与配置零冲突；对照跑法同轮测的 `merge-tree(origin/main, 各 PR)` 全部干净，也就是说这些尾部冲突
+  是本条引入的（任何往同一位置追加的分支都躲不掉，不是本条特有）。#127 与本条**同文件**的两处
+  （`profile-edit-form.tsx`、其测试）git 能自动合上，但按「merge-tree 看不见语义边」的规矩要真合一遍：
+  三方合并干净（组件 +2 行、测试 +12 行，合并后测试文件 5 条用例），合并树 `npx vitest run src/components/forms/`
+  → **6 文件 / 22 用例全过**，`pnpm type-check` → 0 错，跑完 `git checkout --` 两个文件、工作树回到本条 commit。
+  两边碰的确实不是同一件事：#127 换的是 `<option>` 的取值来源，本条加的是 `FormField` 的 `description`。
 - 明确**不**做的：① 不让 `timezone` 参与投递（要第二条 cron 路径，不是放宽门控——A01 正文已写）；
   ② 不做邮件本地化（要先拍「邮件要不要本地化」和「`ja`/`ko` 算不算支持语言」，因为它连已存库的
   通知标题都得一起本地化）；③ 不收窄 `language` 的写入校验（两条写路径目前都只 `z.string().max(50)`，
