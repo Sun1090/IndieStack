@@ -1221,9 +1221,20 @@
     `if (isMockEnabled)` 两侧都留在产物里。用 chunk 内容证实：main 那份最大的客户端 chunk 里
     Phoenix/realtime 的 `pendingDiffs`/`rejoinTimer`/`Presence` **一个都没有**，而 faker 的
     `iataTypeCode`（310 次）两边都在——被摇掉的是真实客户端，不是 mock 数据；
-  - 修法：模块级常量保留 `process.env.NODE_ENV === "production" ? false : evaluateMockMode(process.env)`。
-    真值表仍然只有 `evaluateMockMode` 一份，这层三元只是折叠提示（删掉它运行时行为不变，函数里那道闸
-    再判一次），改完客户端产物 **2926.8 kB**；
+    - 修法：模块级常量保留 `process.env.NODE_ENV === "production" ? false : evaluateMockMode(process.env)`。
+    真值表仍然只有 `evaluateMockMode` 一份，这层三元是折叠提示（删掉它运行时行为不变，函数里那道闸再判一次），
+    改完客户端产物 **2926.8 kB**。**代价记下来**：这层三元在运行时同样生效，所以「只删函数里那道闸」
+    不再能动到认证路径。四刀变异核对（分母都是 `config.test.ts` + `diagnostics.test.ts` +
+    `api/health/route.test.ts` 这三个文件的 **39 条用例**）：
+    ① 只删函数里 `if (env.NODE_ENV === "production") return false;` → **7 红 / 32 绿**
+    （红的是真值表三条生产格 + 两个消费方各 2 条，其中 `fails closed when production Supabase
+    configuration is missing` 与 `生产环境缺少 required Supabase 配置时返回 503` **是本条之前就有的**
+    ——它们当时只测自动降级那一半，绿灯只说了半个真话）；② 三个源文件整体退回 `origin/main` → **11 红 / 28 绿**；
+    ③ 两道生产判断一起删 → **9 红 / 30 绿**（这时「导入时判定」那条才红，证明常量那道确实独扛认证路径）；
+    ④ 只把常量退回函数调用（运行时行为不变、折叠丢失）→ **1 红 / 38 绿**，红的只有形状那条。
+    先前那两处 "8 条红 / 30 条绿" 与 "6 个文件 10 条红 / 62 条绿" 的读数**是在还没有这层三元的树上量的**，
+    杀伤面差异正是上面那句代价；本条按当前树重量之后已在 CHANGELOG 里就地更正；
+
   - **并且生产产物不再受这个开关影响**：`NEXT_PUBLIC_MOCK_ENABLED` true / false 两次构建总字节
     2,997,011 / 2,997,015（差的 4 字节是内嵌 chunk id 字符串长度），最大的那个 chunk
     `0q8j5g_fowmqu.js`（743,012 字节）在 main(mock 关) / 本分支(mock 关) / 本分支(mock 开)
