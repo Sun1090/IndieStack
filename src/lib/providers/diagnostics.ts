@@ -8,6 +8,7 @@
  */
 
 import { APPARK_SAMPLE_RATE_KEY, parseApparkSampleRate } from "../appark-config.ts";
+import { evaluateMockMode } from "../mock/config.ts";
 
 export type EnvRecord = Record<string, string | undefined>;
 
@@ -128,10 +129,8 @@ export const PROVIDER_REGISTRY: readonly ProviderDefinition[] = [
 ];
 
 export function isMockMode(env: EnvRecord): boolean {
-  return (
-    env.NEXT_PUBLIC_MOCK_ENABLED === "true" ||
-    (env.NODE_ENV !== "production" && !env.NEXT_PUBLIC_SUPABASE_URL)
-  );
+  // 真值表只有 `evaluateMockMode` 一份：这里以前抄过一遍，抄出来的那一遍没有生产闸门。
+  return evaluateMockMode(env);
 }
 
 export function missingKeys(env: EnvRecord, keys: readonly string[]): string[] {

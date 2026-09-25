@@ -7,6 +7,7 @@
  */
 
 import { jsonNoStore } from "@/lib/api-response";
+import { evaluateMockMode } from "@/lib/mock/config";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { version as pkgVersion } from "../../../../package.json";
@@ -49,10 +50,8 @@ async function checkSupabaseReachable(configured: boolean): Promise<boolean> {
 }
 
 function isMockMode(): boolean {
-  return (
-    process.env.NEXT_PUBLIC_MOCK_ENABLED === "true" ||
-    (process.env.NODE_ENV !== "production" && !process.env.NEXT_PUBLIC_SUPABASE_URL)
-  );
+  // 与中间件、provider 诊断共用一份真值表（含生产闸门），这里不要再自己写一遍条件。
+  return evaluateMockMode(process.env);
 }
 
 export async function GET() {
