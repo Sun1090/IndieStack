@@ -44,6 +44,7 @@ function notificationRow(overrides: Partial<Notification> = {}): Notification {
     metadata: null,
     is_read: false,
     email_sent: false,
+    email_skipped_reason: null,
     created_at: NOW.toISOString(),
     ...overrides,
   };

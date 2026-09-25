@@ -242,6 +242,7 @@ export type Database = {
           body: string | null
           created_at: string
           email_sent: boolean
+          email_skipped_reason: string | null
           id: string
           idempotency_key: string | null
           is_read: boolean
@@ -255,6 +256,7 @@ export type Database = {
           body?: string | null
           created_at?: string
           email_sent?: boolean
+          email_skipped_reason?: string | null
           id?: string
           idempotency_key?: string | null
           is_read?: boolean
@@ -268,6 +270,7 @@ export type Database = {
           body?: string | null
           created_at?: string
           email_sent?: boolean
+          email_skipped_reason?: string | null
           id?: string
           idempotency_key?: string | null
           is_read?: boolean

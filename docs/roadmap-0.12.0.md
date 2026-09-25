@@ -81,7 +81,14 @@
    那不是漏报而是假信号，比看不见更糟。现在进度就地累加、两处回执各自隔离
    （`cron.digest.receipt_failed{stage}`，见 CHANGELOG），该读数只剩它应当表达的那一件事。
    邮件侧刻意**没有**跟着 push 加行龄上界：丢掉一封排了 N 天的信是送达语义变化，归本条决定。
-   **出队语义仍未决**：本条没有改变任何发送行为，被跳过的条目依旧永远出不了队列。
+   **2026-09-25 出队语义定案并落地**：三个候选里选**新增 `email_skipped_reason` 列**——worker 判定
+   「根本寄不出去」的当场写原因出队（`no_email` / `preferences_off`，取值集合在
+   `src/lib/notifications/types#EMAIL_SKIP_REASONS` 与 `034_email_skip_reason.sql` 的 `CHECK` 两处，
+   由一条直接读迁移文件的测试对账），队列过滤多出这一条，admin 面板按原因分组报数，并把「在站内先被
+   读掉因而也不会寄」那一笔单列出来（它此前既不入指标也不入积压，只看 `email.backlog` 会把堵塞读成
+   缩小）。仍然**没有**改的两件事：出队不复活（用户后来补邮箱或重新打开偏好，已跳过的那批不会回来），
+   以及上面说的行龄上界照旧不加。发送行为本身一字未动，改的是「哪些行为已经不会再被拉起、为什么」。
+   验证与影响见 CHANGELOG 的 Added/Fixed 段与 `docs/progress.md` 的当日条目。
    **2026-09-23 审计又量出第二条静默出队路径**：队列条件含 `is_read=false`
    （`repositories/notifications.ts:66,85,103`），而 `markAllNotificationsRead`
    （`:222-231`）不带类型地把用户全部未读通知标成已读、也不写 `email_sent`——
