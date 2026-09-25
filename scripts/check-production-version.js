@@ -11,10 +11,13 @@
  *
  * The evidence also records the commit production is actually running (`/api/health`'s
  * `commit`), but the scheduled job does not assert it — see the comment in main().
+ * The summary line keeps three readings apart: `not-reported` (the deployed build predates
+ * that field, i.e. production is stale), `no-build-env` (the field exists but is empty, so
+ * build-time git variables were not exposed) and the short SHA itself.
  */
 const fs = require("fs");
 const path = require("path");
-const { DEFAULT_TIMEOUT_MS, runProductionSmoke } = require("./production-smoke");
+const { DEFAULT_TIMEOUT_MS, describeEvidenceCommit, runProductionSmoke } = require("./production-smoke");
 
 const DEFAULT_BASE_URL = "https://indie-stack-theta.vercel.app";
 const DEFAULT_OUTPUT = "production-smoke.json";
@@ -109,7 +112,7 @@ async function main() {
   fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
 
   const passed = report.checks.filter((check) => check.passed).length;
-  const observedCommit = report.commit ?? "unknown";
+  const observedCommit = describeEvidenceCommit(report);
   console.log(
     `${report.passed ? "✅" : "❌"} production version drift check: ${passed}/${report.checks.length} passed, expected version ${expectedVersion}, deployed commit ${observedCommit}`,
   );

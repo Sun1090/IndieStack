@@ -1153,3 +1153,87 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — 发布证据那格 `commit=unknown` 拆成两种读数：旧构建与没拿到 git 变量不是一件事
+
+- 里程碑 / 版本：v0.12.0 的 B 域（发布证据链）；闭合的是「生产是不是旧构建」这个问题能不能由工具自己回答。
+- 状态：DONE。分支：`fix/smoke-commit-three-state`（本条目所在 PR），基于 `origin/main` = `ad4b0299`。
+- 怎么撞上的：不是计划里的改造。在给 #146 取证时直读了一次真生产 `/api/health` 的**键集合**
+  （`status,timestamp,uptime,uptimeFormatted,version,environment,mockMode,checks,allConfigured,ready,degraded`）
+  ——里面**没有 `commit`**。而 `main` 上那个 handler 是无条件带它的（`?? null`），所以这不是「值为空」，
+  是「那份构建还不认识这个字段」。旧的一行摘要把这两种情况印成同一条 `unknown`，
+  于是这个结论当时只能靠人再跑一遍部署记录才敢立：
+  `gh api repos/<owner>/<repo>/deployments?per_page=100` 取 `environment == "Production – indie-stack"`
+  （`per_page` 不能小——那 100 条里 62 条是 docs-site 的预览，`per_page=12` 一条生产记录都捞不到，
+  看起来像「从未部署过生产」）。复测结果：生产最近一条仍是 `a322a4e`（`6587025748`，09-22T08:56:51Z），
+  与「早于 `96fb4fa3`」互相印证。
+- 改动：`commitLabel()` 从「收那一个值」改成**收整个 health body**，于是能问键在不在，三种读法分开
+  （`not-reported` / `no-build-env` / 短 SHA）；health 那条检查与证据文件顶层各多存一格 `commitReported`；
+  摘要行改用 `describeEvidenceCommit(evidence)`。**默认方向选过一遍**：读缺 `commitReported` 这一格的
+  旧产物时按 `not-reported` 处理，因为 `no-build-env` 是在指控一个具体的平台配置原因，
+  证据不足时不该替人下那个结论。
+- 覆盖边界要说准：`main()` 会真发 HTTP 请求，单测里跑不了，所以摘要行那条**接线**是用源码契约钉的
+  （`toMatch(/describeEvidenceCommit\(/)` + 不许再出现 `?? "unknown"`），行为侧才是 12 条用例。
+  这个仓库已有同类先例（`src/lib/deployment/production-smoke-contract.test.ts` 钉的是 workflow YAML 文本），
+  所以这条不算新开路子，但也不假装它钉住了输出行为。
+- 验证：直跑真生产（只 GET）从
+  `6/6 passed, expected version 0.11.0, deployed commit unknown` 变成
+  `6/6 passed, expected version 0.11.0, deployed commit not-reported`，
+  证据 JSON 里 `{"commit":null,"commitReported":false}`——与手工翻部署记录的结论一致，只是不再需要手工。
+  用例 `src/lib/production-smoke.test.ts` 7 → 8、`src/lib/production-version-drift.test.ts` 3 → 4。
+  变异核对 5 项各自抓红（label 退回两态 2 条、`commitReported` 不看键在不在 2 条、摘要读法忽略那一格 1 条、
+  顶层不再存那一格 2 条、摘要行退回自写默认值 1 条），每步 `git checkout --` 还原并校验字节一致。
+- 门禁数字（本机）：`CI=true pnpm check:all` → **exit 0，37 步**，`pnpm test` **199 文件 / 2293 用例**；
+  `pnpm build` exit 0。**日志读法记一笔**：那份 check:all 日志里有三行
+  `❌ a11y 静态审计失败：1 个问题`，它们不是门禁红，是**用例自己在审计器上注入缺陷**时打出来的
+  （`src/lib/a11y*.test.ts`），整步仍是绿的——与 E2E 日志里那些故意注入的 `Error:` 同一族，
+  按行 grep `❌` 会把这套件读成满屏故障。
+- 不动的两处文档（量过归属）：`docs/operations/release-runbook-v0.11.0.md` 由 #118 占有，
+  `agents/10-release-manager.md` 由 #125 占有；而且前者开头明写「本文件不复述以免两处漂移」，
+  所以三种读法写在 `docs/operations/production-smoke-v0.11.0.md`（free）与代码注释里。
+- 队列影响：新增第 **55** 条 open PR，仍是升序表的最后一步。`scripts/production-smoke.js`、
+  `scripts/check-production-version.js`、`src/lib/production-smoke.test.ts`、
+  `src/lib/production-version-drift.test.ts`、`docs/operations/production-smoke-v0.11.0.md`
+  **逐个量过是 0 条在途 PR 碰**，重叠只在 `CHANGELOG.md` / `docs/progress.md` 那两处追加。
+- 下一项：「生产上报自己的 commit」这条待办（跟踪清单里的 task #28，属 roadmap 的 B 域）现在
+  **只差一次合并**——工具已经能报出
+  `not-reported`，合并落地、生产真的构建了 `main` 之后，那一格应变成短 SHA；
+  如果它变成 `no-build-env`，要查的是 Vercel 项目里 *Enable access to System Environment Variables*
+  而不是代码。这一条判据本身就写在这次的注释与文档里了。
+- 更新时间：2026-09-25（本机 UTC 09-24 21:1x 前后）。
+
+## 2026-09-25 — 按文档跑一次发布 smoke，仓库里就多一份没被忽略的证据 JSON
+
+- 里程碑 / 版本：v0.12.0 的 B 域收尾卫生；不动任何探测逻辑。
+- 状态：DONE。分支：`fix/smoke-commit-three-state`（本条目所在 PR，与上一条同一条 PR），基于 `origin/main` = `ad4b0299`。
+- 怎么撞上的：给上一条复测时直跑
+  `node scripts/check-production-version.js --base-url https://indie-stack-theta.vercel.app`，
+  跑完 `git status --porcelain` 里多出一条 `?? production-smoke.json`——这条命令的 `--output`
+  默认值就是仓库根下的那个文件名（`DEFAULT_OUTPUT`）。不止它：`.github/RELEASE_CHECKLIST.md`
+  让发布负责人照抄的那条 `pnpm smoke:production -- … --output production-smoke.json`、
+  `production-smoke.yml` 两个作业的 `path:`，以及 6 份 `docs/operations/production-smoke-v*.md`
+  里的 5 份，写的都是同一个仓库根路径。也就是说**每按文档做一次发布前 smoke，工作区就留一份
+  没被忽略的探测结果**，谁顺手 `git add -A` 就把它提交进仓库。
+- 后果说准，不夸大：这不是漏洞也不是数据丢失。要防的是把一次瞬时探测固化成仓库事实——
+  证据的正确存法本来就有两条，CI 侧是保留 30 天的 artifact（`production-smoke-evidence` /
+  `production-version-drift-evidence`），人读的那份是 `docs/operations/production-smoke-v<版本>.md`
+  里手写的读数与时间戳。仓库根那个 JSON 是这两条的中间产物。
+- 动手前先量「会不会挡掉本该提交的东西」：`git log --all --oneline -- production-smoke.json` 空，
+  `git ls-files | grep -c production-smoke.json` = **0**，即这个路径在整个仓库历史里从来没被跟踪过；
+  唯一带它的那类引用（v0.11.0 矩阵里的「证据 JSON：本地 `production-smoke.json`」）明写是本地文件。
+  所以忽略它不丢证据，只是把工作区恢复成干净。
+- 改动只有一行加一节标题：`.gitignore` 在 Vercel 与 Testing 之间新增 `# Release smoke evidence`。
+  副作用逐个查过：`actions/upload-artifact` 用的是自己的 glob、不读 `.gitignore`，CI 那两个作业的
+  `path: production-smoke.json` 不受影响；`pnpm check:production-smoke` 断言的是 workflow YAML 文本，
+  也不读这份文件；全仓 `git grep -l gitignore` 在 `src/**`、`scripts/**`、`tests/**` 命中 **0 条**，
+  即没有任何用例对 `.gitignore` 有断言，改它不会碰坏谁的绿灯。
+- 验证是同一条命令跑前后各一遍。改前：exit 0，`git status --porcelain` 出 `?? production-smoke.json`。
+  改后：exit 0、6/6 通过，`git status --porcelain` 只剩 ` M .gitignore`，
+  `git check-ignore -v production-smoke.json` 回指到 `.gitignore` 里新加的那条规则（命中即生效，
+  不靠「status 里没出现」这种反向读法）。跑完把本地那份产物删掉了——它是这次探测的中间物，
+  真证据在上一条里已经落进文档。
+- 顺带量到、本条不修：生产这次仍报 `commit=not-reported`，即那个构建根本不认识 `commit` 字段，
+  与上一条拆出来的三种读法一致。task #28（「生产上报自己的 commit」）仍差一次合并才闭环。
+- 队列影响：`.gitignore` 逐条扫过全部 57 条在途 PR 的 diff（`git diff --name-only origin/main...pr/<n>`，
+  92–149 去掉不存在的 #132），**0 条碰它**，所以这一行不与任何在途 PR 冲突，落 #147 不需要重排合并顺序。
+- 更新时间：2026-09-25（本机 UTC 09-25 00:3x 前后）。

@@ -201,8 +201,29 @@ All notable changes to IndieStack will be documented in this file.
   代价两条，都记下：CI 界面少了一层「哪一步红了」，靠聚合脚本每步前的 `==> <门禁>` 与出错时补的
   `❌ 门禁失败：<命令>` 找回来；单测在本 job 与 `Unit Tests`（覆盖率）各跑一次，多花约一分钟，
   换两处的判定完全同源。
+- **发布 smoke 的证据产物不再落在版本控制里**：`scripts/check-production-version.js` 的 `--output`
+  默认值、`.github/RELEASE_CHECKLIST.md` 让人照抄的那条 `pnpm smoke:production -- … --output` 与
+  6 份 `docs/operations/production-smoke-v*.md` 中的 5 份，写的都是仓库根下的 `production-smoke.json`，
+  而这个路径没有被忽略——按文档每跑一次发布前 smoke，工作区就多一份未跟踪的探测结果，
+  一次 `git add -A` 就能把它当仓库事实提交进去（证据本来的两条存法是 30 天 artifact 与
+  `production-smoke-v<版本>.md` 里手写的读数）。该路径在仓库历史里从未被跟踪过（`git log --all` 与
+  `git ls-files` 各 0 条），所以 `.gitignore` 加上它不挡任何该提交的东西；
+  `actions/upload-artifact` 不读 `.gitignore`，CI 那两个作业的 `path:` 不受影响。
 
 ### Fixed
+
+- **发布证据里 `deployed commit unknown` 那一格拆成两种读数**：同一条 `unknown` 同时代表两件完全不同的事——
+  ①那个构建根本没有 `commit` 字段（生产**部署滞后**），②字段在但值为空（构建时没注入 git 变量，是平台侧
+  配置，与新旧无关）。分不开的实际代价是 2026-09-24 那次判断只能靠人翻
+  `gh api repos/<owner>/<repo>/deployments` 的部署记录才敢下结论，工具自己给不出。现在 `commitLabel()`
+  收整个 health body（于是能问键在不在），health 那条检查和证据文件顶层各多存一格 `commitReported`，
+  摘要行改用 `describeEvidenceCommit()`；**读缺这一格的旧产物时按 `not-reported` 处理**，不会误读成
+  `no-build-env`。当日直跑真生产验证：那行从 `deployed commit unknown` 变成
+  `deployed commit not-reported`（6/6 仍过），与手工翻部署记录的结论一致，从此不必再手工。
+  `main()` 会真发请求、单测里跑不了，所以摘要行的**接线**用源码契约钉（不许再自己写 `?? "unknown"`），
+  行为侧新增 1 条用例（该文件 7 → 8）+ 该契约 1 条（drift 文件 3 → 4）；变异核对 5 项各自抓红
+  （label 退回两态 2 条、`commitReported` 不看键在不在 2 条、摘要读法忽略那一格 1 条、
+  顶层不再存那一格 2 条、摘要行退回自写默认值 1 条），每步 `git checkout --` 还原并校验字节一致。
 
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
