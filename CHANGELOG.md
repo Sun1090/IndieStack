@@ -201,6 +201,14 @@ All notable changes to IndieStack will be documented in this file.
   代价两条，都记下：CI 界面少了一层「哪一步红了」，靠聚合脚本每步前的 `==> <门禁>` 与出错时补的
   `❌ 门禁失败：<命令>` 找回来；单测在本 job 与 `Unit Tests`（覆盖率）各跑一次，多花约一分钟，
   换两处的判定完全同源。
+- **发布 smoke 的证据产物不再落在版本控制里**：`scripts/check-production-version.js` 的 `--output`
+  默认值、`.github/RELEASE_CHECKLIST.md` 让人照抄的那条 `pnpm smoke:production -- … --output` 与
+  6 份 `docs/operations/production-smoke-v*.md` 中的 5 份，写的都是仓库根下的 `production-smoke.json`，
+  而这个路径没有被忽略——按文档每跑一次发布前 smoke，工作区就多一份未跟踪的探测结果，
+  一次 `git add -A` 就能把它当仓库事实提交进去（证据本来的两条存法是 30 天 artifact 与
+  `production-smoke-v<版本>.md` 里手写的读数）。该路径在仓库历史里从未被跟踪过（`git log --all` 与
+  `git ls-files` 各 0 条），所以 `.gitignore` 加上它不挡任何该提交的东西；
+  `actions/upload-artifact` 不读 `.gitignore`，CI 那两个作业的 `path:` 不受影响。
 
 ### Fixed
 

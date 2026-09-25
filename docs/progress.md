@@ -1201,3 +1201,39 @@
   如果它变成 `no-build-env`，要查的是 Vercel 项目里 *Enable access to System Environment Variables*
   而不是代码。这一条判据本身就写在这次的注释与文档里了。
 - 更新时间：2026-09-25（本机 UTC 09-24 21:1x 前后）。
+
+## 2026-09-25 — 按文档跑一次发布 smoke，仓库里就多一份没被忽略的证据 JSON
+
+- 里程碑 / 版本：v0.12.0 的 B 域收尾卫生；不动任何探测逻辑。
+- 状态：DONE。分支：`fix/smoke-commit-three-state`（本条目所在 PR，与上一条同一条 PR），基于 `origin/main` = `ad4b0299`。
+- 怎么撞上的：给上一条复测时直跑
+  `node scripts/check-production-version.js --base-url https://indie-stack-theta.vercel.app`，
+  跑完 `git status --porcelain` 里多出一条 `?? production-smoke.json`——这条命令的 `--output`
+  默认值就是仓库根下的那个文件名（`DEFAULT_OUTPUT`）。不止它：`.github/RELEASE_CHECKLIST.md`
+  让发布负责人照抄的那条 `pnpm smoke:production -- … --output production-smoke.json`、
+  `production-smoke.yml` 两个作业的 `path:`，以及 6 份 `docs/operations/production-smoke-v*.md`
+  里的 5 份，写的都是同一个仓库根路径。也就是说**每按文档做一次发布前 smoke，工作区就留一份
+  没被忽略的探测结果**，谁顺手 `git add -A` 就把它提交进仓库。
+- 后果说准，不夸大：这不是漏洞也不是数据丢失。要防的是把一次瞬时探测固化成仓库事实——
+  证据的正确存法本来就有两条，CI 侧是保留 30 天的 artifact（`production-smoke-evidence` /
+  `production-version-drift-evidence`），人读的那份是 `docs/operations/production-smoke-v<版本>.md`
+  里手写的读数与时间戳。仓库根那个 JSON 是这两条的中间产物。
+- 动手前先量「会不会挡掉本该提交的东西」：`git log --all --oneline -- production-smoke.json` 空，
+  `git ls-files | grep -c production-smoke.json` = **0**，即这个路径在整个仓库历史里从来没被跟踪过；
+  唯一带它的那类引用（v0.11.0 矩阵里的「证据 JSON：本地 `production-smoke.json`」）明写是本地文件。
+  所以忽略它不丢证据，只是把工作区恢复成干净。
+- 改动只有一行加一节标题：`.gitignore` 在 Vercel 与 Testing 之间新增 `# Release smoke evidence`。
+  副作用逐个查过：`actions/upload-artifact` 用的是自己的 glob、不读 `.gitignore`，CI 那两个作业的
+  `path: production-smoke.json` 不受影响；`pnpm check:production-smoke` 断言的是 workflow YAML 文本，
+  也不读这份文件；全仓 `git grep -l gitignore` 在 `src/**`、`scripts/**`、`tests/**` 命中 **0 条**，
+  即没有任何用例对 `.gitignore` 有断言，改它不会碰坏谁的绿灯。
+- 验证是同一条命令跑前后各一遍。改前：exit 0，`git status --porcelain` 出 `?? production-smoke.json`。
+  改后：exit 0、6/6 通过，`git status --porcelain` 只剩 ` M .gitignore`，
+  `git check-ignore -v production-smoke.json` 回指到 `.gitignore` 里新加的那条规则（命中即生效，
+  不靠「status 里没出现」这种反向读法）。跑完把本地那份产物删掉了——它是这次探测的中间物，
+  真证据在上一条里已经落进文档。
+- 顺带量到、本条不修：生产这次仍报 `commit=not-reported`，即那个构建根本不认识 `commit` 字段，
+  与上一条拆出来的三种读法一致。task #28（「生产上报自己的 commit」）仍差一次合并才闭环。
+- 队列影响：`.gitignore` 逐条扫过全部 57 条在途 PR 的 diff（`git diff --name-only origin/main...pr/<n>`，
+  92–149 去掉不存在的 #132），**0 条碰它**，所以这一行不与任何在途 PR 冲突，落 #147 不需要重排合并顺序。
+- 更新时间：2026-09-25（本机 UTC 09-25 00:3x 前后）。

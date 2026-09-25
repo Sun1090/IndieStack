@@ -55,6 +55,9 @@ supabase/.branches/
 # Vercel
 .vercel/
 
+# Release smoke evidence
+production-smoke.json
+
 # Testing
 playwright-report/
 test-results/
