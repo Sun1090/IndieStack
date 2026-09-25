@@ -1153,3 +1153,63 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — A01 留下的「时区 / 语言」定案：把它说明白是偏好，而不是让它生效
+
+- 里程碑 / 版本：v0.12.0；收口 A01（2026-09-22「放宽窗口、一天一封」）末尾那条
+  「要么在文档与 UI 上说明它只是偏好，要么删掉这条链路」的产品决策。
+- 状态：DONE。分支：`fix/profile-preference-semantics` → **PR #154**（base `main`）。
+- 决策来源：用户 2026-09-24 一次性授权的四个产品判断之一，选**「文档 + UI 说明是偏好」**
+  （另两个方向——删链路、让字段真正生效——都没选；生效的代价记在 roadmap A01 新的小节里）。
+- 动手前先把「有没有消费方」量出来，别凭印象写文案：`timezone` 全仓命中只有资料页展示
+  （`src/app/dashboard/profile/page.tsx:98,100`）、编辑表单（`profile-edit-form.tsx:65`）、
+  两条写入校验（`src/lib/validations/profile.ts:16`、`src/app/api/user/route.ts:29`）、
+  完整度计分（`profile-completeness-card.tsx:18`）与 mock/类型；`language` 同形，展示侧多一个
+  `t.has()` 兜未知值（`page.tsx:109`）。digest 路由自 A01 起不读这两列，
+  所以「不影响发送时刻」这句话是有依据的事实陈述，不是免责声明。
+- 变更文件：`messages/{en,zh-CN}/dashboard.json`（各 +2 个 key）、
+  `src/components/forms/profile-edit-form.tsx`（两个 `FormField` 各加 `description`）、
+  `src/components/forms/profile-edit-form.test.tsx`（+1 用例：说明渲染出来且绑进 `aria-describedby`）、
+  `docs-site/email.md` + `docs-site/zh-CN/email.md`（「偏好与重试」小节各加一段）、
+  `docs/architecture/06-database.md`（`profiles` 字段表两行说明）、`docs/roadmap-0.12.0.md`（A01 定案小节）、
+  `CHANGELOG.md`、本条目。
+- 验证命令与结果：`CI=true pnpm check:all` → **exit 0，37 步全过，199 文件 / 2292 用例**（+1，文件数不变）；
+  新 key 过三道 i18n 门禁的具体读数：`check:locales` en/zh-CN 各 1244 键对称、
+  `check:i18n` 870 个静态调用两侧均存在、`check:glossary` 与 `check:dynamic-keys`（9 契约 × 2 locale、
+  64 取值全覆盖）不受影响。`pnpm build` → **exit 0**，`/dashboard/profile` 与 `/dashboard/profile/edit`
+  两页正常生成（这条改动只加文案，但 `MISSING_MESSAGE` 只有静态生成会现形，所以按 AGENTS.md 的
+  pre-push 顺序它必须跑）。
+- 变异核对（2 项，都被抓）：① 删掉时区那行的 `description={t("timezoneDesc")}` →
+  恰好新增那条用例红（`1 failed | 3 passed`）；② 把时区的 key 换成 `languageDesc`（说明接错字段、
+  两栏文案对调）→ 同一条红。第二次容易漏：只测「删掉」证明不了文案与字段的对应关系，
+  而这条改动的全部价值就在那个对应关系上。两次还原后 `shasum -c` 逐字节一致、复跑 4 通过。
+- 阻塞 / 风险 / 回滚：不改任何发送、写入、鉴权行为，只加文案与一条组件用例；回滚 = revert 本 commit。
+  冲突面（2026-09-25 实测，队列 **61** 条 open）：与本条**同文件**的只有 #127（`profile-edit-form.tsx`
+  与其测试——把 `language` 的 `<option>` 换成映射 `PROFILE_LANGUAGES`）、#119（同一组件 1 行——
+  `<form>` 补 `method="post"`）、#92（`messages/{en,zh-CN}/dashboard.json` 各 2 个 key）；
+  `docs-site/email.md` 另有 #152、#123；`docs/architecture/06-database.md` 另有 #145；
+  `docs/roadmap-0.12.0.md` 另有 25 条；`CHANGELOG.md` / `docs/progress.md` 是 58 / 61 条的公共尾部。
+- **就地补记，并订正上一条第一次量错的口径**（台账约定：判错要就地标注，别只留在对话里）：
+  第一次扫用的是 `gh pr list --state open` 的**默认分页，它只回 30 条**，于是当时写下的「队列 30 条」
+  是个半队列读数；加 `--limit 200` 重扫拿到真实分母 **61**（#92–#153），同文件名单也因此从
+  「只有 #127」补成 #127 / #119 / #92 三条。整队列 `merge-tree(本条 tip, 各 PR head)`：
+  **61/61 与本条冲突，而冲突文件只有两个台账尾部**（`docs/progress.md` 61 条、`CHANGELOG.md` 的 #127 与 #151），
+  代码与配置零冲突；对照跑法 `merge-tree(origin/main, 各 PR)` 61 条全干净 ⇒ 这些尾部冲突由本条引入
+  （任何往同一位置追加的分支都躲不掉，不是本条特有）。#120 的 head 在循环里 `git fetch` 失败一次，
+  单独对它重跑 merge-tree，结论同上（只冲 `docs/progress.md`）。
+  同文件的三处按「merge-tree 看不见语义边」逐个真合过：#127（组件 +2 行、测试 +12 行，合并后该测试
+  5 条用例）→ `npx vitest run src/components/forms/` **6 文件 / 22 用例全过**、`pnpm type-check` 0 错；
+  #119 与 #92 叠在一起（组件 +1 行、两个 messages 各 +2 key）→ `check:locales` **1246 键对称**、
+  `check:i18n` / `check:glossary` / `check:fields` 全绿、表单 6 文件 / 21 用例、tsc 0 错。
+  两边碰的确实不是同一件事：#127 换 `<option>` 的取值来源、#119 换 `<form>` 的提交方法、本条加说明文案。
+  跑法记一下：`git merge-file` 三方合并出内容后覆盖到工作树，跑完 `git checkout --` 回到本条 commit
+  （`dirty=0`）。**顺手记一条踩坑**：本想丢进 `git worktree` 跑整份 `check:all`，走不通——worktree 里
+  symlink `node_modules` 会让 pnpm 报 `ERR_PNPM_UNSAFE_MODULES_DIR` 并拒绝对真实仓库的 `node_modules` 动手
+  （它拒绝得对，别去绕），所以语义边复验只能在主检出里用「commit → 覆盖 → 跑 → `checkout --`」这套做。
+- 明确**不**做的：① 不让 `timezone` 参与投递（要第二条 cron 路径，不是放宽门控——A01 正文已写）；
+  ② 不做邮件本地化（要先拍「邮件要不要本地化」和「`ja`/`ko` 算不算支持语言」，因为它连已存库的
+  通知标题都得一起本地化）；③ 不收窄 `language` 的写入校验（两条写路径目前都只 `z.string().max(50)`，
+  取值词表 `en/zh/ja/ko` 与站点真实 locale `zh-CN/en` 的分歧由 #127 收窄到权威常量，是否据此校验仍未定）；
+  ④ 不删字段、不写归一化迁移。
+- 下一项：C13（roadmap 已登记，#153 分支上）——生产构型里禁止开 mock；本条不与之耦合。
+- 更新时间：2026-09-25（UTC）。

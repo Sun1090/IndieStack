@@ -95,8 +95,8 @@ erDiagram
 | avatar_url | text | — | 头像 URL（OSS） |
 | role | text | 'user' | 系统角色（user / admin） |
 | bio | text | — | 个人简介 |
-| timezone | text | 'UTC' | 时区 |
-| language | text | 'en' | 语言偏好 |
+| timezone | text | 'UTC' | 时区（仅偏好：digest 走统一调度，不按它错峰） |
+| language | text | 'en' | 语言偏好（仅偏好：不改变界面语言，也不翻译出站邮件） |
 | notification_settings | jsonb | 默认 JSON | 通知偏好 |
 | created_at | timestamptz | now() | 创建时间 |
 | updated_at | timestamptz | now() | 更新时间（自动触发） |

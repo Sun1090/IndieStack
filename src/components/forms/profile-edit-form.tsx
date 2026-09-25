@@ -62,7 +62,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
             />
           </FormFieldControl>
         </FormField>
-        <FormField htmlFor="timezone" label={t("timezoneLabel")}>
+        <FormField htmlFor="timezone" label={t("timezoneLabel")} description={t("timezoneDesc")}>
           <FormFieldControl>
             <NativeSelect name="timezone" defaultValue={timezone}>
               <option value="UTC">UTC</option>
@@ -84,7 +84,7 @@ export function ProfileEditForm({ fullName, bio, timezone, language }: ProfileEd
         </FormFieldControl>
       </FormField>
 
-      <FormField htmlFor="language" label={t("languageLabel")}>
+      <FormField htmlFor="language" label={t("languageLabel")} description={t("languageDesc")}>
         <FormFieldControl>
           <NativeSelect name="language" defaultValue={language}>
             {(["en", "zh", "ja", "ko"] as const).map((value) => (

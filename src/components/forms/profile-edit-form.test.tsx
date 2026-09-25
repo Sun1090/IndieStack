@@ -1,6 +1,6 @@
 /**
  * ProfileEditForm 组件测试
- * 覆盖：渲染、保存成功刷新、失败 toast
+ * 覆盖：渲染、偏好说明的 aria 接线、保存成功刷新、失败 toast
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -33,6 +33,21 @@ describe("ProfileEditForm", () => {
     render(<ProfileEditForm fullName="Alice" bio="hello" timezone="Asia/Shanghai" language="en" />);
     expect(document.getElementById("fullName")).toHaveValue("Alice");
     expect(document.getElementById("bio")).toHaveValue("hello");
+  });
+
+  it("时区/语言各带「仅为偏好」说明，且说明绑到控件上", () => {
+    render(<ProfileEditForm fullName="Alice" bio="" timezone="UTC" language="en" />);
+    // 这两个字段没有任何功能消费方，界面上写明的「只存偏好」就是它们唯一的语义承诺；
+    // 说明若没进 aria-describedby，屏幕阅读器只会读到「时区 / 语言」两个看起来会生效的选择器。
+    for (const [id, descKey] of [
+      ["timezone", "timezoneDesc"],
+      ["language", "languageDesc"],
+    ] as const) {
+      expect(document.getElementById(id)).toHaveAttribute("aria-describedby", `${id}-description`);
+      expect(document.getElementById(`${id}-description`)).toHaveTextContent(descKey);
+    }
+    // 没给 description 的字段不该被注入空的 aria-describedby
+    expect(document.getElementById("fullName")).not.toHaveAttribute("aria-describedby");
   });
 
   it("保存成功后 refresh", async () => {
