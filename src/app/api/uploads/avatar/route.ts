@@ -1,6 +1,6 @@
 /**
  * 浏览器头像上传端点（v0.6.0 G08）
- * 支持 XMLHttpRequest 进度与 abort；领域规则与 uploadAvatar Server Action 共用 service。
+ * 支持 XMLHttpRequest 进度与 abort；领域规则在 service 层，同源/限流/请求体上限在本路由施加。
  */
 import { revalidatePath } from "next/cache";
 import type { NextRequest } from "next/server";
