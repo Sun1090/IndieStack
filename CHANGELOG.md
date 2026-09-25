@@ -218,8 +218,10 @@ All notable changes to IndieStack will be documented in this file.
   （注释里的举例不算——`src/lib/i18n/dynamic-keys.ts` 的文档注释里就有一句 `trackEvent(...)` 的反例，
   不做区分会把一份纯规则模块报成生产者）。它跑在 `pnpm test` 里，与
   `src/lib/mock/auth-surface.test.ts` 同族，不再往 `scripts/check-*` + CI + 双语 docs-site 那套接线复制第三遍。
-  变异核对：把 `void flushEvents()` 从 `src/lib/stripe/index.ts` 删掉 → 真实仓库那条用例红并点名
-  `src/lib/stripe/index.ts`；fixture 侧「有生产者没 flush」也各自钉了一条。
+  变异核对 3 项（每项先确认改动落地、跑完 `git checkout --` 还原并比对 blob）：
+  删掉 `src/lib/stripe/index.ts` 的 `void flushEvents()` → 真实仓库那条红并点名该文件；
+  把注释甄别打成恒 `false` → 红并点名 `src/lib/i18n/dynamic-keys.ts`（就是那句文档注释里的反例）；
+  把生产者正则换成永不匹配的形状 → 连「扫出的生产者数量 > 0」那条封闭断言一起红。
 - **digest 一轮里已经寄出去的邮件不再被记成一封没发**：`runDigest` 把 `markEmailSent`（以及失败分支的
   `recordEmailFailures`）写在裸的位置上，回执写入一抛就从整轮抛穿出去，落到 `POST` 的 catch 里记一条
   `recordFailedRun(startedAt, error, pulled)`——而该函数当时把 `sent / groups / failed` 写死成 `0`。

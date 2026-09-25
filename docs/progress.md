@@ -1189,6 +1189,15 @@
   - **失败封闭**：那条用例同时断言「扫出来的生产者数量 > 0」，并把文件数写进消息——
     否则将来判据或目录形状一变，全仓扫出 0 个生产者会打印成「0 个缺失」的漂亮绿灯。
   - 注释甄别也钉了一条：拿真实那份 `src/lib/i18n/dynamic-keys.ts` 断言它**不是**生产者。
+  - **变异核对 3 项**（每项先 `assert` 改动真的落地、跑完 `git checkout --` 还原并比对 blob 一致）：
+    M1 删掉 `src/lib/stripe/index.ts` 的 `void flushEvents()` ⇒ 恰好 1 条红，点名 `src/lib/stripe/index.ts`；
+    M2 把 `isCommentLine` 打成恒 `false` ⇒ 3 条红，其中真实仓库那条点名
+    `src/lib/i18n/dynamic-keys.ts`（正是那句文档注释里的反例），证明这层甄别不是装饰；
+    M3 把 `PRODUCER_CALL` 换成一个永不匹配的正则 ⇒ 3 条红，包含那条「生产者数量 > 0」的封闭断言。
+    未变异的正向对照 5 绿。
+  - 门禁（本机，最终形态）：`pnpm lint` / `pnpm type-check` 各 exit 0、
+    `CI=true pnpm check:all` **exit 0 / 37 步**、`npx vitest run` **200 文件 / 2296 通过**、
+    `pnpm build` exit 0。
   - 用例数：本条新增 **5 条**（`199 文件 / 2291 用例` ⇒ `200 文件 / 2296 用例`，逐条对得上）。
 - 队列影响：`src/lib/appark.ts`、`src/lib/stripe/index.ts`、`docs/adr/adr-011-appark-apm.md`、
   `src/lib/appark-flush-coverage.test.ts`（新增）**逐个按路径扫过全部 57 条在途 PR**，
