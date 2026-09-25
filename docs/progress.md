@@ -1207,6 +1207,14 @@
      限频那一侧量过再写：`#136` 链上这两条路由共用一只 **10 次 / 分钟** 的桶，本用例打 3 次，
      且队列里当前只有这一条 spec 会 POST 这两个端点（`git grep "api/marketing" sim/queue-57 -- 'e2e/**'`
      只命中「链接存在」那句断言），所以不是一次只在满载时才红的顺序依赖。
+  7. `check:mock-docs` 补一条对账规则：文档里那一行「已实现的过滤器 / Implemented filters」必须与
+     构建器**真的实现了的**算子逐字相等。判据取行为而不是名字——用 TypeScript AST 抽出方法体里
+     存在 `this.filters[...] =` 赋值的那些方法（名字还在、什么都不写的空壳不算实现，只**读**
+     `this.filters` 的判断函数也不算）。两个方向都报错（`MOCK_FILTER_UNDOCUMENTED` /
+     `MOCK_FILTER_UNSUPPORTED`），两份 docs-site 文档缺这一行报 `MOCK_FILTER_ROW_MISSING`，
+     架构文档不强制但一旦列了就要对上，抽取为空时失败封闭（`MOCK_DOC_SOURCE_EMPTY`）。
+     这条规则的存在理由就是 2 里那句假说明书：`neq()` 被写成支持而从来没实现，
+     同期真正在用的 `gt()` 反倒没登记——那份词汇表从来没有东西回头核。
 - 量到的阴性（写下来免得下次重扫）：`src/**` 查询链上真正用到的构建器方法共 **19 个**，缺的就是 `gt` 一个；
   `neq / like / ilike / filter / match / textSearch / containedBy / overlaps` 的链上使用数**全为 0**；
   写路径会忽略的三个算子与写操作的组合数 **0**（6 处 `.or(` 逐条看过，全在 `select` 链上：
@@ -1215,6 +1223,7 @@
 - 变更文件：`src/lib/mock/index.ts`、`src/lib/mock/mock-query-gt.test.ts`（新增）、
   `src/lib/mock/mock-query-surface.test.ts`（新增）、
   `src/lib/repositories/marketing-mock-client.test.ts`（新增）、`e2e/mail-flow.spec.ts`、
+  `src/lib/mock/mock-docs.ts`、`src/lib/mock/mock-docs.test.ts`、
   `docs-site/mock.md`、`docs-site/zh-CN/mock.md`、
   `CHANGELOG.md`、本条目。**没有改** `src/lib/repositories/marketing.ts`（属 #123）与
   `src/lib/repositories/test-helpers.ts`（手搓替身留着，它服务的是仓储层的错误注入，不是替身保真度）。
@@ -1233,6 +1242,13 @@
     `token 过期 → false`），而静态 surface 对账**整份文件全绿**——它只问「方法在不在」，
     这就是 4 存在的理由。每步还原后用 `git hash-object` 与 `HEAD` 的 blob 比对逐字节一致，
     正向对照 11 绿。
+  - `check:mock-docs` 新增规则的正向 / 反向读取：本仓库当前是「实现 10 个算子（`contains eq gt gte in
+    is lt lte not or`），两份 docs-site 文档各列同样 10 个，架构文档不列」→ 门禁绿。
+    两次真变异（都先证改动落地再跑）：**把 `gt()` 从构建器删掉** → 门禁红 2 项
+    （两份文档各报 `MOCK_FILTER_UNSUPPORTED … gt()`）；**往英文那行塞一个 `neq()`** → 恰好红 1 项
+    `文档登记了 neq()，而 MockQueryBuilder 没有这个方法`。第二次一开始是「绿的」——因为 perl 的替换
+    模式没匹配上，**改动根本没落地**；改用带 `assert` 的脚本 + `git diff --stat` 确认落地之后才拿到真实结果。
+    单测从 28 条增至 39 条（+11），含「只读 `this.filters` 的方法不算实现」这一条鉴别用例。
   - E2E（`npx playwright test e2e/mail-flow.spec.ts`）：**4 passed（19.0s）**——新用例与原有三条并存，
     且它跑完之后 happy path 仍然能拿到确认邮件。两条变异核对各自只打这一个用例：
     **M1 删掉 `gt()`** → 红在 `expect(confirmed.status()).toBe(302)`，实际收到 **500**
@@ -1240,10 +1256,11 @@
     **M2 把 `updateStatusByToken` 打成恒 `true`** → 红在 `expect(bogus.status()).toBe(404)`，实际收到 **302**
     （证明那条 404 对照不是装饰：没有它，302 可能是路由无条件发的）。
     两次都 `git checkout --` 还原并用 `git hash-object` 与 `HEAD` blob 比对逐字节一致，还原后 `git status` 空。
-  - `pnpm --silent type-check` → exit 0；最终 head `ea51cb7e` 上 `CI=true pnpm check:all` **exit 0（37 步）**、
-    `npx vitest run` **202 文件 / 2302 通过**、`pnpm build` **exit 0**（pre-push 钩子又跑了一遍 test + build）。
-    同一 head 合进 57 条那棵树之后：`check:all` **exit 0 / 42 步 / 236 文件 / 2751 passed + 4 skipped**
-    （数字对得上：56 条那遍 2740 + 本条 11 条用例）。
+  - `pnpm --silent type-check` → exit 0；本条最终形态下 `CI=true pnpm check:all` **exit 0（37 步）**、
+    `npx vitest run` **202 文件 / 2313 通过**、`pnpm build` **exit 0**（pre-push 钩子又跑了一遍 test + build）。
+    用例数逐条对得上：`main` 上 2291 + `gt` 语义 4 + 静态对账 3 + 动态对账 4 + `check:mock-docs` 新增 11 = **2313**。
+    同一棵树合进 57 条队列之后：`check:all` **exit 0 / 42 步**、vitest **236 文件 / 2762 passed + 4 skipped**
+    （= 56 条那遍的 2740 + 本条 22 条用例），`e2e/mail-flow.spec.ts` 4 passed。
 - **量到一条 `merge-tree` 看不见的边：#123 × #149，而且它一开始是红的**。逐条 `merge-tree` 的结论是
   「56/56 只撞台账、非台账冲突 0 个」，把 57 条按编号升序真合一遍之后 `pnpm test` **红 1 条**：
   `退订链接同样吃这条闸门；未过期时才真的落到 unsubscribed`（`expected true to be false`，

@@ -226,6 +226,13 @@ All notable changes to IndieStack will be documented in this file.
   把 `gt()` 留成一个吃掉参数不起作用的空壳它就照样绿。所以这一层是动态的——`vi.mock("@/lib/supabase/admin")`
   换成真 Mock 客户端、不 mock 任何查询，直接跑 `upsertPendingSubscription` → `confirmSubscription` →
   `unsubscribeByToken`，并断言**过期 token 返回 `false` 而不是抛错**（这才逼 `gt` 真的在过滤）。
+  ⑤ 那条假说明书不再只靠人来发现：`check:mock-docs` 原来只核对表名与 E2E 端点，过滤器词汇表没人管，
+  现在它用 TypeScript AST 抽出**方法体里真的有 `this.filters[...] =` 赋值**的那些算子
+  （判行为，不判名字——名字还在、什么都不写的空壳不算实现），与两份文档「已实现的过滤器」那一行
+  逐字对账，两个方向都报错，抽取为空时失败封闭。
+  实测定过它自己能红：把 `gt()` 从构建器删掉 → 两份文档各报 `MOCK_FILTER_UNSUPPORTED`；
+  往英文那行的清单里塞一个 `neq()` → 恰好 1 条 `文档登记了 neq()，而 MockQueryBuilder 没有这个方法`
+  （这正是过去被写进文档而没人发现的那一类）。
   顺带修文档里的假声明：双语 mock 文档写着 Mock 支持 `eq() / neq() / in() / is()`，**`neq()` 从来没实现**
   （链上一调用就是同一个 TypeError）；现在按实测列出已实现的算子，并写下没实现的行为。
   E2E 侧把那个盲区关掉：`e2e/mail-flow.spec.ts` 现在会从收件箱里取出真 token，GET 自动提交页、
