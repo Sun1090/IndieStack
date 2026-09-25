@@ -1153,3 +1153,51 @@
   3. 可自主开工的下一件：roadmap **C08**——把「把查询结果断言成没有 `error` 通道」变成门禁
      （已量：全库 46 处断言改写 / 29 处抹掉 `error`，判据与误伤面写在条目里）。
 - 更新时间：2026-09-23（UTC 22:10 前后）。
+
+## 2026-09-25 — `NEXT_PUBLIC_FEATURE_*` 开关在客户端一侧从来没生效过（计算式 `process.env` 不会被内联）
+
+- 里程碑 / 版本：v0.12.0；「文档/断言说假话」这一族之外的一例——**开关本身说假话**。
+- 状态：DONE。分支：`fix/feature-flags-client-inline`（本条目所在 PR）。
+- 怎么发现的：不是设计出来的扫描，是量 C13 产物时的副产物——为了搞清「客户端产物里为什么有 faker」
+  而在 `.next/static` 里搜 env 读取点，撞见 `src/lib/feature-flags.ts` 编译成
+  `processModule.default.env[\`NEXT_PUBLIC_FEATURE_${name}\`]`。
+- 证据链（每条都写了怎么量）：
+  1. **计算式的值不在产物里**：`NEXT_PUBLIC_FEATURE_AUDIT_LOG_EXPORT=false` 做一次生产构建
+     （`rm -rf .next`，同一台机器），整个 `.next/static` 里这一族只剩模板前缀 `NEXT_PUBLIC_FEATURE_`
+     一个字符串，`false` 没有内联进去。
+  2. **浏览器里那个 `process` 是空垫片**：对同一份产物起真实 `next start` + Playwright 读
+     `typeof process` ⇒ `"undefined"`。⇒ 客户端永远读到 `undefined` ⇒ **永远走代码里的默认值**，
+     平台上怎么设都不改变它。
+  3. **对照组在同一份产物里**：修法落地后重新构建，`RAW_FLAGS` 编译成
+     `{AVATAR_UPLOAD: 垫片读取, AUDIT_LOG_EXPORT:"false", …}` —— 设过的那一项成了内联字面量，
+     没设的仍是垫片读取（行为不变）。这条同时说明机制：**Next 只替换静态成员表达式，
+     且只替换构建时真实存在的变量**。
+  4. **消费面**：`features.auditLogExport`（默认 `true`）在客户端的唯一消费方是
+     `src/app/dashboard/admin/audit-logs/audit-logs-page.tsx`（`"use client"`，由同目录的 `page.tsx`
+     这个服务端壳渲染），服务端与客户端因此不一致——设成 `false` 时服务端不渲染导出按钮、
+     客户端 hydration 后又补出来。其余四个开关的消费方（login / settings / passkey 路由）
+     都只在服务端读 env，本条不影响它们（逐个查过 `"use client"` 标记与 import 归属）。
+- 修法：`src/lib/feature-flags.ts` 把键摊平成 `RAW_FLAGS` 静态读法表，判定函数改成
+  `flag(name: FlagName, default)`（`FlagName = keyof typeof RAW_FLAGS`，新增开关不登记就编译不过）。
+- 测试：`src/lib/feature-flags.test.ts` 4 条 → 7 条。新增 ①「显式 false 关得掉」（默认开的
+  `auditLogExport` 是唯一能证伪这一格的位置）；②禁止计算式访问 `process.env[`；
+  ③`flag("X")` 调用点与静态读法**两侧一一对应**（数量相等 + 两个方向的差集都为空），
+  并带一条「调用点为 0 就说明判定被搬走了」的防空转断言。
+  **为什么是源码形状而不是运行时用例**：vitest 的 jsdom 里 `process.env` 是真的，
+  修复前后那 4 条运行时用例同样全绿——这条缺陷在单测环境里结构性看不见，浏览器那一侧只能靠产物取证。
+  变异核对两刀（同一分母 7 条）：只把查表改回计算式 → **1 红 / 6 绿**；整个文件退回修复前 →
+  **2 红 / 5 绿**（第二刀正是那条防空转断言在响）。两刀都由 `git checkout` 还原，跑完 `git status` 为空。
+- 门禁读数：`CI=true pnpm check:all` → **exit 0，199 文件 / 2294 用例**（main 是 199 / 2291，
+  `+3` 条全在这个文件里）；`pnpm build` → exit 0。
+- 文档：`docs/operations/environments.md` 新增一节「`NEXT_PUBLIC_*` 是构建期常量」（值内联、
+  只有构建时存在的变量会进产物、计算式永不内联），`.env.example` 补登记此前没有记录的
+  `NEXT_PUBLIC_FEATURE_AUDIT_LOG_EXPORT`，`CHANGELOG.md` 记 `### Fixed` 一条。
+- 明确**不**做的：① 不加 E2E——要让 E2E 有牙齿必须给 webServer 设一个 `NEXT_PUBLIC_FEATURE_*=false`，
+  而那会改变整个套件的产物形状（默认开的这项在 E2E 里就没有按钮了），代价大于收益；
+  客户端侧的证据用产物取证已经足够且更可复核。② 不把开关系统改成运行时（DB/远程配置）——
+  文件头早已写明这是构建期开关，改成运行时是另一个池项。③ 不动另外两处计算式读法
+  （`src/lib/env.ts`、`src/lib/appark.ts`）：逐条查过消费方，两处都只在服务端跑
+  （`env.ts` 被 `lib/storage` 引、`appark.ts` 被 cron / instrumentation / stripe 引），
+  真实 `process.env` 在那里存在，不是本条缺陷的实例。
+- 下一项：继续找缺陷；本轮 C13 那条（#155）与这条共用一个判据——**「构建期常量」的形状决定它到不到得了客户端**。
+- 更新时间：2026-09-25（UTC）。

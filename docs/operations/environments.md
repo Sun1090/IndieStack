@@ -70,3 +70,12 @@ feat/* → develop → staging 验证 → PR 到 main → CI 七关 → Vercel �
 ```
 
 详见 [agents/10-release-manager.md](../../agents/10-release-manager.md) 的部署验证清单。
+
+## `NEXT_PUBLIC_*` 是构建期常量
+
+- 值在 `next build` 时被写进产物，运行时改平台上的值**不会**改变已部署的产物；改完必须重新构建部署。
+- 只有**构建时真实存在**的变量才会被内联。没设过的 `NEXT_PUBLIC_*` 在客户端产物里留下的是
+  对 `process.env` 的读取，而浏览器里那个 `process` 是空垫片（实测 `typeof process === "undefined"`），
+  读到 `undefined` —— 所以「客户端读一个只在平台上设过的变量」这件事必须显式验证，不能靠推。
+- **计算式访问永远不会被内联**：`process.env[key]` 以及用模板串拼出来的键都不行，
+  必须是 `process.env.NEXT_PUBLIC_X` 这种静态成员写法。`src/lib/feature-flags.ts` 的形状断言钉着这条。
