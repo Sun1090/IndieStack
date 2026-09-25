@@ -1180,7 +1180,7 @@
   （+12：仓储 8 + 诊断纯函数 3 + worker 回执 1），`pnpm check:all` **exit 0 / 37 步全过**（含
   type-check、lint、test），`pnpm build` exit 0。service-role 清点表的调用点预算由 89 改为 **92**
   （新增 3 个 admin 客户端函数，分类与理由登记在同一处）。
-- 两条方法上的收获，记下来免得下次重新踩：
+- 三条方法上的收获，记下来免得下次重新踩：
   1. **一条 false green 被自己的改动照出来了**：digest 路由测试用显式清单 mock 仓储模块，
      里面没有 `markEmailSkipped`，于是跳过分支跑起来是 `TypeError`，恰好被我新加的 `try/catch`
      吞掉——补齐 mock 之前，那两条「跳过」用例全绿却什么都没测。补上 mock 并断言
@@ -1190,6 +1190,12 @@
      `src/lib/db/migration-runbook.test.ts` 原来把 `report.latest` 断言成字面量 `033_...sql`，
      而「标记必须等于真实最新迁移」这件事已由 `RUNBOOK_STALE_LATEST` 判定负责——那条断言只是把
      每次加迁移都必然失败的噪声留在仓库里。改成按 manifest 推导之后，判定强度不变、维护面少一处。
+  3. **第二条 false green 是同一种病，出在「抄一份清单」上**：钉住「拉取 / 计数 / 最老一条走同一段
+     过滤」的用例自己抄了一份 `["eq","in","or"]` 来比对调用记录，而第五段谓词用的是 `.is()`——
+     变异探针把三处 `.is("email_skipped_reason", null)` 逐个删掉，用例仍然全绿。修法不是把那三个
+     方法名补全（下次再加一种过滤又会漏），而是让 `chainMock` 公布自己的构造表
+     （`src/lib/repositories/test-helpers.ts` 的 `CHAIN_FILTER_METHODS`），对账用例直接取它：
+     mock 支持一种新过滤，比对就自动多比一项。重跑三个变异全部当场被杀，改一句日志文案的对照组仍存活。
 - 仍未闭环：`is_read` 免寄的口径**没有**改变（本轮只让它可见）；邮件侧依然没有行龄上界；
   生产复验要等下一次部署（B 域仍缺外部权限）。上一条里「等用户拍板」的三项，本轮定案两项
   （A05、C06），剩下 `profiles.timezone` / `profiles.language` 去留一项按「文档+UI 说明是偏好」处理。
