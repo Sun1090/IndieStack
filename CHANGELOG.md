@@ -46,6 +46,28 @@ All notable changes to IndieStack will be documented in this file.
   新建一条 scratch 路由，限流器放在两跳之外的 helper 里，报告如实记成
   `POST /api/tmp-probe → src/lib/tmp-probe-guard.ts#rateLimit`，分母同时从 45/10 走到 46/11；
   同一棵树上台账门禁按预期红了 `ROUTE_AUTH_UNLEDGED`。scratch 文件已删。
+- **限流从「一条读数」变成两态判定：每个 handler 要么有窗口，要么写明它为什么可以没有**（C12 的后半）：
+  `pnpm check:route-auth` 现在除了鉴权台账，还核对 `src/lib/security/rate-limit-policy.ts` 里的
+  `RATE_LIMIT_LEDGER`。「有没有窗口」不写进台账——它是调用图现量的事实，写成文字就会和代码各说各话；
+  台账只承载另一半（人做的判断）。四种偏差各有其码并由合成输入覆盖：没窗口也没条目
+  （`RATE_LIMIT_UNLEDGED`）、补了窗口却忘删豁免（`RATE_LIMIT_STALE`）、端点没了条目还躺着
+  （`RATE_LIMIT_ORPHAN`）、有条目而 `reason` 为空（`RATE_LIMIT_REASON_MISSING`）；另有两条失败封闭——
+  一个 handler 都没解析出来，以及**全仓库匹配不到任何限流器绑定**（那一刻「有窗口」这个状态本身已经
+  不可观测，报绿比报红更危险）。当前读数：**45 = 14 个有窗口 + 31 个写明理由**。
+  31 条理由不是一个「它们都不需要」，而是三种不同的判断：mock / E2E 面（不触达真实数据；同时把残余暴露
+  写清楚——假 store 是进程内数组、追加无上界，所以开着 mock 的生产部署会被打满内存，而
+  「生产不许开 mock」目前**没有任何门禁在管**，`scripts/check-security-config.js` 里没有 `MOCK` 字样），
+  cron / 签名面（重复调用不会把工作放大到超过队列本身，加 IP 窗口只会把平台调度读成 429），
+  以及 **4 条明确标注为「已知缺口」的**：两条营销 token POST（#136 正在补，合并后这两行会被本门禁
+  报成 `RATE_LIMIT_STALE`，这是预期的红灯）与 `GET /api/health`、`GET /api/og`（前者每次请求带一次
+  `profiles limit(1)` 的可达性探测、无凭据可打；后者每请求真跑一次图片合成且必须对陌生人可访——
+  两条都写了自己怎么关：健康端点按秒缓存探测结果并把探针与对外端点分开，OG 按参数缓存渲染）。
+  缺口必须带关法才成立：以 `RATE_LIMIT_GAP_MARKER` 开头的理由如果既没有 PR 号也没有判据句，
+  同样红在 `RATE_LIMIT_REASON_MISSING` 上，而缺口条数每次 CI 都印在读数里——台账最容易烂掉的方式
+  不是漏登记，是把「还没做」写成一副已经想清楚的样子。14 条用例，含一条正反控制（同一份合成输入里
+  「有窗口」与「写明理由」各占一半时必须零问题，防判定退化成「凡是没窗口都红」）、一条复现门禁要拦的
+  形状（临时塞进一个没窗口没登记的 handler，issues 恰好等于那一条 `RATE_LIMIT_UNLEDGED`），
+  以及一条「豁免里不许出现会话面端点」的读数。
 - **拼错的列名不再是这个仓库唯一没有门禁的数据库缺陷**（C07）：新增 `pnpm check:query-columns`，
   把 `src/**` 每条 `.from("<表>")` 查询链上的字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row`
   类型。起因见下面的 Fixed：`email_worker_runs` 一直在按一个从不存在的 `started_at` 排序，而

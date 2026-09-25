@@ -14,6 +14,12 @@ import {
   collectRouteHandlers,
   formatRouteAuthIssues,
 } from "../../src/lib/security/route-auth.ts";
+import {
+  RATE_LIMIT_LEDGER,
+  auditRateLimits,
+  formatRateLimitIssues,
+  summarizeRateLimits,
+} from "../../src/lib/security/rate-limit-policy.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SCAN_ROOT = "src";
@@ -42,18 +48,26 @@ export function buildRouteAuthSources(repoRoot = REPO_ROOT) {
 export function runRouteAuthCheck(repoRoot = REPO_ROOT) {
   const handlers = collectRouteHandlers(buildRouteAuthSources(repoRoot));
   const issues = auditRouteAuth(handlers);
+  const rateLimitIssues = auditRateLimits(handlers);
   const unresolvable = handlers.filter((handler) => handler.reachable.length === 0);
   const truncated = handlers.reduce((total, handler) => total + handler.truncated, 0);
 
-  if (issues.length > 0) {
-    console.error(`❌ 路由鉴权清单核对失败（${issues.length} 项）`);
-    console.error(formatRouteAuthIssues(issues));
+  if (issues.length > 0 || rateLimitIssues.length > 0) {
+    if (issues.length > 0) {
+      console.error(`❌ 路由鉴权清单核对失败（${issues.length} 项）`);
+      console.error(formatRouteAuthIssues(issues));
+    }
+    if (rateLimitIssues.length > 0) {
+      console.error(`❌ 限流两态台账核对失败（${rateLimitIssues.length} 项）`);
+      console.error(formatRateLimitIssues(rateLimitIssues));
+    }
     return 1;
   }
   console.log(
     `✅ 路由鉴权清单一致：${handlers.length} 个 handler 全部登记且守卫可达` +
       `（其中 ${unresolvable.length} 个登记为 public / 无守卫符号，调用图截断计数 ${truncated}）`,
   );
+  console.log(summarizeRateLimits(handlers));
   return 0;
 }
 

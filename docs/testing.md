@@ -30,7 +30,7 @@
 | `pnpm verify`                        | check（类型/lint/i18n/rls/a11y/agents/docs）+ test + bundle 门禁                |
 | `pnpm check:production-smoke`       | 校验 Production Smoke workflow 的手动/定时入口、URL、cron、证据留存契约，以及「读 inputs 的手动作业必须排除 schedule 触发」与两个作业各自的 artifact 名 |
 | `pnpm check:query-columns`         | 校验查询链里每个字面量列名都存在于生成的行类型中（C07）                          |
-| `pnpm check:route-auth`           | 校验每个 API handler 都在鉴权台账里登记，且登记的守卫可从该 handler 走到（C11）        |
+| `pnpm check:route-auth`           | 校验每个 API handler 都在鉴权台账里登记、守卫可从该 handler 走到（C11），并且限流两态台账一致：有窗口或写明理由（C12）        |
 | `pnpm check:all` / `pnpm verify:all` | 上述全部校验聚合入口（两个命令同义）                                            |
 
 ## 贡献者测试矩阵（I09）
@@ -555,6 +555,34 @@ G02 同时补齐了状态语义 token：`--success` / `--warning` / `--info` 各
   限流器按**用法**认（`createRateLimit()` 的实例名随作者起），跨文件的 helper 也算，
   所以 `guardUploadRequest` 里那句 `rateLimit.check` 会记在两条上传端点头上——
   这一层是「grep 路由文件的 import 列表」看不见的。
+
+## 限流两态台账门禁（C12）
+
+同一条 `pnpm check:route-auth` 现在还判第二件事：**每个 handler 要么有窗口，要么在台账里写明它为什么可以没有**。
+台账在 `src/lib/security/rate-limit-policy.ts`（`RATE_LIMIT_LEDGER`），只有「没有窗口」的那一侧需要条目——
+「有窗口」是调用图现量出来的事实，写进台账就等于把一个会被代码证伪的断言冻结在文字里。
+
+四种偏差各对应一个码，全部由合成输入覆盖（`rate-limit-policy.test.ts`）：
+
+| 码 | 抓的是什么 |
+|---|---|
+| `RATE_LIMIT_UNLEDGED` | 新端点既没窗口也没理由——「没人想过」 |
+| `RATE_LIMIT_STALE` | 补了窗口却忘了删豁免：这张表就不再是事实 |
+| `RATE_LIMIT_ORPHAN` | 端点改名 / 删除后台账还躺着一条 |
+| `RATE_LIMIT_REASON_MISSING` | 有条目但 `reason` 为空：没有理由的豁免不算登记 |
+
+另有两条失败封闭：一个 handler 都没解析出来（`RATE_LIMIT_NO_HANDLERS`），以及**全仓库匹配不到任何限流器绑定**
+（`RATE_LIMIT_NOTHING_MEASURED`）——那一刻「有窗口」这个状态本身已经不可观测，报绿比报红更危险。
+
+当前读数：**45 个 handler = 14 个有窗口 + 31 个写明理由**。这 31 条不是一句「它们不需要」，
+而是三种不同的判断，写在条目自己身上：mock / E2E 面（不触达真实数据，残余暴露是内存增长，
+且明确写了「开 mock 的生产部署」这条配置边界）、cron 与签名面（重复调用不会把工作放大到超过队列本身），
+以及**两条被明写成「已知缺口」的**——`GET /api/health`（每次请求带一次 DB 可达性探测，无凭据可打）
+与 `GET /api/og`（每请求真跑一次图片合成，且必须对陌生人可访）。
+缺口写进台账而不是散在评论里，是因为它有分母、有判据，下一次谁来关都知道要动哪一行。
+
+`#136`（两条营销 token 端点补按 IP 滑窗）合并之后，本门禁会立刻把它们报成 `RATE_LIMIT_STALE`——
+**这是预期的红灯**，合入方删掉那两行即可。台账里那两条的理由段就把这件事写在了自己身上。
 
 ## 依赖与 secrets 扫描门禁（H10）
 
