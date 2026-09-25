@@ -56,7 +56,10 @@ OSS_ACCESS_KEY_SECRET=your-access-key-secret
 | `POST /api/uploads/avatar` | 当前用户头像 | 已登录用户 |
 | `POST /api/uploads/project-cover` | 项目封面 | 团队 owner/admin |
 
-两个路由都会拒绝跨站请求、执行限流和请求体上限，并与 Server Action 共用同一服务层。
+上传的全部领域规则——鉴权、MIME 白名单、大小上限、数据库回写与孤儿对象清理——都在
+`src/lib/uploads/service.ts`。三道请求边界守卫（同源校验、限流、解析 multipart 之前的请求体上限）
+在 `src/lib/uploads/request.ts`，**只作用于上面这两个路由**：非浏览器调用方直接 import service
+函数时拿不到它们，需要自己补。
 
 ## Supabase 桶
 

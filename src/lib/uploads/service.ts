@@ -1,8 +1,10 @@
 /**
  * 上传领域服务（v0.6.0 G08）
  *
- * Server Action 与 Route Handler 共用同一套鉴权、校验、对象写入、元数据回写和
- * 孤儿对象清理逻辑。HTTP 路由只负责请求边界与响应映射，避免安全规则分叉。
+ * 上传的领域规则（鉴权、校验、对象写入、元数据回写、孤儿对象清理）全部在这里，
+ * 与入口无关。HTTP 路由（`/api/uploads/*`）在此之外只负责请求边界与响应映射：
+ * 同源校验、限流、解析前的请求体上限来自 `src/lib/uploads/request.ts`，
+ * **只作用于走 HTTP 路由的调用方**。直接调用本文件的函数不会得到那三道守卫。
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
@@ -30,7 +32,7 @@ export type UploadClient = SupabaseClient<Database>;
 export type UploadResult = ActionResult<{ url: string }>;
 
 export interface UploadFileOptions {
-  /** Route Handler 的 request.signal；Action 不传。 */
+  /** 浏览器上传路由传入的 `request.signal`，用于取消；非浏览器调用方不传。 */
   signal?: AbortSignal;
 }
 
