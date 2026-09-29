@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InitialAvatar } from "@/components/shared/initial-avatar";
@@ -67,16 +68,14 @@ function TeamMemberRow({
 
 export default async function TeamPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
   const t = await getTranslations("dashboard");
   const tc = await getTranslations("common");
 
   const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id, role")
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
 
@@ -218,7 +217,7 @@ export default async function TeamPage() {
                 const roleLabel = t.has(`team.list.roles.${role}`)
                   ? t(`team.list.roles.${role}`)
                   : role;
-                const canModify = canManage && role !== "owner" && p.id !== user!.id;
+                const canModify = canManage && role !== "owner" && p.id !== user.id;
                 const displayName =
                   (p.full_name as string | undefined) ?? t("team.list.unknownMember");
                 return (

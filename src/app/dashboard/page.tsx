@@ -6,6 +6,7 @@
 
 export const dynamic = "force-dynamic";
 
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { getTranslations, getLocale } from "next-intl/server";
 import type { Metadata } from "next";
@@ -34,9 +35,7 @@ type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];
 
 export default async function DashboardOverview() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
 
   // 加载仪表盘命名空间的翻译
   const td = await getTranslations("dashboard");
@@ -49,7 +48,7 @@ export default async function DashboardOverview() {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .maybeSingle();
   if (profileError) {
     throw new Error(`读取个人资料失败：${profileError.message}`);
@@ -59,7 +58,7 @@ export default async function DashboardOverview() {
   const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id, teams(name, plan, member_count)")
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
   if (membershipError) {
@@ -86,12 +85,12 @@ export default async function DashboardOverview() {
     supabase
       .from("api_usage")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .gte("created_at", since30Days),
     supabase
       .from("user_sessions")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .gte("created_at", since30Days),
     // 这条断言**留着**，因为不写它 `notifications` 会被推断成 `any`（Promise.all 里混了
     // `{ count, error }` 的字面量分支，链的类型在这里合不起来）。与上面被删掉的那几条的差别是：
@@ -99,7 +98,7 @@ export default async function DashboardOverview() {
     supabase
       .from("notifications")
       .select("*")
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(5) as unknown as {
       data: NotificationRow[] | null;

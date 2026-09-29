@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 import { getTranslations, getLocale } from "next-intl/server";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -26,16 +27,14 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ProfilePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
   const t = await getTranslations("dashboard");
   const locale = await getLocale();
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .maybeSingle();
 
   if (profileError) {
@@ -44,7 +43,7 @@ export default async function ProfilePage() {
     throw new Error(`读取个人资料失败：${profileError.message}`);
   }
 
-  const memberSince = user?.created_at
+  const memberSince = user.created_at
     ? formatDate(user.created_at, { locale })
     : t("profile.view.notSet");
 
@@ -66,13 +65,13 @@ export default async function ProfilePage() {
               <Avatar className="h-16 w-16">
                 <AvatarFallback className="text-lg">
                   {(profile?.full_name as string)?.charAt(0)?.toUpperCase() ??
-                    user?.email?.charAt(0).toUpperCase() ??
+                    user.email?.charAt(0).toUpperCase() ??
                     "U"}
                 </AvatarFallback>
               </Avatar>
               <div>
                 <CardTitle>{(profile?.full_name as string) ?? t("profile.view.notSet")}</CardTitle>
-                <CardDescription>{user?.email}</CardDescription>
+                <CardDescription>{user.email}</CardDescription>
                 <Badge variant="outline" className="mt-1">
                   {roleLabel}
                 </Badge>
@@ -85,7 +84,7 @@ export default async function ProfilePage() {
                 <p className="text-muted-foreground text-sm font-medium">
                   {t("profile.view.email")}
                 </p>
-                <p className="text-sm">{user?.email}</p>
+                <p className="text-sm">{user.email}</p>
               </div>
               <div>
                 <p className="text-muted-foreground text-sm font-medium">
