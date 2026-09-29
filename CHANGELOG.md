@@ -37,6 +37,9 @@ All notable changes to IndieStack will be documented in this file.
   「没扫到」和「干净」长得一模一样，这是本仓库反复付过学费的形状（`RATE_LIMIT_NOTHING_MEASURED`、
   `query-error-channel` 的分母断言）。值只认字符串 `true`，与 `evaluateMockMode` 逐字一致，
   刻意不比运行时更严：更严造出的是假红。
+  **覆盖面要说准**：`.env.production` 被 `.gitignore` 排除（进版本库的只有 `.env.example`），
+  所以 CI 上它不存在，**这条规则在 CI 里实际盯的是 `vercel.json` 与带生产意图的工作流**；
+  `.env.production` 那一格咬的是本地构建与模板用户自己的 checkout。
   三次变异核对都在真实仓库上跑过，**前两刀各逼出实现里一个真缺陷**：① 往 `.env.production` 末尾追加
   `=true`（文件里本来就有一行 `=false`）没红——只读第一个赋值时这一刀不红，而「先关后开」正是部署平台
   改环境变量最常见的形状，于是改成读全部、任一为 true 即红；③ `vercel.json` 顶层 `env` 设成 `true`
