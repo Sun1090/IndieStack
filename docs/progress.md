@@ -5560,3 +5560,55 @@
   修好之后暴露出 3 条一直在借证据的条目）。
 
 - 更新时间：2026-09-29（UTC）。
+
+## 2026-09-29 — 顺着「产物里有没有不该有的东西」量出来的 48%：生产首页的 JS 有一半是 mock 假数据
+
+- 里程碑 / 版本：v0.12.0。分支：`fix/mock-client-bundle`（PR #178）。
+- 状态：DONE。基线：`fe3e3e72`。
+- **怎么开始量**：上一条把「门禁污染自己的取证途径」记下来之后，我接着问了一个没人量过的维度——
+  **产物里有没有本不该在那里的东西**。第一问就是 mock：`NEXT_PUBLIC_MOCK_ENABLED` 的生产闸
+  早就有了（2026-09-25 的 C13 前半），**但那管的是「跑不跑」，不是「进不进产物」**。
+- **量到的（gzip 后的真实传输量，不是文件大小）**：生产首页 **506,604 字节**的 JS 里，
+  **246,541 字节**是一个 742 kB 的 chunk，内容是 `mock-user-001` 那一整套假数据 + 整包 faker
+  ——**占 48%**，而且是首页**单笔最大的一个资源**（第二名 73 kB）。
+  用 Playwright 记网络请求复核：8 个生产页面里只有 `/` 去取它。
+- **成因链（三段，每段都单独核过）**：
+  1. `src/lib/supabase/client.ts` 用**静态** `import { …, createMockSupabaseClient } from "@/lib/mock"`；
+  2. `@/lib/mock` 静态引入 `./data`（faker）与 `./store`；
+  3. 本仓库 12 个 `"use client"` 模块都碰 `createClient`（`site-header` 在营销布局里，
+     所以连首页都吃到了），整块跟着每一个客户端入口走。
+- **为什么 `config.ts` 的折叠救不了它**（这一格最值得记）：那一处折的是 `isMockEnabled`
+  这个**常量**，而调用点写的是 `shouldUseMock()`——**一次函数调用把常量链断掉了**，
+  于是分支活着、静态 import 活着、整块 faker 跟着活着。
+  修法用的是**同一个机制**：把 `NODE_ENV === "production"` 写进这个三元，
+  打包器就能把分支折成常量 `false`，`createMockSupabaseClient` 随之没有引用点，整块被摇掉。
+  顺带把 `shouldUseMock` 的 import 从桶里拆到零依赖的 `@/lib/mock/config`
+  ——那个模块文件头本就写着「仅供 bundle 体积敏感的场景引入」。
+- **效果（现量）**：首页 JS **506,604 → 260,084 字节（gzip，−48.7%）**；
+  Playwright 复核 8 个生产页面（`/`、`/auth/*` 5 条、`/pricing`）**全部 0 次取到含 mock 的 chunk**。
+  `pnpm test:e2e` → **113 passed / 0 failed**（mock 在 dev/E2E 构型下必须照常工作，这是回归闸）。
+- **一个必须说准的分界**：`check:bundle` 只从 2926.8 → **2925.5 kB**（−1.3 kB），
+  因为那块 741 kB 的死 chunk **仍然留在 `.next/static` 上**（被 5 个 auth 页面的
+  client-reference manifest 列出），只是**没有任何页面会去请求它**。
+  我试过在 `supabase/server.ts` 上用同一个折叠去彻底消掉它——**无效**（重建后仍在），
+  所以没有把那处 no-op 改动留下来。「产物里存在」与「用户会下载」是两件事。
+- **因此新加的常驻检查判「形状」而不是判产物**（`src/lib/release/mock-client-bundle.test.ts`，5 条）：
+  ① 除已登记的 `src/lib/supabase/client.ts` 外，任何 `"use client"` 模块都不得静态 import
+  `@/lib/mock` 桶（要判配置就用 `@/lib/mock/config`；要真拿 mock 客户端只能走动态 `import()`）；
+  ② 那一处**必须**被可折成 `false` 的三元守着；外加非空分母、登记本身的防空转、
+  「注释里提到不算违规」。
+  **我先写的是「产物里不许出现 mock 记号」那条门禁，并且它当场抓到了一块残留死 chunk——
+  然后我把它删了**：按「产物里存在」报红是**假红**（浏览器从不取它），
+  一条永远红的门禁只会变成没人修的噪音，而仓库的规矩是「先量到误报才有依据的扩展」。
+  **如实记账、不交红门禁**，是这个决定。
+- 变异核对（两刀都红，做完复原）：① 折掉那行三元 → 折叠形状那条红；
+  ② 给一个新 `"use client"` 模块加静态桶 import → 第一条红并点名 `components/ui/__probe.tsx`。
+- **自己踩的一个坑，记下来免得重犯**：新检查的头注释里我写了「处于 `/* … */` 之内」来描述
+  粗判方式——**那个 `*/` 把 JSDoc 提前关掉了**，语法错误报在六十行之后的字符串上。
+  「在注释里写出注释的结束符」是个非常朴素的自伤。
+- 读数：`CI=true pnpm check:all` → exit 0，**245 文件 / 2,889 用例**（上一条 244 / 2,884）；
+  `pnpm build` → exit 0；`check:bundle` 2925.5 kB / 基线 2926.8；`check:perf` CSS 71.4kB；
+  `test:e2e` 113 passed。
+- 下一项：继续沿「产物里有没有不该有的东西」量——server-only 的值有没有进客户端 chunk。
+
+- 更新时间：2026-09-29（UTC）。

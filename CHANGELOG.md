@@ -20,6 +20,38 @@ All notable changes to IndieStack will be documented in this file.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **生产首页的 JS 里有 48% 是 mock 种子数据 + 整包 faker**（`src/lib/supabase/client.ts` 一行三元）：
+  实测（gzip 后的真实传输量，不是文件大小）——修之前生产首页 **506,604 字节**的 JS 里有
+  **246,541 字节**是一个 742 kB 的 chunk，内容是 `mock-user-001` 那一整套假数据与整包 faker。
+  成因链：那个文件用**静态** `import { …, createMockSupabaseClient } from "@/lib/mock"`，
+  而 `@/lib/mock` 静态引入 `./data`（faker）与 `./store`；本仓库 12 个 `"use client"` 模块
+  都碰 `createClient`，于是整块跟着每一个客户端入口走，**首页的 HTML 里直接 `<script src>` 它**。
+  **为什么 `config.ts` 的折叠救不了它**：那一处折的是 `isMockEnabled` 这个**常量**，
+  而调用点写的是 `shouldUseMock()`——**一次函数调用把常量链断掉了**，于是分支活着、
+  静态 import 活着、整块 faker 跟着活着。修法与 `config.ts` 里 `isMockEnabled` 是**同一个机制**：
+  把 `NODE_ENV === "production"` 写进这个三元，打包器就能把分支折成常量 `false`，
+  `createMockSupabaseClient` 随之没有引用点，整块被摇掉。
+  量到的效果：首页 JS **506,604 → 260,084 字节（gzip，−48.7%）**；
+  用 Playwright 实测 8 个生产页面的**网络请求**，**没有任何一个页面再取到含 mock 的 chunk**
+  （修之前 `/` 取）。`src/lib/mock/config` 的 import 顺带从桶里拆出来——那个模块文件头
+  就写着「仅供 bundle 体积敏感的场景引入」，而调用点此前用的是桶。
+- **为什么 `check:bundle` 一直看不见它**：它量 `.next/static` 总量与基线的比值，
+  而**基线是在泄漏已经存在的时候立的**——一块「本来就多余」的代码不会让总量变大。
+  同一族的先例仓库里已经记过一次（构建期折叠那 24.9 kB「只占基线的 0.9%，
+  `check:bundle` 的 5% 预算拦不住」）；那次的死代码在**源码**里看得见所以有形状用例，
+  这次只在**产物**里看得见，而产物体积恰好是体积门禁唯一量不出的维度。
+  所以新加的常驻检查判的是**形状**而不是产物（`src/lib/release/mock-client-bundle.test.ts`，
+  5 条）：① 除已登记的 `src/lib/supabase/client.ts` 外，任何 `"use client"` 模块都不得
+  静态 import `@/lib/mock` 桶（要判配置就用零依赖的 `@/lib/mock/config`；要真拿 mock 客户端
+  只能走动态 `import()`，那样它是独立 chunk）；② 那一处**必须**被可折成 `false` 的三元守着。
+  **刻意没有**加「产物里不许出现 mock 记号」的门禁——实测下来那会是**假红**：
+  修完之后 `.next/static` 里仍留着一块 741 kB 的死 chunk（被 5 个 auth 页面的
+  client-reference manifest 列出），但浏览器**从不请求它**。「产物里存在」与「用户会下载」
+  是两件事，一条按前者报红的门禁只会变成一条没人修的噪音。**这一条交注释记账，不交红门禁。**
+  两次变异核对：折掉那行三元 → 折叠形状那条红；给一个新客户端模块加静态桶 import → 第一条红并点名文件。
+
+### Fixed
+
 - **25 个控件在 Windows 高对比度模式下没有可见焦点**（`src/components/ui` 全部改一处）：
   `check:tailwind` 一直报着一条非阻断告警「上游 shadcn 基元里还有 25 处 v3 类名待跟随上游收口」，
   25 处**全是** `outline-none` → `outline-hidden`。从本仓库**自己构建出来的 CSS** 里量到：
