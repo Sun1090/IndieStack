@@ -5158,3 +5158,52 @@
   「已读是否等于不必寄」），B 域整体等外部权限（Vercel 配额 + 云端 Supabase 凭据 + 隔离账号）。
 
 - 更新时间：2026-09-29（UTC）。
+
+## 2026-09-29 — C09 后半：8 处 `user!.id` 一次收完，顺手给这类形状留了一条常驻检查
+
+- 里程碑 / 版本：v0.12.0（任务池 C09）。分支：`feat/c09-session-user-truth-table`。
+- 状态：DONE。基线 `9b6bd2e5`（C13 后半）。
+- **为什么它是下一项**：roadmap 上 C09 那段写着「那 8 处 `user!.id` 现在不动，原因是**重叠**而不是难度
+  ——这 5 条分支正在重写同一批文件」。那条 46 项的待合并队列已于 2026-09-27 全部落地，
+  **阻塞条件自己消失了**，而 roadmap 的正文不会自己改，于是「推迟」变成了「没人再回来」。
+  这是本仓库里最容易被静默遗忘的一类待办：不是没做，是等的东西已经等到了而没人触发。
+- 结果：`src/app/**` 里 `user!` 由 **15 处 → 0 处**（8 个页面）。
+  `CI=true pnpm check:all` → exit 0，**240 文件 / 2,828 用例**（上一条是 238 / 2,815）；`pnpm build` → exit 0。
+- 落地：`src/lib/auth/session-user.ts` 的 `requireSessionUser(supabase)`，三条出口各有名字——
+  读到用户就返回（**已判空**，所以调用方写 `user.id`）、确认没有会话就 `redirect(ROUTES.login)`、
+  确认是读取故障就抛 `SessionReadUnavailableError`（带 `code`，仪表盘 `error.tsx` 有重试按钮）。
+  分类仍交给 `session-error`，与 `guards.ts` / `api/auth/callback` / `actions/audit` 同一套判据。
+  8 条单测覆盖三条出口 + 两条反向证据（「没有会话时绝不抛 `SessionReadUnavailableError`」——
+  否则「一律抛错」也能骗过整套测试）。
+- **中途返工了一次，原因记在这里免得重犯**：第一版让 helper 返回 **id**，结果 type-check 报出
+  `profile` 与 `settings` 两页另有 7 处对裸 `user` 的引用（`user?.email`、`user?.created_at`、
+  `user?.last_sign_in_at`）。**只把 id 交出去会把那些「容忍 null 的可选链」变成「为了拿邮箱
+  再发一次请求」——那是拿一个真缺陷换另一个**。于是改成返回整个 user，顺带把 `user?.email ?? ""`
+  收成 `user.email ?? ""`（类型上从此不必再假装可空）。
+- **另一处返工，代价更大**：改完 8 个文件后顺手跑了 `prettier --write "src/app/dashboard/**/*.tsx"`，
+  它的 `prettier-plugin-tailwindcss` 重排了 class 顺序，**把 9 个本来与本条无关的文件也改了**
+  （admin / analytics / api-keys / integrations 等）。`git checkout -- src/app/dashboard/` 全部回退后重来，
+  改成只做字符串替换、一次 prettier 都不跑——本仓库的 `format` 脚本并不在 CI 里，
+  tailwind 插件的排序偏好与已提交代码不一致，**跑一次就是一次无关 diff**。
+- 常驻检查 `session-user-wiring.test.ts`（读源码形状，不是运行时用例——缺陷本身是**类型上的一句谎**，
+  jsdom 里把 `getUser` 桩成永远返回一个用户，任何运行时用例都分不出「写对了」与「又写错了」）：
+  「`src/app/**` 下不得有 `user!`」+ 非空分母 + 反向证据（地板值 8 个页面确实在用
+  `requireSessionUser`）+ 防空转用例。**没有**接成新的 `check:*` 脚本：判据只有一个记号，
+  `pnpm test` 在 pre-push 与 CI 都跑，注册一条新门禁要多维护四处接线（package.json /
+  check-all.sh / 工作流 / 豁免表），代价大于收益；先例是 `mock/config.test.ts` 钉构建期折叠。
+  判据**没有白名单**——真有合法的可空局部变量也叫 `user`，修法是改名；开白名单等于把
+  「谁都可以把自己排除在外」写进规则。
+- **写检查时自己踩的坑，已由用例挡住**：`g` 标志正则的 `lastIndex` 是**跨调用保留**的，
+  复用同一条正则扫多行会让同一文件的第二处违规被跳过——「漏掉一半现场」比「全漏」更难发现。
+  加了「同一个文件里的多处违规一处都不漏（3 处）」这条用例。
+- 变异核对（真实树，改完复原）：把 `profile/page.tsx` 的 `.eq("id", user.id)` 退回 `user!.id`
+  → 该用例红并点名到文件与那一行；复原后 5 条全绿。
+- 明确**不**做的：① 不改 `proxy.ts`——`user = null` → 重定向登录页是**正确答案**，
+  把 error 单独放行会把一次普通的过期会话变成错误边界页（roadmap 原文就写了这一条）；
+  ② 不动 `mfa/page.tsx` 的 `refreshSession`（要连 MFA 流程一起判，单独改会把成功路径改坏）；
+  ③ **不**把 C09 的另一半（页面只解构 `user` 而不取 `error`）接成门禁：合法状态与「没读到」
+  在 AST 上都只是「没取 error」，先接会把正常写法一并点掉——那一半仍然是台账，不是门禁。
+- 回滚：单条 revert。`requireSessionUser` 是纯新增模块，8 个页面的调用点可独立回退。
+- 下一项：继续找缺陷。A 域剩产品决策，B 域等外部权限，C 域与 D 域按 roadmap 已无未落地条目。
+
+- 更新时间：2026-09-29（UTC）。

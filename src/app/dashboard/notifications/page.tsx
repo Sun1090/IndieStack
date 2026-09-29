@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
@@ -38,15 +39,13 @@ export default async function NotificationsPage({
   searchParams: Promise<{ filter?: string }>;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
   const t = await getTranslations("dashboard");
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .maybeSingle();
 
   if (profileError) {
@@ -58,7 +57,7 @@ export default async function NotificationsPage({
   let notifications: Awaited<ReturnType<typeof listRecentNotifications>> | null = null;
   let loadError = false;
   try {
-    notifications = await listRecentNotifications(user!.id, 10);
+    notifications = await listRecentNotifications(user.id, 10);
   } catch (error) {
     loadError = true;
     console.error("[NotificationsPage] 加载通知失败:", error);
@@ -105,7 +104,7 @@ export default async function NotificationsPage({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle>{t("notifications.list.title")}</CardTitle>
-              <NotificationsLive userId={user!.id} />
+              <NotificationsLive userId={user.id} />
             </div>
             <CardDescription>{t("notifications.list.desc")}</CardDescription>
           </div>

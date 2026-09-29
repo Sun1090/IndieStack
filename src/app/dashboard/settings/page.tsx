@@ -6,6 +6,7 @@
 
 export const dynamic = "force-dynamic";
 
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { getLocale, getTranslations } from "next-intl/server";
 import { formatRelativeTime } from "@/lib/date";
@@ -75,9 +76,7 @@ async function readDeviceList(
 export default async function SettingsPage() {
   const supabase = await createClient();
   const tc = await getTranslations("common");
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
   const t = await getTranslations("dashboard");
 
   // 断言里明写 `error: null`＝断言「这次查询不可能出错」。这里的后果是一张可点的列表：
@@ -85,14 +84,14 @@ export default async function SettingsPage() {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .maybeSingle();
   if (profileError) {
     throw new Error(`读取个人资料失败：${profileError.message}`);
   }
 
   // D02 设备列表：最近 20 台设备（含当前），配合 revokeSession 吊销
-  const { rows: deviceRows, currentSessionId } = await readDeviceList(supabase, user!.id);
+  const { rows: deviceRows, currentSessionId } = await readDeviceList(supabase, user.id);
   const locale = await getLocale();
   const passkeyCredentials = features.passkey ? await listMyCredentials() : [];
 
@@ -128,8 +127,8 @@ export default async function SettingsPage() {
             <CardContent className="space-y-4">
               <p className="text-muted-foreground text-sm">
                 {t("settings.sections.security.currentSession", {
-                  email: user?.email ?? "",
-                  time: user?.last_sign_in_at
+                  email: user.email ?? "",
+                  time: user.last_sign_in_at
                     ? formatRelativeTime(user.last_sign_in_at, { locale: await getLocale() })
                     : "—",
                 })}

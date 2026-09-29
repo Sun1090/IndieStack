@@ -10,6 +10,7 @@ import { getTranslations, getLocale } from "next-intl/server";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,9 +58,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const t = await getTranslations("dashboard");
   const locale = await getLocale();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
 
   // 断言里明写 `error: null` 不等于错误通道还在，它断言的是「不可能有 error」——
   // 于是下面两行 `notFound()` 会把一次数据库抖动渲染成「这个项目不存在」（404 是终态，
@@ -67,7 +66,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id")
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
   if (membershipError) {
