@@ -13,6 +13,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { newestStamp, sourcesNewerThan } from "../../src/lib/release/bundle-freshness.ts";
+import {
+  formatClientEnvIssues,
+  inspectClientArtifactEnvNames,
+} from "../../src/lib/release/client-artifact-env.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 export const STATIC_DIR = ".next/static";
@@ -88,6 +92,20 @@ export function buildFreshnessSnapshot(repoRoot = REPO_ROOT) {
   };
 }
 
+/**
+ * 客户端脚本产物 + 一条内容判定。
+ *
+ * 放在这个门禁里而不是新开一条，是因为它问的是**同一份产物**的另一个性质，
+ * 而新鲜度那一步是共用的（量一份可能过期的产物，体积与内容两个结论都会是假的）。
+ * 2026-09-29 量过必要性：mock 种子数据占生产首页 JS 的 48%（246 kB / 506 kB），
+ * 而**基线是在它已经存在的时候立的**，所以 5% 的体积预算永远看不到它。
+ */
+function readClientScripts(repoRoot) {
+  return walkFiles(path.join(repoRoot, STATIC_DIR), [])
+    .filter((full) => full.endsWith(".js"))
+    .map((full) => ({ path: toRepoPath(repoRoot, full), content: fs.readFileSync(full, "utf8") }));
+}
+
 function dirSize(dir) {
   let total = 0;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -154,6 +172,23 @@ export function runBundleCheck(repoRoot = REPO_ROOT, { writeBaseline = true } = 
     return 1;
   }
   console.log("✅ Bundle 体积在基线范围内");
+
+  return checkClientScriptContents(repoRoot);
+}
+
+/**
+ * 客户端脚本的内容判定，单独成函数只为把 `runBundleCheck` 的复杂度留在阈值内
+ * （eslint 的 complexity 上限 15；判据与理由见 src/lib/release/client-artifact-env.ts 顶部）。
+ */
+function checkClientScriptContents(repoRoot) {
+  const scripts = readClientScripts(repoRoot);
+  const issues = inspectClientArtifactEnvNames(scripts);
+  if (issues.length > 0) {
+    console.error(`❌ 客户端产物内容检查失败（${issues.length} 项）`);
+    console.error(formatClientEnvIssues(issues));
+    return 1;
+  }
+  console.log(`✅ 客户端产物无服务端专用变量名：${scripts.length} 个脚本产物`);
   return 0;
 }
 

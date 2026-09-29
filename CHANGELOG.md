@@ -20,6 +20,26 @@ All notable changes to IndieStack will be documented in this file.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **`pnpm check:bundle` 现在也判产物内容，不再只判体积**：新增一条判定——**客户端产物里不得出现
+  服务端专用变量的名字**（`SUPABASE_SERVICE_ROLE_KEY` / `STRIPE_SECRET_KEY` / `CRON_SECRET` … 12 个，
+  清单直接从 `security-config.ts` 的 `SERVER_ONLY_ENV_NAMES` 拿，不重抄）。
+  **它补的是源码规则的一个盲区**：`check:security` 的 `inspectClientModules` 判的是
+  「`"use client"` 模块里有没有直接读 `process.env.<服务端专用名>`」，于是它看得见
+  `process.env.STRIPE_SECRET_KEY` 写在客户端组件里，**看不见**「客户端组件 → import 一个
+  读该变量的共享 helper」这条间接路径。而 `NEXT_PUBLIC_*` 之外的变量一旦被客户端图碰到，
+  构建期就会把**值**内联进产物——那一刻它在服务端也不再是秘密。
+  **按名字判而不是按值判**：值依赖某次构建时那台机器上真的配了什么，CI 上通常什么都没有，
+  那条门禁在 CI 上会永远绿——一条永远绿的门禁比没有门禁更糟（本仓库为此付过学费：
+  `query-error-channel` 的 `QUERY_ERROR_CHANNEL_PARSE`）。变量名是源码里的常量，与环境无关。
+  实测基线（真实生产构建）：这 12 个名字**一个都不出现**，而且 `process.env.` 这个形态
+  **一次都没出现**（全部在构建期折成字面量）——所以这条规则今天 0 命中，而它的失败模式是
+  **具体的**：有人让客户端图碰到任何一个服务端专用变量，名字就会随值一起进产物。
+  变异核对：往一个客户端 chunk 注入 `VAPID_PRIVATE_KEY` → 红并点名到那个文件。
+  **刻意不判 mock 记号**：真实产物里有一块从不被人请求的死 chunk，按它报红是假红——
+  「产物里存在」与「用户会下载」是两件事（同 PR #178 的说明）。
+
+### Fixed
+
 - **生产首页的 JS 里有 48% 是 mock 种子数据 + 整包 faker**（`src/lib/supabase/client.ts` 一行三元）：
   实测（gzip 后的真实传输量，不是文件大小）——修之前生产首页 **506,604 字节**的 JS 里有
   **246,541 字节**是一个 742 kB 的 chunk，内容是 `mock-user-001` 那一整套假数据与整包 faker。
