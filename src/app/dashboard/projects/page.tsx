@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +35,7 @@ export default async function ProjectsPage({
   searchParams: Promise<{ status?: string }>;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
   const t = await getTranslations("dashboard");
   const locale = await getLocale();
   const { status: statusFilter } = await searchParams;
@@ -46,7 +45,7 @@ export default async function ProjectsPage({
   const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id")
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
   if (membershipError) {

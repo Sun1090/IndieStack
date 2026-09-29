@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,16 +27,14 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function BillingPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
   const t = await getTranslations("dashboard");
   const tc = await getTranslations("common");
 
   const { data: membership, error: membershipError } = await supabase
     .from("team_members")
     .select("team_id, teams!inner(plan, member_count)")
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
 

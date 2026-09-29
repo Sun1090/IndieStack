@@ -19,6 +19,33 @@ All notable changes to IndieStack will be documented in this file.
   （#112，实测 159 处判读 / 0 处未绑定，地板改天花板）、限流两态台账的两条豁免到期（#153）。
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
+### Fixed
+
+- **Auth 读取一次抖动，八个仪表盘页面抛的是 `TypeError` 而不是「暂时不可用」**（C09 后半）：
+  `dashboard`、`billing`、`notifications`、`profile`、`projects`、`projects/[id]`、`settings`、`team`
+  此前写的是同一个形状——只解构 `user`、不取 `error`、然后 `user!.id`。那条 `!` 在类型上宣称
+  「这里不可能是 null」，而 `auth.getUser()` 把失败装在 `error` 里返回而不是抛出，于是
+  **「Auth 服务抖了一下」与「这个用户真的没登录」在下游长得一模一样**，页面只能靠抛
+  `Cannot read properties of null` 表达它。抛 TypeError 不是撒谎，但它是**一次没有分类的崩溃**：
+  错误边界拿到的 message 里没有任何线索指向会话读取失败。
+  新增 `requireSessionUser(supabase)`（`src/lib/auth/session-user.ts`），三条出口各有名字：
+  读到用户就返回（**已判空**，调用方写 `user.id`）、确认没有会话就 `redirect(ROUTES.login)`、
+  确认是读取故障就抛带 `code = "SESSION_READ_UNAVAILABLE"` 的错误——仪表盘的 `error.tsx` 有重试按钮，
+  这比「跳登录页再让用户登一次」更接近该有的行为，重新登录走的正是同一条读取。
+  分类仍由 `session-error` 负责，与 `guards.ts` / `api/auth/callback` / `actions/audit` 同一套判据：
+  `error` 非空**不等于**抖动（匿名访客拿到的就是 `AuthSessionMissingError`），只有
+  `AuthRetryableFetchError` 与 5xx 算读失败。
+  **返回整个 user 而不只是 id**：有两页本来就读 `user?.email` / `user?.created_at` /
+  `user?.last_sign_in_at`，把返回值收窄成 id 会把那些「容忍 null 的可选链」变成「为了拿邮箱再发一次
+  请求」——拿一个真缺陷换另一个。于是 `user?.email ?? ""` 一并收成 `user.email ?? ""`。
+  `src/app/**` 里 `user!` 由 **15 处 → 0 处**。新增常驻检查 `session-user-wiring.test.ts`：
+  读源码形状判「`src/app/**` 下不得有 `user!`」，带非空分母、一条反向证据（地板值 8 个页面
+  确实在用 `requireSessionUser`）和一条防空转用例；判据**没有白名单**——真有合法的可空局部变量也叫
+  `user` 就改名，开白名单等于把「谁都可以把自己排除在外」写进规则。
+  写这条检查时踩到的坑由用例挡住：`g` 标志正则的 `lastIndex` 跨调用保留，复用一条正则扫多行会让
+  同一文件的第二处违规被跳过。
+  没有动的：`proxy.ts`（`user = null` → 重定向登录页是正确答案）、`mfa/page.tsx` 的 `refreshSession`。
+
 ### Added
 
 - **「生产构型不许开着 mock」从此是门禁，不只是注释里的一句话**（C13 后半）：运行时那道闸早在
