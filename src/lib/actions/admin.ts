@@ -6,7 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { safelyRequireRole } from "@/lib/auth/guards";
+import { guardFailureKey, safelyRequireRole } from "@/lib/auth/guards";
 import { ROUTES } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
@@ -48,7 +48,7 @@ export async function listAdminUsers(): Promise<
 > {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {
@@ -78,7 +78,7 @@ export async function listAdminUsersPage(
 ): Promise<ActionResult<{ users: AdminUser[]; total: number }>> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {
@@ -96,7 +96,7 @@ export async function updateUserRole(
 ): Promise<ActionResult> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {
@@ -160,7 +160,7 @@ export async function listAuditLogs(): Promise<
 > {
   const auth = await safelyRequireRole("super_admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {

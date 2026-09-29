@@ -55,6 +55,21 @@ All notable changes to IndieStack will be documented in this file.
   `requireSessionUser` 与 `requireAuth`；另有一条用例把 `auth.getSession()` 显式排除在外
   （settings 页用它算「当前这台设备」，只用于显示标记、不参与权限判定）。
   顺带删掉 2 个因此变成未使用的 import——`pnpm lint` 不报未使用的 import。
+  **顺着量出来的第二个同型缺陷：守卫失败被压成两种说法。**
+  `POST /api/stripe/checkout` 把**每一种**守卫失败都答成 `401 + notAuthenticated`，
+  而同族的 `api/analytics` 早就按 `guardHttpStatus` 分开了——同一个缺陷的两次落地，
+  谁也没给另一次提个醒。往外一量，同一形状在 **8 处 Server Action 调用点**上，
+  而且那里更糟：`auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden"`
+  是一个**二元三元**，而 `AuthGuardError.code` 有四个值，于是 `SERVICE_UNAVAILABLE`
+  （我们自己没读到会话或角色）被答成 `forbidden`——**一件关于用户权限的事实**。
+  管理员看到「你没有权限」、列表显示成空的、日志里什么都没有。
+  新增唯一出口 `guardFailureKey(error)`（`notAuthenticated` / `forbidden` / `authUnavailable`），
+  8 处调用点各改一行；新键按双语登记。checkout 路由改用 `guardHttpStatus`。
+  checkout 那里刻意写成两个 `if` 分支而不是三元：`route.test.ts` 那条「每个能返回的码都在两个
+  locale 里有文案」靠正则读 `jsonNoStore({ error: "字面量" }`，三元里的两个键它一个都读不到，
+  那条测试会从 9 掉到 8 报红——**让判据保持原样、让代码迁就判据**，比放宽判据好。
+  常驻检查 `guard-failure-key-wiring.test.ts` 判「`src/lib/**` 下不得出现对 `auth.error.code`
+  的就地三元」，**不**钉具体字符串：只钉字符串的话，下一个人写成三元套三元照样绿。
   没有动的：`proxy.ts`（`user = null` → 重定向登录页是正确答案）、`mfa/page.tsx` 的 `refreshSession`。
 
 ### Added

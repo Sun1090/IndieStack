@@ -485,8 +485,26 @@
     会让同一文件的第二处违规被跳过——由「同一个文件里的多处违规一处都不漏」那条用例挡住。
     先前记的 18 / 14 / 5 / 4 是这些改动在栈上被多少条下游分支**带着走**，不是有人在各自改它——
     这句话解释了当初为什么推迟，而那条阻塞（5 条分支正在重写同一批文件）已随队列清空而消失。
-    两个已知消费者不在本条射程：`api/analytics/route.ts` 与 `api/stripe/checkout/route.ts` 现在仍把
-    守卫失败一律写成 401，那两处分别由 #103（analytics，#44 前半）与 #96（checkout）处理。
+    **2026-09-29 补完那两个消费者**（`api/analytics` 由 #103 修好，`api/stripe/checkout` 是本条补的）：
+    checkout 路由此前把**每一种**守卫失败都答成 `401 + notAuthenticated`，而 `api/analytics` 早就
+    按 `guardHttpStatus` 分开了——两处是同一个缺陷的两次落地，谁也没给另一次提个醒。
+    顺着它往外量，发现同一形状在 **8 处 Server Action 调用点**上，而且那里更糟：
+    `auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden"` 是一个**二元三元**，
+    而 `AuthGuardError.code` 有四个值，于是 `SERVICE_UNAVAILABLE`（我们自己没读到）被答成
+    `forbidden`——**一件关于用户权限的事实**。管理员看到「你没有权限」、列表显示成空的、
+    日志里什么都没有。收法：把映射收成一个出口 `guardFailureKey(error)`（三个键
+    `notAuthenticated` / `forbidden` / `authUnavailable`），8 处调用点各改一行，
+    新键按双语登记（`messages/*/actions.json`），checkout 路由走
+    `guardHttpStatus` + 分开的键。
+    **checkout 那里刻意写成两个 `if` 分支而不是一个三元**：`route.test.ts` 那条
+    「每个能返回的码都在两个 locale 里有文案」靠正则读 `jsonNoStore({ error: "字面量" }`，
+    三元里的两个键它一个都读不到，那条测试会从 9 掉到 8 报红。
+    **让判据保持原样、让代码迁就判据**，比放宽判据好——记在这里免得下一个人「顺手优化一下」。
+    另加常驻检查 `guard-failure-key-wiring.test.ts`：判据是「`src/lib/**` 下不得出现对
+    `auth.error.code` 的就地三元」（`guards.ts` 自身除外），**不**钉具体字符串——只钉字符串的话，
+    下一个人写成三元套三元照样绿；唯一出口是 `guardFailureKey()`，改判据只改一处。
+    带非空分母、一条防空转用例、一条「出口真的被用上了（地板值 8 处调用点）」，
+    以及「注释里写那个三元不算违规」。
     顺带一条治理观察，不在本条范围内但记下来免得重新发现：**本池的序号已经不复用不行了**——
     C08 / C08-b / C08-c 在源码里占 18 / 19 / 20，而 D01 / D02 / D03 也是 18 / 19 / 20（本条写作 21，
     与 D04 撞号）。渲染时有序列表按位置重编号，所以只有源码读者会被误导；引用一律用 ID（C09、D04），

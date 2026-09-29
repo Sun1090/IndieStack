@@ -14,7 +14,7 @@ import {
   type ContactMessageFilter,
   type MessageStatus,
 } from "@/lib/repositories/contact-messages";
-import { safelyRequireRole } from "@/lib/auth/guards";
+import { guardFailureKey, safelyRequireRole } from "@/lib/auth/guards";
 import { ROUTES } from "@/lib/constants";
 import { logActionError } from "@/lib/api-log";
 
@@ -62,7 +62,7 @@ export async function listContactMessages(
 ): Promise<ActionResult<ContactMessageRecord[]>> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {
@@ -86,7 +86,7 @@ export async function listContactMessagesPage(
 ): Promise<ActionResult<ContactMessagePage>> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {
@@ -111,7 +111,7 @@ export async function updateMessageStatus(
 ): Promise<ActionResult> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {

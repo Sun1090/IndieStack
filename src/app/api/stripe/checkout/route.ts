@@ -10,7 +10,7 @@ import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
-import { safelyRequireAuth } from "@/lib/auth/guards";
+import { guardHttpStatus, safelyRequireAuth } from "@/lib/auth/guards";
 import { logApiError } from "@/lib/api-log";
 import { createCheckoutSession, isStripeConfigured } from "@/lib/stripe";
 
@@ -78,7 +78,18 @@ export async function POST(request: NextRequest) {
 
   const auth = await safelyRequireAuth();
   if (!auth.success) {
-    return jsonNoStore({ error: "notAuthenticated" }, { status: 401 });
+    // 守卫自己读不到（`SERVICE_UNAVAILABLE`）不能回 401：401 说的是「你没登录」，
+    // 客户端据此把这次结账当成身份问题，而重新登录并不会让那次读取成功。
+    // 两种失败的键也不同——`payload.error` 会被 `CheckoutButton` 直接当 i18n 键渲染，
+    // 键错一点用户看到的就是一句关于自己的假话。
+    //
+    // **写成两个分支而不是一个三元**：route.test.ts 那条「每个能返回的码都在两个 locale
+    // 里有文案」靠正则读 `jsonNoStore({ error: "字面量" }`，三元里的两个键它一个都读不到，
+    // 于是那条测试立刻从 9 掉到 8 报红。让判据保持原样、让代码迁就判据，比放宽判据好。
+    if (auth.error.code === "SERVICE_UNAVAILABLE") {
+      return jsonNoStore({ error: "authUnavailable" }, { status: guardHttpStatus(auth.error) });
+    }
+    return jsonNoStore({ error: "notAuthenticated" }, { status: guardHttpStatus(auth.error) });
   }
 
   if (!isStripeConfigured()) {

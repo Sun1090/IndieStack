@@ -5281,3 +5281,50 @@
   C09 到此为**全部收完**：全仓 `src/app/**` 再无 `user!`，仪表盘再无直接 `auth.getUser()`。
 
 - 更新时间：2026-09-29（UTC）。
+
+## 2026-09-29 — 顺着 C09 量出去的同型缺陷：守卫失败被一个二元三元压成两种说法
+
+- 里程碑 / 版本：v0.12.0。分支：`fix/checkout-guard-status`（PR #171）。
+- 状态：DONE。基线：`a506ce59`（#170 合并后的 main）。
+- **怎么找到的**：上一条修完 C09 之后去核 roadmap 里那句「两个已知消费者不在本条射程」——
+  `api/analytics` 由 #103 修好了，`api/stripe/checkout` 仍然把**每一种**守卫失败写成
+  `401 + notAuthenticated`。同一个缺陷的两次落地，谁也没给另一次提个醒。
+  顺着它往外量：`src/app/api/**` 里 3 个用 `safelyRequire*` 的路由，只有它没用 `guardHttpStatus`；
+  再往外到 Server Action，找到 **8 处**调用点写着一模一样的
+  `auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden"`。
+- **缺陷比 C09 那条更重**：`AuthGuardError.code` 有四个值
+  （`UNAUTHORIZED` / `FORBIDDEN` / `NOT_FOUND` / `SERVICE_UNAVAILABLE`），那个三元只有两个出口，
+  于是 `SERVICE_UNAVAILABLE`（我们自己没读到会话或角色）被答成 `forbidden`——
+  **一件关于用户权限的事实**。管理员看到「你没有权限」、列表显示成空的、日志里什么都没有。
+  `guardHttpStatus` 早就分开了（`SERVICE_UNAVAILABLE → 503`），所以同一个模块里
+  **同一个概念有两份映射**，其中一份是错的：类型层看不出错，只有逐个调用点看得出。
+- 落地：新增唯一出口 `guardFailureKey(error)`（`src/lib/auth/guards.ts`）返回
+  `notAuthenticated` / `forbidden` / `authUnavailable` 三键；8 处调用点各改一行；
+  `api/stripe/checkout` 改用 `guardHttpStatus` 并分开两种键；
+  新键按双语登记（`messages/{en,zh-CN}/actions.json`，键数 1260 → 1260，`check:locales` 对称）。
+- **一处刻意的「让代码迁就判据」**：checkout 那里写成两个 `if` 分支而不是一个三元。
+  `route.test.ts` 那条「路由能返回的每个错误码都在两个 locale 里有文案」靠正则读
+  `jsonNoStore({ error: "字面量" }`——三元里的两个键它一个都读不到，那条测试立刻从
+  地板值 9 掉到 8 报红。放宽判据去迁就代码会把「动态键读不出来」这个真实盲区一起放宽；
+  改代码则只是多一个 `if`。**这条在代码注释与 CHANGELOG 里都写了**，免得下一个人「顺手优化一下」。
+- 常驻检查 `guard-failure-key-wiring.test.ts`：判据是「`src/lib/**` 下不得出现对
+  `auth.error.code` 的就地三元」（`guards.ts` 自身除外）。
+  **不钉具体字符串的理由**：只钉 `? "notAuthenticated" : "forbidden"` 的话，
+  下一个人写成三元套三元照样绿；真正要守的形状是「一个四值判别联合被两出口三元吃掉两个」。
+  带非空分母、一条防空转用例、一条「注释里写那个三元不算违规」，
+  以及一条**「出口真的被用上了」（地板值 8 处调用点）**——少了它，判据可能在「规则自己坏了」的
+  状态下全绿（前例：`query-error-channel` 的 `QUERY_ERROR_CHANNEL_PARSE`）。
+- 测试：7 条 `guardFailureKey` 单测（含「三个出口互不相同」与「SERVICE_UNAVAILABLE 绝不是
+  forbidden」两条反向证据）；checkout 路由 3 条新用例把三种守卫失败分别钉住；
+  3 个 action 测试文件各加 1 条 `authUnavailable` 用例当反向证据。
+  4 处 `vi.mock("@/lib/auth/guards")` 改成 `importOriginal` 展开——原先只导出被测函数，
+  新出口一接上就报 `No "guardFailureKey" export`（这类桩是「只桩被测的那一个」写法的必然代价）。
+- 变异核对（真实树，改完复原）：把 `actions/webhooks.ts` 的一处退回二元三元 → 常驻检查
+  两条用例同时红（判违规 + 出口地板值不足），复原后 5 条全绿。
+- 门禁自己抓到一次：`check:glossary` 报 `[GLOSSARY_TERM_FORBIDDEN] actions.authUnavailable`——
+  「verify」在本仓库的术语表里统一译作「验证」，我写成了「校验」。改文案而不是加豁免。
+- 读数：`CI=true pnpm check:all` → exit 0，**241 文件 / 2,847 用例**（上一条 240 / 2,831）；
+  `pnpm build` → exit 0。
+- 下一项：继续找缺陷。A 域剩产品决策，B 域等外部权限，C/D 两域按 roadmap 已无未落地条目。
+
+- 更新时间：2026-09-29（UTC）。

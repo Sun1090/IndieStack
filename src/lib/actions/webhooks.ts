@@ -7,7 +7,7 @@
 import type { ActionResult } from "@/lib/types/action-result";
 import { fail, ok } from "@/lib/types/action-result";
 import { listRecentWebhookEvents } from "@/lib/repositories/webhook-events";
-import { safelyRequireRole } from "@/lib/auth/guards";
+import { guardFailureKey, safelyRequireRole } from "@/lib/auth/guards";
 import { logActionError } from "@/lib/api-log";
 
 export type WebhookEventRecord = {
@@ -31,7 +31,7 @@ export async function listWebhookEvents(
 ): Promise<ActionResult<WebhookEventRecord[]>> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
-    return fail(auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden");
+    return fail(guardFailureKey(auth.error));
   }
 
   try {

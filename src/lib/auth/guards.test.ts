@@ -25,6 +25,7 @@ import {
   safelyRequireAuth,
   safelyRequirePermission,
   safelyRequireRole,
+  guardFailureKey,
   guardHttpStatus,
   type AuthUser,
 } from "./guards";
@@ -301,6 +302,38 @@ describe("guardHttpStatus()", () => {
 
   it("SERVICE_UNAVAILABLE → 503，与「无权限」分开", () => {
     expect(guardHttpStatus(SERVICE_UNAVAILABLE)).toBe(503);
+  });
+});
+
+/**
+ * 三种守卫失败，三种说法。这条判据的来历是一个**二元三元**：
+ * 8 处调用点各自写着 `auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden"`，
+ * 而 `AuthGuardError.code` 有四个值——于是 `SERVICE_UNAVAILABLE`（我们自己没读到）
+ * 被答成 `forbidden`，也就是**一件关于用户权限的事实**。管理员看到「你没有权限」，
+ * 列表显示成空的，日志里什么都没有。
+ */
+describe("guardFailureKey()", () => {
+  it("UNAUTHORIZED → notAuthenticated", () => {
+    expect(guardFailureKey(UNAUTHORIZED)).toBe("notAuthenticated");
+  });
+
+  it("FORBIDDEN → forbidden", () => {
+    expect(guardFailureKey(FORBIDDEN)).toBe("forbidden");
+  });
+
+  it("SERVICE_UNAVAILABLE → authUnavailable，绝不是 forbidden", () => {
+    // 只有这一格能证伪「二元三元」也能骗过上面两条。
+    expect(guardFailureKey(SERVICE_UNAVAILABLE)).toBe("authUnavailable");
+    expect(guardFailureKey(SERVICE_UNAVAILABLE)).not.toBe("forbidden");
+  });
+
+  it("NOT_FOUND 归到 forbidden（调用方对两者都不重试，不必多一个键）", () => {
+    expect(guardFailureKey(new AuthGuardError("x", "NOT_FOUND"))).toBe("forbidden");
+  });
+
+  it("三个出口互不相同（判据退化成一个键时这里立刻红）", () => {
+    const keys = [UNAUTHORIZED, FORBIDDEN, SERVICE_UNAVAILABLE].map(guardFailureKey);
+    expect(new Set(keys).size).toBe(3);
   });
 });
 
