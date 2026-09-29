@@ -495,11 +495,20 @@ describe("inspectProductionMockSettings() (C13)", () => {
 
   it("真实仓库的生产面集合本身是干净的（分母不为零）", () => {
     const root = resolve(__dirname, "../../..");
+    // 与 IO 层同一套读法：**读不到就跳过**，不是读不到就崩。
+    // `.env.production` 被 `.gitignore` 排除（只有 `.env.example` 进版本库），
+    // 所以在 CI 上这个文件根本不存在——第一版这里直接 `readFileSync`，
+    // 本地全绿而 CI 报 ENOENT。跳过是对的：`PRODUCTION_CONFIG_FILES` 是「哪些路径算生产面」，
+    // 不是「这些文件一定存在」，缺一个文件要交给 `no production surface to inspect` 去说。
+    const byName = PRODUCTION_CONFIG_FILES.flatMap((name) => {
+      try {
+        return [{ path: name, content: readFileSync(resolve(root, name), "utf8") }];
+      } catch {
+        return [];
+      }
+    });
     const files: TextFile[] = [
-      ...PRODUCTION_CONFIG_FILES.map((name) => ({
-        path: name,
-        content: readFileSync(resolve(root, name), "utf8"),
-      })),
+      ...byName,
       ...readdirSync(resolve(root, ".github/workflows"))
         .filter((name) => name.endsWith(".yml"))
         .map((name) => ({
@@ -507,10 +516,9 @@ describe("inspectProductionMockSettings() (C13)", () => {
           content: readFileSync(resolve(root, ".github/workflows", name), "utf8"),
         })),
     ];
-    // 先确认扫到的面确实多于一条，否则下面那句 [] 只是「没扫到」的另一种写法。
-    expect(
-      files.filter((file) => PRODUCTION_CONFIG_FILES.includes(file.path)),
-    ).toHaveLength(PRODUCTION_CONFIG_FILES.length);
+    // 分母下限是 1 而不是 2：`vercel.json` 是跟踪的，至少它一定在。
+    // 写死成 2 就是把「本地有 .env.production」当成全仓事实，那是第一版犯的错。
+    expect(byName.length).toBeGreaterThanOrEqual(1);
     expect(inspectProductionMockSettings(files)).toEqual([]);
   });
 });

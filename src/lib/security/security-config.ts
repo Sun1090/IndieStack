@@ -184,6 +184,13 @@ export function inspectEnvFile(file: EnvFile): string[] {
 /**
  * 生产面上的配置不许把 mock 打开。
  *
+ * **覆盖面要说准，别说过头**：`.env.production` 被 `.gitignore` 排除（进版本库的只有
+ * `.env.example`），所以在 CI 上它根本不存在，**这条规则在 CI 里实际盯的是
+ * `vercel.json` 与带生产意图的工作流**。`.env.production` 这一格咬的是本地构建与
+ * 模板用户自己的 checkout——那不是零价值，但也不能拿「门禁在 CI 里跑」当它的覆盖率。
+ * 记在这里是因为「覆盖面被高估」正是本仓库反复付过学费的形状（C12 那份限流读数、
+ * C08 的 22 处台账，都是先量后写的）。
+ *
  * **失败封闭的那一半和报红的那一半同样重要**：一条都没扫到生产面时返回
  * `PROD_MOCK_NO_SURFACE`，而不是返回空数组。空数组与「生产面干净」长得一模一样，
  * 而这里的失败模式恰好是「扫描范围被扫空」——`.env.production` 被改名、vercel 配置
