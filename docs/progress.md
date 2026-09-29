@@ -5106,7 +5106,7 @@
 ## 2026-09-29 — C13 后半：「生产构型不许开着 mock」从注释里的一句话变成 `check:security` 的一条规则
 
 - 里程碑 / 版本：v0.12.0（任务池 C13 的后半；前半是 2026-09-25 落地的运行时那道闸）。
-- 状态：DONE。分支：`feat/c13-production-mock-gate`。基线 `e99e5925`。
+- 状态：DONE。分支：`feat/c13-production-mock-gate`（PR #166，已合并）。基线 `e99e5925`。
 - **为什么它是下一项**：roadmap 里 C 域只剩这一条可执行，而它是被 C12 落地时**量**出来的，
   不是设想的——`RATE_LIMIT_LEDGER` 那 18 条 mock 豁免与 `ROUTE_AUTH_LEDGER` 整族 `mock-only`
   的理由都写着「它们只在 mock 构型下存在」，而「生产不开 mock」当时**没有任何门禁在管**
@@ -5160,8 +5160,13 @@
 - 更新时间：2026-09-29（UTC）。
 
 ## 2026-09-29 — C09 后半：8 处 `user!.id` 一次收完，顺手给这类形状留了一条常驻检查
-- 里程碑 / 版本：v0.12.0（任务池 C09）。分支：`feat/c09-session-user-truth-table`。
-- 状态：DONE。基线 `9b6bd2e5`（C13 后半）。
+- 里程碑 / 版本：v0.12.0（任务池 C09）。分支：`feat/c09-session-user-classification`（PR #169）。
+- 状态：DONE。基线：PR #166（C13 后半）合并后的 `main`。
+  **分支换过一次名，连原因一起记下来**：第一版开在 `feat/c09-session-user-truth-table` 且叠在 C13 分支上，
+  而 #166 用 `--rebase --delete-branch` 合并时 GitHub 随即把它自动关闭——2026-09-27 那条记过的形状，
+  又踩了一次；按同一条 head 重开为 #168，又因 rebase 改写了祖先而 `CONFLICTING`。
+  **没有 force-push**：关掉 #168，从新 `main` 起一条新分支 cherry-pick 那一个提交，另开 #169。
+  前两次都不是代码问题，而「合并不是最后一次检查」这件事本身要写进台账，否则下一个人还会重排一遍。
 - **为什么它是下一项**：roadmap 上 C09 那段写着「那 8 处 `user!.id` 现在不动，原因是**重叠**而不是难度
   ——这 5 条分支正在重写同一批文件」。那条 46 项的待合并队列已于 2026-09-27 全部落地，
   **阻塞条件自己消失了**，而 roadmap 的正文不会自己改，于是「推迟」变成了「没人再回来」。
@@ -5209,7 +5214,7 @@
 
 ## 2026-09-29 — C13 的 CI 反证：一条本地全绿、CI 报 ENOENT 的用例，和它逼出来的覆盖面订正
 - 里程碑 / 版本：v0.12.0（PR #166 的 CI 反馈，不另起分支）。
-- 状态：DONE。分支：`feat/c13-production-mock-gate`。
+- 状态：DONE。分支：`feat/c13-production-mock-gate`（PR #166，已合并）。
 - **CI 抓到的，不是事后补的**：`Lint & Type Check` 与 `Unit Tests` 两个作业红在
   `Error: ENOENT: no such file or directory, open '/home/runner/work/IndieStack/IndieStack/.env.production'`
   ——C13 那条「真实仓库的生产面集合本身是干净的」用例直接 `readFileSync` 读 `.env.production`，
@@ -5232,6 +5237,6 @@
   一条门禁的失败要分清是「规则错了」还是「用例把环境的偶然当成事实」，
   这一条是后者，所以改的是用例与文档，不是判据。
 
-- 下一项：#166 / #167 转绿后合并，继续找缺陷。
+- 下一项：#166 已合并（`12f8f371`），C09 走 #169 重开；继续找缺陷。
 
 - 更新时间：2026-09-29（UTC）。
