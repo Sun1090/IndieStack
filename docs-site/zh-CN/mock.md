@@ -32,6 +32,11 @@ NEXT_PUBLIC_MOCK_ENABLED=true
 而 `NEXT_PUBLIC_*` 是构建期内联进产物的，一个被忘掉的变量就会让应用发一个假登录用户，
 并且让 `/api/health` 把 Supabase 报成 `skipped` 还回 200。现在两条来源过同一道闸门。
 
+配置面另有一道：`pnpm check:security` 会在任何生产面（`.env.production`、`vercel.json`，
+或声明了生产部署的工作流）把 `NEXT_PUBLIC_MOCK_ENABLED` 设成 `true` 时报红；一条生产面都
+没扫到时同样报红——扫空不等于干净。开发与 E2E 面**刻意**不在这条规则内：
+`e2e-parallel.yml` 开着 mock 跑构建是本来就该对的。
+
 ### 方式二：自动降级（仅限非生产环境）
 
 未设置 `NEXT_PUBLIC_MOCK_ENABLED` 时，下列条件**同时**成立才会自动启用：

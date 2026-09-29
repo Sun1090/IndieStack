@@ -13,6 +13,7 @@ import {
   inspectAuditReport,
   inspectClientModules,
   inspectEnvFile,
+  inspectProductionMockSettings,
   inspectSecurityGateFiles,
   inspectTrackedFiles,
   inspectWorkflowPermissions,
@@ -21,6 +22,11 @@ import {
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 export const ENV_FILE_NAMES = [".env", ".env.local", ".env.development", ".env.production"];
+/**
+ * C13 的生产面。`.env.production` 已经在 envFiles 里（权限那半条要读它），
+ * `vercel.json` 不在任何现有读取面里——它的 `env` 会被发到所有目标，含 production。
+ */
+export const PRODUCTION_CONFIG_NAMES = [".env.production", "vercel.json"];
 export const SECURITY_GATE_FILES = [
   ".github/workflows/secrets-scan.yml",
   ".github/workflows/security-config.yml",
@@ -98,6 +104,19 @@ function readWorkflowFiles(root) {
       path: `.github/workflows/${entry.name}`,
       content: fs.readFileSync(path.join(directory, entry.name), "utf8"),
     }));
+}
+
+function readProductionConfigs(root) {
+  const files = [];
+  for (const name of PRODUCTION_CONFIG_NAMES) {
+    try {
+      files.push({ path: name, content: fs.readFileSync(path.join(root, name), "utf8") });
+    } catch (error) {
+      if (error && typeof error === "object" && error.code === "ENOENT") continue;
+      throw error;
+    }
+  }
+  return files;
 }
 
 function readSecurityGateFiles(root) {
@@ -181,12 +200,23 @@ export function runSecurityConfigCheck(options = {}) {
     "cannot read security scanner files",
     issues,
   );
+  // C13：工作流也在生产面候选里（带生产意图的那些），所以把两者并起来再判。
+  // 工作流只读一次——重读一遍会把同一个读错误报两次，而门禁的输出要能当证据看。
+  // 上一步读工作流失败时这里是空数组，C13 会额外报一条 NO_SURFACE：两条都比一条准。
+  const productionConfigs = collectOrReportReadError(
+    options,
+    "productionConfigs",
+    () => [...readProductionConfigs(root), ...workflowFiles],
+    "cannot read production configuration files",
+    issues,
+  );
 
   issues.push(...inspectTrackedFiles(trackedFiles));
   for (const file of envFiles) issues.push(...inspectEnvFile(file));
   issues.push(...inspectClientModules(sourceFiles));
   issues.push(...inspectWorkflowPermissions(workflowFiles));
   issues.push(...inspectSecurityGateFiles(gateFiles));
+  issues.push(...inspectProductionMockSettings(productionConfigs));
 
   let auditReport;
   if (Object.prototype.hasOwnProperty.call(options, "auditReport")) {

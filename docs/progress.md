@@ -5102,3 +5102,59 @@
      正是漏在路径限定之外、被 pre-push 抓到的。
 - 回滚：每条 PR 独立可 revert；`main` 无 merge commit（全程 `--rebase`，`required_linear_history` 之下）。
 - 下一项：无队列可合。剩下的都是产品决策与外部权限，不是合并顺序问题。
+
+## 2026-09-29 — C13 后半：「生产构型不许开着 mock」从注释里的一句话变成 `check:security` 的一条规则
+
+- 里程碑 / 版本：v0.12.0（任务池 C13 的后半；前半是 2026-09-25 落地的运行时那道闸）。
+- 状态：DONE。分支：`feat/c13-production-mock-gate`。基线 `e99e5925`。
+- **为什么它是下一项**：roadmap 里 C 域只剩这一条可执行，而它是被 C12 落地时**量**出来的，
+  不是设想的——`RATE_LIMIT_LEDGER` 那 18 条 mock 豁免与 `ROUTE_AUTH_LEDGER` 整族 `mock-only`
+  的理由都写着「它们只在 mock 构型下存在」，而「生产不开 mock」当时**没有任何门禁在管**
+  （`rate-limit-policy.ts:63` 自己写着「`scripts/check-security-config.js` 里没有 MOCK 字样」）。
+  前半（`config.ts` 的生产闸）2026-09-25 已落地，配置面这一半一直空着。
+- 结果：新增 `inspectProductionMockSettings`（规则 `src/lib/security/security-config.ts`，
+  接线 `scripts/lib/security-config-check.js`）；`CI=true pnpm check:all` → exit 0，
+  **238 文件 / 2,815 用例**（main 是 238 / 2,789，`+26` 条全在这两个文件里）。
+- **判据怎么划的（这一步比规则本身重要）**：按「谁是生产面」划，**不**按「哪里出现 MOCK 字样」。
+  `.env.production` 按文件名是生产面；`vercel.json` 的 `env` 会被 Vercel 发到所有目标（含 production）；
+  CI 工作流**只有自己声明了生产意图时**才算（`vercel deploy --prod` / `--env production` /
+  `VERCEL_ENV: production` / `docker build --build-arg NEXT_PUBLIC_MOCK_ENABLED`）——
+  仓库里今天**一条都没有**（部署走 Vercel 的 git 集成，CI 只做构建与只读冒烟），所以那份名单是
+  **待命**的，而不是从「我猜生产部署长什么样」来的。
+  反面同样重要：按「出现 MOCK 字样」判会立刻把 `.env.example`、`.env.development`、`.env.local`
+  与 **`e2e-parallel.yml`**（开着 mock 跑 `pnpm build`，E2E 就要这个构型）判红——
+  那是一条没人会去修的假红，比没有门禁更糟。所以有一条用例直接把真实树上的这些面喂进去并断言 `[]`。
+- **失败封闭的那一半**：一条生产面都没扫到时返回 `no production surface to inspect` 而不是 `[]`。
+  「没扫到」和「干净」长得一模一样，而这正是本规则唯一会失效的方式（`.env.production` 改名、
+  vercel 配置挪走、IO 层忘了读）。与 `RATE_LIMIT_NOTHING_MEASURED`、
+  `query-error-channel` 的分母断言是同一条纪律。IO 层那侧另有 4 条用例，其中一条**不加任何注入**、
+  强制走真实读取——否则「规则接了线」与「规则能被调用」是两件事。
+- **三次变异核对，**前两刀各逼出实现里一个真缺陷**（这是本条最值钱的部分）**：
+  1. 往 `.env.production` 末尾追加 `=true`（文件里本来就有一行 `=false`）→ **没红**。
+     只读第一个赋值时这一刀不红，而「先关后开」正是部署平台上改环境变量最常见的形状。
+     改成「读全部、任一为 `true` 即红」，并在消息里打出 `found N assignment(s)`。
+  2. 把已有的 `=false` 改成 `=true` → 红（1 条赋值）。
+  3. `vercel.json` 顶层 `env` 设成 `true`，且是**行内** JSON → **没红**。
+     只锚行首的行级解析漏掉整行 JSON，于是另配一条 JSON 专用式（键必带引号、必紧跟 `{` 或 `,`，
+     这两个条件就是它的锚，不需要猜「行内还有没有别的东西」）。三刀跑完 `git status` 干净。
+  另有两条**在单测阶段就红**的实现缺陷：值解析没摘引号（`NEXT_PUBLIC_MOCK_ENABLED="true"`
+  会被读成非真值 → 一条永远不红的门禁），以及大小写那条我先写成了比运行时更严
+  （`TRUE` 判红），改成与 `evaluateMockMode` **逐字一致**并把理由写在旁边：更严造出的是假红。
+- 顺带修掉一处**已经过期的事实**：`rate-limit-policy.ts` 那段注释还写着「生产不许开 mock
+  目前没有任何门禁在管」，现在改成「两道闸各守一道」+ 明确这一列端点不加窗口是
+  **「进不来」的结论，不是「没人想过」**。按 D04 口径，漂移的陈述要改，不能只加新的。
+- 文档：双语文档站 `mock.md` / `zh-CN/mock.md` 的「方式一」各补一段配置面规则（含「E2E 面刻意在外」），
+  `docs/operations/environments.md` 的 Preview 安全段同步；roadmap C13 条改写成「两半都已落地」
+  并把上面这些出入记在条目上（不是记在 PR 描述里——roadmap 是给人回来查的）。
+- 明确**不**做的：① 不把 mock store 改成请求级（roadmap 原文就禁止，会重演 C01 的
+  「Action 写进去、RSC 读不到」）；② 不改 Dockerfile 的 `ARG NEXT_PUBLIC_MOCK_ENABLED`——
+  它从 build arg 取值、不写死，且 `isMockEnabled` 在生产构建里折成 `false`，
+  也就是说**镜像即使带着 `true` 构建出来，跑起来 mock 也是关的**；③ 不给 `mock-only` 家族
+  另加一条「路由必须真的 404」的门禁——C11 的 `ROUTE_AUTH_LEDGER` 已经核过
+  `isMockEnabled` 在每个 handler 的闭包里可达，另起一条只会把 `check:route-auth` 的职责
+  撕成两半（要加也只能加在那里，且是另一个池项）。
+- 回滚：单条 revert 即可，运行时那道闸（`config.ts`）不受影响——本条是纯增量。
+- 下一项：继续找缺陷。C 域按 roadmap 已无未落地条目；A 域只剩产品决策（`profiles.timezone` 去留、
+  「已读是否等于不必寄」），B 域整体等外部权限（Vercel 配额 + 云端 Supabase 凭据 + 隔离账号）。
+
+- 更新时间：2026-09-29（UTC）。
