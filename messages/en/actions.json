@@ -14,6 +14,7 @@
   "authRateLimit": "Too many requests. Please try again later.",
   "authSamePassword": "New password must be different from the old one",
   "authSessionExpired": "Session expired. Please sign in again.",
+  "authUnavailable": "We could not verify your session just now. Please try again.",
   "authSignupDisabled": "Sign up is currently disabled",
   "authUnexpectedFailure": "Unexpected error. Please try again.",
   "authUserExists": "An account with this email already exists",

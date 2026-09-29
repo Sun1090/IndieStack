@@ -21,7 +21,10 @@ const { createSessionMock, logApiErrorMock, fromMock, requireAuthMock } = vi.hoi
 }));
 
 vi.mock("@/lib/api-log", () => ({ logApiError: logApiErrorMock }));
-vi.mock("@/lib/auth/guards", () => ({ safelyRequireAuth: requireAuthMock }));
+vi.mock("@/lib/auth/guards", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/guards")>()),
+  safelyRequireAuth: requireAuthMock,
+}));
 vi.mock("@/lib/rate-limit", () => ({
   rateLimit: { check: async () => ({ allowed: true, resetIn: 1 }) },
 }));
@@ -68,6 +71,45 @@ beforeEach(() => {
 });
 
 describe("POST /api/stripe/checkout", () => {
+  /**
+   * 守卫失败有三种，三种说给人听的句子必须不同。
+   * 改之前这里只有一条 `401 + notAuthenticated`，于是「我们没读到会话」被答成「你没登录」——
+   * 客户端据此把这次结账当成身份问题，而重新登录并不会让那次读取成功。
+   */
+  it("确认没登录：401 + notAuthenticated", async () => {
+    requireAuthMock.mockResolvedValue({
+      success: false,
+      error: Object.assign(new Error("no session"), { code: "UNAUTHORIZED" }),
+    });
+    const response = await post();
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "notAuthenticated" });
+  });
+
+  it("权限不足：403 + notAuthenticated（结账端点只要求登录，不区分 FORBIDDEN）", async () => {
+    requireAuthMock.mockResolvedValue({
+      success: false,
+      error: Object.assign(new Error("nope"), { code: "FORBIDDEN" }),
+    });
+    const response = await post();
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "notAuthenticated" });
+  });
+
+  it("会话读失败：503 + authUnavailable，绝不是 401", async () => {
+    // 反向证据：只有这一条能证伪「一律 401」也能骗过上面那两条。
+    requireAuthMock.mockResolvedValue({
+      success: false,
+      error: Object.assign(new Error("Failed to fetch"), {
+        code: "SERVICE_UNAVAILABLE",
+      }),
+    });
+    const response = await post();
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "authUnavailable" });
+    expect(createSessionMock).not.toHaveBeenCalled();
+  });
+
   it("两道门禁读取都正常时创建会话并带上团队归属", async () => {
     const response = await post();
     expect(response.status).toBe(200);
@@ -162,7 +204,7 @@ describe("POST /api/stripe/checkout", () => {
       ),
     ].sort();
     // 地板值：正则一旦失效，「零缺失」就只是「什么都没在看」。
-    expect(codes.length).toBeGreaterThanOrEqual(9);
+    expect(codes.length).toBeGreaterThanOrEqual(10);
     for (const locale of ["en", "zh-CN"]) {
       const messages = JSON.parse(
         readFileSync(path.join(process.cwd(), "messages", locale, "actions.json"), "utf8"),
@@ -172,6 +214,9 @@ describe("POST /api/stripe/checkout", () => {
       }
     }
     // 反向：加了码又不登记，这里必须点名，而不是只报「少了一个键」。
+    // 新增守卫「我们没读到」那条分支时改过地板值：9 → 10。写 9 的话那个三元形状会让这条
+    // 测试自己红（它读不到三元里的键），而「让判据保持原样、让代码迁就判据」是这里想要的。
+    expect(codes).toContain("authUnavailable");
     expect(codes).toContain("checkoutUnavailable");
     expect(codes).toContain("alreadySubscribed");
   });

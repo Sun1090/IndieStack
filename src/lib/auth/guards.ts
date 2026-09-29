@@ -258,3 +258,30 @@ export function guardHttpStatus(error: AuthGuardError): 401 | 403 | 503 {
   if (error.code === "SERVICE_UNAVAILABLE") return 503;
   return 403;
 }
+
+/** 守卫失败说给人听的三个 i18n 键之一。少一个就意味着把一件事说成另一件。 */
+export type GuardFailureKey = "notAuthenticated" | "forbidden" | "authUnavailable";
+
+/**
+ * 将守卫失败映射为说给人听的那句（Server Action 使用）。
+ *
+ * 写成一个函数是因为**原地的写法正是这个缺陷本身**：8 处调用点各自写着
+ * `auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden"`，
+ * 那个三元只有两个出口，而 `AuthGuardError.code` 有四个值——于是 `SERVICE_UNAVAILABLE`
+ * （会话或角色读失败）被答成「forbidden」，也就是**一件关于用户权限的事实**，
+ * 而真实原因是我们自己没读到。管理员于是看到「你没有权限」，管理员列表于是显示成空的，
+ * 而日志里什么都没有。
+ *
+ * 三条出口各有各的修法，所以不能合并：
+ * - `UNAUTHORIZED` ⇒ 让去登录（`authSessionExpired` 那一类由调用方按自己的语义选）；
+ * - `FORBIDDEN` ⇒ 权限不足，重试多少次都一样；
+ * - `SERVICE_UNAVAILABLE` ⇒ 我们没读到，重试可能成功，**说成「没权限」会让用户白等**。
+ *
+ * `NOT_FOUND` 归到 `forbidden`：守卫层不产生它（见上），而真出现时「查不到」与
+ * 「没权限」对调用方的处理方式相同（都不重试），所以不必多一个键。
+ */
+export function guardFailureKey(error: AuthGuardError): GuardFailureKey {
+  if (error.code === "UNAUTHORIZED") return "notAuthenticated";
+  if (error.code === "SERVICE_UNAVAILABLE") return "authUnavailable";
+  return "forbidden";
+}
