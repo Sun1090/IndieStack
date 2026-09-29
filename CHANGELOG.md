@@ -44,6 +44,17 @@ All notable changes to IndieStack will be documented in this file.
   `user` 就改名，开白名单等于把「谁都可以把自己排除在外」写进规则。
   写这条检查时踩到的坑由用例挡住：`g` 标志正则的 `lastIndex` 跨调用保留，复用一条正则扫多行会让
   同一文件的第二处违规被跳过。
+  **接着把剩下 4 处会话读取也收掉**（`dashboard/layout.tsx`、`admin/layout.tsx`、
+  `admin/audit-logs/layout.tsx`、`profile/edit/page.tsx`）：它们读**角色**时读失败已经答成抛错
+  而不是 redirect（C08 那一族修的），唯独**会话**这一次读取仍然把一次 Auth 抖动答成
+  「你没登录」——客户端清掉本地会话并跳登录页，而重新登录走的正是同一条读取。
+  常驻检查因此有**两条判据，第二条才治本**：「`src/app/**` 下不得有 `user!`」只判症状，
+  而一个新页面写 `const { data: { user } } = await supabase.auth.getUser()` 再配
+  `if (!user) redirect(...)` 时它全绿——**那正是这 4 个文件原来的写法**。
+  第二条判「`src/app/dashboard/**` 下不得直接 `auth.getUser()`」，被认可的入口只有
+  `requireSessionUser` 与 `requireAuth`；另有一条用例把 `auth.getSession()` 显式排除在外
+  （settings 页用它算「当前这台设备」，只用于显示标记、不参与权限判定）。
+  顺带删掉 2 个因此变成未使用的 import——`pnpm lint` 不报未使用的 import。
   没有动的：`proxy.ts`（`user = null` → 重定向登录页是正确答案）、`mfa/page.tsx` 的 `refreshSession`。
 
 ### Added

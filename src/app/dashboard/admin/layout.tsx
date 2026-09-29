@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { getTranslations } from "next-intl/server";
 import { ROUTES } from "@/lib/constants";
@@ -16,13 +17,7 @@ import { ROLE_HIERARCHY } from "@/lib/auth/roles";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect(ROUTES.login);
-  }
+  const user = await requireSessionUser(supabase);
 
   // 从 profiles 表获取用户角色
   const { data: profile, error: profileError } = await supabase

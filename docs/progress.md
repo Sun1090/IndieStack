@@ -5240,3 +5240,44 @@
 - 下一项：#166 已合并（`12f8f371`），C09 走 #169 重开；继续找缺陷。
 
 - 更新时间：2026-09-29（UTC）。
+
+## 2026-09-29 — C09 再往前一步：剩下 4 处会话读取收进同一个入口，并给这类形状加一条治本的判据
+
+- 里程碑 / 版本：v0.12.0（PR #169 的后续）。分支：`feat/c09-session-layouts`。
+- 状态：DONE。基线：`2bd952dd`（#169 合并后的 main）。
+- **为什么接着做这条**：#169 修的是 8 个页面里 `user!` 那一种**症状**，而同一批文件里还留着
+  4 个 layout/页面用另一种写法读会话——`const { data: { user } } = await supabase.auth.getUser()`
+  加 `if (!user) redirect(ROUTES.login)`。它们读**角色**时读失败已经答成抛错而不是 redirect
+  （那是 C08 那一族修的，代码注释就写在 `admin/layout.tsx:36`），**唯独会话这一次读取仍然把
+  一次 Auth 抖动答成「你没登录」**：客户端清掉本地会话并跳登录页，而重新登录走的正是同一条读取。
+  四个文件：`dashboard/layout.tsx`、`admin/layout.tsx`、`admin/audit-logs/layout.tsx`、
+  `profile/edit/page.tsx`。
+- 落地：全部改走 `requireSessionUser(supabase)`。行为变化只有一处、方向单一：
+  **可重试的读取故障**从「跳登录页」变成「错误边界 + 重试按钮」；
+  **真的没登录**（`AuthSessionMissingError`）仍然是重定向，一行没变——所以这次改动
+  碰不到任何正常路径。实测 `src/app/dashboard/**` 里 `auth.getUser()` 由 **4 处 → 0 处**。
+- 顺带删掉 2 个因此变成未使用的 import（`dashboard/layout.tsx` 的 `redirect` + `ROUTES`、
+  `profile/edit/page.tsx` 的 `ROUTES`）。**`pnpm lint` 不报未使用的 import**——
+  那是 type-check / bundler 的事，而 `next build` 也不会因为它失败（tree-shaking 照常）。
+  所以这一步是逐个查出来的，记在这里免得下一个人以为 lint 过了就没人用。
+- **常驻检查加了第二条判据，而且第二条才治本**：
+  1. 「`src/app/**` 下不得有 `user!`」——只判**症状**。它的盲区是实测出来的：一个新页面写
+     `const { data: { user } } = await supabase.auth.getUser()` 再配 `if (!user) redirect(...)`
+     时第 1 条**全绿**，而缺陷原封不动又来了一遍——那正是这 4 个文件原来的写法。
+  2. 「`src/app/dashboard/**` 下不得直接 `auth.getUser()`」——判**成因**。被认可的入口只有
+     `requireSessionUser`（只要用户）与 `requireAuth`（还要角色）。
+     范围只到 `dashboard/**`：`proxy.ts` 重定向是对的、`api/auth/callback` 要区分 error、
+     route handler 走 guards，拿一条规则覆盖它们就是把判据做成噪音。
+     另有一条用例把 `auth.getSession()` **显式排除在外**并写明理由（settings 页用它算
+     `currentSessionId`，只用于**显示**「这台」标记、不参与任何权限判定，解析不出 token 时
+     返回 null，fail-closed）——把它一并禁掉就是拿一条造假的规则换一次改动。
+- 变异核对（真实树，改完复原）：
+  ① 把 `billing/page.tsx` 退回自己解构 `auth.getUser()` + `if (!user) redirect` → 第 2 条红并
+  点名 `dashboard/billing/page.tsx`；复原后 8 条全绿。
+  ② 第 1 条的变异（退回 `user!.id`）在 #169 里已做过。
+- 读数：`CI=true pnpm check:all` → exit 0，**240 文件 / 2,831 用例**（#169 是 2,828，`+3` 条
+  是新增的第 2 条判据那三例）。
+- 下一项：继续找缺陷。A 域剩产品决策，B 域等外部权限，C/D 两域按 roadmap 已无未落地条目。
+  C09 到此为**全部收完**：全仓 `src/app/**` 再无 `user!`，仪表盘再无直接 `auth.getUser()`。
+
+- 更新时间：2026-09-29（UTC）。

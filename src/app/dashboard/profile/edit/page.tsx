@@ -8,9 +8,8 @@ export const dynamic = "force-dynamic";
 
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
-import { ROUTES } from "@/lib/constants";
 import { ProfileEditForm } from "@/components/forms/profile-edit-form";
 import { AvatarUploadForm } from "@/components/forms/avatar-upload-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,12 +22,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ProfileEditPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await requireSessionUser(supabase);
   const t = await getTranslations("dashboard");
-
-  if (!user) redirect(ROUTES.login);
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")

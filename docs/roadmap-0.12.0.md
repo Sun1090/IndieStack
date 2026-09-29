@@ -458,11 +458,27 @@
     类型上从此不必再假装可空。落地读数：`src/app/**` 里 `user!` 由 **15 处 → 0 处**。
     **没有**改的：`proxy.ts`（`user = null` → 重定向登录页是正确答案，把 error 单独放行会把一次
     普通的过期会话变成错误边界页）、`mfa/page.tsx` 那条 `refreshSession`（要连 MFA 流程一起判）。
-    另加一条常驻检查 `session-user-wiring.test.ts`（读源码形状，判据只有「`src/app/**` 下不得有
-    `user!`」+ 一个非空分母 + 一条反向证据），**不**接成新的 `check:*` 脚本：判据只有一个记号，
-    注册一条新门禁要多维护四处接线，代价大于收益（先例：`mock/config.test.ts` 钉构建期折叠）。
+    另加常驻检查 `session-user-wiring.test.ts`（读源码形状，**不**接成新的 `check:*` 脚本：判据
+    只有一两个记号，`pnpm test` 在 pre-push 与 CI 都跑，注册一条新门禁要多维护四处接线，代价大于
+    收益；先例：`mock/config.test.ts` 钉构建期折叠）。它有两条判据，**后者比前者强**：
+    1. 「`src/app/**` 下不得有 `user!`」+ 非空分母 + 反向证据（地板值 8 个页面在用 helper）；
+    2. 「`src/app/dashboard/**` 下不得直接 `auth.getUser()`」+ 非空分母 + 反向证据（地板值 12
+       = 8 页 + 4 个 layout/页面）+ 一条把 `auth.getSession()` 显式排除在外的用例。
+       **为什么第 2 条才治本**：第 1 条只判症状，而一个新页面写
+       `const { data: { user } } = await supabase.auth.getUser()` 再配 `if (!user) redirect(...)`
+       时第 1 条全绿而缺陷原封不动又来一遍——**它正是本条接着修掉的 4 个 layout 的写法**。
+       被认可的入口只有 `requireSessionUser`（只要用户）与 `requireAuth`（还要角色）。
+       范围只到 `dashboard/**`：`proxy.ts` 重定向是对的、`api/auth/callback` 要区分 error、
+       route handler 走 guards，拿一条规则去覆盖它们就是把判据做成噪音。
     它的判据**没有白名单**——真出现一个合法的可空局部变量也叫 `user` 时，修法是改名，
     开白名单等于把「谁都可以把自己排除在外」写进规则。
+    **2026-09-29 接着把剩下 4 处收完**（`dashboard/layout.tsx`、`admin/layout.tsx`、
+    `admin/audit-logs/layout.tsx`、`profile/edit/page.tsx`）：它们读的是**角色**，
+    读失败时本来就已经答成抛错而不是 redirect（C08 那一族修的），唯独**会话**这一次读取仍然
+    把故障答成「你没登录」——而重新登录走的正是同一条读取，用户除了被登出得不到任何新信息。
+    改完它们，第 2 条判据才有东西可守。顺带删掉 2 个因此变成未使用的 import
+    （`dashboard/layout.tsx` 的 `redirect` + `ROUTES`、`profile/edit/page.tsx` 的 `ROUTES`）——
+    `pnpm lint` 不报未使用的 import（那是 type-check / bundler 的事），所以这一步是逐个查出来的。
     **本条的另一半仍然不接门禁，理由不变**：合法状态（确实没有会话 → 回落登录页是对的）与
     「没读到」在 AST 上都只是「没取 `error`」，先接会把正常写法一并点掉。
     顺带记一条自己踩到的：`g` 标志正则的 `lastIndex` 是**跨调用保留**的，复用同一条正则扫多行

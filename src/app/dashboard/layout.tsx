@@ -6,9 +6,8 @@
 
 export const dynamic = "force-dynamic";
 
-import { redirect } from "next/navigation";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
-import { ROUTES } from "@/lib/constants";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
@@ -18,13 +17,7 @@ import { SessionHeartbeat } from "@/components/dashboard/session-heartbeat";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect(ROUTES.login);
-  }
+  await requireSessionUser(supabase);
 
   return (
     <div className="flex min-h-screen flex-col">
