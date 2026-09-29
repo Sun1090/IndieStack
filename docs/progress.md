@@ -5416,7 +5416,7 @@
   台账条目里照旧写着这句，`RATE_LIMIT_GAP_MARKER` 仍然保留（缺口数仍是 2）。
   顺带按 D04 把条目里那句已经过期的「没有任何东西拦住这件事」改掉。
 - 读数：`CI=true pnpm check:all` → exit 0，**243 文件 / 2,876 用例**（上一条 241 / 2,864，
-  `+13` = 缓存 10 + health 路由 3）；`pnpm build` → exit 0。
+  `+12` = 缓存 10 + health 路由 2）；`pnpm build` → exit 0。
 - 下一项：另一条缺口 `GET /api/og` 的关法是「先按参数做缓存」，同一类工作；
   A 域剩产品决策，B 域等外部权限，C/D 两域按 roadmap 已无未落地条目。
 
