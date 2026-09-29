@@ -21,6 +21,31 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Added
 
+- **「生产构型不许开着 mock」从此是门禁，不只是注释里的一句话**（C13 后半）：运行时那道闸早在
+  2026-09-25 就补上（`evaluateMockMode` 见 `NODE_ENV=production` 直接返回 false，模块级常量写成
+  Next 能折成 `false` 的形状，实测 2951.7 → 2926.8 kB），但**配置面一直没人管**——
+  `scripts/check-security-config.js` 里连一个 MOCK 字样都没有，于是「生产不开 mock」这句话
+  只存在于人的记忆里，而它撑着 18 条限流豁免与整族 `mock-only` 路由的豁免理由。
+  `pnpm check:security` 新增 `inspectProductionMockSettings`：
+  **判据按「谁是生产面」划，不按「哪里出现 MOCK 字样」**——`.env.production` 按文件名是生产面，
+  `vercel.json` 的 `env` 会被 Vercel 发到所有目标（含 production），CI 工作流只有**自己声明了生产意图**
+  （`vercel deploy --prod` / `--env production` / `VERCEL_ENV: production` /
+  `docker build --build-arg NEXT_PUBLIC_MOCK_ENABLED`）时才算。刻意不把「出现 MOCK_ENABLED」当判据：
+  `.env.example`、`.env.development`、`.env.local` 与 `e2e-parallel.yml`（开着 mock 跑 `pnpm build`，
+  E2E 就要这个构型）都会因此变红，而没有人会去修那样的假红。
+  **失败封闭的那一半**：一条生产面都没扫到时报 `no production surface to inspect` 而不是空数组——
+  「没扫到」和「干净」长得一模一样，这是本仓库反复付过学费的形状（`RATE_LIMIT_NOTHING_MEASURED`、
+  `query-error-channel` 的分母断言）。值只认字符串 `true`，与 `evaluateMockMode` 逐字一致，
+  刻意不比运行时更严：更严造出的是假红。
+  三次变异核对都在真实仓库上跑过，**前两刀各逼出实现里一个真缺陷**：① 往 `.env.production` 末尾追加
+  `=true`（文件里本来就有一行 `=false`）没红——只读第一个赋值时这一刀不红，而「先关后开」正是部署平台
+  改环境变量最常见的形状，于是改成读全部、任一为 true 即红；③ `vercel.json` 顶层 `env` 设成 `true`
+  （**行内** JSON）没红——只锚行首的解析漏掉整行 JSON，于是另配一条 JSON 专用式（键必带引号、
+  必紧跟 `{` 或 `,`）。跑完 `git status` 干净。规则在 `src/lib/security/security-config.ts`，
+  接线在 `scripts/lib/security-config-check.js`，75 条规则单测 + 4 条 IO 单测（含一条强制走真实读取
+  的，证「规则接了线」与「规则能被调用」不是同一件事）。
+  顺带修掉 `rate-limit-policy.ts` 里那句已经过期的事实（「目前没有任何门禁在管」）。
+
 - **一次读失败不再被断言成「这条查询不会出错」**（C08）：新增 `pnpm check:query-errors`，扫 `src/**`
   里所有「`await` 一条 `.from()/.rpc()` 链的结果，再把它断言成一个不含 `error` 成员的类型」的写法。
   这类断言不是普通的形式问题：它在类型上宣称错误不可能发生，于是下面的代码可以放心地把**读失败**当成

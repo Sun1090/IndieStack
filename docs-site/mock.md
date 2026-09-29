@@ -35,6 +35,12 @@ fallback below, while `NEXT_PUBLIC_*` values are inlined into the build artifact
 variable made the app serve a fake logged-in user **and** made `/api/health` report Supabase as
 `skipped` with a 200. Both branches now go through the same production check.
 
+The configuration side is checked too: `pnpm check:security` fails if a production surface
+(`.env.production`, `vercel.json`, or a workflow that declares a production deploy) sets
+`NEXT_PUBLIC_MOCK_ENABLED=true`, and fails again if it finds no production surface at all —
+an empty scan is not a clean scan. Development and E2E surfaces are deliberately outside that
+rule: `e2e-parallel.yml` builds with mock on on purpose.
+
 ### 2. Automatic fallback (non-production only)
 
 If `NEXT_PUBLIC_MOCK_ENABLED` is unset, Mock mode still activates when **all** of the

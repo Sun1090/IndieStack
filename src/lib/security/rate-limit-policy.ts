@@ -60,12 +60,18 @@ const MOCK_SURFACE =
 /**
  * mock 面那条**没被美化掉**的残余暴露。它是真话，也是这一列端点共同的边界条件：
  * 开着 mock 的生产部署里，重复打这些端点会让内存涨——暴露的是内存与假数据，不是真实数据。
- * 「生产不许开 mock」目前没有任何门禁在管（`scripts/check-security-config.js` 里没有 MOCK 字样），
- * 那属于 roadmap 另开的一条，不是这 15 条端点各自该带的窗口。
+ * 这一段是 C12 写作时的读数，2026-09-29 起**不再成立**：C13 已经把「生产不许开 mock」
+ * 落成 `pnpm check:security` 里的 `inspectProductionMockSettings`，运行时那道闸在
+ * `src/lib/mock/config.ts`（`evaluateMockMode` 见 `NODE_ENV=production` 直接返回 false）。
+ * 所以下面那句话的结论是「进不来」，而它守的仍然是另一件事——**万一**哪次真进来
+ * （平台上的环境变量、绕过一次构建、或哪条配置路径这条门禁还没覆盖），
+ * 这一列端点没有窗口这件事要有据可查，而不是靠一句「反正进不来」。
  */
 const MOCK_SURFACE_RESIDUE =
   "留一句实话：假 store 是进程内数组、追加没有上界，所以在开着 mock 的部署里重复 POST 会涨内存——" +
-  "那是配置边界问题，不是这一列端点该加的窗口。";
+  "「生产构型不许开着 mock」由 C13 的 check:security 规则与 config.ts 的运行时常量各守一道，" +
+  "所以这一列端点不加窗口是「进不来」的结论，不是「没人想过」。";
+
 
 function mockOnly(what: string): RateLimitEntry {
   return { reason: `${MOCK_SURFACE}${what}。${MOCK_SURFACE_RESIDUE}` };

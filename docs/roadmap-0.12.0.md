@@ -518,15 +518,43 @@
     显式把这个变量带进生产就没人拦（`scripts/check-security-config.js` 里没有 `MOCK` 字样，已 grep 确认）。
     登记为 C13。
 
-25. C13 **生产构型不许开着 mock**（C12 落地时量出来的，不是设想出来的）：
+25. C13 （**2026-09-29 两半都已落地**）**生产构型不许开着 mock**（C12 落地时量出来的，不是设想出来的）：
     `src/lib/mock/config.ts` 的 `isMockEnabled` 只要 `NEXT_PUBLIC_MOCK_ENABLED === "true"` 就为真，
     **不看 `NODE_ENV`**——那个环境判断只护住「Supabase 未配置时自动启用」那一支。于是带着这个变量的
     生产部署会把 15 条 `/api/e2e/*` mock 端点与假收件箱原样暴露出去，而 `RATE_LIMIT_LEDGER` 里
-    那 18 条豁免的判断前提恰恰是「它们只在 mock 构型下存在」。判据该长什么样：
-    `pnpm check:security` 里加一条——生产环境文件（`.env.production`、CI/CD 与 vercel 配置里可见的
-    生产变量）出现 `NEXT_PUBLIC_MOCK_ENABLED=true` 即红；`next build` 阶段能读到变量的一侧
-    也可以直接 fail。范围只有这一个文件与这条规则，**不要**顺手把 mock store 改成请求级
-    （那会重演 C01 记下的「Action 写进去、RSC 读不到」）。
+    那 18 条豁免的判断前提恰恰是「它们只在 mock 构型下存在」。
+    - **前半（运行时那道闸，2026-09-25 已完成）**：`evaluateMockMode(env)` 成唯一真值表，
+      两条来源（显式开关 / 无 Supabase 自动降级）都先过 `NODE_ENV === "production"` 即返回 false；
+      `isMockEnabled` 写成 `NODE_ENV === "production" ? false : evaluateMockMode(process.env)`
+      这个**可被 Next 折成常量**的形状——折不出来整套 mock 客户端会留在产物里
+      （实测 2951.7 → 2926.8 kB，24.9 kB 只占基线 0.9%，`check:bundle` 的 5% 预算拦不住，
+      由 `config.test.ts` 读源码钉住写法）。理由与影响见 CHANGELOG 与双语文档。
+    - **后半（配置面那道闸，2026-09-29 已完成）**：`pnpm check:security` 新增
+      `inspectProductionMockSettings`（规则 `src/lib/security/security-config.ts`）。
+      **判据按「谁是生产面」划，不按「哪里出现 MOCK 字样」**：`.env.production` 按文件名是生产面；
+      `vercel.json` 的 `env` 会被 Vercel 发到所有目标（含 production）；CI 工作流**只有自己声明了
+      生产意图时**才算（`vercel deploy --prod` / `--env production` / `VERCEL_ENV: production` /
+      `docker build --build-arg NEXT_PUBLIC_MOCK_ENABLED`）——仓库里今天一条都没有，部署走 Vercel
+      的 git 集成，CI 只做构建与只读冒烟，所以那份名单是**待命**的。
+      **不**把「出现 MOCK_ENABLED」当判据：`.env.example`、`.env.development`、`.env.local` 与
+      `e2e-parallel.yml`（开着 mock 跑 `pnpm build`，E2E 就要这个构型）都会直接变红，
+      而没有人会去修那样的假红——这条「不做什么」和规则本身一样重要。
+      **失败封闭的那一半**：一条生产面都没扫到时报 `no production surface to inspect` 而不是空数组，
+      因为「没扫到」和「干净」长得一模一样（与 `RATE_LIMIT_NOTHING_MEASURED`、
+      `query-error-channel` 的分母断言同一条纪律）。
+      值只认字符串 `true`，与 `evaluateMockMode` 逐字一致（大小写敏感、不接受 `1`/`yes`）——
+      这里刻意不比运行时更严，更严会造出假红。
+      **三次变异核对**（同一分母 75 条，全在真实仓库上跑过，跑完 `git status` 干净）：
+      ① 往 `.env.production` 末尾追加 `=true`（文件里本来就有一行 `=false`）→ 红，
+      **这刀逼出了实现里一个真缺陷**：只读第一个赋值时这一刀不红，而「先关后开」正是部署平台上
+      改环境变量最常见的形状，于是改成「读全部、任一为 true 即红」；
+      ② 把已有的 `=false` 改成 `=true` → 红（`found 1 assignment(s)`）；
+      ③ `vercel.json` 顶层 `env` 设成 `true`（**行内** JSON）→ 红——这刀逼出第二个真缺陷：
+      只锚行首的行级解析漏掉整行 JSON，于是另配一条 JSON 专用式（键必带引号、必紧跟 `{` 或 `,`）。
+      顺带修掉 `rate-limit-policy.ts` 里那句已经过期的事实（「目前没有任何门禁在管」），
+      换成「两道闸各守一道 + 这一列端点不加窗口是『进不来』的结论，不是『没人想过』」。
+    - 范围守住：只加这一条规则与它的单测，**没有**顺手把 mock store 改成请求级
+      （那会重演 C01 记下的「Action 写进去、RSC 读不到」）。
 
 ### D. 文档事实与治理（来自 I01 与退出报告的文档矛盾清单）
 

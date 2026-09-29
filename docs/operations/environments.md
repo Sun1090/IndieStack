@@ -31,6 +31,12 @@
   **没有**生产闸门，一个忘在 Preview 环境组里的 `true` 就会让对外可见的预览站发假登录用户。
   现在 `evaluateMockMode()` 对生产构型一律返回 `false`，误设的结果是「按真实凭据走、缺凭据就如实失败」，
   不再是静默的 mock。
+- 仓库里**看得见**的生产配置（`.env.production`、`vercel.json`）另有 `pnpm check:security`
+  的 `inspectProductionMockSettings` 规则：任一处把 `NEXT_PUBLIC_MOCK_ENABLED` 设成 `true` 即红。
+  这不是重复运行时那道闸，而是为了让「生产不开 mock」这句话有第二份可核对的出处——
+  `RATE_LIMIT_LEDGER` 里 18 条 mock 豁免与 `ROUTE_AUTH_LEDGER` 里整族 `mock-only` 的理由都写着
+  「它们只在 mock 构型下存在」，那句话说错了没有人会知道。E2E 与本地开发面**不**在这条规则内：
+  `e2e-parallel.yml` 开着 mock 跑 `pnpm build` 是对的，按「出现 MOCK 字样」判会直接把它判红。
 - Stripe 使用 test key；生产 webhook secret 不进 preview
 
 ## 免费版保活与自动恢复
