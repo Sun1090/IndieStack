@@ -7,6 +7,7 @@
  */
 
 import { jsonNoStore } from "@/lib/api-response";
+import { createProbeCache } from "@/lib/health/probe-cache";
 import { evaluateMockMode } from "@/lib/mock/config";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
@@ -18,13 +19,37 @@ const startupTime = Date.now();
 /** DB 可达性探测超时（健康检查永不 hanging） */
 const REACHABLE_TIMEOUT_MS = 3000;
 
+/**
+ * 探测结果的缓存时长。5 秒是这么定的：Vercel Cron 的保活是**每天一次**，
+ * 所以哪怕 5 秒也把日常成本降到二十万分之一；而 Docker HEALTHCHECK 的 `--start-period=20s`
+ * 与负载均衡器的间隔通常在秒级，5 秒不会让「恢复」被看到得太迟。
+ * 真正的目标是 **single-flight**：并发的 20 个探针只打一次 Supabase，TTL 只是顺手把
+ * 先后到达的那几簇也并掉。
+ */
+const REACHABLE_CACHE_TTL_MS = 5000;
+
 type DependencyStatus = "ok" | "missing" | "unreachable" | "skipped";
 
 export const dynamic = "force-dynamic";
 
-/** 轻量探测 DB 可达性：使用公开 anon 身份 limit(1)，不借 service_role 做健康检查 */
+/**
+ * 进程级缓存。**注意它随进程走**：serverless 下每个实例各有一份，
+ * 所以这不是「一个共享缓存」，而是「一个实例内不再重复打」。要真正全局共享得靠
+ * 平台或 Redis，那不在本条的射程里——写在这里是为了别把效果说过头。
+ */
+const reachableCache = createProbeCache<boolean>({ ttlMs: REACHABLE_CACHE_TTL_MS });
+
+/**
+ * DB 可达性：走缓存（short TTL + single-flight），未配置时直接答不可达且**不打网络**。
+ * 真实的一次往返在 `probeSupabaseReachable()` 里。
+ */
 async function checkSupabaseReachable(configured: boolean): Promise<boolean> {
   if (!configured) return false;
+  return reachableCache.read(() => probeSupabaseReachable());
+}
+
+/** 轻量探测 DB 可达性：使用公开 anon 身份 limit(1)，不借 service_role 做健康检查 */
+async function probeSupabaseReachable(): Promise<boolean> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return false;

@@ -21,6 +21,24 @@ All notable changes to IndieStack will be documented in this file.
 
 ### Fixed
 
+- **`GET /api/health` 的无凭据调用不再把成本按次数转嫁给 Supabase**：`RATE_LIMIT_LEDGER` 里那条
+  **已知缺口**自己写明了两件事——按 IP 的滑窗会把监控自己读成 429（所以「加窗口」在这条上不是
+  免费的），而它每次请求都真打一次 `profiles limit(1)` 的 anon 探测，于是**无凭据的重复调用
+  把成本按次数转嫁出去，没有任何东西拦住**。这一条关掉的是后半句：探测现在走
+  `createProbeCache`（`src/lib/health/probe-cache.ts`，TTL 5s + **single-flight**）。
+  single-flight 比 TTL 更关键——TTL 只挡得住先后到达的重复调用，而放大面通常来自**并发**的一簇；
+  只加 TTL 的话 20 个并发探针仍然是 20 次往返。**失败也缓存**（TTL 相同）：Supabase 挂掉时
+  正是最需要挡住的时刻，「失败不缓存」看起来更实时，实际是把一次故障放大成一串。
+  顺带钉住一个测试侧的坑：路由里有了**进程级**状态，原来的 8 条用例用静态 import 会共用一份缓存，
+  于是「先失败再成功」的两条会读到上一条的缓存值。改成每条用例重新 import 一份模块实例——
+  **不给生产代码加「供测试清缓存」的导出**，那是另一种谎。
+  **剩下的那一半说清楚**：端点本身仍无凭据、无窗口；缓存是**进程内**的，serverless 下每个实例
+  各有一份，挡的是「一个实例被重复打」而不是「整个部署被重复打」。要关掉剩下那半需要把
+  「探针」与「对外可见的健康端点」分成两条路径，或引入跨实例共享缓存——台账条目里照旧写着。
+  三次变异核对：拆掉 single-flight → 3 条红（并发 20 变 20 次往返）；失败不缓存 → 2 条红；
+  路由不查缓存 → 1 条红。
+
+
 - **Auth 读取一次抖动，八个仪表盘页面抛的是 `TypeError` 而不是「暂时不可用」**（C09 后半）：
   `dashboard`、`billing`、`notifications`、`profile`、`projects`、`projects/[id]`、`settings`、`team`
   此前写的是同一个形状——只解构 `user`、不取 `error`、然后 `user!.id`。那条 `!` 在类型上宣称
