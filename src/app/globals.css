@@ -1,6 +1,20 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* 门禁自己不要被当成「使用」，文档同理——Tailwind 扫的是**代码**，不是散文。
+   两处量出来的：① `src/lib/tailwind/` 里是 `check:tailwind` 的规则本体与它的用例，它们必须
+   **逐字**写着被禁的那个类名（正则名、测试 fixture），否则门禁就检查不了它；② Markdown 也
+   在 Tailwind 的默认扫描范围里，所以 `CHANGELOG.md` 与历史 roadmap 里**提到**某个类名，
+   等于在用它。两条合起来的后果不是难看，而是量不到：`rg outline-none .next/static/chunks/*.css`
+   在源码**已经修完**之后仍然有命中，于是「从产物取证」这条路自己被堵住了——
+   而那恰恰是判据失效时最该看的地方。（顺带澄清一个容易误会的地方：Tailwind v4 里
+   `outline-hidden` 自带 `@media (forced-colors:active)` 兜底，`outline-none` 没有；
+   所以产物里出现 `outline-none` 形状的死规则，是「源码已修完」这个事实的**反证**。）
+   `@source not` 是 v4 的排除指令：它排除的是**扫描**，不影响那些文件被 TypeScript 编译、
+   也不影响 docs-site 自己的构建（那是另一套 VitePress + 自己的 CSS）。 */
+@source not "../lib/tailwind";
+@source not "../../../**/*.md";
+
 /* v4 原生 class 暗色变体（替代 tailwind.config darkMode:"class"，E01 试点/ADR-013） */
 @custom-variant dark (&:is(.dark *));
 

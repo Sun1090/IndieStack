@@ -5460,3 +5460,52 @@
 - 下一项：A 域剩产品决策，B 域等外部权限，C/D 两域按 roadmap 已无未落地条目。
 
 - 更新时间：2026-09-29（UTC）。
+
+## 2026-09-29 — 把最后一条非阻断告警清零：25 处 `outline-none` + 一条更怪的「门禁污染自己的取证途径」
+
+- 里程碑 / 版本：v0.12.0。分支：`fix/shadcn-outline-hidden`（PR #175）。
+- 状态：DONE。基线：`9b67ca28`（#174 合并后的 main）。
+- **起点**：把每道门禁自己的读数扫一遍找非零项，只剩一条：
+  `check:tailwind` 的 `⚠️ [TW_RENAMED_UTILITY] src/components/ui:1 上游 shadcn 基元里还有
+  25 处 v3 类名待跟随上游收口（非阻断）`。**全量统计发现 25 处全是同一个**：
+  `outline-none` → `outline-hidden`。
+- **这不是风格问题，从本仓库自己构建出来的 CSS 里量到**：
+  `.outline-none{outline-style:none}`，而
+  `.outline-hidden{outline-style:none;outline-offset:2px;outline:2px solid #0000}`，
+  且 `outline-hidden` 自带 `@media (forced-colors:active)` 兜底。
+  那圈 `transparent` 轮廓正是**高对比度模式下浏览器替我们画的焦点环**——
+  也就是说那 25 个控件（按钮 / 输入框 / 下拉 / 开关 / 标签页 / 对话框 / 右键菜单…）
+  在 Windows 高对比度模式下**只剩键盘操作**的用户彻底看不见焦点。
+  「等上游」不成立：shadcn 上游同样在往 `outline-hidden` 收；本地改完下次 `shadcn add`
+  覆盖也只是回到今天这个形状（而门禁会再报一次）。
+- **顺带查出本轮最怪的一条：门禁自己把被禁的类名塞进了产物。**
+  修完源码 25 处之后，`rg outline-none .next/static/chunks/*.css` **仍然有命中**——
+  三段死规则（`.outline-none`、`.hover\:outline-none:hover`、`.focus-visible\:outline-none:focus-visible`）。
+  逐一量出来源（每一刀都做完复原）：
+  1. 假设一：陈旧的 `.next-e2e-0/` 产物被扫进来了 → 移走重建，**仍有**残留，排除。
+  2. 假设二：`coverage/`（测试覆盖率 HTML 内嵌源码）→ 移走重建，**仍有**残留，排除。
+  3. 真因两条：`src/lib/tailwind/` 里是 `check:tailwind` 的规则本体与它的用例，
+     它们**必须逐字**写着被禁的类名（正则名 + 测试 fixture），否则门禁就检查不了它；
+     以及 **Markdown 也在 Tailwind 的默认扫描范围里**——`CHANGELOG.md` 与历史 roadmap 里
+     **提到**某个类名等于在用它（连本条 CHANGELOG 自己也贡献了一段，这是个闭环）。
+- 修法：两条 `@source not`（v4 的排除指令，只排除**扫描**，不影响 TypeScript 编译，
+  也不影响 docs-site 自己的构建——那是另一套 VitePress + 自己的 CSS）：
+  排除门禁目录、排除 `**/*.md`。写成一句原则放在 CSS 注释里：**Tailwind 该扫的是代码，不是散文。**
+  量到的效果：产物里 `outline-none` **归零**，CSS 总体积 **73952 → 73128 字节**（少 824 B 死规则）。
+  这一格值得单独记，因为它堵住的是「从产物取证」这条路——而那恰恰是判据失效时最该看的地方。
+  **判据把自己的取证途径污染了，比判据本身失效更难发现**：门禁报绿、产物有货、两者都对不上。
+- 判据从**告警**升成**天花板**：`native-theme.test.ts` 新增 3 条——
+  ① 真实仓库 `src/components/ui` 读数为 0，**带非空分母**（`> 20` 个文件，否则「没扫到」也能报绿）；
+  ② 合成输入读数为 0（`warnings` 与 `errors` 都空）；③ 退回 `outline-none` 时会红。
+  变异核对：把 `button.tsx` 一处改回 → 真实仓库那条红并点名 `src/components/ui/button.tsx`。
+- **为什么这条不在 `check:a11y` 的射程内**（值得记，免得下一个人把它塞进 a11y 规则）：
+  `check:a11y` 是静态写法审计，看 ARIA 属性 / `alt` / 按钮标注；
+  「`outline-none` 会不会把轮廓彻底去掉」属于**类名语义**，只有产物里看得见——
+  所以它由 `check:tailwind` 的类名规则守。把两套规则混在一起只会让两边都变钝。
+- 全量验证（改动碰到 17 个 shadcn 基元 + globals.css，值得跑全套）：
+  `CI=true pnpm check:all` → exit 0；`pnpm test:e2e` → **113 passed / 0 failed**（2.2m）；
+  `check:bundle` 与 `check:perf` 均在阈值内（CSS 73.1kB < 100kB，bundle 基线未涨）。
+- 下一项：A 域剩产品决策，B 域等外部权限，C/D 两域按 roadmap 已无未落地条目；
+  门禁读数里已无非零项（唯一那条缺口是 `GET /api/health` 的第二半，需拆探针与公开端点）。
+
+- 更新时间：2026-09-29（UTC）。
