@@ -5207,3 +5207,32 @@
 - 下一项：继续找缺陷。A 域剩产品决策，B 域等外部权限，C 域与 D 域按 roadmap 已无未落地条目。
 
 - 更新时间：2026-09-29（UTC）。
+
+## 2026-09-29 — C13 的 CI 反证：一条本地全绿、CI 报 ENOENT 的用例，和它逼出来的覆盖面订正
+
+- 里程碑 / 版本：v0.12.0（PR #166 的 CI 反馈，不另起分支）。
+- 状态：DONE。分支：`feat/c13-production-mock-gate`。
+- **CI 抓到的，不是事后补的**：`Lint & Type Check` 与 `Unit Tests` 两个作业红在
+  `Error: ENOENT: no such file or directory, open '/home/runner/work/IndieStack/IndieStack/.env.production'`
+  ——C13 那条「真实仓库的生产面集合本身是干净的」用例直接 `readFileSync` 读 `.env.production`，
+  而它**被 `.gitignore` 排除**（`git ls-files` 里 `.env*` 只有 `.env.example` 一个），
+  于是本地全绿、CI 必然崩。本地跑 `check:all` 跑一百遍也抓不到。
+- 修法：与 IO 层同一套读法——**读不到就跳过**，不是读不到就崩；
+  `PRODUCTION_CONFIG_FILES` 是「哪些路径算生产面」，不是「这些文件一定存在」，
+  缺文件这件事本来就该交给 `no production surface to inspect` 去说。
+  分母断言从 `=== 2` 改成 `>= 1`：`vercel.json` 是跟踪的，至少它一定在，
+  写死 2 就是把「本地有 `.env.production`」当成全仓事实——那正是第一版的错。
+  验证方式：把 `.env.production` 移走模拟 CI（`mv` 到 `/tmp`），83 条用例全绿、
+  `check:security` 仍 exit 0；移回后同样。
+- **顺手订正一条我自己写过头的话**：`.env.production` 不在版本库里，
+  所以**这条规则在 CI 里实际盯的是 `vercel.json` 与带生产意图的工作流**，
+  `.env.production` 那一格咬的是本地构建与模板用户自己的 checkout。
+  订正写进规则头注释、CHANGELOG 与 roadmap 三处。
+  「覆盖面被高估」是本仓库反复付过学费的形状（C12 的限流读数、C08 的 22 处台账，
+  都是先量后写才没写错），而**这次是 CI 替我量的**——比我自己量更可信。
+- 门禁本身没坏：`security-config` 作业在同样的缺文件条件下照常 exit 0。
+  一条门禁的失败要分清是「规则错了」还是「用例把环境的偶然当成事实」，
+  这一条是后者，所以改的是用例与文档，不是判据。
+- 下一项：#166 / #167 转绿后合并，继续找缺陷。
+
+- 更新时间：2026-09-29（UTC）。
