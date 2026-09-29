@@ -27,6 +27,11 @@ const APP_ROOT = resolve(__dirname, "../../app");
 const DASHBOARD_ROOT = join(APP_ROOT, "dashboard");
 /** 会话用户的本地绑定名。规则只认这一个名字：它正是 C09 量到 15 处的那种写法。 */
 const SESSION_BINDING = "user";
+/** 仪表盘里被认可的会话读取入口。两者都不会在页面里再调一次 `auth.getUser()`。 */
+const SANCTIONED_HELPERS = [
+  "@/lib/auth/session-user",
+  "@/lib/auth/guards",
+] as const;
 
 function walk(directory: string, files: string[] = []): string[] {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -62,6 +67,7 @@ function assertionsOf(file: { path: string; content: string }): string[] {
 }
 
 const APP_FILES = readAll(APP_ROOT);
+const DASHBOARD_FILES = readAll(DASHBOARD_ROOT);
 const SESSIONS_IMPORTED = APP_FILES.filter((file) =>
   file.content.includes('from "@/lib/auth/session-user"'),
 );
@@ -109,5 +115,48 @@ describe("服务端不得对会话用户做非空断言（C09）", () => {
         content: "  const a = user!.id;\n  const b = user!.email;\n  const c = user!.id;\n",
       }),
     ).toHaveLength(3);
+  });
+});
+
+/**
+ * 4 个 layout / 页面收完之后，仪表盘里已经没有一处直接 `auth.getUser()` 了，
+ * 于是「谁在读会话」也变成一句可以核对的话。
+ *
+ * **这一条比上一条强**：上一条只判「非空断言」这个症状，这一条判「绕开了唯一入口」这个成因。
+ * 症状判据有个盲区——一个新页面写 `const { data: { user } } = await supabase.auth.getUser()`
+ * 再配一个 `if (!user) redirect(...)`，`user!` 那条判据全绿，而缺陷原封不动地又来了一遍
+ * （读失败被答成「你没登录」，而重新登录走的正是同一条读取）。这一条把它也挡住。
+ *
+ * 范围只到 `src/app/dashboard/**`：仓库里其余读会话的地方各有各的正确形状
+ * （`proxy.ts` 重定向是对的、`api/auth/callback` 要区分 error、route handler 走 guards），
+ * 拿一条规则去覆盖它们就是把判据做成噪音。仪表盘是「layout 已经重定向过一次、页面却又读一次」
+ * 的那一片，也正是同型缺陷密集的地方。
+ */
+describe("仪表盘不得绕开唯一入口自己读会话", () => {
+  it("src/app/dashboard 下没有一处直接 auth.getUser()", () => {
+    expect(DASHBOARD_FILES.length).toBeGreaterThan(0);
+    const offenders = DASHBOARD_FILES.filter((file) => file.content.includes("auth.getUser()"));
+    expect(
+      offenders.map((file) => file.path),
+      "读会话只有两条被认可的入口：requireSessionUser（只要用户）或 requireAuth（还要角色）；" +
+        "自己解构 auth.getUser() 会把「没读到」和「没登录」压成同一个 redirect",
+    ).toEqual([]);
+  });
+
+  it("反向证据：仪表盘确实在用被认可的入口（不是「碰巧没读会话」）", () => {
+    // 地板值 12 = 8 个页面 + 4 个 layout/页面。新增仪表盘页面不受影响（>= 即可），
+    // 但如果这个数掉到 0，说明整条链路被搬走了而规则还在报绿。
+    const using = DASHBOARD_FILES.filter((file) =>
+      SANCTIONED_HELPERS.some((helper) => file.content.includes(`from "${helper}"`)),
+    );
+    expect(using.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it("getSession() 不在这条规则内：认「当前这台设备」不是授权判定", () => {
+    // 逐个查过消费方：settings 页用它算 currentSessionId，只用于**显示**「这台」标记，
+    // 不参与任何权限判断，且解析不出 token 时返回 null（fail-closed，标记留空而不是乱标）。
+    // 把它一并禁掉就是拿一条造假的规则换一次改动。
+    const offenders = DASHBOARD_FILES.filter((file) => file.content.includes("auth.getSession("));
+    expect(offenders.map((file) => file.path)).toEqual(["dashboard/settings/page.tsx"]);
   });
 });

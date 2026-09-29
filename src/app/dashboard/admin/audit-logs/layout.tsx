@@ -6,18 +6,13 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import { requireSessionUser } from "@/lib/auth/session-user";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/constants";
 
 export default async function AuditLogsLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect(ROUTES.login);
-  }
+  const user = await requireSessionUser(supabase);
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
