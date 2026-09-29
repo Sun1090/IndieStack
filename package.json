@@ -25,6 +25,7 @@
     "check:rls": "node scripts/check-rls.js",
     "check:docs": "node scripts/check-docs-scripts.js",
     "check:progress": "node scripts/check-progress-ledger.js",
+    "check:roadmap-entries": "node scripts/check-roadmap-entries.js",
     "check:a11y": "node scripts/check-a11y.js",
     "check:action-errors": "node scripts/check-action-errors.js",
     "check:dynamic-keys": "node scripts/check-dynamic-keys.js",

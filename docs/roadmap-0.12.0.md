@@ -9,10 +9,20 @@
 > **排期原则**：先做「没有证据就等于没做」的收口项（投递语义、发布证据、演练），再做隔离与门禁补强；
 > 任何条目的完成都要留下可复现命令或执行记录，不接受「文档已写」。
 
-> 任务名沿用领域前缀，但**不再与版本号绑定**：v0.6.0 的任务池一半是在 v0.7.0–v0.11.0 期间交付的，
-> 而 roadmap 文件里的 `（完成：…）` 标注与开头的进度汇总无人维护，最后要靠一份退出报告重新核对
-> （见退出报告「与 roadmap 文本的矛盾」）。因此本文件要求：状态只在退出报告里维护，
-> roadmap 只写目标与验收口径。
+> 任务名沿用领域前缀，但**不再与版本号绑定**：v0.6.0 的任务池一半是在 v0.7.0–v0.11.0 期间交付的。
+>
+> **状态写在哪（2026-09-29 改，与实际做法对齐）**：这一段原来要求「状态只在退出报告里维护，
+> roadmap 只写目标与验收口径」，而文件里到处是 `（**2026-09-22 已完成**：…）` 这样的就地标注
+> ——**约定与做法互相否定**，结果是两种读者都拿不到准数：按约定去读文件的人看到的是未标注的
+> 条目，按实际做法去读的人又会踩到过期的那一条。2026-09-29 这一天里就踩了两次：
+> C09 写着「那 8 处 `user!.id` 现在不动，原因是重叠」，而它等的队列**早就清空了**；
+> C06 写着「定夺……保留还是删除」，而定案结论在 CHANGELOG 里躺了两天。
+> 所以现在的约定是**两处都留、且由门禁要求它们一致**：
+> 条目内用 `（**YYYY-MM-DD 已完成/已定案**：…）` 就地记结论（细节与出入仍写 `docs/progress.md`），
+> 退出报告负责跨版本的逐条核对；`pnpm check:roadmap-entries` 核对**每一条任务池条目**
+> 要么带就地完成标注、要么写明它被什么挡住（产品决策 / 外部权限 / 上游缺失）。
+> 这不是新造一条仪式，而是把「结论做完了要回头改那一行」变成一件 CI 会红的事——
+> 两次踩坑的共同点就是**它当时没人负责**。
 
 ## 任务池（引用一律用 ID；条数不写在这里，现量：`awk '/^## 任务池/{f=1;next} /^## 里程碑/{f=0} f && /^[0-9]+\. [A-Z][0-9]+/' docs/roadmap-0.12.0.md | wc -l`）
 
@@ -40,7 +50,10 @@
      Auth 模板，应用自己发出的摘要正文目前恒为中文）。
      同一条链上还剩一件没做：`language` 的取值词表（`en/zh/ja/ko` vs 站点真实 locale `zh-CN/en`）
      由 PR #127 收窄到权威常量 `PROFILE_LANGUAGES`，但校验是否收窄仍未定
-2. A02 （随 A01 完成：门控既然移除，临时指标 `cron.digest.deferred` 已删除，注册表回到 14 个指标；
+2. A02 （**2026-09-22 已完成**：随 A01 一起收口。原写法是「随 A01 完成」，日期挂在被它
+   跟随的那一条上，于是**这一行没有自己的证据**——`check:roadmap-entries` 的
+   `ROADMAP_MARKER_UNDATED` 就是为这种写法存在的）
+   门控既然移除，临时指标 `cron.digest.deferred` 已删除，注册表回到 14 个指标；
    若将来重新引入任何「按条件跳过」的门控，必须同时带回对应的可见性指标与告警规则）
 3. A03 （2026-09-22 已核对，**push 链路没有同型缺陷**）：`src/lib/push-retry.ts` 与
    `src/app/api/cron/push-retry/route.ts` 里没有任何按小时/时区的门控（`grep -n "hour\|timezone\|local"`
@@ -70,7 +83,9 @@
    验收证据：删掉 digest 路由里的 `recordMetric` → `CRON_SKIP_UNCOUNTED`，去掉 `reason` 维度 →
    `CRON_SKIP_REASON_MISSING`（两条都在真实仓库上跑过，不是 fixture 推演）；
    规则本身 11 条单测 + 契约 6 条 + IO 2 条。「静默不投递」从此在 PR 阶段失败。
-5. A05 死信与积压的可操作路径：admin 面板能看到未发送队列的规模、最早一条的年龄，
+5. A05 （**2026-09-25 主体完成**：可观测那一半与出队语义都已落地；余下
+   「站内已读是否等于不必寄」是**待决产品决策**，不由工程收口）死信与积压的可操作路径：
+   admin 面板能看到未发送队列的规模、最早一条的年龄，
    以及「有队列但整轮 `sent=0`」的轮次（原因只会是无邮箱或偏好全关，两者都该看得见）。
    **2026-09-22 核对时补一条更要紧的事实**：被跳过的条目**永远出不了队列**——
    两个 skip 分支（`cron/digest/route.ts` 的 `!profile?.email` 与偏好过滤后 `filtered.length === 0`）
@@ -121,16 +136,21 @@
    取证据的过程本身抓出一条缺陷——手动 `smoke` 作业在每次定时运行里都因空 `inputs` 崩溃，
    已由 `check:production-smoke` 的两条新规则钉住。**B01 只覆盖无副作用面**：
    只读凭证类 3 项与隔离账号 14 项仍未执行，它们是 B03/B04 的内容，也是打 tag 的前置）
-7. B02 执行一次真实回滚演练（切回上一 deployment、验证 health 与 schema 向前兼容），
+7. B02 （**未完成：外部权限**——需要 Vercel 的部署权限与可回滚的历史 deployment；
+   缺它时不得以「代码都改了」宣布 v0.12.0 达成退出标准）执行一次真实回滚演练
+   （切回上一 deployment、验证 health 与 schema 向前兼容），
    填 `docs/operations/rollback-runbook-*.md` 的「演练记录」——这是 v0.6.0 起从未闭合的 J08。
    **2026-09-22 补的那条硬事实已经修掉**：`/api/health` 现在上报 `commit`（构建时内联的
    `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`），`pnpm smoke:production --expected-commit <SHA>` 会断言它，
    缺失即失败。剩下的是时间问题——2026-09-22 部署的那版构建不带这个字段，
    所以 B02 的「切回上一 deployment 并证明回到了哪个 commit」要等下一次部署才有可比对象
-8. B03 隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
+8. B03 （**未完成：外部权限**——需要一个可牺牲的隔离账号与云端 Supabase 凭据）
+   隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
-9. B04 云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
-10. B05 provider 与 incident 演练各一次：Resend 缺失/限流、Web Push VAPID 失效、Supabase 恢复链路，
+9. B04 （**未完成：外部权限**——需要云端 Supabase 项目的管理凭据）
+   云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
+10. B05 （**未完成：外部权限**——需要各 provider 的测试凭据与可牺牲的真实项目）
+    provider 与 incident 演练各一次：Resend 缺失/限流、Web Push VAPID 失效、Supabase 恢复链路，
     结论写进对应 runbook 的执行记录小节
 
 ### C. 测试与门禁基建（来自 F01 / F02 / F04 / J01 / C03 / A02 / A10）
@@ -234,8 +254,19 @@
     58 项单测 + 10 项变异核对；本地栈端到端实测：3 个对象 2 行元数据的矩阵下，
     数据库侧只报 2 条孤儿，`--provider-diff` 额外报出 1 个无元数据对象 + 1 个已消失的 active 行，
     清场后归零。详见 `docs/db/upload-metadata.md`「provider 侧集合差」。
-16. C06 定夺 `src/lib/actions/uploads.ts` 两个 Server Action：保留为编程入口（补调用方与文档）
-    或删除（同步 service-role inventory、错误码门禁与 docs-site）
+16. C06 （**2026-09-25 已定案并完成：删除**。 才被发现正文已经过期——定案的
+    结论在 CHANGELOG 与 `docs/progress.md` 里，roadmap 却还写着「保留还是删除」，而 roadmap 是
+    唯一会被回来看的地方）`src/lib/actions/uploads.ts` 两个 Server Action **已删除**。
+    判据：路由经 `src/lib/uploads/request.ts` 拿到同源校验、限流、解析前请求体上限三道边界，
+    action **三道全空**，连 `projectId` 长度检查也没有——「与 Route Handler 共用服务层」只覆盖领域
+    规则，不覆盖边界守卫；留着它就是一份接上表单就能用的**弱守卫副本**。
+    同步改掉随之变假的描述：service 文件头写明三道守卫只作用于走 HTTP 路由的调用方、
+    两个路由头注释、mock 与 e2e 注入端点里点名的 `uploadAvatar`、`docs-site/storage.md` 双语，
+    以及 `docs/architecture/11-integrations.md` 那句「头像与项目封面通过 Server Actions 完成」
+    （v0.6.0 退出报告点名的标注与代码相反，删掉 action 后它从**夸张**变成**不存在**）。
+    **一条治理观察**：本条与 C09 的「8 处 `user!.id`」有同一种病——结论做完了、写在别处、
+    任务池那一行没人回头改。于是「下一次去核 roadmap 的某一句」比「再想一个新任务」
+    产出更高，而它便宜得多。
 17. C07 （**2026-09-23 已完成**）：`pnpm check:query-columns` 把 `src/**` 每条 `.from("<表>")` 查询链上的
     字面量列名对回 `src/lib/supabase/database.types.ts` 的 `Row` 类型。存在的理由是一条真实缺陷：
     `/api/e2e/email-worker-runs` 按 `email_worker_runs.started_at` 排序，而这张表从建表（迁移 017）起就
@@ -294,7 +325,8 @@
     台账规模以 `pnpm check:query-errors` 的输出为准——这里原先每清一批就要手写一次数字，
     按 D04 口径不再抄。**注意范围**：本条清完只说明「断言抹掉 `error`」这一类没有了，
     不等于「解构时压根不取 `error`」那一类（C08-c，见下条）也没有了
-20. C08-c 邻居缺陷：解构 awaited 查询结果时**压根不取** `error`（不是断言掉的，是漏看的）。
+20. C08-c （**2026-09-23 已完成，实测 159 处判读 / 0 处未绑定**）邻居缺陷：解构 awaited 查询结果时
+    **压根不取** `error`（不是断言掉的，是漏看的）。
     **2026-09-23 已按当前代码重量**（`node --no-warnings --experimental-strip-types
     scripts/lib/query-error-channel-check.js --unbound`，规则在
     `src/lib/security/query-error-channel.ts` 的 `collectUnboundErrorChannels`，单测覆盖，其中两条
@@ -358,7 +390,7 @@
     而这里的 `await` 落在 `Promise.all` 上。**从本次接线起这一处对门禁不再全盲**：
     解构那一半判得到它（元素断言会被剥掉再看链），断言那一半仍然看不见——#49 的规模仍然要按 AST 重量。
 
-21. C09 会话读取的错误通道（`auth.getUser()` / `getSession()` / `getClaims()`）：C08 的**同形状邻居**，
+21. C09 （**2026-09-29 收完**）会话读取的错误通道（`auth.getUser()` / `getSession()` / `getClaims()`）：C08 的**同形状邻居**，
     只是数据源从 PostgREST 换成 Auth——**这个客户端也是把失败装在 `error` 里返回而不是抛出**，所以
     「连 `error` 都不取」在这里同样会把一次基础设施抖动说成一个关于用户的事实。
     读数（2026-09-24，AST 扫 `src/**` 非测试文件；判据：调用形如 `supabase.auth.getUser()`、结果做解构绑定、
@@ -485,6 +517,12 @@
     会让同一文件的第二处违规被跳过——由「同一个文件里的多处违规一处都不漏」那条用例挡住。
     先前记的 18 / 14 / 5 / 4 是这些改动在栈上被多少条下游分支**带着走**，不是有人在各自改它——
     这句话解释了当初为什么推迟，而那条阻塞（5 条分支正在重写同一批文件）已随队列清空而消失。
+    **本条为 2026-09-29 全部收完**：全仓 `src/app/**` 再无 `user!`（15 → 0），
+    仪表盘再无直接 `auth.getUser()`（12 → 0），「没登录」与「没读到」两条出口在
+    `requireSessionUser` 一处分类。**没做的两件事各有理由，不要当成漏项**：
+    ① 页面只解构 `user` 而不取 `error` 的那另一半**仍然不接门禁**（合法状态与「没读到」
+    在 AST 上同形，先接会把正常写法一并点掉）——仪表盘那一半改由「不得直接 `auth.getUser()`」
+    这条更严的判据守住；② `mfa/page.tsx` 的 `refreshSession` 仍不动（要连 MFA 流程一起判）。
     **2026-09-29 补完那两个消费者**（`api/analytics` 由 #103 修好，`api/stripe/checkout` 是本条补的）：
     checkout 路由此前把**每一种**守卫失败都答成 `401 + notAuthenticated`，而 `api/analytics` 早就
     按 `guardHttpStatus` 分开了——两处是同一个缺陷的两次落地，谁也没给另一次提个醒。
@@ -520,7 +558,8 @@
     结论不变的自证）。规则与解析在 `src/lib/security/route-auth.ts`，IO/CLI 在
     `scripts/lib/route-auth-check.js` + `scripts/check-route-auth.js`。
 
-24. C12 把 C11 的同一套解析用于**限频**：`check:route-auth` 回答「这条路由靠什么挡住未授权」，
+24. C12 （**2026-09-25 定案并落地**：限流两态台账，并入 `check:route-auth`）把 C11 的同一套解析用于
+    **限频**：`check:route-auth` 回答「这条路由靠什么挡住未授权」，
     现在多答一句「这条路由的闭包里有没有窗口」——**只现量、不判定**：
     `node scripts/check-route-auth.js --rate-limit-report` 逐条打印 `id [家族] [限流器绑定]` 并给分母。
     本分支的读数：**45 个 handler 里 14 个有限流器绑定，分布在 10 个路由文件**；按家族是
@@ -567,7 +606,8 @@
     显式把这个变量带进生产就没人拦（`scripts/check-security-config.js` 里没有 `MOCK` 字样，已 grep 确认）。
     登记为 C13。
 
-25. C13 （**2026-09-29 两半都已落地**）**生产构型不许开着 mock**（C12 落地时量出来的，不是设想出来的）：
+25. C13 （**2026-09-29 已完成**：运行时那道闸 2026-09-25，配置面那道闸 2026-09-29）
+    **生产构型不许开着 mock**（C12 落地时量出来的，不是设想出来的）：
     `src/lib/mock/config.ts` 的 `isMockEnabled` 只要 `NEXT_PUBLIC_MOCK_ENABLED === "true"` 就为真，
     **不看 `NODE_ENV`**——那个环境判断只护住「Supabase 未配置时自动启用」那一支。于是带着这个变量的
     生产部署会把 15 条 `/api/e2e/*` mock 端点与假收件箱原样暴露出去，而 `RATE_LIMIT_LEDGER` 里
