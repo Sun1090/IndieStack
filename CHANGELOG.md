@@ -20,6 +20,37 @@ All notable changes to IndieStack will be documented in this file.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **25 个控件在 Windows 高对比度模式下没有可见焦点**（`src/components/ui` 全部改一处）：
+  `check:tailwind` 一直报着一条非阻断告警「上游 shadcn 基元里还有 25 处 v3 类名待跟随上游收口」，
+  25 处**全是** `outline-none` → `outline-hidden`。从本仓库**自己构建出来的 CSS** 里量到：
+  v4 的 `.outline-none{outline-style:none}`，而
+  `.outline-hidden{outline-style:none;outline-offset:2px;outline:2px solid #0000}`，
+  后者还自带 `@media (forced-colors:active)` 兜底。那圈 `transparent` 轮廓正是
+  **高对比度模式下浏览器替我们画的焦点环**——也就是说 `outline-none` 让按钮、输入框、
+  下拉、开关、标签页等 25 处**只剩键盘操作**的用户彻底看不见焦点在哪。
+  「等上游」在这里不成立：shadcn 上游同样在往 `outline-hidden` 收，本地改完下次 `shadcn add`
+  覆盖也就是回到今天这个形状（而门禁会再报一次）。
+- **顺带查出一条更怪的：门禁自己把被禁的类名塞进了产物。** 修完源码之后
+  `rg outline-none .next/static/chunks/*.css` **仍然有命中**——三段死规则
+  （`.outline-none`、`.hover\:outline-none:hover`、`.focus-visible\:outline-none:focus-visible`）。
+  逐一量出来的来源：① `src/lib/tailwind/` 里是 `check:tailwind` 的规则本体与它的用例，
+  它们**必须逐字**写着被禁的类名（正则名、测试 fixture），否则门禁就检查不了它；
+  ② **Markdown 也在 Tailwind 的默认扫描范围里**，所以 `CHANGELOG.md` 与历史 roadmap 里
+  **提到**某个类名等于在用它（连本条 CHANGELOG 自己也贡献了一段）。
+  修法是两条 `@source not`（v4 的排除指令，只排除**扫描**，不影响 TypeScript 编译，
+  也不影响 docs-site 自己的构建）：排除门禁目录，以及排除 `**/*.md`——
+  **Tailwind 该扫的是代码，不是散文**。
+  量到的效果：产物里 `outline-none` 归零，CSS 总体积 73952 → 73128 字节（少 824 B 死规则）。
+  为什么这一格值得单独记：它堵住的是「从产物取证」这条路，而那恰恰是判据失效时最该看的地方——
+  判据把自己的取证途径污染了，比判据本身失效更难发现。
+  判据同时从**告警**升成**天花板**（`native-theme.test.ts` 新增 3 条用例：真实仓库读数为 0，
+  带非空分母；合成输入读数为 0；退回 `outline-none` 时会红）。变异核对：把 `button.tsx`
+  一处改回 `outline-none` → 真实仓库那条用例红并点名到文件与行。
+- **为什么这条在 a11y 门禁的射程外**：`check:a11y` 是静态写法审计，看的是 ARIA 属性、
+  `alt`、按钮标注；`outline-none` 是不是把轮廓彻底去掉属于**类名语义**，
+  而那只有在产物里才看得见（`.outline-hidden` 才有 forced-colors 兜底）——
+  所以它由 `check:tailwind` 的类名规则守，而不是由 a11y 规则守。
+
 - **`/api/og` 有了按 IP 的窗口，限流台账的已知缺口从 2 条降到 1 条**：
   那条端点天然要能被陌生人打——它挂在 `<meta og:image>` 上，社交预览爬虫与搜索引擎都是
   以**用户的 IP** 来取的，所以台账条目当初写「按会话限频这种现成形态对它不成立」；

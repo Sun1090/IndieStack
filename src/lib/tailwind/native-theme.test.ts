@@ -2,6 +2,8 @@
  * Tailwind v4 原生主题门禁单测（G01）。
  * 覆盖 `pnpm check:tailwind` 依赖的全部规则，避免门禁规则悄悄失效或用注释绕过。
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   auditTailwindNative,
@@ -132,6 +134,68 @@ describe("auditTailwindNative()", () => {
     expect(report.errors.every((e) => e.code === "TW_RENAMED_UTILITY")).toBe(true);
     expect(report.errors[0].message).toContain("bg-linear-to-*");
     expect(report.errors[1].message).toContain("outline-hidden");
+  });
+
+  /**
+   * 天花板，不是地板。
+   *
+   * 2026-09-29 之前 `src/components/ui` 里有 **25 处 `outline-none`**，而 `check:tailwind`
+   * 只把它算一条非阻断告警「待跟随上游收口」。那不是纯风格问题：从本仓库**自己构建出来的
+   * CSS** 里量到，v4 的 `.outline-none{outline-style:none}`，而
+   * `.outline-hidden{outline-style:none;outline-offset:2px;outline:2px solid #0000}`——
+   * 后者那圈 `transparent` 轮廓正是 Windows 高对比度模式下浏览器替我们画的焦点环。
+   * 也就是说 `outline-none` 让那 25 个控件在**高对比度模式**下彻底没有可见焦点，
+   * 只有键盘操作的用户会撞上。
+   *
+   * 「等上游」在这里不成立：shadcn 上游同样在往 `outline-hidden` 收，本地改完下次
+   * `shadcn add` 覆盖也就是回到今天这个形状（而门禁会再报一次）。所以判据从**告警**升成
+   * **天花板**：读数为 0。分母一并钉住（`excludedFiles` 非空），否则「扫空了」也能报绿。
+   */
+  it("上游基元里已没有 v3 写法（天花板 0，带非空分母）", () => {
+    const report = auditTailwindNative(
+      snapshot({
+        excludedFiles: [
+          { path: "src/components/ui/button.tsx", content: 'const a = "focus-visible:outline-hidden";' },
+          { path: "src/components/ui/input.tsx", content: 'const a = "outline-hidden shrink-0";' },
+        ],
+      }),
+    );
+    // 分母非空：excludedFiles 空的话下面那个 0 只是「没扫到」。
+    expect(report.warnings).toEqual([]);
+    expect(report.errors).toEqual([]);
+  });
+
+  /**
+   * 上面那两条用的是合成输入；这条读**真实仓库**的 `src/components/ui`。
+   * 差别的意义与仓库里其他「合成 vs 真实」那几条一样：判据在合成树上绿，
+   * 在真实树上还剩 1 处，是完全可能的（2026-09-29 之前就正是这样）。
+   */
+  it("真实仓库的 src/components/ui 里 v3 写法为 0（天花板，带非空分母）", () => {
+    const dir = resolve(__dirname, "../../../src/components/ui");
+    const files = readdirSync(dir)
+      .filter((name) => /\.tsx?$/.test(name))
+      .map((name) => ({ path: `src/components/ui/${name}`, content: readFileSync(join(dir, name), "utf8") }));
+    // 分母：这些文件必须真的被读到，否则下面那个 0 只是「没扫到」。
+    expect(files.length).toBeGreaterThan(20);
+
+    const report = auditTailwindNative(snapshot({ excludedFiles: files }));
+    const hits = files.flatMap((file) =>
+      findRenamedUtilities(file.content).map((hit) => `${file.path}: ${hit.name}`),
+    );
+    expect(hits, "高对比度模式下 outline-none 会让控件彻底没有可见焦点").toEqual([]);
+    expect(report.warnings).toEqual([]);
+  });
+
+  it("shadcn 基元被覆盖回 outline-none 时天花板会红", () => {
+    // 变异核对：这条断言就是为了让「下一次 shadcn add 覆盖掉」不再无声通过。
+    const report = auditTailwindNative(
+      snapshot({
+        excludedFiles: [
+          { path: "src/components/ui/button.tsx", content: 'const a = "focus-visible:outline-none";' },
+        ],
+      }),
+    );
+    expect(report.warnings.map((w) => w.message).join()).toContain("1 处");
   });
 
   it("上游 shadcn 基元的 v3 类名只算一条非阻断告警", () => {
