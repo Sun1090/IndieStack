@@ -5902,3 +5902,40 @@
   搬进规则模块要先想清楚「临时目录里的假产物」怎么构造，那是另一条 PR 的事。
 
 - 更新时间：2026-09-30（UTC）。
+
+## 2026-09-30 — 合并后 `check:all` 红了：不是我的改动，是 override 钉在了自身已是漏洞版本的版本上
+
+- 里程碑 / 版本：v0.12.0。分支：`fix/override-pinned-to-vulnerable`（PR #185）。基线 `2ab852c5`。
+- 状态：DONE。**这一条是从「我刚把 #184 合了、顺手复验一下 main」里冒出来的**——
+  复验发现 `check:all` exit 1，而 `verify:build` exit 0、CI 全绿。这个不一致本身就是信号。
+- **不一致值得当回事**：CI 刚跑完是绿的，本地红。差别只可能在**时间**上——
+  advisory 数据在这半小时里更新了。于是去看红的那一条。
+- **红的不是代码，是 `pnpm audit`**：`security/config check failed: pnpm audit:
+  0 critical, 4 high vulnerabilities`，4 条 high **全是同一个包** `brace-expansion`，
+  两条 advisory（`GHSA-qhr7-859c-m2p7` / `GHSA-6j4f-fj2g-mc7p`）各覆盖两个版本区间。
+- **真正的问题不是「有漏洞」，是「override 在骗人」**：`pnpm-workspace.yaml` 里**早就有**
+  `brace-expansion` 的 override（上一轮修同一条 advisory 时加的），钉的是 `^2.1.4` 与 `^5.0.9`——
+  而新 advisory 下 2.x 需 `>=2.1.6`、5.x 需 `>=5.0.11`，**这两个钉住的版本自身就在漏洞区间内**。
+  也就是说：**override 一直绿着，audit 一直红着**，而「我们已经处理过这条 advisory 了」
+  这条记录掩盖了一个**已经不再成立**的结论。
+  这与本轮反复出现的那条同源：判据（当年那个版本确实是修复版）**成立过**，但没有跟着世界一起复核。
+  `fast-uri: ^3.1.6` 同理（需 `>=3.1.8`）。
+- **踩到一条 pnpm 版本事实**：我第一反应是往 `package.json` 的 `pnpm.overrides` 里加，
+  结果 **pnpm 11 不再读 `package.json` 的 `pnpm` 字段**（override 的新家在 `pnpm-workspace.yaml`），
+  而 pnpm 只给了**一行 WARN** 就继续跑完整个安装——**装完什么也没变**。
+  这条 WARN 就夹在 22.6s 的一堆输出里。**一条「加上去没生效」的改动如果没人复核，
+  就会变成一条「我们已经处理过了」的记录**——和上面那个 override 是同一个形状，一小时内遇到两次。
+- **改动**：全部是**同一大版本内的 patch 升级**，不跨 major：
+  `^2.1.4 → ^2.1.7`、`^5.0.9 → ^5.0.12`、`^3.1.6 → ^3.1.8`。
+  （先查了 registry：4.x 那条 advisory 的修复版是 `>=5.0.11`，一度以为要跨 major，
+  结果实际装的是 `5.0.9`，**同 major 内 patch 就能解决**——差一步就做出一个不必要的大版本覆盖。）
+- 读数：`pnpm audit` **任意严重度 0 条**（`--audit-level high` exit 0）·
+  `pnpm lint` exit 0 · `pnpm type-check` exit 0 · **248 文件 / 2,941 用例** ·
+  `pnpm build` exit 0 · E2E **113 passed** · `CI=true pnpm check:all` **exit 0**（合并前是 1）。
+- **一条留给下一个人**：这两次「override / 门禁钉在一个曾经正确、后来不再正确的值上」是同一族。
+  本仓库已经有过第三例同族（`query-error-channel` 的 `QUERY_ERROR_CHANNEL_PARSE`，见 #179 引用）。
+  **这类失效有一个共同特征：它们不会自己变红，它们只是让某条记录继续看起来有效。**
+  能被机械抓住的只有一类——「钉住的值本身要在一个会被复核的地方」；
+  本条至少做到了「audit 的阈值是真门禁（check:security 里那一步）」，所以它**这次**红了。
+
+- 更新时间：2026-09-30（UTC）。

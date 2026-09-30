@@ -13,11 +13,15 @@ allowBuilds:
 
 # 依赖覆盖：修复审计发现的传递依赖漏洞（pnpm v11 设置在 pnpm-workspace.yaml）
 overrides:
-  fast-uri: ^3.1.6
+  # 同上：先前钉的 ^3.1.6 在新 advisory 下自身已是漏洞版本（需 >=3.1.8）
+  fast-uri: ^3.1.8
   nanoid: ^3.3.18
-  'brace-expansion@>=1.0.0 <2.0.0': ^2.1.4
-  'brace-expansion@>=2.0.0 <3.0.0': ^2.1.4
-  'brace-expansion@>=5.0.0': ^5.0.9
+  # GHSA-qhr7-859c-m2p7 / GHSA-6j4f-fj2g-mc7p：DoS via uncontrolled recursion。
+  # 2026-09-30 上调：先前钉的 ^2.1.4 / ^5.0.9 在新 advisory 下**自身已是漏洞版本**
+  # （2.x 需 >=2.1.6，5.x 需 >=5.0.11），所以这条 override 一直绿着而 audit 一直红着。
+  'brace-expansion@>=1.0.0 <2.0.0': ^2.1.7
+  'brace-expansion@>=2.0.0 <3.0.0': ^2.1.7
+  'brace-expansion@>=5.0.0': ^5.0.12
   js-yaml: ^4.3.2
   '@sentry/webpack-plugin>uuid': ^11.1.1
   'vitepress>vite': ^6.4.3
