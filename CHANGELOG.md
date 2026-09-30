@@ -20,6 +20,19 @@ All notable changes to IndieStack will be documented in this file.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **`check:perf` 的 sourcemap 那一格原先只能看见三种泄漏形态里的一种**：它只查
+  「静态目录里有没有 `.map` 文件」。而 `//# sourceMappingURL=data:…` 会把**整份原始源码内联进
+  那个 JS/CSS 文件**——不需要额外请求，浏览器拿到产物就等于拿到源码，而这一格完全看不见它；
+  一条指向**确实存在**的 map 的 `sourceMappingURL` 同理。现在三种形态都算，
+  并把**分母**也补上：静态目录一条文件都没有时报红而不是报绿（「什么都没在看」与「干净」同形）。
+  **指向不存在路径的引用刻意不算**：那是第三方库留下的死引用，既不泄漏也不可调试，
+  按它报红就是一条没人会修的假红——与 `check:bundle` 的内容判定对假红是同一态度。
+  实测基线：63 个产物文件里三种形态一个都没有。变异核对四种（做完复原）：
+  内联 data URI → 红；落一个 `.map` 文件 → 红；指向确实存在的 map → 红并打出那一对路径；
+  指向**不存在**路径的引用 → **仍然绿**（假红防线）。
+
+### Fixed
+
 - **`pnpm check:bundle` 现在也判产物内容，不再只判体积**：新增一条判定——**客户端产物里不得出现
   服务端专用变量的名字**（`SUPABASE_SERVICE_ROLE_KEY` / `STRIPE_SECRET_KEY` / `CRON_SECRET` … 12 个，
   清单直接从 `security-config.ts` 的 `SERVER_ONLY_ENV_NAMES` 拿，不重抄）。
