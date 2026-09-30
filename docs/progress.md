@@ -6203,3 +6203,47 @@
   剩 2 条内联门禁但**不预设该怎么做**；三条阻塞不变。
 
 - 更新时间：2026-09-30（UTC）。
+
+## 2026-09-30 — 「我以为的漏洞」与「真的漏洞」：一次必须记下来的自我纠正
+
+- 里程碑 / 版本：v0.12.0。分支：`fix/admin-client-evidence-nonempty`（PR #190）。基线 `20e6dd29`。
+- 状态：DONE。
+- **起点是一个高价值审计**：service-role 客户端（`createAdminClient()`）**绕过 RLS**，
+  所以每个调用点都是一次信任边界决定。我挑了风险最高的一类——`trust: { kind: "session" }`
+  （**只凭「有人登录」就拿到绕过 RLS 的访问**，全清单仅 2 处），逐行读了
+  `actions/team.ts` 的 `removeMember`：
+  认证 → 取**自己的** team → 查**自己的** membership（并把「读失败」与「没权限」分开）→
+  目标成员的读与删**都带 `.eq("team_id", team.id)`** → 禁止移除 owner。
+  **结论：这条边界是干净的，`session` 信任有真实代码支撑。**
+- **然后我做了一件错事，并且差点让它变成一次大改**：我做了个变异——把 `team.ts` 里的
+  `.auth.getUser()` 换成 `.auth.getClaims()` ——**门禁 exit 0**。于是我判定
+  「`admin-client-boundary.ts` 声称会在丢失授权证据时失败封闭，**但它根本没检查 evidence**」，
+  并准备写一条新规则去「修」它。
+- **那个判定是错的。** `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING` 就在 `compareEntry` 后面十几行
+  （`source.includes(alt)` 逐条比对）。**我的变异太弱**：`team.ts` 里有 **5 处** `auth.getUser()`，
+  我只改了 1 处，子串仍在，门禁当然绿。把 5 处**全部**换掉后：
+  `❌ [ADMIN_CLIENT_TRUST_EVIDENCE_MISSING] src/lib/actions/team.ts: trust evidence
+  "supabase.auth.getUser" is missing`。
+  **如果我照着那个判定动手，就会给一个本来正确的门禁加一条「修复」，还配一段言之凿凿的注释。**
+  这是本轮第 8 次「我自己的测量/推断错了」，也是**最贵的一次**——
+  贵的不是写代码，是**一个错误的结论一旦被写进注释和 CHANGELOG，就会开始制造信心**。
+- **真的漏洞只有一个，而且窄**：把 `evidence` **整段清空**，门禁**确实放行**。
+  因为那个循环遍历一个空数组，什么都不做。而 `evidence` 是「凭什么相信这个调用点」的
+  **唯一书面理由**——清空它之后，`trust: { kind: "session" }` 还在，**记录看起来仍然有效**，
+  支撑它的理由没了。这正是本轮主线那一类失效，只是**这次落在安全边界上**。
+- **修法**：非 `server-internal` 的 kind 必须带 evidence（`ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY`）。
+  `server-internal` 是唯一例外并写明为什么：它没有外部调用者，**没有授权判断这回事**，
+  空数组是正确描述而不是漏填。实测今天 **0 条**违反（18 条 `server-internal` 之外全部带 evidence），
+  所以这条规则**今天就是绿的**，它防的是将来。
+  顺带把模块头改准：原文只声称覆盖「登记的符号消失」，现在两种都覆盖。
+- **本条不覆盖的残余缺口，明写出来而不是假装堵住**：
+  把 `trust.kind` 从 `session` **改成** `server-internal` 再清空 evidence，**门禁会放行**——
+  没有任何规则钉住「这个模块应该属于哪一类」，而 kind 恰恰是清单里**由人复核的那条决策**。
+  要堵它就得把 kind 也登记两遍，那既不解决根因（决策仍在人手里）又增加维护面。
+  **实测确认**（不是推测），结论是显式记录。
+- 读数：`pnpm lint` / `pnpm type-check` / `CI=true pnpm check:all` → 全 exit 0；
+  `src/lib/security/admin-client-boundary.test.ts` → **21 passed**（新增 4 条）。
+- **下一项**：不变。剩下的高价值面都已量过；三条阻塞不变（A05 产品决策、B02–B05 外部权限、
+  `/api/health` 响应契约）。
+
+- 更新时间：2026-09-30（UTC）。

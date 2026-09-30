@@ -24,6 +24,26 @@ See `docs/operations/release-tag-ledger.md`.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **`check:supabase-security`：service-role 信任登记的 `evidence` 不许被整段清空。**
+  `trust.evidence` 是「凭什么相信这个 service-role 调用点」的**唯一书面理由**——例如
+  `src/lib/actions/team.ts` 登记的是 `trust: { kind: "session", evidence: ["supabase.auth.getUser"] }`，
+  意思是「RLS 被绕过了，但至少确认过有人登录」。**把 `evidence` 清空，登记看起来仍然有效
+  （`kind: "session"` 还在），而支撑它的理由没了——门禁一声不吭。**
+  现在非 `server-internal` 的 kind 必须带 evidence，否则报
+  `ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY`；`server-internal` 是唯一例外（它没有外部调用者，
+  没有授权判断这回事，空数组是正确描述而不是漏填）。
+  **顺带把模块头的说法改准**：原文声称会在模块「loses its documented authorization evidence」时
+  失败封闭，而现在它真的两种都覆盖——**登记的符号从模块里消失**（`..._MISSING`）与
+  **evidence 列表被清空**（`..._EMPTY`）。
+  **本条不覆盖的残余缺口，明写出来**：把 `trust.kind` 从 `session` **改成** `server-internal`
+  再清空 evidence，门禁**会放行**——因为没有任何规则钉住「这个模块应该属于哪一类」，
+  而 kind 恰恰是清单里那条**由人复核的决策**。要堵它就得把 kind 也登记两遍，
+  那既不解决根因（决策仍在人手里）也增加维护面，所以**选择显式记录而不是假装堵住**。
+  变异核对：清空 `team.ts` 的 evidence → 红并点名；把 kind 降级为 `server-internal` → 绿（**即上面
+  记录的残余缺口**，实测确认，不是推测）。
+
+### Fixed
+
 - **订正 `supabase/middleware.ts` 的一段注释：它在陈述一件构建器做不到的事。**
   原文是「动态 import：避免把 faker 等 mock 数据依赖打进 Edge bundle」——**只对了一半**：
   faker 确实没进**主** Edge bundle（变成独立 chunk、懒加载），但**没进不了产物**：

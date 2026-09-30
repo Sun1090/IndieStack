@@ -1,4 +1,15 @@
 /**
+ * `trust.evidence` 里**必须**写清「凭什么相信这个调用点」，而且那些符号必须真的在模块里。
+ *
+ * `server-internal` 是唯一的例外：它是进程内部的纯函数/适配器，没有外部调用者，
+ * 所以没有「授权证据」这回事——空数组是对它的正确描述，而不是漏填。
+ * 其余每一种 kind 都代表一次**授权判断**（有人登录、角色够、签名对得上、cron secret 对得上、
+ * 调用方已校验），空 evidence 意味着**这道判断的理由被删掉了，而门禁不会吭声**。
+ * 那正是本模块要防的那类失效：一份记录看起来仍然有效（`trust: { kind: "session" }` 还在），
+ * 但支撑它的证据没了。
+ */
+
+/**
  * Static least-privilege inventory for the Supabase service-role admin client.
  *
  * `createAdminClient()` bypasses RLS, so every call site is a deliberate trust-boundary
@@ -79,7 +90,8 @@ export type AdminClientIssueCode =
   | "ADMIN_CLIENT_RPC_NOT_ALLOWED"
   | "ADMIN_CLIENT_STORAGE_BUCKET_NOT_ALLOWED"
   | "ADMIN_CLIENT_AUTH_ADMIN_NOT_ALLOWED"
-  | "ADMIN_CLIENT_TRUST_EVIDENCE_MISSING";
+  | "ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"
+  | "ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY";
 
 export interface AdminClientIssue {
   code: AdminClientIssueCode;
@@ -824,6 +836,15 @@ export function inspectAdminClientBoundary(
       continue;
     }
     issues.push(...compareEntry(fact, entry));
+    if (entry.trust.kind !== "server-internal" && entry.trust.evidence.length === 0) {
+      issues.push({
+        code: "ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY",
+        file: fact.file,
+        message:
+          `${fact.file}: trust.kind="${entry.trust.kind}" 表示一次授权判断，` +
+          "但 evidence 是空的——请写清凭什么相信这个调用点（符号必须真实出现在模块里）",
+      });
+    }
     const source = sourceByFile.get(fact.file) ?? "";
     for (const evidence of entry.trust.evidence) {
       const alternatives = typeof evidence === "string" ? [evidence] : evidence;
