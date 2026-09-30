@@ -9,6 +9,7 @@ import {
   parseJobs,
   parseTriggers,
   parseWorkflow,
+  stripFullLineComments,
   type CiTopologyContract,
   type WorkflowPolicyReport,
 } from "./workflow-policy";
@@ -512,5 +513,75 @@ describe("repository workflows", () => {
         "e2e",
       ]),
     );
+  });
+});
+
+
+describe("stripFullLineComments", () => {
+  it("去掉整行注释（含缩进）", () => {
+    expect(stripFullLineComments("a\n  # b\nc")).toBe("a\n\nc");
+  });
+
+  it("保留行尾注释——行尾 # 可能落在引号字符串或块标量里，去错会漏掉真命令", () => {
+    const line = 'run: pnpm check:all # 注释';
+    expect(stripFullLineComments(line)).toBe(line);
+  });
+
+  it("行数不变，行号不错位", () => {
+    expect(stripFullLineComments("a\n# b\nc").split("\n")).toHaveLength(3);
+  });
+});
+
+describe("workflow 脚本引用：注释不是配置", () => {
+  const scripts = { "check:all": "x", "check:changelog-tags": "y" };
+
+  it("注释里提到一个真实脚本不算引用（不报错）", () => {
+    // 回归：为了说明「CI 必须能读到 tag」，注释里写了「`pnpm check:changelog-tags` 要对账……」，
+    // 而 PNPM_COMMAND 扫的是原始文本，于是被当成一条脚本引用。
+    const { issues } = auditWorkflowPolicy({
+      scripts,
+      workflows: [
+        {
+          path: "ci.yml",
+          content: [
+            "# 下面这行只是说明：`pnpm check:changelog-tags` 要对账 tag，所以要 fetch-depth: 0",
+            "jobs:",
+            "  build:",
+            "    steps:",
+            "      - run: pnpm check:all",
+          ].join("\n"),
+        },
+      ],
+    });
+    expect(issues.filter((i) => i.code === "SCRIPT_UNKNOWN")).toEqual([]);
+  });
+
+  it("注释里提到一个不存在的脚本**也不**报红——门禁校验的是 CI 执行什么，不是散文说了什么", () => {
+    // 这条与上一条是一对：注释里提到**真实**脚本不报（不构成引用），提到**不存在**的脚本同样不报。
+    // 反过来的取舍（把注释里的脚本名也校验一遍）会让门禁对散文敏感——本条就是为了修那个脆弱性
+    // 才存在的：加一句带反引号的说明就能让门禁变红。
+    const { issues } = auditWorkflowPolicy({
+      scripts,
+      workflows: [
+        {
+          path: "ci.yml",
+          content: ["# 见 pnpm check:nope 的说明", "jobs:", "  build:", "    steps:", "      - run: pnpm check:all"].join("\n"),
+        },
+      ],
+    });
+    expect(issues.filter((i) => i.code === "SCRIPT_UNKNOWN")).toEqual([]);
+  });
+
+  it("run 块里的真命令仍然被抓出来", () => {
+    const { issues } = auditWorkflowPolicy({
+      scripts,
+      workflows: [
+        {
+          path: "ci.yml",
+          content: ["jobs:", "  build:", "    steps:", "      - run: pnpm check:definitely-missing"].join("\n"),
+        },
+      ],
+    });
+    expect(issues.some((i) => i.code === "SCRIPT_UNKNOWN")).toBe(true);
   });
 });
