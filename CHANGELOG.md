@@ -20,6 +20,25 @@ All notable changes to IndieStack will be documented in this file.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **`check:perf` 的三格判定搬进 `src/lib/release/perf-audit.ts`（20 项单测）**——它是
+  `check:gate-rule-tests` 点名的内联门禁之一，而它恰好是本仓库**最不该内联**的一段：
+  三格里**两格从来没响过**。搬动的真实收益不是形式统一，那两格的问题**都是「判据选错了」**，
+  而「判据选错」只有把判据写成可测的纯函数才谈得上被反复检查——
+  `SOURCEMAP_INLINE` / `SOURCEMAP_RESOLVABLE_REF` / `CHART_INLINED_IN_LANDING` /
+  `CHART_MARKER_MISSING` / `CSS_BUDGET_EXCEEDED` / `NO_ARTIFACTS_SCANNED` /
+  `LANDING_PAYLOAD_UNKNOWN` 这些失败模式**从「手跑变异时验一次」变成了每次都跑的用例**。
+  `exists`（一条 sourcemap 引用能不能解析）由调用方注入，于是「这种分支需要真目录才能验」
+  这个理由也不成立了。
+  新增一格判据：**落地页初始 payload 未知时报红**（`build-manifest.json` 缺失或
+  `rootMainFiles` 为空）——原先这种情况会退化成「什么都没查」而安静放行。
+  重构后与旧实现在真实产物上对跑：同样 2 个图表 chunk、同样 71.4kB CSS、同样扫 63 个文件；
+  落地页 payload 的自述值从四舍五入的 `431kB` 变成 `430.6kB`（`sumKb` 保留一位小数，仅显示差异）。
+  真实产物上的 5 种变异行为不变：内联 data URI / 落 `.map` 文件 / 指向存在的 map /
+  把图表标记塞进落地页初始文件 → 红；指向**不存在**路径的引用 → 仍绿（假红防线）。
+  内联门禁 3 条 → **2 条**。
+
+### Fixed
+
 - **依赖审计：4 个 high 降到 0（任意严重度 0）**，`brace-expansion` 与 `fast-uri` 的
   override 之前**钉在自身已是漏洞版本的版本上**。
   `GHSA-qhr7-859c-m2p7` / `GHSA-6j4f-fj2g-mc7p`（`brace-expansion` DoS via uncontrolled
