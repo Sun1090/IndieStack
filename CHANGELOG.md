@@ -24,6 +24,26 @@ See `docs/operations/release-tag-ledger.md`.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **订正 `supabase/middleware.ts` 的一段注释：它在陈述一件构建器做不到的事。**
+  原文是「动态 import：避免把 faker 等 mock 数据依赖打进 Edge bundle」——**只对了一半**：
+  faker 确实没进**主** Edge bundle（变成独立 chunk、懒加载），但**没进不了产物**：
+  条件分支里的 `await import(...)` 本身**就是一个引用点**，写在死分支里也会照常**发射 chunk**。
+  实测产物里仍有一块约 **707 kB 的纯 faker chunk**，并被 **37** 个
+  `page_client-reference-manifest.js` 引用（即它在客户端模块图内）。
+  换句话说，这里的 `import()` 恰恰是「折不掉」的原因，**不是「折得掉」的手段**——
+  对照 `supabase/client.ts`：那边能被摇掉是因为用的是**静态** import，
+  `NODE_ENV` 折叠后没有引用点，整块随之消失。
+  **用户侧影响为 0**：生产里 `shouldUseMock()` 恒为 false，该分支永不执行，
+  Playwright 复核 8 个生产页面 **0 次请求**命中它；代价只是部署体积，
+  因此**仍然不设**「产物里不许出现 mock 记号」那条门禁（「产物里存在」与「用户会下载」是两件事）。
+  彻底不发射它需要让 mock 会话不依赖 faker，而 mock 种子身份要与种子数据一致——
+  那是改 mock 系统行为，不在本次范围。
+  顺带订正 #178 记录里的一个数字：当时写「被 5 个 auth 页面的 client-reference manifest 列出」，
+  实测是 **37** 个（其中 auth 下 6 个）；且该数字随构建变化（chunk 名是内容哈希），
+  故正确记法是「实测 37 个页面清单引用、浏览器 0 次请求」。
+
+### Fixed
+
 - **新增 `pnpm check:changelog-tags`：CHANGELOG 声明的已发布版本与仓库真实 tag 对账。**
   起因是一个**读者看不见的分叉**：`CHANGELOG.md` 声明了 **11** 个已发布版本、约 210 条内容，
   而 `git tag` 与 GitHub Release **只有 `v0.6.0`**——10 个版本处于
