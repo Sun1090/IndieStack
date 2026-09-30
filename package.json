@@ -54,6 +54,7 @@
     "check:security": "node scripts/check-security-config.js",
     "check:supabase-security": "node scripts/check-supabase-security.js",
     "check:release-docs": "node scripts/check-release-docs.js",
+    "check:changelog-tags": "node scripts/check-changelog-tags.js",
     "check:changelog": "node scripts/check-changelog.js",
     "check:adr": "node scripts/check-adr.js",
     "check:gates": "node scripts/check-gates.js",

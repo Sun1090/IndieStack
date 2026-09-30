@@ -2,6 +2,10 @@
 
 All notable changes to IndieStack will be documented in this file.
 
+**Versions below are not tags:** of 11 releases only `v0.6.0` has one. `0.1.0`-`0.5.0`
+predate the tagging rule; `0.7.0`-`0.11.0` are untagged pending release evidence.
+See `docs/operations/release-tag-ledger.md`.
+
 ## [Unreleased]
 
 ### Changed
@@ -20,6 +24,35 @@ All notable changes to IndieStack will be documented in this file.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **新增 `pnpm check:changelog-tags`：CHANGELOG 声明的已发布版本与仓库真实 tag 对账。**
+  起因是一个**读者看不见的分叉**：`CHANGELOG.md` 声明了 **11** 个已发布版本、约 210 条内容，
+  而 `git tag` 与 GitHub Release **只有 `v0.6.0`**——10 个版本处于
+  「变更日志说发布了、仓库里 checkout 不出来」的状态，共约 176 条内容。
+  **这不是笔误**：生产确实部署过 `0.11.0`，而 tag 是**刻意不打**的（缺账户删除端到端演练与
+  commit 归属证据，B01/B02/B03，全部卡外部权限）——**没有证据就等于没做，而打 tag 是对外声明
+  「做完了」**。问题在于**它只被记在 `docs/progress.md` 里**，CHANGELOG 那一侧完全没提：
+  读 CHANGELOG 的人以为有 11 个可 checkout 的发布，审计 tag 的人发现只有 1 个，**两边都「正常」，
+  而它们互相矛盾**。而 `check:release-tag` 并不管这件事——它校验的是**发布工作流的契约**
+  （tag 命名、notes 必须来自 CHANGELOG 章节、禁止 `--generate-notes`），**不读 `git tag`**。
+  规则（`src/lib/release/changelog-tag-reconciliation.ts`，18 项单测）：
+  - 每个已发布版本要么有 tag，要么在 `MISSING_TAG_LEDGER` 里登记理由；
+  - **反方向也判**：有 tag 但 CHANGELOG 没写章节 → 红；
+  - **登记过期也红**：某版本已经有 tag 了，登记还在 → 红。
+    **这是台账的自我清理机制**——证据闭合、tag 补上后必须回来删登记，
+    「一件做完的事不该继续看起来没做完」；
+  - **披露本身在不在也要判**：CHANGELOG 开头必须指向
+    `docs/operations/release-tag-ledger.md`。**登记在代码里、读者看不见的真相，仍然是读者读不到的
+    真相**——而最省事的一次「整理」就是把那段说明删掉，文件立刻干净好看而分叉原封不动；
+  - 一条版本都没解析出来 / 登记理由为空串 → 失败封闭。
+  10 个无 tag 版本分**两组、原因不同**，所以逐条登记：
+  `0.1.0`–`0.5.0` 是**标签纪律当时还不存在**（J07 在 v0.6.0 周期才落地，而 v0.6.0 恰好是唯一
+  有 tag 的版本——两件事对得上，不是巧合；补打 tag 等于伪造从未发生过的发布证据）；
+  `0.7.0`–`0.11.0` 是**纪律已在、证据未闭合**。逐条理由见新文档
+  `docs/operations/release-tag-ledger.md`。
+  门禁数 44 → **45**。
+
+### Fixed
+
 - **`check:perf` 的三格判定搬进 `src/lib/release/perf-audit.ts`（20 项单测）**——它是
   `check:gate-rule-tests` 点名的内联门禁之一，而它恰好是本仓库**最不该内联**的一段：
   三格里**两格从来没响过**。搬动的真实收益不是形式统一，那两格的问题**都是「判据选错了」**，
