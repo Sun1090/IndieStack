@@ -1,29 +1,22 @@
+#!/usr/bin/env node
 /**
- * AGENTS.md 索引一致性校验
- * 确保索引表格引用的每个 agent 文件存在，且 agents/ 目录无未索引的孤儿文件
+ * AGENTS.md 索引一致性审计入口。
+ *
+ * 校验逻辑与单测共用 src/lib/docs/agents-index.ts 与 scripts/lib/agents-index-check.js，
+ * 这里只负责用 Node 原生 type stripping 运行 ESM（`.ts` import 需要该 flag）。
  */
-const fs = require("fs");
-const path = require("path");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
-const root = path.join(__dirname, "..");
-const index = fs.readFileSync(path.join(root, "AGENTS.md"), "utf8");
-const files = fs
-  .readdirSync(path.join(root, "agents"))
-  .filter((f) => f.endsWith(".md"));
+const cli = path.join(__dirname, "lib", "agents-index-check.js");
+const result = spawnSync(
+  process.execPath,
+  ["--no-warnings", "--experimental-strip-types", cli, ...process.argv.slice(2)],
+  { stdio: "inherit" },
+);
 
-const referenced = [...index.matchAll(/agents\/([\w-]+\.md)/g)].map((m) => m[1]);
-const missingFiles = referenced.filter((f) => !files.includes(f));
-const orphans = files.filter((f) => !referenced.includes(f));
-
-let failed = false;
-if (missingFiles.length) {
-  console.error(`❌ 索引引用了不存在的文件: ${missingFiles.join(", ")}`);
-  failed = true;
+if (result.error) {
+  console.error(`❌ 无法运行 AGENTS 索引审计：${result.error.message}`);
+  process.exit(1);
 }
-if (orphans.length) {
-  console.error(`❌ 未被索引的 agent 文件: ${orphans.join(", ")}`);
-  failed = true;
-}
-if (failed) process.exit(1);
-
-console.log(`✅ Agent 索引一致：${files.length} 个文件全部正确索引`);
+process.exit(result.status ?? 1);
