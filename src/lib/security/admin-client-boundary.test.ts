@@ -284,3 +284,44 @@ export function handler() { return createAdminClient(); }
     expect(facts.reduce((total, fact) => total + fact.calls.length, 0)).toBe(92);
   });
 });
+
+describe("trust.evidence 为空", () => {
+  const guarded = `export async function handler() {
+  const user = await requireSessionUser(supabase);
+  return createAdminClient().from("profiles").select("id");
+}
+`;
+
+  it("非 server-internal 的 kind 清空 evidence → 报错", () => {
+    // 回归：把一份授权判断的**理由**整段删掉，trust.kind 还留着，
+    // 于是记录看起来仍然有效（"session 信任"），而门禁一声不吭。
+    const found = codes(
+      [source("src/lib/repositories/example.ts", guarded)],
+      [inventory({ surface: "data-access", trust: { kind: "session", evidence: [] } })],
+    );
+    expect(found).toContain("ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY");
+  });
+
+  it("证据符号真的不在模块里 → 仍然是 MISSING（不是 EMPTY）", () => {
+    const found = codes(
+      [source("src/lib/repositories/example.ts", guarded)],
+      [inventory({ surface: "data-access", trust: { kind: "session", evidence: ["someSymbolThatIsAbsent"] } })],
+    );
+    expect(found).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
+  });
+
+  it("server-internal 允许 evidence 为空（它没有外部调用者，没有授权判断这回事）", () => {
+    const found = codes(
+      [source("src/lib/repositories/example.ts", guarded)],
+      [inventory({ surface: "data-access", trust: { kind: "server-internal", evidence: [] } })],
+    );
+    expect(found).not.toContain("ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY");
+  });
+
+  it("真实清单里每条非 server-internal 登记都带 evidence", () => {
+    const offenders = ADMIN_CLIENT_INVENTORY.filter(
+      (entry) => entry.trust.kind !== "server-internal" && entry.trust.evidence.length === 0,
+    ).map((entry) => entry.file);
+    expect(offenders).toEqual([]);
+  });
+});
