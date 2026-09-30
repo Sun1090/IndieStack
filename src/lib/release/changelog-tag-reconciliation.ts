@@ -35,7 +35,8 @@ export type ChangelogTagCode =
   | "VERSION_WITHOUT_TAG"
   | "TAG_WITHOUT_VERSION"
   | "STALE_LEDGER_ENTRY"
-  | "DISCLOSURE_MISSING";
+  | "DISCLOSURE_MISSING"
+  | "TAGS_NOT_VISIBLE";
 
 export interface ChangelogTagIssue {
   code: ChangelogTagCode;
@@ -60,6 +61,15 @@ export interface ChangelogTagInput {
   intro: string;
   /** 仓库里实际存在的 tag，形如 `v0.6.0`。 */
   tags: readonly string[];
+  /**
+   * 这些 tag 是否**可信**（即这个 clone 真的能看到 tag）。
+   *
+   * **这一格是量出来的，不是设计出来的**：第一次在 CI 上跑，`git tag --list` 因为
+   * `actions/checkout` 默认浅克隆而返回**空数组**，于是「`0.6.0` 有 tag」被判成
+   * 「`0.6.0` 没有 tag」——**门禁报了一个正好相反的结论**。
+   * 「空列表」与「读不到」必须分开：前者是事实，后者是这次量不到任何东西。
+   */
+  tagsVisible?: boolean;
   /** 已知缺口台账：版本 → 缺 tag 的理由。 */
   ledger: Readonly<Record<string, string>>;
   /** tag 前缀。 */
@@ -86,6 +96,9 @@ const RULE_MESSAGES: Record<ChangelogTagCode, string> = {
   STALE_LEDGER_ENTRY: "这个版本已经有 tag 了，MISSING_TAG_LEDGER 里的登记已过期，请删掉它",
   DISCLOSURE_MISSING:
     "CHANGELOG 开头的说明没有指向发布标签台账：读者会以为每个版本号都能 checkout 出来",
+  TAGS_NOT_VISIBLE:
+    "这个 clone 读不到 git tag（浅克隆未 fetch tag），对账无法进行——这不是「仓库没有 tag」，"+
+    "而是对账量不到东西。请 `git fetch --tags` 后重跑（CI 里给 actions/checkout 加 fetch-depth: 0）",
 };
 
 /**
@@ -149,9 +162,20 @@ export function auditChangelogTags(input: ChangelogTagInput): ChangelogTagReport
   const tagPrefix = input.tagPrefix ?? "v";
   const tagged = versionsFromTags(input.tags, tagPrefix);
   const described = new Set(input.versions.map((entry) => entry.version));
+  const tagsVisible = input.tagsVisible ?? true;
 
   if (input.versions.length === 0) {
     errors.push({ code: "NO_VERSIONS_PARSED", subject: "CHANGELOG.md", message: RULE_MESSAGES.NO_VERSIONS_PARSED });
+  }
+
+  // 读不到 tag 时**立刻停在这里**：继续比下去会把每一个真 tag 都报成「没有 tag」，
+  // 那比不报更坏——它给的是一个与事实相反的答案。
+  if (!tagsVisible) {
+    errors.push({ code: "TAGS_NOT_VISIBLE", subject: "git tag", message: RULE_MESSAGES.TAGS_NOT_VISIBLE });
+    return {
+      errors,
+      stats: { versions: input.versions.length, tagged: 0, staleLedger: 0, ledgerSize: Object.keys(input.ledger).length },
+    };
   }
 
   let taggedCount = 0;

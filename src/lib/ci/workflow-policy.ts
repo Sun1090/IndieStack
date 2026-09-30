@@ -119,6 +119,26 @@ const USES_LINE = /^\s*(?:-\s*)?uses:\s*(\S+)\s*$/gm;
 // 只承认同一行内的 `pnpm <script>`：`\s` 会跨行，把 `- name: Setup pnpm` 后面那行
 // 的 `uses:` 当成脚本名校验，产生假阳性。
 const PNPM_COMMAND = /pnpm[ \t]+([^\r\n]+)/g;
+
+/**
+ * 逐行去掉**整行注释**（首个非空白字符是 `#`）。
+ *
+ * 起因是一次真实的假红：为了说明「CI 必须能读到 tag」，我在 `ci.yml` 的注释里写了
+ * 「`pnpm check:changelog-tags` 要对账……」，而 `PNPM_COMMAND` 扫的是**原始文本**，
+ * 于是那句注释里的 `` `check:changelog-tags` ``（连反引号一起）被当成一条脚本引用，
+ * 门禁报「工作流引用了不存在的脚本」。**注释不是配置。**
+ *
+ * **只去整行注释，不去行尾注释**：`run: |` 块里的 `# pnpm xxx` 是 shell 注释（去掉是对的），
+ * 但行尾 `#` 在 YAML 里可能出现在引号字符串或块标量内部，去错地方会把**真正的命令**删掉——
+ * 那是更坏的失败（漏检）。整行注释没有这个歧义：该行要么是 YAML 注释，要么是 shell 注释，
+ * 两者都不是「工作流引用了某个脚本」。
+ */
+export function stripFullLineComments(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => (/^\s*#/.test(line) ? "" : line))
+    .join("\n");
+}
 const PINNED_REF = /@(?:v\d+(?:\.\d+){0,2}|[0-9a-f]{40})$/;
 const FORBIDDEN_REFS = new Set(["main", "master", "latest", "head", "develop"]);
 
@@ -386,10 +406,13 @@ function auditScripts(
   scripts: Readonly<Record<string, string>>,
   issues: WorkflowIssue[],
 ): void {
-  for (const match of workflow.content.matchAll(PNPM_COMMAND)) {
+  for (const match of stripFullLineComments(workflow.content).matchAll(PNPM_COMMAND)) {
     const tokens = match[1].trim().split(/[ \t]+/);
     const script = tokens.find((token) => !token.startsWith("-"));
     if (!script?.includes(":")) continue;
+    // 脚本名是 `check:foo` / `lint` 这类 token。反引号等标点说明这是**散文里的引用**而不是命令
+    // （例如注释里写「`pnpm check:x` 会……」），不按脚本名处理。
+    if (!/^[A-Za-z0-9:_-]+$/.test(script)) continue;
     if (script in scripts) continue;
     issues.push({
       code: "SCRIPT_UNKNOWN",

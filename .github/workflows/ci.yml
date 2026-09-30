@@ -25,7 +25,13 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      # `fetch-depth: 0` 不是为了拿历史，而是为了**拿 tag**：`pnpm check:changelog-tags`
+      # 要对账「CHANGELOG 声明的已发布版本」与「仓库真实 tag」，而 checkout 默认浅克隆不 fetch tag，
+      # 于是 `git tag --list` 返回空——门禁会把 `0.6.0`（真有 tag）报成「没有 tag」，
+      # 也就是**报出一个与事实相反的结论**。只有这一个作业需要 tag，所以只改这一处。
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6

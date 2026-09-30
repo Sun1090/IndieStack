@@ -44,7 +44,27 @@ export function parseReleasedVersions(changelog) {
   return versions;
 }
 
-/** 仓库里实际存在的 tag。取不到就返回空数组——由规则那一侧失败封闭。 */
+/**
+ * 这个 clone 能不能**可信地**读到 tag。
+ *
+ * `actions/checkout` 默认是浅克隆且不 fetch tag，于是 `git tag --list` 返回空数组。
+ * 把它当成「仓库没有 tag」就会得出**与事实正好相反**的结论（第一次在 CI 上跑就是这样：
+ * `0.6.0` 明明有 tag，却被报成「没有 tag」）。所以这里先问 git 本身。
+ */
+export function tagsAreVisible(repoRoot = REPO_ROOT) {
+  try {
+    const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    }).trim();
+    // 浅克隆本身不一定没 tag（`--depth` 与 `fetch-tags` 可以并存），所以再看一次实际读到的数量。
+    return execFileSync("git", ["tag", "--list"], { cwd: repoRoot, encoding: "utf8" }).trim() !== "" || shallow === "false";
+  } catch {
+    return false;
+  }
+}
+
+/** 仓库里实际存在的 tag。 */
 export function readTags(repoRoot = REPO_ROOT) {
   try {
     const out = execFileSync("git", ["tag", "--list"], { cwd: repoRoot, encoding: "utf8" });
@@ -68,8 +88,13 @@ export function runChangelogTagCheck(repoRoot = REPO_ROOT) {
     return 1;
   }
 
-  const tags = readTags(repoRoot);
-  const report = auditChangelogTags({ versions, tags, ledger: MISSING_TAG_LEDGER, intro });
+  const report = auditChangelogTags({
+    versions,
+    tags: readTags(repoRoot),
+    tagsVisible: tagsAreVisible(repoRoot),
+    ledger: MISSING_TAG_LEDGER,
+    intro,
+  });
 
   if (report.errors.length > 0) {
     console.error(`❌ CHANGELOG 与 git tag 不一致（${report.errors.length} 项）:`);
