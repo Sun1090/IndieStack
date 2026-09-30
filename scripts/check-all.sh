@@ -23,6 +23,7 @@ echo "==> check:security"; pnpm --silent check:security
 echo "==> check:release-docs"; pnpm --silent check:release-docs
 echo "==> check:changelog";    pnpm --silent check:changelog
 echo "==> check:gates";        pnpm --silent check:gates
+echo "==> check:gate-rule-tests"; pnpm --silent check:gate-rule-tests
 echo "==> check:hooks";        pnpm --silent check:hooks
 echo "==> check:workflows";  pnpm --silent check:workflows
 echo "==> check:production-smoke"; pnpm --silent check:production-smoke
