@@ -2,16 +2,26 @@
 /**
  * 构建产物性能断言
  * 检查项：
- *  1. recharts 独立 chunk 存在（懒加载未被回退）
+ *  1. 图表组件仍在自己的懒加载 chunk 里，不在落地页初始 payload 里（懒加载未被回退）
  *  2. 客户端 CSS 单文件体积 < 100kB
- *  3. 无 .map 文件泄漏到静态目录（生产不应可调试）
+ *  3. 无 sourcemap 泄漏到静态目录（三种形态都算，见下）
  */
 const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 const STATIC = path.join(ROOT, ".next", "static");
+const BUILD_MANIFEST = path.join(ROOT, ".next", "build-manifest.json");
 let failed = false;
+
+/** 读一个产物文件的文本；读不出字节（woff2 / 图片）返回 null，与「没有标记」区别开。 */
+function readText(file) {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+}
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -28,15 +38,70 @@ if (!fs.existsSync(STATIC)) {
 }
 const files = walk(STATIC);
 
-// 1. recharts chunk
-const hasRecharts = files.some((f) => {
-  try {
-    return /recharts/i.test(fs.readFileSync(f, "utf8").slice(0, 200000));
-  } catch {
-    return false;
+// 1. 图表 chunk 仍在懒加载
+//
+// **判据换过一次，因为原来那个判据永远不可能命中。**
+// 原实现是「任一产物的**前 200 kB** 里正则找 `recharts`」。实测（Turbopack 生产构建）：
+// `.next/static` 的 63 个文件里 `recharts` **一个都不出现**——而 recharts 确实被打进了产物
+// （`src/components/charts/area-chart.tsx` 经 `next/dynamic` 懒加载）。原因是 Turbopack 的
+// 生产产物里**不内嵌模块路径字符串**，所以「包名」在客户端产物里**结构性地不可搜**。
+// 于是这一格长期在报「未检测到」，而它被命名为「recharts 独立 chunk 存在（懒加载未被回退）」——
+// 一条永远显示「没找到」、却又顶着「防懒加载回退」名字的检查，比没有检查更糟：
+// 它制造的是**它自己都不信的覆盖率**。
+//
+// 现在用**导出符号** `AreaChart` 作标记：实测它能扛过压缩（`recharts` 扛不过），
+// 并且只出现在**那两个**图表 chunk 里（`0w5ujw4kdknj_.js` 360.6kB、`2hvrh58g01j8o.js` 15.2kB），
+// 741 kB 那个 faker 死 chunk 里没有。
+//
+// **判的不再是「找不找得到」，而是它该不在的地方在不在**：落地页初始 payload
+// （`build-manifest.json` 的 `rootMainFiles`，落地页真正会请求的那 6 个文件，合计 430.6kB）
+// 里**不得出现**这个符号。有人把 `next/dynamic` 改回静态 import，recharts 就会被拉进
+// 落地页初始 payload，这一格立刻红。
+//
+// **两处刻意的「宁可红」**：
+// ① **一个文件都没命中标记 → 报红**，不报「未检测到」。标记消失的成因是压缩器或工具链变了，
+//   不是「图表被删了」——这时候这一格**量不到任何东西**，沉默地绿比红危险得多
+//   （同一条纪律见 #178 的 mock 记号、以及 #179 的「按名字判而不是按值判」）。
+// ② **不再只读前 200 kB**：实测 61 个 js 里有 4 个超过 200 kB（最大 724 kB），
+//   原来的窗口对其中 4 个文件的大半内容是瞎的。
+const CHART_MARKER = "AreaChart";
+const chartChunks = files.filter((f) => (readText(f) || "").includes(CHART_MARKER));
+if (chartChunks.length === 0) {
+  console.error(
+    `❌ 产物里一处都找不到图表标记 \`${CHART_MARKER}\`：这一格量不到任何东西。` +
+      `多半是压缩器/工具链改名了（构建产物里原本就没有 \`recharts\` 这个包名字符串），` +
+      `请更新 scripts/check-perf.js 里的 CHART_MARKER，而不是把它当成「图表已移除」。`
+  );
+  failed = true;
+} else if (!fs.existsSync(BUILD_MANIFEST)) {
+  console.error("❌ 缺 .next/build-manifest.json，无法判断落地页初始 payload；先重新 pnpm build");
+  failed = true;
+} else {
+  const mainFiles = JSON.parse(fs.readFileSync(BUILD_MANIFEST, "utf8")).rootMainFiles || [];
+  const inlined = mainFiles
+    .map((rel) => path.join(ROOT, ".next", rel.split("?")[0]))
+    .filter((f) => (readText(f) || "").includes(CHART_MARKER));
+  const landingKb = Math.round(
+    mainFiles.reduce((sum, rel) => {
+      const f = path.join(ROOT, ".next", rel.split("?")[0]);
+      return sum + (fs.existsSync(f) ? fs.statSync(f).size : 0);
+    }, 0) / 1024
+  );
+  if (inlined.length) {
+    for (const f of inlined) {
+      console.error(
+        `❌ 图表代码进了落地页初始 payload（懒加载回退）：${path.relative(ROOT, f)}`
+      );
+    }
+    failed = true;
+  } else {
+    const names = chartChunks.map((f) => path.relative(STATIC, f)).join("、");
+    console.log(
+      `✅ 图表仍在懒加载 chunk 里：${names}（落地页初始 payload ${landingKb}kB / ` +
+        `${mainFiles.length} 个文件，其中不含图表）`
+    );
   }
-});
-console.log(`${hasRecharts ? "✅" : "⚠️ "} recharts 独立 chunk: ${hasRecharts ? "存在" : "未检测到（若已移除图表可忽略）"}`);
+}
 
 // 2. CSS 体积
 const css = files.filter((f) => f.endsWith(".css"));
@@ -68,12 +133,8 @@ if (files.length === 0) {
   const inline = [];
   const resolvable = [];
   for (const file of files) {
-    let text = "";
-    try {
-      text = fs.readFileSync(file, "utf8");
-    } catch {
-      continue; // 二进制（woff2 / 图片）：读不出字节就当作没有标记
-    }
+    const text = readText(file);
+    if (text === null) continue; // 二进制（woff2 / 图片）：读不出字节就当作没有标记
     for (const match of text.matchAll(/sourceMappingURL=(\S+)/g)) {
       const ref = match[1];
       if (ref.startsWith("data:")) {
