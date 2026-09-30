@@ -20,6 +20,22 @@ All notable changes to IndieStack will be documented in this file.
   门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
 
 ### Fixed
+- **依赖审计：4 个 high 降到 0（任意严重度 0）**，`brace-expansion` 与 `fast-uri` 的
+  override 之前**钉在自身已是漏洞版本的版本上**。
+  `GHSA-qhr7-859c-m2p7` / `GHSA-6j4f-fj2g-mc7p`（`brace-expansion` DoS via uncontrolled
+  recursion）的修复版本随时间上移（2.x 需 `>=2.1.6`、5.x 需 `>=5.0.11`），而
+  `pnpm-workspace.yaml` 里钉的是 `^2.1.4` 与 `^5.0.9`——**两个都在漏洞区间内**。
+  于是 `pnpm audit --audit-level high` 一直红着，而 override 一直绿着：
+  **一条「已经处理过了」的记录，掩盖了一个已经不再成立的结论。**
+  `fast-uri: ^3.1.6` 同理（需 `>=3.1.8`）。现在 `^2.1.7` / `^5.0.12` / `^3.1.8`，
+  `pnpm audit` 任意严重度 **0 条**。
+  全部是同一大版本内的 patch 升级（2.1.4→2.1.7、5.0.9→5.0.12、3.1.6→3.1.8），
+  实测 `lint` / `type-check` / 2,941 用例 / `pnpm build` / E2E 113 passed / `check:all` 全绿。
+  另记一条踩坑：**pnpm 11 不再读 `package.json` 的 `pnpm` 字段**，override 的新家在
+  `pnpm-workspace.yaml`——加错位置时 pnpm 只给一行 WARN 就继续，装完什么也没变。
+
+### Fixed
+
 - **`check:i18n` 的判定逻辑从脚本搬进 `src/lib/i18n/translation-usage.ts`（22 项单测）**——
   它是上一条 `check:gate-rule-tests` 点名的 4 条「判定内联在脚本里、强度没有被单测兜底」的门禁之一。
   搬的过程中发现**两个会让这条门禁静默变松的洞**，都修掉了：
