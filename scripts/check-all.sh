@@ -21,6 +21,7 @@ echo "==> check:query-errors"; pnpm --silent check:query-errors
 echo "==> check:route-auth";  pnpm --silent check:route-auth
 echo "==> check:security"; pnpm --silent check:security
 echo "==> check:release-docs"; pnpm --silent check:release-docs
+echo "==> check:changelog-tags"; pnpm --silent check:changelog-tags
 echo "==> check:changelog";    pnpm --silent check:changelog
 echo "==> check:gates";        pnpm --silent check:gates
 echo "==> check:gate-rule-tests"; pnpm --silent check:gate-rule-tests
