@@ -57,6 +57,7 @@
     "check:changelog": "node scripts/check-changelog.js",
     "check:adr": "node scripts/check-adr.js",
     "check:gates": "node scripts/check-gates.js",
+    "check:gate-rule-tests": "node scripts/check-gate-rule-tests.js",
     "check:hooks": "node scripts/check-hooks.js",
     "check:workflows": "node scripts/check-workflows.js",
     "check:production-smoke": "node scripts/check-production-smoke.js",
