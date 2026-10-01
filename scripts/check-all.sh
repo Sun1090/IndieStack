@@ -25,6 +25,7 @@ echo "==> check:changelog-tags"; pnpm --silent check:changelog-tags
 echo "==> check:changelog";    pnpm --silent check:changelog
 echo "==> check:gates";        pnpm --silent check:gates
 echo "==> check:gate-rule-tests"; pnpm --silent check:gate-rule-tests
+echo "==> check:doc-links";    pnpm --silent check:doc-links
 echo "==> check:hooks";        pnpm --silent check:hooks
 echo "==> check:workflows";  pnpm --silent check:workflows
 echo "==> check:production-smoke"; pnpm --silent check:production-smoke

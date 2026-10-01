@@ -59,6 +59,7 @@
     "check:adr": "node scripts/check-adr.js",
     "check:gates": "node scripts/check-gates.js",
     "check:gate-rule-tests": "node scripts/check-gate-rule-tests.js",
+    "check:doc-links": "node scripts/check-doc-links.js",
     "check:hooks": "node scripts/check-hooks.js",
     "check:workflows": "node scripts/check-workflows.js",
     "check:production-smoke": "node scripts/check-production-smoke.js",
