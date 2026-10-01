@@ -15,8 +15,10 @@
  *   - 每个 `check:*` 门禁引用的每个 `src/lib` 规则模块，都必须存在以它为前缀的 `*.test.ts`；
  *   - **一条规则模块都没检出时报红**——提取规则模块靠的是读脚本文本，这个提取本身是启发式，
  *     而一个「因为提取得不对所以什么都没查到」的审计，必须出声而不是安静地报 0 项通过；
- *   - 判定逻辑内联在脚本里的门禁**不算错**，但必须被**计数并打印**出来：这个数是分母，
- *     隐去它就等于把「有 N 条门禁的强度没有被单测兜底」这件事藏起来。
+ *   - 判定逻辑内联在脚本里的门禁**一律失败**（`INLINE_GATE_REINTRODUCED`），并点名是哪几条。
+ *     这条规则刚加上时全仓库还有 10 条内联门禁，当时只能计数并打印（那个数是分母）；
+ *     到 2026-10-01 它们全部搬进规则模块，这个数归零，于是从「被计数」升级为「一律失败」——
+ *     **一个能悄悄涨回去的绿色数字，不如一条会红的规则**。
  *
  * 本模块只判断「规则模块有没有单测」，不判断单测本身好不好——那是覆盖率工具的活。
  */
@@ -29,7 +31,10 @@ export interface GateRuleRef {
   ruleModules: readonly string[];
 }
 
-export type GateRuleTestCode = "RULE_MODULE_UNTESTED" | "NO_RULE_MODULE_DETECTED";
+export type GateRuleTestCode =
+  | "RULE_MODULE_UNTESTED"
+  | "NO_RULE_MODULE_DETECTED"
+  | "INLINE_GATE_REINTRODUCED";
 
 export interface GateRuleTestIssue {
   code: GateRuleTestCode;
@@ -57,6 +62,8 @@ const RULE_MESSAGES: Record<GateRuleTestCode, string> = {
     "这条门禁的判定逻辑在 src/lib 规则模块里，但没有以它为前缀的单测——门禁的「会不会响」就没人兜底（check:perf 两格长期沉默就是先例）",
   NO_RULE_MODULE_DETECTED:
     "一条 src/lib 规则模块都没检出：本审计靠读脚本文本提取模块，提取失效应出声而不是报 0 项通过",
+  INLINE_GATE_REINTRODUCED:
+    "有门禁把判定逻辑内联在脚本里：它的「会不会响」没有单测兜底。请把判定搬进 src/lib 规则模块",
 };
 
 /**
@@ -111,10 +118,12 @@ export function auditGateRuleTests(input: {
   const errors: GateRuleTestIssue[] = [];
   const modules = new Set<string>();
   let inlineGates = 0;
+  const inlineNames: string[] = [];
 
   for (const gate of input.gates) {
     if (gate.ruleModules.length === 0) {
       inlineGates += 1;
+      inlineNames.push(gate.name);
       continue;
     }
     for (const ruleModule of gate.ruleModules) {
@@ -124,6 +133,21 @@ export function auditGateRuleTests(input: {
 
   if (modules.size === 0) {
     errors.push({ code: "NO_RULE_MODULE_DETECTED", subject: "全部门禁", message: RULE_MESSAGES.NO_RULE_MODULE_DETECTED });
+  }
+
+  // **内联门禁从「被计数」升级为「一律失败」。**
+  //
+  // 起因：这条规则刚加上时，全仓库还有 **10 条**内联门禁，于是当时只能把它们**计数并打印**
+  // （那个数是分母）。到 2026-10-01 它们全部搬进了规则模块，**这个数已经是 0**。
+  // 于是「计数」变成了一个**可以悄悄涨回去**的数字——而它涨回去时门禁仍然绿。
+  // 既然归零，就把它变成硬约束：**新写一条内联门禁必须当场被红**，
+  // 而不是「先绿着，等谁有空再去搬」。
+  if (inlineGates > 0) {
+    errors.push({
+      code: "INLINE_GATE_REINTRODUCED",
+      subject: inlineNames.join(", "),
+      message: RULE_MESSAGES.INLINE_GATE_REINTRODUCED,
+    });
   }
 
   for (const ruleModule of [...modules].sort()) {
