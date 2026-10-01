@@ -107,10 +107,12 @@ describe("auditGateRuleTests", () => {
       ],
       testFiles: ALL_TESTS,
     });
-    expect(report.errors.map((e) => e.code)).toEqual(["NO_RULE_MODULE_DETECTED"]);
+    expect(report.errors.map((e) => e.code)).toContain("NO_RULE_MODULE_DETECTED");
   });
 
-  it("判定内联在脚本里的门禁不算错，但要被计数", () => {
+  it("判定内联在脚本里的门禁现在**报错**（从「被计数」升级为「一律失败」）", () => {
+    // 这条规则刚加上时全仓库还有 10 条内联门禁，只能计数；搬完后归零，于是改成硬失败——
+    // 一个能悄悄涨回去的绿色数字，不如一条会红的规则。
     const report = auditGateRuleTests({
       gates: [
         { name: "check:perf", ruleModules: [] },
@@ -118,13 +120,39 @@ describe("auditGateRuleTests", () => {
       ],
       testFiles: ALL_TESTS,
     });
-    expect(report.errors).toEqual([]);
+    expect(report.errors.map((e) => e.code)).toEqual(["INLINE_GATE_REINTRODUCED"]);
+    // 必须点名是哪几条，否则「有条内联门禁」这件事仍然不好查
+    expect(report.errors[0].subject).toBe("check:perf");
     expect(report.stats).toEqual({
       totalGates: 2,
       gatedGates: 1,
       inlineGates: 1,
       ruleModules: 1,
     });
+  });
+
+  it("全部走规则模块时（今天的状态）不报错", () => {
+    const report = auditGateRuleTests({
+      gates: [
+        { name: "check:states", ruleModules: ["src/lib/ui/state-rules.ts"] },
+        { name: "check:fields", ruleModules: ["src/lib/ui/form-field-rules.ts"] },
+      ],
+      testFiles: [...ALL_TESTS, "src/lib/ui/form-field-rules.test.ts"],
+    });
+    expect(report.errors).toEqual([]);
+    expect(report.stats.inlineGates).toBe(0);
+  });
+
+  it("多条内联门禁一次全部点名", () => {
+    const report = auditGateRuleTests({
+      gates: [
+        { name: "check:a", ruleModules: ["src/lib/ui/state-rules.ts"] },
+        { name: "check:b", ruleModules: [] },
+        { name: "check:c", ruleModules: [] },
+      ],
+      testFiles: ALL_TESTS,
+    });
+    expect(report.errors[0].subject).toBe("check:b, check:c");
   });
 
   it("只被类型文件引用的门禁不参与「检出模块数」", () => {
@@ -134,7 +162,10 @@ describe("auditGateRuleTests", () => {
       gates: [{ name: "check:notifications", ruleModules: ["src/lib/notifications/types.ts"] }],
       testFiles: ALL_TESTS,
     });
-    expect(report.errors.map((e) => e.code)).toEqual(["NO_RULE_MODULE_DETECTED"]);
+    // 这个 fixture 里所有门禁都是内联的，所以两条规则**都**该触发：
+    // 「一条规则模块都没检出」与「有内联门禁」。用 contains 而不是 toEqual，
+    // 免得以后加规则时这个用例变成一个必须同步更新的负担。
+    expect(report.errors.map((e) => e.code)).toContain("NO_RULE_MODULE_DETECTED");
   });
 
   it("统计覆盖了全部门禁而不是只统计有规则模块的那些", () => {
