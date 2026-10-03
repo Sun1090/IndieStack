@@ -6772,3 +6772,30 @@
 - 下一项：三条阻塞不变（A05 产品决策、B02–B05 外部权限、`/api/health` 响应契约）。
   可继续：把剩下未核对的规则模块逐批补进登记表（每批都要真跑）。
 - 更新时间：2026-10-03（UTC）。
+
+## 2026-10-03 — 变异核对的第二批：登记表从 12 个模块推到 19 个
+
+- 里程碑 / 版本：v0.12.0。分支：`feat/falsify-coverage-batch2`。基线 `32e0958b`（#200 合并后的 main）。
+- 状态：DONE。门禁数仍 **48**。
+- **做什么**：把上一轮固化的工具真用起来——`pnpm falsify:rules` 的登记表加上第二批七个模块
+  （glossary / translation-values / client-write-policies / rate-limit-policy /
+  query-error-channel / release-tag-policy / gate-wiring）。
+- **读数：24 条判定 / 19 个规则模块全部会红**（合计 234 条用例变红）。
+  加上 #194 手工核对过的 13 个模块，**已核对覆盖 32 个规则模块（全库 56 个）**。
+  本批新变的红条数：glossary 11 · translation-values 10 · client-write-policies 4 ·
+  rate-limit-policy 11 · query-error-channel 9 · release-tag-policy 9 · gate-wiring 18。
+- **登记表为什么必须一条一条真跑**：它是**证据清单**。写「应该会红」进去，
+  下一个人就会把它当成已经核对过——而那正是本项目反复付过学费的形状
+  （一份看起来仍然有效、实际已经不成立的记录）。所以这一批的 72 条红是**跑出来的**，不是推演出来的。
+- 顺手清掉两条**早已合并但本地仍在**的分支（`feat/c09-session-user-truth-table`、
+  `fix/shadcn-outline-hidden`）：它们因为是 squash 合并，`--is-ancestor` 判不出来，
+  所以逐个抽查了各自那条提交里的关键内容确实已在 `main`（C13 那条 `.env.production` 断言、
+  `native-theme.test.ts` 里的 `forced-colors` 用例）才删。
+  **「远端已删」不等于「可以删本地」**：远端删掉只说明它的 PR 结束了，不说明内容进了 main。
+- 验证命令与结果：`pnpm falsify:rules` → **24/24 会红**，跑完 `git status` 干净；
+  `pnpm lint` **0 warning**；`pnpm type-check` exit 0。
+- 阻塞 / 风险：剩下 24 个规则模块未做过变异核对。**这不是缺口清单，是待办清单**——
+  它们各自只需要一次 1 分钟的真跑，代价小到不值得为此单独开一轮。
+  风险是有人把「应该会红」写进登记表；runner 只信运行结果，而登记表形状由单测守着。
+- 下一项：三条阻塞不变（A05 产品决策、B02–B05 外部权限、`/api/health` 响应契约）。
+- 更新时间：2026-10-03（UTC）。
