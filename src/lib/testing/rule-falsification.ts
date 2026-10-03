@@ -190,6 +190,44 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
       'return { issues: [], gates: [], localGates: [], ciGates: [], exempted: [], referencedScripts: [], workflows: [], checklistWorkflows: [] };',
     testFile: "src/lib/release/gate-wiring.test.ts",
   },
+  {
+    file: "src/lib/security/dependency-audit.ts",
+    function: "inspectDependencyAudit",
+    neuteredReturn:
+      'return { high: 0, critical: 0, excepted: [] };',
+    testFile: "src/lib/security/dependency-audit.test.ts",
+  },
+  {
+    file: "src/lib/security/dependency-audit.ts",
+    function: "inspectBareAuditCommands",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/security/dependency-audit.test.ts",
+  },
+  {
+    file: "src/lib/security/codeql-alert-policy.ts",
+    function: "auditCodeqlAlertPolicy",
+    neuteredReturn: "return { issues: [], checks: 0 };",
+    testFile: "src/lib/security/codeql-alert-policy.test.ts",
+  },
+  {
+    file: "src/lib/ui/form-field-rules.ts",
+    function: "auditFormFields",
+    neuteredReturn: "return { errors: [], stats: { scannedFiles: 0 } };",
+    testFile: "src/lib/ui/form-field-rules.test.ts",
+  },
+  {
+    file: "src/lib/styling/direction.ts",
+    function: "auditDirection",
+    neuteredReturn: "return { issues: [], checkedFiles: 0, physicalClasses: 0 };",
+    testFile: "src/lib/styling/direction.test.ts",
+  },
+  {
+    file: "src/lib/observability/trace-coverage.ts",
+    function: "auditTraceCoverage",
+    neuteredReturn:
+      "return { issues: [], scannedFiles: [], tracedFiles: [], exemptedFiles: [] };",
+    testFile: "src/lib/observability/trace-coverage.test.ts",
+  },
 ];
 
 export interface MutationResult {
