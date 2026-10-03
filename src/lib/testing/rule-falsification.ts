@@ -146,6 +146,50 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return { issues: [], checkedCommands: 0, hookNames: [] };",
     testFile: "src/lib/release/hook-wiring.test.ts",
   },
+  {
+    file: "src/lib/i18n/glossary.ts",
+    function: "auditGlossary",
+    neuteredReturn:
+      "return { issues: [], matchedTerms: 0, checkedPairs: 0, exempted: [], approvedUsage: {} };",
+    testFile: "src/lib/i18n/glossary.test.ts",
+  },
+  {
+    file: "src/lib/i18n/translation-values.ts",
+    function: "auditTranslationValues",
+    neuteredReturn: "return { issues: [], checkedValues: 0, exemptedKeys: [] };",
+    testFile: "src/lib/i18n/translation-values.test.ts",
+  },
+  {
+    file: "src/lib/security/client-write-policies.ts",
+    function: "inspectClientWritePolicies",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/security/client-write-policies.test.ts",
+  },
+  {
+    file: "src/lib/security/rate-limit-policy.ts",
+    function: "auditRateLimits",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/security/rate-limit-policy.test.ts",
+  },
+  {
+    file: "src/lib/security/query-error-channel.ts",
+    function: "inspectQueryErrorChannel",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/security/query-error-channel.test.ts",
+  },
+  {
+    file: "src/lib/release/release-tag-policy.ts",
+    function: "auditReleaseTag",
+    neuteredReturn: "return { issues: [], checks: 0 };",
+    testFile: "src/lib/release/release-tag-policy.test.ts",
+  },
+  {
+    file: "src/lib/release/gate-wiring.ts",
+    function: "auditGateWiring",
+    neuteredReturn:
+      'return { issues: [], gates: [], localGates: [], ciGates: [], exempted: [], referencedScripts: [], workflows: [], checklistWorkflows: [] };',
+    testFile: "src/lib/release/gate-wiring.test.ts",
+  },
 ];
 
 export interface MutationResult {
