@@ -79,6 +79,19 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **限流台账里那条「已知缺口」从此会自己到期。** `GAP_CLOSURE` 早就要求缺口说出「怎么关」，
+  但**那条要求不会过期**：一条写着判据的缺口可以躺在 `RATE_LIMIT_LEDGER` 里三年，
+  每次 CI 仍只报「1 条已知缺口」，没人被要求再看它一眼。
+  现在缺口正文必须写「复核期限：YYYY-MM-DD」（缺日期即 `RATE_LIMIT_GAP_REVIEW_MISSING`，
+  过期即 `RATE_LIMIT_GAP_REVIEW_OVERDUE`），形态与 #197 的 `DEPENDENCY_AUDIT_EXCEPTIONS` 一致——
+  **一个临时的处置方式必须被标明是临时的，并在条件变化时自己变红**。
+  `GET /api/health` 那条已补上 `复核期限：2026-11-15`。
+- **顺手修掉 `docs/testing.md` 里两个抄下来的漂移数字**：C12 那一节写着「14 个有窗口 + 31 个写明理由」
+  与两条已知缺口，而真实读数是 **17 + 28** 与一条——`GET /api/og` 的缺口在 #136 之后已关掉，
+  抄下来的数字却留了很久。已按 roadmap D04 的处方改成**指向门禁输出**而不是抄数字：
+  `pnpm check:route-auth` 每次都会把两个分母与缺口条数打出来。**一个抄下来的数字会一直错到有人去核对它。**
+
+
 - **`pnpm check:security` 在 `braces` 的 GHSA-vfj7-8cjw-p6xm 上红了一轮，而那一轮没有任何可执行的修法——
   于是判据本身被修掉了：不是放宽，而是把「暂无补丁」登记成一条会自己到期的例外。**
   2026-10-03 起 `CI=true pnpm check:all` 在 `check:security` 上报 `0 critical, 1 high vulnerabilities`。
