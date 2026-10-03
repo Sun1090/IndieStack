@@ -32,8 +32,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Repository security/config checks
         run: pnpm check:security
+      # 走门禁而不是裸 `pnpm audit --audit-level high`：裸命令不看例外台账，
+      # 「上游没有补丁」会让这一步永远红，而红了之后没人能修。
       - name: Dependency audit
-        run: pnpm audit --audit-level high
+        run: pnpm check:audit
       - name: Auth email config drift check
         env:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}

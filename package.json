@@ -52,6 +52,7 @@
     "check:i18n": "node scripts/check-i18n-usage.js",
     "check:migrations": "node scripts/check-migrations.js",
     "check:security": "node scripts/check-security-config.js",
+    "check:audit": "node scripts/check-dependency-audit.js",
     "check:supabase-security": "node scripts/check-supabase-security.js",
     "check:release-docs": "node scripts/check-release-docs.js",
     "check:changelog-tags": "node scripts/check-changelog-tags.js",

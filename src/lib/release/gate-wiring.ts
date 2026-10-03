@@ -37,6 +37,9 @@ export const GATE_EXCEPTIONS: Readonly<Record<string, GateException>> = {
   "check:bundle": {
     local: "需要完整生产构建产物，check:all 刻意不触发构建；由 pnpm verify:build 覆盖",
   },
+  "check:audit": {
+    local: "审计判定已包含在 check:security 内（同一份 src/lib/security/dependency-audit.ts），本地聚合再跑一遍只会重复发一次注册表请求；CI 侧由 security-config job 的独立步骤覆盖",
+  },
   "check:perf": {
     local: "需要 .next 构建产物，check:all 不触发构建；由 pnpm verify 覆盖",
   },

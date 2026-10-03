@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspectBareAuditCommands } from "../../src/lib/security/dependency-audit.ts";
 import {
   formatSecurityIssues,
   inspectAuditReport,
@@ -135,7 +136,7 @@ function readSecurityGateFiles(root) {
   return files;
 }
 
-function runDependencyAudit(root) {
+export function runDependencyAudit(root) {
   const result = spawnSync("pnpm", ["audit", "--json"], {
     cwd: root,
     encoding: "utf8",
@@ -216,6 +217,9 @@ export function runSecurityConfigCheck(options = {}) {
   issues.push(...inspectClientModules(sourceFiles));
   issues.push(...inspectWorkflowPermissions(workflowFiles));
   issues.push(...inspectSecurityGateFiles(gateFiles));
+  // SECURITY_GATE_FILES 只覆盖四个扫描配置文件，所以这条对「所有工作流」成立，
+  // 而不是只对那四个文件成立。
+  issues.push(...inspectBareAuditCommands(workflowFiles));
   issues.push(...inspectProductionMockSettings(productionConfigs));
 
   let auditReport;
@@ -229,9 +233,17 @@ export function runSecurityConfigCheck(options = {}) {
     }
   }
 
+  let excepted = [];
   if (auditReport !== undefined) {
-    const auditResult = inspectAuditReport(auditReport);
-    if (Array.isArray(auditResult)) issues.push(...auditResult);
+    const auditResult = inspectAuditReport(auditReport, {
+      today: options.today,
+      exceptions: options.auditExceptions,
+    });
+    if (Array.isArray(auditResult)) {
+      issues.push(...auditResult);
+    } else {
+      excepted = auditResult.excepted;
+    }
   }
 
   if (issues.length > 0) {
@@ -240,8 +252,12 @@ export function runSecurityConfigCheck(options = {}) {
     return 1;
   }
 
+  // 自报读数：例外台账吸收了哪几条必须出现在成功输出里。
+  // 「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话，只说前一句就丢了后者。
+  const exceptedNote =
+    excepted.length > 0 ? `; ${excepted.length} 条已登记例外（${excepted.join(", ")}）` : "";
   console.log(
-    `✅ security/config checks passed: ${trackedFiles.length} tracked files, ${sourceFiles.length} source files, ${workflowFiles.length} workflows`,
+    `✅ security/config checks passed: ${trackedFiles.length} tracked files, ${sourceFiles.length} source files, ${workflowFiles.length} workflows${exceptedNote}`,
   );
   return 0;
 }

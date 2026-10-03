@@ -6525,3 +6525,95 @@
   **运维手册里写错命令仍然不会被发现**。这是本条**已知不覆盖**的一格。
 
 - 更新时间：2026-10-01（UTC）。
+
+## 2026-10-03 — 一条正确的判据撞上不可修的现实：把「暂无补丁」登记成会自己到期的例外
+
+- 里程碑 / 版本：v0.12.0。分支：`fix/dependency-audit-exception-ledger`。基线 `b7637787`。
+- 状态：DONE。门禁数 47 → **48**。
+- **这一轮的起点是一次「门禁红了但没人能修」**：`CI=true pnpm check:all` 在 `check:security` 上报
+  `0 critical, 1 high vulnerabilities`，来路是 `braces` 的 GHSA-vfj7-8cjw-p6xm（CVE-2026-93687，递归爆栈 DoS）。
+  按本仓库的优先级，「安全失败」排在最前面那一档，所以先量它到底能不能修：
+  - 路径 `.>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces`——
+    `eslint-config-next` 是 devDependencies，**仅开发期可达**，不进运行时依赖图、不进产物；
+  - 公告的 patched range 写 `>=3.0.4`，而 `npm view braces versions` 的**最新发布版就是 3.0.3**；
+    GitHub Advisory Database 那一条的 Patched versions 一栏是 **None**。也就是说
+    「有个已发布版本能修」这句话本身就是假的；
+  - 往上游看也堵不住：`fast-glob` 最新 3.3.3 仍依赖 `micromatch@^4.0.8`，`micromatch` 最新 4.0.8 仍依赖 `braces@^3.0.3`。
+  **结论：这不是「有人忘了升依赖」，而是一个正确的判据撞上了一个没有补丁的现实。**
+  一条没人能修的门禁不是严格，是**失效**——它会训练所有人忽略这一格红灯。
+- **处置方式沿用仓库既有纪律，而不是新造一条**：C08 的错误通道台账、C12 的限流两态台账、
+  以及 #193「内联门禁从计数升级为硬失败」都是同一句话——
+  **一个临时的处置方式必须被标明是临时的，并在条件变化时自己兑现**。
+  所以这里没有把判据从「high/critical 必须为 0」放宽，而是把「已知且暂时无法修复」登记成
+  `DEPENDENCY_AUDIT_EXCEPTIONS`（`src/lib/security/dependency-audit.ts`），每条必须写清可达性结论、
+  「为什么现在修不了」，以及 `reviewedOn` / `reviewBy`。
+- **让它不可能悄悄变成永久豁免的四条**（这是本条真正的价值所在，不是那个台账本身）：
+  1. **未登记即失败**并点名 id/模块/依赖路径——台账**不是白名单**，它是登记簿；
+  2. **条目写不完整即失败**（理由空、日期不是 `YYYY-MM-DD`、`reviewBy < reviewedOn`）；
+  3. **反向断言**：台账里的公告**不再出现在报告里**就红（修复落地后请删条目）；
+     「仅开发期可达」不再成立也红；台账与报告对模块/级别的说法不一致也红。
+     第 3 条与 `KNOWN_GAPS` 那条反向断言同形，是这套机制里最要紧的一条——
+     **文档腐化是静默的，而这条不是**；
+  4. **`reviewBy` 早于今天即红**：逼人重新看一眼上游有没有发补丁。
+- **两条失败封闭是这一轮量出来的，不是一开始想到的**：
+  - blocking 计数大于 0 却给不出公告明细 → 红（「无法判断是否已登记」必须读成「未登记」）；
+  - 计数与可枚举公告条数对不上 → 红。**「存在但看不见」无法登记，也就无法豁免**，
+    而注册表改一次计数口径就能制造出这一格；宁可因为口径变化而红，也不要在口径变化后安静地放过漏洞。
+- **一处必须记下来的实现错误**（它一度让门禁输出 `[object Object]`）：
+  `readBlockingAdvisories` 最初返回 `BlockingAdvisory[] | string[]`，
+  而**两种形状都是数组**，`Array.isArray` 分不开——于是公告对象被当成问题串打印，
+  台账那条真实例外同时被判成「不再出现在报告里」。
+  **看起来像门禁在抱怨、实际什么也没判**，这比报红更坏。改成 `{ advisories, error? }` 后消失。
+  这与 #194 那次「工具坏了被读成结论不好」是同一族：**坏掉的工具会说出听起来很像结论的话**。
+- **一处 CI 层面的发现**：security-config job 里那一步此前是裸的 `pnpm audit --audit-level high`。
+  裸命令不看台账，所以**无论本仓库怎么改，那一步都会永远红**——也就是说这条红不是「门禁太严」，
+  是**门禁本身不可执行**。已改为 `pnpm check:audit`，判定只有一份实现（`src/lib/security/dependency-audit.ts`），
+  `check:security` 与它不会各判各的；`check:security` 的配置面要求同步从裸命令改成 `pnpm check:audit`，
+  并补一条**反向断言单测**：把裸命令塞回去不算接线。
+- **这处修复自己被抓了第二次，而这一条比第一次更值得记**：第一次只改了 `security-config.yml`
+  （当时 grep 的是「哪些工作流提到 `check:security`」），推上去之后同一个 PR 的 CI 仍然红——
+  日志里是 `ci.yml` 静态门禁作业里**一模一样**的裸审计。
+  也就是说**我修掉的是「我查到的那一处」，而门禁红的是「所有那一类」**；
+  这正是本仓库反复付过学费的形状（#191 的 `AGENTS.md` 索引、#195 的文档链接都是它的同型）。
+  - `ci.yml` 那一步删掉：它与紧随其后的 `pnpm check:all`（内含 `check:security`）重复判定同一件事，
+    而那一步下面本来就写着「一份清单」的约定；删掉比再加一次 `pnpm check:audit` 更符合那条约定，
+    也少一次注册表请求。
+  - 补 `inspectBareAuditCommands`：**任何工作流都不许再出现裸的 `pnpm audit`**
+    （`pnpm check:audit`、`pnpm audit:storage-orphans` 不算）。它问的是「有没有绕开台账的入口」，
+    **不是**「审计有没有跑」——后者归 `check:gates` 与 `SECURITY_GATE_REQUIREMENTS`，
+    两条判据问的不是同一件事，所以都要留着。
+  - 注释里的字样不算命令（判定先去掉整行注释）：不这么做，我们为解释这条规则而写下的那串
+    `pnpm audit --audit-level high` 会把门禁顶红——**注释不是配置**，这与 `workflow-policy` 踩过的
+    同一类假红同形。
+  - 真实仓库上的变异核对：把 `ci.yml` 那一步加回去 → `check:security` 红并点名文件与那行命令（做完复原）。
+- **通过时的输出改成自报读数**（`1 条已登记例外（GHSA-vfj7-8cjw-p6xm）`）：
+  「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话，只说前一句就丢了后者。
+- 变异核对六处（做完复原，逐个确认文件已还原）：抹掉 STALE 反向断言 → 2 条红；
+  抹掉复核期限 → 1 条红；抹掉 dev-only 判定 → 1 条红；抹掉计数与明细对账 → 1 条红；
+  抹掉台账理由校验 → 9 条红；把裸审计加回 `ci.yml` → `check:security` 红并点名。
+- 变更文件：`src/lib/security/dependency-audit.ts`（新增）、`dependency-audit.test.ts`（新增，35 条）、
+  `src/lib/security/dependency-audit-check.test.ts`（新增，4 条）、
+  `scripts/check-dependency-audit.js`（新增）、`scripts/lib/dependency-audit-check.js`（新增）、
+  `src/lib/security/security-config.ts`（审计判定改为委托 + 配置面要求换掉裸命令）、
+  `.github/workflows/ci.yml`（删掉重复的裸审计步骤）、
+  `security-config.test.ts`、`security-config-check.test.ts`、
+  `src/lib/release/gate-wiring.ts`（`check:audit` 登记免于本地聚合，理由写明）、
+  `gate-wiring.test.ts`（临时仓库 fixture 补上这个门禁）、
+  `package.json`、`.github/workflows/security-config.yml`、`docs/testing.md`、
+  `docs-site/scripts.md` + `docs-site/zh-CN/scripts.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`pnpm lint` **0 warning**（中途撞到 `inspectDependencyAudit` 复杂度 19 > 15，
+  按仓库既有做法拆成 `collectBlocking` / `collectUnidentifiable` / `collectUnregistered`
+  三个函数，**不加 disable 注释**）；`pnpm type-check` exit 0；
+  **256 文件 / 3,096 用例**；`CI=true pnpm check:all` exit 0；
+  `pnpm build` exit 0；`check:gates` → **48 个门禁**（本地 44 / CI 47 / 豁免 4）；
+  `check:gate-rule-tests` → **56 个规则模块 / 48 条走规则模块 / 0 条内联**；
+  `pnpm check:audit` 与 `pnpm check:security` 都自报那一条例外。
+- 阻塞 / 风险：**这一条本身会在 2026-11-02 之后自己变红**，那是设计而不是故障——
+  到时候要么删条目（补丁已发），要么更新 `reviewedOn` / `reviewBy` 并把查证过程写回 `justification`。
+  风险是有人为了让它绿而直接调大 `reviewBy`：那时台账就退化成一句没人再看的话，
+  而唯一的反制是 review 时要求写清「查了 npm 的哪个命令、看到什么」。
+  回滚 = revert 本次提交（会回到「红且不可修」的状态，这一条本身不构成回滚理由）。
+- 下一项：三条阻塞不变（A05 产品决策、B02–B05 外部权限、`/api/health` 响应契约）。
+  可继续量的面：把「例外台账」这条思路套到别的「条件变了但没人守着」的地方
+  （例如 `RATE_LIMIT_LEDGER` 的 28 条理由是否有同类到期机制）。
+- 更新时间：2026-10-03（UTC）。

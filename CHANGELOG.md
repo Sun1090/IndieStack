@@ -46,6 +46,42 @@ See `docs/operations/release-tag-ledger.md`.
   门禁数 46 → **47**。
 
 ### Fixed
+
+- **`pnpm check:security` 在 `braces` 的 GHSA-vfj7-8cjw-p6xm 上红了一轮，而那一轮没有任何可执行的修法——
+  于是判据本身被修掉了：不是放宽，而是把「暂无补丁」登记成一条会自己到期的例外。**
+  2026-10-03 起 `CI=true pnpm check:all` 在 `check:security` 上报 `0 critical, 1 high vulnerabilities`。
+  量完之后结论是**这不是「有人忘了升依赖」**：
+  - 路径 `.>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces`，**仅开发期可达**
+    （`eslint-config-next` 在 devDependencies，不进运行时依赖图、不进产物）；
+  - 公告的 patched range 是 `>=3.0.4`，而 npm 上 `braces` 的**最新发布版就是 3.0.3**
+    （GitHub Advisory Database 的 Patched versions 一栏为 None）——「有个已发布版本能修」这句话本身就是假的；
+  - 往上游看也堵不住：`fast-glob` 3.3.3 仍依赖 `micromatch@^4.0.8`，`micromatch` 4.0.8 仍依赖 `braces@^3.0.3`。
+  一条正确的判据遇上不可修的现实，就成了一条**没人能修的门禁**。本仓库对这种局面的一贯答案不是放宽判据，
+  而是**把处置显式登记成临时的，并让它有到期日**（与 C08 错误通道台账、C12 限流两态台账同形）。
+  - 新增 `src/lib/security/dependency-audit.ts`：判定 + 例外台账 `DEPENDENCY_AUDIT_EXCEPTIONS`，
+    纯函数、35 条单测。台账**不是白名单**，四条规则让它不可能悄悄变成永久豁免：
+    未登记即失败并点名；条目写不完整（理由空/日期坏）即失败；
+    **台账里的公告不再出现在报告里即失败**（修复落地后请删条目，与 `KNOWN_GAPS` 同形的反向断言）；
+    「仅开发期可达」不再成立、或 `reviewBy` 早于今天，即失败。
+  - 两条失败封闭：blocking 计数大于 0 却给不出公告明细、计数与可枚举公告条数对不上，都判红——
+    **「存在但看不见」无法登记，也就无法豁免**。
+  - 新增 `pnpm check:audit`（门禁 47 → **48**），只跑审计这一段，供 CI 的
+    `Security and configuration checks` job 使用；判定只有一份实现，`check:security` 与它不会各判各的。
+  - **CI 里那一步此前是裸的 `pnpm audit --audit-level high`**：裸命令不看台账，于是「没有补丁」会让 job 永远红。
+    已改为 `pnpm check:audit`，`check:security` 的配置面要求同步改成要求 `pnpm check:audit`，
+    并加一条**反向断言单测**：把裸命令塞回去不算接线。
+  - 通过时的输出会自报读数（「1 条已登记例外（GHSA-…）」）——
+    「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话，只说前一句就丢了后者。
+  - **这处修复自己被抓了第二次**：第一次只改了 `security-config.yml`（当时 grep 的是
+    「哪些工作流提到 `check:security`」），而 `ci.yml` 的静态门禁作业里还有一步一模一样的裸审计，
+    同一个 PR 的 CI 仍然红。两处都改掉（`ci.yml` 那步与紧随其后的 `pnpm check:all` 重复判定，
+    按那里本来就写着的「一份清单」约定直接删掉），并补 `inspectBareAuditCommands`：
+    **任何工作流都不许再出现裸的 `pnpm audit`**（`pnpm check:audit` / `pnpm audit:storage-orphans` 不算，
+    注释里的字样不算）。一处真实发生过的缺陷形状，不该在另一个地方裸奔。
+  - 变异核对六处（做完复原）：抹掉 STALE 反向断言 / 复核期限 / dev-only 判定 /
+    计数与明细对账 / 台账理由校验 / 裸审计禁令，**每一处都让套件变红**。
+
+### Fixed
 - **`check:gate-rule-tests`：判定逻辑内联在脚本里的门禁，从「被计数」升级为「一律失败」。**
   这条规则是 #183 加的，当时全仓库还有 **10 条**内联门禁，于是它只能把它们**计数并打印**
   （那个数是分母，隐去它就等于把「有 N 条门禁的强度没有被单测兜底」藏起来）。

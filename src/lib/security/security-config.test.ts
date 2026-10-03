@@ -42,7 +42,7 @@ const VALID_GATE_FILES: TextFile[] = [
       "  contents: read",
       "steps:",
       "  - run: pnpm check:security",
-      "  - run: pnpm audit --audit-level high",
+      "  - run: pnpm check:audit",
     ].join("\n"),
   },
   {
@@ -71,7 +71,9 @@ function withGateContent(path: string, content: string): TextFile[] {
 }
 
 function auditIssues(report: unknown): string[] {
-  const result = inspectAuditReport(report);
+  // 显式给空台账：这些用例要判的是「报告读不出来/有未登记漏洞」，
+  // 而不是仓库里那条真实例外此刻是否还成立（那是 dependency-audit.test.ts 的事）。
+  const result = inspectAuditReport(report, { exceptions: [], today: "2026-10-03" });
   expect(Array.isArray(result)).toBe(true);
   return result as string[];
 }
@@ -290,15 +292,29 @@ describe("inspectSecurityGateFiles()", () => {
   });
 
   it("blocks removal of the repository security policy or audit command", () => {
+    // 刻意要求 `pnpm check:audit` 而不是裸的 `pnpm audit --audit-level high`：裸命令不看例外台账，
+    // 「上游没有补丁」这一种真实情况会让 CI 永远红，而红了之后没人能修。
     const content = VALID_GATE_FILES[1].content
       .replace("  - run: pnpm check:security\n", "")
-      .replace("  - run: pnpm audit --audit-level high", "");
+      .replace("  - run: pnpm check:audit", "");
     const issues = inspectSecurityGateFiles(withGateContent(VALID_GATE_FILES[1].path, content));
     expect(issues).toContain(
-      ".github/workflows/security-config.yml: Security/config checks must run the high-severity dependency audit",
+      ".github/workflows/security-config.yml: Security/config checks must run the dependency audit through the repository policy",
     );
     expect(issues).toContain(
       ".github/workflows/security-config.yml: Security/config checks must run the repository security policy",
+    );
+  });
+
+  it("rejects the raw audit command as a substitute for the gate", () => {
+    // 反向断言：把裸命令塞回去不算接线。那一步会在没有补丁可升时永远红，
+    // 而 CI 里没人能修——于是一条「更严格」的写法反而让这道门禁失效。
+    const content = VALID_GATE_FILES[1].content.replace(
+      "  - run: pnpm check:audit",
+      "  - run: pnpm audit --audit-level high",
+    );
+    expect(inspectSecurityGateFiles(withGateContent(VALID_GATE_FILES[1].path, content))).toContain(
+      ".github/workflows/security-config.yml: Security/config checks must run the dependency audit through the repository policy",
     );
   });
 
@@ -323,12 +339,37 @@ describe("inspectSecurityGateFiles()", () => {
 
 describe("inspectAuditReport()", () => {
   it("accepts a report with no high or critical vulnerabilities", () => {
-    expect(inspectAuditReport({ metadata: { vulnerabilities: { high: 0, critical: 0 } } })).toEqual(
+    expect(
+      inspectAuditReport(
+        { metadata: { vulnerabilities: { high: 0, critical: 0 } } },
+        { exceptions: [], today: "2026-10-03" },
+      ),
+    ).toEqual({ high: 0, critical: 0, excepted: [] });
+  });
+
+  it("reports which registered exceptions carried the verdict", () => {
+    // 「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话；只说前一句就丢了后者。
+    const result = inspectAuditReport(
       {
-        high: 0,
-        critical: 0,
+        metadata: { vulnerabilities: { high: 1, critical: 0 } },
+        advisories: {
+          "1240992": {
+            github_advisory_id: "GHSA-vfj7-8cjw-p6xm",
+            module_name: "braces",
+            severity: "high",
+            findings: [
+              {
+                version: "3.0.3",
+                paths: [".>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces"],
+                dev: true,
+              },
+            ],
+          },
+        },
       },
+      { today: "2026-10-03" },
     );
+    expect(result).toEqual({ high: 1, critical: 0, excepted: ["GHSA-vfj7-8cjw-p6xm"] });
   });
 
   it.each([

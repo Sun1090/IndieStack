@@ -28,6 +28,7 @@
 | `pnpm format` | Prettier format (TS, TSX, CSS, JSON) |
 | `pnpm check` | Type-check + lint together |
 | `pnpm check:security` | Verify secrets/env policy and security-scanner configuration |
+| `pnpm check:audit` | Dependency audit only: high/critical advisories must be fixed or registered in the exception ledger (`src/lib/security/dependency-audit.ts`), which expires on its own review date |
 | `pnpm check:changelog` | Validate CHANGELOG.md structure (versions, sections, entries) |
 | `pnpm check:adr` | Validate ADR numbering, status, index, sections, and supersession links |
 | `pnpm check:progress` | Audit the progress ledger itself: dated entries in non-decreasing order (new entries append at the end), no duplicated entry, and the `里程碑` / `状态` fields present |

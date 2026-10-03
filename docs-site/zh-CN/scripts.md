@@ -28,6 +28,7 @@
  | `pnpm format` | Prettier 格式化（TS、TSX、CSS、JSON） |
  | `pnpm check` | 同时运行类型检查和代码检查 |
 | `pnpm check:security` | 校验 secrets/环境策略与安全扫描配置 |
+| `pnpm check:audit` | 只跑依赖审计：high/critical 漏洞必须当场修，或登记进例外台账（`src/lib/security/dependency-audit.ts`，复核期限到了自己会红） |
 | `pnpm check:changelog` | 校验 CHANGELOG.md 结构（版本、章节、条目） |
 | `pnpm check:adr` | 校验 ADR 编号、状态、索引、必要章节与取代关系 |
 | `pnpm check:progress` | 校验进度台账自身：带日期的条目按非递减排列（新条目追加在末尾）、条目不重复、`里程碑` / `状态` 两个字段都在 |
