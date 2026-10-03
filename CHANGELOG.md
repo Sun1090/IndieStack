@@ -10,6 +10,38 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Changed
 
+- **`check:doc-commands` 的受审范围从 4 份入门文档扩到 130 份，判定基准从「package.json 里有没有同名
+  script」换成「那个二进制在不在 `node_modules/.bin`」。**
+  这条门禁是 #196 加的，当时**刻意**只审 README 与两份 quickstart：把范围放到全部 markdown 上会变成
+  一台假红机器。这条留白本身在 #196 里被明确记成「已知不覆盖的一格——运维手册里写错命令仍然不会被发现」。
+  这一轮先量再动，两处都量出了东西：
+  - **范围**：`docs-site/**`（54 份用户文档）、`docs/architecture`、`docs/adr`、`docs/db`、
+    `docs/design`、`docs/reference`、`docs/testing.md` 加根级三份 md——实测**真实问题 0 条**。
+    也就是说这 126 份文档此前一直没人核对，而它们是模板用户的全部读物。
+    真正需要排除的只有三类**记录与计划**：`CHANGELOG.md`（它会故意引用不存在的命令来说明门禁在抓什么）、
+    `docs/progress.md`、`docs/roadmap-*.md`，外加两个用 `pnpm check:x` 充当占位的模板/封存报告。
+  - **判据**：扩范围后一次报出 12 条，逐条查下去**全是假红**，且分属同一个根因——
+    pnpm 对未知命令的语义是**当 shell 命令执行并把 `node_modules/.bin` 放进 PATH**，
+    所以「能不能跑」要问 `.bin`，而前两版问的是「`package.json` 里有没有同名 script」
+    （第一版只补了 `pnpm exec <x>` 一种写法）。修掉之后 `pnpm vitest run …`、`pnpm playwright test`
+    这类完全能跑的命令不再被报成「不存在」，而**不在 `.bin` 里的命令仍然报红**——
+    放宽的是依据，不是结论。
+  - 需要用户自行安装的外部 CLI（Supabase CLI）走 `EXTERNAL_CLIS` 登记表：**登记而不是放过**。
+  - 新增两条会红的规则：排除项**理由为空**（等于「我不想看这个文件」）、
+    排除项**一个文件都没命中**（失效的排除项会让下一个人以为那里仍然没被审）。
+  - `.bin` 读不到时（没跑过 `pnpm install`）判据退化为按依赖名判，并在读数与报错里**明说降级了**。
+  - 顺带把 `check:doc-commands` / `check:doc-links` 登记进贡献者测试矩阵的「文档」领域
+    （`src/lib/testing/test-matrix.ts` + 两份矩阵文档）——它们此前存在于仓库，却不在任何一份
+    矩阵文档里，也就是**改文档的人不知道要跑它们**。
+  - 变异核对五处（做完复原）：README 里造真 typo → 红；`docs-site/testing.md` 里造 typo（旧范围外）
+    → 红；排除项理由置空 → 红；排除项改名失效 → 红；抹掉 `.bin` 判定 → 报出 6 条假红。
+  - **扩范围后的门禁当场把写它自己文档的那两行顶红了**（正文里拿 `pnpm verifiy:build` 当例子）。
+    已改成不写成命令的样子。一条门禁第一次运行就抓到写它文档的人，比任何变异核对都有说服力。
+  - 顺带补上一个登记缺口：`check:doc-commands` 与 `check:doc-links` 此前存在于仓库，
+    却不在任何一份贡献者测试矩阵里——改文档的人因此不知道要跑它们。现在两条都进了
+    `src/lib/testing/test-matrix.ts` 的「文档」领域与两份矩阵文档（108 → 112 条门禁）。
+
+
 - **46 条待合并队列已清空，`main` 从 `ad4b029` 到 `d94b8a36`（202 个提交、62 条 PR、开放 PR 归零）。**
   这一行是收口记账，不是功能变更：PR #118 把执行顺序算出来贴进了台账，而那一节自己写着「这张表随队列变动即过期」。
   实际落地与那张表有三处出入，都记在 `docs/progress.md` 的同日条目里。

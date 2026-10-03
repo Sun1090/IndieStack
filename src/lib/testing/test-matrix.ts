@@ -141,7 +141,16 @@ export const TEST_MATRIX: readonly TestMatrixArea[] = [
     zh: "文档",
     en: "Documentation",
     paths: ["docs", "docs-site"],
-    commands: ["check:docs", "check:component-docs", "check:adr", "check:changelog", "check:release-docs"],
+    commands: [
+      "check:docs",
+      "check:component-docs",
+      "check:adr",
+      "check:changelog",
+      "check:release-docs",
+      // 这两条此前没有出现在任何一份矩阵文档里：门禁存在，但改文档的人不知道要跑它们。
+      "check:doc-commands",
+      "check:doc-links",
+    ],
   },
 ];
 

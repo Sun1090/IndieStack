@@ -671,6 +671,40 @@ node --no-warnings --experimental-strip-types scripts/lib/query-error-channel-ch
 `#136`（两条营销 token 端点补按 IP 滑窗）合并之后，本门禁会立刻把它们报成 `RATE_LIMIT_STALE`——
 **这是预期的红灯**，合入方删掉那两行即可。台账里那两条的理由段就把这件事写在了自己身上。
 
+## 文档命令可达性门禁（`pnpm check:doc-commands`）
+
+一条写错的命令（`verify:build` 被手抄成少一个 e 的 `verifiy:build`）**不会让任何门禁变红**——
+它只会让模板用户在 clone 之后的第一条命令上撞墙。这条门禁判的是「**文档教用户做的事存在吗**」，不是「文档里出现过的字符串存在吗」。
+
+**受审范围（2026-10-03 从 4 份扩到 130 份）**：仓库里全部 markdown（根级 + `docs-site/**` + `docs/**`），
+减去**记录与计划**——`CHANGELOG.md`（它会故意引用不存在的命令来说明门禁在抓什么）、
+`docs/progress.md`（推演记录）、`docs/roadmap-*.md`（计划）、以及用 `check:x` 这种形状充当占位的
+审计模板与已封存的退出报告。**每条排除都必须写理由，且必须真的命中至少一个文件**：
+空理由等于「我不想看这个文件」，失效的排除项则会让下一个人以为那里仍然没被审，两条都报红。
+
+**判定基准被修过一次，而修的是「问错了问题」那一半**：
+pnpm 对未知命令的语义是**当 shell 命令执行，并把 `node_modules/.bin` 放进 PATH**。
+所以「这条命令能不能跑」的答案是「那个二进制在不在 `.bin` 里」，而不是「`package.json` 里有没有同名 script」。
+第一版按 script 判，第二版只补了 `pnpm exec <x>` 一种写法——两次都漏掉了这件事的其余部分：
+`pnpm vitest run …`、`pnpm playwright test` 这类**完全能跑**的命令被报成「不存在」，
+实测在 `docs/db` / `docs/operations` / `docs/testing.md` 上一条假红机器。
+现在放行的四条依据（**没有一条降低严格性**）：`package.json` 的 scripts、pnpm 内建命令、
+**`.bin` 里真的有那个文件**、依赖名恰好同名（`.bin` 读不到时的退化路径）。
+`.bin` 读不到时（没跑过 `pnpm install`）判据退化为旧的那套，并且**在读数与报错里明说降级了**——
+一份不说自己弱在哪的绿色读数正是本项目反复消灭的东西。
+
+需要用户自行安装、不在本仓库依赖里的外部 CLI（目前只有 Supabase CLI）走 `EXTERNAL_CLIS` 登记表：
+**登记而不是放过**，放过等于放弃这道断言。
+
+**刻意不判命令的参数**（`pnpm vitest --wat` 里的 `--wat`）：那要复刻每个底层工具的 CLI 表面，
+是一条会随依赖升级漂移的规则——与 `check:doc-links` 不判锚点是同一条理由。
+
+实测基线：**998 条 pnpm 命令 / 130 份受审文档，全部有落点**（另排除 8 份记录与计划）。
+规则实现位于 `src/lib/docs/doc-commands.ts`（纯函数，22 条单测），IO 位于
+`scripts/lib/doc-commands-check.js`，由 `scripts/check-doc-commands.js` 调用；`pnpm check:all` 与
+CI 的静态门禁作业都会执行。配套的 `pnpm check:doc-links` 核对文档内部链接指向的文件是否存在
+（同样不判锚点，理由见该节）。
+
 ## 依赖与 secrets 扫描门禁（H10）
 
 `pnpm check:security` 是仓库级安全配置门禁：读取 git 索引并拒绝被跟踪的 `.env*`（`.env.example` 除外）和私钥类文件；检查已有环境文件权限不得宽于 `0600`；拒绝 `.env.development` 中的服务端密钥；扫描带真实 `"use client"` 指令的源码，拦截 `process.env.X` / `process.env["X"]` 形式的服务端变量泄漏（包含 `RESEND_API_KEY`、`VAPID_PRIVATE_KEY`）；要求所有 workflow 显式声明 permissions 且禁止 `write-all`。
