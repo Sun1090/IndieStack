@@ -23,7 +23,11 @@ export type RateLimitIssueCode =
   /** 台账里的键在代码里已经没有对应的 handler 了。 */
   | "RATE_LIMIT_ORPHAN"
   /** 有条目但理由为空：没有理由的豁免只是一张「先这样吧」的条子。 */
-  | "RATE_LIMIT_REASON_MISSING";
+  | "RATE_LIMIT_REASON_MISSING"
+  /** 标了「已知缺口」却没写复核期限：这个缺口不会过期，于是没人再看它。 */
+  | "RATE_LIMIT_GAP_REVIEW_MISSING"
+  /** 缺口的复核期限已过：重新确认它是否还成立，或关掉它。 */
+  | "RATE_LIMIT_GAP_REVIEW_OVERDUE";
 
 export interface RateLimitEntry {
   /** 人写的判断：这个端点没有窗口，为什么这样是成立的。 */
@@ -186,7 +190,8 @@ export const RATE_LIMIT_LEDGER: Readonly<Record<string, RateLimitEntry>> = {
       "**剩下的那一半**：端点本身仍然无凭据、无窗口。它是一个**进程内**缓存，serverless 下每个" +
       "实例各有一份，所以它挡的是「一个实例被重复打」，不是「整个部署被重复打」。" +
       "关掉它的判据是**把「探针」与「对外可见的健康端点」分成两条路径**（探针带共享密钥或不暴露），" +
-      "或者引入跨实例的共享缓存；两者都是新的一条工作项，不在这次改动里顺手做。",
+      "或者引入跨实例的共享缓存；两者都是新的一条工作项，不在这次改动里顺手做。" +
+      "复核期限：2026-11-15——那天之前要么关掉它，要么把查证过程写回这一段并顺延期限。",
   },
 
 };
@@ -198,6 +203,7 @@ export const RATE_LIMIT_LEDGER: Readonly<Record<string, RateLimitEntry>> = {
 export function auditRateLimits(
   handlers: readonly RouteHandlerFact[],
   ledger: Readonly<Record<string, RateLimitEntry>> = RATE_LIMIT_LEDGER,
+  options: { today?: string } = {},
 ): RateLimitIssue[] {
   if (handlers.length === 0) {
     return [
@@ -272,7 +278,8 @@ export function auditRateLimits(
     }
   }
 
-  issues.push(...auditRateLimitLedger(ledger));
+  // `options.today` 为 undefined 时 auditRateLimitLedger 用真今天——生产门禁要的是真实日期。
+  issues.push(...auditRateLimitLedger(ledger, options.today));
   return issues;
 }
 
@@ -301,9 +308,25 @@ export function summarizeRateLimits(
 /** 缺口必须说出「怎么关」：一条判据或一个在飞的 PR 号。只说「知道有暴露」不算关法。 */
 const GAP_CLOSURE = /#\d+|关掉它的判据|怎么关/;
 
+/**
+ * 缺口必须带复核期限，且期限过了就红。
+ *
+ * **为什么是日期而不是又一个「必须写理由」**：`GAP_CLOSURE` 已经要求缺口说出怎么关，
+ * 而这条要求**不会过期**——一条写着「关掉它的判据是 X」的缺口可以在这里躺三年，
+ * 每次 CI 仍然只报「1 条已知缺口」，没人被要求再看它一眼。
+ * 而 `#197` 那条依赖审计的例外台账立起来的纪律正是这一句：
+ * **一个临时的处置方式必须被标明是临时的，并在条件变化时自己变红。**
+ * 「已知缺口」是本仓库里最后一类还没接上这个纪律的处置。
+ *
+ * 形态与那条台账一致：正文里写「复核期限：2026-11-15」，由 `GAP_REVIEW_DATE` 读出来；
+ * 缺日期或日期格式不对都红（**写不出来就红，而不是跳过**）。
+ */
+const GAP_REVIEW_DATE = /复核期限：(\d{4}-\d{2}-\d{2})/;
+
 /** 台账自身的一致性（与调用图无关的那一半）：标了缺口却没写关法的，红。 */
 export function auditRateLimitLedger(
   ledger: Readonly<Record<string, RateLimitEntry>> = RATE_LIMIT_LEDGER,
+  today: string = new Date().toISOString().slice(0, 10),
 ): RateLimitIssue[] {
   const issues: RateLimitIssue[] = [];
   for (const [id, entry] of Object.keys(ledger).sort().map((key) => [key, ledger[key]] as const)) {
@@ -314,6 +337,28 @@ export function auditRateLimitLedger(
           "RATE_LIMIT_REASON_MISSING",
           id,
           "标成了「已知缺口」却没写怎么关（一条判据或在飞的 PR 号）：缺口没有关法就会永远留在这里",
+        ),
+      );
+    }
+    const reviewDate = GAP_REVIEW_DATE.exec(entry.reason)?.[1];
+    if (reviewDate === undefined) {
+      issues.push(
+        issue(
+          "RATE_LIMIT_GAP_REVIEW_MISSING",
+          id,
+          "标成了「已知缺口」却没有复核期限（正文里写「复核期限：YYYY-MM-DD」）：" +
+            "一个不会过期的缺口就是一句没人再看的话",
+        ),
+      );
+      continue;
+    }
+    if (reviewDate < today) {
+      issues.push(
+        issue(
+          "RATE_LIMIT_GAP_REVIEW_OVERDUE",
+          id,
+          `复核期限 ${reviewDate} 已过：重新确认这个缺口是否还成立、判据是否还正确，` +
+            "然后更新期限（并把查证过程写回理由）或关掉缺口",
         ),
       );
     }

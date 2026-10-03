@@ -13,6 +13,7 @@ import {
 } from "../../../scripts/lib/route-auth-check.js";
 import { collectRouteHandlers, type RouteHandlerFact } from "./route-auth";
 import {
+  auditRateLimitLedger,
   auditRateLimits,
   formatRateLimitIssues,
   RATE_LIMIT_GAP_MARKER,
@@ -118,15 +119,60 @@ describe("auditRateLimits：两态判定", () => {
 
   it("标成「已知缺口」却没写怎么关 → RATE_LIMIT_REASON_MISSING", () => {
     const handlers = [handler("GET /api/live", { limiters: ["x#rateLimit"] }), handler("POST /api/gap")];
-    const closed = auditRateLimits(handlers, {
-      "POST /api/gap": { reason: `${RATE_LIMIT_GAP_MARKER}，怎么关：#999 正在补按 IP 的滑窗` },
-    });
+    const closed = auditRateLimits(
+      handlers,
+      {
+        "POST /api/gap": {
+          reason: `${RATE_LIMIT_GAP_MARKER}，怎么关：#999 正在补按 IP 的滑窗。复核期限：2026-11-15`,
+        },
+      },
+      { today: "2026-10-03" },
+    );
     expect(closed).toEqual([]);
-    const unclosed = auditRateLimits(handlers, {
-      "POST /api/gap": { reason: `${RATE_LIMIT_GAP_MARKER}，这里确实有暴露，先记一下` },
-    });
+    const unclosed = auditRateLimits(
+      handlers,
+      {
+        "POST /api/gap": {
+          reason: `${RATE_LIMIT_GAP_MARKER}，这里确实有暴露，先记一下。复核期限：2026-11-15`,
+        },
+      },
+      { today: "2026-10-03" },
+    );
     expect(codes(unclosed)).toEqual(["RATE_LIMIT_REASON_MISSING"]);
     expect(subjects(unclosed)).toEqual(["POST /api/gap"]);
+  });
+
+  it("已知缺口没有复核期限 → RATE_LIMIT_GAP_REVIEW_MISSING", () => {
+    // 「怎么关」这条要求不会过期：一条写着判据的缺口可以在这里躺三年，每次 CI 仍只报
+    // 「1 条已知缺口」，没人被要求再看它一眼。
+    const handlers = [handler("GET /api/live", { limiters: ["x#rateLimit"] }), handler("POST /api/gap")];
+    const issues = auditRateLimits(
+      handlers,
+      { "POST /api/gap": { reason: `${RATE_LIMIT_GAP_MARKER}，怎么关：#999 正在补按 IP 的滑窗` } },
+      { today: "2026-10-03" },
+    );
+    expect(codes(issues)).toEqual(["RATE_LIMIT_GAP_REVIEW_MISSING"]);
+    expect(issues[0].message).toContain("复核期限：YYYY-MM-DD");
+  });
+
+  it("复核期限过了 → RATE_LIMIT_GAP_REVIEW_OVERDUE（临时处置必须自己变红）", () => {
+    const handlers = [handler("GET /api/live", { limiters: ["x#rateLimit"] }), handler("POST /api/gap")];
+    const ledger = {
+      "POST /api/gap": {
+        reason: `${RATE_LIMIT_GAP_MARKER}，怎么关：#999 正在补按 IP 的滑窗。复核期限：2026-11-15`,
+      },
+    };
+    expect(auditRateLimits(handlers, ledger, { today: "2026-11-15" })).toEqual([]);
+    const overdue = auditRateLimits(handlers, ledger, { today: "2026-11-16" });
+    expect(codes(overdue)).toEqual(["RATE_LIMIT_GAP_REVIEW_OVERDUE"]);
+    expect(overdue[0].message).toContain("复核期限 2026-11-15 已过");
+  });
+
+  it("仓库里那条真实缺口带着未来的复核期限", () => {
+    const issues = auditRateLimitLedger(RATE_LIMIT_LEDGER, "2026-10-03");
+    expect(issues).toEqual([]);
+    const entry = RATE_LIMIT_LEDGER["GET /api/health"];
+    expect(entry.reason).toContain("复核期限：2026-11-15");
   });
 
   it("输出格式稳定：每行 [CODE] subject: message", () => {
