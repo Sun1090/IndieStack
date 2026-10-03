@@ -4,6 +4,11 @@
  * These functions are deliberately side-effect free so the same rules can be covered by
  * Vitest and consumed by the `pnpm check:security` CLI through Node's type stripping.
  */
+import {
+  inspectDependencyAudit,
+  type AuditException,
+  type DependencyAuditVerdict,
+} from "./dependency-audit.ts";
 
 export const SERVER_ONLY_ENV_NAMES = [
   "SUPABASE_SERVICE_ROLE_KEY",
@@ -34,11 +39,6 @@ export interface SecurityGateRequirement {
   path: string;
   pattern: RegExp;
   label: string;
-}
-
-export interface AuditVulnerabilityCounts {
-  high: number;
-  critical: number;
 }
 
 /**
@@ -297,9 +297,13 @@ const SECURITY_GATE_REQUIREMENTS: readonly SecurityGateRequirement[] = [
     label: "Security/config checks must run on a schedule",
   },
   {
+    // 刻意要求 `pnpm check:audit` 而不是裸的 `pnpm audit --audit-level high`：
+    // 裸命令不看例外台账，于是「上游没有补丁」这一种真实情况会让这条 job 永远红，
+    // 而红了之后没人能修——那是一条**不可执行的约束**。判定只有一份实现
+    // （src/lib/security/dependency-audit.ts），所以这条 job 与 check:security 不会各判各的。
     path: ".github/workflows/security-config.yml",
-    pattern: /pnpm audit --audit-level high/,
-    label: "Security/config checks must run the high-severity dependency audit",
+    pattern: /pnpm check:audit/,
+    label: "Security/config checks must run the dependency audit through the repository policy",
   },
   {
     path: ".github/workflows/security-config.yml",
@@ -353,51 +357,17 @@ export function inspectSecurityGateFiles(files: readonly TextFile[]): string[] {
   return issues;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
- * 报告读不懂时，把「到底拿到了什么」写进结论。
+ * 依赖审计的判定本体在 `dependency-audit.ts`（含「暂无补丁」例外台账）。
  *
- * `pnpm audit --json` 在注册表请求失败时退出码为 1，并打印
- * `{"error":{"code":"pnpm","message":"fetch failed"}}`——它同样是合法 JSON，只是没有
- * `metadata`。笼统地报「report is missing metadata」会让人去查仓库配置，而真正该做的是重跑。
- * 两种情况都仍然失败封闭：读不到审计结果不等于没有漏洞。
+ * 这里保留同名导出是为了不改动既有调用方与单测；判定本身只有一份实现，
+ * 所以 CLI 与 CI 走的是同一段代码——**例外台账不可能只对其中一条路径生效**。
  */
-function describeUnreadableReport(report: Record<string, unknown>): string {
-  const error = report.error;
-  if (isRecord(error)) {
-    const code = typeof error.code === "string" ? error.code : "unknown";
-    const message = typeof error.message === "string" ? error.message : "(empty)";
-    return `pnpm audit: advisory request failed (code=${code}, message=${message})`;
-  }
-  const keys = Object.keys(report).sort().join(", ") || "(none)";
-  return `pnpm audit: report is missing metadata (top-level keys: ${keys})`;
-}
-
-export function inspectAuditReport(report: unknown): AuditVulnerabilityCounts | string[] {
-  if (!isRecord(report)) return ["pnpm audit: report must be a JSON object"];
-  const metadata = report.metadata;
-  if (!isRecord(metadata)) return [describeUnreadableReport(report)];
-  const vulnerabilities = metadata.vulnerabilities;
-  if (!isRecord(vulnerabilities)) return ["pnpm audit: report is missing vulnerability counts"];
-
-  const high = vulnerabilities.high;
-  const critical = vulnerabilities.critical;
-  if (
-    typeof high !== "number" ||
-    !Number.isInteger(high) ||
-    high < 0 ||
-    typeof critical !== "number" ||
-    !Number.isInteger(critical) ||
-    critical < 0
-  ) {
-    return ["pnpm audit: high/critical vulnerability counts must be non-negative integers"];
-  }
-  if (high + critical > 0)
-    return [`pnpm audit: ${critical} critical, ${high} high vulnerabilities`];
-  return { high, critical };
+export function inspectAuditReport(
+  report: unknown,
+  options: { exceptions?: readonly AuditException[]; today?: string } = {},
+): DependencyAuditVerdict | string[] {
+  return inspectDependencyAudit(report, options);
 }
 
 export function formatSecurityIssues(issues: readonly string[]): string {

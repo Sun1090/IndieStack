@@ -373,11 +373,14 @@ function simpleRepo(overrides: Record<string, string> = {}): string {
         "check:bundle": "bash -c 'pnpm build 2>&1 | node scripts/check-bundle.js'",
         "check:perf": "node scripts/check-perf.js",
         "check:migration-history": "node scripts/check-migration-history.js",
+        // 同上：check:audit 登记了「免于本地聚合」，临时仓库要有这个门禁才不至于变成
+        // 「豁免表登记了不存在的门禁」。
+        "check:audit": "node scripts/check-dependency-audit.js",
       },
     }),
     "scripts/check-all.sh": "pnpm --silent check:locales\n",
     ".github/workflows/ci.yml":
-      "name: CI\njobs:\n  lint:\n    name: Lint & Type Check\n    steps:\n      - run: pnpm check:locales\n      - run: node scripts/check-perf.js\n      - run: node scripts/check-bundle.js\n",
+      "name: CI\njobs:\n  lint:\n    name: Lint & Type Check\n    steps:\n      - run: pnpm check:locales\n      - run: node scripts/check-perf.js\n      - run: node scripts/check-bundle.js\n      - run: pnpm check:audit\n",
     ".github/RELEASE_CHECKLIST.md":
       "# 检查清单\n\n## 门禁\n\n- [ ] `CI`（`Lint & Type Check`）全绿\n\n## 打标签\n\n```bash\ngit tag v1.2.3\n```\n",
     ...overrides,

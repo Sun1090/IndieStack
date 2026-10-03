@@ -681,7 +681,38 @@ node --no-warnings --experimental-strip-types scripts/lib/query-error-channel-ch
 现在前者报 `advisory request failed (code=…, message=…)`，后者把实际拿到的顶层键一并列出。
 **两种都仍然失败封闭**：读不到审计结果不等于没有漏洞，也永远不该靠放宽审计强度让它变绿。
 
-除静态仓库检查外，它还会校验 `secrets-scan.yml`、`security-config.yml`、`codeql.yml` 和 `dependabot.yml` 的关键扫描配置没有漂移，包括 PR/main/develop 触发、gitleaks/codeql action 版本、full git history、只读权限、定时依赖审计、security-extended 查询和 Dependabot 的 npm/GitHub Actions 跟踪。依赖审计读取 `pnpm audit --json`，high/critical 任一大于 0 即失败；输入缺失、不可读或 JSON 形状异常时 fail-closed。
+除静态仓库检查外，它还会校验 `secrets-scan.yml`、`security-config.yml`、`codeql.yml` 和 `dependabot.yml` 的关键扫描配置没有漂移，包括 PR/main/develop 触发、gitleaks/codeql action 版本、full git history、只读权限、定时依赖审计、security-extended 查询和 Dependabot 的 npm/GitHub Actions 跟踪。依赖审计读取 `pnpm audit --json`；输入缺失、不可读或 JSON 形状异常时一律 fail-closed。
+
+### 「上游没有补丁」怎么不变成一条永远红的门禁（`pnpm check:audit`）
+
+`high/critical 任一大于 0 即失败` 这条判据本身是对的，但 2026-10-03 它在本仓库里红了一轮，
+而**那一轮没有任何可执行的修法**：来路是 `braces` 的 GHSA-vfj7-8cjw-p6xm（CVE-2026-93687，递归爆栈 DoS），
+路径是 `.>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces`（仅开发期可达）；
+公告写 patched `>=3.0.4`，而 npm 上 `braces` 的**最新发布版就是 3.0.3**——上游一个补丁都没发。
+往上游看也堵不住：`fast-glob` 3.3.3 仍依赖 `micromatch@^4.0.8`，`micromatch` 4.0.8 仍依赖 `braces@^3.0.3`。
+
+于是一条正确的判据遇上不可修的现实，就成了一条**没人能修的门禁**。本仓库对这种局面的一贯答案不是放宽判据，
+而是**把处置显式登记成临时的，并让它有到期日**（与 C08 错误通道台账、C12 限流两态台账同形）。
+登记簿在 `src/lib/security/dependency-audit.ts` 的 `DEPENDENCY_AUDIT_EXCEPTIONS`，每条必须写清
+可达性结论与「为什么现在修不了」，并带 `reviewedOn` / `reviewBy`。四条规则让它不可能悄悄变成永久豁免：
+
+| 条件                                 | 结论                                                             |
+| ------------------------------------ | ---------------------------------------------------------------- |
+| high/critical 公告不在台账里         | 失败并点名 id、模块、依赖路径（台账**不是白名单**）              |
+| 台账条目本身写不完整（理由空、日期坏） | 失败                                                             |
+| 台账里的公告**不再出现在报告里**       | 失败（修复已落地，请删条目）——与 `KNOWN_GAPS` 同形的反向断言      |
+| 台账声称「仅开发期可达」而报告说不是   | 失败（生产面已可达，不能再按开发期豁免）                        |
+| `reviewBy` 早于今天                  | 失败（重新确认有没有补丁，然后更新日期或删条目）                  |
+
+配套两条失败封闭：blocking 计数大于 0 却给不出公告明细、或计数与可枚举公告条数对不上时都判红——
+**「存在但看不见」无法登记，也就无法豁免**。
+
+判定只有一份实现（`src/lib/security/dependency-audit.ts`，单测
+`src/lib/security/dependency-audit.test.ts`），两个入口共用它：
+`pnpm check:security`（本地聚合内）与 `pnpm check:audit`（CI `Security and configuration checks`
+job 的独立步骤，只跑审计这一段）。**CI 里那一步此前是裸的 `pnpm audit --audit-level high`**——
+裸命令不看台账，于是「没有补丁」会让 job 永远红；`check:security` 的配置面要求也随之从裸命令改成
+`pnpm check:audit`，并有一条单测做反向断言：把裸命令塞回去不算接线。
 
 规则实现位于 `src/lib/security/security-config.ts`（纯函数），IO/CLI 位于 `scripts/lib/security-config-check.js`，由 `scripts/check-security-config.js` 经 Node 原生 type stripping 调用。专项测试覆盖策略函数与 CLI 退出码：
 `src/lib/security/security-config.test.ts`（31 条）与 `security-config-check.test.ts`（5 条）；
