@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEPENDENCY_AUDIT_EXCEPTIONS,
   EXCEPTION_MODULE_PATH,
+  inspectBareAuditCommands,
   inspectDependencyAudit,
   type AuditException,
   type DependencyAuditVerdict,
@@ -311,5 +312,40 @@ describe("shipped DEPENDENCY_AUDIT_EXCEPTIONS", () => {
     // 台账与现实脱节时（上游改了字段、例外被删了），这里会红。
     const result = inspectDependencyAudit(report({ "1240992": advisory() }), { today: TODAY });
     expect(verdict(result).excepted).toEqual(["GHSA-vfj7-8cjw-p6xm"]);
+  });
+});
+describe("inspectBareAuditCommands()", () => {
+  const workflow = (body: string) => [{ path: ".github/workflows/ci.yml", content: body }];
+
+  it("rejects a bare audit command in any workflow", () => {
+    const issues = inspectBareAuditCommands(
+      workflow("jobs:\n  lint:\n    steps:\n      - run: pnpm audit --audit-level high\n"),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain(".github/workflows/ci.yml: runs a bare `pnpm audit`");
+    expect(issues[0]).toContain("pnpm check:audit");
+  });
+
+  it("accepts the gate entrypoints", () => {
+    expect(
+      inspectBareAuditCommands(
+        workflow("      - run: pnpm check:audit\n      - run: pnpm check:security\n"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not read a comment as a command", () => {
+    // 我们自己为了解释这条规则就写下了那串字样；判定不扫注释，它才不是假红。
+    expect(
+      inspectBareAuditCommands(
+        workflow("      # 这里曾经有一步裸的 `pnpm audit --audit-level high`。\n      - run: pnpm check:all\n"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("catches the flag form and the double-dash form alike", () => {
+    expect(
+      inspectBareAuditCommands(workflow("      - run: pnpm --silent audit --json\n")).length,
+    ).toBe(1);
   });
 });

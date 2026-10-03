@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspectBareAuditCommands } from "../../src/lib/security/dependency-audit.ts";
 import {
   formatSecurityIssues,
   inspectAuditReport,
@@ -216,6 +217,9 @@ export function runSecurityConfigCheck(options = {}) {
   issues.push(...inspectClientModules(sourceFiles));
   issues.push(...inspectWorkflowPermissions(workflowFiles));
   issues.push(...inspectSecurityGateFiles(gateFiles));
+  // SECURITY_GATE_FILES 只覆盖四个扫描配置文件，所以这条对「所有工作流」成立，
+  // 而不是只对那四个文件成立。
+  issues.push(...inspectBareAuditCommands(workflowFiles));
   issues.push(...inspectProductionMockSettings(productionConfigs));
 
   let auditReport;

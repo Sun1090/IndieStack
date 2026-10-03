@@ -6570,15 +6570,32 @@
   是**门禁本身不可执行**。已改为 `pnpm check:audit`，判定只有一份实现（`src/lib/security/dependency-audit.ts`），
   `check:security` 与它不会各判各的；`check:security` 的配置面要求同步从裸命令改成 `pnpm check:audit`，
   并补一条**反向断言单测**：把裸命令塞回去不算接线。
+- **这处修复自己被抓了第二次，而这一条比第一次更值得记**：第一次只改了 `security-config.yml`
+  （当时 grep 的是「哪些工作流提到 `check:security`」），推上去之后同一个 PR 的 CI 仍然红——
+  日志里是 `ci.yml` 静态门禁作业里**一模一样**的裸审计。
+  也就是说**我修掉的是「我查到的那一处」，而门禁红的是「所有那一类」**；
+  这正是本仓库反复付过学费的形状（#191 的 `AGENTS.md` 索引、#195 的文档链接都是它的同型）。
+  - `ci.yml` 那一步删掉：它与紧随其后的 `pnpm check:all`（内含 `check:security`）重复判定同一件事，
+    而那一步下面本来就写着「一份清单」的约定；删掉比再加一次 `pnpm check:audit` 更符合那条约定，
+    也少一次注册表请求。
+  - 补 `inspectBareAuditCommands`：**任何工作流都不许再出现裸的 `pnpm audit`**
+    （`pnpm check:audit`、`pnpm audit:storage-orphans` 不算）。它问的是「有没有绕开台账的入口」，
+    **不是**「审计有没有跑」——后者归 `check:gates` 与 `SECURITY_GATE_REQUIREMENTS`，
+    两条判据问的不是同一件事，所以都要留着。
+  - 注释里的字样不算命令（判定先去掉整行注释）：不这么做，我们为解释这条规则而写下的那串
+    `pnpm audit --audit-level high` 会把门禁顶红——**注释不是配置**，这与 `workflow-policy` 踩过的
+    同一类假红同形。
+  - 真实仓库上的变异核对：把 `ci.yml` 那一步加回去 → `check:security` 红并点名文件与那行命令（做完复原）。
 - **通过时的输出改成自报读数**（`1 条已登记例外（GHSA-vfj7-8cjw-p6xm）`）：
   「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话，只说前一句就丢了后者。
-- 变异核对五处（做完复原，逐个确认文件已还原）：抹掉 STALE 反向断言 → 2 条红；
+- 变异核对六处（做完复原，逐个确认文件已还原）：抹掉 STALE 反向断言 → 2 条红；
   抹掉复核期限 → 1 条红；抹掉 dev-only 判定 → 1 条红；抹掉计数与明细对账 → 1 条红；
-  抹掉台账理由校验 → 9 条红。
+  抹掉台账理由校验 → 9 条红；把裸审计加回 `ci.yml` → `check:security` 红并点名。
 - 变更文件：`src/lib/security/dependency-audit.ts`（新增）、`dependency-audit.test.ts`（新增，35 条）、
   `src/lib/security/dependency-audit-check.test.ts`（新增，4 条）、
   `scripts/check-dependency-audit.js`（新增）、`scripts/lib/dependency-audit-check.js`（新增）、
   `src/lib/security/security-config.ts`（审计判定改为委托 + 配置面要求换掉裸命令）、
+  `.github/workflows/ci.yml`（删掉重复的裸审计步骤）、
   `security-config.test.ts`、`security-config-check.test.ts`、
   `src/lib/release/gate-wiring.ts`（`check:audit` 登记免于本地聚合，理由写明）、
   `gate-wiring.test.ts`（临时仓库 fixture 补上这个门禁）、
@@ -6587,7 +6604,7 @@
 - 验证命令与结果：`pnpm lint` **0 warning**（中途撞到 `inspectDependencyAudit` 复杂度 19 > 15，
   按仓库既有做法拆成 `collectBlocking` / `collectUnidentifiable` / `collectUnregistered`
   三个函数，**不加 disable 注释**）；`pnpm type-check` exit 0；
-  **256 文件 / 3,092 用例**；`CI=true pnpm check:all` exit 0；
+  **256 文件 / 3,096 用例**；`CI=true pnpm check:all` exit 0；
   `pnpm build` exit 0；`check:gates` → **48 个门禁**（本地 44 / CI 47 / 豁免 4）；
   `check:gate-rule-tests` → **56 个规则模块 / 48 条走规则模块 / 0 条内联**；
   `pnpm check:audit` 与 `pnpm check:security` 都自报那一条例外。

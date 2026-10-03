@@ -402,3 +402,49 @@ export function inspectDependencyAudit(
     ...issues,
   ];
 }
+
+/**
+ * 工作流里不许再出现裸的 `pnpm audit`。
+ *
+ * 这条规则是被 CI 抓出来的，不是设计出来的：第一次修这个问题时只改了
+ * `security-config.yml`（当时 grep 的是「哪些工作流提到 `check:security`」），
+ * 而 `ci.yml` 里还有一步一模一样的裸审计，于是同一个 PR 的 CI 仍然红。
+ * **一次真实发生过的缺陷形状，不该在另一个地方裸奔**——这与 #191 在 `AGENTS.md` 上、
+ * #195 在文档链接上做的是同一件事。
+ *
+ * 之所以要禁而不是「要求某一步存在」：裸命令看起来更严格（它就是官方审计），
+ * 但它**绕开了例外台账**，于是「上游没有补丁」这一种真实且不可修的情况会让它永远红。
+ * 一条没人能修的门禁不是严格，是失效。
+ *
+ * **注释不算命令**：判定先去掉整行注释再扫。不这么做的话，我们自己为了解释这条规则
+ * 而写下的 `pnpm audit --audit-level high` 字样会把门禁顶红——那正是 workflow-policy
+ * 踩过的同一类假红（注释不是配置）。
+ */
+// `pnpm --silent audit`、`pnpm audit --audit-level high` 都算；
+// `pnpm audit:storage-orphans` 不算——那是本仓库的另一个脚本，`audit` 后面跟的是 `:`。
+const BARE_AUDIT_COMMAND = /\bpnpm\s+(?:--?[a-zA-Z][\w-]*\s+)*audit(?![\w:-])/;
+
+function stripCommentLines(content: string): string {
+  return content
+    .split("\n")
+    .filter((line) => /^\s*#/.test(line) === false)
+    .join("\n");
+}
+
+export function inspectBareAuditCommands(
+  files: readonly { path: string; content: string }[],
+): string[] {
+  const issues: string[] = [];
+  for (const file of files) {
+    const line = stripCommentLines(file.content)
+      .split("\n")
+      .find((candidate) => BARE_AUDIT_COMMAND.test(candidate));
+    if (line === undefined) continue;
+    issues.push(
+      `${file.path}: runs a bare \`pnpm audit\` (${line.trim()}); it cannot see the ` +
+        "no-patch-available exception ledger, so it fails forever on advisories that have no " +
+        `fix. Use \`pnpm check:audit\` (or \`pnpm check:security\`) instead`,
+    );
+  }
+  return issues;
+}

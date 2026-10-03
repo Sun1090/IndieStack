@@ -72,8 +72,14 @@ See `docs/operations/release-tag-ledger.md`.
     并加一条**反向断言单测**：把裸命令塞回去不算接线。
   - 通过时的输出会自报读数（「1 条已登记例外（GHSA-…）」）——
     「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话，只说前一句就丢了后者。
-  - 变异核对五处（做完复原）：抹掉 STALE 反向断言 / 复核期限 / dev-only 判定 /
-    计数与明细对账 / 台账理由校验，**每一处都让套件变红**。
+  - **这处修复自己被抓了第二次**：第一次只改了 `security-config.yml`（当时 grep 的是
+    「哪些工作流提到 `check:security`」），而 `ci.yml` 的静态门禁作业里还有一步一模一样的裸审计，
+    同一个 PR 的 CI 仍然红。两处都改掉（`ci.yml` 那步与紧随其后的 `pnpm check:all` 重复判定，
+    按那里本来就写着的「一份清单」约定直接删掉），并补 `inspectBareAuditCommands`：
+    **任何工作流都不许再出现裸的 `pnpm audit`**（`pnpm check:audit` / `pnpm audit:storage-orphans` 不算，
+    注释里的字样不算）。一处真实发生过的缺陷形状，不该在另一个地方裸奔。
+  - 变异核对六处（做完复原）：抹掉 STALE 反向断言 / 复核期限 / dev-only 判定 /
+    计数与明细对账 / 台账理由校验 / 裸审计禁令，**每一处都让套件变红**。
 
 ### Fixed
 - **`check:gate-rule-tests`：判定逻辑内联在脚本里的门禁，从「被计数」升级为「一律失败」。**

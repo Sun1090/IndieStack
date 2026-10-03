@@ -45,9 +45,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Dependency security audit
-        run: pnpm audit --audit-level high
-
+      # 这里曾经有一步裸的 `pnpm audit --audit-level high`。它有两个问题，且第二个是致命的：
+      # ① 与下面 `pnpm check:all` 里的 `check:security` 重复判定同一件事；
+      # ② 裸命令不看「暂无补丁」例外台账（braces 的 GHSA-vfj7-8cjw-p6xm 上游一个补丁都没发），
+      #    于是**无论本仓库怎么改它都永远红**——一条不可执行的门禁会训练所有人忽略红灯。
+      # 审计判定现在只有一份实现（src/lib/security/dependency-audit.ts），
+      # 由 check:security 承载；security-config job 里另有一个显式的 `pnpm check:audit` 步骤。
       # 一份清单：lint / type-check / 单测与全部 `check:*` 门禁只由 `scripts/check-all.sh` 列举。
       # CI 过去逐项写步骤，于是本地聚合与 CI 是两份手工清单——历史上确实出现过
       # 「只存在于本地」和「只存在于 CI」的门禁（`check:gates` 就是为此而存在的）。
