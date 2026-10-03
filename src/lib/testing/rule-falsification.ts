@@ -106,6 +106,46 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return { issues: [], entries: [] };",
     testFile: "src/lib/docs/progress-ledger.test.ts",
   },
+  {
+    file: "src/lib/ci/workflow-policy.ts",
+    function: "auditWorkflowPolicy",
+    neuteredReturn:
+      "return { issues: [], workflows: 0, jobs: 0, actions: 0 };",
+    testFile: "src/lib/ci/workflow-policy.test.ts",
+  },
+  {
+    file: "src/lib/i18n/dynamic-keys.ts",
+    function: "auditDynamicKeys",
+    neuteredReturn:
+      "return { issues: [], stats: { contracts: 0, locales: 0, values: 0, templates: 0 } };",
+    testFile: "src/lib/i18n/dynamic-keys.test.ts",
+  },
+  {
+    file: "src/lib/i18n/action-errors.ts",
+    function: "auditActionErrorTranslation",
+    neuteredReturn: 'return { issues: [], codes: [], keyCounts: {} };',
+    testFile: "src/lib/i18n/action-errors.test.ts",
+  },
+  {
+    file: "src/lib/docs/doc-links.ts",
+    function: "auditDocLinks",
+    neuteredReturn:
+      "return { errors: [], stats: { files: 0, internalLinks: 0, broken: 0 } };",
+    testFile: "src/lib/docs/doc-links.test.ts",
+  },
+  {
+    file: "src/lib/docs/doc-commands.ts",
+    function: "auditDocCommands",
+    neuteredReturn:
+      "return { errors: [], stats: { files: 0, commands: 0, resolved: 0, excluded: 0, binariesRead: false } };",
+    testFile: "src/lib/docs/doc-commands.test.ts",
+  },
+  {
+    file: "src/lib/release/hook-wiring.ts",
+    function: "auditHookWiring",
+    neuteredReturn: "return { issues: [], checkedCommands: 0, hookNames: [] };",
+    testFile: "src/lib/release/hook-wiring.test.ts",
+  },
 ];
 
 export interface MutationResult {
