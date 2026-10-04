@@ -341,6 +341,89 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
       "return { errors: [], stats: { scannedFiles: 0, buttons: 0, iconOnlyButtons: 0, images: 0 } };",
     testFile: "src/lib/ui/a11y-rules.test.ts",
   },
+  {
+    file: "src/lib/db/query-columns.ts",
+    function: "inspectQueryColumns",
+    neuteredReturn:
+      "return { issues: [], stats: { tables: 0, fromCalls: 0, checked: 0, skippedEmbedded: 0 } };",
+    testFile: "src/lib/db/query-columns.test.ts",
+  },
+  {
+    file: "src/lib/release/perf-audit.ts",
+    function: "auditPerf",
+    neuteredReturn: "return { errors: [], stats: { scannedFiles: 0 } };",
+    testFile: "src/lib/release/perf-audit.test.ts",
+  },
+  {
+    file: "src/lib/security/route-auth.ts",
+    function: "auditRouteAuth",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/security/route-auth.test.ts",
+  },
+  {
+    file: "src/lib/security/storage-policies.ts",
+    function: "inspectStoragePolicies",
+    neuteredReturn: "return { issues: [], warnings: [] };",
+    testFile: "src/lib/security/storage-policies.test.ts",
+  },
+  {
+    file: "src/lib/release/changelog-tag-reconciliation.ts",
+    function: "auditChangelogTags",
+    neuteredReturn:
+      "return { errors: [], stats: { versions: 0, tagged: 0, staleLedger: 0, ledgerSize: 0 } };",
+    testFile: "src/lib/release/changelog-tag-reconciliation.test.ts",
+  },
+  {
+    file: "src/lib/tailwind/native-theme.ts",
+    function: "auditTailwindNative",
+    neuteredReturn: "return { errors: [], warnings: [] };",
+    testFile: "src/lib/tailwind/native-theme.test.ts",
+  },
+  {
+    file: "src/lib/ui/state-rules.ts",
+    function: "auditStates",
+    neuteredReturn: "return { errors: [], stats: { scanned: 0 } };",
+    testFile: "src/lib/ui/state-rules.test.ts",
+  },
+  {
+    file: "src/lib/i18n/translation-usage.ts",
+    function: "auditTranslationUsage",
+    neuteredReturn:
+      "return { errors: [], stats: { scannedFiles: 0, scannedCalls: 0, boundNamespaces: 0 } };",
+    testFile: "src/lib/i18n/translation-usage.test.ts",
+  },
+  {
+    file: "src/lib/release/release-docs.ts",
+    function: "auditReleaseDocs",
+    neuteredReturn:
+      "return { errors: [], stats: { version: \"\", coveredVersions: 0, docFiles: 0 } };",
+    testFile: "src/lib/release/release-docs.test.ts",
+  },
+  {
+    file: "src/lib/release/gate-rule-tests.ts",
+    function: "auditGateRuleTests",
+    neuteredReturn:
+      "return { errors: [], stats: { totalGates: 0, gatedGates: 0, inlineGates: 0 } };",
+    testFile: "src/lib/release/gate-rule-tests.test.ts",
+  },
+  {
+    file: "src/lib/docs/agents-index.ts",
+    function: "auditAgentsIndex",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/docs/agents-index.test.ts",
+  },
+  {
+    file: "src/lib/security/admin-client-boundary.ts",
+    function: "inspectAdminClientBoundary",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/security/admin-client-boundary.test.ts",
+  },
+  {
+    file: "src/lib/release/client-artifact-env.ts",
+    function: "inspectClientArtifactEnvNames",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/release/client-artifact-env.test.ts",
+  },
 ];
 
 export interface MutationResult {
