@@ -55,6 +55,29 @@ vercel domains add yourdomain.com
 
 Pushing a PR or branch automatically creates a Preview deployment with a unique URL for team review.
 
+### Storage: the App and the Docs Site Are One Repo
+
+This repository is connected to **two** Vercel projects, and the Hobby plan has a single
+**10 GB deployment storage** budget shared by the whole team. Deployments are never pruned
+automatically, so an unconfigured repo fills that budget within days.
+
+| Setting                                 | App (`indie-stack`) | Docs (`indie-stack-docs-site`) |
+| --------------------------------------- | ------------------- | ----------------------------- |
+| Root Directory                          | repository root     | `docs-site`                   |
+| Enable Affected Projects Deployments    | off                 | **on**                         |
+
+With Affected Projects Deployments enabled, the docs site only rebuilds when something inside
+`docs-site/` actually changes — an App-only commit no longer produces a second copy of the build
+output. Force a docs rebuild with the CLI when needed.
+
+```bash
+cd docs-site && vercel --prod
+```
+
+> Lesson (2026-10-04): without this split, 18 deployments in one day pushed the 10 GB budget to
+> 8.71 GB. Read the limit from the **Usage → Deployment Storage** card, not from the y-axis of the
+> Total size chart — the axis may be labelled 150 GB while the real cap is 10 GB.
+
 ## Docker Deployment
 
 ### Build Image
