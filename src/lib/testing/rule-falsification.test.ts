@@ -30,6 +30,30 @@ describe("neuterFunction()", () => {
     expect(result.source).toContain("): RlsCoverageIssue[] {\n  return [];\n");
   });
 
+  it("返回类型本身是对象字面量时，指的是**函数体**那个 {（实测 auditBilingualDocs）", () => {
+    const inlineReturnType = `export function auditBilingualDocs(
+  documents: readonly BilingualDocDocument[],
+): { issues: BilingualDocIssue[]; pairs: string[]; facts: BilingualDocFacts } {
+  const byPath = new Map(documents.map((doc) => [doc.path, doc.content]));
+  return { issues: [], pairs: [], facts: { cronExpressions: [], utcTimes: [] } };
+}
+`;
+    const result = neuterFunction(inlineReturnType, "auditBilingualDocs", "return EMPTY;");
+    expect(result.changed).toBe(true);
+    // 插在函数体第一行，而不是返回类型那个 { 里面。
+    expect(result.source).toContain("facts: BilingualDocFacts } {\n  return EMPTY;\n");
+    // 返回类型必须一个字都没动。
+    expect(result.source).toContain(
+      "): { issues: BilingualDocIssue[]; pairs: string[]; facts: BilingualDocFacts }",
+    );
+  });
+
+  it("单行签名 + 对象字面量返回类型同样指对函数体", () => {
+    const single = "export function f(xs: number[]): { issues: string[]; pairs: string[] } {\n  return { issues: [], pairs: [] };\n}\n";
+    const result = neuterFunction(single, "f", "return EMPTY;");
+    expect(result.source).toContain("] } {\n  return EMPTY;\n");
+  });
+
   it("签名跨行时也指对函数体（靠括号配对，不靠「下一行以 { 开头」）", () => {
     const tricky = `export function pick(\n  a: string,\n): string {\n  return a;\n}\n`;
     const result = neuterFunction(tricky, "pick", 'return "";');

@@ -228,6 +228,90 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
       "return { issues: [], scannedFiles: [], tracedFiles: [], exemptedFiles: [] };",
     testFile: "src/lib/observability/trace-coverage.test.ts",
   },
+  {
+    file: "src/lib/adr/adr-rules.ts",
+    function: "auditAdrRepository",
+    neuteredReturn:
+      "return { errors: [], documents: [], entries: [], stats: { documents: 0, indexed: 0, accepted: 0, proposed: 0, superseded: 0 } };",
+    testFile: "src/lib/adr/adr-rules.test.ts",
+  },
+  {
+    file: "src/lib/db/migration-runbook.ts",
+    function: "auditMigrationRunbook",
+    neuteredReturn:
+      "return { issues: [], documents: 0, indexed: 0, steps: 0 };",
+    testFile: "src/lib/db/migration-runbook.test.ts",
+  },
+  {
+    file: "src/lib/deployment/production-smoke-contract.ts",
+    function: "auditProductionSmokeWorkflow",
+    neuteredReturn: "return { issues: [], workflows: 0 };",
+    testFile: "src/lib/deployment/production-smoke-contract.test.ts",
+  },
+  {
+    file: "src/lib/design/tokens.ts",
+    function: "auditDesignTokens",
+    neuteredReturn:
+      "return { errors: [], warnings: [], stats: { registered: 0, rootDeclared: 0, darkOverridden: 0, colorMappings: 0, scannedFiles: 0 } };",
+    testFile: "src/lib/design/tokens.test.ts",
+  },
+  {
+    file: "src/lib/docs/bilingual-facts.ts",
+    function: "auditBilingualDocs",
+    neuteredReturn:
+      "return { issues: [], pairs: [], facts: { cronExpressions: [], utcTimes: [] } };",
+    testFile: "src/lib/docs/bilingual-facts.test.ts",
+  },
+  {
+    file: "src/lib/docs/component-docs.ts",
+    function: "auditComponentDocs",
+    neuteredReturn: "return { issues: [], rows: [], components: 0 };",
+    testFile: "src/lib/docs/component-docs.test.ts",
+  },
+  {
+    file: "src/lib/docs/scripts-docs.ts",
+    function: "auditScriptsDocs",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/docs/scripts-docs.test.ts",
+  },
+  {
+    file: "src/lib/migrations/migration-drift.ts",
+    function: "inspectMigrationFiles",
+    neuteredReturn:
+      "return { issues: [], files: 0, newest: null, statements: 0 };",
+    testFile: "src/lib/migrations/migration-drift.test.ts",
+  },
+  {
+    file: "src/lib/mock/mock-docs.ts",
+    function: "auditMockDocs",
+    neuteredReturn: "return { issues: [], entries: 0 };",
+    testFile: "src/lib/mock/mock-docs.test.ts",
+  },
+  {
+    file: "src/lib/observability/cron-contract.ts",
+    function: "auditCronContract",
+    neuteredReturn: "return { issues: [], crons: 0, contracts: 0 };",
+    testFile: "src/lib/observability/cron-contract.test.ts",
+  },
+  {
+    file: "src/lib/observability/cron-skip-coverage.ts",
+    function: "auditCronSkips",
+    neuteredReturn: "return { total: 0, uncounted: [], reasonMissing: [] };",
+    testFile: "src/lib/observability/cron-skip-coverage.test.ts",
+  },
+  {
+    file: "src/lib/providers/provider-docs.ts",
+    function: "auditProviderDocs",
+    neuteredReturn: "return { providers: 0, keys: 0, issues: [] };",
+    testFile: "src/lib/providers/provider-docs.test.ts",
+  },
+  {
+    file: "src/lib/ui/a11y-rules.ts",
+    function: "auditA11y",
+    neuteredReturn:
+      "return { errors: [], stats: { scannedFiles: 0, buttons: 0, iconOnlyButtons: 0, images: 0 } };",
+    testFile: "src/lib/ui/a11y-rules.test.ts",
+  },
 ];
 
 export interface MutationResult {
@@ -247,6 +331,60 @@ export interface MutationResult {
  * 签名跨行、带默认值、带泛型都会让后者指错位置（而指错位置的代价是
  * 「变异打上了但打在别人身上」，比没打上更难发现）。
  */
+/** 跳过一段括号配对的 `{ … }`，返回右括号之后的位置；配对不上就返回 -1。 */
+function skipBraced(source: string, braceIndex: number): number {
+  let depth = 0;
+  for (let cursor = braceIndex; cursor < source.length; cursor += 1) {
+    const char = source[cursor];
+    if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return cursor + 1;
+    }
+  }
+  return -1;
+}
+
+/** `{` 前面（忽略空白）的那个字符，是否说明这个 `{` 属于**类型**而不是函数体。 */
+function braceFollowsTypeStart(source: string, braceIndex: number): boolean {
+  let cursor = braceIndex - 1;
+  while (cursor >= 0 && /\s/.test(source[cursor] as string)) cursor -= 1;
+  const char = source[cursor];
+  return char === ":" || char === "<" || char === ",";
+}
+
+/**
+ * 从签名的右括号之后找出**函数体**那个 `{`。
+ *
+ * 关键是把「返回类型里的对象字面量」和「函数体」分开：`): { a: 1 } {` 里有两个 `{`，
+ * 直接取第一个会把中性化语句插进**类型**里——文件语法错误、模块加载失败，
+ * vitest 那种输出里根本没有 `Tests …` 那一行，读数于是落在「读不出」，
+ * 看起来像「工具坏了」，实际是这一个字符没躲开。实测：`auditBilingualDocs`。
+ *
+ * 判据是「这个 `{` 前面紧挨着的是不是 `: / < / ,`」：那说明它属于返回类型
+ * （`): { … } {`、`): Promise<{ … }> {`），按配对整段跳过再继续找。
+ * `): RlsCoverageIssue[] {` 这种命名类型的前面是 `]`，所以第一个 `{` 就是函数体。
+ *
+ * 找不到就返回 -1，让调用方报「没打上」，而不是硬插一个语法错误的文件。
+ */
+function findBodyBrace(source: string, from: number): number {
+  let cursor = from + 1;
+  while (cursor < source.length) {
+    const char = source[cursor];
+    //声明体已经结束（`);` 或 `=`）却还没见到函数体：这份源码不是普通声明，判不了。
+    if (char === ";" || char === "=") return -1;
+    if (char === "{") {
+      if (!braceFollowsTypeStart(source, cursor)) return cursor;
+      const afterType = skipBraced(source, cursor);
+      if (afterType === -1) return -1;
+      cursor = afterType;
+      continue;
+    }
+    cursor += 1;
+  }
+  return -1;
+}
+
 export function neuterFunction(
   source: string,
   functionName: string,
@@ -258,6 +396,7 @@ export function neuterFunction(
 
   let depth = 0;
   let cursor = match.index + match[0].length - 1;
+  let signatureEnd = -1;
   let bodyStart = -1;
   while (cursor < source.length) {
     const char = source[cursor];
@@ -265,12 +404,18 @@ export function neuterFunction(
     else if (char === ")") {
       depth -= 1;
       if (depth === 0) {
-        bodyStart = source.indexOf("{", cursor);
+        signatureEnd = cursor;
         break;
       }
     }
     cursor += 1;
   }
+  // 签名后面可能还有**返回类型**，而返回类型本身可以是一个对象字面量：
+  //   `): { issues: Issue[]; pairs: string[] } {`
+  // 直接取「第一个 {」会插进**类型**里，于是文件语法错误、模块加载失败，
+  // 而 vitest 那种输出里根本没有 `Tests …` 那一行——读数会落在「读不出」，
+  // 看起来像「工具坏了」，实际是这一个字符没躲开。实测：`auditBilingualDocs`。
+  bodyStart = findBodyBrace(source, signatureEnd);
   if (bodyStart === -1) return { source, changed: false };
 
   const mutated = `${source.slice(0, bodyStart + 1)}\n  ${statement}\n${source.slice(bodyStart + 1)}`;
