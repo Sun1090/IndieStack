@@ -38,6 +38,11 @@ export interface FalsificationTarget {
  * **只登记真的跑过红的目标**：登记表不是「打算核对」的清单，而是「核对过」的证据。
  * #194 手工核对过的另外 12 个模块没有登记——它们的结论是真的，但**没有被这套工具复核过**，
  * 写进表里会让「跑一遍这张表」变成一次没有证据的复述。
+ *
+ * 2026-10-05 分类了登记表之外的 9 个模块：`constants` / `database.types` /
+ * `notifications/types` / `shortcuts` / `mock/index` 是常量、类型或 mock 构造器，
+ * 没有「报出问题」的判据入口，不登记；`parse-changelog` / `bundle-freshness` /
+ * `password-strength` / `test-matrix` 有判据，已补进表内并跑过 falsify。
  */
 export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
   {
@@ -304,6 +309,30 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     function: "auditProviderDocs",
     neuteredReturn: "return { providers: 0, keys: 0, issues: [] };",
     testFile: "src/lib/providers/provider-docs.test.ts",
+  },
+  {
+    file: "src/lib/testing/test-matrix.ts",
+    function: "auditTestMatrix",
+    neuteredReturn: "return { issues: [], areas: 0, commands: 0 };",
+    testFile: "src/lib/testing/test-matrix.test.ts",
+  },
+  {
+    file: "src/lib/changelog/parse-changelog.ts",
+    function: "validateChangelog",
+    neuteredReturn: "return { errors: [], warnings: [], entries: [] };",
+    testFile: "src/lib/changelog/parse-changelog.test.ts",
+  },
+  {
+    file: "src/lib/release/bundle-freshness.ts",
+    function: "sourcesNewerThan",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/release/bundle-freshness.test.ts",
+  },
+  {
+    file: "src/lib/password-strength.ts",
+    function: "scorePassword",
+    neuteredReturn: "return 4;",
+    testFile: "src/lib/password-strength.test.ts",
   },
   {
     file: "src/lib/ui/a11y-rules.ts",
