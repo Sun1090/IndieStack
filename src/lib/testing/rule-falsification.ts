@@ -259,7 +259,7 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     file: "src/lib/docs/bilingual-facts.ts",
     function: "auditBilingualDocs",
     neuteredReturn:
-      "return { issues: [], pairs: [], facts: { pairs: 0, mismatched: 0 } };",
+      "return { issues: [], pairs: [], facts: { cronExpressions: [], utcTimes: [] } };",
     testFile: "src/lib/docs/bilingual-facts.test.ts",
   },
   {
