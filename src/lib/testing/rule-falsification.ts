@@ -228,6 +228,90 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
       "return { issues: [], scannedFiles: [], tracedFiles: [], exemptedFiles: [] };",
     testFile: "src/lib/observability/trace-coverage.test.ts",
   },
+  {
+    file: "src/lib/adr/adr-rules.ts",
+    function: "auditAdrRepository",
+    neuteredReturn:
+      "return { errors: [], documents: [], entries: [], stats: { documents: 0, indexed: 0, accepted: 0, proposed: 0, superseded: 0 } };",
+    testFile: "src/lib/adr/adr-rules.test.ts",
+  },
+  {
+    file: "src/lib/db/migration-runbook.ts",
+    function: "auditMigrationRunbook",
+    neuteredReturn:
+      "return { issues: [], documents: 0, indexed: 0, steps: 0 };",
+    testFile: "src/lib/db/migration-runbook.test.ts",
+  },
+  {
+    file: "src/lib/deployment/production-smoke-contract.ts",
+    function: "auditProductionSmokeWorkflow",
+    neuteredReturn: "return { issues: [], workflows: 0 };",
+    testFile: "src/lib/deployment/production-smoke-contract.test.ts",
+  },
+  {
+    file: "src/lib/design/tokens.ts",
+    function: "auditDesignTokens",
+    neuteredReturn:
+      "return { errors: [], warnings: [], stats: { registered: 0, rootDeclared: 0, darkOverridden: 0, colorMappings: 0, scannedFiles: 0 } };",
+    testFile: "src/lib/design/tokens.test.ts",
+  },
+  {
+    file: "src/lib/docs/bilingual-facts.ts",
+    function: "auditBilingualDocs",
+    neuteredReturn:
+      "return { issues: [], pairs: [], facts: { pairs: 0, mismatched: 0 } };",
+    testFile: "src/lib/docs/bilingual-facts.test.ts",
+  },
+  {
+    file: "src/lib/docs/component-docs.ts",
+    function: "auditComponentDocs",
+    neuteredReturn: "return { issues: [], rows: [], components: 0 };",
+    testFile: "src/lib/docs/component-docs.test.ts",
+  },
+  {
+    file: "src/lib/docs/scripts-docs.ts",
+    function: "auditScriptsDocs",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/docs/scripts-docs.test.ts",
+  },
+  {
+    file: "src/lib/migrations/migration-drift.ts",
+    function: "inspectMigrationFiles",
+    neuteredReturn:
+      "return { issues: [], files: 0, newest: null, statements: 0 };",
+    testFile: "src/lib/migrations/migration-drift.test.ts",
+  },
+  {
+    file: "src/lib/mock/mock-docs.ts",
+    function: "auditMockDocs",
+    neuteredReturn: "return { issues: [], entries: 0 };",
+    testFile: "src/lib/mock/mock-docs.test.ts",
+  },
+  {
+    file: "src/lib/observability/cron-contract.ts",
+    function: "auditCronContract",
+    neuteredReturn: "return { issues: [], crons: 0, contracts: 0 };",
+    testFile: "src/lib/observability/cron-contract.test.ts",
+  },
+  {
+    file: "src/lib/observability/cron-skip-coverage.ts",
+    function: "auditCronSkips",
+    neuteredReturn: "return { total: 0, uncounted: [], reasonMissing: [] };",
+    testFile: "src/lib/observability/cron-skip-coverage.test.ts",
+  },
+  {
+    file: "src/lib/providers/provider-docs.ts",
+    function: "auditProviderDocs",
+    neuteredReturn: "return { providers: 0, keys: 0, issues: [] };",
+    testFile: "src/lib/providers/provider-docs.test.ts",
+  },
+  {
+    file: "src/lib/ui/a11y-rules.ts",
+    function: "auditA11y",
+    neuteredReturn:
+      "return { errors: [], stats: { scannedFiles: 0, buttons: 0, iconOnlyButtons: 0, images: 0 } };",
+    testFile: "src/lib/ui/a11y-rules.test.ts",
+  },
 ];
 
 export interface MutationResult {
