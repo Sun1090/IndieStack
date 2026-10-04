@@ -55,6 +55,27 @@ vercel domains add yourdomain.com
 
 推送 PR 或分支时，Vercel 自动创建 Preview 部署并生成预览 URL，便于团队审查。
 
+### 存储：App 与文档站同属一个仓库
+
+本仓库同时连接**两个** Vercel 项目，而 Hobby 计划的 **10 GB 部署存储**额度是整个团队共享的。
+部署不会自动清理，配不好的仓库几天就能把额度撑满。
+
+| 设置                                  | App (`indie-stack`) | Docs (`indie-stack-docs-site`) |
+| ------------------------------------- | ------------------- | ----------------------------- |
+| Root Directory                        | 仓库根目录           | `docs-site`                   |
+| Enable Affected Projects Deployments  | 关闭                 | **开启**                      |
+
+文档站开启 Affected Projects Deployments 后，只有 `docs-site/` 目录内的文件变化才会触发部署；
+只改 App 代码时不再连带重建一份构建产物。需要强制重建文档站时用 CLI：
+
+```bash
+cd docs-site && vercel --prod
+```
+
+> 教训（2026-10-04）：不做这个区分时，单日 18 次部署把 10 GB 额度推到 8.71 GB。
+> 额度数字看 **Usage → Deployment Storage** 卡片，不要看 Total size 图表的纵轴刻度——
+> 纵轴可能写着 150 GB，而实际上限是 10 GB。
+
 ## Docker 部署
 
 ### 构建镜像

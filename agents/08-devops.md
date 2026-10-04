@@ -47,6 +47,21 @@ vercel --prod
 - **App**: Next.js 自动检测
 - **Docs**: VitePress 静态构建（配置见 `docs-site/vercel.json`）
 
+两个 Vercel 项目来自同一仓库，因此有一处必须区分，否则每次 push 都会白占一份
+build storage（10 GB 额度会因此提前见底）：
+
+| 设置                                   | App (`indie-stack`) | Docs (`indie-stack-docs-site`) |
+| -------------------------------------- | ------------------- | ----------------------------- |
+| Root Directory                         | （仓库根）           | `docs-site`                   |
+| Enable Affected Projects Deployments   | 关闭                 | **开启**                      |
+
+Docs 项目开启 Affected Projects Deployments 后，只有 `docs-site/` 目录内的文件发生变化时才会
+触发部署；仅改 App 代码时不再连带重建文档站。若要强制重建文档站，用 CLI 手动部署。
+
+> 教训（2026-10-04）：两个项目未做区分时，单日 18 次部署把 10 GB 额度推到 8.71 GB。
+> 排查入口是 Dashboard → Usage → Deployment Storage，注意额度上限显示在卡片上，
+> 而 Total size 图表的纵轴刻度（如 150 GB）只是坐标轴，不是额度。
+
 ### Docker 部署
 
 **App**（`Dockerfile`，多阶段 Node standalone 构建）:
