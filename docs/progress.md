@@ -6881,3 +6881,31 @@
 - 下一项：把 progress 登记表名单里剩下的 9 个模块逐个分类（有判据 / 无判据），有判据的进
   falsify 登记表（含 `test-matrix` 等 testing 模块）。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 变异核对第五批：9 个未登记模块逐个分类，4 个有判据的进表（54/58）
+
+- 里程碑 / 版本：v0.12.0。分支：`chore/falsify-coverage-batch5`。
+- 状态：DONE（falsify 47/47 会红，登记表注释已写明分类口径）。
+- 完成内容：
+  1. 上一条 2026-10-03 的「下一项」是把登记表外的 9 个模块逐个分类。做法：逐个读导出，
+     判据是「有没有一个唯一的『报出问题』入口函数」。
+     - 不进表：`constants.ts`（常量配置）、`supabase/database.types.ts`（生成物）、
+       `notifications/types.ts`（类型+常量数组）、`shortcuts.ts`（常量数组）、`mock/index.ts`
+       （mock 构造器，非规则模块）。
+     - 进表 4 个：`changelog/parse-changelog.ts → validateChangelog`、
+       `release/bundle-freshness.ts → sourcesNewerThan`、`password-strength.ts → scorePassword`、
+       `testing/test-matrix.ts → auditTestMatrix`。
+  2. `src/lib/password-strength.test.ts` 新建：它的直接单测入口此前只有 tsx 组件测试
+     （`password-strength.test.tsx`），登记表约定 `testFile` 必须 `.test.ts$`，
+     所以补了一份针对 `scorePassword` 的纯函数用例（4 条），登记用它。
+  3. `RULE_FALSIFICATION_TARGETS` 注释补上 2026-10-05 分类口径；`docs/testing.md` 与
+     `CHANGELOG.md` 的读数同步到 **47 条判定 / 41 个规则模块 / 518 条用例变红 / 覆盖 54 个**。
+- 变更文件：`src/lib/testing/rule-falsification.ts`、`src/lib/password-strength.test.ts`（新增）、
+  `docs/testing.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`pnpm falsify:rules` → **47/47 会红**（新增 4 条各自变红读数：
+  test-matrix 10、parse-changelog 22、bundle-freshness 5、password-strength 2），
+  跑完 `git status` 干净；定向 vitest 18/18。
+- 阻塞 / 风险：三条阻塞不变（A05 产品决策、B02–B05 外部权限、`/api/health` 响应契约）。
+  剩下 4 个未核对模块已逐个写明「无判据入口」，不是欠账。
+- 下一项：无（v0.12.0 可执行部分仍 DONE，发布侧等外部权限）。
+- 更新时间：2026-10-05（UTC）。
