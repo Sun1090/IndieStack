@@ -6860,3 +6860,24 @@
 - 下一项：把剩下 9 个模块逐个分类（有判据 / 无判据），有判据的进登记表；
   顺带把 #194 那 13 个手工模块也搬进登记表，让「已核对」不再依赖一次性的手工脚本。
 - 更新时间：2026-10-03（UTC）。
+
+## 2026-10-05 — 生产站 500 已不是现状；10 GB 构建存储额度见底的教训进部署文档
+
+- 里程碑 / 版本：v0.12.0（发布侧仍 BLOCKED，不影响此条）。
+- 状态：DONE。
+- 分支 / commit：`docs/vercel-storage-split`（`b369673`）。
+- 完成内容：
+  1. 部署文档（EN/zh 双语 + `agents/08-devops.md`）补一节「App 与文档站同属一个仓库时的存储
+     配置」：两个 Vercel 项目都连同一 repo，Hobby 计划 10 GB 部署存储是团队共享的，必须把 Docs
+     项目的 Root Directory 设为 `docs-site` 并开启 Affected Projects Deployments，否则每次 App
+     提交都白重建一份文档站产物。教训数字（2026-10-04：单日 18 次部署推到 8.71 GB）一并记下，
+     并提示额度看 **Usage → Deployment Storage** 卡片而不是 Total size 图表的坐标轴。
+  2. 顺带核验了线上：`https://indie-stack-theta.vercel.app` 与 `https://indie-stack-docs-site.vercel.app`
+     均返回 200（此前反馈的生产站 500 目前未复现，若再现需要新的现场证据）。
+- 变更文件：`agents/08-devops.md`、`docs-site/deployment.md`、`docs-site/zh-CN/deployment.md`、本条目。
+- 验证命令与结果：`pnpm check:docs` ✓、`pnpm check:bilingual-docs` ✓、`pnpm lint` 0 warning、
+  `pnpm type-check` exit 0、`pnpm test` 258 文件 / 3125 用例全过、`pnpm build` exit 0。
+- 阻塞 / 风险：三条阻塞不变（A05 产品决策、B02–B05 外部权限、`/api/health` 响应契约）。
+- 下一项：把 progress 登记表名单里剩下的 9 个模块逐个分类（有判据 / 无判据），有判据的进
+  falsify 登记表（含 `test-matrix` 等 testing 模块）。
+- 更新时间：2026-10-05（UTC）。
