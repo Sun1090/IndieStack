@@ -10,6 +10,24 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Changed
 
+- **`pnpm ops:deploy-freshness`：量一量「生产落后 main 多少个提交」，并在超过阈值时失败。**
+  起因是一次实测发现**没有任何自动检查会注意到生产停在旧构建上**：
+  `production-smoke.yml` 的定时作业会**打印**生产跑的 commit，但**不断言**它
+  （`expected_commit` 只在 `workflow_dispatch` 时能传，`schedule` 路径留空）。
+  2026-10-05 Vercel 构建配额限流，生产停在 `08dd6f17` 而 `main` 已是 `30f8e896`
+  （差 5 个提交），当天的定时作业一路绿。
+  - **判定的是距离而不是相等**：部署滞后是常态，断言相等会天天在正常时段误报，
+    而**天天误报的检查等于没有检查**。阈值内（默认 5）判通过但**记下距离**——
+    连续多天同一距离不回落才是真问题。
+  - **未知不算通过**：读不到生产 commit、或算不出距离（git 历史不够深 /
+    部署的 commit 不在祖先链上）都判 `unknown` 且**不通过**。
+    这里第一版有个真 bug 被单测逮到：commit 读不出来、距离又恰好传 0 时，
+    会印出「生产跑的就是 main（unknown）」——一句没有依据、且最容易让人放心的话。
+  - 独立作业 `deploy-freshness`（与版本漂移分开，避免互相盖住结果），
+    且**刻意 `fetch-depth: 0`**：浅克隆算不出距离，而算不出会被判成「未知且不通过」，
+    那这条作业就会天天红、且红的原因藏在 checkout 参数里。
+  - 复用已有的 `probeHealth` 与判定纯函数（`scripts/lib/deploy-freshness.js`），不新造 HTTP。
+
 - **`pnpm health:check` 成功时也打印逐依赖事实与读数时间。**
   之前它成功时只印一行 `passed`，于是「生产有没有配 Sentry / Supabase / Stripe」
   只存在于某次现场读数和某人的记忆里——2026-10-05 就因此在文档里写下了一句**错的**边界声明
