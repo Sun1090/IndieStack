@@ -253,6 +253,48 @@ async function checkHomepage(baseUrl, options) {
   return result("homepage", passed, detail, response.status);
 }
 
+/**
+ * 存活探针。
+ *
+ * **为什么它值得成为一条发布门禁**：它断言的不是「200」，而是**这条端点仍然没有被并回
+ * 就绪探针**——具体是「不返回 `checks` / `version` / `commit`」。
+ * 高频探针的价值全在「不打数据库、不暴露部署身份」这两点上，而这两点没有别的门禁看着：
+ * 哪天有人觉得「两条端点重复了，合成一条吧」，本地单测不会红（它们各自都对），
+ * 只有部署后的这一条会。
+ */
+async function checkLiveness(baseUrl, options) {
+  const response = await request(
+    options.fetchImpl,
+    joinUrl(baseUrl, "/api/health/live"),
+    { method: "GET", redirect: "manual" },
+    options.timeoutMs,
+  );
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    // 解析失败时 passed 自然为 false，错误信息在下面报
+  }
+  const leaked = ["checks", "allConfigured", "ready", "version", "commit", "uptime"].filter(
+    (key) => body && Object.prototype.hasOwnProperty.call(body, key),
+  );
+  const passed =
+    response.status === 200 &&
+    body?.status === "ok" &&
+    typeof body?.timestamp === "string" &&
+    leaked.length === 0;
+  return result(
+    "liveness",
+    passed,
+    passed
+      ? "HTTP 200, status=ok, no dependency or build-identity fields"
+      : leaked.length > 0
+        ? `HTTP ${response.status}, 存活探针泄露了本不该有的字段：${leaked.join(", ")}`
+        : `HTTP ${response.status}, status=${body?.status ?? "unparsable"}`,
+    response.status,
+  );
+}
+
 async function checkStaticAsset(baseUrl, options) {
   const response = await request(
     options.fetchImpl,
@@ -388,6 +430,7 @@ async function runProductionSmoke(baseUrlValue, options = {}) {
   const checks = [];
   const runners = [
     checkHealth,
+    checkLiveness,
     checkHomepage,
     checkStaticAsset,
     checkSecurityHeaders,
@@ -473,6 +516,7 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_TIMEOUT_MS,
   checkHealth,
+  checkLiveness,
   checkHomepage,
   checkSecurityHeaders,
   checkStaticAsset,

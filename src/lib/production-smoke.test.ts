@@ -112,6 +112,13 @@ describe("production smoke CLI", () => {
           secureHeaders({ "cache-control": "no-store" }),
         );
       }
+      if (url.pathname === "/api/health/live") {
+        return jsonResponse(
+          { status: "ok", timestamp: "2026-10-05T00:00:00.000Z" },
+          200,
+          secureHeaders({ "cache-control": "no-store" }),
+        );
+      }
       if (url.pathname === "/icon.svg") {
         return new Response("<svg></svg>", {
           status: 200,
@@ -149,6 +156,7 @@ describe("production smoke CLI", () => {
     expect(healthCalls).toBe(2);
     expect(report.checks.map((check) => check.name)).toEqual([
       "health",
+      "liveness",
       "homepage",
       "static-asset",
       "security-headers",
@@ -163,6 +171,13 @@ describe("production smoke CLI", () => {
       const url = new URL(String(input));
       if (url.pathname === "/api/health") {
         return jsonResponse(healthBody, 200, secureHeaders({ "cache-control": "no-store" }));
+      }
+      if (url.pathname === "/api/health/live") {
+        return jsonResponse(
+          { status: "ok", timestamp: "2026-10-05T00:00:00.000Z" },
+          200,
+          secureHeaders({ "cache-control": "no-store" }),
+        );
       }
       if (url.pathname === "/icon.svg") {
         return new Response("<svg></svg>", { status: 200, headers: { "content-type": "image/svg+xml" } });
@@ -288,6 +303,6 @@ describe("production smoke CLI", () => {
     });
     expect(report.passed).toBe(false);
     expect(report.checks.every((check) => !check.passed)).toBe(true);
-    expect(report.checks).toHaveLength(6);
+    expect(report.checks).toHaveLength(7);
   });
 });

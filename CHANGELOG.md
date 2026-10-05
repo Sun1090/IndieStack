@@ -44,6 +44,24 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Changed
 
+- **`/api/health` 拆成两条：高频探针走新的 `/api/health/live`，依赖明细留在 `/api/health`。**
+  Docker `HEALTHCHECK`（`--interval=30s`）原本打 `/api/health`，而那一条每次会出站打一次
+  Supabase（`limit(1)`）并回一份依赖明细。两个问题叠在一起：
+  - **放大面**——探针是唯一会被高频、高并发调用的公开端点，让它每次出站打数据库，
+    等于给匿名调用者一个「用我的流量打你的数据库」的杠杆；
+  - **语义错位**——`/api/health` 在依赖不可用时返回 503，而「进程活着但数据库暂时抖一下」
+    对存活探针不是故障；拿它当 liveness 会让数据库抖动被误报成实例挂掉并触发无谓重启。
+  - 新增 `GET /api/health/live`（`src/app/api/health/live/route.ts`）：只答「活着」，
+    **不打数据库、不读配置、不返回 version/commit**。容器 healthcheck 与 compose 示例已切过去。
+  - **`/api/health` 的响应契约一字未改**：`check:production-smoke`、每日保活 cron
+    （Vercel Cron + `health-check.yml`）仍读它——保活的意义就在于证明「连到 Postgres 的整条路」还通，
+    而 liveness 端点按设计就跳过了那次查询。
+  - 新增 `live.test.ts`（6 条），其中一条**结构性**断言该路由的模块图里没有 Supabase 客户端，
+    另一条钉住 Dockerfile 的 `HEALTHCHECK` 指向 `/api/health/live`（有人改回去就会红）。
+  - 顺带修正 `route-auth` 台账里 `/api/health` 的**理由漂移**：它登记为
+    「存活探针，不含任何用户数据或内部拓扑；返回体是静态结构」，而它实际上会回依赖配置与精确 commit。
+    现按事实改写为「就绪探针 + 有意公开的依赖明细」，并说明为什么披露面是判断过的、
+    真要收紧的判据是什么（限流台账同条已同步）。
 - **stripe v23：Checkout Session 不再传 `payment_method_types`——这不是 SDK 改名，是 Stripe 的 API 取消了它。**
   升级 `stripe` 22.6.2 → 23.0.0 时 `tsc` 报 `TS2561`（`payment_method_types` 不在
   `SessionCreateParams` 上）。查证后确认是 **API 层面的取消**：Stripe 已把
