@@ -6909,3 +6909,34 @@
   剩下 4 个未核对模块已逐个写明「无判据入口」，不是欠账。
 - 下一项：无（v0.12.0 可执行部分仍 DONE，发布侧等外部权限）。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 变异核对第六批：#194 的 13 个模块进表，顺带修掉工具自己「把 8 条红读成读不出」的缺陷
+
+- 里程碑 / 版本：v0.12.0。分支：`chore/falsify-coverage-batch6`（**stack 在 batch5 之上**，
+  因为两批改同一段 CHANGELOG 读数，叠着走比解冲突干净）。
+- 状态：DONE（`pnpm falsify:rules` → **60/60 会红**，跑完工作树干净）。
+- 完成内容：
+  1. 上一条留的「顺带把 #194 那 13 个手工模块搬进登记表」做完：登记
+     `query-columns` / `perf-audit` / `route-auth` / `storage-policies` /
+     `changelog-tag-reconciliation` / `native-theme` / `state-rules` / `translation-usage` /
+     `release-docs` / `gate-rule-tests` / `agents-index` / `admin-client-boundary` /
+     `client-artifact-env`。**全库 58 个规则模块至此全部核对过**（工具 47 + 手工 13，现已合并）。
+  2. **第一次跑就撞出一个真缺陷，且它正是这个工具存在的理由那一族**：
+     `gate-rule-tests → auditGateRuleTests` 报「读不出」。查下来不是变异没打上（`mutationApplied=true`），
+     也不是套件没红（手工把函数中性化后跑，**8 failed / 11 passed**）——
+     是**读数**：vitest 有失败时先打印失败明细再打印汇总，明细行里带测试名，
+     `FAIL node … > auditGateRuleTests > 规则模块没有单测时报红并点名` 这行含有 `Tests`，
+     不锚行首的正则**抢在真正的汇总行之前**匹配到它，后面跟的是 `> …` 而不是数字，于是两档都读不出。
+  3. 判「读不出」是对的（失败封闭，不会谎报通过），但它让一个**真的会红**的模块进不了登记表——
+     也就是说工具在**自己最该响的那一格**上失灵。修的是正则：
+     汇总行锚到行首（`^\s*Tests\s+(\d+)`）并要求紧跟数字，测试名再像也抢不走。
+     补 3 条用例：明细含 Tests 时读真汇总、`Test Files` 行不被误当汇总、
+     模块加载失败（`Tests  no tests`）仍读不出且不被当成通过。
+- 变更文件：`src/lib/testing/rule-falsification.ts`（登记表 +13 条、正则与注释）、
+  `src/lib/testing/rule-falsification.test.ts`（+3 条）、`docs/testing.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：`pnpm falsify:rules` → **60/60 会红**，合计 **644 条用例变红**，
+  跑完 `git status` 干净；定向 vitest 17/17；全量门禁见 PR。
+- 阻塞 / 风险：三条阻塞不变（A05 产品决策、B02–B05 外部权限、`/api/health` 响应契约）。
+  登记表已覆盖全库规则模块，**「有单测 ⇒ 单测会失败」这条轴到此没有剩余格子**。
+- 下一项：无（v0.12.0 可执行部分仍 DONE，发布侧等外部权限）。
+- 更新时间：2026-10-05（UTC）。
