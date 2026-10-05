@@ -83,6 +83,7 @@
     "check:fields": "node scripts/check-fields.js",
     "check:states": "node scripts/check-states.js",
     "smoke:production": "node scripts/production-smoke.js",
+    "drills:preflight": "node scripts/lib/drill-preflight.js",
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
     "check:migration-history": "node scripts/check-migration-history.js",
