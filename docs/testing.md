@@ -707,7 +707,7 @@ cron 与签名面（重复调用不会把工作放大到超过队列本身），
 手工复核其中一条才发现是 8 条红）。**一个会说出相反结论的读数比没有读数更贵**，
 所以 `summarizeFalsification` 把 `unreadable` 单列一档，`formatFalsificationOutcome` 也照实打印。
 
-规则与读数在 `src/lib/testing/rule-falsification.ts`（纯函数，20 条单测），
+规则与读数在 `src/lib/testing/rule-falsification.ts`（纯函数，17 条单测），
 IO 在 `scripts/lib/rule-falsification-run.js`（含 3 条「复原保证」的用例）。
 登记表 `RULE_FALSIFICATION_TARGETS` 里只放**真的跑过红**的判定——
 它是证据清单，不是待办清单。当前读数：**60 条判定 / 54 个规则模块，全部会红**（合计 644 条用例变红）。
