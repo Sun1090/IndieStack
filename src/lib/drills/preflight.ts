@@ -134,11 +134,12 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       },
     ],
     firstCommand: "pnpm drills:preflight --drill B05",
-    // 这里原本写的是「各 provider runbook 的「执行记录」小节」——**那个小节不存在**：
+    // 这里原本写的是「各 provider runbook 的「执行记录」小节」——**那个小节当时不存在**：
     // `docs/operations/` 下压根没有 provider 专属 runbook。写一个不存在的落点，
-    // 等于让实跑结论在两年后丢进虚空，所以改成真实存在的文件。
-    // 「provider 演练应该有自己的 runbook」是另一件事，不在这里假装它已经有了。
-    evidenceTarget: "docs/operations/production-smoke-v0.11.0.md（该文件已声明：provider 场景在前置具备前保持「未验证」）",
+    // 等于让实跑结论在两年后丢进虚空。
+    // 2026-10-05 把根因补上了：新建 `docs/operations/provider-incident-drills.md`，
+    // 落点随之指向它；`preflight.test.ts` 里的「证据落点必须 existsSync」会盯着这件事。
+    evidenceTarget: "docs/operations/provider-incident-drills.md 的「执行记录」小节",
   },
 ];
 

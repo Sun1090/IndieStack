@@ -173,9 +173,11 @@
     provider 与 incident 演练各一次：Resend 缺失/限流、Web Push VAPID 失效、Supabase 恢复链路。
     **2026-10-05 修正**：原文写「结论写进对应 runbook 的执行记录小节」，但
     `docs/operations/` 下**没有 provider 专属 runbook**，那个小节不存在——
-    写一个不存在的落点等于让实跑结论在两年后丢进虚空。改为落在
-    `docs/operations/production-smoke-v0.11.0.md`（该文件已声明 provider 场景在前置具备前保持「未验证」）。
-    「provider 演练该有自己的 runbook」是另一件事，不在这里假装它已经有了。
+    写一个不存在的落点等于让实跑结论在两年后丢进虚空。
+    该单测（`src/lib/drills/preflight.test.ts` 断言证据落点文件必须存在）当场发现此事，
+    随后**新建了 `docs/operations/provider-incident-drills.md`**，落点随之指向它。
+    四条演练（P1 Resend 缺失 / P2 Resend 限流 / P3 VAPID 失效 / P4 Supabase 恢复）的
+    命令与判定标准都写在那里；执行记录小节当前四条全是「未执行」。
 
 ### C. 测试与门禁基建（来自 F01 / F02 / F04 / J01 / C03 / A02 / A10）
 
