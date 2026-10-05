@@ -7319,8 +7319,13 @@
   如果哪天有人把死信改成「删除」，用户会突然发现历史通知不见了——值得留意。
 - **边界（这次刻意没有含糊）**：
   - 证明的是**本地 mock 构型下的队列行为**，**不是生产已验证**。
-    生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，且生产当前没配 Supabase，
-    这条路径在生产上还没有对应流量。
+    生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，所以本地这条路径
+    （`RESEND_API_URL` 指向本地捕获端点）在生产上不对应同一条链路。
+    **更正一条写错的话**：初稿写的是「生产当前没配 Supabase」——**那是错的**，
+    直读 `/api/health`（2026-10-05T12:45Z）显示生产 Supabase `configured=true`、`status=ok`。
+    真正未知的是 `RESEND_API_KEY` 在生产是否配置，从外部判不了（provider 诊断只在 admin 后台）。
+    这个错误值得记：它是**上一段会话里的旧读数被顺手搬过来、没重新读**造成的，
+    而边界声明最怕这种「看起来像现场读数、其实是记忆」的句子。
   - `email.backlog` / `email.send.completed` 在本地只落 stdout（`src/lib/metrics.ts` 就是
     `console.log(JSON.stringify(event))`，设计上给日志型看板用），
     所以 P1 只证明**指标被产出**，不证明「有人会因此被叫醒」。
@@ -7406,4 +7411,43 @@
   而不是放在文末备注里。
 - 下一项：把 B05 的 P2–P4 与 B03/B04 的凭据一起要；或复查其它 runbook 里
   是否还有同类的「文档承诺 vs 部署实况」落差。
+- 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 同一类错误连犯两次，所以改的不是措辞而是工具
+
+- 里程碑 / 版本：可运维性（v0.12.0 范围内）。分支：`fix/health-check-print-facts`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条查 Sentry 时推翻了自己写的一句话。紧接着复核，又发现自己**另一条**边界声明
+  也是错的（详见下文）。同一类错误在一个下午犯了两次，说明**该修的不是措辞**。
+- **两条错的都是同一类**：「关于生产的事实」只存在于记忆里，没有可复核的来源。
+  | 位置 | 我写的 | 实际（2026-10-05T13:08Z 直读） |
+  | ---- | -------- | ------------------------------ |
+  | P1 runbook 边界 | 「生产当前没配 Supabase，这条路径在生产上还没有对应流量」 | Supabase `configured=true`、`status=ok`、`reachable=true`——**digest 路径在线上是活的** |
+  | Sentry 结论 | 「指标只落 stdout、没有 exporter，所以积压告警仍未验证」 | 代码路径有单测且正确；真正的问题是**生产没配 DSN**，那条链路是**空转** |
+- **根因不是「我粗心」**：当时**能读到这些事实的命令存在**（`pnpm health:check`），
+  但它成功时只印一行 `Health check passed`——依赖事实**它明明取到了，却没印**。
+  于是想复核的人只能重写一遍 curl，而多数人（包括我）会选择相信记忆里的那句。
+  **一条能取到事实却不显示事实的命令，等于没有这条命令。**
+- 改法（**没有新增工具**——`pnpm health:check` 本来就能取到这些字段，只改输出）：
+  成功时也打印读数时间（UTC）、`version`/`commit`/`ready`、逐依赖的
+  `required`/`configured`/`status`/`reachable`、以及 `allConfigured`/`degraded`。
+  两份文档（provider runbook、sentry-alerts）改成**指向这条命令**并附一次带时间的读数，
+  而不是把手抄的 JSON 当事实来源。
+  **刻意不读 secret 值**：只打印「配没配」与状态，不碰任何凭据内容。
+- 附带修掉一个自己踩的坑：把打印逻辑直接塞进 `main()` 会让它的复杂度从 15 顶到 19，
+  被 `complexity` 规则拦下。**修法是抽函数，不是放宽规则**——
+  规则拦下的是「这个函数开始做两件事了」，而它确实开始做两件事了。
+- **仍然未知、且无法从外部判定的**（别把它写成已知）：
+  生产是否配置了 `RESEND_API_KEY`。provider 诊断只在 admin 后台暴露
+  （`src/app/dashboard/admin/page.tsx`），匿名请求实测 404；本地也没有 `.vercel/project.json`
+  可供查询。**P1 在生产上的状态是「未知」**——既不能说通过，也不能说失败。
+  写「未知」比写一个听起来合理的猜测有用。
+- 验证：`pnpm --silent type-check` exit 0；`pnpm lint` 无输出（抽函数后）；
+  `pnpm test` 263 文件 / 3171 用例（无新增断言——本条改的是既有脚本的输出与两份文档）；
+  `check:all` ✅；`check:changelog` ✅。
+  真机验证：`pnpm health:check -- https://indie-stack-theta.vercel.app` 打印出上面那张表。
+- 阻塞 / 风险：Sentry DSN 与 `RESEND_API_KEY` 的生产配置仍属外部凭据，环境阻塞。
+  风险是「文档里的生产读数会再次变旧」——现在它带时间戳且有刷新命令，
+  过期时至少**看得出来**是过期的。
+- 下一项：按同样方法复查其余 runbook 里引用的生产事实（目前只查了 health 相关的两份）。
 - 更新时间：2026-10-05（UTC）。

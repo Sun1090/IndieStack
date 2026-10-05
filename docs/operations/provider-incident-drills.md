@@ -172,8 +172,25 @@ curl      localhost:3199/api/e2e/seed-notifications -H "Authorization: Bearer $E
 
 **这条结论的边界（重要）**：
 - 证明的是**本地 mock 构型下的队列行为**，**不是生产已验证**。
-  生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，且生产当前没有配 Supabase，
-  所以这条路径在生产上还不存在对应流量。
+  生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，所以本地这条路径
+  （`RESEND_API_URL` 指向本地捕获端点）在生产上不对应同一条链路。
+- **生产实况怎么读**：`pnpm health:check -- https://indie-stack-theta.vercel.app`
+  （成功时也会打印逐依赖事实与读数时间——**这一段是 2026-10-05 才加的**，
+  之前它成功时只印一行 "passed"，导致「生产有没有配 Sentry / Supabase」只存在于某人的记忆里）。
+  2026-10-05T13:08Z 的读数：
+  ```
+  version=0.11.0 commit=08dd6f17 ready=true
+  supabase  required=true  configured=true  status=ok      reachable=true
+  sentry    required=false configured=false status=missing
+  stripe    required=false configured=false status=missing
+  allConfigured=false degraded=false
+  ```
+  **更正一条写错的话**：这份记录初稿写的是「生产当前没有配 Supabase」——**那是错的**，
+  生产 Supabase 是配置且可达的（digest 路径在线上是活的）。
+  真正未知的是另一件事：**`RESEND_API_KEY` 在生产是否配置，从外部无法判定**——
+  provider 诊断只在 admin 后台（`src/app/dashboard/admin/page.tsx`）暴露，匿名请求拿不到（实测 404）。
+  所以 P1 在生产上的状态是「未知」：既不能说通过，也不能说失败。
+  **引用生产实况要连读数与时间一起引**，否则半年后没人分得清这句是读来的还是记来的。
 - `email.backlog` / `email.send.completed` 在本地只落到 stdout（`src/lib/metrics.ts` 就是
   `console.log(JSON.stringify(...))`，设计上给日志型看板用），所以 P1 只证明**指标被产出**，
   不证明「有人会因此被叫醒」。**而真实结论比「未验证」更糟**：2026-10-05 复查发现当前生产部署
