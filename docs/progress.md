@@ -7181,3 +7181,28 @@
   liveness 的**首次生产证据**要等本 PR 合并后的部署才能取（本文暂不写结论）。
 - 下一项：取 liveness 的生产证据并回填；或推进 B03–B05 的干跑脚手架。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — liveness 的首次生产证据：7/7，且 commit 就是被验证的那一个
+
+- 里程碑 / 版本：部署与可运维性（v0.12.0 范围内）。分支：`docs/liveness-production-evidence`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条把 `/api/health/live` 写完了，但**只验过本地**。
+  「本地绿」证明不了部署后的构建仍然保持拆分——而这条的性质恰恰是**只有部署后才看得见**的。
+- 完成内容：PR #214 合并后取生产证据并回填。
+- 生产证据（`https://indie-stack-theta.vercel.app`，commit `a8e6cba7`）：
+  - 直读 `/api/health/live` → `200 {"status":"ok","timestamp":"2026-10-05T07:06:38.869Z"}`，
+    `cache-control: no-store, must-revalidate`，带 `x-request-id`。
+    **返回体里没有 `checks` / `version` / `commit`** —— 拆分在部署后仍然成立。
+  - `pnpm smoke:production --expected-commit a8e6cba7` → **7/7**：
+    `health`（commit 断言通过）、`liveness`、首页、`static-asset`、安全头、
+    匿名 dashboard 307、Webhook 缺签名 400。
+  - 部署不是即时的：合并后连续 4 次（约 4 分钟）读到的仍是上一个 commit `4139cec6`，
+    第 5 次才读到 `a8e6cba7`。**这条等待本身也是证据的一部分**——
+    它说明 `--expected-commit` 的断言有意义：它不会因为「站点还是 200」就放行。
+- 阻塞 / 风险：无新增。仍未取的是 **B03–B05 的账户级演练**，
+  它需要云端 Supabase 与 provider 凭据（`~/.supabase/access-token` 不存在、
+  环境无 `SUPABASE_ACCESS_TOKEN`、`supabase migration list --linked` 会阻塞登录），
+  与本条无关，也不该被本条顺带「标记完成」。
+- 下一项：为 B03–B05 准备干跑脚手架，让「拿到凭据就能一条命令跑完」这件事不再依赖临场记忆；
+  或把 release evidence 的三族文档口径与本次新增的第 7 步对齐。
+- 更新时间：2026-10-05（UTC）。
