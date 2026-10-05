@@ -39,6 +39,37 @@
   `e2e-parallel.yml` 开着 mock 跑 `pnpm build` 是对的，按「出现 MOCK 字样」判会直接把它判红。
 - Stripe 使用 test key；生产 webhook secret 不进 preview
 
+## 外部依赖实况（2026-10-05 观测，每行附可重跑的查询命令）
+
+**这张表为什么存在**：2026-10-05 一天之内，我连续三次把「依赖外部状态」的结论写错
+（Supabase 配没配、Sentry 有没有告警链路、B04 缺什么凭据），三次都是**没去查就写**。
+而每次去查都很便宜。根因不是记性，是**这些事实散落在各文档里、没有统一出处**。
+
+所以规则是：**任何关于外部状态的结论，都必须落在这张表里，并带上观测命令与日期。**
+散落在别处的同类说法一律以本表为准。
+
+| 依赖 | 实况（2026-10-05） | 观测命令 | 影响 |
+| ---- | ------------------ | -------- | ---- |
+| Supabase（平台 API） | ✅ 可用 | `gh run list --workflow supabase-auto-restore.yml`（每天 success） | Management API 令牌有效 |
+| Supabase（Auth 配置读） | ✅ 可用 | `gh run list --workflow security-config.yml`（最近一轮输出「Auth 配置已验证（scope=redirects）」） | 同上，另一条独立证据 |
+| Supabase（数据库级） | ❌ **无 DB 密码类 secret** | `gh secret list`（只有一个 `SUPABASE_ACCESS_TOKEN`） | **B04 的真正阻塞**：演练 SQL 与 `migration list --linked` 都要真 Postgres 连接 |
+| 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | digest / 保留期路径在线上是活的 |
+| Sentry | ❌ 生产未配 DSN | 同上（输出 `sentry: configured=false status=missing`） | **告警链路空转**，详见 `sentry-alerts.md` 开头 |
+| Stripe | ❌ 生产未配 key | 同上（输出 `stripe: configured=false status=missing`） | 支付路径线上无流量，checkout 未上线 |
+| Resend | ❓ **未知** | —— | provider 诊断只在 admin 后台，匿名 404；从外部判不了 |
+| GitHub 保活变量 | ✅ 已配置 | `gh variable list`（`HEALTHCHECK_URL`） | 每日保活 workflow 在跑 |
+| Vercel 构建配额 | ⛔ 限流中 | PR 上的 `Vercel – indie-stack` 检查（2026-10-05 报 `retry in 24 hours`） | preview 部署排队，非代码缺陷 |
+
+**三条要读出来的分寸**：
+
+1. **`configured=false` 不等于 readiness 会红**。`/api/health` 里 Sentry / Stripe 都是
+   `required: false`，所以它们缺失时 `ready` 仍是 `true`——这是有意的设计（模板的可选依赖），
+   但它意味着**一个可选依赖缺失时，健康检查不会替你喊人**。
+2. **「平台可用」不等于「数据库可用」**。两者差着一层：Management API 能读项目状态，
+   **读不到库里的表**。把前者当成后者会让人以为 B04 快能做完了。
+3. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
+   本文档开头的那些错误结论，一半是被一个自信的猜测撑起来的。
+
 ## 免费版保活与自动恢复
 
 Supabase 免费版项目 7 天无活动会被暂停，本仓库用三层兜底：

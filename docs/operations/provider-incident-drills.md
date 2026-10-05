@@ -174,7 +174,9 @@ curl      localhost:3199/api/e2e/seed-notifications -H "Authorization: Bearer $E
 - 证明的是**本地 mock 构型下的队列行为**，**不是生产已验证**。
   生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，所以本地这条路径
   （`RESEND_API_URL` 指向本地捕获端点）在生产上不对应同一条链路。
-- **生产实况怎么读**：`pnpm health:check -- https://indie-stack-theta.vercel.app`
+- **生产实况的统一出处**是 `docs/operations/environments.md` 的「外部依赖实况」表
+  （每行附观测命令与日期）。本文件不重复维护那份读数。
+- 具体到本条：**生产实况怎么读**：`pnpm health:check -- https://indie-stack-theta.vercel.app`
   （成功时也会打印逐依赖事实与读数时间——**这一段是 2026-10-05 才加的**，
   之前它成功时只印一行 "passed"，导致「生产有没有配 Sentry / Supabase」只存在于某人的记忆里）。
   2026-10-05T13:08Z 的读数：
