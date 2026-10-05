@@ -16,7 +16,7 @@ See `docs/operations/release-tag-ledger.md`.
   这个工具量后半句：把判定函数中性化（函数体第一行插一句「永远判合格」的 return），
   跑它自己的套件，看红不红。**刻意不做成 `check:*`**：它靠临时改坏别的文件工作，
   放进 CI 既慢又不自洽。
-  - 规则与读数在 `src/lib/testing/rule-falsification.ts`（纯函数，12 条单测），
+  - 规则与读数在 `src/lib/testing/rule-falsification.ts`（纯函数，17 条单测），
     IO 在 `scripts/lib/rule-falsification-run.js`（3 条「复原保证」用例）。
   - 三条纪律：先确认**工作树干净**（脏树上复原会连带丢掉未提交改动）；
     复原放在 `finally` 并**逐字节校验**（中途失败会留下一处「永远判合格」而它会绿）；
