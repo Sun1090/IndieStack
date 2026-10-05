@@ -96,7 +96,15 @@ async function createCheckoutSession(
   const session = await stripe.checkout.sessions.create(
     {
       mode: "subscription",
-      payment_method_types: ["card"],
+      // 这里**曾经**有 `payment_method_types: ["card"]`。2026-10-05 升级 stripe 到 v23 时删掉，
+      // 原因不是 SDK 改名，而是 **Stripe 的 API 端取消了它**：
+      // Checkout Session 的 `payment_method_types` 已从「可写参数」移除，
+      // 继续传会得到 `400 payment_method_types_no_longer_supported`
+      // （同批取消的还有 PaymentIntent / SetupIntent 上的同一个参数）。
+      // 替代方案不是换个字段名，而是**不指定**：Stripe 的 automatic payment methods
+      // 会按账号开启情况与客户所在地区自动挑可用的支付方式，
+      // 写死 `["card"]` 反而会把非卡渠道（当地钱包、分期）挡在门外。
+      // 钉住这条的用例在 `checkout-session-params.test.ts`。
       line_items: [{ price: priceId, quantity: 1 }],
       customer: params?.customerId,
       customer_email: params?.customerEmail,

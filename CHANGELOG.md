@@ -44,6 +44,25 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Changed
 
+- **stripe v23：Checkout Session 不再传 `payment_method_types`——这不是 SDK 改名，是 Stripe 的 API 取消了它。**
+  升级 `stripe` 22.6.2 → 23.0.0 时 `tsc` 报 `TS2561`（`payment_method_types` 不在
+  `SessionCreateParams` 上）。查证后确认是 **API 层面的取消**：Stripe 已把
+  Checkout Session 的 `payment_method_types` 从可写参数移除，继续传会得到
+  `400 payment_method_types_no_longer_supported`；同批被取消的还有 PaymentIntent /
+  SetupIntent 上的同一个参数。因此正确做法是**删掉**，而不是换个字段名。
+  - 替代方案不是改名，而是**不指定**：automatic payment methods 会按账号设置与客户地区
+    自动挑选可用支付方式；写死 `["card"]` 反而会把当地钱包、分期等非卡渠道挡在门外。
+  - 新增 `src/lib/stripe/checkout-session-params.test.ts`（8 条）钉住请求参数：
+    **不传** `payment_method_types`（键本身不存在，而不是值为 `undefined`——
+    后者仍可能被 SDK 序列化出去）、订阅模式与 `line_items` 一字未改、
+    `trial_period_days` 只在给了 `trialDays` 时出现、metadata 带 userId/teamId、
+    幂等键只在调用方给了时才作为第二个参数。
+    **此前 `createCheckoutSession` 没有任何参数级断言**——这处 API 取消只由 `tsc` 发现，
+    而不是由一条说明「为什么删掉它」的用例发现。变异核对：把参数加回去 → 对应用例红。
+  - 顺带核过同批取消涉及的 `PaymentIntent` / `SetupIntent`：本仓库**没有**这两处调用，
+    全仓 `payment_method_types` 只有这一个调用点。`unit_amount` 在 v23 仍是整数
+    （decimal 变体是单独的 `unit_amount_decimal`），所以 `toSubscriptionInfo` 的读取不受影响。
+
 - **B02 闭合：回滚演练第一次真跑过（J08，v0.6.0 起从未闭合）。**
   本会话实测 **Vercel 授权可用**（`sun1090`，hobby）——此前 roadmap 把 B02 记成
   「未完成：外部权限」，而这一项的权限事实上已经到位，于是它从阻塞变成已完成。
