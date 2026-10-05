@@ -195,3 +195,86 @@ describe("日志注入收口 sanitizeLogText()", () => {
     expect(original.message).toBe("真实错误\n带换行的堆栈来源");
   });
 });
+
+/**
+ * 监控失效时必须留下证据（2026-10-05）。
+ *
+ * **背景**：生产实测发现该部署没有配 Sentry DSN，于是
+ * 「邮件积压 > 500 会告警」这句话在**这个部署上是假的**——代码路径确实调用了
+ * `captureException`，但没有 DSN 时它是空转，而原来的 `.catch(() => {})` 又把失败吞掉。
+ * 结果是：**监控静默失效时，唯一能发现它的信号也被它自己吞了**，
+ * 「告警不会响」与「没有告警」变得不可区分。
+ *
+ * 这组用例钉住修好之后的语义，分三件事：
+ *  1. 上报失败**不让日志调用抛**（监控坏了不能把业务请求也搞失败）；
+ *  2. 但**必须留证据**：一行 stderr + 一条 `sentry.report.failed` 指标；
+ *  3. 上报成功时**不多写**（否则每次 error 都多两行噪声，没人愿意看日志）。
+ */
+describe("Sentry 上报失败时不静默", () => {
+  // spy 必须放在 beforeEach 里而不是 describe 体：第一版写在 describe 体，
+  // 结果第一个用例的 afterEach（vi.restoreAllMocks）把 spy 复原了，
+  // 后三个用例记到的是一个已经失效的 mock——表现为「等了 1 秒也没等到」。
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    captureException.mockReset();
+  });
+
+  // 让 captureException 抛，而不是让模块加载失败：后者会被文件顶部那个 hoisted mock 盖掉，
+  // 而且它模拟的是另一条路径。captureException 抛错才是「上报失败」的真实形态。
+  async function loadWithBrokenSentry() {
+    captureException.mockImplementation(() => {
+      throw new Error("Sentry 未配置");
+    });
+    return loadLogger({ NODE_ENV: "production" });
+  }
+
+  it("上报失败时 logger.error 仍然正常返回（监控坏了不能弄坏业务）", async () => {
+    const { logger } = await loadWithBrokenSentry();
+    expect(() => logger.error("数据库炸了")).not.toThrow();
+  });
+
+  it("上报失败会留一行 stderr，指明是监控不可用而不是业务错误", async () => {
+    const { logger } = await loadWithBrokenSentry();
+    logger.error("数据库炸了");
+    // 动态 import 的失败是异步的，且要经过不止一个微任务——固定 sleep 会 flaky，
+    // 所以轮询等它落地（第一版用 setTimeout(0) 就是这里红的）。
+    await vi.waitFor(() =>
+      expect(
+        errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n"),
+      ).toContain("Sentry 上报失败"),
+    );
+    const lines = errorSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+    // 这行必须能让人分辨「监控坏了」与「业务出错」，否则值班会查错方向
+    expect(lines.some((line: string) => line.includes("监控当前不可用"))).toBe(true);
+  });
+
+  it("上报失败会产出 sentry.report.failed 指标（这是唯一不依赖 Sentry 的告警通道）", async () => {
+    const { logger } = await loadWithBrokenSentry();
+    logger.error("数据库炸了");
+    await vi.waitFor(() =>
+      expect(logSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n")).toContain(
+        "sentry.report.failed",
+      ),
+    );
+  });
+
+  it("上报成功时不产生多余噪声（否则每次 error 都多两行，没人愿意看日志）", async () => {
+    captureException.mockReturnValue(undefined);
+    const { logger } = await loadLogger({ NODE_ENV: "production" });
+    logger.error("数据库炸了");
+    await vi.waitFor(() => expect(captureException).toHaveBeenCalledTimes(1));
+    // 给可能迟到的失败分支一个机会：成功路径下它不该在随后才补写一行噪声
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n")).not.toContain(
+      "sentry.report.failed",
+    );
+  });
+});

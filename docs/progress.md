@@ -7321,9 +7321,9 @@
   - 证明的是**本地 mock 构型下的队列行为**，**不是生产已验证**。
     生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，且生产当前没配 Supabase，
     这条路径在生产上还没有对应流量。
-  - `email.backlog` / `email.send.completed` 在本地只落 stdout，**没有真实 exporter**，
-    所以 runbook 里「积压告警会响」那一段**仍未验证**——那属于 provider 侧配置，不在 P1 射程内。
-    把它写成「通过」会是拿本地读数冒充线上保障。
+  - `email.backlog` / `email.send.completed` 在本地只落 stdout（`src/lib/metrics.ts` 就是
+    `console.log(JSON.stringify(event))`，设计上给日志型看板用），
+    所以 P1 只证明**指标被产出**，不证明「有人会因此被叫醒」。
   - mock 构型下 `RESEND_API_URL` 被换成本地端点，所以本次**没有**验证真实 Resend 的
     4xx/5xx 响应形状——那是 P2，仍然缺测试 key。
 - 验证：本条是纯文档 + roadmap/CHANGELOG 状态更新；`check:all` ✅；`check:changelog` ✅。
@@ -7352,4 +7352,58 @@
   roadmap 里已按这个口径改写，没有把它说成整条通过。
 - 下一项：等 provider 测试凭据；或把「指标只落 stdout、没有 exporter」这一段量清楚
   （它是「积压告警会响」这句承诺目前唯一的空洞）。
+- 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 查「告警会响吗」，结果推翻了我自己上一条写下的那句话
+
+- 里程碑 / 版本：可运维性（v0.12.0 范围内）。分支：`fix/sentry-report-failure-visibility`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条把「指标只落 stdout、没有 exporter，所以积压告警会响这一段仍未验证」
+  写进了 runbook 和本文。写完就去查了这句话本身——**结果它是错的**。
+- **错在哪（机制层面）**：我把「指标没有 exporter」当成了「告警链路不存在」。
+  量下来不是：
+  1. `src/app/api/cron/digest/route.ts` 在积压 > 500 时**确实**调用 `logApiError`，
+     而且这段有单测、钉住了 500/501 的边界（恰好 500 不报、501 报）。**代码是对的。**
+  2. `src/lib/logger.ts` 在生产且 `level === "error"` 时调用 `Sentry.captureException`。
+  3. `src/lib/metrics.ts` 是 `console.log(JSON.stringify(event))`——**这是设计如此**，
+     文件头写明「给日志型看板和告警用，Vercel/Sentry 可以ingest 这些行」。
+- **真实结论比「未验证」更糟**：实测生产 `https://indie-stack-theta.vercel.app/api/health`：
+  ```
+  "sentry": { "required": false, "configured": false, "status": "missing" }
+  ```
+  该部署**没配 `NEXT_PUBLIC_SENTRY_DSN`**。于是没有 DSN 时 `captureException` 是空转，
+  事件不出进程 —— 「邮件积压 > 500 会告警」在这个部署上是**不成立**，不是「未验证」。
+  积压只会留下一行 stdout 与一条 `email.backlog` 指标，没有人被叫醒。
+- **为什么没人发现**（这一条比结论本身更值得记）：
+  `/api/health` **确实**报了 `sentry.configured=false`，但那个字段 `required: false`，
+  所以 readiness 仍然绿的。这是**有意的**设计（Sentry 对模板是可选依赖），
+  但它意味着：**一个可选依赖缺失时，健康检查不会替你喊人**。
+  这也解释了 `allConfigured: false` 与 `ready: true` 为什么能同时成立。
+- **顺带发现一个真缺陷并修掉**：上报失败分支原来是 `.catch(() => {})`。
+  静默是对的（监控坏了不能把业务请求也搞失败），但**什么都不留**是错的——
+  **监控静默失效时，唯一能发现它的信号也被它自己吞掉了**，
+  于是「告警不会响」与「没有告警」变得不可区分，而这正是最该被看见的那次故障。
+  现在失败会留一行 stderr（写明是「监控当前不可用」而非业务错误，值班不会查错方向）
+  与一条 `sentry.report.failed` 指标——**后者是唯一不依赖 Sentry 本身的通道**。
+  4 条单测钉住三件事：不抛 / 留证据 / 上报成功时不加噪声（否则每次 error 多两行，没人愿意看日志）。
+  - 变异核对：把 `.catch` 改回空实现 → 两条「留证据」用例红（做完复原）。
+  - 写测试时踩了两个自己的坑，都写进注释了：spy 写在 describe 体会被前一个用例的
+    `vi.restoreAllMocks()` 复原掉（表现为「等 1 秒也没等到」）；
+    固定 `setTimeout(0)` 等动态 import 会 flaky，得用 `vi.waitFor`。
+- **文档侧**：给 `docs/operations/sentry-alerts.md` 开头加了「⚠️ 当前部署状态：本文档的告警**尚未生效**」
+  一节，并把两条通道的验证状态**分开列**（代码路径有单测但本部署空转 / 指标规则文档已标「建议」、
+  需 Dashboard 手动配置、无证据表明已配置）。
+  同时**改正了上一条 runbook 与本文里的措辞**——结论变了就该回头改那一行。
+- **明确不做的事**：**没有**配 Sentry DSN（需要外部凭据，属环境阻塞），
+  也**没有**把 `sentry.required` 改成 true——那会让一个模板的可选依赖变成硬性门禁，
+  直接让所有未配 Sentry 的部署 readiness 变红，是产品决策而不是技术清理。
+  这里只做两件事：把真实状态说清楚，以及让监控自己的失效可见。
+- 验证：`tsc` exit 0；`pnpm lint` 无输出；`pnpm test` 263 文件 / 3171 用例（+4）；
+  `check:all` ✅；`build` exit 0。
+- 阻塞 / 风险：要让告警真正生效仍需 ① 配 `NEXT_PUBLIC_SENTRY_DSN`（外部凭据）、
+  ② 在 Sentry Dashboard 手动建规则（无法用代码管理）。两者都不是代码能做的。
+  风险是这份文档接下来会被人当成「线上已有告警」——所以状态一节放在**最开头**，
+  而不是放在文末备注里。
+- 下一项：把 B05 的 P2–P4 与 B03/B04 的凭据一起要；或复查其它 runbook 里
+  是否还有同类的「文档承诺 vs 部署实况」落差。
 - 更新时间：2026-10-05（UTC）。

@@ -13,6 +13,9 @@
  * timer.end() // 输出: "数据库查询: 235ms"
  */
 
+// metrics 只依赖 console，不反向依赖 logger，所以这里不会成环。
+import { recordMetric } from "./metrics";
+
 const LOG_LEVELS = {
   debug: 0,
   info: 1,
@@ -126,8 +129,20 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown>, e
           extra: { ...data, logLevel: level },
         }),
       )
-      .catch(() => {
-        // Sentry 未配置时静默处理
+      // 这里原来是一个空 catch 加一句「Sentry 未配置时静默处理」。**静默是对的**（不该因为
+      // 监控坏了就把业务请求也搞失败），但「什么都不留」是错的：
+      // 监控静默失效时，唯一能发现它的信号也被它自己吞掉了——于是「告警不会响」
+      // 和「没有告警」变得不可区分，而这正是最需要被看见的那次故障。
+      // 所以失败时**留一条证据**（一行 stderr + 一条 metric），但不让它抛。
+      .catch((reportError: unknown) => {
+        console.error(
+          sanitizeLogText(
+            `[logger] Sentry 上报失败（监控当前不可用，错误仍已写入日志）：${
+              reportError instanceof Error ? reportError.message : String(reportError)
+            }`,
+          ),
+        );
+        recordMetric("sentry.report.failed", 1, { unit: "count" });
       });
   }
 }

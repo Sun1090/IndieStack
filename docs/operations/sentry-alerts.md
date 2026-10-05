@@ -3,6 +3,46 @@
 > 代码侧已完成 Sentry 集成（client/server/edge 三端，见 `sentry/` 目录）。
 > 本文档列出建议在 Sentry Dashboard 手动配置的告警规则（告警规则无法用代码管理）。
 
+## ⚠️ 当前部署状态：本文档的告警**尚未生效**（2026-10-05 实测）
+
+先读这一节，否则下面两张表会被读成「线上已经有这些告警」——**没有**。
+
+实测 `https://indie-stack-theta.vercel.app/api/health`（2026-10-05）：
+
+```json
+"sentry": { "required": false, "configured": false, "status": "missing" }
+```
+
+该部署**没有配 `NEXT_PUBLIC_SENTRY_DSN`**。后果链条是这样的，每一环都在代码里：
+
+1. `src/app/api/cron/digest/route.ts` 在积压 > 500 时确实调用 `logApiError(...)`
+   （这一段有单测，且钉住了 500/501 的边界——**代码是对的**）。
+2. `src/lib/logger.ts` 在生产且 `level === "error"` 时调用 `Sentry.captureException`。
+3. **没有 DSN 时 Sentry 是空转**：事件不会离开这个进程。
+4. 所以「邮件积压 > 500 会告警」在这个部署上是**假的**——
+   不是「未验证」，是**不成立**。积压只会留下一行 stdout 日志和一条 `email.backlog` 指标。
+
+**为什么没人发现**：`/api/health` 确实报了 `sentry.configured=false`，但那个字段
+`required: false`——所以 readiness 仍然是绿的（这是**有意的**设计：Sentry 对模板是可选依赖）。
+一个可选依赖缺失时，健康检查不会替你喊人。
+
+**两条指标通道的验证状态，别混**：
+
+| 通道 | 状态 |
+| ---- | ---- |
+| `logApiError` → `Sentry.captureException`（积压超阈值走这条） | 代码路径有单测、正确；但**本部署无 DSN，等于空转** |
+| `email.backlog` 等指标的告警规则（下面两张表） | 文档已如实标注为「**建议**」；需要 Sentry Dashboard 侧**手动配置**，无证据表明已配置 |
+
+**要让本文档生效，需要两件事**（都不是代码能做的）：
+① 在部署环境配 `NEXT_PUBLIC_SENTRY_DSN`；
+② 在 Sentry Dashboard 按下面的表**手动**建规则（告警规则无法用代码管理）。
+
+**顺带一处已修的缺陷**：原来的上报失败分支是 `.catch(() => {})`——
+静默是对的（监控坏了不该把业务请求也搞失败），但**什么都不留**是错的：
+监控静默失效时，唯一能发现它的信号也被它自己吞掉了，于是「告警不会响」与「没有告警」不可区分。
+现在失败会留一行 stderr（写明是「监控当前不可用」而不是业务错误）与一条 `sentry.report.failed` 指标
+（`src/lib/logger.ts`，4 条单测钉住「不抛 / 留证据 / 成功时不加噪声」）。
+
 ## 推荐告警规则
 
 | 规则 | 条件 | 通知渠道 | 说明 |
