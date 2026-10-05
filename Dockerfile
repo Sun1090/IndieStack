@@ -78,8 +78,12 @@ COPY --from=builder /app/.next/static ./.next/static
 USER nextjs
 
 # 健康检查（容器编排/自愈依赖）
+# 刻意打 /api/health/live 而不是 /api/health：这一条每 30 秒跑一次，
+# 而 readiness 端点每次会出站打一次 Supabase 并回一份依赖明细——
+# 对「进程还活着吗」既昂贵又语义错位（数据库抖动会被误报成实例挂掉并触发重启）。
+# 需要依赖明细与部署身份时用 /api/health。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 EXPOSE 3000
 

@@ -639,7 +639,22 @@ export const ROUTE_AUTH_LEDGER: Readonly<Record<string, RouteAuthEntry>> = {
   "GET /api/health": {
     family: "public",
     via: [],
-    reason: "存活探针，不含任何用户数据或内部拓扑；返回体是静态结构",
+    // 这条曾经登记成「存活探针，不含任何用户数据或内部拓扑；返回体是静态结构」，
+    // 而它实际上会打一次 Supabase 并回**依赖配置与可达性**（service_role 是否配置、
+    // Sentry/Stripe 是否配置、DB 是否可达）外加部署 commit——**与「静态结构」矛盾**。
+    // 2026-10-05 按事实改写：它不是存活探针，是**就绪探针 + 一份有意公开的依赖明细**
+    // （`docs-site/pages.md` 的端点表就是这么写的，漂移的是这里的理由，不是端点）。
+    // 披露面是**判断过的**：不含任何用户数据，且「哪些密钥配了」本身不是攻击者能直接利用的东西；
+    // 真正要紧的是精确 commit，所以**存活探针另开一条**（`/api/health/live`，不打数据库、不带身份字段），
+    // 高频探针（Docker HEALTHCHECK）走那一条。
+    reason:
+      "就绪探针 + 有意公开的依赖明细：不含用户数据；高频探针改走 /api/health/live（不打数据库、不暴露 commit）",
+  },
+  "GET /api/health/live": {
+    family: "public",
+    via: [],
+    reason:
+      "纯存活探针：只答「进程还在吗」，不打数据库、不读配置、不返回部署身份，因此高频调用没有放大面",
   },
   "GET /api/og": {
     family: "public",

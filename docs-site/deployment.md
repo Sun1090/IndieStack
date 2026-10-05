@@ -121,7 +121,7 @@ services:
     env_file: .env.production
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health/live"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -218,7 +218,14 @@ npx supabase db push
 
 Supabase free-tier projects get paused after 7 days without API activity. IndieStack keeps
 the project warm with two daily probes, both aimed at `/api/health` (which runs a
-`select id from profiles limit 1` query through the service-role client):
+`select id from profiles limit 1` query through the service-role client) — deliberately the
+readiness endpoint, not `/api/health/live`: the point of a keepalive is to prove the whole
+path down to Postgres still works, and the liveness endpoint skips that query by design.
+
+Note that container healthchecks point the other way, at `/api/health/live`. A liveness probe
+asks only "is this process up", so it should not run a database query every 30 seconds, and it
+must not treat a database blip as a dead instance (that would trigger pointless restarts). Use
+`/api/health` when you want dependency detail and the deployed commit.
 
 | Layer                   | File                                 | Schedule (UTC) | Notes                                                     |
 | ----------------------- | ------------------------------------ | -------------- | --------------------------------------------------------- |

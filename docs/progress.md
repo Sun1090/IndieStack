@@ -7116,3 +7116,68 @@
   这次的绿只证明类型与单测绿，不证明真实 API 行为。
 - 下一项：`/api/health` 的探针-对外端点分离；或为 B03–B05 准备干跑脚手架。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — `/api/health` 拆出 `/api/health/live`：高频探针不该每次出站打数据库
+
+- 里程碑 / 版本：部署与可运维性（v0.12.0 范围内）。分支：`fix/health-liveness-split`。
+- 状态：DONE（未合并）。
+- 为什么做：这条在 2026-09-29 记下时是「放大面已关、剩下纵深防御」，并明确写了
+  「**不该由我单方面改**」——因为它会动 `check:production-smoke`、Docker `HEALTHCHECK`、
+  Vercel Cron 三方的响应契约与 B01 记录的生产证据。授权拿到后逐个量，量出来的东西比预想的具体。
+- 量出来的三件事：
+  1. **探针是唯一被高频、高并发调用的公开端点**，而它每次会出站打一次 Supabase。
+     `createProbeCache`（TTL 5s + single-flight）已经挡住了「一个实例被重复打」，
+     但它是**进程内**缓存——serverless 下每实例各一份，挡不住「整个部署被重复打」。
+     这层以前写在限流台账里，属于**如实登记的已知缺口**。
+  2. **语义错位（比放大面更实际）**：`/api/health` 在依赖不可用时返回 503，
+     而「进程活着但数据库抖一下」对存活探针不是故障。
+     用 readiness 当 liveness，会让**数据库抖动被误报成实例挂掉并触发无谓重启**——
+     自愈系统在这里会制造它本该消除的故障。
+  3. **`route-auth` 台账里这条的理由已经漂移**：登记写的是
+     「存活探针，不含任何用户数据或内部拓扑；返回体是静态结构」，
+     而它实际上会回 `checks.supabase.configured`（含 service_role 是否配置）、
+     `checks.stripe.configured`、精确 `commit` —— **与「静态结构」矛盾**。
+     漂移的是理由、不是端点：`docs-site/pages.md` 的端点表一直如实写着它是 readiness check。
+     这正是本仓库反复强调的那类问题——**结论做完了要回头改那一行**。
+- 完成内容：
+  - 新增 `GET /api/health/live`（`src/app/api/health/live/route.ts`）：
+    只答「活着」，**不打数据库、不读配置、不返回 version/commit**。
+    刻意不返回 `commit`：这一条是给机器看的，暴露精确 commit 等于告诉匿名调用者
+    「该打哪个已知漏洞的版本」。
+  - Docker `HEALTHCHECK`（`--interval=30s`）与 `docs-site/deployment.md` 的 compose 示例切到 live。
+  - **`/api/health` 的响应契约一字未改**：`check:production-smoke`、每日保活 cron
+    （Vercel Cron + `health-check.yml`）仍读它。保活**就该**打 readiness——
+    它的意义是证明「连到 Postgres 的整条路」还通，而 live 按设计就跳过那次查询。
+    两条路径方向相反这件事，已写进部署文档，免得后来人「统一」掉。
+  - `route-auth` 台账那条按事实改写为「就绪探针 + 有意公开的依赖明细」，
+    并说明披露面是判断过的（不含用户数据；模板用户的监控可能正在读这些字段，
+    静默改成需要密钥会打断他们，所以这是产品判断而不是技术债），
+    同时新增 live 的登记。限流台账两条同步：live 那条写明
+    **加窗口会直接弄坏它唯一的使用者**（滑窗会让 HEALTHCHECK 把自己读成 429 然后重启实例——
+    限流在这里不是防护而是故障放大器）；readiness 那条把「关掉它的判据」补回判据要求的形状
+    （`GAP_CLOSURE` 门禁要求缺口必须带关法，否则它会永远躺在这里只报「1 条已知缺口」）。
+  - **冒烟多了第 7 步 `liveness`**（`scripts/production-smoke.js`）。它断言的不是 200，
+    而是**这条端点没有被并回 readiness**：返回体里不许出现 `checks` / `version` / `commit` / `uptime`。
+    这个性质**没有别的门禁看着**——哪天有人觉得「两条重复了，合成一条吧」，
+    两边的单测各自都还是绿的（它们各自都对），只有这一步会红。
+    为什么不并进 `src/lib/production-smoke.test.ts` 而另起一个文件：
+    那 6 条量的是「步骤名与失败继续跑」，这一条量的是「字段泄露」，
+    混在一起会让「冒烟有几步」这个问题每次都要读两个文件才答得上来。
+- 变异核对（做完复原）：
+  - Dockerfile 的 `HEALTHCHECK` 改回 `/api/health` → 「HEALTHCHECK 打的是 /api/health/live」用例红。
+  - live 路由里加一行 `import { createClient } from "@supabase/supabase-js"` →
+    「结构性保证：模块图里没有 Supabase 客户端」用例红。**这条用读源码而不是 mock 断言**：
+    mock 掉 `createClient` 再断言「没被调用」是可行的，但读 import 更直接地说明了「为什么」。
+  - 冒烟那一步用假 fetch 喂三种读法（干净 / 混入 `checks`+`version`+`commit` / 混入 `uptime` /
+    `status=error` / 非 JSON），确认四种都判对（`src/lib/deployment/production-smoke-liveness.test.ts` 6 条）。
+- 验证命令与结果：`tsc` exit 0；`pnpm lint` 无输出；
+  `pnpm test` **262 文件 / 3154 用例**（+1 文件 +12 用例，改了 1 处既有文件的期望步骤名）；
+  `check:all` ✅；`build` exit 0 且 `.next/server/app/api/health/live` 产物存在；
+  bundle / perf / CSS / sourcemap 均未回退；`check:changelog` ✅。
+  **真机证据**：`pnpm start` 后 `curl /api/health/live` → `200 {"status":"ok","timestamp":...}`，
+  `cache-control: no-store, must-revalidate`；同一进程里 `/api/health` 仍回完整契约。
+- 阻塞 / 风险：本地冒烟里 `security-headers` 那步红（HSTS 只在生产 TLS 下注入），
+  这是**本来就如此**、也正是生产证据要取在 Vercel 域名的原因，不是本次改动引入的。
+  liveness 的**首次生产证据**要等本 PR 合并后的部署才能取（本文暂不写结论）。
+- 下一项：取 liveness 的生产证据并回填；或推进 B03–B05 的干跑脚手架。
+- 更新时间：2026-10-05（UTC）。
