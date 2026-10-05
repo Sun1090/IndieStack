@@ -7005,3 +7005,48 @@
   回滚 = revert 本分支（**不含任何行为变更**，所以回滚也不会改变发送语义）。
 - 下一项：核实 Vercel 权限是否真实可用；可用则做 B02 回滚演练取证。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 权限实测推翻了「B02 卡外部权限」这个判断：回滚演练第一次真跑过（J08 闭合）
+
+- 里程碑 / 版本：v0.12.0 B02 + v0.11.0 tag 台账。分支：`feat/a05-read-suppresses-email`。
+- 状态：DONE（演练完成、生产已恢复并复验、证据落档）。
+- **起点是一个判断，不是一段代码**：roadmap 把 B02 记成「未完成：外部权限——需要 Vercel 的部署权限」。
+  动手前先**实测**这份权限：`vercel_list_teams` 返回空但 `vercel_get_auth_user` 拿到
+  `sun1090`（hobby，含默认 team），`vercel_list_projects` 能列出 `indie-stack`
+  （`prj_B59i5T7DIEZbX9YbxhyHopZOmFMu`），`vercel_list_deployments` 给出 6 个 READY 的生产部署
+  且其中两个 `isRollbackCandidate: true`。**权限是有的**——于是这一项从「阻塞」变成「已完成」，
+  而不是继续挂着一个已经不成立的阻塞理由。
+- 演练记录（`docs/operations/rollback-runbook-v0.11.0.md` 的「演练记录」，2026-10-05 02:53–02:59 UTC）：
+  1. 回滚前基线：`pnpm smoke:production --expected-commit a22ee942…` → **6/6**。
+  2. alias 切到 `dpl_AbPqkNnVtJMRa58Tp4AUSyYAXxeq`（commit `cb357477`）。
+  3. `curl /api/health` 连三次：**200**，`commit=cb357477`（1.12s / 3.16s / 1.62s）。
+  4. **用回滚前的 commit 跑 smoke → 如期红**：5/6、
+     `health: commit=cb35747, expected=a22ee942…`，exit 1。**这一步是本次演练的证据本体**：
+     一份「回滚后仍然健康」的截图不构成证据，能指出「你回滚到的不是你以为的那一版」才算。
+  5. 用回滚后的 commit 跑 smoke → **6/6**；`pnpm health:check` → ✅。
+  6. alias 指回 `dpl_BvYq5AzMC8cW9M49sZT8qkbYCWNG` → 恢复后 smoke **6/6**。
+- **诚实标注这次证明了什么、没证明什么**（写进 runbook 与 CHANGELOG，没留在自己脑子里）：
+  - **证明了**：回滚机制本身可用且可验证——alias 切换即时生效、`/api/health` 如实上报当前 commit、
+    `--expected-commit` 断言真的会红、恢复方向同样可用。
+  - **没证明**：跨行为变更或跨迁移的回滚安全性。两个候选 deployment 之间
+    `git diff --stat cb357477 a22ee942` **只有一个文件、23 行**（`docs/progress.md`），
+    没有迁移、没有 `src/app` 运行时代码差异，所以这次是**零行为差异**的切换。
+    把 B02 记成「J08 已完全闭合」是过度解读——**跨迁移边界的回滚仍无证据**。
+  - schema 向前兼容：**本地**侧已核对（`check:migrations` 34 条与 manifest 的 SHA-256 一致、
+    `check:migration-runbook` ✅ 最新 `034_email_skip_reason.sql`）；
+    **云端 `supabase migration list --linked` 仍未取得**（B04，需云端项目凭据）。
+- **一条顺带量出来、写进 runbook 的观察**：alias 切换后的**第一次** health 探测不可靠——
+  两个方向各出现一次（`This operation was aborted` / `fetch failed`），重试即通过。
+  对事故处置的直接含义：**切换后不要拿第一次探测下结论**，
+  「health 挂了」与「刚切换、边缘还在热」必须分开。
+  另外 smoke 输出里的 `(attempt 2)` 也印证了它——只看「✅」会以为一次就过。
+- 连带更新：`docs/roadmap-0.12.0.md` B02（就地改口径）、`docs/operations/release-tag-ledger.md`
+  （第三项阻塞作废，**`v0.11.0` 的 tag 仍不打**，理由从三项缺减为两项缺：B03 账户删除演练 + commit 归属证据）、
+  `CHANGELOG.md`。
+- 验证命令与结果：见上表；`check:roadmap-entries` ✅ 29 条、`check:changelog` ✅、
+  `check:changelog-tags` ✅、`check:release-docs` ✅；全量门禁与 build 见 PR。
+- 阻塞 / 风险：**剩两条**——B03–B05（外部权限：可牺牲的隔离账号、云端 Supabase 凭据、
+  各 provider 测试凭据）与 commit 归属证据。
+  风险是有人把这次演练当成「跨迁移回滚也安全」的证据——runbook 里已按上面那段写明边界。
+- 下一项：核实 commit 归属证据能否在本地全历史（769 commits）下取得；若能则 v0.11.0 只剩 B03 一条。
+- 更新时间：2026-10-05（UTC）。

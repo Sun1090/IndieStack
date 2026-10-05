@@ -141,14 +141,26 @@
    取证据的过程本身抓出一条缺陷——手动 `smoke` 作业在每次定时运行里都因空 `inputs` 崩溃，
    已由 `check:production-smoke` 的两条新规则钉住。**B01 只覆盖无副作用面**：
    只读凭证类 3 项与隔离账号 14 项仍未执行，它们是 B03/B04 的内容，也是打 tag 的前置）
-7. B02 （**未完成：外部权限**——需要 Vercel 的部署权限与可回滚的历史 deployment；
-   缺它时不得以「代码都改了」宣布 v0.12.0 达成退出标准）执行一次真实回滚演练
-   （切回上一 deployment、验证 health 与 schema 向前兼容），
-   填 `docs/operations/rollback-runbook-*.md` 的「演练记录」——这是 v0.6.0 起从未闭合的 J08。
-   **2026-09-22 补的那条硬事实已经修掉**：`/api/health` 现在上报 `commit`（构建时内联的
-   `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`），`pnpm smoke:production --expected-commit <SHA>` 会断言它，
-   缺失即失败。剩下的是时间问题——2026-09-22 部署的那版构建不带这个字段，
-   所以 B02 的「切回上一 deployment 并证明回到了哪个 commit」要等下一次部署才有可比对象
+7. B02 （**2026-10-05 已完成：外部权限到位后第一次真实执行**，v0.6.0 起从未闭合的 J08 就此闭合）
+   执行一次真实回滚演练（切回上一 deployment、验证 health 与 schema 向前兼容），
+   记录填进 `docs/operations/rollback-runbook-v0.11.0.md` 的「演练记录」。
+   - **权限来源**：本会话实测 Vercel 授权可用（`sun1090`，hobby），
+     此前判定的「外部权限」在这一项上**已经不成立**——所以它从阻塞变成已完成，
+     而不是继续挂着。读数：回滚前 6/6 基线 → alias 切到 `dpl_AbPqkN…`（commit `cb357477`）
+     → `curl /api/health` 三次 200 且 `commit=cb357477`
+     → **用回滚前的 commit 跑 smoke 如期红**（5/6，`commit=cb35747, expected=a22ee942…`，exit 1）
+     → 用回滚后的 commit 跑 smoke 6/6 → alias 指回 `dpl_BvYq5…` → 恢复后 6/6。
+   - **`--expected-commit` 会红这一条才是证据**：一份「回滚后仍然健康」的截图不构成证据，
+     能指出「你回滚到的不是你以为的那一版」才算。
+   - **诚实标注这次证明了什么**：两个候选 deployment 之间只差一份 `docs/progress.md`
+     （无迁移、无运行时代码变更），所以它验证的是**回滚机制**，
+     **不是**「回滚一个真改了数据库的版本会怎样」。跨迁移边界的回滚仍无证据，
+     要闭合还需要一次跨越迁移边界的生产变更。schema 向前兼容的**本地**侧已核对
+     （`check:migrations` 34 条与 manifest 的 SHA-256 一致、`check:migration-runbook` ✅）；
+     **云端 `supabase migration list --linked` 仍未取得**（B04，需云端项目凭据）。
+   - 顺带记下一条对事故处置有用的观察：**alias 切换后的第一次 health 探测不可靠**
+     （两个方向都出现过一次 `fetch failed` / `This operation was aborted`，重试即通过）——
+     「刚切换、边缘还在热」与「health 挂了」必须分开，runbook 已写入。
 8. B03 （**未完成：外部权限**——需要一个可牺牲的隔离账号与云端 Supabase 凭据）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）

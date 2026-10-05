@@ -81,13 +81,52 @@ CHANGELOG 的已知问题和后续修复 issue。
 
 ## 演练记录
 
-- 演练日期（UTC）：
-- 目标版本 / 回滚版本：
+- 演练日期（UTC）：**2026-10-05 02:53–02:59**（B02，v0.6.0 起从未闭合的 J08 首次真实执行）
+- 目标版本 / 回滚版本：`0.11.0` / `0.11.0`（同一 minor，见下方「这次演练证明了什么、没有证明什么」）
 - 使用的 deployment：
-- 数据库是否保持向前 schema：
+  - 回滚前（生产）：`dpl_BvYq5AzMC8cW9M49sZT8qkbYCWNG` = commit `a22ee942`
+  - 回滚目标：`dpl_AbPqkNnVtJMRa58Tp4AUSyYAXxeq` = commit `cb357477`（两者 `isRollbackCandidate: true`）
+  - 恢复：把 alias 重新指回 `dpl_BvYq5AzMC8cW9M49sZT8qkbYCWNG`
+- 数据库是否保持向前 schema：**是，且未做任何数据库动作**。两个 deployment 之间唯一的差异是
+  `docs/progress.md`（`git diff --stat cb357477 a22ee942` 只有 1 个文件、23 行），
+  没有迁移、没有 `src/app` 运行时代码变更，因此回滚**按定义**不可能碰到 schema。
+  本地侧已核对：`pnpm check:migrations` ✅ 34 条迁移与 manifest 的 SHA-256 一致、
+  `pnpm check:migration-runbook` ✅ 最新为 `034_email_skip_reason.sql`。
+  **仍未取得的一侧**：云端 `supabase migration list --linked`（B04，需云端项目凭据）。
 - 检查结果与耗时：
+  | 步骤 | 命令 | 结果 |
+  |---|---|---|
+  | 回滚前基线 | `pnpm smoke:production -- --expected-commit a22ee942…` | ✅ 6/6 |
+  | 切换 alias | Vercel rollback → `dpl_AbPqkN…` | 生效 |
+  | 回滚后 health | `curl /api/health`（连 3 次） | ✅ 200，`commit=cb357477`（1.12s / 3.16s / 1.62s） |
+  | 回滚后 smoke（**用回滚前的 commit**） | `pnpm smoke:production -- --expected-commit a22ee942…` | ❌ **5/6，exit 1** — `health: commit=cb35747, expected=a22ee942…` |
+  | 回滚后 smoke（用回滚后的 commit） | `pnpm smoke:production -- --expected-commit cb357477…` | ✅ 6/6 |
+  | runbook 健康探针 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | ✅ passed (attempt 1) |
+  | 恢复 alias | Vercel promote → `dpl_BvYq5…` | 生效 |
+  | 恢复后 smoke | `pnpm smoke:production -- --expected-commit a22ee942…` | ✅ 6/6 |
 - 失败点 / 改进项：
-- 负责人 / 审查者：
+  1. **alias 切换后的第一次 health 探测不可靠**：两个方向都出现过一次
+     `This operation was aborted` / `fetch failed`，重试即通过（`production-smoke` 的
+     3 次重试与 `health:check` 的 DEFAULT_ATTEMPTS 吸收了它）。
+     **对事故处置的直接影响**：切换后不要拿第一次探测的失败下结论，
+     「health 挂了」与「刚切换、边缘还在热」必须分开。
+  2. 上面那条重试把 `health` 检查标成 `(attempt 2)` 才通过——读 smoke 输出时
+     **要看括号里的 attempt**，否则会以为「一次就过」，而真实情况是首次失败被重试掩盖。
+- 负责人 / 审查者：AI 自主执行（用户授权「按你的来做」）；无第二人审查。
+  证据文件：`/tmp/smoke-before.json`、`/tmp/smoke-drill-stale.json`、`/tmp/smoke-drill-ok.json`、
+  `/tmp/smoke-after.json`、`/tmp/health-before.json`（本地，未入库）。
+
+### 这次演练证明了什么、没有证明什么
+
+**证明了**：回滚链路本身可用且可验证——alias 切换即时生效、`/api/health` 如实上报当前
+commit、`--expected-commit` 断言**真的会红**（这是 B02 存在的意义：一份「回滚后仍然健康」的
+截图不构成证据，能指出「你回滚到的不是你以为的那一版」才算）、恢复方向同样可用。
+
+**没有证明**：跨行为变更或跨迁移的回滚安全性。这一次两个候选版本只差一份 `docs/progress.md`，
+所以它验证的是**机制**，不是「回滚一个真的改了数据库的版本会怎样」。
+把这一条当成「J08 已完全闭合」是过度解读——**要闭合 J08，还需要一次跨越迁移边界的回滚**，
+而那需要先有 B02 之外的生产变更可回滚（当前 main 的部署之间尚无此类差异）。
+B02 的退出标准因此按字面记为：**回滚机制已验证一次，跨迁移回滚仍无证据**。
 
 ## v0.11.0 回滚补充
 
