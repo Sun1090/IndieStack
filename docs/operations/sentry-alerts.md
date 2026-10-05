@@ -7,10 +7,10 @@
 
 先读这一节，否则下面两张表会被读成「线上已经有这些告警」——**没有**。
 
-实测 `https://indie-stack-theta.vercel.app/api/health`（2026-10-05）：
+实测（2026-10-05T13:08Z，命令：`pnpm health:check -- https://indie-stack-theta.vercel.app`）：
 
-```json
-"sentry": { "required": false, "configured": false, "status": "missing" }
+```
+- sentry: required=false configured=false status=missing
 ```
 
 该部署**没有配 `NEXT_PUBLIC_SENTRY_DSN`**。后果链条是这样的，每一环都在代码里：

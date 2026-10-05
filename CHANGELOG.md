@@ -8,6 +8,16 @@ See `docs/operations/release-tag-ledger.md`.
 
 ## [Unreleased]
 
+### Changed
+
+- **`pnpm health:check` 成功时也打印逐依赖事实与读数时间。**
+  之前它成功时只印一行 `passed`，于是「生产有没有配 Sentry / Supabase / Stripe」
+  只存在于某次现场读数和某人的记忆里——2026-10-05 就因此在文档里写下了一句**错的**边界声明
+  （说生产没配 Supabase，实际是配置且可达的）。现在这些事实可以用一条命令刷新，
+  并自带时间戳。**刻意不读 secret 值**：只打印「配没配」与状态。
+  顺带一提，这条命令此前只被保活 workflow 用；它本来就能取到这些字段，只是没印出来，
+  所以这里没有新增工具，只改了输出。
+
 ### Fixed
 
 - **Sentry 上报失败不再静默：留一行 stderr + 一条 `sentry.report.failed` 指标。**
