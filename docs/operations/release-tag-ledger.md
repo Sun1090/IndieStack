@@ -49,9 +49,17 @@ tag / Release Notes 自动化门禁 **J07** 是在 **v0.6.0 那个周期**落地
 生产已恢复并 6/6 复验；带 commit 的生产构建也已实测（`/api/health` 上报
 `a22ee942`，`--expected-commit` 断言可用）。
 
-**因此 `0.11.0` 剩下的阻塞从三项减为两项**：账户删除端到端演练（B03，需可牺牲的隔离账号
-与云端 Supabase 凭据）与 commit 归属证据。所以 tag **仍然刻意不打**——
-理由从「三项全缺」变成「两项仍缺」，**没有证据就等于没做**，而打 tag 是对外声明「做完了」。
+**因此 `0.11.0` 剩下的阻塞从三项减为一条**：账户删除端到端演练（B03，需可牺牲的隔离账号
+与云端 Supabase 凭据）。commit 归属证据已于 2026-10-05 补齐——生产 `/api/health` 现在上报
+`commit`，`pnpm smoke:production --expected-commit` 实测**会绿也会红**（把期望值换成上一次部署的
+SHA 即 5/6 + exit 1），详见 `docs/operations/release-runbook-v0.11.0.md` 的「尚未执行」段。
+
+**2026-10-05 同时实测过 B03/B04 那一侧**：本机**没有** Supabase access token
+（`~/.supabase/access-token` 不存在、环境变量未设置，`supabase migration list --linked`
+阻塞在交互登录），虽然 `supabase/.temp/` 里有一个 linked project ref。
+**「有一个 ref」不等于「有凭据」**——所以 B03/B04/B05 仍是外部权限阻塞。
+tag **仍然刻意不打**：理由从「三项全缺」变成「一条仍缺」，
+**没有证据就等于没做**，而打 tag 是对外声明「做完了」。
 
 ## 门禁怎么保证这件事不再变回「静悄悄」
 

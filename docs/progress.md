@@ -7050,3 +7050,29 @@
   风险是有人把这次演练当成「跨迁移回滚也安全」的证据——runbook 里已按上面那段写明边界。
 - 下一项：核实 commit 归属证据能否在本地全历史（769 commits）下取得；若能则 v0.11.0 只剩 B03 一条。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 顺着 B02 量下去：commit 归属证据也补齐了，v0.11.0 只剩一条阻塞（B03 实测仍缺凭据）
+
+- 里程碑 / 版本：v0.12.0 B02 的连带结论 + `v0.11.0` tag 台账。分支：`feat/a05-read-suppresses-email`。
+- 状态：DONE（文档与台账更新；tag **仍然不打**）。
+- 为什么做：B02 做完之后顺手去核 tag 台账上剩的两条，而不是照抄「都卡外部权限」——
+  上一条已经证明过一次「判定的外部权限可能其实有」，不核就是偷懒。
+- 完成内容：
+  1. **commit 归属证据：已补齐**。`/api/health` 现在上报 `commit`
+     （`version=0.11.0, commit=a22ee942…`），且断言**双向可证**：
+     期望值给对 → 6/6；把期望值换成上一次部署的 SHA → **5/6 + exit 1**。
+     这正是 runbook 停止条件「无法证明部署 commit 与验证 commit 相同」要求的东西，
+     现在成立。写进 `docs/operations/release-runbook-v0.11.0.md` 的「尚未执行」段。
+  2. **B03/B04/B05：实测确认仍缺凭据**（不是「假设缺」）：
+     `~/.supabase/access-token` 不存在、环境变量无 `SUPABASE_ACCESS_TOKEN`、
+     `supabase migration list --linked` 阻塞在交互登录（两次尝试均无输出直至超时）。
+     而 `supabase/.temp/` 里**确实**躺着一个 linked project ref（`ntqgg…`，name=IndieStack）——
+     **「有一个 ref」不等于「有凭据」**，这条区别就是 B03 一直挂着的真实原因。
+  3. tag 台账同步：阻塞从三项 → 两项 → **一条**（只剩 B03 账户删除端到端演练）。
+- 验证命令与结果：`check:changelog-tags` ✅（10 个版本仍在 `MISSING_TAG_LEDGER` 登记，
+  门禁仍绿——**做完的事没有从台账上悄悄消失**）；`check:release-docs` ✅。
+- 阻塞 / 风险：**`v0.11.0` 的 tag 仍不打**，唯一理由是 B03（需可牺牲的隔离账号 + 云端 Supabase 凭据）。
+  风险是有人看到「只剩一条」就把 tag 打了——所以 runbook 与台账都写明「一条仍缺」不等于「可以打」。
+- 下一项：`/api/health` 的探针-对外端点分离（会改动 smoke / Docker `HEALTHCHECK` / Vercel Cron 三方契约）；
+  或为 B03–B05 准备「拿到凭据即可一条命令执行」的干跑脚手架。
+- 更新时间：2026-10-05（UTC）。

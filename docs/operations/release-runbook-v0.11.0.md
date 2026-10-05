@@ -103,6 +103,17 @@ README 与 `RELEASE_CHECKLIST` 接线；本地 `pnpm check:release-docs` / `chec
   这一版已部署的构建不上报它，而本文件的停止条件正是「无法证明部署 commit 与验证 commit 相同」。
   在这之前打 tag 等于把一个无法归属的构建说成发布制品。下一次部署带上该字段后，
   用 `pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 就能把这条补齐。
+  - **2026-10-05：前置 ② 已补齐**（生产现已上报 `commit`，断言实测会红也会绿）：
+    `curl -fsS "$PRODUCTION_URL/api/health"` → `"version":"0.11.0","commit":"a22ee942…"`；
+    `pnpm smoke:production -- --expected-commit a22ee942…` → **6/6**；
+    同一命令把 `--expected-commit` 换成上一次部署的 SHA → **5/6 并 exit 1**
+    （`commit=cb35747, expected=a22ee942…`，这是回滚演练 B02 的证据本体，见
+    `docs/operations/rollback-runbook-v0.11.0.md` 的「演练记录」）。
+    即「部署身份现在可证」这条已成立；**剩下的唯一前置是 ①（B03 账户删除端到端演练）**，
+    它需要可牺牲的隔离账号与云端 Supabase 凭据——2026-10-05 实测本机**没有**
+    Supabase access token（`~/.supabase/access-token` 不存在、环境变量未设置，
+    `supabase migration list --linked` 会阻塞在交互登录），所以它仍然是外部权限阻塞，
+    **不是「等我有空」**。
   在 `commit` 字段上生产**之前**，身份仍然有一条不需要 Vercel 权限的权威证据：GitHub 的部署记录
   （Vercel 的 GitHub App 会写进来）。两步，实测可用：
 
