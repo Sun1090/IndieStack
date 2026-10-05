@@ -91,22 +91,40 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
     id: "B04",
     title: "云端 Supabase 的保留期与擦除同型演练",
     blockedReason:
-      "两份演练 SQL（`docs/operations/drills/*.sql`）已经在本地跑过；" +
-      "云端跑需要**项目级管理权限**，本地那份链接（`supabase link`）指向的凭据不可用。",
+      "两份演练 SQL（`docs/operations/drills/*.sql`）已经在本地跑过；云端跑需要**数据库级**访问。" +
+      "**这里曾经写错过一次，值得留着**：初稿把阻塞写成「需要云端项目的管理凭据」，" +
+      "而 2026-10-05 实测发现仓库里**早就有**一个可用的 Management API 令牌" +
+      "（`SUPABASE_ACCESS_TOKEN` 是 repo secret，`supabase-auto-restore.yml` 每天成功跑一次、" +
+      "读项目状态并报「无需恢复」）。所以平台层从来不是阻塞。" +
+      "真正缺的是**再往下一层**：演练 SQL 要用真 Postgres 连上去跑" +
+      "（`supabase migration list --linked` 同理——它读的是库里的 `schema_migrations` 表），" +
+      "而仓库里**没有任何 DB 密码类 secret**。",
     requirements: [
       {
+        source: "SUPABASE_DB_PASSWORD",
+        purpose:
+          "**这才是真正的缺口**：演练 SQL 与 `migration list --linked` 都要用真 Postgres 连上去，" +
+          "平台层的 Management API 令牌替代不了它",
+        remedy:
+          "Supabase 项目的 Settings → Database（或连接串里的密码部分）；" +
+          "**不要**提交进仓库",
+      },
+      {
         source: "file:~/.supabase/access-token",
-        purpose: "Supabase CLI 的登录态。没有它任何 `--linked` 命令都会卡在登录提示上",
-        remedy: "supabase login，或 export SUPABASE_ACCESS_TOKEN=<personal access token>",
+        purpose:
+          "Supabase CLI 的登录态。**注意它多半已经有了**——CI 里同名 secret 每天在用；" +
+          "本地缺只是因为 GitHub Actions 的 secret 不会进本地 shell",
+        remedy: "已有则跳过；没有就 supabase login，或 export SUPABASE_ACCESS_TOKEN=<pat>",
       },
       {
         source: "NEXT_PUBLIC_SUPABASE_URL",
-        purpose: "确认 CLI 连的是**哪个**项目——演练 SQL 是不可逆的，连错项目等于在错库上擦",
+        purpose: "确认连的是**哪个**项目——演练 SQL 是不可逆的，连错项目等于在错库上擦",
         remedy: "Supabase 项目的 Settings → API",
       },
     ],
     firstCommand:
-      "supabase migration list --linked   # 确认连的是目标项目且迁移已全部应用，再谈演练",
+      "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f - < docs/operations/drills/retention-cleanup.sql" +
+      "   # 整段包在 begin/rollback 里，跑完不留数据",
     evidenceTarget: "docs/operations/production-smoke-v0.11.0.md 的云端行",
   },
   {
