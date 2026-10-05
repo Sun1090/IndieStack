@@ -44,6 +44,25 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Changed
 
+- **B02 闭合：回滚演练第一次真跑过（J08，v0.6.0 起从未闭合）。**
+  本会话实测 **Vercel 授权可用**（`sun1090`，hobby）——此前 roadmap 把 B02 记成
+  「未完成：外部权限」，而这一项的权限事实上已经到位，于是它从阻塞变成已完成。
+  演练：回滚前 6/6 基线 → alias 切到上一 deployment（`dpl_AbPqkN…`，commit `cb357477`）
+  → `curl /api/health` 连三次 200 且如实上报 `commit=cb357477`
+  → **用回滚前的 commit 跑 smoke 如期红**（5/6，`commit=cb35747, expected=a22ee942…`，exit 1）
+  → 用回滚后的 commit 跑 smoke 6/6 → `pnpm health:check` ✅ → alias 指回原 deployment → 恢复后 6/6。
+  - **`--expected-commit` 会红这一条才是证据**：「回滚后仍然健康」的截图不构成证据，
+    能指出「你回滚到的不是你以为的那一版」才算。
+  - **同时诚实标注它没证明什么**：两个候选版本之间只差一份 `docs/progress.md`
+    （无迁移、无运行时代码变更），所以这次验证的是**回滚机制**，
+    **不是**「回滚一个真改了数据库的版本会怎样」。跨迁移边界的回滚仍无证据。
+  - 附带一条对事故处置有用的观察，已写进 runbook：**alias 切换后的第一次 health 探测不可靠**
+    （两个方向各出现一次 `fetch failed` / `This operation was aborted`，重试即通过）——
+    「刚切换、边缘还在热」与「health 挂了」必须分开。
+  - 证据落档：`docs/operations/rollback-runbook-v0.11.0.md` 的「演练记录」；
+    `docs/roadmap-0.12.0.md` B02 与 `docs/operations/release-tag-ledger.md` 同步。
+  - **`v0.11.0` 的 tag 仍然不打**：阻塞从三项减为两项（账户删除端到端演练、commit 归属证据）。
+
 - **A05 收口：站内已读 = 不必寄，产品语义定案并钉住。**
   队列谓词里那一段 `is_read=false` 一直是对的，但它此前是「实现里恰好如此」，
   注释里写着「要不要让已读免寄是另一个待定口径」——于是这一栏既没有理由，也没有钉子：
