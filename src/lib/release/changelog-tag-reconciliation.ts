@@ -143,6 +143,10 @@ export const MISSING_TAG_LEDGER: Readonly<Record<string, string>> = {
   "0.10.0": "生产已部署；同上，发布证据未闭合（B01/B02/B03，需外部权限）",
   "0.11.0":
     "生产已部署（docs/roadmap-0.12.0.md 开头有记录）；缺账户删除演练与 commit 归属证据，tag 刻意不打（B01/B02/B03，需外部权限）",
+  "0.12.0":
+    "六条退出标准均已达成（docs/operations/release-exit-report-v0.12.0.md 逐条核对）；" +
+    "tag 刻意不打：B03 隔离账号的账户删除全链路演练仍缺外部凭据，" +
+    "而 tag 是对外声明「做完了」——没有证据就等于没做",
 };
 
 /** 从 tag 列表里取出 `v<version>` 形式的版本号（无 `v` 前缀）。 */

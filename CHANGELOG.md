@@ -2,50 +2,17 @@
 
 All notable changes to IndieStack will be documented in this file.
 
-**Versions below are not tags:** of 11 releases only `v0.6.0` has one. `0.1.0`-`0.5.0`
-predate the tagging rule; `0.7.0`-`0.11.0` are untagged pending release evidence.
+**Versions below are not tags:** of 12 releases only `v0.6.0` has one. `0.1.0`-`0.5.0`
+predate the tagging rule; `0.7.0`-`0.12.0` are untagged pending release evidence.
 See `docs/operations/release-tag-ledger.md`.
 
 ## [Unreleased]
 
 ### Changed
 
-- **`pnpm ops:deploy-freshness`：量一量「生产落后 main 多少个提交」，并在超过阈值时失败。**
-  起因是一次实测发现**没有任何自动检查会注意到生产停在旧构建上**：
-  `production-smoke.yml` 的定时作业会**打印**生产跑的 commit，但**不断言**它
-  （`expected_commit` 只在 `workflow_dispatch` 时能传，`schedule` 路径留空）。
-  2026-10-05 Vercel 构建配额限流，生产停在 `08dd6f17` 而 `main` 已是 `30f8e896`
-  （差 5 个提交），当天的定时作业一路绿。
-  - **判定的是距离而不是相等**：部署滞后是常态，断言相等会天天在正常时段误报，
-    而**天天误报的检查等于没有检查**。阈值内（默认 5）判通过但**记下距离**——
-    连续多天同一距离不回落才是真问题。
-  - **未知不算通过**：读不到生产 commit、或算不出距离（git 历史不够深 /
-    部署的 commit 不在祖先链上）都判 `unknown` 且**不通过**。
-    这里第一版有个真 bug 被单测逮到：commit 读不出来、距离又恰好传 0 时，
-    会印出「生产跑的就是 main（unknown）」——一句没有依据、且最容易让人放心的话。
-  - 独立作业 `deploy-freshness`（与版本漂移分开，避免互相盖住结果），
-    且**刻意 `fetch-depth: 0`**：浅克隆算不出距离，而算不出会被判成「未知且不通过」，
-    那这条作业就会天天红、且红的原因藏在 checkout 参数里。
-  - 复用已有的 `probeHealth` 与判定纯函数（`scripts/lib/deploy-freshness.js`），不新造 HTTP。
+- 暂无。
 
-- **`pnpm health:check` 成功时也打印逐依赖事实与读数时间。**
-  之前它成功时只印一行 `passed`，于是「生产有没有配 Sentry / Supabase / Stripe」
-  只存在于某次现场读数和某人的记忆里——2026-10-05 就因此在文档里写下了一句**错的**边界声明
-  （说生产没配 Supabase，实际是配置且可达的）。现在这些事实可以用一条命令刷新，
-  并自带时间戳。**刻意不读 secret 值**：只打印「配没配」与状态。
-  顺带一提，这条命令此前只被保活 workflow 用；它本来就能取到这些字段，只是没印出来，
-  所以这里没有新增工具，只改了输出。
-
-### Fixed
-
-- **Sentry 上报失败不再静默：留一行 stderr + 一条 `sentry.report.failed` 指标。**
-  原先上报失败分支是 `.catch(() => {})`。**静默是对的**（监控坏了不该把业务请求也搞失败），
-  但**什么都不留**是错的——监控静默失效时，唯一能发现它的信号也被它自己吞掉了，
-  于是「告警不会响」与「没有告警」变得不可区分，而这正是最该被看见的那次故障。
-  - stderr 那行写明是「监控当前不可用」而不是业务错误，否则值班会查错方向。
-  - `sentry.report.failed` 是**唯一不依赖 Sentry 本身的通道**。
-  - 4 条单测钉住「不抛 / 留证据 / 成功时不加噪声」。上报成功时**不多写**——
-    否则每次 error 都多两行噪声，很快没人愿意看日志。
+## [0.12.0] — 2026-10-05
 
 ### Added
 
@@ -93,8 +60,6 @@ See `docs/operations/release-tag-ledger.md`.
     剩下未核对的部分不是遗漏，而是「登记表只登记跑过红的」这条纪律的代价：
     每加一条都要真跑一遍（约 1 分钟）。
 
-### Added
-
 - **`docs/operations/provider-incident-drills.md`：B05 终于有了自己的执行手册与结论落点。**
   B05 一直挂着「结论写进对应 runbook 的执行记录小节」，但**那个小节从来不存在**——
   `docs/operations/` 下没有 provider 专属 runbook。写一个不存在的落点，
@@ -134,623 +99,6 @@ See `docs/operations/release-tag-ledger.md`.
     `docs/operations/production-smoke-v0.11.0.md`，并由单测断言「证据落点指向的文件必须真的存在」
     ——文档改名后这条会红，而「结论写进一个已不存在的文件」正是这类台账最常见的静默腐烂方式。
 
-### Changed
-
-- **`/api/health` 拆成两条：高频探针走新的 `/api/health/live`，依赖明细留在 `/api/health`。**
-  Docker `HEALTHCHECK`（`--interval=30s`）原本打 `/api/health`，而那一条每次会出站打一次
-  Supabase（`limit(1)`）并回一份依赖明细。两个问题叠在一起：
-  - **放大面**——探针是唯一会被高频、高并发调用的公开端点，让它每次出站打数据库，
-    等于给匿名调用者一个「用我的流量打你的数据库」的杠杆；
-  - **语义错位**——`/api/health` 在依赖不可用时返回 503，而「进程活着但数据库暂时抖一下」
-    对存活探针不是故障；拿它当 liveness 会让数据库抖动被误报成实例挂掉并触发无谓重启。
-  - 新增 `GET /api/health/live`（`src/app/api/health/live/route.ts`）：只答「活着」，
-    **不打数据库、不读配置、不返回 version/commit**。容器 healthcheck 与 compose 示例已切过去。
-  - **`/api/health` 的响应契约一字未改**：`check:production-smoke`、每日保活 cron
-    （Vercel Cron + `health-check.yml`）仍读它——保活的意义就在于证明「连到 Postgres 的整条路」还通，
-    而 liveness 端点按设计就跳过了那次查询。
-  - 新增 `live.test.ts`（6 条），其中一条**结构性**断言该路由的模块图里没有 Supabase 客户端，
-    另一条钉住 Dockerfile 的 `HEALTHCHECK` 指向 `/api/health/live`（有人改回去就会红）。
-  - 顺带修正 `route-auth` 台账里 `/api/health` 的**理由漂移**：它登记为
-    「存活探针，不含任何用户数据或内部拓扑；返回体是静态结构」，而它实际上会回依赖配置与精确 commit。
-    现按事实改写为「就绪探针 + 有意公开的依赖明细」，并说明为什么披露面是判断过的、
-    真要收紧的判据是什么（限流台账同条已同步）。
-- **stripe v23：Checkout Session 不再传 `payment_method_types`——这不是 SDK 改名，是 Stripe 的 API 取消了它。**
-  升级 `stripe` 22.6.2 → 23.0.0 时 `tsc` 报 `TS2561`（`payment_method_types` 不在
-  `SessionCreateParams` 上）。查证后确认是 **API 层面的取消**：Stripe 已把
-  Checkout Session 的 `payment_method_types` 从可写参数移除，继续传会得到
-  `400 payment_method_types_no_longer_supported`；同批被取消的还有 PaymentIntent /
-  SetupIntent 上的同一个参数。因此正确做法是**删掉**，而不是换个字段名。
-  - 替代方案不是改名，而是**不指定**：automatic payment methods 会按账号设置与客户地区
-    自动挑选可用支付方式；写死 `["card"]` 反而会把当地钱包、分期等非卡渠道挡在门外。
-  - 新增 `src/lib/stripe/checkout-session-params.test.ts`（8 条）钉住请求参数：
-    **不传** `payment_method_types`（键本身不存在，而不是值为 `undefined`——
-    后者仍可能被 SDK 序列化出去）、订阅模式与 `line_items` 一字未改、
-    `trial_period_days` 只在给了 `trialDays` 时出现、metadata 带 userId/teamId、
-    幂等键只在调用方给了时才作为第二个参数。
-    **此前 `createCheckoutSession` 没有任何参数级断言**——这处 API 取消只由 `tsc` 发现，
-    而不是由一条说明「为什么删掉它」的用例发现。变异核对：把参数加回去 → 对应用例红。
-  - 顺带核过同批取消涉及的 `PaymentIntent` / `SetupIntent`：本仓库**没有**这两处调用，
-    全仓 `payment_method_types` 只有这一个调用点。`unit_amount` 在 v23 仍是整数
-    （decimal 变体是单独的 `unit_amount_decimal`），所以 `toSubscriptionInfo` 的读取不受影响。
-
-- **B02 闭合：回滚演练第一次真跑过（J08，v0.6.0 起从未闭合）。**
-  本会话实测 **Vercel 授权可用**（`sun1090`，hobby）——此前 roadmap 把 B02 记成
-  「未完成：外部权限」，而这一项的权限事实上已经到位，于是它从阻塞变成已完成。
-  演练：回滚前 6/6 基线 → alias 切到上一 deployment（`dpl_AbPqkN…`，commit `cb357477`）
-  → `curl /api/health` 连三次 200 且如实上报 `commit=cb357477`
-  → **用回滚前的 commit 跑 smoke 如期红**（5/6，`commit=cb35747, expected=a22ee942…`，exit 1）
-  → 用回滚后的 commit 跑 smoke 6/6 → `pnpm health:check` ✅ → alias 指回原 deployment → 恢复后 6/6。
-  - **`--expected-commit` 会红这一条才是证据**：「回滚后仍然健康」的截图不构成证据，
-    能指出「你回滚到的不是你以为的那一版」才算。
-  - **同时诚实标注它没证明什么**：两个候选版本之间只差一份 `docs/progress.md`
-    （无迁移、无运行时代码变更），所以这次验证的是**回滚机制**，
-    **不是**「回滚一个真改了数据库的版本会怎样」。跨迁移边界的回滚仍无证据。
-  - 附带一条对事故处置有用的观察，已写进 runbook：**alias 切换后的第一次 health 探测不可靠**
-    （两个方向各出现一次 `fetch failed` / `This operation was aborted`，重试即通过）——
-    「刚切换、边缘还在热」与「health 挂了」必须分开。
-  - 证据落档：`docs/operations/rollback-runbook-v0.11.0.md` 的「演练记录」；
-    `docs/roadmap-0.12.0.md` B02 与 `docs/operations/release-tag-ledger.md` 同步。
-  - **`v0.11.0` 的 tag 仍然不打**：阻塞从三项减为两项（账户删除端到端演练、commit 归属证据）。
-
-- **A05 收口：站内已读 = 不必寄，产品语义定案并钉住。**
-  队列谓词里那一段 `is_read=false` 一直是对的，但它此前是「实现里恰好如此」，
-  注释里写着「要不要让已读免寄是另一个待定口径」——于是这一栏既没有理由，也没有钉子：
-  哪天有人为了「别让 `email.backlog` 显得在变小」去掉它，邮件就会重新寄给读过通知的用户，
-  而**没有任何一条用例会红**（发送路径、mock、E2E 都不看队列谓词）。
-  - 定案理由（写进 `src/lib/repositories/notifications.ts` 的谓词注释里）：
-    摘要的职责是提醒**还没看到**的东西；为已读的事再寄一封是噪声，
-    而噪声会教会用户忽略整个摘要——那比漏寄一封更贵。反过来（已读仍寄）
-    会让 `security_alert` 因为用户读过它而**多**发一封，方向是错的。
-  - 可见性不减：已读那一笔继续单列成 `readBeforeSend` 读数，
-    出队不等于从视野里消失；且与 `email_skipped_reason` 同一条纪律——**出队不复活**。
-  - **发送行为一字未改**：改的是「这一栏是有理由的决定」这件事，
-    以及现在有两条用例守着它（去掉 `is_read=false` 会红；去掉那一栏可见性也会红）。
-  - 双语 `docs-site/email.md` 与 `docs/roadmap-0.12.0.md`（A05）按同一口径改写，
-    **A05 任务池不再有余项**。
-
-- **`check:doc-commands` 的受审范围从 4 份入门文档扩到 130 份，判定基准从「package.json 里有没有同名
-  script」换成「那个二进制在不在 `node_modules/.bin`」。**
-  这条门禁是 #196 加的，当时**刻意**只审 README 与两份 quickstart：把范围放到全部 markdown 上会变成
-  一台假红机器。这条留白本身在 #196 里被明确记成「已知不覆盖的一格——运维手册里写错命令仍然不会被发现」。
-  这一轮先量再动，两处都量出了东西：
-  - **范围**：`docs-site/**`（54 份用户文档）、`docs/architecture`、`docs/adr`、`docs/db`、
-    `docs/design`、`docs/reference`、`docs/testing.md` 加根级三份 md——实测**真实问题 0 条**。
-    也就是说这 126 份文档此前一直没人核对，而它们是模板用户的全部读物。
-    真正需要排除的只有三类**记录与计划**：`CHANGELOG.md`（它会故意引用不存在的命令来说明门禁在抓什么）、
-    `docs/progress.md`、`docs/roadmap-*.md`，外加两个用 `pnpm check:x` 充当占位的模板/封存报告。
-  - **判据**：扩范围后一次报出 12 条，逐条查下去**全是假红**，且分属同一个根因——
-    pnpm 对未知命令的语义是**当 shell 命令执行并把 `node_modules/.bin` 放进 PATH**，
-    所以「能不能跑」要问 `.bin`，而前两版问的是「`package.json` 里有没有同名 script」
-    （第一版只补了 `pnpm exec <x>` 一种写法）。修掉之后 `pnpm vitest run …`、`pnpm playwright test`
-    这类完全能跑的命令不再被报成「不存在」，而**不在 `.bin` 里的命令仍然报红**——
-    放宽的是依据，不是结论。
-  - 需要用户自行安装的外部 CLI（Supabase CLI）走 `EXTERNAL_CLIS` 登记表：**登记而不是放过**。
-  - 新增两条会红的规则：排除项**理由为空**（等于「我不想看这个文件」）、
-    排除项**一个文件都没命中**（失效的排除项会让下一个人以为那里仍然没被审）。
-  - `.bin` 读不到时（没跑过 `pnpm install`）判据退化为按依赖名判，并在读数与报错里**明说降级了**。
-  - 顺带把 `check:doc-commands` / `check:doc-links` 登记进贡献者测试矩阵的「文档」领域
-    （`src/lib/testing/test-matrix.ts` + 两份矩阵文档）——它们此前存在于仓库，却不在任何一份
-    矩阵文档里，也就是**改文档的人不知道要跑它们**。
-  - 变异核对五处（做完复原）：README 里造真 typo → 红；`docs-site/testing.md` 里造 typo（旧范围外）
-    → 红；排除项理由置空 → 红；排除项改名失效 → 红；抹掉 `.bin` 判定 → 报出 6 条假红。
-  - **扩范围后的门禁当场把写它自己文档的那两行顶红了**（正文里拿 `pnpm verifiy:build` 当例子）。
-    已改成不写成命令的样子。一条门禁第一次运行就抓到写它文档的人，比任何变异核对都有说服力。
-  - 顺带补上一个登记缺口：`check:doc-commands` 与 `check:doc-links` 此前存在于仓库，
-    却不在任何一份贡献者测试矩阵里——改文档的人因此不知道要跑它们。现在两条都进了
-    `src/lib/testing/test-matrix.ts` 的「文档」领域与两份矩阵文档（108 → 112 条门禁）。
-
-
-- **46 条待合并队列已清空，`main` 从 `ad4b029` 到 `d94b8a36`（202 个提交、62 条 PR、开放 PR 归零）。**
-  这一行是收口记账，不是功能变更：PR #118 把执行顺序算出来贴进了台账，而那一节自己写着「这张表随队列变动即过期」。
-  实际落地与那张表有三处出入，都记在 `docs/progress.md` 的同日条目里。
-  ① C08-b 那一段不是长栈——#93 / #94 / #98 / #99 / #100 / #101 / #102 是从**同一条分支**上切出来的，
-  父 PR 的 head 已经带着子 PR 的提交（判据是 patch-id，不是分支图），所以 #93 与 #94 随 #98 一并落地。
-  ② 带 `--delete-branch` 合并父 PR，会让以它为 base 的 6 条 PR 被 GitHub 自动关闭，而工作并没有进 main
-  （且不允许 reopen，base 已删），只能从同一 head 新开 #158–#162，因此这一批不能带 `--delete-branch`。
-  ③ 台账冲突除「两侧都新增」外，还有「把条目搬到文件末尾」造成的同条目两份，收尾按标题去重 +
-  全文按日期稳定排序归一化。
-  合并过程里三道门禁各抓到一次真实问题：C08 台账过期（#145）、解构侧地板值因债务清零而失效
-  （#112，实测 159 处判读 / 0 处未绑定，地板改天花板）、限流两态台账的两条豁免到期（#153）。
-  门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
-
-- **顺手修掉 `linkCandidates` 造出的两个不存在的候选**：带 `.md` 的路径不该再补 `.md`
-  （`README.md.md`）也不该再补 `index.md`（`README.md/index.md`）——两者永远不可能命中，
-  只会在报错信息里多两个噪音词、掩盖真正试过的候选。两条都是单测抓到的。
-
-- **新增 `pnpm check:doc-commands`：入门文档里的 `pnpm <命令>` 必须真的有落点。**
-  一条写错的命令（`pnpm verifiy:build`）**不会让任何门禁变红**——它只会让模板用户在 clone 之后
-  的第一条命令上撞墙，而那正是 README 与 quickstart 的职责范围。
-  **受审范围只有四份入门文档**（两份 README + 两份 quickstart），这是刻意的：
-  把范围放到全部 135 个 markdown 上会立刻变成一台**假红机器**——同一套判据在 `docs/progress.md`
-  （推演记录，充满假设性命令）、`docs/operations/*`（模板里的 `pnpm check:x` 占位）、
-  `docs/adr/*` 上会报出 12 条「不存在的命令」，而它们**全都合理**：
-  那三类文件是**记录与计划**，不是**给用户的指令**。
-  换句话说这条门禁判的是「**文档教用户做的事存在吗**」，不是「文档里出现过的字符串存在吗」。
-  - pnpm **内建命令**（`install` / `audit` / `deploy` / `peers` / `catalog` …）单独放行；
-  - **`pnpm exec <x>` 按依赖判定，不按 scripts 判定**——它运行的是依赖里的二进制，
-    问「仓库有没有这个 script」是**问错问题**，那样的门禁只会教人加豁免；
-  - **失败封闭**：一份受审文档都没读到时报红。
-  **刻意不判参数**（`pnpm vitest --wat` 里的 `--wat`）：那要复刻每个底层工具的 CLI 表面，
-  是一条会随依赖升级漂移的规则——与 #195 不判锚点同一条理由。
-  实测基线：**90 条 pnpm 命令 / 4 份文档，全部有落点**。
-  门禁数 46 → **47**。
-
-### Fixed
-
-- **限流台账里那条「已知缺口」从此会自己到期。** `GAP_CLOSURE` 早就要求缺口说出「怎么关」，
-  但**那条要求不会过期**：一条写着判据的缺口可以躺在 `RATE_LIMIT_LEDGER` 里三年，
-  每次 CI 仍只报「1 条已知缺口」，没人被要求再看它一眼。
-  现在缺口正文必须写「复核期限：YYYY-MM-DD」（缺日期即 `RATE_LIMIT_GAP_REVIEW_MISSING`，
-  过期即 `RATE_LIMIT_GAP_REVIEW_OVERDUE`），形态与 #197 的 `DEPENDENCY_AUDIT_EXCEPTIONS` 一致——
-  **一个临时的处置方式必须被标明是临时的，并在条件变化时自己变红**。
-  `GET /api/health` 那条已补上 `复核期限：2026-11-15`。
-- **顺手修掉 `docs/testing.md` 里两个抄下来的漂移数字**：C12 那一节写着「14 个有窗口 + 31 个写明理由」
-  与两条已知缺口，而真实读数是 **17 + 28** 与一条——`GET /api/og` 的缺口在 #136 之后已关掉，
-  抄下来的数字却留了很久。已按 roadmap D04 的处方改成**指向门禁输出**而不是抄数字：
-  `pnpm check:route-auth` 每次都会把两个分母与缺口条数打出来。**一个抄下来的数字会一直错到有人去核对它。**
-
-
-- **`pnpm check:security` 在 `braces` 的 GHSA-vfj7-8cjw-p6xm 上红了一轮，而那一轮没有任何可执行的修法——
-  于是判据本身被修掉了：不是放宽，而是把「暂无补丁」登记成一条会自己到期的例外。**
-  2026-10-03 起 `CI=true pnpm check:all` 在 `check:security` 上报 `0 critical, 1 high vulnerabilities`。
-  量完之后结论是**这不是「有人忘了升依赖」**：
-  - 路径 `.>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces`，**仅开发期可达**
-    （`eslint-config-next` 在 devDependencies，不进运行时依赖图、不进产物）；
-  - 公告的 patched range 是 `>=3.0.4`，而 npm 上 `braces` 的**最新发布版就是 3.0.3**
-    （GitHub Advisory Database 的 Patched versions 一栏为 None）——「有个已发布版本能修」这句话本身就是假的；
-  - 往上游看也堵不住：`fast-glob` 3.3.3 仍依赖 `micromatch@^4.0.8`，`micromatch` 4.0.8 仍依赖 `braces@^3.0.3`。
-  一条正确的判据遇上不可修的现实，就成了一条**没人能修的门禁**。本仓库对这种局面的一贯答案不是放宽判据，
-  而是**把处置显式登记成临时的，并让它有到期日**（与 C08 错误通道台账、C12 限流两态台账同形）。
-  - 新增 `src/lib/security/dependency-audit.ts`：判定 + 例外台账 `DEPENDENCY_AUDIT_EXCEPTIONS`，
-    纯函数、35 条单测。台账**不是白名单**，四条规则让它不可能悄悄变成永久豁免：
-    未登记即失败并点名；条目写不完整（理由空/日期坏）即失败；
-    **台账里的公告不再出现在报告里即失败**（修复落地后请删条目，与 `KNOWN_GAPS` 同形的反向断言）；
-    「仅开发期可达」不再成立、或 `reviewBy` 早于今天，即失败。
-  - 两条失败封闭：blocking 计数大于 0 却给不出公告明细、计数与可枚举公告条数对不上，都判红——
-    **「存在但看不见」无法登记，也就无法豁免**。
-  - 新增 `pnpm check:audit`（门禁 47 → **48**），只跑审计这一段，供 CI 的
-    `Security and configuration checks` job 使用；判定只有一份实现，`check:security` 与它不会各判各的。
-  - **CI 里那一步此前是裸的 `pnpm audit --audit-level high`**：裸命令不看台账，于是「没有补丁」会让 job 永远红。
-    已改为 `pnpm check:audit`，`check:security` 的配置面要求同步改成要求 `pnpm check:audit`，
-    并加一条**反向断言单测**：把裸命令塞回去不算接线。
-  - 通过时的输出会自报读数（「1 条已登记例外（GHSA-…）」）——
-    「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话，只说前一句就丢了后者。
-  - **这处修复自己被抓了第二次**：第一次只改了 `security-config.yml`（当时 grep 的是
-    「哪些工作流提到 `check:security`」），而 `ci.yml` 的静态门禁作业里还有一步一模一样的裸审计，
-    同一个 PR 的 CI 仍然红。两处都改掉（`ci.yml` 那步与紧随其后的 `pnpm check:all` 重复判定，
-    按那里本来就写着的「一份清单」约定直接删掉），并补 `inspectBareAuditCommands`：
-    **任何工作流都不许再出现裸的 `pnpm audit`**（`pnpm check:audit` / `pnpm audit:storage-orphans` 不算，
-    注释里的字样不算）。一处真实发生过的缺陷形状，不该在另一个地方裸奔。
-  - 变异核对六处（做完复原）：抹掉 STALE 反向断言 / 复核期限 / dev-only 判定 /
-    计数与明细对账 / 台账理由校验 / 裸审计禁令，**每一处都让套件变红**。
-
-### Fixed
-- **`check:gate-rule-tests`：判定逻辑内联在脚本里的门禁，从「被计数」升级为「一律失败」。**
-  这条规则是 #183 加的，当时全仓库还有 **10 条**内联门禁，于是它只能把它们**计数并打印**
-  （那个数是分母，隐去它就等于把「有 N 条门禁的强度没有被单测兜底」藏起来）。
-  到 2026-10-01，那 10 条全部搬进了 `src/lib` 规则模块，**这个数归零**——
-  于是「计数」变成了一个**可以悄悄涨回去、而门禁仍然绿**的数字。
-  现在改成硬约束（`INLINE_GATE_REINTRODUCED`）：**新写一条内联门禁必须当场被红，并被点名是哪几条**，
-  而不是「先绿着，等谁有空再去搬」。
-  **一个能悄悄涨回去的绿色数字，不如一条会红的规则。**
-  变异核对：真的加一条判定写在脚本里的门禁 → 红并点名 `check:zz-inline`（做完复原）。
-  今天的状态：**53 个规则模块 / 45 条门禁全部走规则模块 / 0 条内联**。
-
-### Fixed
-
-- **`check:release-docs` 的判据换掉了：它原本只看「当前版本」，而发布审计真正要读的是历史版本的证据。**
-  原实现只做两件事：当前 `package.json` 版本对应的三份发布文档存在吗、几份文档里各含某几个关键词吗。
-  于是**删掉 `docs/operations/production-smoke-v0.9.0.md` 之后门禁照样绿**
-  （实测确认，输出仍是 `✅ ... (v0.11.0, 7 artifacts)`）——而那一份正是**发布审计真正要读的证据**。
-  本仓库其实**刻意**维护着一套完整矩阵：v0.6.0–v0.11.0 每个版本各三份
-  （release / rollback / production-smoke），**6 × 3 = 18 份**。这个「三族覆盖同一批版本」的性质
-  是可判定的，现在变成规则（`src/lib/release/release-docs.ts`，13 项单测）：
-  - 三族必须覆盖**同一批**版本——删掉其中任何一份、或多出一份孤立文档，都报错并点名是哪一族缺哪个版本；
-  - 自述行把覆盖范围报出来（`6 个版本的三族发布证据齐全，共 18 份分版本文档`），
-    **让「覆盖了几版」和「结论」同屏**。
-  **刻意不判「CHANGELOG 里每个已发布版本都有这三份」**：CHANGELOG 声明 11 个已发布版本而这 18 份
-  只覆盖 v0.6.0 之后的 6 个，0.1.0–0.5.0 没有的理由**与 tag 台账里写的是同一条**
-  （标签纪律那时还不存在）——把那条理由在这里**再抄一遍**，就是本项目反复在消灭的
-  「同一份数据有两个来源」。所以只判**三族自洽**，跨到 CHANGELOG 的那一格**写明它没做**。
-  关键词判据沿用 `includes` 子串、**刻意不升级成语义判据**：那批关键词是「这一节必须在」的检查点，
-  语义判断会变成一条没人能反驳也修不动的门禁。
-  判定从 36 行内联脚本搬进规则模块：**内联门禁 2 → 1 → 0，全部 45 条门禁的判定逻辑
-  现在都在有单测的规则模块里**。
-  变异核对五种（做完复原）：删历史版本的 smoke → 红；多一份孤立文档 → 红；
-  关键词缺失（runbook 与 README 各一次）→ 红；版本改成 0.12.0 → 红。
-
-### Fixed
-
-- **`check:agents` 的判据换掉了：原来它只要求 agent 文件在 `AGENTS.md` 里「至少被引用一次」，
-  而每个 agent 在那份文件里被引用两次。** 于是**只从 Quick Reference 索引表里删掉一行**、
-  「When to Use Which」那张表里的引用还在时，**门禁照样绿**——
-  而 `AGENTS.md` 是本仓库**所有人（包括 AI agent）开工前读的第一份文件**，
-  它的索引表少一行意味着那个 agent 按 ID 查不到。
-  现在改成**结构化解析那张索引表**（规则在 `src/lib/docs/agents-index.ts`，15 项单测）而不是全文搜索：
-  - 索引表必须**逐个**列出 `agents/` 下的每个文件（不多不少）；
-  - 行的**编号必须与文件名的数字前缀一致**（`09` ↔ `09-ui-ux.md`）——
-    **全文搜索永远查不出「编号写错了但链接是对的」**；
-  - 同一行重复出现 → 报错并指出首次行号；
-  - **索引表整张不见了 → 报错**（表没了，上面每条判据都会因为「没有行」而空转）；
-  - 表外指向不存在文件的链接仍然报错（那是一条坏链接，与它出现在哪一段无关）。
-  **刻意不判「When to Use Which」那张表**：它是**用法指南**不是索引——行没有编号、
-  一行对应「什么时候用哪个」而不是「有哪些 agent」，行数本来就不等于 agent 数；
-  判它就要把「用法」和「清单」混成一件事。
-  变异核对五种（做完复原）：目录多一个未索引文件 → 红；正文一条坏链接 → 红；
-  **只删索引表那一行（旧门禁漏掉的洞）→ 红**；编号写错但链接对 → 红并指出应为几；
-  索引表整张不见 → 红。判定从内联脚本搬进规则模块，**内联门禁 2 条 → 1 条**。
-
-### Fixed
-
-- **`check:supabase-security`：service-role 信任登记的 `evidence` 不许被整段清空。**
-  `trust.evidence` 是「凭什么相信这个 service-role 调用点」的**唯一书面理由**——例如
-  `src/lib/actions/team.ts` 登记的是 `trust: { kind: "session", evidence: ["supabase.auth.getUser"] }`，
-  意思是「RLS 被绕过了，但至少确认过有人登录」。**把 `evidence` 清空，登记看起来仍然有效
-  （`kind: "session"` 还在），而支撑它的理由没了——门禁一声不吭。**
-  现在非 `server-internal` 的 kind 必须带 evidence，否则报
-  `ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY`；`server-internal` 是唯一例外（它没有外部调用者，
-  没有授权判断这回事，空数组是正确描述而不是漏填）。
-  **顺带把模块头的说法改准**：原文声称会在模块「loses its documented authorization evidence」时
-  失败封闭，而现在它真的两种都覆盖——**登记的符号从模块里消失**（`..._MISSING`）与
-  **evidence 列表被清空**（`..._EMPTY`）。
-  **本条不覆盖的残余缺口，明写出来**：把 `trust.kind` 从 `session` **改成** `server-internal`
-  再清空 evidence，门禁**会放行**——因为没有任何规则钉住「这个模块应该属于哪一类」，
-  而 kind 恰恰是清单里那条**由人复核的决策**。要堵它就得把 kind 也登记两遍，
-  那既不解决根因（决策仍在人手里）也增加维护面，所以**选择显式记录而不是假装堵住**。
-  变异核对：清空 `team.ts` 的 evidence → 红并点名；把 kind 降级为 `server-internal` → 绿（**即上面
-  记录的残余缺口**，实测确认，不是推测）。
-
-### Fixed
-
-- **订正 `supabase/middleware.ts` 的一段注释：它在陈述一件构建器做不到的事。**
-  原文是「动态 import：避免把 faker 等 mock 数据依赖打进 Edge bundle」——**只对了一半**：
-  faker 确实没进**主** Edge bundle（变成独立 chunk、懒加载），但**没进不了产物**：
-  条件分支里的 `await import(...)` 本身**就是一个引用点**，写在死分支里也会照常**发射 chunk**。
-  实测产物里仍有一块约 **707 kB 的纯 faker chunk**，并被 **37** 个
-  `page_client-reference-manifest.js` 引用（即它在客户端模块图内）。
-  换句话说，这里的 `import()` 恰恰是「折不掉」的原因，**不是「折得掉」的手段**——
-  对照 `supabase/client.ts`：那边能被摇掉是因为用的是**静态** import，
-  `NODE_ENV` 折叠后没有引用点，整块随之消失。
-  **用户侧影响为 0**：生产里 `shouldUseMock()` 恒为 false，该分支永不执行，
-  Playwright 复核 8 个生产页面 **0 次请求**命中它；代价只是部署体积，
-  因此**仍然不设**「产物里不许出现 mock 记号」那条门禁（「产物里存在」与「用户会下载」是两件事）。
-  彻底不发射它需要让 mock 会话不依赖 faker，而 mock 种子身份要与种子数据一致——
-  那是改 mock 系统行为，不在本次范围。
-  顺带订正 #178 记录里的一个数字：当时写「被 5 个 auth 页面的 client-reference manifest 列出」，
-  实测是 **37** 个（其中 auth 下 6 个）；且该数字随构建变化（chunk 名是内容哈希），
-  故正确记法是「实测 37 个页面清单引用、浏览器 0 次请求」。
-
-### Fixed
-
-- **新增 `pnpm check:changelog-tags`：CHANGELOG 声明的已发布版本与仓库真实 tag 对账。**
-  起因是一个**读者看不见的分叉**：`CHANGELOG.md` 声明了 **11** 个已发布版本、约 210 条内容，
-  而 `git tag` 与 GitHub Release **只有 `v0.6.0`**——10 个版本处于
-  「变更日志说发布了、仓库里 checkout 不出来」的状态，共约 176 条内容。
-  **这不是笔误**：生产确实部署过 `0.11.0`，而 tag 是**刻意不打**的（缺账户删除端到端演练与
-  commit 归属证据，B01/B02/B03，全部卡外部权限）——**没有证据就等于没做，而打 tag 是对外声明
-  「做完了」**。问题在于**它只被记在 `docs/progress.md` 里**，CHANGELOG 那一侧完全没提：
-  读 CHANGELOG 的人以为有 11 个可 checkout 的发布，审计 tag 的人发现只有 1 个，**两边都「正常」，
-  而它们互相矛盾**。而 `check:release-tag` 并不管这件事——它校验的是**发布工作流的契约**
-  （tag 命名、notes 必须来自 CHANGELOG 章节、禁止 `--generate-notes`），**不读 `git tag`**。
-  规则（`src/lib/release/changelog-tag-reconciliation.ts`，18 项单测）：
-  - 每个已发布版本要么有 tag，要么在 `MISSING_TAG_LEDGER` 里登记理由；
-  - **反方向也判**：有 tag 但 CHANGELOG 没写章节 → 红；
-  - **登记过期也红**：某版本已经有 tag 了，登记还在 → 红。
-    **这是台账的自我清理机制**——证据闭合、tag 补上后必须回来删登记，
-    「一件做完的事不该继续看起来没做完」；
-  - **披露本身在不在也要判**：CHANGELOG 开头必须指向
-    `docs/operations/release-tag-ledger.md`。**登记在代码里、读者看不见的真相，仍然是读者读不到的
-    真相**——而最省事的一次「整理」就是把那段说明删掉，文件立刻干净好看而分叉原封不动；
-  - 一条版本都没解析出来 / 登记理由为空串 → 失败封闭；
-  - **「读不到 tag」与「仓库没有 tag」必须分开**（`TAGS_NOT_VISIBLE`）。
-    这条是量出来的：`actions/checkout` 默认浅克隆且不 fetch tag，`git tag --list` 返回**空数组**，
-    于是「`0.6.0` 有 tag」被判成「`0.6.0` 没有 tag」——**门禁报了一个与事实正好相反的结论**，
-    而且它 exit 1、看起来理直气壮。空列表是事实，读不到是量不到东西；读到空且是浅克隆时
-    立刻停下并说清怎么修（`git fetch --tags`；CI 里给 `actions/checkout` 加 `fetch-depth: 0`），
-    **不继续比下去**——继续比会把每一个真 tag 都报成「没有 tag」。
-  - 配套修 `ci.yml`：`lint-and-type-check` 那个作业的 checkout 加 `fetch-depth: 0`（**只有它需要 tag**），
-    并修 `check:workflows` 的一个假红——`PNPM_COMMAND` 扫的是原始文本，于是**注释里**写的
-    「`pnpm check:changelog-tags` 要对账……」被当成一条脚本引用，门禁报「引用了不存在的脚本」。
-    **注释不是配置**：现在整行注释在扫描前被去掉，脚本名 token 也不再接受反引号这类标点。
-    这与 #184 修过的「正则扫原文 → 注释里的示例代码被当成真调用」是同一个病根。
-  10 个无 tag 版本分**两组、原因不同**，所以逐条登记：
-  `0.1.0`–`0.5.0` 是**标签纪律当时还不存在**（J07 在 v0.6.0 周期才落地，而 v0.6.0 恰好是唯一
-  有 tag 的版本——两件事对得上，不是巧合；补打 tag 等于伪造从未发生过的发布证据）；
-  `0.7.0`–`0.11.0` 是**纪律已在、证据未闭合**。逐条理由见新文档
-  `docs/operations/release-tag-ledger.md`。
-  门禁数 44 → **45**。
-
-### Fixed
-
-- **`check:perf` 的三格判定搬进 `src/lib/release/perf-audit.ts`（20 项单测）**——它是
-  `check:gate-rule-tests` 点名的内联门禁之一，而它恰好是本仓库**最不该内联**的一段：
-  三格里**两格从来没响过**。搬动的真实收益不是形式统一，那两格的问题**都是「判据选错了」**，
-  而「判据选错」只有把判据写成可测的纯函数才谈得上被反复检查——
-  `SOURCEMAP_INLINE` / `SOURCEMAP_RESOLVABLE_REF` / `CHART_INLINED_IN_LANDING` /
-  `CHART_MARKER_MISSING` / `CSS_BUDGET_EXCEEDED` / `NO_ARTIFACTS_SCANNED` /
-  `LANDING_PAYLOAD_UNKNOWN` 这些失败模式**从「手跑变异时验一次」变成了每次都跑的用例**。
-  `exists`（一条 sourcemap 引用能不能解析）由调用方注入，于是「这种分支需要真目录才能验」
-  这个理由也不成立了。
-  新增一格判据：**落地页初始 payload 未知时报红**（`build-manifest.json` 缺失或
-  `rootMainFiles` 为空）——原先这种情况会退化成「什么都没查」而安静放行。
-  重构后与旧实现在真实产物上对跑：同样 2 个图表 chunk、同样 71.4kB CSS、同样扫 63 个文件；
-  落地页 payload 的自述值从四舍五入的 `431kB` 变成 `430.6kB`（`sumKb` 保留一位小数，仅显示差异）。
-  真实产物上的 5 种变异行为不变：内联 data URI / 落 `.map` 文件 / 指向存在的 map /
-  把图表标记塞进落地页初始文件 → 红；指向**不存在**路径的引用 → 仍绿（假红防线）。
-  内联门禁 3 条 → **2 条**。
-
-### Fixed
-
-- **依赖审计：4 个 high 降到 0（任意严重度 0）**，`brace-expansion` 与 `fast-uri` 的
-  override 之前**钉在自身已是漏洞版本的版本上**。
-  `GHSA-qhr7-859c-m2p7` / `GHSA-6j4f-fj2g-mc7p`（`brace-expansion` DoS via uncontrolled
-  recursion）的修复版本随时间上移（2.x 需 `>=2.1.6`、5.x 需 `>=5.0.11`），而
-  `pnpm-workspace.yaml` 里钉的是 `^2.1.4` 与 `^5.0.9`——**两个都在漏洞区间内**。
-  于是 `pnpm audit --audit-level high` 一直红着，而 override 一直绿着：
-  **一条「已经处理过了」的记录，掩盖了一个已经不再成立的结论。**
-  `fast-uri: ^3.1.6` 同理（需 `>=3.1.8`）。现在 `^2.1.7` / `^5.0.12` / `^3.1.8`，
-  `pnpm audit` 任意严重度 **0 条**。
-  全部是同一大版本内的 patch 升级（2.1.4→2.1.7、5.0.9→5.0.12、3.1.6→3.1.8），
-  实测 `lint` / `type-check` / 2,941 用例 / `pnpm build` / E2E 113 passed / `check:all` 全绿。
-  另记一条踩坑：**pnpm 11 不再读 `package.json` 的 `pnpm` 字段**，override 的新家在
-  `pnpm-workspace.yaml`——加错位置时 pnpm 只给一行 WARN 就继续，装完什么也没变。
-
-### Fixed
-
-- **`check:i18n` 的判定逻辑从脚本搬进 `src/lib/i18n/translation-usage.ts`（22 项单测）**——
-  它是上一条 `check:gate-rule-tests` 点名的 4 条「判定内联在脚本里、强度没有被单测兜底」的门禁之一。
-  搬的过程中发现**两个会让这条门禁静默变松的洞**，都修掉了：
-  1. **别名遮蔽**：命名空间绑定收在 `Map<别名, 命名空间>` 里，于是同一文件里
-     `const t = useTranslations("a")` 与 `const t = getTranslations("b")` 并存时**后者静默覆盖前者**
-     ——按 `a` 写的那些调用会拿 `b` 去查，查不到就报红、查得到就当作已验证，两种结果都是编的。
-     现在它是一条明确的问题项（`AMBIGUOUS_NAMESPACE_ALIAS`）：静态阶段判不出来就**说出来**，
-     而不是挑一个继续。
-  2. **别名未转义**：调用正则用 `\b${alias}` 拼，而别名取自 `[A-Za-z_$][\w$]*`——
-     **`$` 是合法的 JS 标识符字符**，而在正则里 `$` 表示「输入末尾」，所以 `const t$ = useTranslations("a")`
-     的正则永远匹配不到任何东西，它名下**所有**翻译调用被静默跳过。现在转义后再拼。
-  顺带修掉一个**当时还活着的假红**：命名空间与调用的正则扫的是原始文本，于是**注释里**的示例代码
-  （`// const t = useTranslations("a")`，本仓库文档的常态）会被当成真调用——
-  实测旧实现会拿自己文件里的 `t("a//b")` 报 `缺少 zh-CN 翻译 key: a.a//b`。
-  现在扫描前先剥注释（**保留换行**，行号是这条门禁的输出之一）。
-  实测基线：**878 个静态翻译调用 / 155 个命名空间绑定 / 375 个文件**，en/zh-CN 均存在——
-  与旧实现**逐个相同**（同一棵树上对跑，证明重构没有丢覆盖）。
-  变异核对（做完复原）：造一个别名遮蔽的文件 → 红并说明该改别名；
-  造一个 `t$` 别名引用不存在的 key → 红（改前会被静默跳过）。
-  内联门禁 4 条 → **3 条**。
-
-### Fixed
-
-- **新增 `pnpm check:gate-rule-tests`：门禁的判定逻辑必须放在有单测的规则模块里。**
-  `check:gates` 自己写着「只判断接线与引用是否成立，**不判断门禁本身的强度**」——
-  接线只回答「门禁会不会跑」，不回答「门禁会不会响」。而本轮复核量到的事实是：
-  `check:perf` 的三格里**两格从来没响过**，而「它们没响过」这件事**没有任何机制会发现**。
-  仓库已有的判据（判定逻辑放 `src/lib/**` 纯函数规则模块、脚本只负责 IO）有一个可机械核对的
-  副产品——规则模块有名字，vitest 的测试文件名以它为前缀，于是「规则模块有没有单测」成了
-  **可判定的事实**。现在把它固化成门禁：
-  - 每个 `check:*` 引用的每个 `src/lib` 规则模块都必须有以它为前缀的 `*.test.ts`；
-  - **一条规则模块都没检出时报红**——提取靠读脚本文本，是启发式，
-    「因为提取得不对所以什么都没查到」必须出声，不能安静地报 0 项通过；
-  - 判定逻辑**内联在脚本里**的门禁不算错，但**必须被计数并打印**——这个数是分母，
-    隐去它等于把「有 N 条门禁的强度没有被单测兜底」藏起来。
-  `types.ts` / `*.types.ts` 不算规则模块（装的是类型声明，正确性由 `tsc` 负责；
-  `database.types.ts` 更是 schema 生成的）——代价是判定逻辑若塞进叫 `types.ts` 的文件会逃过，
-  这个代价按取舍格式写明在规则里，不藏着。
-  实测基线：**48 个规则模块 / 40 条门禁走规则模块，另有 4 条判定内联**（分母可见），
-  全库 247 个测试文件，0 项缺失。
-  变异核对两种（做完复原）：加一条规则模块没有单测的门禁 → 红并点名；
-  让提取返回 0 条 → 红（`NO_RULE_MODULE_DETECTED`，即「这道审计自己量不到东西」）。
-  门禁数 43 → **44**。
-
-### Fixed
-
-- **`check:perf` 那一格 recharts 判据原先永远不可能命中**——它被命名为
-  「recharts 独立 chunk 存在（懒加载未被回退）」，而实现是「在任一产物的**前 200 kB** 里
-  正则找 `recharts`」。实测（Turbopack 生产构建）：`.next/static` 的 63 个文件里 `recharts`
-  **一个都不出现**，而 recharts 确实被打进了产物。原因是 Turbopack 的生产产物**不内嵌模块路径
-  字符串**，所以「包名」在客户端产物里**结构性地不可搜**——于是这一格长期报「未检测到」，
-  却顶着「防懒加载回退」的名字。**一条永远显示「没找到」、又假装自己有覆盖率的检查比没有检查
-  更糟**：它制造的是它自己都不信的覆盖率。
-  现在改用**导出符号** `AreaChart` 作标记（实测扛得过压缩，而 `recharts` 扛不过），
-  且判的不再是「找不找得到」，而是**它该不在的地方在不在**：
-  **落地页初始 payload（`build-manifest.json` 的 `rootMainFiles`，落地页真正请求的那 6 个文件）
-  里不得出现这个符号**——有人把 `next/dynamic` 改回静态 import，recharts 就会被拉进去，立刻红。
-  两处刻意的「宁可红」：① 一个文件都没命中标记 → **报红**而不是报「未检测到」
-  （标记消失的成因是压缩器/工具链改名，不是「图表被删了」，这时候它量不到任何东西，
-  沉默地绿比红危险得多）；② **不再只读前 200 kB**（实测 61 个 js 里有 4 个超过 200 kB，
-  最大 724 kB，原窗口对其中 4 个文件的大半内容是瞎的）。
-  实测基线：标记只出现在那两个图表 chunk（360.6kB + 15.2kB），
-  741 kB 那个 faker 死 chunk 里没有；落地页初始 payload 431kB / 6 个文件，不含图表。
-  变异核对三种（做完复原）：标记被塞进 `rootMainFiles` 里的那个文件 → 红并点名；
-  标记整体改名 → 红并说明「这一格量不到任何东西」；`build-manifest.json` 缺失 → 红。
-
-### Fixed
-
-- **`check:perf` 的 sourcemap 那一格原先只能看见三种泄漏形态里的一种**：它只查
-  「静态目录里有没有 `.map` 文件」。而 `//# sourceMappingURL=data:…` 会把**整份原始源码内联进
-  那个 JS/CSS 文件**——不需要额外请求，浏览器拿到产物就等于拿到源码，而这一格完全看不见它；
-  一条指向**确实存在**的 map 的 `sourceMappingURL` 同理。现在三种形态都算，
-  并把**分母**也补上：静态目录一条文件都没有时报红而不是报绿（「什么都没在看」与「干净」同形）。
-  **指向不存在路径的引用刻意不算**：那是第三方库留下的死引用，既不泄漏也不可调试，
-  按它报红就是一条没人会修的假红——与 `check:bundle` 的内容判定对假红是同一态度。
-  实测基线：63 个产物文件里三种形态一个都没有。变异核对四种（做完复原）：
-  内联 data URI → 红；落一个 `.map` 文件 → 红；指向确实存在的 map → 红并打出那一对路径；
-  指向**不存在**路径的引用 → **仍然绿**（假红防线）。
-
-### Fixed
-
-- **`pnpm check:bundle` 现在也判产物内容，不再只判体积**：新增一条判定——**客户端产物里不得出现
-  服务端专用变量的名字**（`SUPABASE_SERVICE_ROLE_KEY` / `STRIPE_SECRET_KEY` / `CRON_SECRET` … 12 个，
-  清单直接从 `security-config.ts` 的 `SERVER_ONLY_ENV_NAMES` 拿，不重抄）。
-  **它补的是源码规则的一个盲区**：`check:security` 的 `inspectClientModules` 判的是
-  「`"use client"` 模块里有没有直接读 `process.env.<服务端专用名>`」，于是它看得见
-  `process.env.STRIPE_SECRET_KEY` 写在客户端组件里，**看不见**「客户端组件 → import 一个
-  读该变量的共享 helper」这条间接路径。而 `NEXT_PUBLIC_*` 之外的变量一旦被客户端图碰到，
-  构建期就会把**值**内联进产物——那一刻它在服务端也不再是秘密。
-  **按名字判而不是按值判**：值依赖某次构建时那台机器上真的配了什么，CI 上通常什么都没有，
-  那条门禁在 CI 上会永远绿——一条永远绿的门禁比没有门禁更糟（本仓库为此付过学费：
-  `query-error-channel` 的 `QUERY_ERROR_CHANNEL_PARSE`）。变量名是源码里的常量，与环境无关。
-  实测基线（真实生产构建）：这 12 个名字**一个都不出现**，而且 `process.env.` 这个形态
-  **一次都没出现**（全部在构建期折成字面量）——所以这条规则今天 0 命中，而它的失败模式是
-  **具体的**：有人让客户端图碰到任何一个服务端专用变量，名字就会随值一起进产物。
-  变异核对：往一个客户端 chunk 注入 `VAPID_PRIVATE_KEY` → 红并点名到那个文件。
-  **刻意不判 mock 记号**：真实产物里有一块从不被人请求的死 chunk，按它报红是假红——
-  「产物里存在」与「用户会下载」是两件事（同 PR #178 的说明）。
-
-### Fixed
-
-- **生产首页的 JS 里有 48% 是 mock 种子数据 + 整包 faker**（`src/lib/supabase/client.ts` 一行三元）：
-  实测（gzip 后的真实传输量，不是文件大小）——修之前生产首页 **506,604 字节**的 JS 里有
-  **246,541 字节**是一个 742 kB 的 chunk，内容是 `mock-user-001` 那一整套假数据与整包 faker。
-  成因链：那个文件用**静态** `import { …, createMockSupabaseClient } from "@/lib/mock"`，
-  而 `@/lib/mock` 静态引入 `./data`（faker）与 `./store`；本仓库 12 个 `"use client"` 模块
-  都碰 `createClient`，于是整块跟着每一个客户端入口走，**首页的 HTML 里直接 `<script src>` 它**。
-  **为什么 `config.ts` 的折叠救不了它**：那一处折的是 `isMockEnabled` 这个**常量**，
-  而调用点写的是 `shouldUseMock()`——**一次函数调用把常量链断掉了**，于是分支活着、
-  静态 import 活着、整块 faker 跟着活着。修法与 `config.ts` 里 `isMockEnabled` 是**同一个机制**：
-  把 `NODE_ENV === "production"` 写进这个三元，打包器就能把分支折成常量 `false`，
-  `createMockSupabaseClient` 随之没有引用点，整块被摇掉。
-  量到的效果：首页 JS **506,604 → 260,084 字节（gzip，−48.7%）**；
-  用 Playwright 实测 8 个生产页面的**网络请求**，**没有任何一个页面再取到含 mock 的 chunk**
-  （修之前 `/` 取）。`src/lib/mock/config` 的 import 顺带从桶里拆出来——那个模块文件头
-  就写着「仅供 bundle 体积敏感的场景引入」，而调用点此前用的是桶。
-- **为什么 `check:bundle` 一直看不见它**：它量 `.next/static` 总量与基线的比值，
-  而**基线是在泄漏已经存在的时候立的**——一块「本来就多余」的代码不会让总量变大。
-  同一族的先例仓库里已经记过一次（构建期折叠那 24.9 kB「只占基线的 0.9%，
-  `check:bundle` 的 5% 预算拦不住」）；那次的死代码在**源码**里看得见所以有形状用例，
-  这次只在**产物**里看得见，而产物体积恰好是体积门禁唯一量不出的维度。
-  所以新加的常驻检查判的是**形状**而不是产物（`src/lib/release/mock-client-bundle.test.ts`，
-  5 条）：① 除已登记的 `src/lib/supabase/client.ts` 外，任何 `"use client"` 模块都不得
-  静态 import `@/lib/mock` 桶（要判配置就用零依赖的 `@/lib/mock/config`；要真拿 mock 客户端
-  只能走动态 `import()`，那样它是独立 chunk）；② 那一处**必须**被可折成 `false` 的三元守着。
-  **刻意没有**加「产物里不许出现 mock 记号」的门禁——实测下来那会是**假红**：
-  修完之后 `.next/static` 里仍留着一块 741 kB 的死 chunk（被 5 个 auth 页面的
-  client-reference manifest 列出），但浏览器**从不请求它**。「产物里存在」与「用户会下载」
-  是两件事，一条按前者报红的门禁只会变成一条没人修的噪音。**这一条交注释记账，不交红门禁。**
-  两次变异核对：折掉那行三元 → 折叠形状那条红；给一个新客户端模块加静态桶 import → 第一条红并点名文件。
-
-### Fixed
-
-- **25 个控件在 Windows 高对比度模式下没有可见焦点**（`src/components/ui` 全部改一处）：
-  `check:tailwind` 一直报着一条非阻断告警「上游 shadcn 基元里还有 25 处 v3 类名待跟随上游收口」，
-  25 处**全是** `outline-none` → `outline-hidden`。从本仓库**自己构建出来的 CSS** 里量到：
-  v4 的 `.outline-none{outline-style:none}`，而
-  `.outline-hidden{outline-style:none;outline-offset:2px;outline:2px solid #0000}`，
-  后者还自带 `@media (forced-colors:active)` 兜底。那圈 `transparent` 轮廓正是
-  **高对比度模式下浏览器替我们画的焦点环**——也就是说 `outline-none` 让按钮、输入框、
-  下拉、开关、标签页等 25 处**只剩键盘操作**的用户彻底看不见焦点在哪。
-  「等上游」在这里不成立：shadcn 上游同样在往 `outline-hidden` 收，本地改完下次 `shadcn add`
-  覆盖也就是回到今天这个形状（而门禁会再报一次）。
-- **顺带查出一条更怪的：门禁自己把被禁的类名塞进了产物。** 修完源码之后
-  `rg outline-none .next/static/chunks/*.css` **仍然有命中**——三段死规则
-  （`.outline-none`、`.hover\:outline-none:hover`、`.focus-visible\:outline-none:focus-visible`）。
-  逐一量出来的来源：① `src/lib/tailwind/` 里是 `check:tailwind` 的规则本体与它的用例，
-  它们**必须逐字**写着被禁的类名（正则名、测试 fixture），否则门禁就检查不了它；
-  ② **Markdown 也在 Tailwind 的默认扫描范围里**，所以 `CHANGELOG.md` 与历史 roadmap 里
-  **提到**某个类名等于在用它（连本条 CHANGELOG 自己也贡献了一段）。
-  修法是两条 `@source not`（v4 的排除指令，只排除**扫描**，不影响 TypeScript 编译，
-  也不影响 docs-site 自己的构建）：排除门禁目录，以及排除 `**/*.md`——
-  **Tailwind 该扫的是代码，不是散文**。
-  量到的效果：产物里 `outline-none` 归零，CSS 总体积 73952 → 73128 字节（少 824 B 死规则）。
-  为什么这一格值得单独记：它堵住的是「从产物取证」这条路，而那恰恰是判据失效时最该看的地方——
-  判据把自己的取证途径污染了，比判据本身失效更难发现。
-  判据同时从**告警**升成**天花板**（`native-theme.test.ts` 新增 3 条用例：真实仓库读数为 0，
-  带非空分母；合成输入读数为 0；退回 `outline-none` 时会红）。变异核对：把 `button.tsx`
-  一处改回 `outline-none` → 真实仓库那条用例红并点名到文件与行。
-- **为什么这条在 a11y 门禁的射程外**：`check:a11y` 是静态写法审计，看的是 ARIA 属性、
-  `alt`、按钮标注；`outline-none` 是不是把轮廓彻底去掉属于**类名语义**，
-  而那只有在产物里才看得见（`.outline-hidden` 才有 forced-colors 兜底）——
-  所以它由 `check:tailwind` 的类名规则守，而不是由 a11y 规则守。
-
-- **`/api/og` 有了按 IP 的窗口，限流台账的已知缺口从 2 条降到 1 条**：
-  那条端点天然要能被陌生人打——它挂在 `<meta og:image>` 上，社交预览爬虫与搜索引擎都是
-  以**用户的 IP** 来取的，所以台账条目当初写「按会话限频这种现成形态对它不成立」；
-  但**按 IP 是成立的**：正常爬虫每个页面取一次，60/分钟绰绰有余，同一个 IP 反复取才是异常。
-  **为什么不是台账条目原本写着的「按参数做缓存」**：参数缓存挡不住这条端点真实的放大方式——
-  变一下 `title` 就是一个新键，于是任何参数缓存都以「每个键只算一次」收口，而攻击者要的
-  正是这个。窗口按**来的人**算，与参数无关，那才是能收住的东西。
-  （参数缓存另有价值，但那是 CDN 的活：响应已经带 `s-maxage=86400`，不重复实现。）
-  429 那一侧刻意带 `no-store` + `Retry-After`：放行那一侧是 `s-maxage=86400`，
-  若 429 也长缓存，窗口一过期客户端仍拿不到图。
-  删掉台账条目这一步是 `check:route-auth` 逼出来的——它报 `RATE_LIMIT_STALE`
-  （「有窗口却还躺着一条台账也是红」），读数由 **16 有窗口 + 29 写明理由（2 条缺口）**
-  变成 **17 + 28（1 条缺口）**。
-  5 条用例钉住：放行 / 超窗不合成 / 429 不长缓存 / `Retry-After` 向上取整且至少 1 秒 /
-  **限流按请求打与参数无关**（最后一条正是参数缓存做不到的那一格）。
-  两次变异核对：去掉限流 → 5 条红；429 改成长缓存 → 1 条红。
-  **剩下的 1 条缺口是 `GET /api/health`**：探针与对外可见的健康端点还没分成两条路径，
-  而它的放大面已由上一条的 `createProbeCache` 关掉。
-
-
-- **`GET /api/health` 的无凭据调用不再把成本按次数转嫁给 Supabase**：`RATE_LIMIT_LEDGER` 里那条
-  **已知缺口**自己写明了两件事——按 IP 的滑窗会把监控自己读成 429（所以「加窗口」在这条上不是
-  免费的），而它每次请求都真打一次 `profiles limit(1)` 的 anon 探测，于是**无凭据的重复调用
-  把成本按次数转嫁出去，没有任何东西拦住**。这一条关掉的是后半句：探测现在走
-  `createProbeCache`（`src/lib/health/probe-cache.ts`，TTL 5s + **single-flight**）。
-  single-flight 比 TTL 更关键——TTL 只挡得住先后到达的重复调用，而放大面通常来自**并发**的一簇；
-  只加 TTL 的话 20 个并发探针仍然是 20 次往返。**失败也缓存**（TTL 相同）：Supabase 挂掉时
-  正是最需要挡住的时刻，「失败不缓存」看起来更实时，实际是把一次故障放大成一串。
-  顺带钉住一个测试侧的坑：路由里有了**进程级**状态，原来的 8 条用例用静态 import 会共用一份缓存，
-  于是「先失败再成功」的两条会读到上一条的缓存值。改成每条用例重新 import 一份模块实例——
-  **不给生产代码加「供测试清缓存」的导出**，那是另一种谎。
-  **剩下的那一半说清楚**：端点本身仍无凭据、无窗口；缓存是**进程内**的，serverless 下每个实例
-  各有一份，挡的是「一个实例被重复打」而不是「整个部署被重复打」。要关掉剩下那半需要把
-  「探针」与「对外可见的健康端点」分成两条路径，或引入跨实例共享缓存——台账条目里照旧写着。
-  三次变异核对：拆掉 single-flight → 3 条红（并发 20 变 20 次往返）；失败不缓存 → 2 条红；
-  路由不查缓存 → 1 条红。
-
-
-- **Auth 读取一次抖动，八个仪表盘页面抛的是 `TypeError` 而不是「暂时不可用」**（C09 后半）：
-  `dashboard`、`billing`、`notifications`、`profile`、`projects`、`projects/[id]`、`settings`、`team`
-  此前写的是同一个形状——只解构 `user`、不取 `error`、然后 `user!.id`。那条 `!` 在类型上宣称
-  「这里不可能是 null」，而 `auth.getUser()` 把失败装在 `error` 里返回而不是抛出，于是
-  **「Auth 服务抖了一下」与「这个用户真的没登录」在下游长得一模一样**，页面只能靠抛
-  `Cannot read properties of null` 表达它。抛 TypeError 不是撒谎，但它是**一次没有分类的崩溃**：
-  错误边界拿到的 message 里没有任何线索指向会话读取失败。
-  新增 `requireSessionUser(supabase)`（`src/lib/auth/session-user.ts`），三条出口各有名字：
-  读到用户就返回（**已判空**，调用方写 `user.id`）、确认没有会话就 `redirect(ROUTES.login)`、
-  确认是读取故障就抛带 `code = "SESSION_READ_UNAVAILABLE"` 的错误——仪表盘的 `error.tsx` 有重试按钮，
-  这比「跳登录页再让用户登一次」更接近该有的行为，重新登录走的正是同一条读取。
-  分类仍由 `session-error` 负责，与 `guards.ts` / `api/auth/callback` / `actions/audit` 同一套判据：
-  `error` 非空**不等于**抖动（匿名访客拿到的就是 `AuthSessionMissingError`），只有
-  `AuthRetryableFetchError` 与 5xx 算读失败。
-  **返回整个 user 而不只是 id**：有两页本来就读 `user?.email` / `user?.created_at` /
-  `user?.last_sign_in_at`，把返回值收窄成 id 会把那些「容忍 null 的可选链」变成「为了拿邮箱再发一次
-  请求」——拿一个真缺陷换另一个。于是 `user?.email ?? ""` 一并收成 `user.email ?? ""`。
-  `src/app/**` 里 `user!` 由 **15 处 → 0 处**。新增常驻检查 `session-user-wiring.test.ts`：
-  读源码形状判「`src/app/**` 下不得有 `user!`」，带非空分母、一条反向证据（地板值 8 个页面
-  确实在用 `requireSessionUser`）和一条防空转用例；判据**没有白名单**——真有合法的可空局部变量也叫
-  `user` 就改名，开白名单等于把「谁都可以把自己排除在外」写进规则。
-  写这条检查时踩到的坑由用例挡住：`g` 标志正则的 `lastIndex` 跨调用保留，复用一条正则扫多行会让
-  同一文件的第二处违规被跳过。
-  **接着把剩下 4 处会话读取也收掉**（`dashboard/layout.tsx`、`admin/layout.tsx`、
-  `admin/audit-logs/layout.tsx`、`profile/edit/page.tsx`）：它们读**角色**时读失败已经答成抛错
-  而不是 redirect（C08 那一族修的），唯独**会话**这一次读取仍然把一次 Auth 抖动答成
-  「你没登录」——客户端清掉本地会话并跳登录页，而重新登录走的正是同一条读取。
-  常驻检查因此有**两条判据，第二条才治本**：「`src/app/**` 下不得有 `user!`」只判症状，
-  而一个新页面写 `const { data: { user } } = await supabase.auth.getUser()` 再配
-  `if (!user) redirect(...)` 时它全绿——**那正是这 4 个文件原来的写法**。
-  第二条判「`src/app/dashboard/**` 下不得直接 `auth.getUser()`」，被认可的入口只有
-  `requireSessionUser` 与 `requireAuth`；另有一条用例把 `auth.getSession()` 显式排除在外
-  （settings 页用它算「当前这台设备」，只用于显示标记、不参与权限判定）。
-  顺带删掉 2 个因此变成未使用的 import——`pnpm lint` 不报未使用的 import。
-  **顺着量出来的第二个同型缺陷：守卫失败被压成两种说法。**
-  `POST /api/stripe/checkout` 把**每一种**守卫失败都答成 `401 + notAuthenticated`，
-  而同族的 `api/analytics` 早就按 `guardHttpStatus` 分开了——同一个缺陷的两次落地，
-  谁也没给另一次提个醒。往外一量，同一形状在 **8 处 Server Action 调用点**上，
-  而且那里更糟：`auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden"`
-  是一个**二元三元**，而 `AuthGuardError.code` 有四个值，于是 `SERVICE_UNAVAILABLE`
-  （我们自己没读到会话或角色）被答成 `forbidden`——**一件关于用户权限的事实**。
-  管理员看到「你没有权限」、列表显示成空的、日志里什么都没有。
-  新增唯一出口 `guardFailureKey(error)`（`notAuthenticated` / `forbidden` / `authUnavailable`），
-  8 处调用点各改一行；新键按双语登记。checkout 路由改用 `guardHttpStatus`。
-  checkout 那里刻意写成两个 `if` 分支而不是三元：`route.test.ts` 那条「每个能返回的码都在两个
-  locale 里有文案」靠正则读 `jsonNoStore({ error: "字面量" }`，三元里的两个键它一个都读不到，
-  那条测试会从 9 掉到 8 报红——**让判据保持原样、让代码迁就判据**，比放宽判据好。
-  常驻检查 `guard-failure-key-wiring.test.ts` 判「`src/lib/**` 下不得出现对 `auth.error.code`
-  的就地三元」，**不**钉具体字符串：只钉字符串的话，下一个人写成三元套三元照样绿。
-  没有动的：`proxy.ts`（`user = null` → 重定向登录页是正确答案）、`mfa/page.tsx` 的 `refreshSession`。
-
-### Added
 - **新增 `pnpm check:doc-links`：文档内部链接可达性。**
   本仓库是**给别人用的模板**，而文档是它的产品——但 `docs/` + `docs-site/` + 两份 README +
   `AGENTS.md` 共 **135 个 markdown 文件、150 条内部链接**，此前**没有任何门禁核对它们指向的
@@ -1159,7 +507,173 @@ See `docs/operations/release-tag-ledger.md`.
   `{"ran":5,"failed":1,…}`（HTTP 仍是 200），另两张表的过期行照常删除，恢复授权后下一轮把残留那条补删掉，
   且 `cron.retention.cleanup_failed{cleanup_function}` 与 `permission denied` 日志都真实落到了输出里。
 
+
 ### Changed
+
+- **`pnpm ops:deploy-freshness`：量一量「生产落后 main 多少个提交」，并在超过阈值时失败。**
+  起因是一次实测发现**没有任何自动检查会注意到生产停在旧构建上**：
+  `production-smoke.yml` 的定时作业会**打印**生产跑的 commit，但**不断言**它
+  （`expected_commit` 只在 `workflow_dispatch` 时能传，`schedule` 路径留空）。
+  2026-10-05 Vercel 构建配额限流，生产停在 `08dd6f17` 而 `main` 已是 `30f8e896`
+  （差 5 个提交），当天的定时作业一路绿。
+  - **判定的是距离而不是相等**：部署滞后是常态，断言相等会天天在正常时段误报，
+    而**天天误报的检查等于没有检查**。阈值内（默认 5）判通过但**记下距离**——
+    连续多天同一距离不回落才是真问题。
+  - **未知不算通过**：读不到生产 commit、或算不出距离（git 历史不够深 /
+    部署的 commit 不在祖先链上）都判 `unknown` 且**不通过**。
+    这里第一版有个真 bug 被单测逮到：commit 读不出来、距离又恰好传 0 时，
+    会印出「生产跑的就是 main（unknown）」——一句没有依据、且最容易让人放心的话。
+  - 独立作业 `deploy-freshness`（与版本漂移分开，避免互相盖住结果），
+    且**刻意 `fetch-depth: 0`**：浅克隆算不出距离，而算不出会被判成「未知且不通过」，
+    那这条作业就会天天红、且红的原因藏在 checkout 参数里。
+  - 复用已有的 `probeHealth` 与判定纯函数（`scripts/lib/deploy-freshness.js`），不新造 HTTP。
+
+- **`pnpm health:check` 成功时也打印逐依赖事实与读数时间。**
+  之前它成功时只印一行 `passed`，于是「生产有没有配 Sentry / Supabase / Stripe」
+  只存在于某次现场读数和某人的记忆里——2026-10-05 就因此在文档里写下了一句**错的**边界声明
+  （说生产没配 Supabase，实际是配置且可达的）。现在这些事实可以用一条命令刷新，
+  并自带时间戳。**刻意不读 secret 值**：只打印「配没配」与状态。
+  顺带一提，这条命令此前只被保活 workflow 用；它本来就能取到这些字段，只是没印出来，
+  所以这里没有新增工具，只改了输出。
+
+- **`/api/health` 拆成两条：高频探针走新的 `/api/health/live`，依赖明细留在 `/api/health`。**
+  Docker `HEALTHCHECK`（`--interval=30s`）原本打 `/api/health`，而那一条每次会出站打一次
+  Supabase（`limit(1)`）并回一份依赖明细。两个问题叠在一起：
+  - **放大面**——探针是唯一会被高频、高并发调用的公开端点，让它每次出站打数据库，
+    等于给匿名调用者一个「用我的流量打你的数据库」的杠杆；
+  - **语义错位**——`/api/health` 在依赖不可用时返回 503，而「进程活着但数据库暂时抖一下」
+    对存活探针不是故障；拿它当 liveness 会让数据库抖动被误报成实例挂掉并触发无谓重启。
+  - 新增 `GET /api/health/live`（`src/app/api/health/live/route.ts`）：只答「活着」，
+    **不打数据库、不读配置、不返回 version/commit**。容器 healthcheck 与 compose 示例已切过去。
+  - **`/api/health` 的响应契约一字未改**：`check:production-smoke`、每日保活 cron
+    （Vercel Cron + `health-check.yml`）仍读它——保活的意义就在于证明「连到 Postgres 的整条路」还通，
+    而 liveness 端点按设计就跳过了那次查询。
+  - 新增 `live.test.ts`（6 条），其中一条**结构性**断言该路由的模块图里没有 Supabase 客户端，
+    另一条钉住 Dockerfile 的 `HEALTHCHECK` 指向 `/api/health/live`（有人改回去就会红）。
+  - 顺带修正 `route-auth` 台账里 `/api/health` 的**理由漂移**：它登记为
+    「存活探针，不含任何用户数据或内部拓扑；返回体是静态结构」，而它实际上会回依赖配置与精确 commit。
+    现按事实改写为「就绪探针 + 有意公开的依赖明细」，并说明为什么披露面是判断过的、
+    真要收紧的判据是什么（限流台账同条已同步）。
+- **stripe v23：Checkout Session 不再传 `payment_method_types`——这不是 SDK 改名，是 Stripe 的 API 取消了它。**
+  升级 `stripe` 22.6.2 → 23.0.0 时 `tsc` 报 `TS2561`（`payment_method_types` 不在
+  `SessionCreateParams` 上）。查证后确认是 **API 层面的取消**：Stripe 已把
+  Checkout Session 的 `payment_method_types` 从可写参数移除，继续传会得到
+  `400 payment_method_types_no_longer_supported`；同批被取消的还有 PaymentIntent /
+  SetupIntent 上的同一个参数。因此正确做法是**删掉**，而不是换个字段名。
+  - 替代方案不是改名，而是**不指定**：automatic payment methods 会按账号设置与客户地区
+    自动挑选可用支付方式；写死 `["card"]` 反而会把当地钱包、分期等非卡渠道挡在门外。
+  - 新增 `src/lib/stripe/checkout-session-params.test.ts`（8 条）钉住请求参数：
+    **不传** `payment_method_types`（键本身不存在，而不是值为 `undefined`——
+    后者仍可能被 SDK 序列化出去）、订阅模式与 `line_items` 一字未改、
+    `trial_period_days` 只在给了 `trialDays` 时出现、metadata 带 userId/teamId、
+    幂等键只在调用方给了时才作为第二个参数。
+    **此前 `createCheckoutSession` 没有任何参数级断言**——这处 API 取消只由 `tsc` 发现，
+    而不是由一条说明「为什么删掉它」的用例发现。变异核对：把参数加回去 → 对应用例红。
+  - 顺带核过同批取消涉及的 `PaymentIntent` / `SetupIntent`：本仓库**没有**这两处调用，
+    全仓 `payment_method_types` 只有这一个调用点。`unit_amount` 在 v23 仍是整数
+    （decimal 变体是单独的 `unit_amount_decimal`），所以 `toSubscriptionInfo` 的读取不受影响。
+
+- **B02 闭合：回滚演练第一次真跑过（J08，v0.6.0 起从未闭合）。**
+  本会话实测 **Vercel 授权可用**（`sun1090`，hobby）——此前 roadmap 把 B02 记成
+  「未完成：外部权限」，而这一项的权限事实上已经到位，于是它从阻塞变成已完成。
+  演练：回滚前 6/6 基线 → alias 切到上一 deployment（`dpl_AbPqkN…`，commit `cb357477`）
+  → `curl /api/health` 连三次 200 且如实上报 `commit=cb357477`
+  → **用回滚前的 commit 跑 smoke 如期红**（5/6，`commit=cb35747, expected=a22ee942…`，exit 1）
+  → 用回滚后的 commit 跑 smoke 6/6 → `pnpm health:check` ✅ → alias 指回原 deployment → 恢复后 6/6。
+  - **`--expected-commit` 会红这一条才是证据**：「回滚后仍然健康」的截图不构成证据，
+    能指出「你回滚到的不是你以为的那一版」才算。
+  - **同时诚实标注它没证明什么**：两个候选版本之间只差一份 `docs/progress.md`
+    （无迁移、无运行时代码变更），所以这次验证的是**回滚机制**，
+    **不是**「回滚一个真改了数据库的版本会怎样」。跨迁移边界的回滚仍无证据。
+  - 附带一条对事故处置有用的观察，已写进 runbook：**alias 切换后的第一次 health 探测不可靠**
+    （两个方向各出现一次 `fetch failed` / `This operation was aborted`，重试即通过）——
+    「刚切换、边缘还在热」与「health 挂了」必须分开。
+  - 证据落档：`docs/operations/rollback-runbook-v0.11.0.md` 的「演练记录」；
+    `docs/roadmap-0.12.0.md` B02 与 `docs/operations/release-tag-ledger.md` 同步。
+  - **`v0.11.0` 的 tag 仍然不打**：阻塞从三项减为两项（账户删除端到端演练、commit 归属证据）。
+
+- **A05 收口：站内已读 = 不必寄，产品语义定案并钉住。**
+  队列谓词里那一段 `is_read=false` 一直是对的，但它此前是「实现里恰好如此」，
+  注释里写着「要不要让已读免寄是另一个待定口径」——于是这一栏既没有理由，也没有钉子：
+  哪天有人为了「别让 `email.backlog` 显得在变小」去掉它，邮件就会重新寄给读过通知的用户，
+  而**没有任何一条用例会红**（发送路径、mock、E2E 都不看队列谓词）。
+  - 定案理由（写进 `src/lib/repositories/notifications.ts` 的谓词注释里）：
+    摘要的职责是提醒**还没看到**的东西；为已读的事再寄一封是噪声，
+    而噪声会教会用户忽略整个摘要——那比漏寄一封更贵。反过来（已读仍寄）
+    会让 `security_alert` 因为用户读过它而**多**发一封，方向是错的。
+  - 可见性不减：已读那一笔继续单列成 `readBeforeSend` 读数，
+    出队不等于从视野里消失；且与 `email_skipped_reason` 同一条纪律——**出队不复活**。
+  - **发送行为一字未改**：改的是「这一栏是有理由的决定」这件事，
+    以及现在有两条用例守着它（去掉 `is_read=false` 会红；去掉那一栏可见性也会红）。
+  - 双语 `docs-site/email.md` 与 `docs/roadmap-0.12.0.md`（A05）按同一口径改写，
+    **A05 任务池不再有余项**。
+
+- **`check:doc-commands` 的受审范围从 4 份入门文档扩到 130 份，判定基准从「package.json 里有没有同名
+  script」换成「那个二进制在不在 `node_modules/.bin`」。**
+  这条门禁是 #196 加的，当时**刻意**只审 README 与两份 quickstart：把范围放到全部 markdown 上会变成
+  一台假红机器。这条留白本身在 #196 里被明确记成「已知不覆盖的一格——运维手册里写错命令仍然不会被发现」。
+  这一轮先量再动，两处都量出了东西：
+  - **范围**：`docs-site/**`（54 份用户文档）、`docs/architecture`、`docs/adr`、`docs/db`、
+    `docs/design`、`docs/reference`、`docs/testing.md` 加根级三份 md——实测**真实问题 0 条**。
+    也就是说这 126 份文档此前一直没人核对，而它们是模板用户的全部读物。
+    真正需要排除的只有三类**记录与计划**：`CHANGELOG.md`（它会故意引用不存在的命令来说明门禁在抓什么）、
+    `docs/progress.md`、`docs/roadmap-*.md`，外加两个用 `pnpm check:x` 充当占位的模板/封存报告。
+  - **判据**：扩范围后一次报出 12 条，逐条查下去**全是假红**，且分属同一个根因——
+    pnpm 对未知命令的语义是**当 shell 命令执行并把 `node_modules/.bin` 放进 PATH**，
+    所以「能不能跑」要问 `.bin`，而前两版问的是「`package.json` 里有没有同名 script」
+    （第一版只补了 `pnpm exec <x>` 一种写法）。修掉之后 `pnpm vitest run …`、`pnpm playwright test`
+    这类完全能跑的命令不再被报成「不存在」，而**不在 `.bin` 里的命令仍然报红**——
+    放宽的是依据，不是结论。
+  - 需要用户自行安装的外部 CLI（Supabase CLI）走 `EXTERNAL_CLIS` 登记表：**登记而不是放过**。
+  - 新增两条会红的规则：排除项**理由为空**（等于「我不想看这个文件」）、
+    排除项**一个文件都没命中**（失效的排除项会让下一个人以为那里仍然没被审）。
+  - `.bin` 读不到时（没跑过 `pnpm install`）判据退化为按依赖名判，并在读数与报错里**明说降级了**。
+  - 顺带把 `check:doc-commands` / `check:doc-links` 登记进贡献者测试矩阵的「文档」领域
+    （`src/lib/testing/test-matrix.ts` + 两份矩阵文档）——它们此前存在于仓库，却不在任何一份
+    矩阵文档里，也就是**改文档的人不知道要跑它们**。
+  - 变异核对五处（做完复原）：README 里造真 typo → 红；`docs-site/testing.md` 里造 typo（旧范围外）
+    → 红；排除项理由置空 → 红；排除项改名失效 → 红；抹掉 `.bin` 判定 → 报出 6 条假红。
+  - **扩范围后的门禁当场把写它自己文档的那两行顶红了**（正文里拿 `pnpm verifiy:build` 当例子）。
+    已改成不写成命令的样子。一条门禁第一次运行就抓到写它文档的人，比任何变异核对都有说服力。
+  - 顺带补上一个登记缺口：`check:doc-commands` 与 `check:doc-links` 此前存在于仓库，
+    却不在任何一份贡献者测试矩阵里——改文档的人因此不知道要跑它们。现在两条都进了
+    `src/lib/testing/test-matrix.ts` 的「文档」领域与两份矩阵文档（108 → 112 条门禁）。
+
+
+- **46 条待合并队列已清空，`main` 从 `ad4b029` 到 `d94b8a36`（202 个提交、62 条 PR、开放 PR 归零）。**
+  这一行是收口记账，不是功能变更：PR #118 把执行顺序算出来贴进了台账，而那一节自己写着「这张表随队列变动即过期」。
+  实际落地与那张表有三处出入，都记在 `docs/progress.md` 的同日条目里。
+  ① C08-b 那一段不是长栈——#93 / #94 / #98 / #99 / #100 / #101 / #102 是从**同一条分支**上切出来的，
+  父 PR 的 head 已经带着子 PR 的提交（判据是 patch-id，不是分支图），所以 #93 与 #94 随 #98 一并落地。
+  ② 带 `--delete-branch` 合并父 PR，会让以它为 base 的 6 条 PR 被 GitHub 自动关闭，而工作并没有进 main
+  （且不允许 reopen，base 已删），只能从同一 head 新开 #158–#162，因此这一批不能带 `--delete-branch`。
+  ③ 台账冲突除「两侧都新增」外，还有「把条目搬到文件末尾」造成的同条目两份，收尾按标题去重 +
+  全文按日期稳定排序归一化。
+  合并过程里三道门禁各抓到一次真实问题：C08 台账过期（#145）、解构侧地板值因债务清零而失效
+  （#112，实测 159 处判读 / 0 处未绑定，地板改天花板）、限流两态台账的两条豁免到期（#153）。
+  门禁 36 → 42，C08 两本台账 22 处 → 0 处，解构侧未绑定读取 15 → 0。
+
+- **顺手修掉 `linkCandidates` 造出的两个不存在的候选**：带 `.md` 的路径不该再补 `.md`
+  （`README.md.md`）也不该再补 `index.md`（`README.md/index.md`）——两者永远不可能命中，
+  只会在报错信息里多两个噪音词、掩盖真正试过的候选。两条都是单测抓到的。
+
+- **新增 `pnpm check:doc-commands`：入门文档里的 `pnpm <命令>` 必须真的有落点。**
+  一条写错的命令（`pnpm verifiy:build`）**不会让任何门禁变红**——它只会让模板用户在 clone 之后
+  的第一条命令上撞墙，而那正是 README 与 quickstart 的职责范围。
+  **受审范围只有四份入门文档**（两份 README + 两份 quickstart），这是刻意的：
+  把范围放到全部 135 个 markdown 上会立刻变成一台**假红机器**——同一套判据在 `docs/progress.md`
+  （推演记录，充满假设性命令）、`docs/operations/*`（模板里的 `pnpm check:x` 占位）、
+  `docs/adr/*` 上会报出 12 条「不存在的命令」，而它们**全都合理**：
+  那三类文件是**记录与计划**，不是**给用户的指令**。
+  换句话说这条门禁判的是「**文档教用户做的事存在吗**」，不是「文档里出现过的字符串存在吗」。
+  - pnpm **内建命令**（`install` / `audit` / `deploy` / `peers` / `catalog` …）单独放行；
+  - **`pnpm exec <x>` 按依赖判定，不按 scripts 判定**——它运行的是依赖里的二进制，
+    问「仓库有没有这个 script」是**问错问题**，那样的门禁只会教人加豁免；
+  - **失败封闭**：一份受审文档都没读到时报红。
+  **刻意不判参数**（`pnpm vitest --wat` 里的 `--wat`）：那要复刻每个底层工具的 CLI 表面，
+  是一条会随依赖升级漂移的规则——与 #195 不判锚点同一条理由。
+  实测基线：**90 条 pnpm 命令 / 4 份文档，全部有落点**。
+  门禁数 46 → **47**。
 
 - **个人资料的语言下拉改成引用权威常量**：`ProfileEditForm` 过去把 `["en","zh","ja","ko"]` 抄在组件里，
   而同一份词表的权威声明是 `src/lib/constants.ts` 的 `PROFILE_LANGUAGES`——它同时是动态翻译键
@@ -1222,7 +736,461 @@ See `docs/operations/release-tag-ledger.md`.
   `git ls-files` 各 0 条），所以 `.gitignore` 加上它不挡任何该提交的东西；
   `actions/upload-artifact` 不读 `.gitignore`，CI 那两个作业的 `path:` 不受影响。
 
+
 ### Fixed
+
+- **Sentry 上报失败不再静默：留一行 stderr + 一条 `sentry.report.failed` 指标。**
+  原先上报失败分支是 `.catch(() => {})`。**静默是对的**（监控坏了不该把业务请求也搞失败），
+  但**什么都不留**是错的——监控静默失效时，唯一能发现它的信号也被它自己吞掉了，
+  于是「告警不会响」与「没有告警」变得不可区分，而这正是最该被看见的那次故障。
+  - stderr 那行写明是「监控当前不可用」而不是业务错误，否则值班会查错方向。
+  - `sentry.report.failed` 是**唯一不依赖 Sentry 本身的通道**。
+  - 4 条单测钉住「不抛 / 留证据 / 成功时不加噪声」。上报成功时**不多写**——
+    否则每次 error 都多两行噪声，很快没人愿意看日志。
+
+- **限流台账里那条「已知缺口」从此会自己到期。** `GAP_CLOSURE` 早就要求缺口说出「怎么关」，
+  但**那条要求不会过期**：一条写着判据的缺口可以躺在 `RATE_LIMIT_LEDGER` 里三年，
+  每次 CI 仍只报「1 条已知缺口」，没人被要求再看它一眼。
+  现在缺口正文必须写「复核期限：YYYY-MM-DD」（缺日期即 `RATE_LIMIT_GAP_REVIEW_MISSING`，
+  过期即 `RATE_LIMIT_GAP_REVIEW_OVERDUE`），形态与 #197 的 `DEPENDENCY_AUDIT_EXCEPTIONS` 一致——
+  **一个临时的处置方式必须被标明是临时的，并在条件变化时自己变红**。
+  `GET /api/health` 那条已补上 `复核期限：2026-11-15`。
+- **顺手修掉 `docs/testing.md` 里两个抄下来的漂移数字**：C12 那一节写着「14 个有窗口 + 31 个写明理由」
+  与两条已知缺口，而真实读数是 **17 + 28** 与一条——`GET /api/og` 的缺口在 #136 之后已关掉，
+  抄下来的数字却留了很久。已按 roadmap D04 的处方改成**指向门禁输出**而不是抄数字：
+  `pnpm check:route-auth` 每次都会把两个分母与缺口条数打出来。**一个抄下来的数字会一直错到有人去核对它。**
+
+
+- **`pnpm check:security` 在 `braces` 的 GHSA-vfj7-8cjw-p6xm 上红了一轮，而那一轮没有任何可执行的修法——
+  于是判据本身被修掉了：不是放宽，而是把「暂无补丁」登记成一条会自己到期的例外。**
+  2026-10-03 起 `CI=true pnpm check:all` 在 `check:security` 上报 `0 critical, 1 high vulnerabilities`。
+  量完之后结论是**这不是「有人忘了升依赖」**：
+  - 路径 `.>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces`，**仅开发期可达**
+    （`eslint-config-next` 在 devDependencies，不进运行时依赖图、不进产物）；
+  - 公告的 patched range 是 `>=3.0.4`，而 npm 上 `braces` 的**最新发布版就是 3.0.3**
+    （GitHub Advisory Database 的 Patched versions 一栏为 None）——「有个已发布版本能修」这句话本身就是假的；
+  - 往上游看也堵不住：`fast-glob` 3.3.3 仍依赖 `micromatch@^4.0.8`，`micromatch` 4.0.8 仍依赖 `braces@^3.0.3`。
+  一条正确的判据遇上不可修的现实，就成了一条**没人能修的门禁**。本仓库对这种局面的一贯答案不是放宽判据，
+  而是**把处置显式登记成临时的，并让它有到期日**（与 C08 错误通道台账、C12 限流两态台账同形）。
+  - 新增 `src/lib/security/dependency-audit.ts`：判定 + 例外台账 `DEPENDENCY_AUDIT_EXCEPTIONS`，
+    纯函数、35 条单测。台账**不是白名单**，四条规则让它不可能悄悄变成永久豁免：
+    未登记即失败并点名；条目写不完整（理由空/日期坏）即失败；
+    **台账里的公告不再出现在报告里即失败**（修复落地后请删条目，与 `KNOWN_GAPS` 同形的反向断言）；
+    「仅开发期可达」不再成立、或 `reviewBy` 早于今天，即失败。
+  - 两条失败封闭：blocking 计数大于 0 却给不出公告明细、计数与可枚举公告条数对不上，都判红——
+    **「存在但看不见」无法登记，也就无法豁免**。
+  - 新增 `pnpm check:audit`（门禁 47 → **48**），只跑审计这一段，供 CI 的
+    `Security and configuration checks` job 使用；判定只有一份实现，`check:security` 与它不会各判各的。
+  - **CI 里那一步此前是裸的 `pnpm audit --audit-level high`**：裸命令不看台账，于是「没有补丁」会让 job 永远红。
+    已改为 `pnpm check:audit`，`check:security` 的配置面要求同步改成要求 `pnpm check:audit`，
+    并加一条**反向断言单测**：把裸命令塞回去不算接线。
+  - 通过时的输出会自报读数（「1 条已登记例外（GHSA-…）」）——
+    「门禁绿了」与「有 1 条是靠登记过的例外放行的」是两句话，只说前一句就丢了后者。
+  - **这处修复自己被抓了第二次**：第一次只改了 `security-config.yml`（当时 grep 的是
+    「哪些工作流提到 `check:security`」），而 `ci.yml` 的静态门禁作业里还有一步一模一样的裸审计，
+    同一个 PR 的 CI 仍然红。两处都改掉（`ci.yml` 那步与紧随其后的 `pnpm check:all` 重复判定，
+    按那里本来就写着的「一份清单」约定直接删掉），并补 `inspectBareAuditCommands`：
+    **任何工作流都不许再出现裸的 `pnpm audit`**（`pnpm check:audit` / `pnpm audit:storage-orphans` 不算，
+    注释里的字样不算）。一处真实发生过的缺陷形状，不该在另一个地方裸奔。
+  - 变异核对六处（做完复原）：抹掉 STALE 反向断言 / 复核期限 / dev-only 判定 /
+    计数与明细对账 / 台账理由校验 / 裸审计禁令，**每一处都让套件变红**。
+
+- **`check:gate-rule-tests`：判定逻辑内联在脚本里的门禁，从「被计数」升级为「一律失败」。**
+  这条规则是 #183 加的，当时全仓库还有 **10 条**内联门禁，于是它只能把它们**计数并打印**
+  （那个数是分母，隐去它就等于把「有 N 条门禁的强度没有被单测兜底」藏起来）。
+  到 2026-10-01，那 10 条全部搬进了 `src/lib` 规则模块，**这个数归零**——
+  于是「计数」变成了一个**可以悄悄涨回去、而门禁仍然绿**的数字。
+  现在改成硬约束（`INLINE_GATE_REINTRODUCED`）：**新写一条内联门禁必须当场被红，并被点名是哪几条**，
+  而不是「先绿着，等谁有空再去搬」。
+  **一个能悄悄涨回去的绿色数字，不如一条会红的规则。**
+  变异核对：真的加一条判定写在脚本里的门禁 → 红并点名 `check:zz-inline`（做完复原）。
+  今天的状态：**53 个规则模块 / 45 条门禁全部走规则模块 / 0 条内联**。
+
+- **`check:release-docs` 的判据换掉了：它原本只看「当前版本」，而发布审计真正要读的是历史版本的证据。**
+  原实现只做两件事：当前 `package.json` 版本对应的三份发布文档存在吗、几份文档里各含某几个关键词吗。
+  于是**删掉 `docs/operations/production-smoke-v0.9.0.md` 之后门禁照样绿**
+  （实测确认，输出仍是 `✅ ... (v0.11.0, 7 artifacts)`）——而那一份正是**发布审计真正要读的证据**。
+  本仓库其实**刻意**维护着一套完整矩阵：v0.6.0–v0.11.0 每个版本各三份
+  （release / rollback / production-smoke），**6 × 3 = 18 份**。这个「三族覆盖同一批版本」的性质
+  是可判定的，现在变成规则（`src/lib/release/release-docs.ts`，13 项单测）：
+  - 三族必须覆盖**同一批**版本——删掉其中任何一份、或多出一份孤立文档，都报错并点名是哪一族缺哪个版本；
+  - 自述行把覆盖范围报出来（`6 个版本的三族发布证据齐全，共 18 份分版本文档`），
+    **让「覆盖了几版」和「结论」同屏**。
+  **刻意不判「CHANGELOG 里每个已发布版本都有这三份」**：CHANGELOG 声明 11 个已发布版本而这 18 份
+  只覆盖 v0.6.0 之后的 6 个，0.1.0–0.5.0 没有的理由**与 tag 台账里写的是同一条**
+  （标签纪律那时还不存在）——把那条理由在这里**再抄一遍**，就是本项目反复在消灭的
+  「同一份数据有两个来源」。所以只判**三族自洽**，跨到 CHANGELOG 的那一格**写明它没做**。
+  关键词判据沿用 `includes` 子串、**刻意不升级成语义判据**：那批关键词是「这一节必须在」的检查点，
+  语义判断会变成一条没人能反驳也修不动的门禁。
+  判定从 36 行内联脚本搬进规则模块：**内联门禁 2 → 1 → 0，全部 45 条门禁的判定逻辑
+  现在都在有单测的规则模块里**。
+  变异核对五种（做完复原）：删历史版本的 smoke → 红；多一份孤立文档 → 红；
+  关键词缺失（runbook 与 README 各一次）→ 红；版本改成 0.12.0 → 红。
+
+- **`check:agents` 的判据换掉了：原来它只要求 agent 文件在 `AGENTS.md` 里「至少被引用一次」，
+  而每个 agent 在那份文件里被引用两次。** 于是**只从 Quick Reference 索引表里删掉一行**、
+  「When to Use Which」那张表里的引用还在时，**门禁照样绿**——
+  而 `AGENTS.md` 是本仓库**所有人（包括 AI agent）开工前读的第一份文件**，
+  它的索引表少一行意味着那个 agent 按 ID 查不到。
+  现在改成**结构化解析那张索引表**（规则在 `src/lib/docs/agents-index.ts`，15 项单测）而不是全文搜索：
+  - 索引表必须**逐个**列出 `agents/` 下的每个文件（不多不少）；
+  - 行的**编号必须与文件名的数字前缀一致**（`09` ↔ `09-ui-ux.md`）——
+    **全文搜索永远查不出「编号写错了但链接是对的」**；
+  - 同一行重复出现 → 报错并指出首次行号；
+  - **索引表整张不见了 → 报错**（表没了，上面每条判据都会因为「没有行」而空转）；
+  - 表外指向不存在文件的链接仍然报错（那是一条坏链接，与它出现在哪一段无关）。
+  **刻意不判「When to Use Which」那张表**：它是**用法指南**不是索引——行没有编号、
+  一行对应「什么时候用哪个」而不是「有哪些 agent」，行数本来就不等于 agent 数；
+  判它就要把「用法」和「清单」混成一件事。
+  变异核对五种（做完复原）：目录多一个未索引文件 → 红；正文一条坏链接 → 红；
+  **只删索引表那一行（旧门禁漏掉的洞）→ 红**；编号写错但链接对 → 红并指出应为几；
+  索引表整张不见 → 红。判定从内联脚本搬进规则模块，**内联门禁 2 条 → 1 条**。
+
+- **`check:supabase-security`：service-role 信任登记的 `evidence` 不许被整段清空。**
+  `trust.evidence` 是「凭什么相信这个 service-role 调用点」的**唯一书面理由**——例如
+  `src/lib/actions/team.ts` 登记的是 `trust: { kind: "session", evidence: ["supabase.auth.getUser"] }`，
+  意思是「RLS 被绕过了，但至少确认过有人登录」。**把 `evidence` 清空，登记看起来仍然有效
+  （`kind: "session"` 还在），而支撑它的理由没了——门禁一声不吭。**
+  现在非 `server-internal` 的 kind 必须带 evidence，否则报
+  `ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY`；`server-internal` 是唯一例外（它没有外部调用者，
+  没有授权判断这回事，空数组是正确描述而不是漏填）。
+  **顺带把模块头的说法改准**：原文声称会在模块「loses its documented authorization evidence」时
+  失败封闭，而现在它真的两种都覆盖——**登记的符号从模块里消失**（`..._MISSING`）与
+  **evidence 列表被清空**（`..._EMPTY`）。
+  **本条不覆盖的残余缺口，明写出来**：把 `trust.kind` 从 `session` **改成** `server-internal`
+  再清空 evidence，门禁**会放行**——因为没有任何规则钉住「这个模块应该属于哪一类」，
+  而 kind 恰恰是清单里那条**由人复核的决策**。要堵它就得把 kind 也登记两遍，
+  那既不解决根因（决策仍在人手里）也增加维护面，所以**选择显式记录而不是假装堵住**。
+  变异核对：清空 `team.ts` 的 evidence → 红并点名；把 kind 降级为 `server-internal` → 绿（**即上面
+  记录的残余缺口**，实测确认，不是推测）。
+
+- **订正 `supabase/middleware.ts` 的一段注释：它在陈述一件构建器做不到的事。**
+  原文是「动态 import：避免把 faker 等 mock 数据依赖打进 Edge bundle」——**只对了一半**：
+  faker 确实没进**主** Edge bundle（变成独立 chunk、懒加载），但**没进不了产物**：
+  条件分支里的 `await import(...)` 本身**就是一个引用点**，写在死分支里也会照常**发射 chunk**。
+  实测产物里仍有一块约 **707 kB 的纯 faker chunk**，并被 **37** 个
+  `page_client-reference-manifest.js` 引用（即它在客户端模块图内）。
+  换句话说，这里的 `import()` 恰恰是「折不掉」的原因，**不是「折得掉」的手段**——
+  对照 `supabase/client.ts`：那边能被摇掉是因为用的是**静态** import，
+  `NODE_ENV` 折叠后没有引用点，整块随之消失。
+  **用户侧影响为 0**：生产里 `shouldUseMock()` 恒为 false，该分支永不执行，
+  Playwright 复核 8 个生产页面 **0 次请求**命中它；代价只是部署体积，
+  因此**仍然不设**「产物里不许出现 mock 记号」那条门禁（「产物里存在」与「用户会下载」是两件事）。
+  彻底不发射它需要让 mock 会话不依赖 faker，而 mock 种子身份要与种子数据一致——
+  那是改 mock 系统行为，不在本次范围。
+  顺带订正 #178 记录里的一个数字：当时写「被 5 个 auth 页面的 client-reference manifest 列出」，
+  实测是 **37** 个（其中 auth 下 6 个）；且该数字随构建变化（chunk 名是内容哈希），
+  故正确记法是「实测 37 个页面清单引用、浏览器 0 次请求」。
+
+- **新增 `pnpm check:changelog-tags`：CHANGELOG 声明的已发布版本与仓库真实 tag 对账。**
+  起因是一个**读者看不见的分叉**：`CHANGELOG.md` 声明了 **11** 个已发布版本、约 210 条内容，
+  而 `git tag` 与 GitHub Release **只有 `v0.6.0`**——10 个版本处于
+  「变更日志说发布了、仓库里 checkout 不出来」的状态，共约 176 条内容。
+  **这不是笔误**：生产确实部署过 `0.11.0`，而 tag 是**刻意不打**的（缺账户删除端到端演练与
+  commit 归属证据，B01/B02/B03，全部卡外部权限）——**没有证据就等于没做，而打 tag 是对外声明
+  「做完了」**。问题在于**它只被记在 `docs/progress.md` 里**，CHANGELOG 那一侧完全没提：
+  读 CHANGELOG 的人以为有 11 个可 checkout 的发布，审计 tag 的人发现只有 1 个，**两边都「正常」，
+  而它们互相矛盾**。而 `check:release-tag` 并不管这件事——它校验的是**发布工作流的契约**
+  （tag 命名、notes 必须来自 CHANGELOG 章节、禁止 `--generate-notes`），**不读 `git tag`**。
+  规则（`src/lib/release/changelog-tag-reconciliation.ts`，18 项单测）：
+  - 每个已发布版本要么有 tag，要么在 `MISSING_TAG_LEDGER` 里登记理由；
+  - **反方向也判**：有 tag 但 CHANGELOG 没写章节 → 红；
+  - **登记过期也红**：某版本已经有 tag 了，登记还在 → 红。
+    **这是台账的自我清理机制**——证据闭合、tag 补上后必须回来删登记，
+    「一件做完的事不该继续看起来没做完」；
+  - **披露本身在不在也要判**：CHANGELOG 开头必须指向
+    `docs/operations/release-tag-ledger.md`。**登记在代码里、读者看不见的真相，仍然是读者读不到的
+    真相**——而最省事的一次「整理」就是把那段说明删掉，文件立刻干净好看而分叉原封不动；
+  - 一条版本都没解析出来 / 登记理由为空串 → 失败封闭；
+  - **「读不到 tag」与「仓库没有 tag」必须分开**（`TAGS_NOT_VISIBLE`）。
+    这条是量出来的：`actions/checkout` 默认浅克隆且不 fetch tag，`git tag --list` 返回**空数组**，
+    于是「`0.6.0` 有 tag」被判成「`0.6.0` 没有 tag」——**门禁报了一个与事实正好相反的结论**，
+    而且它 exit 1、看起来理直气壮。空列表是事实，读不到是量不到东西；读到空且是浅克隆时
+    立刻停下并说清怎么修（`git fetch --tags`；CI 里给 `actions/checkout` 加 `fetch-depth: 0`），
+    **不继续比下去**——继续比会把每一个真 tag 都报成「没有 tag」。
+  - 配套修 `ci.yml`：`lint-and-type-check` 那个作业的 checkout 加 `fetch-depth: 0`（**只有它需要 tag**），
+    并修 `check:workflows` 的一个假红——`PNPM_COMMAND` 扫的是原始文本，于是**注释里**写的
+    「`pnpm check:changelog-tags` 要对账……」被当成一条脚本引用，门禁报「引用了不存在的脚本」。
+    **注释不是配置**：现在整行注释在扫描前被去掉，脚本名 token 也不再接受反引号这类标点。
+    这与 #184 修过的「正则扫原文 → 注释里的示例代码被当成真调用」是同一个病根。
+  10 个无 tag 版本分**两组、原因不同**，所以逐条登记：
+  `0.1.0`–`0.5.0` 是**标签纪律当时还不存在**（J07 在 v0.6.0 周期才落地，而 v0.6.0 恰好是唯一
+  有 tag 的版本——两件事对得上，不是巧合；补打 tag 等于伪造从未发生过的发布证据）；
+  `0.7.0`–`0.11.0` 是**纪律已在、证据未闭合**。逐条理由见新文档
+  `docs/operations/release-tag-ledger.md`。
+  门禁数 44 → **45**。
+
+- **`check:perf` 的三格判定搬进 `src/lib/release/perf-audit.ts`（20 项单测）**——它是
+  `check:gate-rule-tests` 点名的内联门禁之一，而它恰好是本仓库**最不该内联**的一段：
+  三格里**两格从来没响过**。搬动的真实收益不是形式统一，那两格的问题**都是「判据选错了」**，
+  而「判据选错」只有把判据写成可测的纯函数才谈得上被反复检查——
+  `SOURCEMAP_INLINE` / `SOURCEMAP_RESOLVABLE_REF` / `CHART_INLINED_IN_LANDING` /
+  `CHART_MARKER_MISSING` / `CSS_BUDGET_EXCEEDED` / `NO_ARTIFACTS_SCANNED` /
+  `LANDING_PAYLOAD_UNKNOWN` 这些失败模式**从「手跑变异时验一次」变成了每次都跑的用例**。
+  `exists`（一条 sourcemap 引用能不能解析）由调用方注入，于是「这种分支需要真目录才能验」
+  这个理由也不成立了。
+  新增一格判据：**落地页初始 payload 未知时报红**（`build-manifest.json` 缺失或
+  `rootMainFiles` 为空）——原先这种情况会退化成「什么都没查」而安静放行。
+  重构后与旧实现在真实产物上对跑：同样 2 个图表 chunk、同样 71.4kB CSS、同样扫 63 个文件；
+  落地页 payload 的自述值从四舍五入的 `431kB` 变成 `430.6kB`（`sumKb` 保留一位小数，仅显示差异）。
+  真实产物上的 5 种变异行为不变：内联 data URI / 落 `.map` 文件 / 指向存在的 map /
+  把图表标记塞进落地页初始文件 → 红；指向**不存在**路径的引用 → 仍绿（假红防线）。
+  内联门禁 3 条 → **2 条**。
+
+- **依赖审计：4 个 high 降到 0（任意严重度 0）**，`brace-expansion` 与 `fast-uri` 的
+  override 之前**钉在自身已是漏洞版本的版本上**。
+  `GHSA-qhr7-859c-m2p7` / `GHSA-6j4f-fj2g-mc7p`（`brace-expansion` DoS via uncontrolled
+  recursion）的修复版本随时间上移（2.x 需 `>=2.1.6`、5.x 需 `>=5.0.11`），而
+  `pnpm-workspace.yaml` 里钉的是 `^2.1.4` 与 `^5.0.9`——**两个都在漏洞区间内**。
+  于是 `pnpm audit --audit-level high` 一直红着，而 override 一直绿着：
+  **一条「已经处理过了」的记录，掩盖了一个已经不再成立的结论。**
+  `fast-uri: ^3.1.6` 同理（需 `>=3.1.8`）。现在 `^2.1.7` / `^5.0.12` / `^3.1.8`，
+  `pnpm audit` 任意严重度 **0 条**。
+  全部是同一大版本内的 patch 升级（2.1.4→2.1.7、5.0.9→5.0.12、3.1.6→3.1.8），
+  实测 `lint` / `type-check` / 2,941 用例 / `pnpm build` / E2E 113 passed / `check:all` 全绿。
+  另记一条踩坑：**pnpm 11 不再读 `package.json` 的 `pnpm` 字段**，override 的新家在
+  `pnpm-workspace.yaml`——加错位置时 pnpm 只给一行 WARN 就继续，装完什么也没变。
+
+- **`check:i18n` 的判定逻辑从脚本搬进 `src/lib/i18n/translation-usage.ts`（22 项单测）**——
+  它是上一条 `check:gate-rule-tests` 点名的 4 条「判定内联在脚本里、强度没有被单测兜底」的门禁之一。
+  搬的过程中发现**两个会让这条门禁静默变松的洞**，都修掉了：
+  1. **别名遮蔽**：命名空间绑定收在 `Map<别名, 命名空间>` 里，于是同一文件里
+     `const t = useTranslations("a")` 与 `const t = getTranslations("b")` 并存时**后者静默覆盖前者**
+     ——按 `a` 写的那些调用会拿 `b` 去查，查不到就报红、查得到就当作已验证，两种结果都是编的。
+     现在它是一条明确的问题项（`AMBIGUOUS_NAMESPACE_ALIAS`）：静态阶段判不出来就**说出来**，
+     而不是挑一个继续。
+  2. **别名未转义**：调用正则用 `\b${alias}` 拼，而别名取自 `[A-Za-z_$][\w$]*`——
+     **`$` 是合法的 JS 标识符字符**，而在正则里 `$` 表示「输入末尾」，所以 `const t$ = useTranslations("a")`
+     的正则永远匹配不到任何东西，它名下**所有**翻译调用被静默跳过。现在转义后再拼。
+  顺带修掉一个**当时还活着的假红**：命名空间与调用的正则扫的是原始文本，于是**注释里**的示例代码
+  （`// const t = useTranslations("a")`，本仓库文档的常态）会被当成真调用——
+  实测旧实现会拿自己文件里的 `t("a//b")` 报 `缺少 zh-CN 翻译 key: a.a//b`。
+  现在扫描前先剥注释（**保留换行**，行号是这条门禁的输出之一）。
+  实测基线：**878 个静态翻译调用 / 155 个命名空间绑定 / 375 个文件**，en/zh-CN 均存在——
+  与旧实现**逐个相同**（同一棵树上对跑，证明重构没有丢覆盖）。
+  变异核对（做完复原）：造一个别名遮蔽的文件 → 红并说明该改别名；
+  造一个 `t$` 别名引用不存在的 key → 红（改前会被静默跳过）。
+  内联门禁 4 条 → **3 条**。
+
+- **新增 `pnpm check:gate-rule-tests`：门禁的判定逻辑必须放在有单测的规则模块里。**
+  `check:gates` 自己写着「只判断接线与引用是否成立，**不判断门禁本身的强度**」——
+  接线只回答「门禁会不会跑」，不回答「门禁会不会响」。而本轮复核量到的事实是：
+  `check:perf` 的三格里**两格从来没响过**，而「它们没响过」这件事**没有任何机制会发现**。
+  仓库已有的判据（判定逻辑放 `src/lib/**` 纯函数规则模块、脚本只负责 IO）有一个可机械核对的
+  副产品——规则模块有名字，vitest 的测试文件名以它为前缀，于是「规则模块有没有单测」成了
+  **可判定的事实**。现在把它固化成门禁：
+  - 每个 `check:*` 引用的每个 `src/lib` 规则模块都必须有以它为前缀的 `*.test.ts`；
+  - **一条规则模块都没检出时报红**——提取靠读脚本文本，是启发式，
+    「因为提取得不对所以什么都没查到」必须出声，不能安静地报 0 项通过；
+  - 判定逻辑**内联在脚本里**的门禁不算错，但**必须被计数并打印**——这个数是分母，
+    隐去它等于把「有 N 条门禁的强度没有被单测兜底」藏起来。
+  `types.ts` / `*.types.ts` 不算规则模块（装的是类型声明，正确性由 `tsc` 负责；
+  `database.types.ts` 更是 schema 生成的）——代价是判定逻辑若塞进叫 `types.ts` 的文件会逃过，
+  这个代价按取舍格式写明在规则里，不藏着。
+  实测基线：**48 个规则模块 / 40 条门禁走规则模块，另有 4 条判定内联**（分母可见），
+  全库 247 个测试文件，0 项缺失。
+  变异核对两种（做完复原）：加一条规则模块没有单测的门禁 → 红并点名；
+  让提取返回 0 条 → 红（`NO_RULE_MODULE_DETECTED`，即「这道审计自己量不到东西」）。
+  门禁数 43 → **44**。
+
+- **`check:perf` 那一格 recharts 判据原先永远不可能命中**——它被命名为
+  「recharts 独立 chunk 存在（懒加载未被回退）」，而实现是「在任一产物的**前 200 kB** 里
+  正则找 `recharts`」。实测（Turbopack 生产构建）：`.next/static` 的 63 个文件里 `recharts`
+  **一个都不出现**，而 recharts 确实被打进了产物。原因是 Turbopack 的生产产物**不内嵌模块路径
+  字符串**，所以「包名」在客户端产物里**结构性地不可搜**——于是这一格长期报「未检测到」，
+  却顶着「防懒加载回退」的名字。**一条永远显示「没找到」、又假装自己有覆盖率的检查比没有检查
+  更糟**：它制造的是它自己都不信的覆盖率。
+  现在改用**导出符号** `AreaChart` 作标记（实测扛得过压缩，而 `recharts` 扛不过），
+  且判的不再是「找不找得到」，而是**它该不在的地方在不在**：
+  **落地页初始 payload（`build-manifest.json` 的 `rootMainFiles`，落地页真正请求的那 6 个文件）
+  里不得出现这个符号**——有人把 `next/dynamic` 改回静态 import，recharts 就会被拉进去，立刻红。
+  两处刻意的「宁可红」：① 一个文件都没命中标记 → **报红**而不是报「未检测到」
+  （标记消失的成因是压缩器/工具链改名，不是「图表被删了」，这时候它量不到任何东西，
+  沉默地绿比红危险得多）；② **不再只读前 200 kB**（实测 61 个 js 里有 4 个超过 200 kB，
+  最大 724 kB，原窗口对其中 4 个文件的大半内容是瞎的）。
+  实测基线：标记只出现在那两个图表 chunk（360.6kB + 15.2kB），
+  741 kB 那个 faker 死 chunk 里没有；落地页初始 payload 431kB / 6 个文件，不含图表。
+  变异核对三种（做完复原）：标记被塞进 `rootMainFiles` 里的那个文件 → 红并点名；
+  标记整体改名 → 红并说明「这一格量不到任何东西」；`build-manifest.json` 缺失 → 红。
+
+- **`check:perf` 的 sourcemap 那一格原先只能看见三种泄漏形态里的一种**：它只查
+  「静态目录里有没有 `.map` 文件」。而 `//# sourceMappingURL=data:…` 会把**整份原始源码内联进
+  那个 JS/CSS 文件**——不需要额外请求，浏览器拿到产物就等于拿到源码，而这一格完全看不见它；
+  一条指向**确实存在**的 map 的 `sourceMappingURL` 同理。现在三种形态都算，
+  并把**分母**也补上：静态目录一条文件都没有时报红而不是报绿（「什么都没在看」与「干净」同形）。
+  **指向不存在路径的引用刻意不算**：那是第三方库留下的死引用，既不泄漏也不可调试，
+  按它报红就是一条没人会修的假红——与 `check:bundle` 的内容判定对假红是同一态度。
+  实测基线：63 个产物文件里三种形态一个都没有。变异核对四种（做完复原）：
+  内联 data URI → 红；落一个 `.map` 文件 → 红；指向确实存在的 map → 红并打出那一对路径；
+  指向**不存在**路径的引用 → **仍然绿**（假红防线）。
+
+- **`pnpm check:bundle` 现在也判产物内容，不再只判体积**：新增一条判定——**客户端产物里不得出现
+  服务端专用变量的名字**（`SUPABASE_SERVICE_ROLE_KEY` / `STRIPE_SECRET_KEY` / `CRON_SECRET` … 12 个，
+  清单直接从 `security-config.ts` 的 `SERVER_ONLY_ENV_NAMES` 拿，不重抄）。
+  **它补的是源码规则的一个盲区**：`check:security` 的 `inspectClientModules` 判的是
+  「`"use client"` 模块里有没有直接读 `process.env.<服务端专用名>`」，于是它看得见
+  `process.env.STRIPE_SECRET_KEY` 写在客户端组件里，**看不见**「客户端组件 → import 一个
+  读该变量的共享 helper」这条间接路径。而 `NEXT_PUBLIC_*` 之外的变量一旦被客户端图碰到，
+  构建期就会把**值**内联进产物——那一刻它在服务端也不再是秘密。
+  **按名字判而不是按值判**：值依赖某次构建时那台机器上真的配了什么，CI 上通常什么都没有，
+  那条门禁在 CI 上会永远绿——一条永远绿的门禁比没有门禁更糟（本仓库为此付过学费：
+  `query-error-channel` 的 `QUERY_ERROR_CHANNEL_PARSE`）。变量名是源码里的常量，与环境无关。
+  实测基线（真实生产构建）：这 12 个名字**一个都不出现**，而且 `process.env.` 这个形态
+  **一次都没出现**（全部在构建期折成字面量）——所以这条规则今天 0 命中，而它的失败模式是
+  **具体的**：有人让客户端图碰到任何一个服务端专用变量，名字就会随值一起进产物。
+  变异核对：往一个客户端 chunk 注入 `VAPID_PRIVATE_KEY` → 红并点名到那个文件。
+  **刻意不判 mock 记号**：真实产物里有一块从不被人请求的死 chunk，按它报红是假红——
+  「产物里存在」与「用户会下载」是两件事（同 PR #178 的说明）。
+
+- **生产首页的 JS 里有 48% 是 mock 种子数据 + 整包 faker**（`src/lib/supabase/client.ts` 一行三元）：
+  实测（gzip 后的真实传输量，不是文件大小）——修之前生产首页 **506,604 字节**的 JS 里有
+  **246,541 字节**是一个 742 kB 的 chunk，内容是 `mock-user-001` 那一整套假数据与整包 faker。
+  成因链：那个文件用**静态** `import { …, createMockSupabaseClient } from "@/lib/mock"`，
+  而 `@/lib/mock` 静态引入 `./data`（faker）与 `./store`；本仓库 12 个 `"use client"` 模块
+  都碰 `createClient`，于是整块跟着每一个客户端入口走，**首页的 HTML 里直接 `<script src>` 它**。
+  **为什么 `config.ts` 的折叠救不了它**：那一处折的是 `isMockEnabled` 这个**常量**，
+  而调用点写的是 `shouldUseMock()`——**一次函数调用把常量链断掉了**，于是分支活着、
+  静态 import 活着、整块 faker 跟着活着。修法与 `config.ts` 里 `isMockEnabled` 是**同一个机制**：
+  把 `NODE_ENV === "production"` 写进这个三元，打包器就能把分支折成常量 `false`，
+  `createMockSupabaseClient` 随之没有引用点，整块被摇掉。
+  量到的效果：首页 JS **506,604 → 260,084 字节（gzip，−48.7%）**；
+  用 Playwright 实测 8 个生产页面的**网络请求**，**没有任何一个页面再取到含 mock 的 chunk**
+  （修之前 `/` 取）。`src/lib/mock/config` 的 import 顺带从桶里拆出来——那个模块文件头
+  就写着「仅供 bundle 体积敏感的场景引入」，而调用点此前用的是桶。
+- **为什么 `check:bundle` 一直看不见它**：它量 `.next/static` 总量与基线的比值，
+  而**基线是在泄漏已经存在的时候立的**——一块「本来就多余」的代码不会让总量变大。
+  同一族的先例仓库里已经记过一次（构建期折叠那 24.9 kB「只占基线的 0.9%，
+  `check:bundle` 的 5% 预算拦不住」）；那次的死代码在**源码**里看得见所以有形状用例，
+  这次只在**产物**里看得见，而产物体积恰好是体积门禁唯一量不出的维度。
+  所以新加的常驻检查判的是**形状**而不是产物（`src/lib/release/mock-client-bundle.test.ts`，
+  5 条）：① 除已登记的 `src/lib/supabase/client.ts` 外，任何 `"use client"` 模块都不得
+  静态 import `@/lib/mock` 桶（要判配置就用零依赖的 `@/lib/mock/config`；要真拿 mock 客户端
+  只能走动态 `import()`，那样它是独立 chunk）；② 那一处**必须**被可折成 `false` 的三元守着。
+  **刻意没有**加「产物里不许出现 mock 记号」的门禁——实测下来那会是**假红**：
+  修完之后 `.next/static` 里仍留着一块 741 kB 的死 chunk（被 5 个 auth 页面的
+  client-reference manifest 列出），但浏览器**从不请求它**。「产物里存在」与「用户会下载」
+  是两件事，一条按前者报红的门禁只会变成一条没人修的噪音。**这一条交注释记账，不交红门禁。**
+  两次变异核对：折掉那行三元 → 折叠形状那条红；给一个新客户端模块加静态桶 import → 第一条红并点名文件。
+
+- **25 个控件在 Windows 高对比度模式下没有可见焦点**（`src/components/ui` 全部改一处）：
+  `check:tailwind` 一直报着一条非阻断告警「上游 shadcn 基元里还有 25 处 v3 类名待跟随上游收口」，
+  25 处**全是** `outline-none` → `outline-hidden`。从本仓库**自己构建出来的 CSS** 里量到：
+  v4 的 `.outline-none{outline-style:none}`，而
+  `.outline-hidden{outline-style:none;outline-offset:2px;outline:2px solid #0000}`，
+  后者还自带 `@media (forced-colors:active)` 兜底。那圈 `transparent` 轮廓正是
+  **高对比度模式下浏览器替我们画的焦点环**——也就是说 `outline-none` 让按钮、输入框、
+  下拉、开关、标签页等 25 处**只剩键盘操作**的用户彻底看不见焦点在哪。
+  「等上游」在这里不成立：shadcn 上游同样在往 `outline-hidden` 收，本地改完下次 `shadcn add`
+  覆盖也就是回到今天这个形状（而门禁会再报一次）。
+- **顺带查出一条更怪的：门禁自己把被禁的类名塞进了产物。** 修完源码之后
+  `rg outline-none .next/static/chunks/*.css` **仍然有命中**——三段死规则
+  （`.outline-none`、`.hover\:outline-none:hover`、`.focus-visible\:outline-none:focus-visible`）。
+  逐一量出来的来源：① `src/lib/tailwind/` 里是 `check:tailwind` 的规则本体与它的用例，
+  它们**必须逐字**写着被禁的类名（正则名、测试 fixture），否则门禁就检查不了它；
+  ② **Markdown 也在 Tailwind 的默认扫描范围里**，所以 `CHANGELOG.md` 与历史 roadmap 里
+  **提到**某个类名等于在用它（连本条 CHANGELOG 自己也贡献了一段）。
+  修法是两条 `@source not`（v4 的排除指令，只排除**扫描**，不影响 TypeScript 编译，
+  也不影响 docs-site 自己的构建）：排除门禁目录，以及排除 `**/*.md`——
+  **Tailwind 该扫的是代码，不是散文**。
+  量到的效果：产物里 `outline-none` 归零，CSS 总体积 73952 → 73128 字节（少 824 B 死规则）。
+  为什么这一格值得单独记：它堵住的是「从产物取证」这条路，而那恰恰是判据失效时最该看的地方——
+  判据把自己的取证途径污染了，比判据本身失效更难发现。
+  判据同时从**告警**升成**天花板**（`native-theme.test.ts` 新增 3 条用例：真实仓库读数为 0，
+  带非空分母；合成输入读数为 0；退回 `outline-none` 时会红）。变异核对：把 `button.tsx`
+  一处改回 `outline-none` → 真实仓库那条用例红并点名到文件与行。
+- **为什么这条在 a11y 门禁的射程外**：`check:a11y` 是静态写法审计，看的是 ARIA 属性、
+  `alt`、按钮标注；`outline-none` 是不是把轮廓彻底去掉属于**类名语义**，
+  而那只有在产物里才看得见（`.outline-hidden` 才有 forced-colors 兜底）——
+  所以它由 `check:tailwind` 的类名规则守，而不是由 a11y 规则守。
+
+- **`/api/og` 有了按 IP 的窗口，限流台账的已知缺口从 2 条降到 1 条**：
+  那条端点天然要能被陌生人打——它挂在 `<meta og:image>` 上，社交预览爬虫与搜索引擎都是
+  以**用户的 IP** 来取的，所以台账条目当初写「按会话限频这种现成形态对它不成立」；
+  但**按 IP 是成立的**：正常爬虫每个页面取一次，60/分钟绰绰有余，同一个 IP 反复取才是异常。
+  **为什么不是台账条目原本写着的「按参数做缓存」**：参数缓存挡不住这条端点真实的放大方式——
+  变一下 `title` 就是一个新键，于是任何参数缓存都以「每个键只算一次」收口，而攻击者要的
+  正是这个。窗口按**来的人**算，与参数无关，那才是能收住的东西。
+  （参数缓存另有价值，但那是 CDN 的活：响应已经带 `s-maxage=86400`，不重复实现。）
+  429 那一侧刻意带 `no-store` + `Retry-After`：放行那一侧是 `s-maxage=86400`，
+  若 429 也长缓存，窗口一过期客户端仍拿不到图。
+  删掉台账条目这一步是 `check:route-auth` 逼出来的——它报 `RATE_LIMIT_STALE`
+  （「有窗口却还躺着一条台账也是红」），读数由 **16 有窗口 + 29 写明理由（2 条缺口）**
+  变成 **17 + 28（1 条缺口）**。
+  5 条用例钉住：放行 / 超窗不合成 / 429 不长缓存 / `Retry-After` 向上取整且至少 1 秒 /
+  **限流按请求打与参数无关**（最后一条正是参数缓存做不到的那一格）。
+  两次变异核对：去掉限流 → 5 条红；429 改成长缓存 → 1 条红。
+  **剩下的 1 条缺口是 `GET /api/health`**：探针与对外可见的健康端点还没分成两条路径，
+  而它的放大面已由上一条的 `createProbeCache` 关掉。
+
+
+- **`GET /api/health` 的无凭据调用不再把成本按次数转嫁给 Supabase**：`RATE_LIMIT_LEDGER` 里那条
+  **已知缺口**自己写明了两件事——按 IP 的滑窗会把监控自己读成 429（所以「加窗口」在这条上不是
+  免费的），而它每次请求都真打一次 `profiles limit(1)` 的 anon 探测，于是**无凭据的重复调用
+  把成本按次数转嫁出去，没有任何东西拦住**。这一条关掉的是后半句：探测现在走
+  `createProbeCache`（`src/lib/health/probe-cache.ts`，TTL 5s + **single-flight**）。
+  single-flight 比 TTL 更关键——TTL 只挡得住先后到达的重复调用，而放大面通常来自**并发**的一簇；
+  只加 TTL 的话 20 个并发探针仍然是 20 次往返。**失败也缓存**（TTL 相同）：Supabase 挂掉时
+  正是最需要挡住的时刻，「失败不缓存」看起来更实时，实际是把一次故障放大成一串。
+  顺带钉住一个测试侧的坑：路由里有了**进程级**状态，原来的 8 条用例用静态 import 会共用一份缓存，
+  于是「先失败再成功」的两条会读到上一条的缓存值。改成每条用例重新 import 一份模块实例——
+  **不给生产代码加「供测试清缓存」的导出**，那是另一种谎。
+  **剩下的那一半说清楚**：端点本身仍无凭据、无窗口；缓存是**进程内**的，serverless 下每个实例
+  各有一份，挡的是「一个实例被重复打」而不是「整个部署被重复打」。要关掉剩下那半需要把
+  「探针」与「对外可见的健康端点」分成两条路径，或引入跨实例共享缓存——台账条目里照旧写着。
+  三次变异核对：拆掉 single-flight → 3 条红（并发 20 变 20 次往返）；失败不缓存 → 2 条红；
+  路由不查缓存 → 1 条红。
+
+
+- **Auth 读取一次抖动，八个仪表盘页面抛的是 `TypeError` 而不是「暂时不可用」**（C09 后半）：
+  `dashboard`、`billing`、`notifications`、`profile`、`projects`、`projects/[id]`、`settings`、`team`
+  此前写的是同一个形状——只解构 `user`、不取 `error`、然后 `user!.id`。那条 `!` 在类型上宣称
+  「这里不可能是 null」，而 `auth.getUser()` 把失败装在 `error` 里返回而不是抛出，于是
+  **「Auth 服务抖了一下」与「这个用户真的没登录」在下游长得一模一样**，页面只能靠抛
+  `Cannot read properties of null` 表达它。抛 TypeError 不是撒谎，但它是**一次没有分类的崩溃**：
+  错误边界拿到的 message 里没有任何线索指向会话读取失败。
+  新增 `requireSessionUser(supabase)`（`src/lib/auth/session-user.ts`），三条出口各有名字：
+  读到用户就返回（**已判空**，调用方写 `user.id`）、确认没有会话就 `redirect(ROUTES.login)`、
+  确认是读取故障就抛带 `code = "SESSION_READ_UNAVAILABLE"` 的错误——仪表盘的 `error.tsx` 有重试按钮，
+  这比「跳登录页再让用户登一次」更接近该有的行为，重新登录走的正是同一条读取。
+  分类仍由 `session-error` 负责，与 `guards.ts` / `api/auth/callback` / `actions/audit` 同一套判据：
+  `error` 非空**不等于**抖动（匿名访客拿到的就是 `AuthSessionMissingError`），只有
+  `AuthRetryableFetchError` 与 5xx 算读失败。
+  **返回整个 user 而不只是 id**：有两页本来就读 `user?.email` / `user?.created_at` /
+  `user?.last_sign_in_at`，把返回值收窄成 id 会把那些「容忍 null 的可选链」变成「为了拿邮箱再发一次
+  请求」——拿一个真缺陷换另一个。于是 `user?.email ?? ""` 一并收成 `user.email ?? ""`。
+  `src/app/**` 里 `user!` 由 **15 处 → 0 处**。新增常驻检查 `session-user-wiring.test.ts`：
+  读源码形状判「`src/app/**` 下不得有 `user!`」，带非空分母、一条反向证据（地板值 8 个页面
+  确实在用 `requireSessionUser`）和一条防空转用例；判据**没有白名单**——真有合法的可空局部变量也叫
+  `user` 就改名，开白名单等于把「谁都可以把自己排除在外」写进规则。
+  写这条检查时踩到的坑由用例挡住：`g` 标志正则的 `lastIndex` 跨调用保留，复用一条正则扫多行会让
+  同一文件的第二处违规被跳过。
+  **接着把剩下 4 处会话读取也收掉**（`dashboard/layout.tsx`、`admin/layout.tsx`、
+  `admin/audit-logs/layout.tsx`、`profile/edit/page.tsx`）：它们读**角色**时读失败已经答成抛错
+  而不是 redirect（C08 那一族修的），唯独**会话**这一次读取仍然把一次 Auth 抖动答成
+  「你没登录」——客户端清掉本地会话并跳登录页，而重新登录走的正是同一条读取。
+  常驻检查因此有**两条判据，第二条才治本**：「`src/app/**` 下不得有 `user!`」只判症状，
+  而一个新页面写 `const { data: { user } } = await supabase.auth.getUser()` 再配
+  `if (!user) redirect(...)` 时它全绿——**那正是这 4 个文件原来的写法**。
+  第二条判「`src/app/dashboard/**` 下不得直接 `auth.getUser()`」，被认可的入口只有
+  `requireSessionUser` 与 `requireAuth`；另有一条用例把 `auth.getSession()` 显式排除在外
+  （settings 页用它算「当前这台设备」，只用于显示标记、不参与权限判定）。
+  顺带删掉 2 个因此变成未使用的 import——`pnpm lint` 不报未使用的 import。
+  **顺着量出来的第二个同型缺陷：守卫失败被压成两种说法。**
+  `POST /api/stripe/checkout` 把**每一种**守卫失败都答成 `401 + notAuthenticated`，
+  而同族的 `api/analytics` 早就按 `guardHttpStatus` 分开了——同一个缺陷的两次落地，
+  谁也没给另一次提个醒。往外一量，同一形状在 **8 处 Server Action 调用点**上，
+  而且那里更糟：`auth.error.code === "UNAUTHORIZED" ? "notAuthenticated" : "forbidden"`
+  是一个**二元三元**，而 `AuthGuardError.code` 有四个值，于是 `SERVICE_UNAVAILABLE`
+  （我们自己没读到会话或角色）被答成 `forbidden`——**一件关于用户权限的事实**。
+  管理员看到「你没有权限」、列表显示成空的、日志里什么都没有。
+  新增唯一出口 `guardFailureKey(error)`（`notAuthenticated` / `forbidden` / `authUnavailable`），
+  8 处调用点各改一行；新键按双语登记。checkout 路由改用 `guardHttpStatus`。
+  checkout 那里刻意写成两个 `if` 分支而不是三元：`route.test.ts` 那条「每个能返回的码都在两个
+  locale 里有文案」靠正则读 `jsonNoStore({ error: "字面量" }`，三元里的两个键它一个都读不到，
+  那条测试会从 9 掉到 8 报红——**让判据保持原样、让代码迁就判据**，比放宽判据好。
+  常驻检查 `guard-failure-key-wiring.test.ts` 判「`src/lib/**` 下不得出现对 `auth.error.code`
+  的就地三元」，**不**钉具体字符串：只钉字符串的话，下一个人写成三元套三元照样绿。
+  没有动的：`proxy.ts`（`user = null` → 重定向登录页是正确答案）、`mfa/page.tsx` 的 `refreshSession`。
 
 - **付款通知读不到东西时点名上报**（C08-c 第五批）：`api/webhooks/stripe` 的 `notifyTeamOwner`
   两次读取（按 `provider_id` 回查订阅归属、查团队 owner）原先都不绑 `error`——钱收到了、通知没发、
@@ -2302,6 +2270,7 @@ See `docs/operations/release-tag-ledger.md`.
   `docs/operations/environments.md`（新节「`NEXT_PUBLIC_*` 是构建期常量」），并在 `.env.example`
   登记此前没有记录的 `NEXT_PUBLIC_FEATURE_AUDIT_LOG_EXPORT`。
 
+
 ### Known Limitations
 
 - **从未登记过的 bucket 对象对数据库不可见**：`find_orphan_upload_objects()` 的真相来源是
@@ -2321,6 +2290,7 @@ See `docs/operations/release-tag-ledger.md`.
   下一次部署之后，`pnpm smoke:production --expected-commit "$(git rev-parse HEAD)"` 才是可用证据。
   非 Vercel 构建（本地、Docker）没有这两个环境变量，`commit` 恒为 `null`——这条链路的 commit 归属
   只在 Vercel 上成立，自建部署需要自己注入同名变量。
+
 
 ## [0.11.0] — 2026-09-22
 

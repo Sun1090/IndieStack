@@ -7576,3 +7576,58 @@
   而不是现在凭感觉调。
 - 下一项：等配额恢复后确认距离回落到 0；或拿 DB 密码（外部凭据）推进 B04。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — v0.12.0 发布章节切出（tag 刻意不打）
+
+- 里程碑 / 版本：**v0.12.0**（`package.json` `0.11.0 → 0.12.0`）。分支：`release/v0.12.0`。
+- 状态：发布章节已完成；**tag 刻意不打**，等 B03。
+- 为什么现在做：任务池 **24 项全部闭合**、六条退出标准逐条核对全部达成，
+  而 roadmap 的风险段明确写着「B 域依赖外部权限」。既然证据已经存在，
+  再不切出发布章节就是在让 CHANGELOG 继续欠账。
+- **判断依据不是「代码都改了」**：退出报告 `docs/operations/release-exit-report-v0.12.0.md`
+  逐条核对，每条给可复现来源。判据 2 要求的「B01/B02 有执行记录」在本版本已成立
+  （B02 是 2026-10-05 第一次**真实**回滚演练，含 deployment id 与「用错 commit 跑 smoke 如期红」）。
+- **顺带修掉一个 CHANGELOG 缺陷**：Unreleased 段被历次 append 切成
+  **25 个散落小节**（`### Added` 出现 3 次、`### Fixed` 出现 18 次），
+  读起来像按时间追加的流水账而不是一次发布的说明。归一成
+  Added/Changed/Fixed/Known Limitations 各一节，**条目数 148 → 148（逐条比对，无丢失）**。
+  `check:changelog` 只查小节是否存在、不查重复，所以这个漂移一直没被抓到。
+- **版本号连带三处**：`package.json`（`pnpm-lock.yaml` 不记录根包版本，无需同步）、
+  `.env.example` 的 `NEXT_PUBLIC_APP_VERSION`、`.github/RELEASE_CHECKLIST.md`
+  的版本号与文档链接。后两处是 `check:release-docs` 逼出来的——
+  它在版本号升到 0.12.0 的瞬间报 `RELEASE_DOCS_MISSING_FILE`，
+  **这正是它该做的事**（手写版本号的地方最容易漏）。
+- **本版本唯一的 DB-first 硬约束**：迁移 `034_email_skip_reason.sql`。
+  新代码**既写又读** `notifications.email_skipped_reason`
+  （worker 在 `.update({...})`，A05 面板在 `.eq(...)`），
+  **未应用 034 而先部署代码会让 digest worker 在跳过分支抛错、队列卡住**。
+  云端是否 applied **本机无法核实**（无 Supabase 凭据），所以它被写成
+  发布前必须复核的**停止条件**，而不是「假设已应用」。
+- **新增三份分版本发布文档**（`check:release-docs` 要求，7 个版本 / 21 份）：
+  - `release-runbook-v0.12.0.md`：入口条件、相对 0.11.0 的 6 条差异、发布步骤、停止条件、冻结状态。
+  - `rollback-runbook-v0.12.0.md`：本版本特有的两类故障形态（034 未 applied 而代码已部署；
+    存活探针被误用导致容器重启）、前向修复迁移的判定顺序、034 **绝对不可逆向**的理由。
+  - `production-smoke-v0.12.0.md`：7 步自动化 + 只读 SQL + 隔离账号三类矩阵，
+    含**发布前的生产实况快照**（`version=0.11.0 commit=08dd6f17 ready=true`，
+    sentry/stripe `configured=false`）。
+- **为什么不打 tag**：`docs/operations/release-tag-ledger.md` 写明 tag 的前置是发布证据闭合，
+  而 **B03 缺外部凭据**。已在 `MISSING_TAG_LEDGER` 登记理由
+  （与 `0.7.0`–`0.11.0` 同组：**纪律已在、证据未闭合**）。
+  打 tag 是对外声明「做完了」，**没有证据就等于没做**——
+  所以这里刻意留一个「不完整」的发布，而不是补一个假的完成。
+- **诚实交代一处**：`rollback-runbook-v0.12.0.md` 的「演练记录」**是空的**，
+  没有抄 v0.11.0 的记录充数——**v0.11.0 的回滚不跨迁移边界**，
+  拿它证明本版本的回滚路径可用是不成立的。补齐它需要一次真实的生产部署切换。
+- 验证（全在 `release/v0.12.0` 分支）：
+  `pnpm verify:build` ✅（含 lint/type-check/test/check:all/build/bundle/perf/CSS/sourcemap）；
+  `pnpm test:e2e` ✅ **113 passed**；`pnpm check:all` ✅；
+  `check:changelog` ✅ 12 个已发布版本；`check:changelog-tags` ✅ 12/1/11；
+  `check:release-docs` ✅ 7 版本 / 21 文档；`check:roadmap-entries` ✅ 29 条；
+  包体积 2925.5 kB / 基线 2926.8 kB；覆盖率地板（91/90/93/92）**未改动**。
+- 阻塞 / 风险：Vercel 构建配额（外部，导致生产落后 main 6 个提交）。
+  发布后的生产冒烟与部署新鲜度读数**尚未取到**，因此三份文档里对应行仍是「⏳ 待执行」——
+  **没跑的不写成通过**。
+- 下一项：配额恢复 → 合并发布 PR → 取 7/7 生产证据与新鲜度读数 → 回填三份文档；
+  外部凭据到位后依次闭合 B03 / B04 / B05 P2–P4，补做回滚演练，届时补打 `v0.12.0` tag
+  并删除 `MISSING_TAG_LEDGER` 里的登记（不做的话门禁会红，这是有意的自清理机制）。
+- 更新时间：2026-10-05（UTC）。
