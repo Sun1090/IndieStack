@@ -6963,3 +6963,45 @@
   那样下一次偶发就能归因，而不是像这次一样只剩一句「Test failed」。
   这属于**尚未提出的改动**，不擅自做。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — A05 收口：「站内已读 = 不必寄」定案，并把一个没有钉子的语义钉上（A05 任务池清空）
+
+- 里程碑 / 版本：v0.12.0 A05 余项。分支：`feat/a05-read-suppresses-email`。
+- 状态：DONE。**A05 任务池自此没有余项**（三条阻塞里少了一条）。
+- 为什么做：用户授权「按你的来」，于是这个产品决策由本仓库自行判定。
+  动手前先量了一件事：**这一栏此前既没有理由也没有钉子**——队列谓词里 `is_read=false`
+  一直是对的，可注释写着「要不要让已读免寄是另一个待定口径」，
+  于是它只是「实现里恰好如此」。真有人为了「别让 `email.backlog` 显得在变小」去掉它，
+  邮件就会重新寄给读过通知的用户，而**没有一条用例会红**：
+  发送路径、mock、E2E 都不看队列谓词。**先量这一步决定了这次改动是「补决定」而不是「补功能」。**
+- 定案与理由（写进 `repositories/notifications.ts` 谓词注释，单条读过与「全部已读」同论）：
+  1. 摘要的职责是提醒**还没看到**的东西；为已读的事再寄一封是纯噪声，
+     而噪声会教会用户忽略整个摘要——**那比漏寄一封更贵**。
+  2. 反过来（已读仍寄）会让 `security_alert` 这类最不该被忽略的通知，
+     因为用户读过它而**多**发一封，等于用一次噪声换一次送达，方向是错的。
+  3. 「积压因此变小」的顾虑已由 `readBeforeSend` 那一读数解决：
+     面板不只依赖 `email.backlog`，所以「读过的行不出队」不等于「从视野里消失」。
+  附带一条纪律：与 `email_skipped_reason` 同款——**出队不复活**（之后又变回未读也不会被重寄）。
+- 完成内容：
+  1. 两处注释改写：队列谓词上方新增「这是定案而非实现细节」+指向理由段落；
+     `countReadBeforeSendEmailNotifications` 上方把「另一个待定口径」换成定案与三条理由。
+  2. **两条钉子**（`notifications.test.ts`，44 → 46 条）：
+     「已读即不必寄」逐个断言三处队列读数都带 `is_read=false`；
+     「读过的行仍被单独量出来」断言 `is_read=true` 那一栏还在——**防止有人为了
+     「别让积压变小」把可见性一起删掉**。
+  3. 双语 `docs-site/email.md` 把这一段从「观察到的行为」改写成「决定 + 理由 + 不复活」。
+  4. `docs/roadmap-0.12.0.md` A05 条就地改口径：余项清零，并写明定案日期与钉子位置。
+- **两条钉子都做过变异核对**（做完复原）：
+  把队列两处 `is_read=false` 改成 `true` → 「已读即不必寄」红；
+  把 `countReadBeforeSendEmailNotifications` 改成直接 `return 0` → 「读过的行仍被单独量出来」红。
+- 变更文件：`src/lib/repositories/notifications.ts`（注释）、
+  `src/lib/repositories/notifications.test.ts`（+2 条）、`docs-site/email.md`、
+  `docs-site/zh-CN/email.md`、`docs/roadmap-0.12.0.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：定向 vitest 45/45；`check:roadmap-entries` ✅ 29 条；
+  `check:bilingual-docs` ✅；`check:changelog` ✅；全量门禁与 build 见 PR。
+- 阻塞 / 风险：**剩两条**，都不是工程能单方面解的——
+  B02–B05（外部权限：Vercel 配额 / 云端 Supabase 凭据 / 可牺牲账号）与
+  `/api/health` 的探针-对外端点分离（会改动 smoke、Docker `HEALTHCHECK`、Vercel Cron 三方的响应契约）。
+  回滚 = revert 本分支（**不含任何行为变更**，所以回滚也不会改变发送语义）。
+- 下一项：核实 Vercel 权限是否真实可用；可用则做 B02 回滚演练取证。
+- 更新时间：2026-10-05（UTC）。

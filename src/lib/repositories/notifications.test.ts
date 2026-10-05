@@ -293,6 +293,31 @@ describe("oldestUnsentEmailCreatedAt()", () => {
     expect(calls[1]).toEqual(calls[0]);
     expect(calls[2]).toEqual(calls[0]);
   });
+
+  // 2026-10-05 定案：站内已读 = 不必寄。这条钉的是**语义**，不是实现细节——
+  // 去掉 `is_read=false`，队列就会把用户已经读过的通知再寄一遍，
+  // 而这件事只有在这个用例里会红；发送路径与 mock/E2E 都不看队列谓词。
+  it("「已读即不必寄」：队列三处读数都带 is_read=false，读过的行一律不进队", async () => {
+    for (const runQuery of [
+      () => listUnsentEmailNotifications(),
+      () => countUnsentEmailNotifications(),
+      () => oldestUnsentEmailCreatedAt(),
+    ]) {
+      const chain = chainMock({ data: [], count: 0 });
+      createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+      await runQuery();
+      expect(chain.eq).toHaveBeenCalledWith("is_read", false);
+    }
+  });
+
+  // 反向的一半：定案不是「把已读从视野里删掉」。若哪天有人为了「别让积压变小」
+  // 而去掉这一栏，队列会照旧不寄、但面板再也说不清那批去哪了——这条会红。
+  it("读过的行仍被单独量出来（出队不等于从视野里消失）", async () => {
+    const chain = chainMock({ count: 4 });
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => chain) });
+    await expect(countReadBeforeSendEmailNotifications()).resolves.toBe(4);
+    expect(chain.eq).toHaveBeenCalledWith("is_read", true);
+  });
 });
 
 describe("markEmailFailed()", () => {
