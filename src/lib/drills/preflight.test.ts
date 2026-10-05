@@ -66,14 +66,33 @@ describe("evaluateDrill", () => {
   });
 
   it("B04 的文件型前置按键名判定（IO 层负责把文件存在解析成这个键）", () => {
-    const withToken = evaluateDrill(B04, all("file:~/.supabase/access-token", "NEXT_PUBLIC_SUPABASE_URL"));
-    expect(withToken.ready).toBe(true);
+    const full = evaluateDrill(
+      B04,
+      all("SUPABASE_DB_PASSWORD", "file:~/.supabase/access-token", "NEXT_PUBLIC_SUPABASE_URL"),
+    );
+    expect(full.ready).toBe(true);
 
-    const withoutToken = evaluateDrill(B04, all("NEXT_PUBLIC_SUPABASE_URL"));
+    // 只缺 CLI 登录态时，缺口应指向 token，而不是含糊地说「缺凭据」
+    const withoutToken = evaluateDrill(B04, all("SUPABASE_DB_PASSWORD", "NEXT_PUBLIC_SUPABASE_URL"));
     expect(withoutToken.ready).toBe(false);
     const unmet = withoutToken.requirements.find((r) => !r.satisfied)!;
     expect(unmet.source).toContain("access-token");
     expect(unmet.remedy).toContain("supabase login");
+  });
+
+  it("B04 的真正缺口是 DB 密码，不是平台令牌（2026-10-05 实测纠正）", () => {
+    // CI 里那个 SUPABASE_ACCESS_TOKEN 每天都在用，所以「缺管理凭据」是错的说法。
+    // 演练 SQL 与 migration list 都要真 Postgres 连接，平台令牌替代不了。
+    const onlyPlatformToken = evaluateDrill(
+      B04,
+      all("file:~/.supabase/access-token", "NEXT_PUBLIC_SUPABASE_URL"),
+    );
+    expect(onlyPlatformToken.ready).toBe(false);
+    const unmet = onlyPlatformToken.requirements.find((r) => !r.satisfied)!;
+    expect(unmet.source).toBe("SUPABASE_DB_PASSWORD");
+    expect(unmet.purpose).toContain("真正的缺口");
+    // 阻塞原因本身也要说清「平台层从来不是阻塞」，否则下一个人又会去要一个已有的令牌
+    expect(onlyPlatformToken.blockedReason).toContain("平台层从来不是阻塞");
   });
 
   it("B05 的 VAPID 是复合前置：缺一个就不满足", () => {

@@ -165,9 +165,18 @@
    前置判定已固化：`pnpm drills:preflight --drill B03`，2026-10-05 起不必再临场回忆缺哪个凭据）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
-9. B04 （**未完成：外部权限**——需要云端 Supabase 项目的管理凭据；
+9. B04 （**未完成：外部权限（缺的是数据库密码，不是平台令牌）**——阻塞原因已于 2026-10-05 更正，见下；
    前置判定已固化：`pnpm drills:preflight --drill B04`）
    云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
+   - **原阻塞描述是错的**：写的是「需要云端 Supabase 项目的管理凭据」。实测发现仓库里
+     **早就有**一个可用的 Management API 令牌——`SUPABASE_ACCESS_TOKEN` 是 repo secret，
+     `supabase-auto-restore.yml` 每天成功跑一次（2026-10-05T11:47Z 那轮读项目状态后报「无需恢复」）。
+     **平台层从来不是阻塞。**
+   - **真正的缺口在再下一层**：演练 SQL 要用真 Postgres 连上去跑，
+     `supabase migration list --linked` 同理（它读库里的 `schema_migrations` 表）；
+     而仓库里**没有任何 DB 密码类 secret**（`gh secret list` 只有一个 `SUPABASE_ACCESS_TOKEN`）。
+   - 因此 B04 的阻塞从「要一个可能已有的令牌」收窄成「要数据库密码」——
+     **这是一次真实的阻塞面缩小**，不是措辞调整。
 10. B05 （**部分完成：P1 已实跑通过（2026-10-05，本地 mock 构型）；P2–P4 仍缺外部权限**——
     需要 provider 测试凭据与可牺牲的真实项目；
     前置判定已固化：`pnpm drills:preflight --drill B05`）

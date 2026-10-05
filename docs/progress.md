@@ -7451,3 +7451,42 @@
   过期时至少**看得出来**是过期的。
 - 下一项：按同样方法复查其余 runbook 里引用的生产事实（目前只查了 health 相关的两份）。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 顺着上一条的方法复查，翻出 B04 的阻塞原因是错的
+
+- 里程碑 / 版本：发布证据与演练治理（v0.12.0 范围内）。分支：`fix/b04-blocker-precise`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条把「文档里的生产事实要能一条命令刷新」做完，顺手用同一套方法
+  （**去查，而不是去回忆**）复查其余 runbook 与 roadmap 里的外部依赖声明。
+- **量出来的结果是一条阻塞面缩小，不是措辞调整**：
+  - roadmap 里 B04 写的是「**未完成：外部权限**——需要云端 Supabase 项目的**管理凭据**」。
+  - 实测：`gh secret list` → 仓库里有一个 `SUPABASE_ACCESS_TOKEN`；
+    `gh run list --workflow supabase-auto-restore.yml` → **每天成功**（最近一轮
+    2026-10-05T11:47Z，日志里读项目状态后输出「无需恢复」）。
+  - 也就是说：**平台层的 Management API 令牌早就有了，而且每天都在用。**
+    「缺管理凭据」这个说法会让下一个人去要一个**已经存在**的东西。
+  - **真正的缺口在再下一层**：`docs/operations/drills/*.sql` 要用真 Postgres 连上去跑；
+    `supabase migration list --linked` 同理（它读的是库里的 `schema_migrations` 表，
+    不是平台 API）。而 `gh secret list` 显示仓库里**没有任何 DB 密码类 secret**。
+  - 所以 B04 的阻塞从「要一个可能已有的令牌」收窄成「**要数据库密码**」。
+- **顺带修掉一个我自己今天早些时候写下的 bug**：`pnpm drills:preflight` 里 B04 的前置清单
+  写的是 `file:~/.supabase/access-token` —— **问错了问题**。
+  已改为以 `SUPABASE_DB_PASSWORD` 为第一项，并在 `blockedReason` 里写明
+  「平台层从来不是阻塞」，免得下一个人又去要那个已有的令牌。
+  新增一条单测专门钉住这个纠正：**只给平台令牌时必须判缺，且缺口指向 DB 密码**。
+- **方法论上值得记的一条**：这三轮里我连续犯了同一类错三次
+  （Supabase 配没配、Sentry 有没有链路、B04 缺什么），三次都是**没去查就写**。
+  而每次去查都很便宜——`curl /api/health`、`gh secret list`、`gh run list`。
+  **「依赖外部状态」的结论，如果不带一条可重跑的查询命令和它当时的输出，
+  那它就不是结论，是传闻。**
+- **B03 也顺带核了**：`service_role` / `anon` key 与可牺牲账号确实都不在仓库 secret 里，
+  所以 B03 的阻塞**是真的**（不同于 B04）。
+- 验证：`pnpm exec vitest run src/lib/drills/` 14 条绿（+1 条钉住纠正的用例）；
+  `pnpm drills:preflight --drill B04` 现在第一项报 `SUPABASE_DB_PASSWORD` ← 缺；
+  `check:all` ✅；`check:changelog` ✅。
+- 阻塞 / 风险：B04 仍阻塞，但**阻塞项更具体了**——只差一个数据库密码。
+  风险是「平台令牌可用」这个事实被误读成「B04 差不多能做」：
+  管理 API 能读项目状态，**不能**读库里的表，两者差着一层。
+- 下一项：要么去拿数据库密码（外部凭据），要么继续复查其余外部依赖声明
+  （Vercel 部署配额那一条也在这类里）。
+- 更新时间：2026-10-05（UTC）。
