@@ -161,14 +161,21 @@
    - 顺带记下一条对事故处置有用的观察：**alias 切换后的第一次 health 探测不可靠**
      （两个方向都出现过一次 `fetch failed` / `This operation was aborted`，重试即通过）——
      「刚切换、边缘还在热」与「health 挂了」必须分开，runbook 已写入。
-8. B03 （**未完成：外部权限**——需要一个可牺牲的隔离账号与云端 Supabase 凭据）
+8. B03 （**未完成：外部权限**——需要一个可牺牲的隔离账号与云端 Supabase 凭据；
+   前置判定已固化：`pnpm drills:preflight --drill B03`，2026-10-05 起不必再临场回忆缺哪个凭据）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
-9. B04 （**未完成：外部权限**——需要云端 Supabase 项目的管理凭据）
+9. B04 （**未完成：外部权限**——需要云端 Supabase 项目的管理凭据；
+   前置判定已固化：`pnpm drills:preflight --drill B04`）
    云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
-10. B05 （**未完成：外部权限**——需要各 provider 的测试凭据与可牺牲的真实项目）
-    provider 与 incident 演练各一次：Resend 缺失/限流、Web Push VAPID 失效、Supabase 恢复链路，
-    结论写进对应 runbook 的执行记录小节
+10. B05 （**未完成：外部权限**——需要各 provider 的测试凭据与可牺牲的真实项目；
+    前置判定已固化：`pnpm drills:preflight --drill B05`）
+    provider 与 incident 演练各一次：Resend 缺失/限流、Web Push VAPID 失效、Supabase 恢复链路。
+    **2026-10-05 修正**：原文写「结论写进对应 runbook 的执行记录小节」，但
+    `docs/operations/` 下**没有 provider 专属 runbook**，那个小节不存在——
+    写一个不存在的落点等于让实跑结论在两年后丢进虚空。改为落在
+    `docs/operations/production-smoke-v0.11.0.md`（该文件已声明 provider 场景在前置具备前保持「未验证」）。
+    「provider 演练该有自己的 runbook」是另一件事，不在这里假装它已经有了。
 
 ### C. 测试与门禁基建（来自 F01 / F02 / F04 / J01 / C03 / A02 / A10）
 
