@@ -168,7 +168,8 @@
 9. B04 （**未完成：外部权限**——需要云端 Supabase 项目的管理凭据；
    前置判定已固化：`pnpm drills:preflight --drill B04`）
    云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
-10. B05 （**未完成：外部权限**——需要各 provider 的测试凭据与可牺牲的真实项目；
+10. B05 （**部分完成：P1 已实跑通过（2026-10-05，本地 mock 构型）；P2–P4 仍缺外部权限**——
+    需要 provider 测试凭据与可牺牲的真实项目；
     前置判定已固化：`pnpm drills:preflight --drill B05`）
     provider 与 incident 演练各一次：Resend 缺失/限流、Web Push VAPID 失效、Supabase 恢复链路。
     **2026-10-05 修正**：原文写「结论写进对应 runbook 的执行记录小节」，但
@@ -177,7 +178,11 @@
     该单测（`src/lib/drills/preflight.test.ts` 断言证据落点文件必须存在）当场发现此事，
     随后**新建了 `docs/operations/provider-incident-drills.md`**，落点随之指向它。
     四条演练（P1 Resend 缺失 / P2 Resend 限流 / P3 VAPID 失效 / P4 Supabase 恢复）的
-    命令与判定标准都写在那里；执行记录小节当前四条全是「未执行」。
+    命令与判定标准都写在那里。**P1（Resend 缺失）已于 2026-10-05 实跑通过**——
+    它不需要任何凭据：缺 `RESEND_API_KEY` 时通知不会被误标已发送、重试计数累加、
+    达 `EMAIL_MAX_ATTEMPTS` 后停止重试、失败有指标；结论与边界写在
+    `docs/operations/provider-incident-drills.md` 的执行记录里。
+    P2–P4 仍是「未执行」，各自写明缺什么。
 
 ### C. 测试与门禁基建（来自 F01 / F02 / F04 / J01 / C03 / A02 / A10）
 
