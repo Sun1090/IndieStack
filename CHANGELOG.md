@@ -44,6 +44,22 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Changed
 
+- **A05 收口：站内已读 = 不必寄，产品语义定案并钉住。**
+  队列谓词里那一段 `is_read=false` 一直是对的，但它此前是「实现里恰好如此」，
+  注释里写着「要不要让已读免寄是另一个待定口径」——于是这一栏既没有理由，也没有钉子：
+  哪天有人为了「别让 `email.backlog` 显得在变小」去掉它，邮件就会重新寄给读过通知的用户，
+  而**没有任何一条用例会红**（发送路径、mock、E2E 都不看队列谓词）。
+  - 定案理由（写进 `src/lib/repositories/notifications.ts` 的谓词注释里）：
+    摘要的职责是提醒**还没看到**的东西；为已读的事再寄一封是噪声，
+    而噪声会教会用户忽略整个摘要——那比漏寄一封更贵。反过来（已读仍寄）
+    会让 `security_alert` 因为用户读过它而**多**发一封，方向是错的。
+  - 可见性不减：已读那一笔继续单列成 `readBeforeSend` 读数，
+    出队不等于从视野里消失；且与 `email_skipped_reason` 同一条纪律——**出队不复活**。
+  - **发送行为一字未改**：改的是「这一栏是有理由的决定」这件事，
+    以及现在有两条用例守着它（去掉 `is_read=false` 会红；去掉那一栏可见性也会红）。
+  - 双语 `docs-site/email.md` 与 `docs/roadmap-0.12.0.md`（A05）按同一口径改写，
+    **A05 任务池不再有余项**。
+
 - **`check:doc-commands` 的受审范围从 4 份入门文档扩到 130 份，判定基准从「package.json 里有没有同名
   script」换成「那个二进制在不在 `node_modules/.bin`」。**
   这条门禁是 #196 加的，当时**刻意**只审 README 与两份 quickstart：把范围放到全部 markdown 上会变成

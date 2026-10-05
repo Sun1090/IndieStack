@@ -38,6 +38,11 @@ only in the current implementation.
 The queue predicate is `email_sent = false` **and** `is_read = false`, so reading a notification in
 app — one at a time or via "mark all read" — also takes it out of the email queue: mail for
 something the user already saw is never sent, and that row stops counting toward `email.backlog`.
+That second condition is a **decided product semantic, not an implementation detail**: the digest
+exists to remind people about what they have not seen, so mail about something already read is
+noise — and noise is what teaches people to ignore the digest altogether. Read rows are not
+resurrected if the notification later becomes unread again, and they stay visible to operators as
+their own reading rather than disappearing into the queue.
 A send that succeeded while its receipt write failed is reported as its own event, not as a send
 failure: the message did leave, and the next digest run may send it again.
 

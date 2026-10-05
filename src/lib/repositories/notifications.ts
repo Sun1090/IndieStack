@@ -45,6 +45,11 @@ export const EMAIL_NOTIFICATION_TYPES = [
 /**
  * 「待发队列」= 未标记已发送 + 未读 + 限定类型 + 未达死信门槛 + 没被判定为不可投递。
  *
+ * **`is_read=false` 是 2026-10-05 定案的产品语义，不是实现细节**：站内已读即不必寄，
+ * 理由与「出队不复活」写在 `countReadBeforeSendEmailNotifications` 上方那段注释里。
+ * 换句话说，这一栏改动的后果是「读过的东西不再寄」，
+ * 而它的可见性由 `readBeforeSend` 那一读数兜住，不靠 `email.backlog` 单独承担。
+ *
  * 三个消费方（worker 拉取、积压计数、最老一条的年龄）必须整段一致，否则面板上报的年龄
  * 说的就不是 worker 看到的那支队伍。Supabase 的查询链是逐列泛型的（`select("*")` 与
  * `select("id", {head:true})` 返回不同类型），抽成一个共享函数会把类型压成第一张表，
@@ -223,7 +228,18 @@ export async function countEmailSkippedByReason(): Promise<Record<EmailSkipReaso
  * 队列条件含 `is_read=false`，而 `markAllNotificationsRead` 不带类型地把用户全部未读通知
  * 标成已读，所以这条出队路径既不经 `email_sent` 也不经 `email_skipped_reason`，
  * 更会从 `email.backlog` 里**消失**——只看积压数的人会把「越堵」读成「越小」。
- * 这里把它单独量出来，不改变任何发送行为：要不要让已读免寄是另一个待定口径。
+ *
+ * **2026-10-05 定案：站内已读 = 不必寄**（A05 余下的那个产品决策，本仓库自行判定）。
+ * 理由有三条，都不是「保持现状」：
+ *  1. 摘要的职责是提醒**还没看到**的东西；已经读过的再寄一封是纯噪声，
+ *     而噪声会让人把整个摘要当成可以忽略的邮件——那比漏寄一封更贵。
+ *  2. 反过来（已读仍寄）会让 `security_alert` 这类最不该被忽略的通知，
+ *     因为用户读过它而**多**发一封，等于用一次噪声换一次送达，方向是错的。
+ *  3. 「积压因此变小」的顾虑已经由本函数解决：它把这一笔单列成
+ *     `readBeforeSend`，面板与告警不再只依赖 `email.backlog` 一个数。
+ * 因此这一笔**继续单列、但不回收**：用户读过的行不会被重新拉回队列
+ * （与 `email_skipped_reason` 的「出队不复活」是同一条纪律）。
+ * 钉住这条语义的用例在 `notifications.test.ts`（「已读即不必寄」那组）。
  */
 export async function countReadBeforeSendEmailNotifications(
   types: readonly NotificationType[] = EMAIL_NOTIFICATION_TYPES,
