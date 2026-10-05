@@ -31,6 +31,18 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`docs/operations/environments.md` 新增「外部依赖实况」表：每行附可重跑的观测命令。**
+  这一天里连续三次把「依赖外部状态」的结论写错（Supabase 配没配、Sentry 有没有告警链路、
+  B04 缺什么凭据），三次都是**没去查就写**——而每次去查都很便宜
+  （`curl /api/health`、`gh secret list`、`gh run list`）。
+  根因不是记性，是这些事实**散落在各文档里、没有统一出处**。
+  - 规则：**任何关于外部状态的结论都必须落在这张表里，并带观测命令与日期；
+    散落在别处的同类说法一律以本表为准。**
+  - 表里保留 `未知` 这一栏：写一个听起来合理的猜测，比写「未知」有害。
+  - 顺带写清三条容易读错的分寸：`configured=false` 不等于 readiness 会红（可选依赖缺失时
+    健康检查不会替你喊人）；「平台可用」不等于「数据库可用」（Management API 读不到库里的表）；
+    B04 只差数据库密码。
+
 - **`pnpm falsify:rules`：把「门禁的测试真的会红吗」从一次性脚本固化成可复用的工具。**
   `check:gate-rule-tests` 断言判定逻辑放在有单测的规则模块里，但它验的是**文件存在**，
   不是**测试会失败**——一个只跑 happy path 的规则模块照样满足它。
