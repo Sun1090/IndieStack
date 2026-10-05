@@ -55,6 +55,12 @@ See `docs/operations/release-tag-ledger.md`.
     **无法用环境变量把出站重定向到本地捕获端点**，所以失效订阅只能在真实 push service 上打。
   - 通用纪律里有一条容易被忽略的：每次演练后必须确认 `email.backlog` / `push.backlog`（阈值 500）在回落，
     否则测的是「制造故障」的能力而不是「降级正确」。
+  - **P1（Resend 缺失）已于 2026-10-05 实跑通过**——它不需要任何凭据。
+    缺 `RESEND_API_KEY` 时实跑四轮 digest：没寄出去的**没有被标记已发送**、
+    `email_attempts` 累加到 3、达 `EMAIL_MAX_ATTEMPTS` 后第 4 轮 `pulled=0`（停止重试而非无限重试）、
+    通知未被删除、失败有 `email.send.completed{reason=not-configured}` 指标。
+    **结论边界写清了**：这证明的是本地 mock 构型下的队列行为，不是生产已验证；
+    指标在本地只落 stdout、没有真实 exporter，所以「告警会响」这一段仍未验证。
 
 - **`pnpm drills:preflight`：把「B03/B04/B05 到底缺哪个凭据、缺了怎么拿」从记忆变成一条命令。**
   这三条演练从 2026-08 起一直标着「未完成：外部权限」，每次重看都要重新回忆一遍缺什么——

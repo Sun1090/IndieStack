@@ -7293,3 +7293,63 @@
 - 下一项：P1（Resend 缺失）**不需要任何凭据**，可以立即执行并把结论写进执行记录——
   这是目前唯一能真正把 B05 往前推的动作。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — P1 实跑：Resend 缺失时的队列行为是对的（B05 第一次真的往前走了一步）
+
+- 里程碑 / 版本：发布证据与演练治理（v0.12.0 范围内）。分支：`docs/p1-resend-missing-evidence`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条把 provider runbook 建起来时留了一句「P1 不需要凭据，可以立即执行」——
+  **写完不做等于没写**，而这是目前唯一不依赖任何外部权限、能把 B05 真正往前推的动作。
+- 完成内容：按 runbook 的命令实跑 P1，并把观测与**边界**写进执行记录小节。
+- 观测（四轮 digest，`RESEND_API_KEY` 刻意不设）：
+  | 项 | 结果 |
+  | -- | ---- |
+  | digest 返回 | 1–3 轮 `{sent:0, groups:0, failed:5}`；第 4 轮 `{sent:0, groups:0, failed:0}` |
+  | 捕获端点 | `{"total":0,"emails":[]}` —— 一封都没寄出去 |
+  | 通知状态 | 5 条 `email_sent=false`，`email_attempts` 1 → 2 → 3，`email_error="RESEND_API_KEY missing"` |
+  | 第 4 轮 | `pulled=0` —— 达 `EMAIL_MAX_ATTEMPTS=3` 后被死信过滤 |
+  | 通知是否被删 | 未删，7 条仍在 |
+  | 指标 | `email.send.completed{outcome=failure, reason=not-configured}`、`email.backlog=5` |
+- 判定标准是**四件事同时成立**，缺一件就是「静默丢弃」：
+  ① 没寄出去的没有被标记已发送；② 重试计数累加而不是归零重来；
+  ③ 达上限后停止重试（不是无限重试）；④ 失败有指标，不是无声的。四条都成立。
+- **顺带量到一处设计得不错的地方**（值得记下来，因为它是「不显然」的）：
+  达死信上限后通知**仍留在表里**、`email_sent` 保持 false，只是被队列过滤掉。
+  这与 A05 的「站内已读 = 不必寄」语义一致：站内仍看得到，只是不再寄信。
+  如果哪天有人把死信改成「删除」，用户会突然发现历史通知不见了——值得留意。
+- **边界（这次刻意没有含糊）**：
+  - 证明的是**本地 mock 构型下的队列行为**，**不是生产已验证**。
+    生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，且生产当前没配 Supabase，
+    这条路径在生产上还没有对应流量。
+  - `email.backlog` / `email.send.completed` 在本地只落 stdout，**没有真实 exporter**，
+    所以 runbook 里「积压告警会响」那一段**仍未验证**——那属于 provider 侧配置，不在 P1 射程内。
+    把它写成「通过」会是拿本地读数冒充线上保障。
+  - mock 构型下 `RESEND_API_URL` 被换成本地端点，所以本次**没有**验证真实 Resend 的
+    4xx/5xx 响应形状——那是 P2，仍然缺测试 key。
+- 验证：本条是纯文档 + roadmap/CHANGELOG 状态更新；`check:all` ✅；`check:changelog` ✅。
+  另：本地起服时 Next 会往 `tsconfig.json` 追加 `.next-p1` 的 types 路径（`playwright.config.ts`
+  注释里记着这个行为），**已 `git checkout` 复原**，工作树干净。
+- **被门禁挡下一次，值得单独记**：这条第一次提交时 CI 的 `Detect Secrets` 直接红了——
+  规则 `curl-auth-header`，命中 `provider-incident-drills.md:143` 的
+  `-H "Authorization: Bearer p1-cron-secret"`。虽然是假值，但**门禁是对的**：
+  「curl 认证头里的 token 形状字面量」在文档里就该当成泄漏，直到证明不是。
+  - **修法不是加 allowlist 条目**——那等于教门禁忽略一个真模式。
+    改成 `-H "Authorization: Bearer $CRON_SECRET"`，密钥一律走 shell 变量。
+    这同时**让文档本身变对了**：一份教别人执行命令的文档，不该把密钥写进命令行。
+  - **顺带量到两件事**：
+    ① 本地 `pnpm check:secrets-scan` 在命中之前一直是绿的——它校验的是**策略**
+    （gitleaks 版本、`fetch-depth`、响应/轮换时限，20 条契约断言），**不校验有没有真泄漏**。
+    所以「本地门禁绿」不等于「没有泄漏」，真正的探测只有 CI 那一次跑。
+    ② **改完之后仍然红**：workflow 是 `fetch-depth: 0` 全历史扫描，
+    指纹仍指向**第一个**提交 `b63501e8`。也就是说——**一旦 token 形状的字面量进了历史，
+    后续提交把它改掉并不会让门禁变绿**。
+    这决定了修法：这条分支尚未合并，正确做法是**把它从历史里去掉**（重写自己这条 topic 分支），
+    而不是给一个本就不该存在的值加 allowlist 条目。allowlist 是给「必须留在历史里的真误报」用的，
+    拿来消掉自己的手滑，只等于把门禁的判断力换掉。
+    如果这条分支**已经合并**，那才只能走 allowlist，并且要写清理由。
+- 阻塞 / 风险：P2–P4 仍缺 `RESEND_API_KEY`、VAPID 一对 + 真实订阅端点、
+  `SUPABASE_ACCESS_TOKEN` + 可牺牲项目。B05 因此是「部分完成」而不是「完成」——
+  roadmap 里已按这个口径改写，没有把它说成整条通过。
+- 下一项：等 provider 测试凭据；或把「指标只落 stdout、没有 exporter」这一段量清楚
+  （它是「积压告警会响」这句承诺目前唯一的空洞）。
+- 更新时间：2026-10-05（UTC）。

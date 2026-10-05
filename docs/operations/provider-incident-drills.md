@@ -120,10 +120,64 @@ curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://<origin>/api/ops/supab
 
 | UTC 时间 | 编号 | 命令 | 观测 | 判定 |
 | -------- | ---- | ---- | ---- | ---- |
-| —        | P1   | —    | —    | 未执行（尚未进行；P1 不需要凭据，可直接执行） |
+| 2026-10-05T09:26–09:38Z | P1 | 见下 | 见下 | **通过（本地 mock 构型）** |
 | —        | P2   | —    | —    | 未执行：缺 `RESEND_API_KEY` |
 | —        | P3   | —    | —    | 未执行：缺 VAPID 一对与真实订阅端点 |
 | —        | P4   | —    | —    | 未执行：缺 `SUPABASE_ACCESS_TOKEN` 与可牺牲项目 |
+
+### P1 执行记录（2026-10-05）
+
+**构型**：本地 mock（`NEXT_PUBLIC_MOCK_ENABLED=true`），端口 3199，
+`RESEND_API_URL` 指向本地捕获端点 `/api/e2e/email-inbox`（与 `playwright.config.ts` 的 E2E 同一套），
+**`RESEND_API_KEY` 刻意不设**——`src/lib/email-send.ts` 在缺 key 时于任何 fetch 之前抛错，
+所以这正是 P1 要验的那条路径，且不产生任何真实外呼。
+
+```bash
+# 密钥一律走 shell 变量，不写进命令行。
+# 这一条不是洁癖：把 token 形状的字面量写进文档，`check:secrets-scan` 会判成泄漏并挡下 PR
+# （本条第一次提交就是这么被挡住的，规则是 `curl-auth-header`）。
+# **不要**为了让它变绿去加 allowlist 条目——那等于教门禁忽略一个真模式。
+export CRON_SECRET="$(openssl rand -hex 16)"
+export E2E_BEARER_TOKEN="$(openssl rand -hex 16)"
+export NEXT_PUBLIC_VAPID_PUBLIC_KEY=p1-vapid-public VAPID_PRIVATE_KEY=p1-vapid-private
+
+# 起服（关键：这里刻意不设 RESEND_API_KEY）
+NEXT_PUBLIC_MOCK_ENABLED=true \
+  RESEND_API_URL=http://localhost:3199/api/e2e/email-inbox \
+  CRON_SECRET="$CRON_SECRET" E2E_BEARER_TOKEN="$E2E_BEARER_TOKEN" \
+  NEXT_PUBLIC_APP_URL=http://localhost:3199 \
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY="$NEXT_PUBLIC_VAPID_PUBLIC_KEY" VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY" \
+  pnpm dev --port 3199
+
+curl -X POST localhost:3199/api/e2e/seed-notifications -H "Authorization: Bearer $E2E_BEARER_TOKEN" -d '{}'
+curl -X POST localhost:3199/api/cron/digest          -H "Authorization: Bearer $CRON_SECRET"
+curl      localhost:3199/api/e2e/email-inbox        -H "Authorization: Bearer $E2E_BEARER_TOKEN"
+curl      localhost:3199/api/e2e/seed-notifications -H "Authorization: Bearer $E2E_BEARER_TOKEN"
+```
+
+**观测**：
+
+| 项 | 结果 |
+| -- | ---- |
+| digest 返回 | 第 1–3 轮 `{sent:0, groups:0, failed:5}`；第 4 轮 `{sent:0, groups:0, failed:0}` |
+| 捕获端点 | `{"total":0,"emails":[]}` —— 一封都没寄出去 |
+| 通知状态 | 5 条 `email_sent=false`，`metadata.email_attempts` 依次 1 → 2 → 3，`email_error="RESEND_API_KEY missing"` |
+| 第 4 轮 `pulled` | `0` —— 达 `EMAIL_MAX_ATTEMPTS=3` 后被死信过滤，不再拉起 |
+| 通知是否被删 | **未删**，7 条仍在，`email_sent` 全为 false |
+| 指标 | `email.send.completed{outcome=failure, reason=not-configured}`、`email.backlog=5` |
+
+**判定**：通过。四件事同时成立才算通过，缺一件就是「静默丢弃」：
+① 没寄出去的**没有**被标记已发送；② 重试计数在累加而不是归零重来；
+③ 达上限后停止重试（不是无限重试）；④ 失败有指标，不是无声的。
+
+**这条结论的边界（重要）**：
+- 证明的是**本地 mock 构型下的队列行为**，**不是生产已验证**。
+  生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，且生产当前没有配 Supabase，
+  所以这条路径在生产上还不存在对应流量。
+- `email.backlog` / `email.send.completed` 在本地只落到 stdout，**没有真实 exporter**，
+  所以「告警会响」这一段仍未验证——那属于 provider 侧（Sentry/OTel）的配置，不在 P1 射程内。
+- mock 构型下 `RESEND_API_URL` 被换成本地端点，所以本次**没有**验证真实 Resend 的
+  4xx/5xx 响应形状——那是 P2。
 
 ## 变更痕迹
 
