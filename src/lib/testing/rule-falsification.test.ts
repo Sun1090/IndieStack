@@ -109,6 +109,38 @@ describe("summarizeFalsification()", () => {
   it("真的全绿时判 survived（这一格必须是真结论，不能被上面的读不出占用）", () => {
     expect(summarizeFalsification(TARGET, " Tests 14 passed (14)\n").verdict).toBe("survived");
   });
+
+  it("失败明细里含 Tests 的测试名时，仍读真正的汇总行（实测 auditGateRuleTests）", () => {
+    // vitest 有失败时先打印明细再打印汇总；明细行里有测试名，而这个名字里带 Tests
+    // （`gate-rule-tests` 的判定函数叫 auditGateRuleTests）。不锚行首时它会抢在
+    // 汇总行之前被匹配，于是 8 条红被判成「读不出」，一个真的会红的模块无法登记。
+    const raw = [
+      " RUN  v5.0.1 /repo",
+      "",
+      " FAIL   node  src/lib/release/gate-rule-tests.test.ts > auditGateRuleTests > 规则模块没有单测时报红并点名",
+      "AssertionError: expected '' to contain 'RULE_MODULE_UNTESTED'",
+      "",
+      "      Tests  8 failed | 11 passed (19)",
+      "   Start at  08:00:33",
+    ].join("\n");
+    const outcome = summarizeFalsification(TARGET, raw);
+    expect(outcome.failedTests).toBe(8);
+    expect(outcome.passedTests).toBe(11);
+    expect(outcome.verdict).toBe("bites");
+  });
+
+  it("Test Files 那一行不会被当成 Tests 汇总行", () => {
+    const raw = [" Test Files  1 failed (1)", "      Tests  3 failed | 2 passed (5)"].join("\n");
+    expect(summarizeFalsification(TARGET, raw).failedTests).toBe(3);
+  });
+
+  it("模块加载失败（Tests no tests）读不出，且不会被当成通过", () => {
+    const outcome = summarizeFalsification(
+      TARGET,
+      " Tests  no tests\n Test Files  1 failed (1)\n",
+    );
+    expect(outcome.verdict).toBe("unreadable");
+  });
 });
 
 describe("formatFalsificationOutcome()", () => {

@@ -578,9 +578,20 @@ export function summarizeFalsification(
   // 早先写成两个独立的 `/Tests\s+(\d+)\s+(failed|passed)/`，于是
   // 「8 failed | 6 passed」读得出 failed 却读不出 passed，而全绿输出里根本没有
   // 「N failed」这三个字——于是「全绿」与「读不出」被混成同一格。
-  const summary = /Tests\s+([^\n]*)/.exec(output)?.[1] ?? null;
-  const failedTests = summary === null ? null : (/(\d+)\s+failed/.exec(summary)?.[1] ?? null);
-  const passedTests = summary === null ? null : (/(\d+)\s+passed/.exec(summary)?.[1] ?? null);
+  //
+  // **必须锚到行首**：vitest 有失败时会**先打印失败明细再打印汇总**，
+  // 而明细行里有测试名，例如
+  // ` FAIL  … > auditGateRuleTests > 规则模块没有单测时报红`——
+  // 这行含有 `Tests`，紧跟其后的是 `> …` 而不是数字。
+  // 不锚行首时它会抢在真正的汇总行之前被匹配，于是 8 条红被判成「读不出」。
+  // 实测：`gate-rule-tests` 模块（函数名 `auditGateRuleTests` 自带 Tests）。
+  // 读不出这一格是失败封闭的（不会谎报通过），但它让一个**真的会红**的模块无法被登记，
+  // 所以这里要修，而不是把它记成「工具做不到」。
+  const summary = /^\s*Tests\s+(\d+)[^\S\n]+([^\n]*)/m.exec(output);
+  const summaryLine = summary === null ? null : `${summary[1]} ${summary[2]}`;
+  const failedTests = summaryLine === null ? null : (/(\d+)\s+failed/.exec(summaryLine)?.[1] ?? null);
+  const passedTests =
+    summaryLine === null ? null : (/(\d+)\s+passed/.exec(summaryLine)?.[1] ?? null);
   const failedCount = failedTests === null ? null : Number(failedTests);
   const passedCount = passedTests === null ? null : Number(passedTests);
   // 「读不出」的判据是**两个数字都没有**：全绿时 failed 缺失但 passed 在，
