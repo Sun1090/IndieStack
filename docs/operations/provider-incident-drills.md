@@ -174,8 +174,12 @@ curl      localhost:3199/api/e2e/seed-notifications -H "Authorization: Bearer $E
 - 证明的是**本地 mock 构型下的队列行为**，**不是生产已验证**。
   生产 `mockMode` 被 `src/lib/mock/config.ts` 强制为 false，且生产当前没有配 Supabase，
   所以这条路径在生产上还不存在对应流量。
-- `email.backlog` / `email.send.completed` 在本地只落到 stdout，**没有真实 exporter**，
-  所以「告警会响」这一段仍未验证——那属于 provider 侧（Sentry/OTel）的配置，不在 P1 射程内。
+- `email.backlog` / `email.send.completed` 在本地只落到 stdout（`src/lib/metrics.ts` 就是
+  `console.log(JSON.stringify(...))`，设计上给日志型看板用），所以 P1 只证明**指标被产出**，
+  不证明「有人会因此被叫醒」。**而真实结论比「未验证」更糟**：2026-10-05 复查发现当前生产部署
+  **没有配 `NEXT_PUBLIC_SENTRY_DSN`**（`/api/health` 报 `sentry.configured=false`），
+  于是「积压 > 500 会告警」在这个部署上是**不成立**，而不是未验证。
+  详见 `docs/operations/sentry-alerts.md` 开头新增的「当前部署状态」一节。
 - mock 构型下 `RESEND_API_URL` 被换成本地端点，所以本次**没有**验证真实 Resend 的
   4xx/5xx 响应形状——那是 P2。
 
