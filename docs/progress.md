@@ -7076,3 +7076,43 @@
 - 下一项：`/api/health` 的探针-对外端点分离（会改动 smoke / Docker `HEALTHCHECK` / Vercel Cron 三方契约）；
   或为 B03–B05 准备「拿到凭据即可一条命令执行」的干跑脚手架。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05 — 三个 Dependabot PR：两个照单合并，第三个是真断裂（Stripe 取消了 API 参数）
+
+- 里程碑 / 版本：依赖维护（v0.12.0 范围内）。分支：`fix/stripe-23-checkout-api`。
+- 状态：DONE。
+- 为什么做：`gh pr list` 看到 3 个 Dependabot PR 开着。依赖/安全在本项目的优先级表里，
+  而「CI 绿就合」对其中一条恰好是错的判断——所以逐个量，而不是批量点合并。
+- 完成内容：
+  1. **#213 `@stripe/stripe-js` 9.17.0 → 10.0.0**：14 项检查全绿，本地复核后 rebase 合入。
+  2. **#211 minor/patch 组 12 项**（Next 16.3.8、Sentry 11.2、Supabase JS、react-query 5.104、
+     next-intl、lucide 1.49、types/node、vitest 5.0.3 等）：全绿，合入。
+     **一处需要人工的冲突**：#211 自己也 bump 了 `@stripe/stripe-js`，而那条已在 #213 合入；
+     解法是保留 main 的 `10.0.0`、采用 #211 的其余 11 项，重新 `pnpm install --lockfile-only`
+     生成 lockfile（**不手改 lockfile**）。合入后 bundle 2925.5 kB（基线 2926.8）、CSS 71.4 kB，均未回退。
+  3. **#212 `stripe` 22.6.2 → 23.0.0：CI 红，是真断裂**。`tsc` 报
+     `TS2561: 'payment_method_types' does not exist in type 'SessionCreateParams'`。
+     查证后确认**不是 SDK 改名，而是 Stripe 把这个可写参数取消了**（同批取消的还有
+     PaymentIntent / SetupIntent 上的同名参数；继续传会得到
+     `400 payment_method_types_no_longer_supported`）。因此正确做法是**删掉**而不是换名。
+- **这一条真正的价值在第二层**：`createCheckoutSession` 此前**没有任何参数级断言**——
+  也就是说这处 API 取消只会被 `tsc` 发现，而不会有一条「说明我们为什么删掉它」的用例发现；
+  下一次有人「顺手补回去」也没有任何东西会红。
+  - 新增 `src/lib/stripe/checkout-session-params.test.ts`（8 条）：不传 `payment_method_types`
+    （**断言键不存在，而不是值为 `undefined`**——后者仍可能被 SDK 序列化出去）、
+    订阅模式与 `line_items` 一字未改、`trial_period_days` 只在给了 `trialDays` 时出现、
+    metadata 带 userId/teamId、幂等键只在调用方给了时才作为第二个参数、缺 key 时抛错。
+  - **变异核对**：把 `payment_method_types: ["card"]` 加回去 → 对应用例红（做完复原）。
+  - 顺带核过同批取消的两处：全仓**没有** PaymentIntent / SetupIntent 调用，
+    `payment_method_types` 全仓只有这一个调用点；`unit_amount` 在 v23 仍是整数
+    （decimal 是单独的 `unit_amount_decimal`），所以 `toSubscriptionInfo` 的读取不受影响。
+    **注意** `toSubscriptionInfo(subscription: any)` 用的是 `any`——那一段形状变化
+    tsc 看不见，这是本次量到但**没有顺手改**的既有盲区（改动它属于另一次重构）。
+- 验证命令与结果：`tsc` exit 0；`pnpm test` **260 文件 / 3142 用例**（+1 文件 +8 用例）；
+  `check:all` ✅；`build` exit 0；bundle / perf 均未回退；变异核对见上。
+- 阻塞 / 风险：生产 `stripe` 未配置（`/api/health` 报 `stripe: configured=false, required=false`），
+  所以这次 API 变更**当前没有线上影响面**——但也意味着**真实 Stripe 调用路径没有被生产验证过**，
+  一旦配置 key 就该先跑一次 checkout 冒烟。风险是有人把「CI 绿」当成「Stripe 升级无风险」：
+  这次的绿只证明类型与单测绿，不证明真实 API 行为。
+- 下一项：`/api/health` 的探针-对外端点分离；或为 B03–B05 准备干跑脚手架。
+- 更新时间：2026-10-05（UTC）。
