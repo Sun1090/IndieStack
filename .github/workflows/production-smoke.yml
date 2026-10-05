@@ -108,3 +108,41 @@ jobs:
           path: production-smoke.json
           retention-days: 30
           if-no-files-found: warn
+
+  # 「生产落后 main 多少个提交」与版本漂移是**两件事**，所以分成两个作业：
+  # 合并在一起会让「部署滞后」的红盖住「版本漂移」的结果，反之亦然。
+  #
+  # 为什么要单独加这条：`smoke-main` 会**打印**生产跑的 commit，但不断言它
+  # （`expected_commit` 只在 workflow_dispatch 时能传）。2026-10-05 实测到这个状态——
+  # Vercel 构建配额限流，生产停在 08dd6f17 而 main 已是 30f8e896（差 5 个提交），
+  # 而当天这个作业一路绿。**没有任何自动检查会注意到生产停在旧构建上。**
+  #
+  # 判定的是**距离**而不是相等：部署滞后是常态，断言相等会天天误报，
+  # 而天天误报的检查等于没有检查。阈值以内的落后判通过但**记下距离**，
+  # 连续多天同一距离不回落才是真问题。
+  deploy-freshness:
+    name: Production deploy freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 刻意要全历史：`git rev-list --count <生产commit>..origin/main` 需要算距离，
+          # 浅克隆（默认 fetch-depth: 1）算不出来，而算不出来会被判成「未知且不通过」——
+          # 那样这条作业会天天红，且红的原因藏在 checkout 参数里。
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check production deploy freshness
+        run: node scripts/check-deploy-freshness.js --base-url https://indie-stack-theta.vercel.app
