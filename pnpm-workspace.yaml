@@ -26,4 +26,14 @@ overrides:
   '@sentry/webpack-plugin>uuid': ^11.1.1
   'vitepress>vite': ^6.4.3
   postcss: ^8.5.23
+  # 2026-10-06：两个新 advisory，都有上游修复版本，所以按本仓库既有做法走 override
+  #（与上面 fast-uri / brace-expansion 同理），而不是登记进 DEPENDENCY_AUDIT_EXCEPTIONS
+  # ——例外表是给「上游根本没有可升级版本」用的。
+  # **braces 不在此列**：它的 advisory 编号没变（仍是 GHSA-vfj7-8cjw-p6…，
+  # 已登记在 DEPENDENCY_AUDIT_EXCEPTIONS），只是 npm audit 的本地 id 变了；
+  # 且上游 3.0.4 至今未发布。第一版这里错加了 override，装依赖时直接失败才发现。
+  # source-map-js：GHSA-68fv-2mgg-jv7q，需 >=1.2.2（经 postcss / webpack / vite 传递引入）
+  source-map-js: ^1.2.2
+  # @vue/server-renderer：GHSA-g2v6-rqmx-r4w6，需 >=3.5.42（仅 docs-site 的 vitepress 链路）
+  '@vue/server-renderer': ^3.5.42
   sharp: ^0.35.0

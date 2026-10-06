@@ -59,6 +59,7 @@
 | Resend | ❓ **未知**（2026-10-05 起**可查了**） | `curl -H "authorization: Bearer $CRON_SECRET" $BASE/api/ops/provider-status` | **本条曾长期是「未知」**：provider 诊断逻辑（`diagnoseProviders`）写得完整、有单测，却**没有任何生产代码调用它**，`/api/health` 又只回 supabase/sentry/stripe 三项，于是「邮件链路在生产上是不是空转的」只能靠猜。现已新增只读诊断端点（见下）。**端点已在生产上线并实测过鉴权边界**（2026-10-06T00:57Z，commit `105da717`：匿名 401、错密钥 401），但**读数本身仍未知**——取它需要 `CRON_SECRET`，本机没有。**鉴权被验证不等于内容被读到**，所以这一行照旧是「未知」 |
 | GitHub 保活变量 | ✅ 已配置 | `gh variable list`（`HEALTHCHECK_URL`） | 每日保活 workflow 在跑 |
 | Vercel 构建配额 | ⛔ 限流中 | PR 上的 `Vercel – indie-stack` 检查（2026-10-05 报 `retry in 24 hours`） | preview 部署排队，非代码缺陷 |
+| pg_cron（保留期调度） | ❌ **本地栈实测未安装**（2026-10-06） | `node scripts/check-retention-cron.js --probe --container supabase_db_indiestack` | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。生产是否安装**仍未核实**（需 DB 密码） |
 
 **三条要读出来的分寸**：
 

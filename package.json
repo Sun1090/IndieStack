@@ -84,6 +84,7 @@
     "check:states": "node scripts/check-states.js",
     "smoke:production": "node scripts/production-smoke.js",
     "drills:preflight": "node scripts/lib/drill-preflight.js",
+    "check:retention-cron": "node scripts/check-retention-cron.js",
     "ops:deploy-freshness": "node scripts/check-deploy-freshness.js",
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
