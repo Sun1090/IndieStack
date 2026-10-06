@@ -105,7 +105,7 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, skipped: 0 });
     expect(recordWorkerRunMock).toHaveBeenCalledWith(
       expect.objectContaining({ pulled: 0, durationMs: 125 }),
     );
@@ -144,7 +144,7 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0, skipped: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.anything());
     expect(markEmailSentMock).toHaveBeenCalledTimes(2);
@@ -163,7 +163,7 @@ describe("POST /api/cron/digest", () => {
     const res = await POST(req());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ sent: 0, groups: 0, failed: 1 });
+    expect(body).toEqual({ sent: 0, groups: 0, failed: 1, skipped: 0 });
     expect(JSON.stringify(body)).not.toMatch(/boom/);
     expect(markEmailSentMock).not.toHaveBeenCalled();
     expect(markEmailFailedMock).toHaveBeenCalledWith(
@@ -208,7 +208,7 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 3, groups: 3, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 3, groups: 3, failed: 0, skipped: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(markEmailSentMock).toHaveBeenCalledTimes(3);
   });
@@ -224,7 +224,7 @@ describe("POST /api/cron/digest", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const res = await POST(req());
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, skipped: 2 });
     expect(metricEvents(log)).toContainEqual(
       expect.objectContaining({
         name: "cron.digest.skipped",
@@ -254,7 +254,7 @@ describe("POST /api/cron/digest", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const res = await POST(req());
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, skipped: 1 });
     expect(metricEvents(log)).toContainEqual(
       expect.objectContaining({
         name: "cron.digest.skipped",
@@ -268,6 +268,8 @@ describe("POST /api/cron/digest", () => {
     // 偏好全关是用户的选择：出队原因是 preferences_off，不是失败重试
     expect(markEmailSkippedMock).toHaveBeenCalledTimes(1);
     expect(markEmailSkippedMock).toHaveBeenCalledWith(["n1"], "preferences_off");
+    // A05 的观察窗口要拿到「跳过多少」这个数，所以它必须**进响应体**——
+    // 指标 `cron.digest.skipped` 只在指标后端里，本地断言不了趋势。
   });
 
   it("正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出", async () => {
@@ -285,6 +287,37 @@ describe("POST /api/cron/digest", () => {
     const init = fetchMock.mock.calls[0][1];
     expect(String(init?.body)).toContain("部署通知 ×3 条");
     expect(String(init?.body)).toContain("S1");
+  });
+
+  it("A05 观察窗口：跳过计数进响应体，且队首被占死时报出独立信号", async () => {
+    // 拉满 100 条、一封没发 = 队首被不可投递的行占死（A05 要修的症状仍在）。
+    // 这条断言盯的是**新信号**：原来只有「积压超阈值」会喊，而「积压高但正常发出」
+    // 与「积压根不动」在积压数字上长得一样。
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const deploy = (id: string) => ({
+      id, user_id: "u1", type: "deployment", title: `d ${id}`, body: null,
+      created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null,
+    });
+    const many = Array.from({ length: 100 }, (_, i) => deploy(`d${i}`));
+    listUnsentEmailNotificationsMock.mockResolvedValue(many);
+    countUnsentEmailNotificationsMock.mockResolvedValue(240);
+    // 没有邮箱 → 全部落在 no_email 跳过分支
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() => chainMock({ data: [{ id: "u1", email: null }] })),
+    });
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    // 跳过数必须如实进响应体：指标只在指标后端里，本地断言不了趋势
+    await expect(res.json()).resolves.toMatchObject({ sent: 0, groups: 0, failed: 0, skipped: 100 });
+    // 且落下 verdict 指标 + 一条可定位的告警
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({ name: "cron.digest.verdict", value: 1 }),
+    );
+    expect(logApiErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("QUEUE_STUCK"),
+      expect.any(Error),
+    );
   });
 
   it("队列积压超阈值时告警（C03）", async () => {
@@ -419,7 +452,7 @@ describe("POST /api/cron/digest", () => {
     const res = await POST(req());
     expect(res.status).toBe(200);
     // provider 已经收下这封信，所以 sent 记 2：回执写不写得动不改变「寄出去了」这件事。
-    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0 });
+    await expect(res.json()).resolves.toEqual({ sent: 2, groups: 1, failed: 0, skipped: 0 });
     expect(markEmailSentMock).toHaveBeenCalledTimes(2);
     expect(logApiErrorMock).toHaveBeenCalledWith(
       "[Cron Digest] 邮件已发出，但发送回执写入失败（下一轮摘要可能重复寄出）",
@@ -455,7 +488,7 @@ describe("POST /api/cron/digest", () => {
 
     const res = await POST(req());
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 1 });
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 1, skipped: 0 });
     expect(logApiErrorMock).toHaveBeenCalledWith(
       "[Cron Digest] 失败回执写入失败（该行重试次数未累加，下一轮仍会重发）",
       expect.objectContaining({ message: "update denied" }),
