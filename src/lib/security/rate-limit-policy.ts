@@ -132,6 +132,14 @@ export const RATE_LIMIT_LEDGER: Readonly<Record<string, RateLimitEntry>> = {
       `${CRON_SURFACE}保留策略按「该删的」工作：每轮删的是超过保留期的行，删完即空，` +
       "重复调用不产生新的删除对象，也不触达任何计费 provider。",
   },
+  "GET /api/ops/provider-status": {
+    reason:
+      "纯本地读 `process.env`，**不碰网络、不碰数据库**，代价只是几十个字符串比较——" +
+      "这类端点的正确保护是共享密钥而不是 IP 滑窗：IP 限流在这里既拦不住持有密钥的人，" +
+      "也会把拿着密钥做每日 cron 核验的运维脚本挡在门外。" +
+      "注意它**确实**是无副作用的读，这与本仓库其他运维面（如 `supabase-restore` 会写上游）不同，" +
+      "所以连「上游配额」这个借由都不需要。",
+  },
   "GET /api/ops/supabase-restore": {
     reason:
       `${CRON_SURFACE}读一次 Supabase Management API 的项目状态，只有明确返回` +

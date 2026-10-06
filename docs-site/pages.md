@@ -80,6 +80,7 @@ All dashboard pages use `export const dynamic = "force-dynamic"` for real-time d
 |-------|--------|-------------|------|
 | `/api/health` | GET | Readiness check (Supabase reachability, optional Sentry/Stripe configuration, deployed version and commit) | Public |
 | `/api/health/live` | GET | Liveness check — reports "the process is up" only: no database query, no configuration, no version or commit | Public |
+| `/api/ops/provider-status` | GET | External dependency inventory: which provider credentials are configured and which key names are missing (never any values) | `CRON_SECRET` |
 | `/api/auth/callback` | GET | Auth callback | Public |
 | `/api/user` | GET/PUT | Get/update user info | Required |
 | `/api/teams` | POST/GET | Create/get teams | Required |
