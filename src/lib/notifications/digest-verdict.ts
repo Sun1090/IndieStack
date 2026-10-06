@@ -62,8 +62,17 @@ export interface DigestVerdict {
   reason: string;
 }
 
-/** 单轮就能判的形态：拉满 `PULL_LIMIT` 却一封没发。 */
-const PULL_LIMIT = 100;
+/**
+ * 单轮就能判的形态：拉满取数上限却一封没发。
+ *
+ * **必须等于 `listUnsentEmailNotifications` 的 limit**，但**不从 repositories import**：
+ * 那个模块会拉进 Supabase 客户端，而本文件是纯判定模块（无 IO、无副作用）——
+ * 一旦耦合，digest 路由的测试就必须连带 mock 整个数据层，
+ * 而纯判定最值钱的地方正是「不用 mock 就能穷举」。
+ * 绑定关系由 `digest-verdict.cross.test.ts` 从**外面**核对：
+ * 那个测试同时 import 两边，所以上限漂移它一定会红。
+ */
+export const DIGEST_PULL_LIMIT = 100;
 
 /** 一条读数自身是否可信。 */
 function isPlausible(reading: DigestRoundReading): boolean {
@@ -102,12 +111,12 @@ export function judgeDigestRound(reading: DigestRoundReading): DigestVerdict {
   }
 
   // 队首被占死：拉满了 limit 却一封没发。这是 A05 未生效时最刺眼的形态。
-  if (reading.pulled >= PULL_LIMIT && reading.sent === 0) {
+  if (reading.pulled >= DIGEST_PULL_LIMIT && reading.sent === 0) {
     return {
       code: "QUEUE_STUCK",
       attention: true,
       reason:
-        `拉满 ${reading.pulled} 条却一封没发：listUnsentEmailNotifications 是 ` +
+        `拉满 ${reading.pulled} 条（取数上限 ${DIGEST_PULL_LIMIT}）却一封没发：listUnsentEmailNotifications 是 ` +
         "created_at 升序 + limit 100，队首被不可投递的行占死，可投递的新通知再也拉不到。" +
         "先确认迁移 034 已 applied（A05 的载体），再查 email_skipped_reason 的写入是否成功。",
     };
