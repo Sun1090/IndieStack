@@ -7712,3 +7712,31 @@
 - 下一项：合并后取一次生产读数，回填 `environments.md`；
   再往后的可执行选题见退出报告「下一 milestone」第 2 条（pg_cron 未启用无门禁）。
 - 更新时间：2026-10-05（UTC）。
+
+## 2026-10-05（续）— provider-status 已上线，鉴权边界在生产实测
+
+- 里程碑 / 版本：v0.13.0 起步。分支：`main`。合并 commit：`105da717`（PR #226）。
+- 状态：DONE（端点上线 + 生产鉴权边界实测 + 7/7 冒烟）。
+- **生产实测（2026-10-06T00:57Z，commit `105da717`）**：
+  - `GET /api/ops/provider-status` **匿名 → HTTP 401**、**错密钥 → HTTP 401**。
+    这是这个端点唯一真正要紧的性质，**在生产上验过**，不是只在单测里绿。
+  - `pnpm smoke:production --expected-commit 105da717` → **7/7**。
+  - `pnpm ops:deploy-freshness` → **`fresh`**，生产与 main 同为 `105da717`。
+- **但读数本身仍然未知，而且我把它如实写成未知**：
+  取 `/api/ops/provider-status` 的内容需要 `CRON_SECRET`，本机环境变量里没有。
+  **「鉴权被验证」不等于「内容被读到」**——这两件事很容易被合并成一句
+  「端点已上线所以实况已知」，而那正是本项目开头那批错误结论的形状。
+  所以 `environments.md` 里 Resend 那一行**照旧是 `❓ 未知`**，
+  只在旁边注明「端点已上线且鉴权已验，取读数需要 CRON_SECRET」。
+- 补做这一条需要的只有一样东西：一个 `CRON_SECRET`。
+  取到之后那行就能从「未知」变成确定值，**不需要任何新代码**。
+- 阻塞：B03（可牺牲隔离账号 + 三个 Supabase key）、B04（数据库密码）、
+  B05 P2–P4（Resend 测试 key + VAPID + 可牺牲项目）、
+  本地缺 `CRON_SECRET`（只需一个值，不需要账号）、生产 `RESEND_API_KEY` /
+  `NEXT_PUBLIC_SENTRY_DSN` / `STRIPE_SECRET_KEY`（三条外部链路仍空转）。
+- 下一项：v0.12.0 退出报告「下一 milestone」第 2 条——
+  **pg_cron 未启用这件事目前只有文档说明、没有门禁**：
+  两个环境都没装 \`pg_cron\`，每周清理被守卫静默跳过，
+  迁移成功、门禁全绿、\`/api/health\` 正常，**但一行都不会删**。
+  这是可执行且不卡凭据的下一个选题。
+- 更新时间：2026-10-06（UTC）。
