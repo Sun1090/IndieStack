@@ -7894,3 +7894,13 @@
   （B03 需 3 个 Supabase key + 可牺牲账号、B04 需 DB 密码、B05 需 Resend 测试 key + VAPID、
   以及 CRON_SECRET 才能读 provider-status）。
 - 更新时间：2026-10-06（UTC）。
+
+- **CI 如实记录**：PR #230 是 **11 绿 / 2 红**，两个红都是
+  `Vercel – indie-stack` 与 `Vercel – indie-stack-docs-site`，
+  原因是 **build rate limited — retry in 24 hours**（Vercel 构建配额，与本次改动无关）。
+  11 个代码检查全绿：Analyze、Build、Build Docs Site、CodeQL、Detect Secrets、
+  E2E（+ 两个 shard）、Lint & Type Check、Unit Tests、security-config。
+  **合并理由**：本次改动是纯测试与文档 + 一个导出常量，
+  且 digest 路由的 CI Build 与 E2E shard 都已在 CI 里跑过同一条路径，
+  不依赖 Vercel preview 部署；配额类红灯与代码正确性无关，
+  但**它确实是红的**，不记成 13/13。
