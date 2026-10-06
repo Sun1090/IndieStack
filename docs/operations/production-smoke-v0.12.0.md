@@ -14,12 +14,12 @@
 
 | 检查项 | 期望 | 状态 |
 | --- | --- | --- |
-| `GET /api/health`（就绪探针） | 200，`status=ok`、`ready=true`、`version=0.12.0`、`no-store` 且带 `x-request-id`；发布时另传 `--expected-commit` 断言构建身份 | ⏳ 待发布后执行 |
-| `GET /api/health/live`（存活探针，本版本新增第 7 步） | 200，且响应体**不含** `checks`/`version`/`commit`/`uptime` —— 它必须既不打 Postgres 也不泄露构建身份 | ⏳ 待发布后执行 |
-| 首页/静态资源 | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG | ⏳ 待发布后执行 |
-| 未授权 dashboard | 匿名请求重定向到 `/auth/login`，不返回受保护内容 | ⏳ 待发布后执行 |
-| Webhook 缺签名 | HTTP 400，`Missing signature`，`no-store` | ⏳ 待发布后执行 |
-| 安全头 | CSP、HSTS、nosniff、DENY、Referrer-Policy、Permissions-Policy、request ID 齐全 | ⏳ 待发布后执行 |
+| `GET /api/health`（就绪探针） | 200，`status=ok`、`ready=true`、`version=0.12.0`、`no-store` 且带 `x-request-id`；发布时另传 `--expected-commit` 断言构建身份 | ✅ 2026-10-05T23:52Z：`status=ok`、`ready=true`、`version=0.12.0`、`commit=5cdbf0c`（release PR #224 合并后的构建）；`--expected-commit` 断言**通过**（传错会红，见 runbook 停止条件） |
+| `GET /api/health/live`（存活探针，本版本新增第 7 步） | 200，且响应体**不含** `checks`/`version`/`commit`/`uptime` —— 它必须既不打 Postgres 也不泄露构建身份 | ✅ 2026-10-05T23:52Z：冒烟第 7 步通过；直连响应体仅 `{"status":"ok","timestamp":"…"}`，确认无泄露 |
+| 首页/静态资源 | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG | ✅ `homepage:200`、`static-asset:200`（icon.svg 以 SVG 提供） |
+| 未授权 dashboard | 匿名请求重定向到 `/auth/login`，不返回受保护内容 | ✅ `anonymous-dashboard:307` → `/auth/login` |
+| Webhook 缺签名 | HTTP 400，`Missing signature`，`no-store` | ✅ `webhook-signature-rejection:400`，拒绝且无副作用 |
+| 安全头 | CSP、HSTS、nosniff、DENY、Referrer-Policy、Permissions-Policy、request ID 齐全 | ✅ CSP（含 nonce + `strict-dynamic`）、HSTS `max-age=63072000; includeSubDomains; preload`、nosniff、`DENY`、`strict-origin-when-cross-origin`、permissions-policy、`x-request-id` |
 
 > **本版本新增第 7 步的理由**：`/api/health` 拆成就绪与存活两个端点后，
 > 必须有人盯着「它们没有被重新合并」。冒烟第 7 步断言 liveness 不返回
@@ -31,10 +31,12 @@
 
 | 检查项 | 期望 | 状态 |
 | --- | --- | --- |
-| `pnpm ops:deploy-freshness` | 落后 main 在阈值（默认 5）以内；**超阈值会红**，且消息里写明「生产 commit → main commit」与两个短 SHA | ⚠️ 发布前实测（2026-10-05T22:53Z）：生产 `08dd6f17` vs main `c7315633`，**落后 6 个提交 → 红**，原因是 Vercel 构建配额限流 |
+| `pnpm ops:deploy-freshness` | 落后 main 在阈值（默认 5）以内；**超阈值会红**，且消息里写明「生产 commit → main commit」与两个短 SHA | ⚠️ 发布前（2026-10-05T22:53Z）：生产 `08dd6f17` vs main `c7315633`，**落后 6 → 红**（Vercel 配额限流）。✅ 发布后（23:52Z）：**`fresh`，距离回落到 0**，生产与 main 同为 `5cdbf0cb` |
 
-> 这条检查现在红是**真实的**：生产确实停在旧构建上。发布完成、部署落地后
-> 距离应回落到 0。若连续多天停在同一个距离不回落，那才说明部署坏了。
+> **这条检查在一天内走完了它的两种状态**，这正是设计意图：
+> 22:53Z 因配额限流报「落后 6 → 红」，23:52Z 配额恢复、部署落地后报「`fresh`」。
+> 红的时候它说对了（生产确实在旧构建上），绿的时候它也说对了——
+> 而在加这条检查之前，**这两种情况都不会有任何自动检查出声**。
 
 ## 需要只读凭证 / 只读 SQL
 
@@ -61,15 +63,17 @@
 （权威出处是 `docs/operations/environments.md` 的「外部依赖实况」表）：
 
 ```
-version=0.11.0 commit=08dd6f17d2c754db688b516934dcfdfeadaf9b8a ready=true
+version=0.12.0 commit=5cdbf0cb812e87f8f920870bfec421661471eafa ready=true   # 发布后（23:52Z）
+# 发布前同一命令的读数：version=0.11.0 commit=08dd6f17… ready=true
 - supabase: required=true  configured=true  status=ok        reachable=true
 - sentry:  required=false configured=false status=missing
 - stripe:  required=false configured=false status=missing
 allConfigured=false degraded=false
 ```
 
-**发布后这三行应当变化**：若生产仍未变成 `version=0.12.0`，说明部署没落地，
-去查 Vercel 构建配额（PR 的 Vercel 检查会直接写 `Deployment rate limited`）。
+**发布后 `version` 已变为 `0.12.0`、`commit=5cdbf0cb`，部署落地成功**（2026-10-05T23:52Z）。
+若生产未变成 `version=0.12.0`，说明部署没落地，去查 Vercel 构建配额
+（PR 的 Vercel 检查会直接写 `Deployment rate limited`）。
 
 **发布后也不应变化的两件事**：`sentry` 与 `stripe` 仍是 `configured=false`——
 本版本不配置这两项（需要外部凭据）。`ready=true` 而 `allConfigured=false` 是
