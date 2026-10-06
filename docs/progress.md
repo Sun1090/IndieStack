@@ -7946,3 +7946,53 @@
   让「面板说 0 轮空发、趋势说还在涨」这种矛盾读数能被一眼看到）；
   再往后仍是外部凭据（B03 / B04 / B05 / CRON_SECRET）。
 - 更新时间：2026-10-06（UTC）。
+
+## 2026-10-06 — 把A05 趋势结论摆上面板；再次验证「变异测试通过先怀疑是否可达」
+
+- 里程碑 / 版本：v0.13.0。分支：`feat/admin-email-queue-trend`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条 PR 的「阻塞 / 风险」白纸黑字写着
+  「跨天趋势现在有数据源了，但还没有一处真的去调它——**「谁来看」这一步还空着**」。
+  **空着就补上。** 面板此前只有 `emptySendRounds`（单轮计数），
+  一个挂在那儿没人解释的 `pending=812`。
+- **先量，不猜**：面板组件里全仓搜索 `emailQueue.trend` → **0 处**。
+  结论已经存活在 `queue-observability` 的返回值里，**它一直没人看**。
+- 串联起来的接线：取数 → `toDailyDigestReadings` → `judgeDigestSeries`
+  → `EmailQueueReading.trend` → 面板「队列趋势」卡。
+- **本条 PR 最值得记的不是代码，是这一点**：
+  第一版映射逻辑（按天去重 + 拼判定序列）写在取数函数里，
+  然后我去做变异核对——**两个变异全部全绿**（删掉去重全绿、读 BeforeSend 混进 skipped 也全绿）。
+  按本项目的变异纪律，「变异通过」的第一怀疑**永远先是「变异是否可达」**，这次是真的。
+  不可观测的根因：① 测试数据里同日多轮的 pulled/sent **完全相同**，
+  所以留哪一轮看不出来；② 所有天共用同一个 `skipped` 值，
+  所以 skipped 的算法换了也看不出来。
+  **于是把映射抽成导出的纯函数 `toDailyDigestReadings`，然后断言直接钉「留的是最新一轮」。**
+  再做一遍变异：三个变体全部逮到。**解药是「让变异可观测」，不是「加更多测试」。**
+- **同样的教训又出现一次**：之前直接在 `AdminPage` 里写趋势文案 switch，
+  ESLint complexity 16 > 15 被拦；改用模板拼 `trend${code}`→ `check:i18n` 的动态键门禁拦下；
+  改抽成 `trend-copy.ts`→ 又漏掉了「数据不足要说不知道」这条。
+  **文案组装独立成 `trend-copy.ts` 之后，这三件事才分别有了落点。**
+  default 分支的「读数不足」由单测钉住：
+  「**未来新增一个 code 落到 default，显示「读数不足」而不是拼出一个错误的键**」。
+- 变异核对（全部实测过，复原）：
+  - 删掉按天去重 → 1 红 ✅
+  - 不过滤无日期轮次 → 3 红 ✅
+  - 同日保留最旧一轮 → 3 红 ✅
+  - 数据不足时回落 `OK` → 1 红 ✅
+  - QUEUE_STUCK 不再共用一句话→ 1 红 ✅
+- 验证：全量 **269 文件 /3242 用例**（上一条 268 /3226）；
+  `pnpm check:all` ✅；`pnpm lint` 0 error；`pnpm type-check` 0 error；
+  `pnpm exec vitest run src/app/dashboard/admin/page.test.tsx` 8/8；
+  `pnpm verify:build` ✅（i18n 静态键已进 SSG）。
+- 阻塞 / 风险：
+  - `toDailyDigestReadings` 对 `backlog` 与 `skipped` 用**当前唯一取值**贯穿全序列——
+    这是**近似**（历史轮次的真实 backlog 并没有进 worker_runs 表），
+    所以下面把 `trendRounds` 一起展示，**一个只基于两天的「趋势」不该被当成趋势看**。
+    这一点已在实现注释与 CHANGELOG 里说清。
+  - 生产仍落后 main 多个提交（Vercel 构建排队 24h 配额窗口），
+    `ops:deploy-freshness` 依旧 `lagging`（阈值内）。
+- 下一项：等配额窗口过去，取生产证据（freshness + smoke），
+  并把这张图截一遍进来（不是「它能渲染」而是「上面真的是人能读的那条」）；
+  再往后仍是外部凭据：B03 需 3 个 Supabase key + 可牺牲账号、
+  B04 需 DB 密码、B05 需 Resend 测试 key + VAPID、CRON_SECRET 才能读 provider-status 内容。
+- 更新时间：2026-10-06（UTC）。

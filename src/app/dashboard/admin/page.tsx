@@ -17,7 +17,17 @@ import { countContactMessages } from "@/lib/repositories/contact-messages";
 import { countWebhookEvents } from "@/lib/repositories/webhook-events";
 import { readEmailQueueDiagnostics } from "@/lib/notifications/queue-observability";
 import { describePendingAge, type PendingAgeParts } from "@/lib/notifications/queue-diagnostics";
-import { Users, Activity, Shield, AlertTriangle, Mail, Webhook, Inbox } from "lucide-react";
+import { describeEmailQueueTrend } from "@/lib/notifications/trend-copy";
+import {
+  Users,
+  Activity,
+  Shield,
+  AlertTriangle,
+  Mail,
+  Webhook,
+  Inbox,
+  TrendingUp,
+} from "lucide-react";
 import { EMAIL_SKIP_REASONS, type EmailSkipReason } from "@/lib/notifications/types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -120,6 +130,8 @@ export default async function AdminPage() {
     return t("overview.stats.queueAgeMinutes", { value: parts.value });
   };
 
+  const trend = describeEmailQueueTrend(emailQueue.trend, emailQueue.trendRounds, t);
+
   const statsCards = [
     {
       title: t("overview.stats.totalUsers"),
@@ -174,7 +186,14 @@ export default async function AdminPage() {
               }) + queueLeftSentence,
       icon: Inbox,
     },
+    {
+      title: t("overview.stats.trend"),
+      value: trend.marker,
+      desc: trend.desc,
+      icon: TrendingUp,
+    },
   ];
+
 
   const systemServices = [
     { name: t("overview.services.database"), healthy: true },
