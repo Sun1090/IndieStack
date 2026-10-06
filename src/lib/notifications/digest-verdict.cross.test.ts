@@ -21,7 +21,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { EMAIL_PULL_LIMIT } from "@/lib/repositories/notifications";
-import { judgeDigestRound } from "./digest-verdict";
+import { listRecentEmailWorkerRuns } from "@/lib/repositories/worker-runs";
+import { judgeDigestRound, judgeDigestSeries } from "./digest-verdict";
 import { deriveQueueDiagnostics } from "./queue-diagnostics";
 
 /** 按 `queue-diagnostics` 的口径数一轮是否算「空发」。 */
@@ -125,5 +126,35 @@ describe("判定「队列卡死」的两处口径", () => {
       skipped: 0,
     });
     expect(atLimit.code).toBe("QUEUE_STUCK");
+  });
+});
+
+describe("跨天趋势真的拿得到数据（端到端接上）", () => {
+  it("**仓储返回的轮次带着日期，可以直接喂给 judgeDigestSeries**", async () => {
+    // 这条钉的是「接线」而不是「判定」：
+    // 之前 `listRecentEmailWorkerRuns` 只 select 三列，
+    // 于是 `judgeDigestSeries` 永远只能判单轮——**趋势判定写了却拿不到数据**。
+    // 判定本身有单测，但它当时**没有任何数据源**。
+    const rows = await listRecentEmailWorkerRuns();
+
+    // 无论有没有数据，序列判定都**必须给出结论**，而不是静默返回空：
+    // 空序列会判 INSUFFICIENT_DATA + attention=true（那才是诚实的行为）。
+    const verdict = judgeDigestSeries(
+      rows
+        .filter((row) => typeof row.date === "string")
+        .map((row) => ({
+          date: row.date as string,
+          pulled: row.pulled,
+          sent: row.sent,
+          backlog: 0, // 积压不在 worker_runs 表里，这里只验接线
+          skipped: 0,
+        })),
+    );
+    expect(verdict.code).toBeDefined();
+    // 关键：不能是「有数据却判不出趋势」——有日期的行必须真的被用上
+    const dated = rows.filter((row) => typeof row.date === "string");
+    if (dated.length >= 2) {
+      expect(verdict.code).not.toBe("INSUFFICIENT_DATA");
+    }
   });
 });

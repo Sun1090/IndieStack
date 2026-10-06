@@ -7904,3 +7904,45 @@
   且 digest 路由的 CI Build 与 E2E shard 都已在 CI 里跑过同一条路径，
   不依赖 Vercel preview 部署；配额类红灯与代码正确性无关，
   但**它确实是红的**，不记成 13/13。
+
+## 2026-10-06 — 把上一条记下的边界补上：跨天趋势判定终于有数据源
+
+- 里程碑 / 版本：v0.13.0。分支：`fix/digest-series-data-source`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条 PR 的「阻塞 / 风险」里如实记了一句
+  「`judgeDigestSeries` 已有单测，但**没有生产数据源喂它**，所以跨天趋势尚未真正跑起来」。
+  **记下的边界就该被补上**，否则它会一直挂在那儿变成一句自我安慰。
+- **量出来的缺口**：`listRecentEmailWorkerRuns` 只 `select` 了 `pulled, sent, failed` 三列，
+  而 `judgeDigestSeries` 判「积压是在降还是不降」**必须有日期**——
+  它对重复日期直接判 `INSUFFICIENT_DATA`（同一天两次读数的抖动不构成趋势）。
+  **所以那个判定当时只能判单轮，跨天部分是一段没有输入的代码。**
+- **好消息：这是接线漏了，不需要新迁移。**
+  表 `email_worker_runs` 的 `created_at` 早在迁移 017 就有了、而且已建索引，
+  只是取数时没 select。所以：
+  - `.select("pulled, sent, failed")` → 加上 `created_at`；
+  - `EmailWorkerRunRow` 增加可选 `date`（只取 UTC 日期部分，不带时间戳）。
+- **一条刻意的取舍**：`created_at` 缺失时 `date` 为 `undefined`，**不编一个日期出来**。
+  编日期比没有日期更坏——`judgeDigestSeries` 会拿它排序、判重复日期，
+  凭空来的日期会让「积压下降」这句话建立在一个**不存在的读数**上。
+  这与本项目反复用到的「未知不算通过」是同一条原则。
+- **一条被我顺手改掉的过时意图**：仓库里原有一条用例叫
+  「只取算空发送轮次用得上的三列」，它把「三列」当成了正确做法。
+  那个意图**已经过时**（趋势判定需要第四列），所以改成
+  「取三列计数 + created_at（跨天趋势判定需要日期）」，
+  并补两条：`created_at` 缺失时 `date` 为 `undefined`、只取日期部分不把时间戳带进来。
+  **测试的意图本身会过时，而过时的意图比过时的实现更难发现**——
+  因为它看起来只是一条断言。
+- 变异核对（实测，做完复原）：
+  - 去掉 `created_at` 的 select 与 `date` 映射 → **2 条红** ✅
+- 验证：`worker-runs` 7 条绿（+2）、跨模块 6 条绿（+1）、`queue-diagnostics` 14 条绿；
+  全量 **268 文件 / 3226 用例**（上一条 PR 后 268 / 3223）；
+  `pnpm check:all` ✅；`pnpm type-check` 0 error；`pnpm verify:build` ✅。
+- 阻塞 / 风险：**跨天趋势现在有数据源了，但还没有一处真的去调它**——
+  面板目前只用 `emptySendRounds`（单轮计数），没有把 `judgeDigestSeries` 的结论显示出来。
+  也就是说数据通了、判定有了，**「谁来看」这一步还空着**。
+  另外本地 Supabase 栈已停（本轮读表结构时 docker socket 不通），
+  所以 `created_at` 的存在是靠**迁移 017 的 SQL** 核的，不是靠本地库——这一点如实记下。
+- 下一项：把 `judgeDigestSeries` 的结论接到 admin 面板（与 `emptySendRounds` 并排，
+  让「面板说 0 轮空发、趋势说还在涨」这种矛盾读数能被一眼看到）；
+  再往后仍是外部凭据（B03 / B04 / B05 / CRON_SECRET）。
+- 更新时间：2026-10-06（UTC）。

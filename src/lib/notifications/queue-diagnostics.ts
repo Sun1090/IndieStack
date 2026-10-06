@@ -22,6 +22,17 @@ export interface EmailWorkerRunRow {
   pulled: number;
   sent: number;
   failed: number;
+  /**
+   * 该轮的 UTC 日期（`YYYY-MM-DD`）。
+   *
+   * **为什么要有它**：`src/lib/notifications/digest-verdict.ts` 的
+   * `judgeDigestSeries` 要判「积压是在**降**还是不降」，而**趋势必须有日期**——
+   * 同一天两次读数的抖动不构成趋势，所以那边对重复日期直接判 `INSUFFICIENT_DATA`。
+   * 表 `email_worker_runs` 早就有 `created_at`（迁移 017，且已建索引），
+   * 只是取数时没 select 它——于是**跨天趋势这件事一直没数据可判**。
+   * 可空：历史调用方与测试里可能只关心三个计数。
+   */
+  date?: string;
 }
 
 export interface QueueDiagnosticsInput {
