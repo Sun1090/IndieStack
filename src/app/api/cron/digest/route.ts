@@ -19,6 +19,7 @@ import { NextRequest } from "next/server";
 import { jsonNoStore } from "@/lib/api-response";
 import { logApiError } from "@/lib/api-log";
 import { shouldSendEmail } from "@/lib/notification-prefs";
+import { judgeDigestRound } from "@/lib/notifications/digest-verdict";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { recordCronRejected } from "@/lib/cron-metrics";
 import { renderEmailHtml } from "@/lib/email-template";
@@ -154,6 +155,15 @@ interface DigestProgress {
   sent: number;
   groups: number;
   failed: number;
+  /**
+   * 本轮按用户条件跳过的条数（无邮箱 / 偏好全关）。
+   *
+   * **它是 A05 判定的一半输入**，所以必须**真的记下来**：
+   * 早先这里靠 `result.skipped ?? 0` 取值，而 `DigestProgress` 根本没有这个字段，
+   * 于是它恒为 0 —— 一个「跳过率」指标恒等于零，
+   * 比没有这个指标更坏（它看起来是被测过的）。
+   */
+  skipped: number;
 }
 
 async function runDigest(
@@ -185,6 +195,7 @@ async function runDigest(
         unit: "count",
         attributes: { reason: "no_email" },
       });
+      progress.skipped += items.length;
       await markSkippedWithReceipt(items, "no_email");
       continue;
     }
@@ -198,6 +209,7 @@ async function runDigest(
         unit: "count",
         attributes: { reason: "preference" },
       });
+      progress.skipped += items.length;
       await markSkippedWithReceipt(items, "preferences_off");
       continue;
     }
@@ -259,7 +271,7 @@ export async function POST(request: NextRequest) {
   /** 本轮实际拉到的条数；catch 分支要靠它把失败轮次记成真实数字。 */
   let pulled = 0;
   /** 发送进度就累加在这里：整轮抛错时也要能记下「已经寄出去了哪些」。 */
-  const progress: DigestProgress = { sent: 0, groups: 0, failed: 0 };
+  const progress: DigestProgress = { sent: 0, groups: 0, failed: 0, skipped: 0 };
 
   try {
     // C03 积压告警：待发通知超阈值时 Sentry 上报（logApiError → captureException，
@@ -282,11 +294,38 @@ export async function POST(request: NextRequest) {
         unit: "ms",
         attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
       });
-      return jsonNoStore({ sent: 0, groups: 0, failed: 0 });
+      // **必须带 skipped**：空队列这一轮确实跳过了 0 条，所以值是 0，
+      // 但字段**要在**——否则同一个端点会因为走哪条 return 而返回两种形状，
+      // 而读日志/写脚本的人正是按「形状固定」来解析它的。
+      return jsonNoStore({ sent: 0, groups: 0, failed: 0, skipped: 0 });
     }
 
     const result = await runDigest(siteUrl, notifications, progress);
     const durationMs = Date.now() - startedAt;
+
+    // A05 的观察窗口：**「积压高」与「队列卡死」是两件事，原来只有前者会喊。**
+    // 积压高但每轮都在发出，是正常的业务量；积压高且「拉满 limit 却一封没发」，
+    // 说明队首被不可投递的行占死了——`listUnsentEmailNotifications` 是
+    // `created_at` 升序 + limit 100，可投递的新通知再也拉不到。
+    // 两种形态在积压数字上长得一样，所以这里补一条独立信号（判定口径见
+    // `src/lib/notifications/digest-verdict.ts`，那里也有对应的纯函数与单测）。
+    const roundVerdict = judgeDigestRound({
+      date: new Date().toISOString().slice(0, 10),
+      pulled,
+      sent: result.sent,
+      backlog,
+      skipped: result.skipped,
+    });
+    recordMetric("cron.digest.verdict", 1, {
+      unit: "count",
+      attributes: { code: roundVerdict.code, attention: String(roundVerdict.attention) },
+    });
+    if (roundVerdict.attention) {
+      await logApiError(
+        `[Cron Digest] 队列判定 ${roundVerdict.code}：${roundVerdict.reason}`,
+        new Error(`digest_verdict_${roundVerdict.code}`),
+      );
+    }
     // C02 运行记录：落表失败不影响发送结果返回
     try {
       await recordWorkerRun({

@@ -138,6 +138,12 @@ tag 是对外声明「做完了」，**没有证据就等于没做**。
 | `pnpm smoke:production` | 7/7 | 任一步红 = 停止发布流程 |
 | `pnpm ops:deploy-freshness` | 距离回落到 0 | 停在同一距离不回落 = 部署坏了 |
 | `cron.digest.skipped{reason}` | **上升**（A05 的预期） | 与 `email.backlog` 上升**同时**出现且 `pulled=100, sent=0` = A05 没修掉，多半是 034 未 applied |
+
+> 这三条判据现已固化成可跑的纯函数判定：`src/lib/notifications/digest-verdict.ts`
+> （14 条单测，变异核对过「跳过上升误报」与「阈值放宽」两个方向）。
+> digest 每轮会落 `cron.digest.verdict{code, attention}` 并对 `attention=true` 的情况告警。
+> **注意 `skipped` 这个数以前根本不在响应体里**（`DigestProgress` 没有该字段，
+> 而响应直接 `return result`），所以任何基于跳过率的判断都拿不到数——已修。
 | `email.backlog` | 下降 | 单调上升 = 同上 |
 
 ## 下一 milestone

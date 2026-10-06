@@ -49,6 +49,30 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **A05 的观察窗口从「文档里的一句话」变成可跑的判定**，
+  并且**补上了一个一直在说谎的数**。
+  - **先说那个谎**：`cron.digest.skipped{reason}` 这个指标一直有，跳过多少条一清二楚；
+    但 `DigestProgress` 里**没有 `skipped` 字段**，而响应体直接 `return jsonNoStore(result)`。
+    也就是说：**任何基于「跳过率」的判断都拿不到数**。
+    第一版修法是写 `result.skipped ?? 0` —— 那是**恒等于 0**，
+    一个恒为 0 的「跳过率」指标比没有这个指标更坏：**它看起来是被测过的**。
+    现在两个跳过分支真的累加 `progress.skipped`，并进响应体。
+  - 空队列那条早返回路径原先硬编码 `{sent,groups,failed}`，
+    会让**同一个端点因走哪条 return 而返回两种形状**——已补齐 `skipped`，形状固定。
+  - **「积压高」与「队列卡死」原来只有前者会喊。** 积压高但每轮都在发出是正常业务量；
+    积压高且「拉满 limit 100 却一封没发」说明队首被不可投递的行占死了
+    （`listUnsentEmailNotifications` 是 `created_at` 升序 + limit 100，
+    可投递的新通知再也拉不到）。两种形态在积压数字上长得一样，
+    所以新增独立信号 `cron.digest.verdict{code}` 与一条指向 034 的告警。
+  - 判定是纯函数（`src/lib/notifications/digest-verdict.ts`，14 条单测），**判定与取数分开**
+    ——这样它能被穷举，而不必先有一个能用的指标后端。
+  - **最要紧的一条口径写死在代码里**：「跳过率上升」**本身不是故障**。
+    A05 落地后那些行从「卡在队首」变成「被判定出队」，跳过率**必然上升**——
+    任何「跳过率涨了就告警」的规则，都会在 A05 上线后变成一个天天误报的信号位。
+    只有「跳过涨 **且** 积压不降」才告警。
+  - **未知一律不算通过**：空序列、读数不可信（`sent > pulled`、负数、日期格式错）、
+    日期重复（同一天两次读数的抖动不构成趋势）都判 `INSUFFICIENT_DATA` 且 `attention=true`。
+
 - **两个新依赖告警的处置**：`source-map-js`（GHSA-68fv-2mgg-jv7q，需 >=1.2.2）与
   `@vue/server-renderer`（GHSA-g2v6-rqmx-r4w6，需 >=3.5.42）都有上游修复，
   按本仓库既有做法走 `pnpm-workspace.yaml` 的 override，而不是登记进
