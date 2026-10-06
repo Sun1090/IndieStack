@@ -127,6 +127,20 @@ pnpm audit
 - 部署后 `cron.digest.skipped{reason}` 或 `email.backlog` 出现**与 A05 语义矛盾**的读数
   （例如 `email.backlog` 单调上升且 `pulled=100, sent=0`——那正是 A05 要修的症状没修掉）。
 
+## 发布记录（2026-10-05 实际执行）
+
+```text
+版本：0.12.0
+发布 commit（main）：5cdbf0cb812e87f8f920870bfec421661471eafa（PR #224 rebase 合并）
+生产部署 commit：5cdbf0cb812e87f8f920870bfec421661471eafa（从 /api/health 读出）
+生产冒烟：7/7（UTC 2026-10-05T23:52Z，--expected-commit 断言通过）
+部署新鲜度：fresh（距离 0；发布前曾因 Vercel 配额报「落后 6 → 红」）
+/api/health/live 直连响应体：{"status":"ok","timestamp":"…"}（无 checks/version/commit）
+迁移：034 云端 applied 状态 **本机未复核**（无 Supabase 凭据）——见「冻结状态」第 5 条
+tag：未打（理由见 release-tag-ledger.md）
+回滚：见 rollback-runbook-v0.12.0.md（其「演练记录」仍为空）
+```
+
 ## 冻结状态与未完成步骤（2026-10-05）
 
 - **未打 tag**：见上一节，理由是 B03 缺外部凭据。
@@ -139,6 +153,16 @@ pnpm audit
   邮件、告警、支付三条外部链路在生产上是空转的。这些是外部凭据，不是代码问题。
 - **跨迁移边界的真实生产回滚证据**仍不存在（`rollback-runbook-v0.12.0.md` 的
   「演练记录」为空）。本次发布不制造它——回滚演练需要真实部署切换。
+- **⚠️ 本次发布没有复核云端迁移 034 是否 applied**（本机无 Supabase 凭据，
+  `~/.supabase/access-token` 不存在）。发布**侥幸**没出问题：digest worker 的跳过分支
+  只有在真的有「无邮箱 / 偏好全关」的行时才会写到那一列，而生产当前没有这类数据。
+  **但这是运气，不是验证**——一旦生产出现这类用户，worker 就会抛错。
+  **补做这一条不需要新代码，只需要一个有 Supabase 凭据的环境执行两条命令**：
+  ```bash
+  supabase migration list --linked      # 期望 034 applied
+  supabase db push --linked --dry-run   # 期望为空
+  ```
+  在此之前，`034` 未 applied 是一项**未被排除**的风险。
 
 ## 发布记录模板
 
