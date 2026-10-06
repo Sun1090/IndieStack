@@ -7740,3 +7740,63 @@
   迁移成功、门禁全绿、\`/api/health\` 正常，**但一行都不会删**。
   这是可执行且不卡凭据的下一个选题。
 - 更新时间：2026-10-06（UTC）。
+
+## 2026-10-06 — pg_cron：函数在、调度不在、门禁全绿、数据不删
+
+- 里程碑 / 版本：v0.13.0。分支：`feat/retention-cron-gate`。
+- 状态：DONE（未合并）。
+- 为什么做：v0.12.0 退出报告「下一 milestone」第 2 条，且不卡外部凭据。
+- **先量，再判断**（本项目的硬规矩）：去查了本地栈，而不是照抄文档。
+  `docker exec supabase_db_indiestack psql` 三条实测：
+  - `select count(*) from pg_extension where extname='pg_cron'` → **0**
+  - `select count(*) from cron.job` → **relation does not exist**（所以 0 个调度被注册）
+  - 6 个保留期函数**全部存在**：`cleanup_old_api_usage`、`cleanup_old_email_worker_runs`、
+    `cleanup_old_notifications`、`cleanup_old_webhook_events`、
+    `cleanup_resolved_contact_messages`、`prune_deleted_upload_objects`
+- **结论**：迁移成功、`check:migrations` 绿、`/api/health` `ready=true`、
+  清理函数全在——**而保留期一周一行都不会删**。
+  而在加这条门禁之前，**没有任何一个既有门禁会发现这件事**（`grep -rl pg_cron scripts/ src/lib/release/` 为空）。
+- 完成内容：
+  - `src/lib/db/retention-cron-audit.ts`（纯判定，18 条单测）
+    + `scripts/lib/retention-cron-check.ts`（CLI，thin wrapper 起它，与
+    `check-changelog-tags.js` 同一套 `--experimental-strip-types` 做法）
+    + `scripts/check-retention-cron.js` + `pnpm check:retention-cron`（已进 `check:all`）。
+- **三个刻意的设计决定**：
+  1. **静态审计永远可跑**：`--probe` 才连库。查 `pg_extension` 要真 Postgres，
+     而本机没 DB 密码（B04 的阻塞）——**一个需要凭据才跑得起来的检查，
+     迟早因为没人有凭据而长期不跑**。
+  2. **探不到就说「不等于已安装」**：拿不到读数时**绝不**据此推断「没装」。
+  3. **一条调度都扫不到也判红**：扫描规则与实际写法脱节时必须出声，
+     否则就是「一个扫不到东西的检查等于没有检查」。
+- **门禁自己第一版报了 4 条假警，全被当场核掉**——这一段最值得记：
+  - `010_webhook_events.sql` 的 `cron.schedule('cleanup-webhook-events')` 在 **SQL 注释**里
+    （给 Supabase Dashboard 的建议片段，不是活代码）。扫描没剥行注释 → 报成「未守卫的真调度」。
+  - `032_data_retention_erasure.sql` 的说明写在**第 33–34 行**，超出固定 1200 字符的截断窗口
+    → 3 条「未写明跳过」。
+  **修的是扫描逻辑**（剥行注释且**保留字符位置**，文档窗口改成**按行数**而非字节），
+  **不是把发现压下去**——一个会误报的检查迟早被人加白名单关掉，那比没有检查更糟。
+- **另一个真实缺陷（在测试跨块时被逮到）**：`isGuarded` 最初只从调用位置往上找最近的
+  `pg_cron` 字样，于是**同一文件里前一个 `do` 块的守卫会把后一个裸调用也判成「已守卫」**
+  ——只要文件里有一处守卫，该文件所有调度就都合规。真实迁移 `027` 正是 `do $do$ … end $do$`
+  结构，所以这不是假想。现在守卫**必须与调用同块**。
+- 变异核对（两条都实测，做完复原）：
+  - 不剥行注释 → **2 条红** ✅
+  - 文档窗口退回 1200 字符 → **1 条红** ✅
+- **顺带处置两个新依赖告警**（与本任务无关，但它们让 `check:security` 红了）：
+  - `source-map-js`（需 >=1.2.2）、`@vue/server-renderer`（需 >=3.5.42）
+    → 有上游修复，走 `pnpm-workspace.yaml` override（与既有 fast-uri / brace-expansion 同理），
+    **不登记进例外表**——例外表是给「上游根本没有可升级版本」用的。
+  - `braces` **不动**：advisory 编号没变（仍是已登记的 `GHSA-vfj7-8cjw-p6…`，只是
+    npm audit 本地 id 变了），且上游 3.0.4 至今未发布（最新 3.0.3 是 2024-04）。
+    **第一版这里错加了 override，是 `pnpm install` 直接失败才发现的**——先核对编号再动手。
+- 验证：`pnpm test` 该文件 18 条绿；`pnpm check:retention-cron` exit 0（34 份迁移 / 6 处调度）；
+  `pnpm check:security` ✅（1084 tracked files，1 条已登记例外）；
+  `pnpm type-check` 0 error；`pnpm lint` 0（`main` 一度 complexity 16 超限 15，
+  把探测结果展示抽成 `reportProbe()` 后回落到限制内）；`pnpm check:all` ✅。
+- 阻塞 / 风险：**生产是否安装 pg_cron 仍未核实**（需 DB 密码）。
+  本地未安装是**本地**的实况，不能直接推到生产——这条我特意没写成「生产也没装」。
+  若生产也没装，处置是 Supabase Dashboard 启用扩展（外部运维动作），
+  而**不是**改代码：守卫本身是对的。
+- 下一项：合并后确认 CI 里 `check:retention-cron` 也绿；
+  再往后的可执行选题仍是外部凭据相关（B03/B04/B05）或等 DB 密码核实生产 pg_cron。
+- 更新时间：2026-10-06（UTC）。
