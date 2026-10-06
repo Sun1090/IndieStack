@@ -56,7 +56,7 @@
 | 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | digest / 保留期路径在线上是活的 |
 | Sentry | ❌ 生产未配 DSN | 同上（输出 `sentry: configured=false status=missing`） | **告警链路空转**，详见 `sentry-alerts.md` 开头 |
 | Stripe | ❌ 生产未配 key | 同上（输出 `stripe: configured=false status=missing`） | 支付路径线上无流量，checkout 未上线 |
-| Resend | ❓ **未知** | —— | provider 诊断只在 admin 后台，匿名 404；从外部判不了 |
+| Resend | ❓ **未知**（2026-10-05 起**可查了**） | `curl -H "authorization: Bearer $CRON_SECRET" $BASE/api/ops/provider-status` | **本条曾长期是「未知」**：provider 诊断逻辑（`diagnoseProviders`）写得完整、有单测，却**没有任何生产代码调用它**，`/api/health` 又只回 supabase/sentry/stripe 三项，于是「邮件链路在生产上是不是空转的」只能靠猜。现已新增只读诊断端点（见下），**待取一次读数后即可从这一行删掉「未知」** |
 | GitHub 保活变量 | ✅ 已配置 | `gh variable list`（`HEALTHCHECK_URL`） | 每日保活 workflow 在跑 |
 | Vercel 构建配额 | ⛔ 限流中 | PR 上的 `Vercel – indie-stack` 检查（2026-10-05 报 `retry in 24 hours`） | preview 部署排队，非代码缺陷 |
 
@@ -69,6 +69,22 @@
    **读不到库里的表**。把前者当成后者会让人以为 B04 快能做完了。
 3. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
    本文档开头的那些错误结论，一半是被一个自信的猜测撑起来的。
+   **但「未知」也不该被当成常态**：它之所以长期存在，是因为「从外部查不到」。
+   现在 `GET /api/ops/provider-status`（`CRON_SECRET` 鉴权，**只回键名、永不回值**）
+   把「从外部查不到」变成「一条命令能回答」，所以这张表里的每个 `❓`
+   都应该能被一次调用消掉——**留着的理由只能是「还没人去查」，不能是「查不了」**。
+
+### 查这张表的推荐顺序
+
+```bash
+BASE=https://indie-stack-theta.vercel.app
+# 1) 逐依赖实况（含邮件 / web push / Appark 等 /api/health 不回的那些），只回键名
+curl -sS -H "authorization: Bearer $CRON_SECRET" "$BASE/api/ops/provider-status"
+# 2) 就绪状态与 deployed commit（顺手刷新本表的 supabase / 部署两行）
+node scripts/check-health.js "$BASE"
+# 3) 生产落后 main 多少个提交
+node scripts/check-deploy-freshness.js --base-url "$BASE"
+```
 
 ## 免费版保活与自动恢复
 

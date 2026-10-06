@@ -521,6 +521,15 @@ export const ROUTE_AUTH_LEDGER: Readonly<Record<string, RouteAuthEntry>> = {
     via: ["CRON_SECRET"],
     reason: "回读的是项目运维状态（连接、恢复点位），属运维面而非公开健康检查",
   },
+  "GET /api/ops/provider-status": {
+    family: "shared-secret",
+    via: ["CRON_SECRET"],
+    reason:
+      "只回「哪些凭据缺、哪些不缺」的键名，回的不是公开健康信息而是运维面清单：" +
+      "匿名调用者据此可枚举出本项目用到了哪些第三方服务与变量名。/api/health 那三项是" +
+      "有意公开的依赖明细，这个端点多回的是其余依赖（含邮件、web push、Appark），" +
+      "所以级别相同",
+  },
 
   // —— 第三方签名 ——
   "POST /api/webhooks/stripe": {
