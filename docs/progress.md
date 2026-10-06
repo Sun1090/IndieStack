@@ -7848,3 +7848,49 @@
 - 下一项：把 `judgeDigestSeries` 接到一个有数据的地方（例如每日 workflow 拉一次指标，
   或 A05 面板复用同一判定）；再往后仍是外部凭据相关（B03/B04/B05、DB 密码、CRON_SECRET）。
 - 更新时间：2026-10-06（UTC）。
+
+## 2026-10-06 — 「队列卡死」有两处判定，把它们的关系钉住
+
+- 里程碑 / 版本：v0.13.0。分支：`fix/digest-verdict-cross-consistency`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条 PR（#229）加了 A05 观察窗口之后，回头核对它与既有面板的关系，
+  发现**同一个概念在两处各有一套判定**，而两边对 `failed` 的处理不同。
+  这不是重复，是**各自会漂**——一旦漂移，同一份数据会给出互相矛盾的读数。
+- **两处判定的真实差异**（先量，不猜）：
+  | 位置 | 口径 | 性质 |
+  | --- | --- | --- |
+  | `digest-verdict.ts` `QUEUE_STUCK` | `pulled >= 取数上限 && sent === 0` | **严重性判定**（要不要喊人） |
+  | `queue-diagnostics.ts` `emptySendRounds` | `pulled > 0 && sent === 0 && failed === 0` | **展示口径**（面板上的数字） |
+  - `pulled=5, sent=0, failed=0`：面板算 1 轮空发，我的判定**不算卡死**（没到上限）。
+  - `pulled=100, sent=0, failed=5`：我的判定**算卡死**，面板**不算空发**（failed>0）。
+- **决定：不合并，改为钉住关系。**
+  强行统一会让其中一个失真——把 `failed>0` 也算进「空发」会把发送失败淹没在展示口径里；
+  把上限要求塞进面板则会让「空发轮次」这个计数变得难以解释。
+  新增 `digest-verdict.cross.test.ts`（5 条）钉住**包含关系**：
+  **告警不比面板更钝**（凡判卡死的轮次，面板要么也算空发、要么因 failed>0 而另有其因）。
+- **顺带修掉一个会静默漂移的口径**（这才是真正值得记的）：
+  取数上限原本是 `listUnsentEmailNotifications` 的**默认参数** `limit = 100`，
+  而 `QUEUE_STUCK` 另写了一个 100。**改了一处，这条判定就会静默变成
+  「永远抓不到真正的卡死形态」**——而没有任何测试会红。
+  现在导出 `EMAIL_PULL_LIMIT` 作为唯一出处（与 `EMAIL_MAX_ATTEMPTS`、
+  `EMAIL_BACKLOG_ALERT_THRESHOLD` 同属「有第二个消费者的口径」），
+  绑定关系由跨模块测试**从外面**核对。
+- **一个自己踩的坑，值得记**：为了让判定直接用上那个常量，我一度让
+  `digest-verdict.ts` 去 `import` 仓储模块——**结果把 Supabase 客户端拖进了一个
+  纯判定模块**，digest 路由的测试直接 500（10 条用例挂了才注意到，
+  而且它在单跑与全量跑都挂，说明不是并发/顺序问题）。
+  **纯判定最值钱的地方正是「不用 mock 就能穷举」**，所以退回「导出常量 + 外部测试绑定」。
+  这也解释了为什么绑定关系要由**同时 import 两边**的测试来守，而不是让被测方 import 常量。
+- 变异核对（两个方向都实测，做完复原）：
+  - `DIGEST_PULL_LIMIT` 漂到 250 → **3 条红** ✅
+  - `EMAIL_PULL_LIMIT` 漂到 250 → **1 条红** ✅
+  （只守一个方向是不够的：只守 repositories 的话，把 verdict 侧数字改大同样会让判定失效。）
+- 验证：该文件 5 条绿、`queue-diagnostics` 14 条绿、digest 路由 20 条绿；
+  全量 **268 文件 / 3223 用例**（上一条 PR 后是 267 / 3218）；
+  `pnpm check:all` ✅；`pnpm type-check` 0 error；`pnpm verify:build` ✅。
+- 阻塞 / 风险：无新增阻塞。跨天趋势（`judgeDigestSeries`）仍**没有生产数据源**，
+  与上一条 PR 记的边界相同。
+- 下一项：把 `judgeDigestSeries` 接到有数据的地方；再往后仍是外部凭据
+  （B03 需 3 个 Supabase key + 可牺牲账号、B04 需 DB 密码、B05 需 Resend 测试 key + VAPID、
+  以及 CRON_SECRET 才能读 provider-status）。
+- 更新时间：2026-10-06（UTC）。

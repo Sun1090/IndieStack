@@ -62,9 +62,21 @@ const EMAIL_DEAD_LETTER_FILTER = `metadata->>email_attempts.is.null,metadata->>e
  * 待发邮件通知（未读 + 未标记已发送 + 限定类型），供邮件 worker 拉取。
  * 邮件失败重试计数（metadata.email_attempts）达到上限的死信不再进入队列（v0.5.0 A02）。
  */
+/**
+ * 单轮取数的上限（`created_at` 升序 + limit）。
+ *
+ * **导出成常量是因为它有第二个消费者**：`src/lib/notifications/digest-verdict.ts`
+ * 的 `QUEUE_STUCK` 判定（「拉满上限却一封没发」= 队首被占死）依赖这个值。
+ * 之前它是默认参数 `limit = 100`，两处各写一个 100——
+ * 改了一处，另一处会静默变成「永远抓不到真正的卡死形态」。
+ * 与 `EMAIL_MAX_ATTEMPTS`、`EMAIL_BACKLOG_ALERT_THRESHOLD` 同属「有第二个消费者的口径」，
+ * 所以同理导出。
+ */
+export const EMAIL_PULL_LIMIT = 100;
+
 export async function listUnsentEmailNotifications(
   types: readonly NotificationType[] = EMAIL_NOTIFICATION_TYPES,
-  limit = 100,
+  limit = EMAIL_PULL_LIMIT,
 ): Promise<Notification[]> {
   const admin = createAdminClient();
   const { data, error } = await admin

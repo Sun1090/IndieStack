@@ -49,6 +49,28 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **「队列卡死」在本仓库有两处判定，现在钉住了它们的关系**（这是上一条 PR 自己带出来的后续）。
+  - `digest-verdict.ts` 的 `QUEUE_STUCK`（`pulled >= 取数上限 && sent === 0`）是**严重性判定**，
+    决定要不要喊人；
+  - `queue-diagnostics.ts` 的 `emptySendRounds`（`pulled > 0 && sent === 0 && failed === 0`）
+    是**展示口径**，决定面板上那个数字。
+  - **两者刻意不合并**（`pulled=5, sent=0, failed=0` 算空发轮次但远没到卡死；
+    `failed > 0` 的卡死轮次面板不计入空发），但它们**对同一批数据下结论**，
+    各自漂移就会出现「面板说 0 轮空发、告警却在喊卡死」这种互相打脸的读数——
+    而那时读日志的人无法判断该信哪一个。
+    新增 `digest-verdict.cross.test.ts` 钉住包含关系：**告警不比面板更钝**。
+  - **顺带修掉一个会静默漂移的口径**：取数上限原本是
+    `listUnsentEmailNotifications` 的默认参数 `limit = 100`，
+    而 `QUEUE_STUCK` 另写了一个 100 —— 改了一处，这条判定就会静默变成
+    「永远抓不到真正的卡死形态」。现在导出 `EMAIL_PULL_LIMIT` 作为唯一出处
+    （与 `EMAIL_MAX_ATTEMPTS`、`EMAIL_BACKLOG_ALERT_THRESHOLD` 同理），
+    并由跨模块测试从**外面**核对绑定关系。
+  - **一个自己踩的坑**：为了让判定直接用上那个常量，我一度让
+    `digest-verdict.ts` 去 `import` 仓储模块——那会把 Supabase 客户端拖进一个
+    纯判定模块，digest 路由的测试直接 500（跑了 10 条用例才发现）。
+    纯判定最值钱的地方正是「不用 mock 就能穷举」，所以退回导出常量 + 外部测试绑定。
+    **两个方向的上限漂移都实测过会红**（verdict 侧 3 条、repositories 侧 1 条）。
+
 - **A05 的观察窗口从「文档里的一句话」变成可跑的判定**，
   并且**补上了一个一直在说谎的数**。
   - **先说那个谎**：`cron.digest.skipped{reason}` 这个指标一直有，跳过多少条一清二楚；

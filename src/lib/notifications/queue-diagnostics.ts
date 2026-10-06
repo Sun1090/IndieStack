@@ -67,6 +67,15 @@ export function deriveQueueDiagnostics(input: QueueDiagnosticsInput): QueueDiagn
       ? Math.max(0, input.nowMs - Date.parse(input.oldestCreatedAt))
       : null;
 
+  // 「空发轮次」是**展示口径**（面板上那个数字），不是**严重性判定**。
+  // 严重性判定在 `src/lib/notifications/digest-verdict.ts` 的 `QUEUE_STUCK`，
+  // 那条额外要求「拉满取数上限」（`EMAIL_PULL_LIMIT`）——因为只有拉到上限、
+  // 仍然一封没发，才说明队首被不可投递的行占死了。
+  //
+  // **两者刻意不合并**：`pulled=5, sent=0, failed=0` 算空发轮次，但远没到卡死；
+  // 反过来 `failed > 0` 的卡死轮次本面板不计入空发。强行统一会让其中一个失真。
+  // 它们对同一批数据下结论，所以有一份**跨模块一致性测试**
+  //（`digest-verdict.cross.test.ts`）钉住「告警不比面板更钝」这条包含关系。
   const emptySendRounds = input.recentRuns.filter(
     (run) => run.pulled > 0 && run.sent === 0 && run.failed === 0,
   ).length;
