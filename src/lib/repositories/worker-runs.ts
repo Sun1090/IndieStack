@@ -38,13 +38,21 @@ export async function listRecentEmailWorkerRuns(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("email_worker_runs")
-    .select("pulled, sent, failed")
+    // **created_at 一起取**：跨天趋势判定（`judgeDigestSeries`）需要日期，
+    // 而「没有日期的轮次」只能判单轮。列早就存在（迁移 017，已建索引），只是没 select。
+    .select("pulled, sent, failed, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
-  return ((data ?? []) as { pulled?: number; sent?: number; failed?: number }[]).map((row) => ({
+  return ((data ?? []) as {
+    pulled?: number;
+    sent?: number;
+    failed?: number;
+    created_at?: string;
+  }[]).map((row) => ({
     pulled: row.pulled ?? 0,
     sent: row.sent ?? 0,
     failed: row.failed ?? 0,
+    date: typeof row.created_at === "string" ? row.created_at.slice(0, 10) : undefined,
   }));
 }

@@ -49,6 +49,19 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **跨天趋势判定写了却拿不到数据——现在接上了。**
+  `judgeDigestSeries`（判「积压是在降还是不降」）从上一条 PR 起就有单测，
+  但**没有任何数据源喂它**：`listRecentEmailWorkerRuns` 只 `select` 了
+  `pulled, sent, failed` 三列，而跨天趋势**必须有日期**——
+  `judgeDigestSeries` 对重复日期直接判 `INSUFFICIENT_DATA`
+  （同一天两次读数的抖动不构成趋势）。也就是说**那个判定当时只能判单轮**。
+  - 表 `email_worker_runs` 的 `created_at` **早就存在**（迁移 017，且已建索引），
+    只是取数时没 select 它——所以这是**接线漏了**，不需要新迁移。
+  - `EmailWorkerRunRow` 增加可选 `date`（UTC 日期部分）。
+  - **`created_at` 缺失时 `date` 为 `undefined`，不编一个日期出来**：
+    编日期比没有日期更坏——`judgeDigestSeries` 会拿它排序、判重复日期，
+    凭空来的日期会让「积压下降」这句话建立在一个不存在的读数上。
+
 - **「队列卡死」在本仓库有两处判定，现在钉住了它们的关系**（这是上一条 PR 自己带出来的后续）。
   - `digest-verdict.ts` 的 `QUEUE_STUCK`（`pulled >= 取数上限 && sent === 0`）是**严重性判定**，
     决定要不要喊人；
