@@ -7996,3 +7996,32 @@
   再往后仍是外部凭据：B03 需 3 个 Supabase key + 可牺牲账号、
   B04 需 DB 密码、B05 需 Resend 测试 key + VAPID、CRON_SECRET 才能读 provider-status 内容。
 - 更新时间：2026-10-06（UTC）。
+
+## 2026-10-08 — 生产证据回填：deploy freshness fresh + smoke 7/7，commit 精确匹配
+
+- 里程碑 / 版本：v0.12.0（生产）。分支：`docs/production-evidence-20261008`。
+- 状态：DONE（未合并）。
+- 为什么做：上一条 PR 的「阻塞 / 风险」里写的是
+  「等配额窗口过去，取生产证据（freshness + smoke），并把这张图截一遍进来」。
+  Vercel 构建配额窗口已经过去，生产**自己追平了 main**——现在去把证据拿回来落表。
+- **实测（不猜）**：
+  - `curl /api/health` → `version=0.12.0, commit=d2457d74`, `mockMode:false`, supabase `ok`。
+  - `pnpm ops:deploy-freshness` → **fresh**，生产 commit `d2457d74bd60…` = origin/main 同 commit。
+  - `node scripts/production-smoke.js --url … --expected-commit d2457d74bd60…` → **7/7 passed**，
+    commit 精确匹配（这是断言式的，不是看一眼）。
+  - `curl %s/api/ops/provider-status`（无凭据）→ 401 Unauthorized——**鉴权边界在线上仍然有效**，
+    与 2026-10-06 记的一致。
+- 结论与边界（诚实标注）：
+  - **已确认**：生产跑的就是 main（fresh）、冒烟 7/7、匿名访问被正确 401。
+    这几个先前的「lagging / 未知」现在有了确定答案。
+  - **仍未知（不是运气，是凭据）**：`provider-status` 的**内容**读数需要 `CRON_SECRET`；
+    admin 面板趋势卡需要登录会话——本机两者都没有，所以
+    **面板上「趋势卡真的渲染出人能读那一条」没有人工截图**。
+    这不等于它没上线（`queue-observability` 已返回 trend、digest 路由已落 `cron.digest.verdict` metrics），
+    但**能渲染 ≠ 我亲眼见过它渲染**，所以那张「眼见为实」的图仍未取得。
+- 验证：`pnpm check:progress` ✅；文档仅改动 `environments.md`（新增 3 行观测记录别名 `BASE`）。
+- 阻塞 / 风险：B03（需 3 个 Supabase key + 可牺牲账号）、B04（需 DB 密码）、
+  B05（需 Resend 测试 key + VAPID）、`CRON_SECRET`（读 provider-status 内容 / 人工触发 digest）全缺。
+- 下一项：拿到 `CRON_SECRET` 后回来把「未知」三行里的内容读数补掉；
+  其余仍是外部凭据（B03/B04/B05）。
+- 更新时间：2026-10-08（UTC）。

@@ -54,6 +54,9 @@
 | Supabase（Auth 配置读） | ✅ 可用 | `gh run list --workflow security-config.yml`（最近一轮输出「Auth 配置已验证（scope=redirects）」） | 同上，另一条独立证据 |
 | Supabase（数据库级） | ❌ **无 DB 密码类 secret** | `gh secret list`（只有一个 `SUPABASE_ACCESS_TOKEN`） | **B04 的真正阻塞**：演练 SQL 与 `migration list --linked` 都要真 Postgres 连接 |
 | 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | digest / 保留期路径在线上是活的 |
+| 生产部署新鲜度（2026-10-08 观测） | ✅ fresh，阈值 5 | `pnpm ops:deploy-freshness`（生产 `d2457d74` = origin/main 同 commit） | **生产已追上 main**，不再滞后；前面几轮的 lagging 是 Vercel 构建排队的副作用 |
+| 生产冒烟（2026-10-08 观测） | ✅ 7/7 | `node scripts/production-smoke.js --url … --expected-commit d2457d74bd60b23d559a4d1a9c53d764faa5d554` | health / liveness / 主页 / 静态资源 / 安全头 / 匿名看板 307 / webhook 签名拒收 全过，commit 匹配 |
+| 生产异步看板鉴权（2026-10-08 观测） | ✅ 匿名 401（admin 面板数据路径） | curl `BASE/api/ops/provider-status`（此时尚无凭据 → Unauthorized） | 与 2026-10-06 记的一致：鉴权边界在线上仍然有效；**content 读数仍需 CRON_SECRET/admin 会话（本机没有，照旧未知）** |
 | Sentry | ❌ 生产未配 DSN | 同上（输出 `sentry: configured=false status=missing`） | **告警链路空转**，详见 `sentry-alerts.md` 开头 |
 | Stripe | ❌ 生产未配 key | 同上（输出 `stripe: configured=false status=missing`） | 支付路径线上无流量，checkout 未上线 |
 | Resend | ❓ **未知**（2026-10-05 起**可查了**） | `curl -H "authorization: Bearer $CRON_SECRET" $BASE/api/ops/provider-status` | **本条曾长期是「未知」**：provider 诊断逻辑（`diagnoseProviders`）写得完整、有单测，却**没有任何生产代码调用它**，`/api/health` 又只回 supabase/sentry/stripe 三项，于是「邮件链路在生产上是不是空转的」只能靠猜。现已新增只读诊断端点（见下）。**端点已在生产上线并实测过鉴权边界**（2026-10-06T00:57Z，commit `105da717`：匿名 401、错密钥 401），但**读数本身仍未知**——取它需要 `CRON_SECRET`，本机没有。**鉴权被验证不等于内容被读到**，所以这一行照旧是「未知」 |
