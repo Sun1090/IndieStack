@@ -138,6 +138,29 @@
 `CRON_SECRET` 缺失时平台调用会得到 401 并产出 `cron.auth.rejected{reason="secret_unconfigured"}`，
 这是「调度在跑但鉴权没配对」的唯一信号。
 
+**但「唯一信号」那句话只在请求进了函数时成立**（2026-10-10 事故补上的口径）。
+Vercel Cron 触发用的是 **HTTP GET**（https://vercel.com/docs/cron-jobs：
+«To trigger a cron job, Vercel makes an HTTP GET request to your project's production deployment URL»）。
+路由若只导出 `POST`，Next.js 在进入 route handler **之前**就答 `405 Method Not Allowed`，于是：
+
+- `cron.auth.rejected` **不会产出**（鉴权代码没跑到）；
+- 任何业务指标**都不会产出**，面板上看起来就是「队列为空的安静」；
+- `cron.digest.failed` 这类「失败告警」**永远不会红**，因为它度量的是 handler 里的 catch；
+- `/api/health` 与 `pnpm smoke:production` 全绿——它们各自打的是别的端点或别的方法。
+
+**所以 405 是一条对所有既有告警不可见的故障形态**，本仓库的 digest 与 retention 就因此
+在没有任何红灯的情况下分别空转了 20 天与 18 天。补上的三层防护：
+
+| 层 | 位置 | 判据 |
+|---|---|---|
+| 静态 | `pnpm check:cron-contract` 的 `CRON_PLATFORM_METHOD_UNDECLARED` | 注册表里 worker 的 `methods` 不含 GET 即红 |
+| 静态 | 同门禁的 `CRON_METHOD_MISSING` | 声明了 GET 但路由源码没 `export async function GET` 也红（防「注册表写对了、代码没写」） |
+| 运行时 | `pnpm smoke:production` 第 8 步 `cron-trigger-method` | **不打凭据**打 `vercel.json` 每条 cron 路径的 GET：401/403 说明进了函数（绿）、2xx + JSON 说明免鉴权跑了（绿）、**405 或任何非预期响应红**；本应用对不存在的路径返回 200 + HTML，所以「不是 405」不能单独当证据，必须连 content-type 一起判 |
+
+排查顺序（下次遇到「cron 看起来在跑但什么都没发生」）：
+`curl -o /dev/null -w '%{http_code}' -X GET $BASE/<cron path>` → **405 = 方法没导出**；
+**401 = 进了函数，是鉴权/凭据问题**；**200 = 进了函数且没鉴权，去看业务指标**。
+三者含义完全不同，第一步就把方向分开了。
 ## 建议指标告警与去重
 
 | 规则 | 条件（生产环境） | 处置 |
