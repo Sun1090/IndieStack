@@ -69,7 +69,7 @@
 | pg_cron（保留期调度） | ❌ **本地栈与生产都实测未安装**（本地 2026-10-06；生产 2026-10-14，run `38442279610` 回 `pg_cron=NOT_INSTALLED`） | 本地栈：`node scripts/check-retention-cron.js --probe --container supabase_db_indiestack`；生产：`pnpm ops:cloud-sql-probe`（手动触发的 workflow，读 `PG_CRON_INSTALLED` 那一步） | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。**生产是否安装：从此可自动答**——`pnpm ops:cloud-sql-probe` 的 `PG_CRON_INSTALLED` 那一步（走 HTTP，用仓库里已有的 `SUPABASE_ACCESS_TOKEN`，**不需要数据库密码**）。⚠️ **本行原先写的「生产是否安装仍未核实（需 DB 密码）」，错在两层。****第一层：答案早就在仓库里。**`docs/db/retention.md` 第 79 行（2026-09-21 复核，commit `9ab8c154`）就写着**同一个 ref** `ntqggnztzvoavjbiillb` 的 `pg_extension` 清单里没有 `pg_cron`，而本文件下面「Auth 邮件与重定向白名单」一节把这个 ref 明确称为「**生产 Supabase 项目**」。⇒ 那句「仍未核实」是在答案已入库 **14 天之后**写下的，写之前没有搜过仓库。**根因是那份记录只写了结论、没写可复跑的命令**，所以 14 天后没人能判断它是否仍然可查，只能重新写成「未知」——**「文档已写」不等于「证据可复核」**，这条本仓库早就写进 `docs/operations/release-audit-template.md`，这次轮到它自己踩。**第二层：那个「查不了」的理由本身也是错的**：「执行 SQL 需要 DB 密码」已于 2026-10-13 被同一个端点否证（run `38334026946`，七条全 EXECUTED）——那是 B04 的阻塞理由被写错的第三版（三个版本见 `docs/roadmap-0.12.0.md` 的 B04 条目），而**这一行是另一个还挂着那个旧前提的结论**：前提修好了，依赖它的句子留在原地。（刻意不写「第 N 处」——这类残留没有统一台账，数不出来就不该报数。）⚠️ 也别把「没装 pg_cron」读成「保留期失效」：主执行者是 `/api/cron/retention`（每天 05:00 UTC，见 `docs/db/retention.md`），pg_cron 只是迁移里那组周调度的第二个可选调度器。本行那句「一周一行都不会删」说的是**那一半**，判保留期整体要看 `cron.retention.completed` |
 | CodeQL 告警台账 vs 实况（2026-10-13 首跑实测） | ❌ **2 条红，exit 1**：#18 阻断级仍 open + 分诊超 SLA（12 个工作日 > 5） | `GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack pnpm ops:codeql-alerts`（离线复现：`--fixture fixtures/codeql-alerts.json`） | 这条补的是「零回归」这个结论**从来没有被任何自动检查核对过**的缺口：过去 runbook 把它登记成「本地无法复现（要 GitHub 安全 API 权限）」，实测本机 `gh` 就能读全部字段 ⇒ **缺的一直不是权限，是没人写探测**。代价已经出现过一次：2026-09-24 那 4 条 `js/log-injection` 挂了 5 天没人发现。⚠️ 严重度字段是 **`rule.security_severity_level`，在 `rule` 下面**；顶层没有这个键，从顶层取会稳定得到 `null`，而 `null` 看着完全像「GitHub 没评分」。**我第一版把成因写成「只在带 `x-github-api-version: 2022-11-28` 时才有值」，那也是错的**——错在对照实验用 `gh api` 跑「不带 header」那组，而 `gh` 自己会补默认 api-version ⇒ 两组都带了 header；改用 `curl` 后带不带都有值。完整矩阵与「不要用查询参数筛严重度」见 `codeql-alert-triage.md` 的「外部依赖」一节。判定层拒绝把 `null` 当低危，报 `CODEQL_ALERT_SEVERITY_UNKNOWN`。当前 open 实况：#18 `high`、#11/#12/#13/#17 `medium`；dismissed 0 条。**它刻意不进 `check:all`、不进 workflow**：#18 未结案 ⇒ 此刻必红，进 PR 门禁会阻塞每一个 PR |
 
-**三条要读出来的分寸**：
+**四条要读出来的分寸**：
 
 1. **`configured=false` 不等于 readiness 会红**。`/api/health` 里 Sentry / Stripe 都是
    `required: false`，所以它们缺失时 `ready` 仍是 `true`——这是有意的设计（模板的可选依赖），
@@ -99,6 +99,11 @@
    现在 `GET /api/ops/provider-status`（`CRON_SECRET` 鉴权，**只回键名、永不回值**）
    把「从外部查不到」变成「一条命令能回答」，所以这张表里的每个 `❓`
    都应该能被一次调用消掉——**留着的理由只能是「还没人去查」，不能是「查不了」**。
+   **2026-10-10 要给这条加一个反面教训**：有些 `❓`／`❌` 的理由其实是**「登记错了」**而不是「查不了」。
+   「`migration list --linked` 需要数据库密码」被登记了两年，而它不要密码——
+   于是「云端到了哪一版」这个一分钟能答的事实一直挂着「本机未复核」，
+   而它正好是 v0.12.0 那句「侥幸没同步也没事」的唯一解。**登记阻塞时要写清「阻塞到哪一层」**，
+   只写「做不到」会让下一个人把能做的部分一起放弃。
 
 ### 查这张表的推荐顺序
 
@@ -110,7 +115,12 @@ curl -sS -H "authorization: Bearer $CRON_SECRET" "$BASE/api/ops/provider-status"
 node scripts/check-health.js "$BASE"
 # 3) 生产落后 main 多少个提交
 node scripts/check-deploy-freshness.js --base-url "$BASE"
-# 4) 线上 schema 与代码期望是否一致（只读 OpenAPI 根端点，不查数据）
+# 4) 平台用的那条方法到底能不能进路由（不打凭据，405 就是死）
+node scripts/production-smoke.js --url "$BASE" --expected-commit "$(git rev-parse HEAD)"
+# 5) 云端 schema 到了哪一版。**不要数据库密码**（这条被误登记成「需要」两年，
+#    代价是「034/035 从未 applied」直到线上出事才发现）
+pnpm exec supabase migration list --linked
+# 6) 线上 schema 与代码期望是否一致（只读 OpenAPI 根端点，不查数据行）
 pnpm ops:schema-drift
 # 5) 云端 applied 到第几版迁移（只读 Management API，不要 DB 密码、不要 CLI 登录态）
 pnpm ops:migration-status
