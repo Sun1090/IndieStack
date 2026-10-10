@@ -8,7 +8,96 @@ See `docs/operations/release-tag-ledger.md`.
 
 ## [Unreleased]
 
-### Added
+### Fixed
+
+- **【生产 P0】摘要邮件与保留期清理在线上从未执行过——Vercel Cron 用的是 HTTP GET，而这两条 worker 只导出 POST。**
+  2026-10-10 实测：`curl -X GET $BASE/api/cron/digest` ⇒ **405**，同一条路径 `POST` ⇒ 401，
+  而导出 GET 的 `push-retry` ⇒ 401。401 意味着**进了函数**（鉴权在 handler 里），
+  405 意味着**没进函数**。Vercel 的实现是「向生产 URL 发一个 HTTP GET」
+  （https://vercel.com/docs/cron-jobs），而 Next.js 对未导出的方法在进 route handler **之前**就返回 405。
+  于是 `vercel.json` 每天照常调用、每天拿到 405：digest 自 **2026-09-20** 进入 crons（`5360b500`）起、
+  retention 自 **2026-09-22**（`8a36cfa9`）起，**一次都没执行过**。
+  - **为什么三套「全绿」的证据都发现不了它**：405 在鉴权、指标、落表之前，
+    所以 `cron.auth.rejected`（E03 专为「漏配 `CRON_SECRET`」加的）不产出、`cron.digest.*` 不产出、
+    失败轮本应写的 `email_worker_runs` 一行都没有；`/api/health` 的 DB 探测用 **anon** 身份打
+    `profiles limit(1)`（表和列都在，`ready=true` 只说明「连得上」）；
+    而 7 步的 production smoke **没有任何一步打过 cron 路径的 GET**。
+    **`vercel.json` 与 `check:cron-contract` 只能证明「调度存在」，证明不了「调度能进到代码」。**
+    缺的不是运气，是覆盖面。
+  - 修复：两条路由的实现改名为私有 `handle`，**同时导出 `GET` 与 `POST`**（对齐 `push-retry` 形态）。
+    鉴权仍在 `handle` 内——**GET 不是免鉴权通道**，这一点由测试单独钉住
+    （无凭据 ⇒ 401 **且 `recordWorkerRun`/`runRetentionSweeps` 未被调用**；带凭据 ⇒ 200 且真的跑完一轮）。
+    两条方法**必须共用同一个 `handle`**：分开写会让「调度器真正走的那条方法」落在测试覆盖面之外，
+    而这次事故恰恰就是只有 POST 有实现、有测试。
+  - **三层防护**（静态声明 → 静态一致 → 运行时可达）：
+    `pnpm check:cron-contract` 新增 `CRON_PLATFORM_METHOD_UNDECLARED`（worker 的 `methods` 不含 GET 即红），
+    与既有 `CRON_METHOD_MISSING` 分工——前者管「平台能不能触发」，后者管「声明与导出是否一致」，
+    两者同时命中时红灯可分辨（有用例专门钉这点）；
+    `pnpm smoke:production` 新增**第 8 步 `cron-trigger-method`**，**不带凭据**打 `vercel.json`
+    每条 cron 路径的 GET：401/403 或 2xx+JSON 为绿，其它为红。
+    **判据不能只看状态码**：本应用对不存在的路径返回 **200 + HTML** 的 404 页，
+    所以「不是 405」单独不构成证据，必须连 content-type 一起判；`vercel.json` 读不到或为空也红（失败封闭）。
+    `/api/health` 从名单里排除（它是保活端点，第 1 步已用 GET 断言过，不排除会把 health 的重试计数耦上这一步）。
+    **`302` 同样判红**：2026-10-10 在 PR #236 的 preview 上实测，开着 Vercel Deployment Protection 时
+    **每个**请求——连 一条**故意编造的假 cron 路径**一起——都被重定向到
+    `vercel.com/sso-api`，此时应用行为一次都没被观察到。「没观察到」不能记成「通过」，
+    而**把 3xx 加进放行名单会让这条检查对受保护的部署永远绿**——正是它要防的那种假绿。
+    本步的核对对象是生产部署（production alias 不带这层保护，匿名可达，已实测）。
+    这条也做了变异核对：放行 3xx ⇒ 用例红；复原 ⇒ 11 绿。
+  - `src/lib/security/route-auth.ts` 与 `rate-limit-policy.ts` 同步登记两条新 GET
+    （`shared-secret` / `CRON_SECRET`）。**不登记就等于「新增一条对外路由」在两份台账上静默通过。**
+  - **A/B 证据（修复前后同一判据的两种读数）**：生产（未部署）digest / retention 的 GET = **405 / 405**、
+    第 8 步红；本地生产构建（dummy env + `next start`，没有任何请求打到生产库）同一批路径 GET = **401**、
+    第 8 步绿，而**同一条由的 `PUT` 仍然 405**。那一列 405 是这条证据的牙齿——
+    它证明 405 确实是「方法没导出」的框架响应，于是「GET 从 405 变 401」只能解释为
+    **GET 现在真的进了 handler**。（原打算用 preview 做 A/B，但 preview 开着 Deployment Protection，
+    所有请求一律 302 到 SSO，什么也观察不到——所以才有了上面那条「302 判红」。）
+  - 变异核对：注册表退回 `["POST"]` ⇒ 红 `[CRON_PLATFORM_METHOD_UNDECLARED] digest`；
+    摘掉路由的 `export async function GET` ⇒ 红 `[CRON_METHOD_MISSING] digest`。**两次都逮到，均已复原。**
+  - **对前一轮那份根因分析的更正**（那是同一天未提交的草稿，结论方向对、机制错）：迁移漂移是真的
+    （生产 `schema_migrations` 只到 **033**，`034`/`035` 从未 applied，REST 打那两列实测 **400 / 42703**），
+    但「digest 每轮 500」**从未发生**——405 在它之前就把请求挡掉了，
+    所以既没有 400、也没有 Sentry 上报、也没有 `cron.auth.rejected`。
+    **更要紧的是因果被读反了：漂移此刻被 405 掩盖。**只部署 GET 修复而不先推迁移，
+    digest 会立刻开始执行并真的撞上 42703，故障从「静默不干活」升级成「每轮 500 + 告警刷屏」。
+    **所以顺序不是偏好，是两种失败形态的差：先 `supabase db push`，后部署本修复。**
+    前置**精确到列**而不是「仓库里有几条迁移」：本分支只到 `034`、部署中的代码只读 `034` 那一列，
+    所以**硬前置只有 `034`**；`035` 与读它那两列（`backlog` / `skipped`）的代码都在 PR #235，
+    **`main` 上 digest 写的列 033 全都有**，所以 `035` 晚一步不会让当前部署坏——
+    但 **#235 合并后它的硬前置就是 `035`**（`worker-runs.ts` 会 select 那两列，而 admin 面板那条路径没有 try/catch）。
+    判据写进 `docs/operations/migration-rollback-runbook.md` 新增的「部署顺序」小节：
+    看**读侧会不会 select / filter 这一列**，而不是「会不会写这一列」
+    （`034` 是「只加一个可空列」的人畜无害形状，却因为队列谓词 `.is(col, null)` 直接让线上 400）。
+  - **两条推理纪律，是这次真正的产出**（比结论更值得留下）：
+    ① 「零行」能不能当证据，取决于「跑过会不会留下痕迹」——digest 的成功与失败路径**都会**
+    `recordWorkerRun` 落一行，失败轮写的列 033 全都有、不会因为缺 034 而写失败，
+    所以「`email_worker_runs` = 0 行」是「从未进过函数」的**必要条件**，这条成立上面那张读数表才有用。
+    ② **`pg_stat_statements` 证明不了「跑过但失败」**：被 PostgREST 在 schema cache 阶段拒掉的查询
+    根本不进统计，于是「没跑」与「跑了被拒」给出**一模一样**的负向读数。
+    只有正向对照（导出 GET 的 push-retry 有 4 条各 19 次 calls 的队列查询）才有解释力。
+    同一段还有两个自己踩出来的坑：**前缀 LIKE `'insert into email_worker_runs%'`** 匹配不到
+    PostgREST 发出的 `INSERT INTO "public"."email_worker_runs"`，会得到一个**永远为零的假阴性**；
+    而**自己的探针也会进这份统计**（本轮那条 `calls=1` 的队列查询就是自己打的匿名 REST 核查）——
+    别把观测者当成被观测对象。
+  - **一条误登记两年的边界**：`migration list --linked` 与单条 `db query --linked`
+    **不需要数据库密码**（CLI 用自己登录态临时建 role）。原先 B04 把它记成「要真 Postgres 连接 = 要密码」，
+    于是「云端到了哪一版」这个一分钟能答的事实一直挂着「本机未复核」，而它正是上面那句
+    「侥幸没同步也没事」的唯一解。`docs/operations/environments.md` 与 `src/lib/drills/preflight.ts`
+    已按**「只读单条 ✅ 不要密码 / 多语句 + `begin/rollback` 演练脚本 ❌ 仍要 psql + 密码」**拆开
+    （`db query --local "select 1; select 2"` 实测 `cannot insert multiple commands`）。
+    **登记阻塞时只写「做不到」而不写「做到哪一层」，下一个人会把能做的部分一起放弃。**
+    同一段也要交代清楚反过来的那一面：`db query --linked` **是能写的**（走真 Postgres 连接，204 也可能是真的执行了），
+    本轮读数期间确实有一次带删除函数的调用落在生产上（前后各查行数均为 0，**没有删到任何东西**），
+    但「没造成损失」不等于「可以做」——见 `docs/progress.md` 2026-10-10 事故条目。
+  - 仍未闭合（照实记）：Vercel 侧调用记录读不到（带 `teamId=team_EhLYnHFjn4uf635bBN3nHoDa` ⇒ **403**，
+    那是 **Supabase organization id，不是 Vercel team id**，别再拿它当作用域；本机亦无 vercel CLI），
+    所以「平台是否有过别的调用」仍是未知；本机没有 `CRON_SECRET`，
+    修复部署后的**第一轮真实读数**必须由平台或持密钥者触发。
+  - 相关文档：`docs/operations/environments.md`（新增/更正 6 行生产读数 + 第 3 条分寸）、
+    `docs/operations/sentry-alerts.md`「Cron 调度契约」（405 对所有既有告警不可见 + 排查顺序）、
+    `docs/operations/migration-rollback-runbook.md`（部署顺序 + `db query` 的两条边界 + 只读通道口径）、
+    `docs/progress.md`（2026-10-10 两条）。
+
 
 - **`pnpm check:retention-cron`：保留期调度「不会跑」这件事从此有门禁。**
   保留期清理的调度是守卫式的（`cron.schedule` 被包在

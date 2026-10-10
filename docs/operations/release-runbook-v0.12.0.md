@@ -98,6 +98,11 @@ pnpm audit
    pnpm smoke:production --expected-commit "<上一步读到的 commit>"
    ```
    期望 7/7 全绿。
+   **2026-10-10 起冒烟是 8 步**（新增 `cron-trigger-method`：Vercel Cron 用 HTTP GET 触发，
+   而本版本部署的那一版里 digest / retention 只导出 POST，每轮 405）。
+   上面那句「期望 7/7」与下面的发布记录都是**当时的真实读数，不回改**；
+   现在重跑这一步会对**本版本部署的 commit** 得到 7/8——红的那一步是真实故障，
+   不是冒烟变严导致的假红。根因与门禁见 `docs/operations/environments.md` 与 `docs/progress.md` 2026-10-10。
 4. 核对部署新鲜度（预期此时应为 0 或极小）：
    ```bash
    pnpm ops:deploy-freshness --base-url https://indie-stack-theta.vercel.app

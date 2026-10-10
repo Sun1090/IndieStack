@@ -109,7 +109,7 @@ export const RATE_LIMIT_LEDGER: Readonly<Record<string, RateLimitEntry>> = {
     "POST 把整个假 store 重置回初始值——它的「杀伤力」恰好是让测试回到干净状态" +
       "；能重置假数据的人本来也能写假数据，这两件事在同一个开关后面",
   ),
-  // ---------------------------------------------------------- 共享密钥面（8）
+  // ---------------------------------------------------------- 共享密钥面（10）
   "POST /api/cron/digest": {
     reason:
       `${CRON_SURFACE}重复调用不会把「寄出的信」放大到超过队列本身：每一轮只处理` +
@@ -127,10 +127,23 @@ export const RATE_LIMIT_LEDGER: Readonly<Record<string, RateLimitEntry>> = {
       "判据与 `POST /api/cron/push-retry` 完全一致——**同一件事的两个动词形态**，" +
       "所以两边的结论必须一起改：只给 POST 加窗口会把排程那一条读成「有守卫」。",
   },
+  "GET /api/cron/digest": {
+    reason:
+      "Vercel Cron 触发用的就是这个动词：平台向生产 URL 发 HTTP GET。判据与 " +
+      "`POST /api/cron/digest` 完全一致（同一件事的两个动词形态），所以两边必须一起改。" +
+      "**这条登记在 2026-10-10 之前是不存在的**：那时路由只导出 POST，" +
+      "平台每轮得到 405 因而从未执行过 worker——限流与鉴权结论都建立在「GET 存在」之上，" +
+      "缺了这一格就等于台账在描述一个线上没有的形状。",
+  },
   "POST /api/cron/retention": {
     reason:
       `${CRON_SURFACE}保留策略按「该删的」工作：每轮删的是超过保留期的行，删完即空，` +
       "重复调用不产生新的删除对象，也不触达任何计费 provider。",
+  },
+  "GET /api/cron/retention": {
+    reason:
+      "同 `POST /api/cron/retention`：每轮删的是超过保留期的行，删完即空，重复触发不产生新的删除对象。" +
+      "GET 是 Vercel Cron 的实际触发动词，两个动词共用 handle 与同一份判据。",
   },
   "GET /api/ops/provider-status": {
     reason:

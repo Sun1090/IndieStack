@@ -33,6 +33,11 @@ const smoke = require("../../scripts/production-smoke.js") as {
     commit?: string | null;
     commitReported?: boolean;
   }) => string;
+  checkCronTriggerMethod: (
+    baseUrl: URL,
+    options: { fetchImpl: typeof fetch; timeoutMs?: number },
+  ) => Promise<{ name: string; passed: boolean; detail: string; statuses: Record<string, number> }>;
+  readScheduledPaths: () => string[] | { error: string };
 };
 
 function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
@@ -139,6 +144,12 @@ describe("production smoke CLI", () => {
           secureHeaders({ "cache-control": "no-store" }),
         );
       }
+      // Vercel Cron 用 GET 触发、不带凭据时路由答 401（方法被接受）。替身必须照这个形状回，
+      // 否则「全套通过」那条用例会在新加的第 8 步上假红。
+      if (url.pathname.startsWith("/api/cron/") || url.pathname === "/api/ops/supabase-restore") {
+        expect(init?.method).toBe("GET");
+        return jsonResponse({ error: "Unauthorized" }, 401, secureHeaders());
+      }
       return htmlResponse(
         '<!doctype html><main id="main-content">IndieStack</main>',
         200,
@@ -162,6 +173,7 @@ describe("production smoke CLI", () => {
       "security-headers",
       "anonymous-dashboard",
       "webhook-signature-rejection",
+      "cron-trigger-method",
     ]);
   });
 
@@ -187,6 +199,11 @@ describe("production smoke CLI", () => {
       }
       if (url.pathname === "/api/webhooks/stripe") {
         return jsonResponse({ error: "Missing signature" }, 400, secureHeaders({ "cache-control": "no-store" }));
+      }
+      // cron 路径按 Vercel Cron 的真实形状回 401 JSON（GET 被接受、只是没带凭据）。
+      // 不加这一支，第 8 步会落到下面的 HTML 替身上并把「commit 身份」那两条用例假红。
+      if (url.pathname.startsWith("/api/cron/") || url.pathname === "/api/ops/supabase-restore") {
+        return jsonResponse({ error: "Unauthorized" }, 401, secureHeaders());
       }
       return htmlResponse('<!doctype html><main id="main-content">IndieStack</main>', 200, secureHeaders());
     });
@@ -293,6 +310,11 @@ describe("production smoke CLI", () => {
       if (url.pathname === "/dashboard") return new Response(null, { status: 200 });
       if (url.pathname === "/api/webhooks/stripe")
         return jsonResponse({ error: "unexpected" }, 500);
+      // cron 路径一律答 405：这正是 2026-10-10 那次线上故障的真实形状（只导出 POST 时
+      // Next.js 的实际响应），第 8 步必须因此报红并点出是哪条路径。
+      if (url.pathname.startsWith("/api/cron/")) {
+        return new Response(null, { status: 405, headers: { allow: "POST" } });
+      }
       return htmlResponse("not found", 404);
     });
 
@@ -303,6 +325,94 @@ describe("production smoke CLI", () => {
     });
     expect(report.passed).toBe(false);
     expect(report.checks.every((check) => !check.passed)).toBe(true);
-    expect(report.checks).toHaveLength(7);
+    expect(report.checks).toHaveLength(8);
+    const cron = report.checks.find((check) => check.name === "cron-trigger-method")!;
+    expect(cron.detail).toContain("405");
+    expect(cron.detail).toContain("/api/cron/digest");
+  });
+
+  /**
+   * 第 8 步的判定口径里最容易被糊过去的两支。
+   *
+   * 「不是 405」绝不能单独当成证据：本应用对**不存在的路径**返回 200 + HTML 404 页，
+   * 所以只看状态码会把「路由被人删了」读成「路由接受 GET」——那正是这条检查要防的事故，
+   * 只是换了一种表现。未知状态码同样不算通过。
+   */
+  it("cron 路径返回 200 + HTML（路由被删）与未知状态码都判红", async () => {
+    const build = (status: number, contentType: string) =>
+      vi.fn(async (input: string | URL | Request) => {
+        const url = new URL(String(input));
+        if (url.pathname.startsWith("/api/cron/") || url.pathname === "/api/ops/supabase-restore") {
+          return new Response("body", { status, headers: { "content-type": contentType } });
+        }
+        if (url.pathname === "/api/health") {
+          return jsonResponse(
+            { status: "ok", ready: true, version: "0.12.0" },
+            200,
+            secureHeaders({ "cache-control": "no-store" }),
+          );
+        }
+        return htmlResponse('<!doctype html><main id="main-content">x</main>', 200, secureHeaders());
+      });
+
+    const html = await smoke.runProductionSmoke("https://example.com", {
+      fetchImpl: build(200, "text/html; charset=utf-8") as unknown as typeof fetch,
+      healthRetryDelayMs: 0,
+    });
+    const htmlCheck = html.checks.find((c) => c.name === "cron-trigger-method")!;
+    expect(htmlCheck.passed).toBe(false);
+    expect(htmlCheck.detail).toContain("text/html");
+
+    const unknown = await smoke.runProductionSmoke("https://example.com", {
+      fetchImpl: build(418, "application/json") as unknown as typeof fetch,
+      healthRetryDelayMs: 0,
+    });
+    expect(unknown.checks.find((c) => c.name === "cron-trigger-method")!.passed).toBe(false);
+
+    // 反向钉：401 JSON 必须是绿——它是「方法被接受、只是没带凭据」的形状，
+    // 若把它判红，这条检查会在每次正常部署上假红，然后被人关掉。
+    const ok = await smoke.runProductionSmoke("https://example.com", {
+      fetchImpl: build(401, "application/json") as unknown as typeof fetch,
+      healthRetryDelayMs: 0,
+    });
+    expect(ok.checks.find((c) => c.name === "cron-trigger-method")!.passed).toBe(true);
+  });
+
+  /**
+   * **302 必须判红，且不能为了「让 preview 也绿」把 3xx 加进放行名单。**
+   * 2026-10-10 在 PR #236 的 preview 部署上实测：开着 Vercel Deployment Protection 时，
+   * 每个请求（连一条**故意编造的假 cron 路径**也一样）都被 302 到
+   * `vercel.com/sso-api`。此时**应用的行为一次都没被观察到**——
+   * 「证明不了」记成「通过」就是假绿，而这条检查存在的理由恰恰是假绿。
+   */
+  it("受部署保护（所有路径 302 到 SSO）时判红，而不是当成通过", async () => {
+    const protectedFetch = vi.fn(async (input: string | URL | Request) =>
+      new Response("redirecting", {
+        status: 302,
+        headers: {
+          location: `https://vercel.com/sso-api?url=${encodeURIComponent(String(input))}`,
+          "content-type": "text/plain",
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const report = await smoke.runProductionSmoke("https://example.com", {
+      fetchImpl: protectedFetch,
+      healthRetryDelayMs: 0,
+    });
+    const cronCheck = report.checks.find((c) => c.name === "cron-trigger-method")!;
+    expect(cronCheck.passed).toBe(false);
+    // 405 不在读数里：红的原因不是「方法没导出」，而是「根本没问到应用」——
+    // detail 要能让人分辨这两件事，否则会把受保护的 preview 读成一次生产故障。
+    expect(cronCheck.detail).not.toContain("405");
+    expect(cronCheck.detail).toContain("302");
+  });
+
+  it("核对的路径来自 vercel.json 的 crons，且不含已由第 1 步覆盖的 /api/health", () => {
+    const scheduled = smoke.readScheduledPaths();
+    expect(scheduled).toContain("/api/cron/digest");
+    expect(scheduled).toContain("/api/cron/retention");
+    expect(scheduled).toContain("/api/cron/push-retry");
+    expect(scheduled).not.toContain("/api/health");
   });
 });
