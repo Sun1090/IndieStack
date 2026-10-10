@@ -52,31 +52,55 @@
 | ---- | ------------------ | -------- | ---- |
 | Supabase（平台 API） | ✅ 可用 | `gh run list --workflow supabase-auto-restore.yml`（每天 success） | Management API 令牌有效 |
 | Supabase（Auth 配置读） | ✅ 可用 | `gh run list --workflow security-config.yml`（最近一轮输出「Auth 配置已验证（scope=redirects）」） | 同上，另一条独立证据 |
-| Supabase（数据库级） | ❌ **无 DB 密码类 secret** | `gh secret list`（只有一个 `SUPABASE_ACCESS_TOKEN`） | **B04 的真正阻塞**：演练 SQL 与 `migration list --linked` 都要真 Postgres 连接 |
-| 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | digest / 保留期路径在线上是活的 |
+| Supabase（数据库级·**只读单条**） | ✅ **连得上生产库，且不需要 DB 密码**（2026-10-10 实测） | `pnpm exec supabase db query --linked "<单条只读 SQL>"`；CLI 用自己登录态临时建 role 连进去 | 原登记的「数据库级一律连不上」**是错的**。本表下面几行生产读数就是这么取的。注意 `current_user=postgres` 且 `rolbypassrls=true`，所以 RLS 不会过滤读数——空表读数是真空，不是被策略挡住 |
+| Supabase（数据库级·**多语句脚本**） | ❌ **仍需 psql + DB 密码** | 实测 `pnpm exec supabase db query --local "select 1; select 2"` → `cannot insert multiple commands into a prepared statement` | **B04 的阻塞只收窄到这里**：`docs/operations/drills/*.sql` 是多语句 + `begin/rollback`，`db query` 跑不了。**只读复核不要密码，不可逆演练要** |
+| 生产 Supabase（应用侧） | ⚠️ **配置可达，但摘要邮件链路线上是死的**（2026-10-10 更正） | `curl -o /dev/null -w '%{http_code}' -X GET $BASE/api/cron/digest` → **405**；`node scripts/production-smoke.js` 第 8 步 | 原先这行写的「digest / 保留期路径在线上是活的」**是未核实的推断，且是错的**：Vercel Cron 用 **HTTP GET** 触发，而这两条路由只导出 POST → 每轮 405，**自被调度以来一次都没执行过**（详见下两行与 `docs/progress.md` 2026-10-10 事故条目） |
+| 生产 cron 触发方法（2026-10-10） | ❌ **`digest` 与 `retention` 每轮 405** | `for p in digest retention push-retry; do echo -n "$p "; curl -s -o /dev/null -w '%{http_code}\n' -X GET $BASE/api/cron/$p; done` → 405 / 405 / **401** | 导出 GET 的 `push-retry` 得到 401（**进了函数**），只导出 POST 的两条得到 405（**没进函数**）。405 发生在鉴权、指标、落表之前，所以 `cron.auth.rejected`、`cron.digest.*`、`/api/health`、冒烟**全都看不见**这条故障——这就是它活了 20 天（digest，2026-09-20 起）/ 18 天（retention，2026-09-22 起）而无人察觉的原因。`pnpm smoke:production` 第 8 步（`cron-trigger-method`）现在每次都核对它 |
+| 生产迁移状态（2026-10-10） | ❌ **034 / 035 未 applied**（生产 schema 只到 033） | `pnpm exec supabase migration list --linked`（两条 `remote` 为空）；`pnpm exec supabase db query --linked "select version from supabase_migrations.schema_migrations order by version desc limit 3"` | **一条不要密码的只读命令就能复核，而 v0.12.0 发布时把它记成「本机未复核」**。后果分两层：① 部署中的 main 已在查 `.is("email_skipped_reason", null)`，该列不存在 → PostgREST 实测 **400 / 42703**；② 但因为上面那条 405，digest **从未走到这条查询**，所以线上表现为「静默不干活」而不是「每轮报错」。**修的顺序必须是先 `db push`、后部署 GET 修复**——反过来会把静默死变成每轮 500（见 `migration-rollback-runbook.md`「部署顺序」）。
+**精确到列**：本条分支（= `origin/main`）的迁移只到 `034`，部署中的代码**只读 `034` 那一列**，
+所以本 PR 的硬前置是 `034` applied；`035` 与读它那两列的代码都在 PR #235 里，
+**#235 合并后其硬前置才是 `035`**（`035` 只加两个可空列，`034` 先上不会让 #235 之前的代码坏掉）。
+**判据始终是「要部署的那一版代码会 select / filter 哪些列」，不是「仓库里有几条迁移」** |
+| 生产 admin 概览页（2026-10-10） | ❌ **队列取数必然抛错** | REST 实测：`notifications?email_skipped_reason=is.null` → **400 / 42703**；代码路径 `src/app/dashboard/admin/page.tsx` 的 `Promise.all([...readEmailQueueDiagnostics()])` **无 try/catch** | 与 digest 不同，这条**没有被 405 掩盖**：它是人打开面板就会撞的。整页错误态（`dashboard/error.tsx` 兜底），不是少一张卡。**未用 admin 会话实测页面本身**（本机没有生产账号），所以这条是「已实测的列缺失 + 已读到的代码路径」的推论，不是截图证据 |
+| 生产 `CRON_SECRET` | ✅ **production 与 preview 均已配置**（2026-10-10） | Vercel 项目环境变量列表（只读，取值不外泄）；`curl -X POST $BASE/api/cron/digest` 匿名 → **401** JSON | 这条**排除了一整类解释**（「cron 因漏配而静默 401」）。401 恰恰证明请求进了函数；而 GET 的 405 证明另一件事：**平台根本没进到函数里** |
+| 生产 `email_worker_runs`（2026-10-10） | ❌ **空表**（`notifications` 亦 0 行；`profiles` 1 行） | `pnpm exec supabase db query --linked "select (select count(*) from public.email_worker_runs)::int as runs, (select count(*) from public.notifications)::int as notes"` → `{"runs":0,"notes":0}` | **这条比 405 更难反驳**：digest 的成功路径与失败路径**都会** `recordWorkerRun` 落一行（失败轮走的 `recordFailedRun` 只写 033 就有的列，不会因为缺列而写失败），所以只要 worker 进过函数就必然有一行。**零行 = 一次都没进过函数** |
+| 生产 `pg_stat_statements`（2026-10-10，`stats_reset=2026-09-12`） | ✅ 可读（扩展已装） | `pnpm exec supabase db query --linked "select calls, left(query,180) as q from pg_stat_statements where query ilike '%push_delivery_attempts%' order by calls desc limit 5"` | **正向读数**：4 条 `push_delivery_attempts` 队列查询各 **19 次 calls** —— 导出 GET 的 push-retry 确实在跑，这是「平台真的按 GET 调用」的独立证据。**⚠️ 两个坑，本次都踩过**：① 不要用前缀 LIKE `insert into email_worker_runs%`——PostgREST 发的是带引号的 `"public"."…"`，那会得到一个**永远为零的假阴性**；② **被 PostgREST 在 schema cache 阶段拒掉的查询（400 / 42703）根本不会进这份统计**，所以「看不到 notifications 的队列查询」**证明不了** digest 跑过但失败——没跑与被拒两种原因在统计里长得一模一样。负向读数只作佐证，**结论靠 GET=405（直接）与零行（必要条件）**。另外**自己的探针也会进统计**（本次那条 `calls=1` 的队列查询就是我自己打的匿名 REST 核查），别把它读成 worker 的痕迹 |
+| pg_cron（生产） | ❌ **未安装**（2026-10-10 由「未核实」转为实测） | `pnpm exec supabase db query --linked "select count(*) from pg_extension where extname='pg_cron'"` → **0** | 生产同样**一行都不会自动清理**：6 个 `cleanup_old_*` 函数在、调度不在。这条 retention worker 存在的理由就是取代 SQL 侧调度——**而它自己也在 405**，所以两层都没在跑。当前无数据可清，是**潜在故障，不是已发生损失** |
 | 生产部署新鲜度（2026-10-08 观测） | ✅ fresh，阈值 5 | `pnpm ops:deploy-freshness`（生产 `d2457d74` = origin/main 同 commit） | **生产已追上 main**，不再滞后；前面几轮的 lagging 是 Vercel 构建排队的副作用 |
-| 生产冒烟（2026-10-08 观测） | ✅ 7/7 | `node scripts/production-smoke.js --url … --expected-commit d2457d74bd60b23d559a4d1a9c53d764faa5d554` | health / liveness / 主页 / 静态资源 / 安全头 / 匿名看板 307 / webhook 签名拒收 全过，commit 匹配 |
+| 生产冒烟（2026-10-08 观测） | ⚠️ **当时 7/7 全绿，但覆盖不到这条链路**（2026-10-10 更正其含义） | `node scripts/production-smoke.js --url … --expected-commit <sha>`（现为 **8 步**） | 那 7 步真实、也确实全过（health / liveness / 主页 / 静态资源 / 安全头 / 匿名看板 307 / webhook 签名）。**但「7/7 绿」与「摘要邮件在跑」之间没有蕴含关系**：`/api/health` 的 DB 探测用 **anon** 身份打 `profiles limit(1)`，那张表和那一列都在，所以 `ready=true` 只说明「连得上」，不说明「业务查询跑得通」。第 8 步 `cron-trigger-method` 就是为补这个洞加的（**不打凭据**，只看平台用的 GET 会不会被路由接受） |
 | 生产异步看板鉴权（2026-10-08 观测） | ✅ 匿名 401（admin 面板数据路径） | curl `BASE/api/ops/provider-status`（此时尚无凭据 → Unauthorized） | 与 2026-10-06 记的一致：鉴权边界在线上仍然有效；**content 读数仍需 CRON_SECRET/admin 会话（本机没有，照旧未知）** |
 | Sentry | ❌ 生产未配 DSN | 同上（输出 `sentry: configured=false status=missing`） | **告警链路空转**，详见 `sentry-alerts.md` 开头 |
 | Stripe | ❌ 生产未配 key | 同上（输出 `stripe: configured=false status=missing`） | 支付路径线上无流量，checkout 未上线 |
 | Resend | ❓ **未知**（2026-10-05 起**可查了**） | `curl -H "authorization: Bearer $CRON_SECRET" $BASE/api/ops/provider-status` | **本条曾长期是「未知」**：provider 诊断逻辑（`diagnoseProviders`）写得完整、有单测，却**没有任何生产代码调用它**，`/api/health` 又只回 supabase/sentry/stripe 三项，于是「邮件链路在生产上是不是空转的」只能靠猜。现已新增只读诊断端点（见下）。**端点已在生产上线并实测过鉴权边界**（2026-10-06T00:57Z，commit `105da717`：匿名 401、错密钥 401），但**读数本身仍未知**——取它需要 `CRON_SECRET`，本机没有。**鉴权被验证不等于内容被读到**，所以这一行照旧是「未知」 |
 | GitHub 保活变量 | ✅ 已配置 | `gh variable list`（`HEALTHCHECK_URL`） | 每日保活 workflow 在跑 |
 | Vercel 构建配额 | ⛔ 限流中 | PR 上的 `Vercel – indie-stack` 检查（2026-10-05 报 `retry in 24 hours`） | preview 部署排队，非代码缺陷 |
-| pg_cron（保留期调度） | ❌ **本地栈实测未安装**（2026-10-06） | `node scripts/check-retention-cron.js --probe --container supabase_db_indiestack` | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。生产是否安装**仍未核实**（需 DB 密码） |
+| pg_cron（保留期调度） | ❌ **本地栈与生产都实测未安装**（本地 2026-10-06 / 生产 2026-10-10） | 本地：`node scripts/check-retention-cron.js --probe --container supabase_db_indiestack`；生产：`pnpm exec supabase db query --linked "select count(*) from pg_extension where extname='pg_cron'"` | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。生产这一行原写「仍未核实（需 DB 密码）」——**那是错的登记**，上面那条不要密码的命令就是它的解。注意本仓库的保留期清理**不依赖** pg_cron（走 `/api/cron/retention`），而那条 worker 正被 405 挡着，所以**两层同时是死的** |
 
-**三条要读出来的分寸**：
+**四条要读出来的分寸**：
 
 1. **`configured=false` 不等于 readiness 会红**。`/api/health` 里 Sentry / Stripe 都是
    `required: false`，所以它们缺失时 `ready` 仍是 `true`——这是有意的设计（模板的可选依赖），
    但它意味着**一个可选依赖缺失时，健康检查不会替你喊人**。
 2. **「平台可用」不等于「数据库可用」**。两者差着一层：Management API 能读项目状态，
    **读不到库里的表**。把前者当成后者会让人以为 B04 快能做完了。
-3. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
+3. **「调度在平台上一行不少」不等于「worker 在跑」**。Vercel Cron 触发用的是 **HTTP GET**，
+   而本仓库曾有两条 worker 只导出 POST：平台每天照常调用、每天拿到 405，`vercel.json` 与
+   `pnpm check:cron-contract` 都只显示「调度存在」。**405 发生在进路由之前**——鉴权指标、业务指标、
+   落表、`/api/health`、冒烟全都不覆盖它，于是这条故障在没有任何红灯的情况下活了 20 天。
+   能证明「平台确实在按 GET 调用」的正向读数是 `pg_stat_statements` 里 push-retry 的 19 次队列查询，
+   加上 `email_worker_runs` 的**零行**（digest 成败两条路径都会落一行）。
+   门禁在 `pnpm check:cron-contract`（`CRON_PLATFORM_METHOD_UNDECLARED`）与冒烟第 8 步。
+4. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
    本文档开头的那些错误结论，一半是被一个自信的猜测撑起来的。
    **但「未知」也不该被当成常态**：它之所以长期存在，是因为「从外部查不到」。
    现在 `GET /api/ops/provider-status`（`CRON_SECRET` 鉴权，**只回键名、永不回值**）
    把「从外部查不到」变成「一条命令能回答」，所以这张表里的每个 `❓`
    都应该能被一次调用消掉——**留着的理由只能是「还没人去查」，不能是「查不了」**。
+   **2026-10-10 要给这条加一个反面教训**：有些 `❓`／`❌` 的理由其实是**「登记错了」**而不是「查不了」。
+   「`migration list --linked` 需要数据库密码」被登记了两年，而它不要密码——
+   于是「云端到了哪一版」这个一分钟能答的事实一直挂着「本机未复核」，
+   而它正好是 v0.12.0 那句「侥幸没同步也没事」的唯一解。**登记阻塞时要写清「阻塞到哪一层」**，
+   只写「做不到」会让下一个人把能做的部分一起放弃。
 
 ### 查这张表的推荐顺序
 
@@ -88,6 +112,11 @@ curl -sS -H "authorization: Bearer $CRON_SECRET" "$BASE/api/ops/provider-status"
 node scripts/check-health.js "$BASE"
 # 3) 生产落后 main 多少个提交
 node scripts/check-deploy-freshness.js --base-url "$BASE"
+# 4) 平台用的那条方法到底能不能进路由（不打凭据，405 就是死）
+node scripts/production-smoke.js --url "$BASE" --expected-commit "$(git rev-parse HEAD)"
+# 5) 云端 schema 到了哪一版。**不要数据库密码**（这条被误登记成「需要」两年，
+#    代价是「034/035 从未 applied」直到线上出事才发现）
+pnpm exec supabase migration list --linked
 ```
 
 ## 免费版保活与自动恢复

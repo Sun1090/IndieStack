@@ -167,6 +167,9 @@
      要闭合还需要一次跨越迁移边界的生产变更。schema 向前兼容的**本地**侧已核对
      （`check:migrations` 34 条与 manifest 的 SHA-256 一致、`check:migration-runbook` ✅）；
      **云端 `supabase migration list --linked` 仍未取得**（B04，需云端项目凭据）。
+     **2026-10-10 更正**：这条当时记的「需云端项目凭据」把阻塞写大了——
+     该命令只要 CLI 登录态，实测已取到读数（生产到 033，034/035 未 applied）。
+     当时那个「侥幸没同步也没事」的判断因此是**错的**，见条目 9 与 `docs/progress.md`。
    - 顺带记下一条对事故处置有用的观察：**alias 切换后的第一次 health 探测不可靠**
      （两个方向都出现过一次 `fetch failed` / `This operation was aborted`，重试即通过）——
      「刚切换、边缘还在热」与「health 挂了」必须分开，runbook 已写入。
@@ -186,6 +189,17 @@
      而仓库里**没有任何 DB 密码类 secret**（`gh secret list` 只有一个 `SUPABASE_ACCESS_TOKEN`）。
    - 因此 B04 的阻塞从「要一个可能已有的令牌」收窄成「要数据库密码」——
      **这是一次真实的阻塞面缩小**，不是措辞调整。
+   - **2026-10-10 第三次收窄，且这次把上面那句「同理」删掉**：上一轮顺手把
+     `supabase migration list --linked` 也算成「需要 DB 密码」，**这是错的**——
+     CLI 用自己的登录态临时建 role 连进库，实测**不要密码就能拿到生产读数**
+     （`db query --linked` 同理，但只接受**单条**语句：
+     `db query --local "select 1; select 2"` → `cannot insert multiple commands`）。
+     **实际代价已经发生**：生产 `schema_migrations` 只到 033、`034`/`035` 从未 applied，
+     而「云端到了哪一版」从 2026-08 起被记成「查不到」——它就是一条一分钟能跑的只读命令
+     （见 `docs/progress.md` 2026-10-10 事故条目与 `docs/operations/environments.md` 各行）。
+     **B04 剩下的真实缺口只有一个**：`docs/operations/drills/*.sql` 是多语句 + `begin/rollback`，
+     必须 psql 与 DB 密码。**登记阻塞时要写清阻塞到哪一层**——只写「做不到」，
+     下一个人会把能做的部分一起放弃。
 10. B05 （**部分完成：P1 已实跑通过（2026-10-05，本地 mock 构型）；P2–P4 仍缺外部权限**——
     需要 provider 测试凭据与可牺牲的真实项目；
     前置判定已固化：`pnpm drills:preflight --drill B05`）
