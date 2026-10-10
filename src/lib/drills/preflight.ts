@@ -96,24 +96,32 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       "而 2026-10-05 实测发现仓库里**早就有**一个可用的 Management API 令牌" +
       "（`SUPABASE_ACCESS_TOKEN` 是 repo secret，`supabase-auto-restore.yml` 每天成功跑一次、" +
       "读项目状态并报「无需恢复」）。所以平台层从来不是阻塞。" +
-      "真正缺的是**再往下一层**：演练 SQL 要用真 Postgres 连上去跑" +
-      "（`supabase migration list --linked` 同理——它读的是库里的 `schema_migrations` 表），" +
-      "而仓库里**没有任何 DB 密码类 secret**。",
+      "真正缺的是**再往下一层**：演练 SQL 要用真 Postgres 连上去跑，而仓库里没有任何 DB 密码类 secret。" +
+      "**2026-10-10 第二次把边界写准**：上一版顺手把 `supabase migration list --linked` 也算成" +
+      "「需要 DB 密码」，这是**错的**——它读库里的 `schema_migrations`，" +
+      "但走的是 CLI 自己登录态临时建的 role，实测**不需要密码就能拿到生产读数**。" +
+      "`db query --linked` 同理，但只接受**单条**语句" +
+      "（`db query --local \"select 1; select 2\"` → cannot insert multiple commands），" +
+      "所以多语句 + begin/rollback 的演练脚本仍然要 psql 与密码。" +
+      "**混成一句「数据库级连不上」，代价是一条一分钟能跑的只读复核被推迟了两年**" +
+      "——034 在生产从未 applied 就是这么被漏掉的（见 environments.md 2026-10-10 各行）。",
     requirements: [
       {
         source: "SUPABASE_DB_PASSWORD",
         purpose:
-          "**这才是真正的缺口**：演练 SQL 与 `migration list --linked` 都要用真 Postgres 连上去，" +
-          "平台层的 Management API 令牌替代不了它",
+          "**演练 SQL 这一层才需要它**：`docs/operations/drills/*.sql` 是多语句 + begin/rollback，" +
+          "`db query` 跑不了，必须 psql。平台层的 Management API 令牌替代不了这一层",
         remedy:
           "Supabase 项目的 Settings → Database（或连接串里的密码部分）；" +
           "**不要**提交进仓库",
       },
       {
+        // 这条**已经满足**，列在这里是为了让它不再被误登记成阻塞。
         source: "file:~/.supabase/access-token",
         purpose:
-          "Supabase CLI 的登录态。**注意它多半已经有了**——CI 里同名 secret 每天在用；" +
-          "本地缺只是因为 GitHub Actions 的 secret 不会进本地 shell",
+          "只读的云端复核走这一层，**不需要 DB 密码**：" +
+          "`migration list --linked` 与单条 `db query --linked` 都用 CLI 登录态连进去。" +
+          "「034 到底 applied 没有」这个事实从 2026-08 起就被记成「查不到」，其实一直查得到",
         remedy: "已有则跳过；没有就 supabase login，或 export SUPABASE_ACCESS_TOKEN=<pat>",
       },
       {
@@ -123,6 +131,8 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       },
     ],
     firstCommand:
+      "pnpm exec supabase migration list --linked   # 先白拿一次只读读数（不要密码），" +
+      "确认云端到了哪一版；缺的就是这次演练要补的\n" +
       "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f - < docs/operations/drills/retention-cleanup.sql" +
       "   # 整段包在 begin/rollback 里，跑完不留数据",
     evidenceTarget: "docs/operations/production-smoke-v0.11.0.md 的云端行",
