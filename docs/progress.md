@@ -8122,6 +8122,16 @@
   与 `docs/operations/environments.md` 已按「只读单条 ✅ 不要密码 / 多语句演练脚本 ❌ 仍要 psql + 密码」拆开。
   **登记阻塞时只写「做不到」而不写「做到哪一层」，下一个人会把能做的部分一起放弃**——
   034 从未 applied 就是这么被漏到线上的。
+- **门禁在本轮又逮到两次「我自己写进去的东西」**，两次都不是设计好的演示：
+  ① 我在文档里为了说明「不存在的路径也会被重定向」写了一条**编造的假 cron 路径字面量**，
+     `check:cron-contract` 立刻以 `CRON_DOC_UNREGISTERED_PATH` 判红——
+     「文档提到 /api/cron/… 但没有 worker 或调度它」。它把一句举例当成了「上线了一条没人调度的链路」。
+     **修法是把举例改成不含路径字面量的描述，而不是去注册一个假 worker**：
+     注册它就是把假事实写进唯一事实源。
+     **这条门禁的覆盖面比我以为的更大**——它扫的是**文档**，
+     所以我先只改了 `src/` 里的注释、门禁照红，才确认扫描范围。
+  ② 新加的 302 判据做了变异核对：把 3xx 加进放行名单 ⇒ 新用例红（`expected true to be false`），
+     复原 ⇒ 11 绿。**如果 302 那条判据没有用例，它会一直是假绿。**
 - **验证**：
   - `pnpm exec vitest run` 目标 5 组 ⇒ **586 passed**；`src/lib/security/` ⇒ **395 passed**
   - `pnpm lint` ⇒ no issues；`pnpm type-check` ⇒ 干净；`pnpm test` ⇒ **269 files / 3252 tests 全绿**
