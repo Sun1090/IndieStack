@@ -94,12 +94,53 @@ incident 记录，不允许只留聊天记录。
    `cannot insert multiple commands into a prepared statement`），
    所以 `docs/operations/drills/*.sql` 那种多语句 + `begin/rollback` 的演练**仍然要 psql 与 DB 密码**。
 
+3. **`db push --linked` 同样不需要数据库密码**（2026-10-10 实测 `--dry-run`，exit 0，
+   输出 `Would push these migrations` 并逐条列出待推的 034 与 035）。
+   它和 `db query --linked` 走的是同一个 CLI 登录态建的 role。
+   **这条读数说的是「这个 checkout 相对云端缺什么」，不是「生产缺什么」**：
+   跑出上面那条读数的地方是主检出，它当时停在含 035 的分支上，所以列出两条；
+   换一个迁移只到 034 的分支去跑，待推清单就不含 035（**这一条是按上面的机制推出来的，
+   没有在第二个工作树上实测过**——见下一句，那里根本跑不起来）。
+   **`--linked` 只能在主检出跑**：它依赖 `supabase/.temp/` 里的 linked ref，
+   那个目录是 gitignored 的，所以新开的 worktree 里没有它。
+   2026-10-10 在本 PR 的工作树里实测：`supabase/.temp/` 不存在，
+   `db push --linked --dry-run` 直接 `ProjectRefNotLinkedError`——
+   **凡是云端复核，先确认自己在哪个目录**。
+   **这条必须写清楚，因为它把「安全」的来源说准了**：
+   保护生产库的**不是**「本机没有数据库密码」——那条能力一直存在：
+   这台机器的 CLI 有可用登录态（实测：不要密码的 `--dry-run` 当天真连上了生产库），
+   而 `--dry-run` 与真推之间**只隔着这个开关**——**「真 push 也能写」是从这条机制推出来的，
+   我没有、也不该在本轮实测它**（那本身就是一次未经批准的生产写）。
+   保护它的是**权限与审批约定**：生产库写操作由发布负责人执行。
+   任何把「拿不到密码」当成「不会误写生产」的推理都是**错的**，
+   本仓库前面几轮就反复用它当过不复核的理由。
+   `--dry-run` 是**安全的复核手段**（只打印不落库），凡是「要不要推、推哪几条」的问题
+   都应该先用它问一次，再决定要不要请人执行真写。
+   **顺带一条会被误读的读数**：`pnpm drills:preflight --drill B04` 里
+   `file:~/.supabase/access-token` 在 2026-10-10 本机报「缺」，
+   而同一天 `migration list --linked` 与 `db push --linked --dry-run` 都可用。
+   **那一行「缺」不能读成「CLI 没登录」**。已实测的三件事：
+   ① `~/.supabase/` 下确实没有 `access-token`（`ls` 与 `find -maxdepth 1` 都只有 `telemetry.json` 与 `traces/`）；
+   ② 不要密码的云端命令当天可用（真 exit 0）；
+   ③ 钥匙串里有 service `Supabase CLI` / acct `supabase` 的条目，取出的值是 44 字符的 PAT 形态
+   （**只在这里记长度与前缀类型，值不进仓库、不进日志**）。
+   **「CLI 就是从这里读令牌的」仍是解释，没有被单独验证**：
+   把 `HOME` 换成空目录确实让 CLI 报 `AccessTokenRequiredError`，
+   但同一个改动也让 `security` 读不到 keychain（exit 44）——**一次改了两个人为变量，
+   所以那次实验分不清到底是文件还是 keychain 在起作用**。
+   探测器只把「文件有非空内容」当作满足（`scripts/lib/drill-preflight.js` 的 `file:` 分支），
+   所以它天生扫不到 keychain 里的登录态。
+   同一条读数里 `NEXT_PUBLIC_SUPABASE_URL` 也会报缺，那只是因为这个命令读的是**进程环境**、
+   不读 `.env.local`（在主检出 `set -a && . ./.env.local` 之后它就变 ✓）。
+   **要改的是读法，不是判据**：看到这一行「缺」时，先跑一次不要密码的只读命令确认，
+   别据此宣布「云端查不到」——034 被记成「本机未复核」两年，正是这种读法造成的。
+
 ### 另外两条读数口径（避免把「空」读成「有」）
 
 - `db query --linked` 连进去是 `current_user=postgres` 且 `rolbypassrls=true`，
   **RLS 不会过滤你的读数**。所以「表是空的」是真空，不是被策略挡住——
   这点必须先排除，否则会把「读不到」误报成「没有数据」（2026-10-10 核过）。
-- 想看「这条链路到底跑过没有」，不必等日志：**`pg_stat_statments` 在生产是装着的**，
+- 想看「这条链路到底跑过没有」，不必等日志：**`pg_stat_statements` 在生产是装着的**，
   `select calls, query from pg_stat_statements where query ilike '%email_worker_runs%'`
   能直接给出「这张表有没有被 INSERT 过」。**但这份统计有两个坑，别把它当万能证据**：
   - **正向读数才有解释力**：导出 GET 的 push-retry 有 4 条各 **19 次 calls** 的
