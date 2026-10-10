@@ -46,6 +46,12 @@ See `docs/operations/release-tag-ledger.md`.
     这条也做了变异核对：放行 3xx ⇒ 用例红；复原 ⇒ 11 绿。
   - `src/lib/security/route-auth.ts` 与 `rate-limit-policy.ts` 同步登记两条新 GET
     （`shared-secret` / `CRON_SECRET`）。**不登记就等于「新增一条对外路由」在两份台账上静默通过。**
+  - **A/B 证据（修复前后同一判据的两种读数）**：生产（未部署）digest / retention 的 GET = **405 / 405**、
+    第 8 步红；本地生产构建（dummy env + `next start`，没有任何请求打到生产库）同一批路径 GET = **401**、
+    第 8 步绿，而**同一条由的 `PUT` 仍然 405**。那一列 405 是这条证据的牙齿——
+    它证明 405 确实是「方法没导出」的框架响应，于是「GET 从 405 变 401」只能解释为
+    **GET 现在真的进了 handler**。（原打算用 preview 做 A/B，但 preview 开着 Deployment Protection，
+    所有请求一律 302 到 SSO，什么也观察不到——所以才有了上面那条「302 判红」。）
   - 变异核对：注册表退回 `["POST"]` ⇒ 红 `[CRON_PLATFORM_METHOD_UNDECLARED] digest`；
     摘掉路由的 `export async function GET` ⇒ 红 `[CRON_METHOD_MISSING] digest`。**两次都逮到，均已复原。**
   - **对前一轮那份根因分析的更正**（那是同一天未提交的草稿，结论方向对、机制错）：迁移漂移是真的
