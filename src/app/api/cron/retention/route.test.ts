@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { metricEvents } from "@/lib/testing/metric-events";
 import { NextRequest } from "next/server";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const { runRetentionSweepsMock, listOrphanObjectsMock, logApiErrorMock } = vi.hoisted(() => ({
   runRetentionSweepsMock: vi.fn(),
@@ -196,5 +196,40 @@ describe("/api/cron/retention", () => {
       }),
     ]);
     expect(logApiErrorMock).toHaveBeenCalled();
+  });
+});
+
+/**
+ * **GET 才是调度器真正走的那条方法**（Vercel Cron 触发用 HTTP GET）。
+ *
+ * 本路由曾只导出 POST，平台因此每天得到 405，保留期清理从未执行——而这条 worker 存在的理由
+ * 正是「pg_cron 从未安装，由它取代 SQL 侧调度」。405 发生在进路由之前，
+ * 所以 `cron.retention.*` 指标、拒绝计数、`/api/health`、smoke 全都看不见它。
+ */
+describe("GET /api/cron/retention（Vercel Cron 的真实触发方法）", () => {
+  it("GET 无凭据返回 401 并上报拒绝指标：共用 handle，GET 不是免鉴权通道", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const res = await GET(new NextRequest("http://localhost/api/cron/retention"));
+    expect(res.status).toBe(401);
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "cron.auth.rejected",
+        attributes: { worker: "retention", reason: "missing_credentials" },
+      }),
+    ]);
+    // 被拒绝的一轮绝不能已经开始删除：401 早退必须在任何清理动作之前
+    expect(runRetentionSweepsMock).not.toHaveBeenCalled();
+  });
+
+  it("GET 带 Authorization: Bearer <CRON_SECRET> 时真的执行清理（Vercel 自动附加的形态）", async () => {
+    runRetentionSweepsMock.mockResolvedValue({ ran: 6, failures: [] });
+    const res = await GET(
+      new NextRequest("http://localhost/api/cron/retention", {
+        headers: { authorization: "Bearer ***" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ran: 6, failed: 0, orphans: 0, unownedOrphans: 0 });
+    expect(runRetentionSweepsMock).toHaveBeenCalledTimes(1);
   });
 });
