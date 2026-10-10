@@ -188,7 +188,15 @@ curl      localhost:3199/api/e2e/seed-notifications -H "Authorization: Bearer $E
   allConfigured=false degraded=false
   ```
   **更正一条写错的话**：这份记录初稿写的是「生产当前没有配 Supabase」——**那是错的**，
-  生产 Supabase 是配置且可达的（digest 路径在线上是活的）。
+  生产 Supabase 是配置且可达的。
+  **2026-10-10 的第二次更正**：这一版顺手加的「digest 路径在线上是活的」**同样是错的**，
+  而且是**没有读数支持的推断**——`/api/health` 里 `supabase reachable=true` 只说明
+  「用 anon 身份打 `profiles limit(1)` 打得通」，与「digest worker 在跑」之间没有蕴含关系。
+  实测：`GET /api/cron/digest` ⇒ **405**（Vercel Cron 用 HTTP GET 触发，而该路由当时只导出 POST），
+  该 worker 自 2026-09-20 进入 crons 起一次都没执行过，`email_worker_runs` 至今 0 行。
+  根因、读数与门禁见 `docs/operations/environments.md` 与 `docs/progress.md` 2026-10-10。
+  **留下这段是为了说清一件事**：同一句话在两天内被「更正」成另一个未经核实的断言，
+  是因为更正时只核对了手边那条读数（health），没有去问「这条读数能证明到哪一层」。
   真正未知的是另一件事：**`RESEND_API_KEY` 在生产是否配置，从外部无法判定**——
   provider 诊断只在 admin 后台（`src/app/dashboard/admin/page.tsx`）暴露，匿名请求拿不到（实测 404）。
   所以 P1 在生产上的状态是「未知」：既不能说通过，也不能说失败。
