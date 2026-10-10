@@ -33,6 +33,25 @@ export interface EmailWorkerRunRow {
    * 可空：历史调用方与测试里可能只关心三个计数。
    */
   date?: string;
+  /**
+   * 本轮**开始时**待发队列的条数（与 `email.backlog` 指标同源，迁移 035）。
+   *
+   * **`undefined` 与 `0` 是两种事实**：`undefined` = 这一轮没记录到该读数
+   * （崩在取数之前，或这一行来自迁移 035 之前），`0` = 取数成功且队列为空。
+   * 把「没记录到」写成 0 会让 `judgeDigestSeries` 算出「积压降到了 0」——
+   * 那不是数据不足，是**编出来的趋势**。所以没有日期的轮次不参与趋势，
+   * 没有读数的轮次同理（见 `toDailyDigestReadings`）。
+   */
+  backlog?: number;
+  /**
+   * 本轮按用户条件跳过的条数（与 `cron.digest.skipped{reason}` 的合计同源，迁移 035）。
+   *
+   * 是**本轮增量**，不是 `notifications.email_skipped_reason` 的存量行数——
+   * 后者是「历史上有多少条因为寄不出去离开过队列」，把它当 skipped 会让
+   * 「跳过在涨」这句话永远为真（存量只会单调增长）。
+   * 同样地，`undefined` = 本轮没记录到，不是 0。
+   */
+  skipped?: number;
 }
 
 export interface QueueDiagnosticsInput {
