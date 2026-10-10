@@ -74,6 +74,94 @@ pnpm smoke:supabase-identity -- --url "$STAGING_URL" --anon-key "$ANON_KEY" --se
 任何涉及生产数据库的写操作都必须由有权限的发布人员执行；命令、URL、deployment ID 与输出必须写入
 incident 记录，不允许只留聊天记录。
 
+### `db query --linked` 的两条边界（2026-10-10 实测，写这条是因为我自己踩了）
+
+1. **它只需要 CLI 登录态，不需要数据库密码。** CLI 会用 `SUPABASE_ACCESS_TOKEN`
+   临时建一个 role 连进库，所以 `migration list --linked` 与单条 `db query --linked`
+   **都属于「不要密码的只读复核」**。本仓库曾把它们登记成「需要 DB 密码」，
+   于是「云端到了哪一版」这个一分钟能答的问题挂了两年「本机未复核」，
+   而它正是 2026-10-10 那次生产故障的直接原因（见 `docs/progress.md` 同日事故条目）。
+   **登记阻塞时必须写清阻塞到哪一层**：只写「做不到」，下一个人会连能做的部分一起放弃。
+2. **但它是能写的。** 走的是真 Postgres 连接，返回 204 也可能是真的执行了。
+   2026-10-10 我在一次「只读核查」里跑了
+   `db query --linked "select … cleanup_old_email_worker_runs()"`（HTTP 204）——
+   那是 032 的保留期删除函数。当时与事后各查一次行数都是 0，**所以没有删到任何东西**，
+   但「没造成损失」不等于「可以做」：**任何生产库写操作必须由发布人员执行**，
+   而我当时因为「这个连接只会返回读数」把它当成了只读通道。
+   **要只读就用只读的东西**：`select count(*) …`、`information_schema`、`migration list`；
+   带函数调用的 `select` 一律先确认那个函数不写。
+   它还有第二条边界：**只接受单条语句**（实测 `db query --local "select 1; select 2"` →
+   `cannot insert multiple commands into a prepared statement`），
+   所以 `docs/operations/drills/*.sql` 那种多语句 + `begin/rollback` 的演练**仍然要 psql 与 DB 密码**。
+
+### 另外两条读数口径（避免把「空」读成「有」）
+
+- `db query --linked` 连进去是 `current_user=postgres` 且 `rolbypassrls=true`，
+  **RLS 不会过滤你的读数**。所以「表是空的」是真空，不是被策略挡住——
+  这点必须先排除，否则会把「读不到」误报成「没有数据」（2026-10-10 核过）。
+- 想看「这条链路到底跑过没有」，不必等日志：**`pg_stat_statments` 在生产是装着的**，
+  `select calls, query from pg_stat_statements where query ilike '%email_worker_runs%'`
+  能直接给出「这张表有没有被 INSERT 过」。**但这份统计有两个坑，别把它当万能证据**：
+  - **正向读数才有解释力**：导出 GET 的 push-retry 有 4 条各 **19 次 calls** 的
+    `push_delivery_attempts` 队列查询，这证明「平台确实按 GET 在调用」。
+  - **负向读数证明不了「跑过但失败」**：被 PostgREST 在 schema cache 阶段拒掉的查询
+    （400 / 42703）**根本不会进统计**，于是「没跑」与「跑了被拒」在这份表里长得一模一样。
+    想知道「worker 有没有进过函数」，用**落表必要条件**（`email_worker_runs` 行数）而不是这条。
+  - **别用前缀 LIKE**：`'insert into email_worker_runs%'` 匹配不到 PostgREST 实际发出的
+    `INSERT INTO \"public\".\"email_worker_runs\"`，会得到一个**永远为零的假阴性**（2026-10-10 踩过）。
+  - **自己的探针也在这份统计里**：拿它做证据前先排除本次核查打出去的那些查询。
+
+## 部署顺序：迁移必须先于代码（每次发布的前置，不是出事才看）
+
+判据**不是「代码会不会写这一列」，而是「读侧会不会 select / filter 这一列」**：
+
+- **只被写入的新列**：代码先上、迁移后上，最坏是那列暂时没人写（可接受）。
+- **被 select 的新列**：迁移未 applied 时 PostgREST 直接判 `42703 column … does not exist`
+  （2026-10-10 对生产实测：`GET /rest/v1/notifications?select=id&email_skipped_reason=is.null`
+  → **HTTP 400 / 42703**），repository 层把它 `throw` 出去。
+  **后果取决于调用方有没有包住它**：`src/app/dashboard/admin/page.tsx` 的队列取数在
+  `Promise.all` 里调 `readEmailQueueDiagnostics()`，**没有 try/catch**，
+  所以那不是少一张卡，而是**整个 admin 概览页错误态**。
+- **追加式迁移照样能让线上坏掉**：`034` 给 `notifications` 加 `email_skipped_reason`
+  是「只加一个可空列」的形状，看着人畜无害，但队列谓词加了 `.is(col, null)`
+  ——**该列不存在时与「有没有数据写它」无关，直接 400**。
+
+含迁移的发布必须按这个顺序，且**每一步都要有读数**：
+
+```bash
+# 1. 目标环境应用到哪一版。**这一步不需要数据库密码**（CLI 用自己登录态建 role 读 schema_migrations）
+pnpm exec supabase migration list --linked
+#    要更硬的读数（列在不在、扩展装没装）就直接问系统目录：
+pnpm exec supabase db query --linked \
+  "select version from supabase_migrations.schema_migrations order by version desc limit 5"
+# 2. 与**要部署的那一版代码**比对；缺哪一条就先 db push —— **不要先放代码**
+#    判据是「那一版会 select / filter 哪些列」，不是「仓库里有几条迁移」：
+#    并行 PR 各自带的迁移，只有合并进 main 那一版才需要对应的列先存在。
+pnpm check:migrations
+# 3. 迁移 applied 之后再部署应用，最后跑冒烟（8 步，含 cron 触发方法）
+pnpm smoke:production -- --url "$PROD_URL" --expected-commit "$(git rev-parse HEAD)"
+```
+
+**顺序反了会是什么形状（2026-10-10 的真实案例，值得记住）**：生产停在 033、代码已在查 034 的列，
+看起来应该「每轮 500」——但线上**一个错误都没有**。原因是 digest 走的是
+**Vercel Cron 的 HTTP GET**，而那条路由只导出 POST，于是平台每天拿到 **405**，
+`405` 在进路由之前就返回，**那 400 从来没有机会发生**。
+所以如果只修 GET 而不先推迁移，故障会从「静默不干活」变成「每轮 500 + Sentry 刷屏」。
+**这就是「迁移先于代码」最硬的一次证明**：修复顺序不是偏好，是两种失败形态的差。
+
+**把这次的前置精确到列**（免得把「仓库有 035」误当成「必须先推 035」）：
+生产要部署的是 `034` 所在那一版，它读 `notifications.email_skipped_reason`，
+所以**硬前置只有 `034`**。`035` 与其两列（`backlog` / `skipped`）的**读写代码都在 PR #235**，
+`main` 上 digest 只写 `pulled/sent/groups/failed/duration_ms/error`（033 及以前就有的列），
+所以 `035` 晚一步推不会让当前部署坏；**但 #235 合并之后，它的硬前置就是 `035`**——
+`src/lib/repositories/worker-runs.ts` 会 `.select("… backlog, skipped")`，那两列不在就是 400，
+而 #235 同时改了 admin 面板的取数，**没有 try/catch 的那条路径会整页红**。
+**两条迁移都追加式、都可先于代码执行；顺序要求只来自「谁在读」。**
+
+**读数的落点**：含迁移的发布，`migration list --linked` 的输出必须进发布记录。
+拿不到读数时**不得宣布「云端已同步」，也不得用「本地全绿」代替**——
+`check:migrations` 只看仓库里的文件与校验和，它**永远证明不了云端状态**。
+
 ## 回滚后验证
 
 - `pnpm check:migrations` 通过：迁移文件未改写、顺序正确、校验和一致；
