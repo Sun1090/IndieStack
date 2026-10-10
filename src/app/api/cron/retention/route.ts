@@ -5,8 +5,14 @@
  * 注册表；Hobby 计划每路径每天最多一次）。它逐个执行迁移 `003` / `014` / `027` / `032` 里定义的
  * 保留期清理函数，替代「只能靠 pg_cron、而 pg_cron 从未安装」的 SQL 侧调度。
  *
- * POST /api/cron/retention
+ * GET|POST /api/cron/retention
  * Header: Authorization: Bearer ***.CRON_SECRET 或 x-cron-secret = ***.CRON_SECRET
+ *
+ * **GET 不是可选项**：Vercel Cron 触发用的是 HTTP GET。本路由曾只导出 POST，平台因此每天
+ * 得到 `405 Method Not Allowed`，**保留期清理自 2026-09-22 上线以来一次都没跑过**——
+ * 而它存在的理由正是「pg_cron 从未安装，所以由这条路由取代 SQL 侧调度」
+ * （生产 `pg_extension` 里 `pg_cron` 计数 = 0，2026-10-10 实测）。
+ * 两条方法共用同一个 `handle`，鉴权在其中，GET 不是免鉴权通道。
  *
  * 返回脱敏计数 `{ ran, failed, orphans, unownedOrphans }`——不含表名、对象键或任何用户标识。
  * 除了删除过期行，每轮还顺带跑一次**只读**的存储孤儿巡检：033 与 `erasure.ts` 的注释都写着
@@ -47,7 +53,7 @@ async function auditOrphans(): Promise<OrphanAuditCounts> {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function handle(request: NextRequest) {
   const auth = checkCronAuth(request.headers, process.env.CRON_SECRET);
   if (auth !== "authorized") {
     recordCronRejected("retention", auth);
@@ -108,4 +114,16 @@ export async function POST(request: NextRequest) {
     await logApiError("[Cron Retention] 执行失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+/**
+ * Vercel Cron 用 **GET** 触发；POST 保留给手动运维调用。
+ * 两者共用 `handle`，避免「只测了调度器不走的那条方法」。
+ */
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handle(request);
 }
