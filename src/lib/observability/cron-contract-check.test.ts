@@ -19,12 +19,14 @@ afterEach(() => {
 const DIGEST = CRON_WORKERS.find((worker) => worker.id === "digest") as CronWorkerContract;
 
 // fixture 的指标行由注册表生成：往 `CRON_WORKERS` 加指标不应该让这条 IO 测试变红。
+// 导出形状与真实路由一致：`handle` + GET/POST 两个薄包装。**Vercel Cron 用的是 GET**，
+// fixture 若只导出 POST，IO 层测的就不是线上真正被调度的那个形状。
 const DIGEST_ROUTE = `
 import { recordMetric } from "@/lib/metrics";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { recordCronRejected } from "@/lib/cron-metrics";
 
-export async function POST() {
+async function handle() {
   const auth = checkCronAuth(new Headers(), process.env.CRON_SECRET);
   if (auth !== "authorized") {
     recordCronRejected("digest", auth);
@@ -32,6 +34,14 @@ export async function POST() {
   }
 ${DIGEST.metrics.map((metric) => `  recordMetric("${metric}", 0, { unit: "count" });`).join("\n")}
   return Response.json({ sent: 0 });
+}
+
+export async function GET() {
+  return handle();
+}
+
+export async function POST() {
+  return handle();
 }
 `;
 

@@ -412,6 +412,99 @@ async function checkWebhookRejection(baseUrl, options) {
   );
 }
 
+/**
+ * 生产调度表里的每条 cron 路径都必须接受 **HTTP GET**。
+ *
+ * 存在的理由是一条已发生的线上事故：Vercel Cron 的触发方式是「向生产 URL 发一个 HTTP GET」
+ * （见 https://vercel.com/docs/cron-jobs ），而本仓库的 `digest` 与 `retention` 只导出过 POST，
+ * 于是平台每天拿到 Next.js 的 `405 Method Not Allowed`——**worker 自被调度那天起一次都没执行过**。
+ *
+ * 为什么这条必须有线上读数：405 发生在**进入路由之前**，所以
+ *   - `cron.auth.rejected` 不会产出（鉴权代码根本没跑到），
+ *   - 任何业务指标都不会产出（看起来与「队列为空时的安静」一模一样），
+ *   - `/api/health` 与其余各步冒烟全绿（它们打的是别的端点、或别的方法）。
+ * `pnpm check:cron-contract` 能拦住「注册表漏写 GET」，但拦不住
+ * 「导出形状后来被改坏」「平台改了触发方法」「生产上跑的那个构建不是这个形状」。
+ *
+ * 判定口径（不带任何凭据，因此这一步**不会真的执行 worker**，仍然无副作用）：
+ * - `401` / `403` ⇒ 绿：方法被接受、只是没带凭据，正是「配上 CRON_SECRET 就会跑」的形状。
+ * - `2xx` 且 `application/json` ⇒ 绿：该路径本来就公开（`/api/health` 保活探测）。
+ * - 其它（含 `405`、也含 `200 + HTML`）⇒ 红。`405` 是没被接受；而 200 + HTML 是本应用对
+ *   **不存在的路径**返回的 404 页——所以「不是 405」单独不能当证据，
+ *   否则会把「路由被删了」读成「路由接受 GET」。未知一律不算通过。
+ *
+ * 核对的路径直接读 `vercel.json` 的 `crons`，与静态门禁同源：查的是「本该被调度的那些路径」。
+ * 读不到或读成空 ⇒ 红（失败封闭：没有可核对的调度不等于通过）。
+ */
+function readScheduledPaths() {
+  const configPath = path.join(__dirname, "..", "vercel.json");
+  try {
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    const crons = Array.isArray(parsed.crons) ? parsed.crons : [];
+    // `/api/health` 不在本步核对：它是保活端点而不是 worker，且第 1 步已经用 **GET**
+    // 打过它并断言 200 + JSON——再打一次不增加任何证据，只会把本步与 health 的重试计数耦上。
+    const paths = crons
+      .map((entry) => entry && entry.path)
+      .filter((p) => typeof p === "string" && p !== "/api/health");
+    return [...new Set(paths)];
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function checkCronTriggerMethod(baseUrl, options) {
+  const scheduled = readScheduledPaths();
+  if (!Array.isArray(scheduled)) {
+    return result(
+      "cron-trigger-method",
+      false,
+      `无法读取 vercel.json 的 crons：${scheduled.error}`,
+      null,
+    );
+  }
+  if (scheduled.length === 0) {
+    return result(
+      "cron-trigger-method",
+      false,
+      "vercel.json 里没有任何 crons 条目（没有可核对的调度 = 失败封闭，不等于通过）",
+      null,
+    );
+  }
+
+  const offenders = [];
+  const statuses = {};
+  for (const pathname of [...scheduled].sort()) {
+    const response = await request(
+      options.fetchImpl,
+      joinUrl(baseUrl, pathname),
+      { method: "GET", redirect: "manual" },
+      options.timeoutMs,
+    );
+    await response.text().catch(() => "");
+    const contentType = response.headers.get("content-type") ?? "";
+    statuses[pathname] = response.status;
+    const accepted =
+      response.status === 401 ||
+      response.status === 403 ||
+      (response.status >= 200 &&
+        response.status < 300 &&
+        contentType.includes("application/json"));
+    if (!accepted) {
+      offenders.push(`${pathname}: HTTP ${response.status} (${contentType || "无 content-type"})`);
+    }
+  }
+
+  return result(
+    "cron-trigger-method",
+    offenders.length === 0,
+    offenders.length === 0
+      ? `${scheduled.length} 条调度路径都接受 GET（Vercel Cron 的触发方法），无 405`
+      : `GET 未被接受，调度器触发不到业务代码：${offenders.join("; ")}`,
+    null,
+    { statuses },
+  );
+}
+
 async function runProductionSmoke(baseUrlValue, options = {}) {
   const baseUrl = baseUrlValue instanceof URL ? baseUrlValue : parseBaseUrl(baseUrlValue);
   const config = {
@@ -436,6 +529,7 @@ async function runProductionSmoke(baseUrlValue, options = {}) {
     checkSecurityHeaders,
     checkUnauthorizedDashboard,
     checkWebhookRejection,
+    checkCronTriggerMethod,
   ];
   for (const runner of runners) {
     try {
@@ -522,11 +616,13 @@ module.exports = {
   checkStaticAsset,
   checkUnauthorizedDashboard,
   checkWebhookRejection,
+  checkCronTriggerMethod,
   commitLabel,
   describeEvidenceCommit,
   joinUrl,
   main,
   parseArgs,
   parseBaseUrl,
+  readScheduledPaths,
   runProductionSmoke,
 };
