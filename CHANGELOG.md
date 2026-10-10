@@ -38,6 +38,12 @@ See `docs/operations/release-tag-ledger.md`.
     **判据不能只看状态码**：本应用对不存在的路径返回 **200 + HTML** 的 404 页，
     所以「不是 405」单独不构成证据，必须连 content-type 一起判；`vercel.json` 读不到或为空也红（失败封闭）。
     `/api/health` 从名单里排除（它是保活端点，第 1 步已用 GET 断言过，不排除会把 health 的重试计数耦上这一步）。
+    **`302` 同样判红**：2026-10-10 在 PR #236 的 preview 上实测，开着 Vercel Deployment Protection 时
+    **每个**请求——连 一条**故意编造的假 cron 路径**一起——都被重定向到
+    `vercel.com/sso-api`，此时应用行为一次都没被观察到。「没观察到」不能记成「通过」，
+    而**把 3xx 加进放行名单会让这条检查对受保护的部署永远绿**——正是它要防的那种假绿。
+    本步的核对对象是生产部署（production alias 不带这层保护，匿名可达，已实测）。
+    这条也做了变异核对：放行 3xx ⇒ 用例红；复原 ⇒ 11 绿。
   - `src/lib/security/route-auth.ts` 与 `rate-limit-policy.ts` 同步登记两条新 GET
     （`shared-secret` / `CRON_SECRET`）。**不登记就等于「新增一条对外路由」在两份台账上静默通过。**
   - 变异核对：注册表退回 `["POST"]` ⇒ 红 `[CRON_PLATFORM_METHOD_UNDECLARED] digest`；

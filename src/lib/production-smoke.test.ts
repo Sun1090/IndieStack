@@ -378,6 +378,36 @@ describe("production smoke CLI", () => {
     expect(ok.checks.find((c) => c.name === "cron-trigger-method")!.passed).toBe(true);
   });
 
+  /**
+   * **302 必须判红，且不能为了「让 preview 也绿」把 3xx 加进放行名单。**
+   * 2026-10-10 在 PR #236 的 preview 部署上实测：开着 Vercel Deployment Protection 时，
+   * 每个请求（连一条**故意编造的假 cron 路径**也一样）都被 302 到
+   * `vercel.com/sso-api`。此时**应用的行为一次都没被观察到**——
+   * 「证明不了」记成「通过」就是假绿，而这条检查存在的理由恰恰是假绿。
+   */
+  it("受部署保护（所有路径 302 到 SSO）时判红，而不是当成通过", async () => {
+    const protectedFetch = vi.fn(async (input: string | URL | Request) =>
+      new Response("redirecting", {
+        status: 302,
+        headers: {
+          location: `https://vercel.com/sso-api?url=${encodeURIComponent(String(input))}`,
+          "content-type": "text/plain",
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const report = await smoke.runProductionSmoke("https://example.com", {
+      fetchImpl: protectedFetch,
+      healthRetryDelayMs: 0,
+    });
+    const cronCheck = report.checks.find((c) => c.name === "cron-trigger-method")!;
+    expect(cronCheck.passed).toBe(false);
+    // 405 不在读数里：红的原因不是「方法没导出」，而是「根本没问到应用」——
+    // detail 要能让人分辨这两件事，否则会把受保护的 preview 读成一次生产故障。
+    expect(cronCheck.detail).not.toContain("405");
+    expect(cronCheck.detail).toContain("302");
+  });
+
   it("核对的路径来自 vercel.json 的 crons，且不含已由第 1 步覆盖的 /api/health", () => {
     const scheduled = smoke.readScheduledPaths();
     expect(scheduled).toContain("/api/cron/digest");
