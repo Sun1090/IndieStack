@@ -8,7 +8,7 @@
  *
  * **为什么 GET 也要导出**：Vercel Cron 触发用的是 **HTTP GET**（见
  * `docs/operations/environments.md` 的 2026-10-10 实测记录）。本路由曾只导出 POST，于是平台每天
- * 拿到 Next.js 的 `405 Method Not Allowed`，于是本 worker **自 2026-09-20 进入 `vercel.json`
+ * 拿到 Next.js 的 `405 Method Not Allowed`，本 worker 因此**自 2026-09-20 进入 `vercel.json`
  * （`5360b500`）以来一次都没执行过**——注意起点是「被调度」那天，不是路由文件诞生那天（`e76eea74`
  * 建文件是 2026-09-05，那之后有两周它根本没在 crons 里）。
  * 405 发生在进路由之前：鉴权指标、业务指标、`/api/health`、production smoke 全都看不见它。
