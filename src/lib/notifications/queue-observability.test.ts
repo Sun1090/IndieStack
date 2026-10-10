@@ -49,9 +49,9 @@ describe("readEmailQueueDiagnostics()", () => {
     skippedMock.mockResolvedValue({ no_email: 3, preferences_off: 1 });
     readBeforeSendMock.mockResolvedValue(9);
 
-    // 这里两轮都没有 `date`（老数据/老 mock），所以 `trendRounds` 必须是 0、
-    // 趋势判 INSUFFICIENT_DATA + attention=true ——**没有日期就不给趋势**，
-    // 而不是拿「同一份 pending」硬凑一个只有一天的假趋势。
+    // 这里两轮既没有 `date` 也没有 backlog/skipped（老数据/老 mock），
+    // 所以 `trendRounds` 必须是 0、趋势判 INSUFFICIENT_DATA + attention=true——
+    // **缺任何一项输入都不给趋势**，而不是拿「同一份 pending」硬凑一个假趋势。
     await expect(readEmailQueueDiagnostics()).resolves.toEqual({
       pending: 4,
       oldestAgeMs: 50 * HOUR,
@@ -112,9 +112,9 @@ describe("跨天趋势接上面板", () => {
     countMock.mockResolvedValue(10);
     oldestMock.mockResolvedValue(null);
     runsMock.mockResolvedValue([
-      { pulled: 1, sent: 1, failed: 0, date: "2026-10-06" },
-      { pulled: 2, sent: 2, failed: 0, date: "2026-10-06" },
-      { pulled: 3, sent: 3, failed: 0, date: "2026-10-05" },
+      { pulled: 1, sent: 1, failed: 0, date: "2026-10-06", backlog: 8, skipped: 2 },
+      { pulled: 2, sent: 2, failed: 0, date: "2026-10-06", backlog: 9, skipped: 2 },
+      { pulled: 3, sent: 3, failed: 0, date: "2026-10-05", backlog: 20, skipped: 2 },
     ]);
     skippedMock.mockResolvedValue({ no_email: 0, preferences_off: 0 });
     readBeforeSendMock.mockResolvedValue(0);
@@ -128,6 +128,74 @@ describe("跨天趋势接上面板", () => {
 
     // 再从另一侧钉一次：如果没去重，同日期两轮会进判定并被判重复日期。
     expect(reading.trend.reason).not.toContain("重复");
+  });
+
+  it("**趋势用的是每轮自己记下的读数，不是当前快照**（迁移 035 的全部意义）", async () => {
+    // 这条是本轮改动的靶心。近似版本里所有天共用 `countMock` 的同一个 pending，
+    // 于是 `backlogFalling` 恒为 false、`A05_DRAINING` 与 `BACKLOG_NOT_DRAINING`
+    // **结构上永不触发**——面板对「跳过在涨但积压不降」这个 A05 专抓的形态
+    // 会给出「一切正常」。
+    // 现在两天的 backlog 是 20 → 8、skipped 是 2 → 5，判 A05_DRAINING。
+    // **若实现退回当前快照**（两天都用 pending=10、skipped=12），
+    // 两个序列差都消失，结论会变成 HEALTHY_LOW_BACKLOG——这条就红了。
+    // 这就是它能钉住「近似没有被偷偷改回来」的原因。
+    countMock.mockResolvedValue(10);
+    oldestMock.mockResolvedValue(null);
+    runsMock.mockResolvedValue([
+      { pulled: 5, sent: 3, failed: 0, date: "2026-10-06", backlog: 8, skipped: 5 },
+      { pulled: 6, sent: 4, failed: 0, date: "2026-10-05", backlog: 20, skipped: 2 },
+    ]);
+    // 快照侧给一组**会导出另一种结论**的值，确保读侧没有在用它们
+    skippedMock.mockResolvedValue({ no_email: 7, preferences_off: 5 });
+    readBeforeSendMock.mockResolvedValue(999);
+
+    const reading = await readEmailQueueDiagnostics();
+    expect(reading.trendRounds).toBe(2);
+    expect(reading.trend.code).toBe("A05_DRAINING");
+    expect(reading.trend.attention).toBe(false);
+    // reason 里的数字必须来自**那两天各自的读数**，不是快照的 10 / 12
+    expect(reading.trend.reason).toContain("积压 20 → 8");
+    expect(reading.trend.reason).toContain("跳过 2 → 5");
+  });
+
+  it("跳过在涨、积压不降 → 判 BACKLOG_NOT_DRAINING 并且要人看一眼", async () => {
+    // 上一版这条只能判到 HEALTHY_LOW_BACKLOG，并且注释里写明
+    // 「所有天的 skipped 都被写成同一个当前值，所以这里只能走积压不动的分支」。
+    // **那个边界已经不存在了**：现在两笔读数逐轮入表，
+    // 这条分支第一次真的可达——而它是 A05 唯一要抓的故障形态。
+    countMock.mockResolvedValue(30);
+    oldestMock.mockResolvedValue(null);
+    runsMock.mockResolvedValue([
+      { pulled: 9, sent: 1, failed: 0, date: "2026-10-06", backlog: 30, skipped: 14 },
+      { pulled: 9, sent: 6, failed: 0, date: "2026-10-05", backlog: 30, skipped: 3 },
+    ]);
+    skippedMock.mockResolvedValue({ no_email: 0, preferences_off: 0 });
+    readBeforeSendMock.mockResolvedValue(0);
+
+    const reading = await readEmailQueueDiagnostics();
+    expect(reading.trend.attention).toBe(true);
+    expect(reading.trend.code).toBe("BACKLOG_NOT_DRAINING");
+    expect(reading.trend.reason).toContain("跳过在涨");
+  });
+
+  it("**backlog/skipped 为 NULL 的轮次连同日期一起排除**（0 不算「没记录」）", async () => {
+    // 崩在取数前的那一轮、以及早于迁移 035 的历史行，两列都是 NULL。
+    // 拿 0 去补会让「积压降到了 0」成立——那是编出来的趋势。
+    // 只有 2026-10-06 那天有完整读数，所以序列长度 1、判不了跨天。
+    countMock.mockResolvedValue(10);
+    oldestMock.mockResolvedValue(null);
+    runsMock.mockResolvedValue([
+      { pulled: 5, sent: 3, failed: 0, date: "2026-10-06", backlog: 8, skipped: 5 },
+      // 有日期、有计数，但**没有观测读数**
+      { pulled: 6, sent: 4, failed: 0, date: "2026-10-05", backlog: undefined, skipped: undefined },
+    ]);
+    skippedMock.mockResolvedValue({ no_email: 0, preferences_off: 0 });
+    readBeforeSendMock.mockResolvedValue(0);
+
+    const reading = await readEmailQueueDiagnostics();
+    expect(reading.trendRounds).toBe(1);
+    // 单天回落成单轮判定：不给跨天结论，也不谎报「数据不足」之外的东西
+    expect(reading.trend.code).toBe("HEALTHY_LOW_BACKLOG");
   });
 
   it("**没有日期的轮次不进趋势**（只有一天也不叫趋势）", async () => {
@@ -151,39 +219,24 @@ describe("跨天趋势接上面板", () => {
     countMock.mockResolvedValue(10);
     oldestMock.mockResolvedValue(null);
     runsMock.mockResolvedValue([
-      { pulled: 1, sent: 1, failed: 0, date: "2026-10-06" },
-      { pulled: 1, sent: 1, failed: 0, date: "2026-10-05" },
+      { pulled: 5, sent: 3, failed: 0, date: "2026-10-06", backlog: 8, skipped: 5 },
+      { pulled: 6, sent: 4, failed: 0, date: "2026-10-05", backlog: 20, skipped: 2 },
     ]);
     // no_email=7 + preferences_off=5 = 12，readBeforeSend 却是 999
     skippedMock.mockResolvedValue({ no_email: 7, preferences_off: 5 });
     readBeforeSendMock.mockResolvedValue(999);
 
     const reading = await readEmailQueueDiagnostics();
+    // 两笔账各自进面板字段，一个都不能少
+    expect(reading.skippedTotal).toBe(12);
     expect(reading.readBeforeSend).toBe(999);
 
-    // 若 999 被混进 skipped，两个「日」的 skipped 就是 7+5+999=1011 且完全相同，
-    // 于是 `skippedRising` 为 false，结论会被静默带偏。
-    // 这里用一个**能分辨口径**的断言：两天的 skipped 相同（12），
-    // 所以判定不该是「跳过在涨」。这条用例守的正是「skipped 的算法没被换掉」。
-    expect(reading.trend.code).not.toBe("A05_DRAINING");
-    expect(reading.trend.code).not.toBe("BACKLOG_NOT_DRAINING");
-  });
-
-  it("跳过在涨、积压不降 → 判 A05 没修掉（这才是真正该喊的形态）", async () => {
-    countMock.mockResolvedValue(10); // 两天都用同一个 pending（近似，已在实现里注明）
-    oldestMock.mockResolvedValue(null);
-    runsMock.mockResolvedValue([
-      { pulled: 1, sent: 1, failed: 0, date: "2026-10-06" },
-      { pulled: 1, sent: 1, failed: 0, date: "2026-10-05" },
-    ]);
-    // 判定里所有天的 skipped 都被写成同一个当前值，所以这里只能
-    // 走「积压不动」的分支；**如果未来实现改成按天取真实 skipped，这条用例会提醒重写**。
-    skippedMock.mockResolvedValue({ no_email: 0, preferences_off: 0 });
-    readBeforeSendMock.mockResolvedValue(0);
-
-    const reading = await readEmailQueueDiagnostics();
-    expect(reading.trend.attention).toBe(false);
-    expect(reading.trend.code).toBe("HEALTHY_LOW_BACKLOG");
+    // **趋势结论对两组快照读数完全无感**：行里自己的 skipped 是 2 → 5，所以判 A05_DRAINING。
+    // 若哪天把 `readBeforeSend`（存量 999）或快照的 `no_email + preferences_off`（12）
+    // 混进轮次读数，这个结论必然改变。
+    // 上一版只能断言「不该是跳过在涨」——因为所有天共用同一个快照值，
+    // 「混进来」与「没混进来」在那个构型下**看不出区别**。
+    expect(reading.trend.code).toBe("A05_DRAINING");
   });
 });
 
@@ -195,46 +248,57 @@ describe("toDailyDigestReadings：映射本身（纯函数，能直接观测）"
     // 删掉去重也不红。**不可观测的断言等于没有断言。**
     const out = toDailyDigestReadings(
       [
-        { pulled: 90, sent: 0, failed: 0, date: "2026-10-06" },
-        { pulled: 2, sent: 2, failed: 0, date: "2026-10-06" },
-        { pulled: 5, sent: 5, failed: 0, date: "2026-10-05" },
+        { pulled: 90, sent: 0, failed: 0, date: "2026-10-06", backlog: 7, skipped: 3 },
+        { pulled: 2, sent: 2, failed: 0, date: "2026-10-06", backlog: 99, skipped: 99 },
+        { pulled: 5, sent: 5, failed: 0, date: "2026-10-05", backlog: 20, skipped: 1 },
       ],
-      { backlog: 7, skipped: 3 },
     );
     expect(out).toEqual([
       { date: "2026-10-06", pulled: 90, sent: 0, backlog: 7, skipped: 3 },
-      { date: "2026-10-05", pulled: 5, sent: 5, backlog: 7, skipped: 3 },
+      { date: "2026-10-05", pulled: 5, sent: 5, backlog: 20, skipped: 1 },
     ]);
   });
 
   it("**没有 date 的轮次完全不进序列**（不是 date=undefined 的一行）", () => {
     const out = toDailyDigestReadings(
       [
-        { pulled: 1, sent: 1, failed: 0 },
-        { pulled: 2, sent: 2, failed: 0, date: "2026-10-05" },
+        { pulled: 1, sent: 1, failed: 0, backlog: 1, skipped: 0 },
+        { pulled: 2, sent: 2, failed: 0, date: "2026-10-05", backlog: 1, skipped: 0 },
       ],
-      { backlog: 1, skipped: 0 },
     );
     expect(out).toHaveLength(1);
     expect(out[0].date).toBe("2026-10-05");
   });
 
-  it("backlog 与 skipped 原样贯穿到**每一天**，不做任何按天加工", () => {
-    // 这两个值只有当前这一轮可得，所以每天都是同一个值——
-    // 把它写成「近似的诚实实现」而不是「悄悄当成真的」，
-    // 是为了让读代码的人知道这个趋势建立在什么之上。
-    const out = toDailyDigestReadings(
-      [
-        { pulled: 1, sent: 1, failed: 0, date: "2026-10-06" },
-        { pulled: 1, sent: 1, failed: 0, date: "2026-10-05" },
-      ],
-      { backlog: 812, skipped: 12 },
-    );
-    expect(out.map((r) => r.backlog)).toEqual([812, 812]);
-    expect(out.map((r) => r.skipped)).toEqual([12, 12]);
+  it("**backlog/skipped 逐轮来自各自的行**，不再由外部快照贯穿", () => {
+    // 这条替换的是「backlog 与 skipped 原样贯穿到每一天，不做任何按天加工」。
+    // **那个意图已经过时**：贯穿全序列的同一个值就是假趋势的成因——
+    // `backlogFalling` 恒为 false，A05 的两条跨天分支永不触发。
+    // 函数签名里也已经没有 `current` 参数可传，留着它等于
+    // 给下一个人留一条回到近似的路。
+    const out = toDailyDigestReadings([
+      { pulled: 1, sent: 1, failed: 0, date: "2026-10-06", backlog: 812, skipped: 12 },
+      { pulled: 1, sent: 1, failed: 0, date: "2026-10-05", backlog: 900, skipped: 4 },
+    ]);
+    expect(out.map((r) => r.backlog)).toEqual([812, 900]);
+    expect(out.map((r) => r.skipped)).toEqual([12, 4]);
+  });
+
+  it("**没有观测读数的轮次不进序列**，也不被 0 顶替", () => {
+    // 崩在取数前的一轮、以及迁移 035 之前的历史行，都属于「没记录到」。
+    // （repository 侧把 NULL 归一成 `undefined`，见 `worker-runs.test.ts` 那两条钉子，
+    //  所以纯函数这一层看到的是 `undefined`。）
+    // 这条守的是 `?? 0` 之类的兜底不能被加回来：一旦加回来，
+    // backlog=0 会让 `judgeDigestRound` 当场判成「队列已清空」。
+    // 注意第二行的 skipped 是**真实的 0**，它必须留在序列里。
+    const out = toDailyDigestReadings([
+      { pulled: 3, sent: 3, failed: 0, date: "2026-10-06" },
+      { pulled: 2, sent: 2, failed: 0, date: "2026-10-05", backlog: 30, skipped: 0 },
+    ]);
+    expect(out).toEqual([{ date: "2026-10-05", pulled: 2, sent: 2, backlog: 30, skipped: 0 }]);
   });
 
   it("空输入返回空序列——不编一个读数出来", () => {
-    expect(toDailyDigestReadings([], { backlog: 0, skipped: 0 })).toEqual([]);
+    expect(toDailyDigestReadings([])).toEqual([]);
   });
 });
