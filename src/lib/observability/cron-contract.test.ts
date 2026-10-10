@@ -19,7 +19,8 @@ const WORKER: CronWorkerContract = {
   id: "digest",
   path: "/api/cron/digest",
   routeFile: "src/app/api/cron/digest/route.ts",
-  methods: ["POST"],
+  // 与仓库真实注册表同形：Vercel Cron 用 HTTP GET 触发，所以 GET 必须导出。
+  methods: ["GET", "POST"],
   schedule: "0 9 * * *",
   metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
   skipMetrics: [],
@@ -30,11 +31,20 @@ const ROUTE_SOURCE = `
 import { recordMetric } from "@/lib/metrics";
 import { recordCronRejected } from "@/lib/cron-metrics";
 
-export async function POST() {
+async function handle() {
   recordMetric("email.backlog", 1, { unit: "count" });
   recordMetric("cron.digest.completed", 1, { unit: "ms" });
   recordMetric("cron.digest.failed", 1, {});
   recordCronRejected("digest", "invalid_credentials");
+}
+
+// Vercel Cron 走 GET，POST 是手动运维调用；两条共用 handle，所以指标与鉴权只写一次。
+export async function GET() {
+  return handle();
+}
+
+export async function POST() {
+  return handle();
 }
 `;
 
@@ -179,6 +189,7 @@ describe("auditCronContract", () => {
     expect(issues.map((issue) => issue.code)).toEqual([
       "CRON_ROUTE_MISSING",
       "CRON_METHOD_MISSING",
+      "CRON_METHOD_MISSING",
       "CRON_METRIC_MISSING",
       "CRON_METRIC_MISSING",
       "CRON_METRIC_MISSING",
@@ -191,6 +202,44 @@ describe("auditCronContract", () => {
     expect(codes(baseInput({ sources: { [WORKER.routeFile]: source } }))).toContain(
       "CRON_METHOD_MISSING",
     );
+  });
+
+  /**
+   * 这条规则来自 2026-10-10 那次实测事故：digest 与 retention 只导出 POST，
+   * 而 Vercel Cron 发的是 **HTTP GET**，于是两条 worker 从被调度那天起一次都没执行过。
+   * 「平台用哪个方法触发」以前没有任何静态证据守着——注册表里的 `methods` 是唯一的地方。
+   */
+  it("worker 不导出 GET 时失败：Vercel Cron 用 GET 触发，只给 POST 等于每轮 405", () => {
+    const postOnly = { ...WORKER, methods: ["POST" as const] };
+    const issues = auditCronContract(baseInput({ workers: [postOnly] })).issues;
+    expect(issues).toEqual([
+      expect.objectContaining({
+        code: "CRON_PLATFORM_METHOD_UNDECLARED",
+        subject: "digest",
+        message: expect.stringContaining("HTTP GET"),
+      }),
+    ]);
+  });
+
+  it("只导出 GET 也不放行：手动运维调用走 POST，注册表两条都要写全", () => {
+    const getOnly = { ...WORKER, methods: ["GET" as const] };
+    const source = ROUTE_SOURCE.replace("export async function POST", "async function POST");
+    const codes2 = codes(baseInput({ workers: [getOnly], sources: { [WORKER.routeFile]: source } }));
+    // 本规则只管「平台能不能触发到业务代码」：声明 GET 且真的导出了 ⇒ 不该报平台码
+    expect(codes2).toEqual([]);
+  });
+
+  it("两条规则可分辨：声明了 POST 却没导出 ⇒ 只报 CRON_METHOD_MISSING", () => {
+    const source = ROUTE_SOURCE.replace("export async function POST", "async function POST");
+    const codes2 = codes(baseInput({ sources: { [WORKER.routeFile]: source } }));
+    expect(codes2).toContain("CRON_METHOD_MISSING");
+    expect(codes2).not.toContain("CRON_PLATFORM_METHOD_UNDECLARED");
+  });
+
+  it("真实注册表里每个 worker 都导出 GET（否则调度器永远触发不到业务代码）", () => {
+    for (const worker of CRON_WORKERS) {
+      expect(worker.methods, `${worker.id} 必须可被 Vercel Cron 触发`).toContain("GET");
+    }
   });
 
   it("未登记到 vercel.json 的 worker 视为未被调度", () => {

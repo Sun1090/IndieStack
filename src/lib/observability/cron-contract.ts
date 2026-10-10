@@ -80,7 +80,8 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     id: "digest",
     path: "/api/cron/digest",
     routeFile: "src/app/api/cron/digest/route.ts",
-    methods: ["POST"],
+    // GET 必须由平台能触发：Vercel Cron 发的是 HTTP GET，只导出 POST 时整条链路每轮 405。
+    methods: ["GET", "POST"],
     schedule: "0 9 * * *",
     metrics: [
       "email.backlog",
@@ -114,7 +115,8 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     id: "retention",
     path: "/api/cron/retention",
     routeFile: "src/app/api/cron/retention/route.ts",
-    methods: ["POST"],
+    // 同 digest：只导出 POST 的那几天，这条 worker 每天 405，保留期清理从未执行。
+    methods: ["GET", "POST"],
     schedule: "0 5 * * *",
     metrics: [
       "cron.retention.completed",
@@ -175,6 +177,7 @@ export type CronContractIssueCode =
   | "CRON_ROUTE_MISSING"
   | "CRON_ROUTE_UNDECLARED"
   | "CRON_METHOD_MISSING"
+  | "CRON_PLATFORM_METHOD_UNDECLARED"
   | "CRON_SCHEDULE_INVALID"
   | "CRON_SCHEDULE_MISSING"
   | "CRON_SCHEDULE_DUPLICATE"
@@ -651,6 +654,29 @@ function auditWorker(
     if (!exportsMethod(source, method)) {
       push(issues, "CRON_METHOD_MISSING", worker.id, `路由未导出 ${method}，平台调用会得到 405`);
     }
+  }
+
+  /**
+   * **平台触发用的方法必须是 GET**：Vercel Cron 的实现是「向生产 URL 发一个 HTTP GET」
+   * （https://vercel.com/docs/cron-jobs：To trigger a cron job, Vercel makes an HTTP GET request
+   * to your project's production deployment URL）。只导出 POST 的 worker 会被 Next.js 答
+   * `405 Method Not Allowed`，**整轮代码一次都不执行**。
+   *
+   * 为什么这条值得成为规则而不是一句注释：405 发生在进路由之前，所以
+   *   - `cron.auth.rejected` 不会产出（鉴权代码没跑到），
+   *   - 任何业务指标都不会产出（看起来像「队列为空的安静」），
+   *   - `/api/health` 与 production smoke 全绿（它们各自打的是别的端点/方法）。
+   * 本仓库的 digest 与 retention 就因此**从被调度那天起一次都没执行过**
+   * （2026-10-10 实测：生产库的 `pg_stat_statements` 里连一条 notifications 队列查询都没有，
+   * 而导出 GET 的 push-retry 有 19 次）。注册表里的 `methods` 是唯一能静态核对这件事的地方。
+   */
+  if (!worker.methods.includes("GET")) {
+    push(
+      issues,
+      "CRON_PLATFORM_METHOD_UNDECLARED",
+      worker.id,
+      `worker 只导出 ${worker.methods.join("/") || "（空）"}，而 Vercel Cron 用 HTTP GET 触发：每轮都会 405，业务代码从不执行（必须导出 GET）`,
+    );
   }
 
   auditWorkerSchedule(worker, input.platformCrons, issues);
