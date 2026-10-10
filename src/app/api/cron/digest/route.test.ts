@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { metricEvents } from "@/lib/testing/metric-events";
 import { NextRequest } from "next/server";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const { listUnsentEmailNotificationsMock, countUnsentEmailNotificationsMock, markEmailSentMock, markEmailFailedMock, markEmailSkippedMock, recordWorkerRunMock, logApiErrorMock, createAdminClientMock, renderEmailHtmlMock } = vi.hoisted(() => ({
   listUnsentEmailNotificationsMock: vi.fn(),
@@ -568,5 +568,41 @@ describe("POST /api/cron/digest", () => {
     expect(events).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "cron.digest.failed" })]),
     );
+  });
+});
+
+/**
+ * **GET 才是调度器真正走的那条方法**（Vercel Cron 触发用的是 HTTP GET，见
+ * https://vercel.com/docs/cron-jobs）。
+ *
+ * 本路由曾只导出 POST：平台每天拿到 Next.js 的 `405 Method Not Allowed`，digest 自 2026-09-05
+ * 被调度以来一次都没执行过。405 发生在**进路由之前**，所以鉴权拒绝指标、任何业务指标、
+ * `/api/health`、production smoke 全都看不见它——这就是「全绿但链路是死的」的成因。
+ */
+describe("GET /api/cron/digest（Vercel Cron 的真实触发方法）", () => {
+  it("GET 无凭据时 401 并上报拒绝指标：共用 handle，GET 不是免鉴权通道", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const res = await GET(new NextRequest("http://localhost/api/cron/digest"));
+    expect(res.status).toBe(401);
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.auth.rejected",
+        attributes: { worker: "digest", reason: "missing_credentials" },
+      }),
+    );
+    // 被拒绝的那一轮不能留下任何运行记录：否则「401 早退」会被记成「跑过但空转」
+    expect(recordWorkerRunMock).not.toHaveBeenCalled();
+  });
+
+  it("GET 带 Authorization: Bearer <CRON_SECRET> 时跑完整轮（Vercel 自动附加的形态）", async () => {
+    listUnsentEmailNotificationsMock.mockResolvedValue([]);
+    const res = await GET(
+      new NextRequest("http://localhost/api/cron/digest", {
+        headers: { authorization: "Bearer ***" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ sent: 0, groups: 0, failed: 0, skipped: 0 });
+    expect(recordWorkerRunMock).toHaveBeenCalledWith(expect.objectContaining({ pulled: 0 }));
   });
 });

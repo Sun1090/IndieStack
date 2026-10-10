@@ -3,8 +3,16 @@
  * 由 Vercel Cron 每天 09:00 UTC 调度（见 `vercel.json` 与 `src/lib/observability/cron-contract.ts`）；
  * 拉取待发邮件通知，按用户偏好分组后每人一封摘要发出。
  *
- * POST /api/cron/digest
- * Header: x-cron-secret = ***.CRON_SECRET
+ * GET|POST /api/cron/digest
+ * Header: `Authorization: Bearer <CRON_SECRET>`（Vercel Cron 自动附加）或 `x-cron-secret`（手动调用）
+ *
+ * **为什么 GET 也要导出**：Vercel Cron 触发用的是 **HTTP GET**（见
+ * `docs/operations/environments.md` 的 2026-10-10 实测记录）。本路由曾只导出 POST，于是平台每天
+ * 拿到 Next.js 的 `405 Method Not Allowed`，于是本 worker **自 2026-09-20 进入 `vercel.json`
+ * （`5360b500`）以来一次都没执行过**——注意起点是「被调度」那天，不是路由文件诞生那天（`e76eea74`
+ * 建文件是 2026-09-05，那之后有两周它根本没在 crons 里）。
+ * 405 发生在进路由之前：鉴权指标、业务指标、`/api/health`、production smoke 全都看不见它。
+ * 形态与 `push-retry` 对齐：两条方法共用同一个 `handle`，鉴权仍在 `handle` 内，GET 不是免鉴权通道。
  *
  * 2026-09-22 去掉「本地时刻恰为 08:00 才发」的错峰门控：Hobby plan 每路径每天只能调度一次，
  * 一个固定 UTC 时刻不可能落进所有人的早晨，那道门控的实际效果是让除 UTC-1 时区带外的用户
@@ -257,7 +265,7 @@ async function runDigest(
   return progress;
 }
 
-export async function POST(request: NextRequest) {
+async function handle(request: NextRequest) {
   // E03：拒绝原因进指标，否则 CRON_SECRET 漏配（平台每轮调用都 401）在指标上完全静默
   const auth = checkCronAuth(request.headers, process.env.CRON_SECRET);
   if (auth !== "authorized") {
@@ -358,4 +366,17 @@ export async function POST(request: NextRequest) {
     await logApiError("[Cron Digest] 执行失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+/**
+ * Vercel Cron 用 **GET** 触发本路由；POST 保留给手动运维调用。
+ * 两条必须指向同一个 `handle`：分开写会让「调度器真正走的那条方法」落在测试覆盖面之外，
+ * 而 405 那次事故恰恰就是只有 POST 有实现、有测试。
+ */
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handle(request);
 }
