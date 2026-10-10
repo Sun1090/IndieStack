@@ -185,6 +185,15 @@
 - **运行记录**（迁移 017 `email_worker_runs`）：每轮 digest 落一行
   `pulled/sent/groups/failed/duration_ms/error`；落表失败只记日志，不影响返回。
   无用户维度，RLS 启用且无策略（仅 service_role 可读写）。
+- **每轮的观测读数（迁移 035）**：同一行另记 `backlog` / `skipped` 两笔**本轮观测**，
+  供 admin 面板的跨天趋势（`judgeDigestSeries`）按天使用。口径与指标同源：
+  `backlog` = 本轮开始时 `countUnsentEmailNotifications()` 的结果（= `email.backlog`），
+  `skipped` = 本轮按用户条件跳过的条数（= `cron.digest.skipped{reason}` 合计），
+  **是本轮增量，不是 `notifications.email_skipped_reason` 的存量行数**。
+  两列**可空、不给 default 0**：`NULL` = 本轮没记录到（崩在取数之前，或该行早于迁移 035），
+  `0` = 取数成功且队列为空。趋势取数时**缺任一读数（含缺日期）的轮次连同日期一起排除**——
+  拿不存在的 0 去算「积压在降」会得出一个假趋势，而面板上那句假的「一切正常」
+  比没有这张卡更糟。判定与近似的历史见 `docs/progress.md` 2026-10-06 / 本轮条目。
 - **积压告警**：每轮运行前统计待发通知总数（与拉取同一过滤口径，含死信排除），
   超过 `EMAIL_BACKLOG_ALERT_THRESHOLD`（500）时经 logApiError 上报 Sentry
   （同消息自动分组）；持续积压通常意味着 Resend 凭据失效或死信增多，需人工介入。

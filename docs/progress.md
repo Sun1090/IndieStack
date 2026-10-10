@@ -8025,3 +8025,86 @@
 - 下一项：拿到 `CRON_SECRET` 后回来把「未知」三行里的内容读数补掉；
   其余仍是外部凭据（B03/B04/B05）。
 - 更新时间：2026-10-08（UTC）。
+
+## 2026-10-10 — 补上迁移 035 缺的那一半：每轮的观测读数真的写进表里
+
+- 里程碑 / 版本：v0.13.0。分支：`feat/worker-run-observation-readings`。
+- 状态：DONE（未合并）。
+- 为什么做：2026-10-06 那条把 `created_at` 接进取数、下一条把趋势结论摆上面板，
+  而 035 的迁移注释写着两列是为了「让跨天趋势真的拿得到每天的历史读数」——
+  **但写侧一行都没接**。`recordWorkerRun` 仍然只 insert `pulled/sent/groups/failed`，
+  `listRecentEmailWorkerRuns` 仍然不 select 这两列，
+  于是 `toDailyDigestReadings` 只能拿「本轮开始时的一次计数」贯穿所有天。
+  **那个近似让 `backlogFalling` 结构上恒为 false**，
+  `A05_DRAINING` / `BACKLOG_NOT_DRAINING` 两条跨天分支永不触发——
+  而 BACKLOG_NOT_DRAINING 正是 A05 唯一要抓的故障形态。
+  后果不是「看不见趋势」，而是面板对它会说「一切正常」。
+- **先量，不猜**：`rg backlog|skipped src/lib/repositories/worker-runs.ts` → 0 命中；
+  本地库 `information_schema` 查得两列**已在**（迁移已 apply），所以缺的确实只有代码那一半。
+- **本轮最该记的还是变异核对**：写完实现后跑 `route.test.ts`，**24 条全绿**。
+  绿本身不是证据，所以照例去删实现——把成功分支的 `backlog` / `skipped` **整个删掉，
+  仍然全绿**。根因：那份测试里所有 `recordWorkerRun` 断言都用 `expect.objectContaining`，
+  新加的键不在射程内。**「接线断了但测试全绿」第四次出现在同一个仓库**，
+  而前三次的教训写在了我自己要改的那段注释里。
+- **补的四条用例刻意让四种取值彼此可分辨**（这是本轮的设计要点，不是覆盖率）：
+  - 成功轮 `backlog=7 / skipped=1`——既不是 0 也不是 `pulled`，删任一列即红；
+  - 空队列轮两笔都是**真实的 0**——把「本轮没东西可发」写成 null 会白白扔掉一天，
+    这条防的是**过度保守**那一侧的回归；
+  - 崩在取数之前 → `backlog: null`，并**反向钉住不许是 0**（0 会被算成「积压已清零」）；
+  - 取到读数之后才崩 → 真实数字照记，与上一条构成对照：**区别只在崩在哪一步**。
+- 变异核对（全部实测，逐条 `cp` 复原）：
+  - 删成功分支两列 → 1 红 ✅
+  - 空队列轮写 null → 1 红 ✅
+  - 失败分支用 `backlog: 0` 兜底 → 2 红 ✅
+  - 读侧不 select 两列 → 1 红 ✅
+  - 读侧把 NULL 归一成 0 → 2 红 ✅
+  - 实现退回「当前快照」贯穿序列 → **6 红** ✅
+  - 去掉「无读数就不参与」的过滤 → 2 红 ✅
+- **一条过时的测试意图被改掉**：`queue-observability.test.ts` 里
+  「backlog 与 skipped 原样贯穿到每一天，不做任何按天加工」把**近似当成了正确做法**，
+  注释还写着「近似的诚实实现」。同时 `toDailyDigestReadings` **删掉了 `current` 参数**——
+  留着它等于给下一个人留一条回到近似的路。
+  `readBeforeSend 不进 skipped` 那条钉子也因此**第一次真正能分辨口径**：
+  旧构型下所有天共用同一个快照值，混进存量 999 与没混进去看不出区别。
+- **顺手修掉两件与本任务无关但挡路的事**（都是工作树里既存状态，不是我造的）：
+  1. 上一轮重新生成的 `src/lib/supabase/database.types.ts` 是 `supabase gen types` 的**未格式化**
+     输出（键名带引号、类型挤成单行），`check:query-columns` 因此读不出任何表，
+     报 **176 条 `QUERY_TABLE_UNKNOWN`** 并连带红 `data-policy` 的类型漂移钉子。
+     修法是格式化该文件（核对过表/函数集合与 HEAD **完全一致**，纯格式），
+     **并把 `pnpm db:types` 改成生成后自动 prettier**——否则这只是第 N 次手工擦地，
+     下一次重新生成一定再红。根因在脚本形状里，所以修在脚本里。
+  2. `docs/operations/migration-rollback-runbook.md` 的 `migration-runbook:latest` 标记
+     还停在 034，契约测试红；推到 035，正文示例版本号同步。
+- **一次该记的操作失误**：做变异核对时用 `git checkout --` 复原
+  `src/lib/repositories/worker-runs.ts`，把**自己未提交的改动一起清掉了**。
+  该文件当时是「HEAD + 我的改动」，而 `checkout --` 只认 HEAD。
+  已重写并逐条验证（10 条绿），但正确做法从一开始就是 `cp` 到临时文件——
+  **变异核对的复原必须是同一轮里可逆的操作，不能借用 git**。
+- 验证：全量 **269 文件 / 3252 用例**（上一条 269 / 3242，+10）；
+  `pnpm type-check` 0 error；`pnpm lint` 0 issues；
+  `pnpm check:query-columns` ✅ 21 表 / 176 处 `.from()` / 374 个字面量列名；
+  `pnpm check:migrations` ✅ 35 条与 manifest SHA-256 一致；
+  `pnpm check:all` ✅；`pnpm build` ✅；`pnpm check:progress` ✅。
+- 阻塞 / 风险：
+  - **趋势的历史仍然是空的**：两列从今天起才开始积累，
+    而 `judgeDigestSeries` 要**至少两天且都有读数**才谈得上趋势。
+    所以面板短期内会显示 `INSUFFICIENT_DATA`（读数不足）——**这是诚实的，不是坏了**。
+    生产要等到下一次 digest 跑过才有第一批数据，而本地/生产的 cron 都依赖 `CRON_SECRET`。
+  - **发布顺序是敏感的：迁移必须早于代码，这条已实测。** 本地无迁移的对照做不了
+    （035 已 apply），所以换一路子量：`?select=pulled,nonexistent_col_xyz` 打真 PostgREST
+    → **400 / `42703 column … does not exist`**。而 `listRecentEmailWorkerRuns`
+    对 error 是 `throw new Error(error.message)`，`src/app/dashboard/admin/page.tsx:97`
+    **没有 try/catch 包住这段取数**——所以代码先上而云端 035 没 apply 的后果不是
+    「队列卡少一栏」，是**整个 admin 概览页渲染失败**。
+    v0.12.0 那次「没复核云端 034 是否 applied」是运气，这次不能再用运气当验收条件。
+  - **NULL 语义在真库上核对过**（直连 psql 插入后回读、随即清掉，未留测试数据）：
+    `backlog=0` 与 `backlog IS NULL` 是两种可分辨的事实（`backlog_is_null` 分别为 `f` / `t`），
+    所以「本轮未记录到」不会被 0 冒充。
+  - **仍然没有的**：真库跑过的一整轮 digest——`CRON_SECRET` 在本机 `.env.local` 里不存在，
+    人工触发不了 worker。所以本轮证据是「列的语义对 + 写侧代码有钉子」，
+    **不是「生产已经落进过一行真实读数」**。
+- 下一项：把「发布顺序：迁移先于代码」这条写进 `docs/operations/release-runbook-v0.13.0.md`
+  （目前还没有这份文件）；再往后仍是外部凭据——`CRON_SECRET`（⚙️ 自生成，
+  能同时解锁 provider-status 内容读数与人工触发 digest）、B03（可牺牲隔离账号 + 三个
+  Supabase key，`v0.12.0` tag 的唯一缺口）、B04（数据库密码）、B05 P2–P4（Resend 测试 key + VAPID）。
+- 更新时间：2026-10-10（UTC）。

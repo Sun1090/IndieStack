@@ -134,6 +134,13 @@ async function recordFailedRun(
   error: unknown,
   pulled: number,
   progress: DigestProgress,
+  /**
+   * 本轮开始时取到的积压数；`null` = 崩在取数之前，这一轮**没有**这个读数。
+   *
+   * 与 `pulled`/`progress` 同一条纪律：只写已经发生的事实。填 0 会让这一轮看起来
+   * 是「空队列时崩的」，而跨天趋势会把 0 当成「积压已经清零」的证据。
+   */
+  backlog: number | null,
 ): Promise<void> {
   const message = failureText(error);
   try {
@@ -144,6 +151,10 @@ async function recordFailedRun(
       failed: progress.failed,
       durationMs: Date.now() - startedAt,
       error: message.slice(0, 500),
+      backlog,
+      // 与 sent/failed 同一口径：中断前跳过了几条就记几条。它不是「整轮的最终值」，
+      // 但和其他三列一样是**已发生的事实**，不会因为记成 0 而谎报「这一轮一条都没跳过」。
+      skipped: progress.skipped,
     });
   } catch (recordError) {
     await logApiError("[Cron Digest] 失败轮次写入运行记录失败", recordError);
@@ -270,13 +281,23 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   /** 本轮实际拉到的条数；catch 分支要靠它把失败轮次记成真实数字。 */
   let pulled = 0;
+  /**
+   * 本轮开始时的积压读数（迁移 035 的 `backlog` 列）。
+   *
+   * **提到 try 外面并初始化为 `null`，不是 0**：崩在 `countUnsentEmailNotifications()`
+   * 之前的那一轮拿不到这个数，而失败分支照样要落一行运行记录。写 0 会让跨天趋势
+   * 把「取数失败」读成「积压已清零」——那是 A05 最想抓的反面形态，且看起来像好消息。
+   * `null` 会一路传到 `toDailyDigestReadings`，那里的纪律是「没有读数的轮次连同日期
+   * 一起排除在趋势之外」（宁可判「数据不足」）。
+   */
+  let backlog: number | null = null;
   /** 发送进度就累加在这里：整轮抛错时也要能记下「已经寄出去了哪些」。 */
   const progress: DigestProgress = { sent: 0, groups: 0, failed: 0, skipped: 0 };
 
   try {
     // C03 积压告警：待发通知超阈值时 Sentry 上报（logApiError → captureException，
     // 同消息自动分组），每轮 cron 最多提醒一次
-    const backlog = await countUnsentEmailNotifications();
+    backlog = await countUnsentEmailNotifications();
     recordMetric("email.backlog", backlog, { unit: "count" });
     if (backlog > EMAIL_BACKLOG_ALERT_THRESHOLD) {
       await logApiError(
@@ -289,7 +310,18 @@ export async function POST(request: NextRequest) {
     pulled = notifications.length;
     if (pulled === 0) {
       const durationMs = Date.now() - startedAt;
-      await recordWorkerRun({ pulled: 0, sent: 0, groups: 0, failed: 0, durationMs });
+      // 空队列这一轮的两笔观测读数都是**真实的 0**：backlog=0 是刚取到的，
+      // skipped=0 是「一条都没拉起，所以不可能跳过任何一条」。
+      // 与失败分支的 `null` 区别开：那里是「不知道」。
+      await recordWorkerRun({
+        pulled: 0,
+        sent: 0,
+        groups: 0,
+        failed: 0,
+        durationMs,
+        backlog,
+        skipped: 0,
+      });
       recordMetric("cron.digest.completed", durationMs, {
         unit: "ms",
         attributes: { pulled: 0, sent: 0, groups: 0, failed: 0 },
@@ -334,6 +366,11 @@ export async function POST(request: NextRequest) {
         groups: result.groups,
         failed: result.failed,
         durationMs,
+        // A05 跨天趋势的两个输入：**本轮各自的观测值**，不是当前快照。
+        // 不传这两笔，序列里那些天的 backlog/skipped 会是 NULL，
+        // 而 `toDailyDigestReadings` 只能把它们排除在趋势之外。
+        backlog,
+        skipped: result.skipped,
       });
     } catch (metricsError) {
       await logApiError("[Cron Digest] 运行记录写入失败", metricsError);
@@ -354,7 +391,7 @@ export async function POST(request: NextRequest) {
     recordMetric("cron.digest.failed", 1, {
       attributes: { error_type: error instanceof Error ? error.name : "unknown" },
     });
-    await recordFailedRun(startedAt, error, pulled, progress);
+    await recordFailedRun(startedAt, error, pulled, progress, backlog);
     await logApiError("[Cron Digest] 执行失败", error);
     return jsonNoStore({ error: "Internal server error" }, { status: 500 });
   }

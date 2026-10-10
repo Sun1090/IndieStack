@@ -10,6 +10,24 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **迁移 035：每轮 digest 记下 `backlog` / `skipped` 两个观测读数，跨天趋势第一次有了真数据源。**
+  上一条趋势修复把 `created_at` 接进取数，但序列里的 `backlog`/`skipped` 仍然是
+  「本轮开始时的一次计数」贯穿所有天——那个近似让 `backlogFalling` 结构上恒为 false，
+  `A05_DRAINING` 与 `BACKLOG_NOT_DRAINING` 两条跨天分支**永不触发**。
+  后果不是「看不见趋势」，而是对「跳过在涨但积压不降」这个 A05 专门要抓的形态，
+  面板给出**一句假的「一切正常」**——比没有这张卡更糟，因为它长得像被检查过。
+  两列**可空且刻意不给 default 0**：`NULL` = 本轮没记录到（崩在取数前 / 早于迁移），
+  `0` = 取数成功且队列为空，二者是两种事实。写侧唯一出处是
+  `src/app/api/cron/digest/route.ts`，与 `email.backlog` 指标、`cron.digest.skipped{reason}`
+  指标合计同源；`skipped` 是**本轮增量**，不是 `notifications.email_skipped_reason`
+  的存量行数（存量只单调增长，拿它当 skipped 会让「跳过在涨」永远为真）。
+  删列不丢任何投递数据。
+- **`pnpm db:types` 现在自带格式化。** `supabase gen types` 输出的是未格式化、
+  且带引号键名的 TypeScript，而全仓约定 prettier 格式。重定向之后什么都不做，
+  代价是**下一次重新生成一定把门禁弄红**：`check:query-columns` 从
+  `database.types.ts` 里读不出任何表，当场报 176 条 `QUERY_TABLE_UNKNOWN`
+  （覆盖 21 张表），`data-policy` 的类型漂移钉子也跟着红。
+  这条不是偶发，是脚本本身的形状，所以补在脚本里而不是只补这一次提交。
 - **`pnpm check:retention-cron`：保留期调度「不会跑」这件事从此有门禁。**
   保留期清理的调度是守卫式的（`cron.schedule` 被包在
   `if exists (… pg_extension … 'pg_cron')` 里），这对「本地/最小化环境」是对的，
@@ -48,6 +66,30 @@ See `docs/operations/release-tag-ledger.md`.
     若因此返回非 2xx，运维脚本会把它当故障告警——**那等于制造一个天天误报的信号位**。
 
 ### Fixed
+
+- **跨天趋势不再拿「当前一次读数」冒充历史趋势。**
+  035 的两列接上之后，`toDailyDigestReadings` 改成**逐轮读各自的值**，并**删掉了
+  `current: { backlog, skipped }` 参数**——留着它等于给下一个人留一条回到近似的路。
+  缺任一输入（date / backlog / skipped）的轮次连同日期一起排除在趋势之外，
+  与「`created_at` 缺失时不编造日期」是同一条原则
+  （宁可判「数据不足」，也不拿一个不存在的 0 去算「积压在降」）。
+  **`trendRounds` 的含义随之变干净**：它从前是「近似覆盖了几天」，现在是「真实可用的天数」。
+  - **写侧的测试本来一条都测不出来**：`route.test.ts` 里所有 `recordWorkerRun` 断言
+    都用 `expect.objectContaining`，把 `backlog`/`skipped` **整个删掉，24 条用例全绿**（实测）。
+    按本仓库的变异纪律，「变异通过」的第一怀疑永远是变异是否可达——这次确实不可达。
+    补的四条用例刻意让**四种取值彼此可分辨**：成功轮 `backlog=7 / skipped=1`
+    （既不是 0 也不是 pulled）；空队列轮两笔都是**真实的 0**（写成 null 会白白扔掉一天）；
+    崩在取数前 → `backlog: null` 且**反向钉住不许是 0**；取到读数之后才崩 → 真实数字照记。
+    七次变异全部逮到（删成功分支两列 / 空队列轮写 null / 失败分支用 0 兜底 /
+    读侧不 select 两列 / 读侧把 NULL 归一成 0 / 实现退回当前快照 → 6 红 /
+    去掉「无读数就不参与」的过滤 → 2 红）。
+  - **一条过时的测试意图被顺手改掉**：原来那条「backlog 与 skipped 原样贯穿到每一天，
+    不做任何按天加工」把**近似当成了正确做法**，注释里还写着「近似的诚实实现」。
+    意图过时时它看起来只是一条正常断言，比过时的实现更难发现，
+    所以改成「逐轮来自各自的行」并补一条 NULL 排除。
+  - `readBeforeSend 不进 skipped` 那条钉子**第一次真正能分辨口径**：
+    旧构型下所有天共用同一个快照值，「把存量 999 混进来」与「没混进来」看不出区别；
+    现在行内 skipped 是 2 → 5，混进任何一组快照读数都会改变结论。
 
 - **把A05 的跨天趋势结论真的摆上面板**（接上一条「数据源」修复的后续）。
   上一条把 `created_at` 接进取数了，但面板**没人消费这个结论**——
