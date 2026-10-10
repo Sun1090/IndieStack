@@ -171,6 +171,11 @@
       "version": "034",
       "fileName": "034_email_skip_reason.sql",
       "sha256": "639d3b54f4013333c3fc434c321f16e3aedc4129b07ce631288bb707b068085c"
+    },
+    {
+      "version": "035",
+      "fileName": "035_worker_run_backlog_skipped.sql",
+      "sha256": "330b421f7846482a3ded3517ec37e88fc89db540b36ac49a4b5e55f28042c0b7"
     }
   ]
 }

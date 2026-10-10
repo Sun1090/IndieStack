@@ -1,1009 +1,984 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   public: {
     Tables: {
       api_keys: {
         Row: {
-          created_at: string
-          expires_at: string | null
-          id: string
-          is_active: boolean
-          key_hash: string
-          key_prefix: string
-          last_used_at: string | null
-          name: string
-          scopes: string[] | null
-          updated_at: string
-          user_id: string
-        }
+          created_at: string;
+          expires_at: string | null;
+          id: string;
+          is_active: boolean;
+          key_hash: string;
+          key_prefix: string;
+          last_used_at: string | null;
+          name: string;
+          scopes: string[] | null;
+          updated_at: string;
+          user_id: string;
+        };
         Insert: {
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean
-          key_hash: string
-          key_prefix: string
-          last_used_at?: string | null
-          name: string
-          scopes?: string[] | null
-          updated_at?: string
-          user_id: string
-        }
+          created_at?: string;
+          expires_at?: string | null;
+          id?: string;
+          is_active?: boolean;
+          key_hash: string;
+          key_prefix: string;
+          last_used_at?: string | null;
+          name: string;
+          scopes?: string[] | null;
+          updated_at?: string;
+          user_id: string;
+        };
         Update: {
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean
-          key_hash?: string
-          key_prefix?: string
-          last_used_at?: string | null
-          name?: string
-          scopes?: string[] | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          expires_at?: string | null;
+          id?: string;
+          is_active?: boolean;
+          key_hash?: string;
+          key_prefix?: string;
+          last_used_at?: string | null;
+          name?: string;
+          scopes?: string[] | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       api_usage: {
         Row: {
-          created_at: string
-          id: number
-          ip_address: unknown
-          method: string
-          path: string
-          status_code: number | null
-          user_id: string | null
-        }
+          created_at: string;
+          id: number;
+          ip_address: unknown;
+          method: string;
+          path: string;
+          status_code: number | null;
+          user_id: string | null;
+        };
         Insert: {
-          created_at?: string
-          id?: never
-          ip_address?: unknown
-          method: string
-          path: string
-          status_code?: number | null
-          user_id?: string | null
-        }
+          created_at?: string;
+          id?: never;
+          ip_address?: unknown;
+          method: string;
+          path: string;
+          status_code?: number | null;
+          user_id?: string | null;
+        };
         Update: {
-          created_at?: string
-          id?: never
-          ip_address?: unknown
-          method?: string
-          path?: string
-          status_code?: number | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          id?: never;
+          ip_address?: unknown;
+          method?: string;
+          path?: string;
+          status_code?: number | null;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       audit_logs: {
         Row: {
-          action: string
-          created_at: string
-          entity_id: string | null
-          entity_type: string
-          id: number
-          metadata: Json | null
-          user_id: string | null
-        }
+          action: string;
+          created_at: string;
+          entity_id: string | null;
+          entity_type: string;
+          id: number;
+          metadata: Json | null;
+          user_id: string | null;
+        };
         Insert: {
-          action: string
-          created_at?: string
-          entity_id?: string | null
-          entity_type: string
-          id?: never
-          metadata?: Json | null
-          user_id?: string | null
-        }
+          action: string;
+          created_at?: string;
+          entity_id?: string | null;
+          entity_type: string;
+          id?: never;
+          metadata?: Json | null;
+          user_id?: string | null;
+        };
         Update: {
-          action?: string
-          created_at?: string
-          entity_id?: string | null
-          entity_type?: string
-          id?: never
-          metadata?: Json | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
+          action?: string;
+          created_at?: string;
+          entity_id?: string | null;
+          entity_type?: string;
+          id?: never;
+          metadata?: Json | null;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       contact_messages: {
         Row: {
-          created_at: string
-          email: string
-          id: string
-          message: string
-          name: string
-          status: string
-          subject: string
-        }
+          created_at: string;
+          email: string;
+          id: string;
+          message: string;
+          name: string;
+          status: string;
+          subject: string;
+        };
         Insert: {
-          created_at?: string
-          email: string
-          id?: string
-          message: string
-          name: string
-          status?: string
-          subject: string
-        }
+          created_at?: string;
+          email: string;
+          id?: string;
+          message: string;
+          name: string;
+          status?: string;
+          subject: string;
+        };
         Update: {
-          created_at?: string
-          email?: string
-          id?: string
-          message?: string
-          name?: string
-          status?: string
-          subject?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          email?: string;
+          id?: string;
+          message?: string;
+          name?: string;
+          status?: string;
+          subject?: string;
+        };
+        Relationships: [];
+      };
       email_worker_runs: {
         Row: {
-          created_at: string
-          duration_ms: number
-          error: string | null
-          failed: number
-          groups: number
-          id: string
-          pulled: number
-          sent: number
-        }
+          backlog: number | null;
+          created_at: string;
+          duration_ms: number;
+          error: string | null;
+          failed: number;
+          groups: number;
+          id: string;
+          pulled: number;
+          sent: number;
+          skipped: number | null;
+        };
         Insert: {
-          created_at?: string
-          duration_ms?: number
-          error?: string | null
-          failed?: number
-          groups?: number
-          id?: string
-          pulled?: number
-          sent?: number
-        }
+          backlog?: number | null;
+          created_at?: string;
+          duration_ms?: number;
+          error?: string | null;
+          failed?: number;
+          groups?: number;
+          id?: string;
+          pulled?: number;
+          sent?: number;
+          skipped?: number | null;
+        };
         Update: {
-          created_at?: string
-          duration_ms?: number
-          error?: string | null
-          failed?: number
-          groups?: number
-          id?: string
-          pulled?: number
-          sent?: number
-        }
-        Relationships: []
-      }
+          backlog?: number | null;
+          created_at?: string;
+          duration_ms?: number;
+          error?: string | null;
+          failed?: number;
+          groups?: number;
+          id?: string;
+          pulled?: number;
+          sent?: number;
+          skipped?: number | null;
+        };
+        Relationships: [];
+      };
       marketing_subscriptions: {
         Row: {
-          confirmed_at: string | null
-          created_at: string
-          email: string
-          id: string
-          status: string
-          token: string
-          token_expires_at: string | null
-          token_hash: string | null
-          updated_at: string
-          user_id: string
-        }
+          confirmed_at: string | null;
+          created_at: string;
+          email: string;
+          id: string;
+          status: string;
+          token: string;
+          token_expires_at: string | null;
+          token_hash: string | null;
+          updated_at: string;
+          user_id: string;
+        };
         Insert: {
-          confirmed_at?: string | null
-          created_at?: string
-          email: string
-          id?: string
-          status?: string
-          token: string
-          token_expires_at?: string | null
-          token_hash?: string | null
-          updated_at?: string
-          user_id: string
-        }
+          confirmed_at?: string | null;
+          created_at?: string;
+          email: string;
+          id?: string;
+          status?: string;
+          token: string;
+          token_expires_at?: string | null;
+          token_hash?: string | null;
+          updated_at?: string;
+          user_id: string;
+        };
         Update: {
-          confirmed_at?: string | null
-          created_at?: string
-          email?: string
-          id?: string
-          status?: string
-          token?: string
-          token_expires_at?: string | null
-          token_hash?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
+          confirmed_at?: string | null;
+          created_at?: string;
+          email?: string;
+          id?: string;
+          status?: string;
+          token?: string;
+          token_expires_at?: string | null;
+          token_hash?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       mfa_recovery_codes: {
         Row: {
-          code_hash: string
-          created_at: string
-          id: string
-          used_at: string | null
-          user_id: string
-        }
+          code_hash: string;
+          created_at: string;
+          id: string;
+          used_at: string | null;
+          user_id: string;
+        };
         Insert: {
-          code_hash: string
-          created_at?: string
-          id?: string
-          used_at?: string | null
-          user_id: string
-        }
+          code_hash: string;
+          created_at?: string;
+          id?: string;
+          used_at?: string | null;
+          user_id: string;
+        };
         Update: {
-          code_hash?: string
-          created_at?: string
-          id?: string
-          used_at?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
+          code_hash?: string;
+          created_at?: string;
+          id?: string;
+          used_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       notifications: {
         Row: {
-          body: string | null
-          created_at: string
-          email_sent: boolean
-          email_skipped_reason: string | null
-          id: string
-          idempotency_key: string | null
-          is_read: boolean
-          link: string | null
-          metadata: Json | null
-          title: string
-          type: string
-          user_id: string
-        }
+          body: string | null;
+          created_at: string;
+          email_sent: boolean;
+          email_skipped_reason: string | null;
+          id: string;
+          idempotency_key: string | null;
+          is_read: boolean;
+          link: string | null;
+          metadata: Json | null;
+          title: string;
+          type: string;
+          user_id: string;
+        };
         Insert: {
-          body?: string | null
-          created_at?: string
-          email_sent?: boolean
-          email_skipped_reason?: string | null
-          id?: string
-          idempotency_key?: string | null
-          is_read?: boolean
-          link?: string | null
-          metadata?: Json | null
-          title: string
-          type: string
-          user_id: string
-        }
+          body?: string | null;
+          created_at?: string;
+          email_sent?: boolean;
+          email_skipped_reason?: string | null;
+          id?: string;
+          idempotency_key?: string | null;
+          is_read?: boolean;
+          link?: string | null;
+          metadata?: Json | null;
+          title: string;
+          type: string;
+          user_id: string;
+        };
         Update: {
-          body?: string | null
-          created_at?: string
-          email_sent?: boolean
-          email_skipped_reason?: string | null
-          id?: string
-          idempotency_key?: string | null
-          is_read?: boolean
-          link?: string | null
-          metadata?: Json | null
-          title?: string
-          type?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
+          body?: string | null;
+          created_at?: string;
+          email_sent?: boolean;
+          email_skipped_reason?: string | null;
+          id?: string;
+          idempotency_key?: string | null;
+          is_read?: boolean;
+          link?: string | null;
+          metadata?: Json | null;
+          title?: string;
+          type?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
-          avatar_url: string | null
-          bio: string | null
-          created_at: string
-          email: string | null
-          full_name: string | null
-          id: string
-          language: string | null
-          notification_settings: Json | null
-          role: string
-          timezone: string | null
-          updated_at: string
-        }
+          avatar_url: string | null;
+          bio: string | null;
+          created_at: string;
+          email: string | null;
+          full_name: string | null;
+          id: string;
+          language: string | null;
+          notification_settings: Json | null;
+          role: string;
+          timezone: string | null;
+          updated_at: string;
+        };
         Insert: {
-          avatar_url?: string | null
-          bio?: string | null
-          created_at?: string
-          email?: string | null
-          full_name?: string | null
-          id: string
-          language?: string | null
-          notification_settings?: Json | null
-          role?: string
-          timezone?: string | null
-          updated_at?: string
-        }
+          avatar_url?: string | null;
+          bio?: string | null;
+          created_at?: string;
+          email?: string | null;
+          full_name?: string | null;
+          id: string;
+          language?: string | null;
+          notification_settings?: Json | null;
+          role?: string;
+          timezone?: string | null;
+          updated_at?: string;
+        };
         Update: {
-          avatar_url?: string | null
-          bio?: string | null
-          created_at?: string
-          email?: string | null
-          full_name?: string | null
-          id?: string
-          language?: string | null
-          notification_settings?: Json | null
-          role?: string
-          timezone?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
+          avatar_url?: string | null;
+          bio?: string | null;
+          created_at?: string;
+          email?: string | null;
+          full_name?: string | null;
+          id?: string;
+          language?: string | null;
+          notification_settings?: Json | null;
+          role?: string;
+          timezone?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       projects: {
         Row: {
-          config: Json | null
-          created_at: string
-          created_by: string | null
-          description: string | null
-          id: string
-          logo_url: string | null
-          name: string
-          slug: string
-          status: string
-          team_id: string
-          updated_at: string
-          visibility: string
-        }
+          config: Json | null;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          id: string;
+          logo_url: string | null;
+          name: string;
+          slug: string;
+          status: string;
+          team_id: string;
+          updated_at: string;
+          visibility: string;
+        };
         Insert: {
-          config?: Json | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          logo_url?: string | null
-          name: string
-          slug: string
-          status?: string
-          team_id: string
-          updated_at?: string
-          visibility?: string
-        }
+          config?: Json | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          id?: string;
+          logo_url?: string | null;
+          name: string;
+          slug: string;
+          status?: string;
+          team_id: string;
+          updated_at?: string;
+          visibility?: string;
+        };
         Update: {
-          config?: Json | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          logo_url?: string | null
-          name?: string
-          slug?: string
-          status?: string
-          team_id?: string
-          updated_at?: string
-          visibility?: string
-        }
+          config?: Json | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          id?: string;
+          logo_url?: string | null;
+          name?: string;
+          slug?: string;
+          status?: string;
+          team_id?: string;
+          updated_at?: string;
+          visibility?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "projects_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
+            foreignKeyName: "projects_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       push_delivery_attempts: {
         Row: {
-          attempt_count: number
-          created_at: string
-          endpoint: string
-          failure_code: string | null
-          id: string
-          last_attempt_at: string | null
-          last_error: string | null
-          next_attempt_at: string
-          notification_id: string
-          push_subscription_id: string | null
-          sent_at: string | null
-          status: string
-          updated_at: string
-          user_id: string
-        }
+          attempt_count: number;
+          created_at: string;
+          endpoint: string;
+          failure_code: string | null;
+          id: string;
+          last_attempt_at: string | null;
+          last_error: string | null;
+          next_attempt_at: string;
+          notification_id: string;
+          push_subscription_id: string | null;
+          sent_at: string | null;
+          status: string;
+          updated_at: string;
+          user_id: string;
+        };
         Insert: {
-          attempt_count?: number
-          created_at?: string
-          endpoint: string
-          failure_code?: string | null
-          id?: string
-          last_attempt_at?: string | null
-          last_error?: string | null
-          next_attempt_at?: string
-          notification_id: string
-          push_subscription_id?: string | null
-          sent_at?: string | null
-          status?: string
-          updated_at?: string
-          user_id: string
-        }
+          attempt_count?: number;
+          created_at?: string;
+          endpoint: string;
+          failure_code?: string | null;
+          id?: string;
+          last_attempt_at?: string | null;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          notification_id: string;
+          push_subscription_id?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          updated_at?: string;
+          user_id: string;
+        };
         Update: {
-          attempt_count?: number
-          created_at?: string
-          endpoint?: string
-          failure_code?: string | null
-          id?: string
-          last_attempt_at?: string | null
-          last_error?: string | null
-          next_attempt_at?: string
-          notification_id?: string
-          push_subscription_id?: string | null
-          sent_at?: string | null
-          status?: string
-          updated_at?: string
-          user_id?: string
-        }
+          attempt_count?: number;
+          created_at?: string;
+          endpoint?: string;
+          failure_code?: string | null;
+          id?: string;
+          last_attempt_at?: string | null;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          notification_id?: string;
+          push_subscription_id?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "push_delivery_attempts_notification_id_fkey"
-            columns: ["notification_id"]
-            isOneToOne: false
-            referencedRelation: "notifications"
-            referencedColumns: ["id"]
+            foreignKeyName: "push_delivery_attempts_notification_id_fkey";
+            columns: ["notification_id"];
+            isOneToOne: false;
+            referencedRelation: "notifications";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "push_delivery_attempts_push_subscription_id_fkey"
-            columns: ["push_subscription_id"]
-            isOneToOne: false
-            referencedRelation: "push_subscriptions"
-            referencedColumns: ["id"]
+            foreignKeyName: "push_delivery_attempts_push_subscription_id_fkey";
+            columns: ["push_subscription_id"];
+            isOneToOne: false;
+            referencedRelation: "push_subscriptions";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       push_subscriptions: {
         Row: {
-          auth: string
-          created_at: string
-          endpoint: string
-          id: string
-          p256dh: string
-          updated_at: string
-          user_agent: string | null
-          user_id: string
-        }
+          auth: string;
+          created_at: string;
+          endpoint: string;
+          id: string;
+          p256dh: string;
+          updated_at: string;
+          user_agent: string | null;
+          user_id: string;
+        };
         Insert: {
-          auth: string
-          created_at?: string
-          endpoint: string
-          id?: string
-          p256dh: string
-          updated_at?: string
-          user_agent?: string | null
-          user_id: string
-        }
+          auth: string;
+          created_at?: string;
+          endpoint: string;
+          id?: string;
+          p256dh: string;
+          updated_at?: string;
+          user_agent?: string | null;
+          user_id: string;
+        };
         Update: {
-          auth?: string
-          created_at?: string
-          endpoint?: string
-          id?: string
-          p256dh?: string
-          updated_at?: string
-          user_agent?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
+          auth?: string;
+          created_at?: string;
+          endpoint?: string;
+          id?: string;
+          p256dh?: string;
+          updated_at?: string;
+          user_agent?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       subscriptions: {
         Row: {
-          cancel_at_period_end: boolean
-          created_at: string
-          id: string
-          period_end: string | null
-          period_start: string | null
-          plan: string
-          provider: string
-          provider_id: string | null
-          status: string
-          team_id: string
-          updated_at: string
-        }
+          cancel_at_period_end: boolean;
+          created_at: string;
+          id: string;
+          period_end: string | null;
+          period_start: string | null;
+          plan: string;
+          provider: string;
+          provider_id: string | null;
+          status: string;
+          team_id: string;
+          updated_at: string;
+        };
         Insert: {
-          cancel_at_period_end?: boolean
-          created_at?: string
-          id?: string
-          period_end?: string | null
-          period_start?: string | null
-          plan: string
-          provider?: string
-          provider_id?: string | null
-          status?: string
-          team_id: string
-          updated_at?: string
-        }
+          cancel_at_period_end?: boolean;
+          created_at?: string;
+          id?: string;
+          period_end?: string | null;
+          period_start?: string | null;
+          plan: string;
+          provider?: string;
+          provider_id?: string | null;
+          status?: string;
+          team_id: string;
+          updated_at?: string;
+        };
         Update: {
-          cancel_at_period_end?: boolean
-          created_at?: string
-          id?: string
-          period_end?: string | null
-          period_start?: string | null
-          plan?: string
-          provider?: string
-          provider_id?: string | null
-          status?: string
-          team_id?: string
-          updated_at?: string
-        }
+          cancel_at_period_end?: boolean;
+          created_at?: string;
+          id?: string;
+          period_end?: string | null;
+          period_start?: string | null;
+          plan?: string;
+          provider?: string;
+          provider_id?: string | null;
+          status?: string;
+          team_id?: string;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "subscriptions_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
+            foreignKeyName: "subscriptions_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       team_invitations: {
         Row: {
-          created_at: string
-          email: string
-          expires_at: string
-          id: string
-          invited_by: string
-          role: string
-          status: string
-          team_id: string
-          token: string
-          updated_at: string
-        }
+          created_at: string;
+          email: string;
+          expires_at: string;
+          id: string;
+          invited_by: string;
+          role: string;
+          status: string;
+          team_id: string;
+          token: string;
+          updated_at: string;
+        };
         Insert: {
-          created_at?: string
-          email: string
-          expires_at?: string
-          id?: string
-          invited_by: string
-          role?: string
-          status?: string
-          team_id: string
-          token: string
-          updated_at?: string
-        }
+          created_at?: string;
+          email: string;
+          expires_at?: string;
+          id?: string;
+          invited_by: string;
+          role?: string;
+          status?: string;
+          team_id: string;
+          token: string;
+          updated_at?: string;
+        };
         Update: {
-          created_at?: string
-          email?: string
-          expires_at?: string
-          id?: string
-          invited_by?: string
-          role?: string
-          status?: string
-          team_id?: string
-          token?: string
-          updated_at?: string
-        }
+          created_at?: string;
+          email?: string;
+          expires_at?: string;
+          id?: string;
+          invited_by?: string;
+          role?: string;
+          status?: string;
+          team_id?: string;
+          token?: string;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "team_invitations_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
+            foreignKeyName: "team_invitations_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       team_members: {
         Row: {
-          created_at: string
-          id: string
-          invited_by: string | null
-          role: string
-          team_id: string
-          user_id: string
-        }
+          created_at: string;
+          id: string;
+          invited_by: string | null;
+          role: string;
+          team_id: string;
+          user_id: string;
+        };
         Insert: {
-          created_at?: string
-          id?: string
-          invited_by?: string | null
-          role?: string
-          team_id: string
-          user_id: string
-        }
+          created_at?: string;
+          id?: string;
+          invited_by?: string | null;
+          role?: string;
+          team_id: string;
+          user_id: string;
+        };
         Update: {
-          created_at?: string
-          id?: string
-          invited_by?: string | null
-          role?: string
-          team_id?: string
-          user_id?: string
-        }
+          created_at?: string;
+          id?: string;
+          invited_by?: string | null;
+          role?: string;
+          team_id?: string;
+          user_id?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "team_members_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
+            foreignKeyName: "team_members_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       teams: {
         Row: {
-          created_at: string
-          id: string
-          member_count: number
-          name: string
-          owner_id: string
-          plan: string
-          slug: string
-          updated_at: string
-        }
+          created_at: string;
+          id: string;
+          member_count: number;
+          name: string;
+          owner_id: string;
+          plan: string;
+          slug: string;
+          updated_at: string;
+        };
         Insert: {
-          created_at?: string
-          id?: string
-          member_count?: number
-          name: string
-          owner_id: string
-          plan?: string
-          slug: string
-          updated_at?: string
-        }
+          created_at?: string;
+          id?: string;
+          member_count?: number;
+          name: string;
+          owner_id: string;
+          plan?: string;
+          slug: string;
+          updated_at?: string;
+        };
         Update: {
-          created_at?: string
-          id?: string
-          member_count?: number
-          name?: string
-          owner_id?: string
-          plan?: string
-          slug?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          id?: string;
+          member_count?: number;
+          name?: string;
+          owner_id?: string;
+          plan?: string;
+          slug?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       upload_objects: {
         Row: {
-          bucket: string
-          byte_size: number
-          checksum: string
-          content_type: string
-          created_at: string
-          id: string
-          object_key: string
-          owner_id: string | null
-          status: string
-          updated_at: string
-        }
+          bucket: string;
+          byte_size: number;
+          checksum: string;
+          content_type: string;
+          created_at: string;
+          id: string;
+          object_key: string;
+          owner_id: string | null;
+          status: string;
+          updated_at: string;
+        };
         Insert: {
-          bucket: string
-          byte_size: number
-          checksum: string
-          content_type: string
-          created_at?: string
-          id?: string
-          object_key: string
-          owner_id?: string | null
-          status?: string
-          updated_at?: string
-        }
+          bucket: string;
+          byte_size: number;
+          checksum: string;
+          content_type: string;
+          created_at?: string;
+          id?: string;
+          object_key: string;
+          owner_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
         Update: {
-          bucket?: string
-          byte_size?: number
-          checksum?: string
-          content_type?: string
-          created_at?: string
-          id?: string
-          object_key?: string
-          owner_id?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
+          bucket?: string;
+          byte_size?: number;
+          checksum?: string;
+          content_type?: string;
+          created_at?: string;
+          id?: string;
+          object_key?: string;
+          owner_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       user_sessions: {
         Row: {
-          created_at: string
-          id: string
-          ip_address: unknown
-          last_seen_at: string
-          user_agent: string | null
-          user_id: string
-        }
+          created_at: string;
+          id: string;
+          ip_address: unknown;
+          last_seen_at: string;
+          user_agent: string | null;
+          user_id: string;
+        };
         Insert: {
-          created_at?: string
-          id?: string
-          ip_address?: unknown
-          last_seen_at?: string
-          user_agent?: string | null
-          user_id: string
-        }
+          created_at?: string;
+          id?: string;
+          ip_address?: unknown;
+          last_seen_at?: string;
+          user_agent?: string | null;
+          user_id: string;
+        };
         Update: {
-          created_at?: string
-          id?: string
-          ip_address?: unknown
-          last_seen_at?: string
-          user_agent?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          id?: string;
+          ip_address?: unknown;
+          last_seen_at?: string;
+          user_agent?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       webauthn_credentials: {
         Row: {
-          counter: number
-          created_at: string
-          credential_id: string
-          device_name: string | null
-          id: string
-          last_used_at: string | null
-          public_key: string
-          transports: string[] | null
-          user_id: string
-        }
+          counter: number;
+          created_at: string;
+          credential_id: string;
+          device_name: string | null;
+          id: string;
+          last_used_at: string | null;
+          public_key: string;
+          transports: string[] | null;
+          user_id: string;
+        };
         Insert: {
-          counter?: number
-          created_at?: string
-          credential_id: string
-          device_name?: string | null
-          id?: string
-          last_used_at?: string | null
-          public_key: string
-          transports?: string[] | null
-          user_id: string
-        }
+          counter?: number;
+          created_at?: string;
+          credential_id: string;
+          device_name?: string | null;
+          id?: string;
+          last_used_at?: string | null;
+          public_key: string;
+          transports?: string[] | null;
+          user_id: string;
+        };
         Update: {
-          counter?: number
-          created_at?: string
-          credential_id?: string
-          device_name?: string | null
-          id?: string
-          last_used_at?: string | null
-          public_key?: string
-          transports?: string[] | null
-          user_id?: string
-        }
-        Relationships: []
-      }
+          counter?: number;
+          created_at?: string;
+          credential_id?: string;
+          device_name?: string | null;
+          id?: string;
+          last_used_at?: string | null;
+          public_key?: string;
+          transports?: string[] | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       webhook_events: {
         Row: {
-          attempts: number
-          created_at: string
-          error_message: string | null
-          event_id: string
-          event_type: string
-          id: string
-          last_attempt_at: string
-          payload: Json
-          provider: string
-          status: string
-        }
+          attempts: number;
+          created_at: string;
+          error_message: string | null;
+          event_id: string;
+          event_type: string;
+          id: string;
+          last_attempt_at: string;
+          payload: NonNullable<Json>;
+          provider: string;
+          status: string;
+        };
         Insert: {
-          attempts?: number
-          created_at?: string
-          error_message?: string | null
-          event_id: string
-          event_type: string
-          id?: string
-          last_attempt_at?: string
-          payload?: Json
-          provider?: string
-          status?: string
-        }
+          attempts?: number;
+          created_at?: string;
+          error_message?: string | null;
+          event_id: string;
+          event_type: string;
+          id?: string;
+          last_attempt_at?: string;
+          payload?: NonNullable<Json>;
+          provider?: string;
+          status?: string;
+        };
         Update: {
-          attempts?: number
-          created_at?: string
-          error_message?: string | null
-          event_id?: string
-          event_type?: string
-          id?: string
-          last_attempt_at?: string
-          payload?: Json
-          provider?: string
-          status?: string
-        }
-        Relationships: []
-      }
-    }
+          attempts?: number;
+          created_at?: string;
+          error_message?: string | null;
+          event_id?: string;
+          event_type?: string;
+          id?: string;
+          last_attempt_at?: string;
+          payload?: NonNullable<Json>;
+          provider?: string;
+          status?: string;
+        };
+        Relationships: [];
+      };
+    };
     Views: {
       user_stats: {
         Row: {
-          api_call_count: number | null
-          email: string | null
-          full_name: string | null
-          joined_at: string | null
-          role: string | null
-          session_count: number | null
-          team_count: number | null
-          user_id: string | null
-        }
+          api_call_count: number | null;
+          email: string | null;
+          full_name: string | null;
+          joined_at: string | null;
+          role: string | null;
+          session_count: number | null;
+          team_count: number | null;
+          user_id: string | null;
+        };
         Insert: {
-          api_call_count?: never
-          email?: string | null
-          full_name?: string | null
-          joined_at?: string | null
-          role?: string | null
-          session_count?: never
-          team_count?: never
-          user_id?: string | null
-        }
+          api_call_count?: never;
+          email?: string | null;
+          full_name?: string | null;
+          joined_at?: string | null;
+          role?: string | null;
+          session_count?: never;
+          team_count?: never;
+          user_id?: string | null;
+        };
         Update: {
-          api_call_count?: never
-          email?: string | null
-          full_name?: string | null
-          joined_at?: string | null
-          role?: string | null
-          session_count?: never
-          team_count?: never
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-    }
+          api_call_count?: never;
+          email?: string | null;
+          full_name?: string | null;
+          joined_at?: string | null;
+          role?: string | null;
+          session_count?: never;
+          team_count?: never;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       claim_webhook_event: {
-        Args: { p_event_id: string; p_event_type: string; p_provider: string }
+        Args: { p_event_id: string; p_event_type: string; p_provider: string };
         Returns: {
-          attempts: number
-          outcome: string
-        }[]
-      }
-      cleanup_old_api_usage: { Args: never; Returns: undefined }
-      cleanup_old_email_worker_runs: { Args: never; Returns: undefined }
-      cleanup_old_notifications: { Args: never; Returns: undefined }
-      cleanup_old_webhook_events: { Args: never; Returns: undefined }
-      cleanup_resolved_contact_messages: { Args: never; Returns: undefined }
-      erase_user_data: { Args: { p_user_id: string }; Returns: Json }
+          attempts: number;
+          outcome: string;
+        }[];
+      };
+      cleanup_old_api_usage: { Args: Record<PropertyKey, never>; Returns: undefined };
+      cleanup_old_email_worker_runs: { Args: Record<PropertyKey, never>; Returns: undefined };
+      cleanup_old_notifications: { Args: Record<PropertyKey, never>; Returns: undefined };
+      cleanup_old_webhook_events: { Args: Record<PropertyKey, never>; Returns: undefined };
+      cleanup_resolved_contact_messages: { Args: Record<PropertyKey, never>; Returns: undefined };
+      erase_user_data: { Args: { p_user_id: string }; Returns: Json };
       find_orphan_upload_objects: {
-        Args: never
+        Args: Record<PropertyKey, never>;
         Returns: {
-          bucket: string
-          byte_size: number
-          created_at: string
-          object_key: string
-          owner_id: string
-        }[]
-      }
-      get_profile_email: { Args: { p_id: string }; Returns: string }
-      get_profile_role: { Args: { p_id: string }; Returns: string }
-      get_project_created_by: { Args: { p_id: string }; Returns: string }
-      get_project_team_id: { Args: { p_id: string }; Returns: string }
-      get_team_member_count: { Args: { p_id: string }; Returns: number }
-      get_team_owner_id: { Args: { p_id: string }; Returns: string }
-      get_team_plan: { Args: { p_id: string }; Returns: string }
-      is_team_admin: { Args: { p_team_id: string }; Returns: boolean }
-      is_team_member: { Args: { p_team_id: string }; Returns: boolean }
-      is_team_owner: { Args: { p_team_id: string }; Returns: boolean }
+          bucket: string;
+          byte_size: number;
+          created_at: string;
+          object_key: string;
+          owner_id: string;
+        }[];
+      };
+      get_profile_email: { Args: { p_id: string }; Returns: string };
+      get_profile_role: { Args: { p_id: string }; Returns: string };
+      get_project_created_by: { Args: { p_id: string }; Returns: string };
+      get_project_team_id: { Args: { p_id: string }; Returns: string };
+      get_team_member_count: { Args: { p_id: string }; Returns: number };
+      get_team_owner_id: { Args: { p_id: string }; Returns: string };
+      get_team_plan: { Args: { p_id: string }; Returns: string };
+      is_team_admin: { Args: { p_team_id: string }; Returns: boolean };
+      is_team_member: { Args: { p_team_id: string }; Returns: boolean };
+      is_team_owner: { Args: { p_team_id: string }; Returns: boolean };
       list_user_objects_for_erasure: {
-        Args: { p_user_id: string }
+        Args: { p_user_id: string };
         Returns: {
-          bucket: string
-          object_key: string
-          referenced: boolean
-        }[]
-      }
+          bucket: string;
+          object_key: string;
+          referenced: boolean;
+        }[];
+      };
       log_audit_action: {
-        Args: {
-          p_action: string
-          p_entity_id?: string
-          p_entity_type: string
-          p_metadata?: Json
-        }
-        Returns: number
-      }
-      prune_deleted_upload_objects: { Args: never; Returns: undefined }
-      upload_object_is_referenced: {
-        Args: { p_object_key: string }
-        Returns: boolean
-      }
-    }
+        Args: { p_action: string; p_entity_id?: string; p_entity_type: string; p_metadata?: Json };
+        Returns: number;
+      };
+      prune_deleted_upload_objects: { Args: Record<PropertyKey, never>; Returns: undefined };
+      upload_object_is_referenced: { Args: { p_object_key: string }; Returns: boolean };
+    };
     Enums: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
+      [_ in never]: never;
+    };
+  };
+};
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">];
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
+      Row: infer R;
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] & DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
       }
       ? R
       : never
-    : never
+    : never;
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
+      Insert: infer I;
     }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
+        Insert: infer I;
       }
       ? I
       : never
-    : never
+    : never;
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
+      Update: infer U;
     }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
+        Update: infer U;
       }
       ? U
       : never
-    : never
+    : never;
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+    : never;
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    keyof DefaultSchema["CompositeTypes"] | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+    : never;
 
 export const Constants = {
   public: {
     Enums: {},
   },
-} as const
-
+} as const;
