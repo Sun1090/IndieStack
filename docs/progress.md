@@ -8231,6 +8231,108 @@
      B04（现在只剩「多语句演练 SQL 要 psql + DB 密码」这一段）、B05 P2–P4（Resend 测试 key + VAPID）。
 - 更新时间：2026-10-10（UTC）。
 
+## 2026-10-11 — 豁免名单曾经免掉「平台能不能触发它」：同一个洞在两条没人看的路径上又补了一遍
+
+- 里程碑 / 版本：v0.12.0 之后的生产 P0（PR #236）的直接后续，不是新功能。
+- 状态：DONE（代码 + 4 条单测 + 5 次变异核对 + 文档）。
+- 分支 / commit：`codex/cron-get-405-fix`（PR #236），基于 `origin/main`。
+- 为什么做：#236 把「必须导出 GET」加进 `check:cron-contract` 之后，我按同形状继续排查
+  「还有哪些由外部平台触发的入口」。`vercel.json` 里 5 条 cron 路径**全都**由 Vercel 用 GET 调用，
+  但只有注册表里的 3 个 worker 受方法判据约束——`/api/health` 与 `/api/ops/supabase-restore`
+  走 `CRON_SCHEDULE_EXEMPTIONS`，**豁免免的是 worker 契约（指标 / 跳过可见性 / 调度表逐字一致），
+  可我当时把它写成了「这条路径不核对」**。于是这两条一旦哪天只导出 POST：静态门禁全绿、
+  线上每天 405、代码一次都不执行——**与刚修完的那次事故是同一个形状，只是换了一条没人看的路径。**
+  先实测过现状再改：两条路由都导出 GET（`src/app/api/health/route.ts:82`、
+  `src/app/api/ops/supabase-restore/route.ts:25`），所以这是**补洞**，不是在描述一个当前故障。
+- 完成内容：
+  1. `src/lib/observability/cron-contract.ts` 新增两条规则码：
+     `CRON_EXEMPT_ROUTE_MISSING`（豁免路由源码读不到 ⇒ 文件被删 / 改名 / 不在 App Router 约定位置，
+     平台会拿到 404）与 `CRON_EXEMPT_METHOD_UNDECLARED`（没导出 GET ⇒ 每天 405）。
+     **读不到源码按失败封闭处理**，绝不把「未知」当「通过」。
+  2. 路径 → 路由文件用 `routeFileForSchedulePath()` **推导**，不再手写一张对照表：
+     手写表会和目录结构各自漂移，而推导式让「文件不在预期位置」直接成为红灯。
+     源码复用 `input.sources` 而**不**新增字段、也**不**塞进 `routeFiles`：
+     后者是「`src/app/api/cron` 下的 worker 路由」集合，把豁免路径混进去会让
+     `CRON_ROUTE_UNDECLARED` 把 `/api/health` 报成「未登记的 cron 路由」——那是语义错误。
+  3. 豁免注册表注释与 `docs/testing.md` 的 E03 一节都写明**豁免的范围到哪一层为止**。
+     这条口径本身就是本次事故的产出：登记豁免时只写「它不是 worker」，
+     读的人会连「它得能被平台触发」一起免掉——**与 034 被记成「云端查不到」是同一类省略**。
+  - **格式这一层量过之后决定不动 prettier，并且当场抓到我自己又犯了一次上一轮刚记下的毛病**：
+    我先看到「`src/lib/metrics.ts` / `src/lib/env.ts` 干净，只有我碰的两个 warn」，
+    就说了一句「prettier 对 TS 在这个仓库是有约束力的」——**那是用 2 个样本推 658 个文件**。
+     实测之后这句话**不成立**。仓库配置下的权威读数（`prettier --list-different`，路径在仓库内）：
+     `src/**/*.{ts,tsx}` **348 / 658** 个文件 warn，`scripts/**/*.js` **36 / 115**。
+     我改的两个文件**在 HEAD 就已经 warn**——这一条是 `git show HEAD:<file>` 落回**仓库内**
+     临时文件名再 `prettier --check` 量的（真 exit **1**），不是在 /tmp 里量的。
+     `prettier` **没有接进任何门禁**（`.github/workflows/*.yml` 与 `scripts/check-all.sh` 里 0 处引用），
+     `pnpm format` 的 glob 也只有 `src/**`，**`scripts/` 从来不在它的射程里**。
+     **所以「markdown 从来没被格式化过」不是特例，而是全仓常态**——上一轮我把它归因成
+     「md 语料独有的坑」，那个归因偏了：TS 一样没人管。
+     决定**不在本 commit 跑 `--write`**：仓库配置下它对 `cron-contract.ts` 只会重写
+     **3 行既有代码**（`cadence` 长行、`countFieldRuns` 的 `if` 条件、`CRON_STALE_EXEMPTION` 那行 `push`）、
+     对 `cron-contract-check.js` 只会重写 **1 行既有代码**（`readPlatformCrons` 的 `.filter(...)`），
+     **而我新增的 100 行里 0 行需要重排**——**我的新代码本身就符合 prettier**。
+     所以跑 `--write` 的净效果是「在本 PR 里夹带 4 行与本次修复无关的既有代码重排」，不做。
+     （我把两处手写的多余缩进整理成了周边代码的风格；一度还把两行**折行**，
+     后来按仓库 `printWidth: 100` 量出它们本来就该是单行，又改回去了。）
+     **这一小节里最该留的是两次坏探针**（和上一轮那条「`| tail` 替我答了 `$?`」同一类）：
+     ① **把文件复制到 /tmp 再跑 prettier**：`/tmp` 解析不到仓库根的 `.prettierrc`，
+        `printWidth` 从 **100 退回默认 80**，于是我量出「92 行改动」「349 个文件 warn」——
+        **数字全部偏大且不可用**，而它们一度已经写进了本条。**格式类工具的配置解析路径
+        属于判据的一部分**：脱离仓库根去量，量的就不是这个仓库的规矩。
+     ② **`prettier --stdin-filepath <f>` 却忘了喂 stdin**：prettier 读到空输入、输出 0 行，
+        我的脚本把「873 行全不同」当成读数——**这是一次「全绿/全红的假读数」，
+        而且方向是假的严重，比假通过更难发现**。加了 `len(pretty) < 10 → 探针失败` 的守卫之后才暴露。
+        顺带一条：`--stdin-filepath` 与按路径检查**并不等价**（`prettier-plugin-tailwindcss`
+        的解析路径不同，实测有 1 字节差异），所以最终的判定以**仓库内真实路径 + `--write` 到副本**为准。
+     **教训**：上一轮刚写下「别为一个盲区就加门禁，先验证」，这一轮就在「格式有没有约束力」上
+     又用两个样本外推了一次，另外还连续写了三个坏探针。**发现错误的习惯不等于获得免疫；
+     而本轮真正救了我的是那两条老纪律——「变异/探针全绿时先怀疑可达性」和「提交前逐字读 diff」。**
+- 变更文件：`src/lib/observability/cron-contract.ts`、`scripts/lib/cron-contract-check.js`、
+  `src/lib/observability/cron-contract.test.ts`、`docs/testing.md`、`CHANGELOG.md`、本条目。
+- 验证命令与结果：
+  - `pnpm exec vitest run` 两份 cron 契约测试 ⇒ 56 → **59 passed**（新增 3 条用例：
+    ① 导出 GET 时全绿、只导出 POST 时 `CRON_EXEMPT_METHOD_UNDECLARED`（一条用例两个方向）；
+    ② 源码读不到 ⇒ `CRON_EXEMPT_ROUTE_MISSING`，且**不**与 `CRON_STALE_EXEMPTION` 混用；
+    ③ `routeFileForSchedulePath()` 的形状核对，含首尾多余斜杠）
+  - `pnpm type-check` ⇒ 干净；`pnpm lint` ⇒ no issues；`pnpm check:cron-contract` ⇒ exit 0
+  - `pnpm test` ⇒ **269 files / 3257 tests** 全绿。**这里刻意不做与上一轮那条「3252」的差值核对**：
+    本轮新增的是 3 条用例，而 3257 − 3252 = 5，那 2 的来路我没有核实过（上一轮之后我只提交过
+    文档改动）。**在没核实前把两个数字相减并归因，就是拿一个猜测冒充读数**，所以这里只报实测值。
+    **但自己那部分单独核实了**：`grep -c '^\s+it\('` 对
+    `src/lib/observability/cron-contract.test.ts` 从 HEAD 的 41 变成 44（+3），
+    `cron-contract-check.test.ts` 保持 15 不变，与「56 → 59」逐条对上。
+    **剩下的 2 记为未归因**，不是「已知无害」：台账里那种全量总数是**测量值而不是不变量**，
+    拿它当基线做减法会掩盖真实变化。
+  - 文档门禁 8 项（links / commands / bilingual / release-docs / cron-contract / progress-ledger /
+    gates / test-matrix）⇒ 全 OK
+  - **变异核对 5 次，全部被抓**（一律 `cp` 备份后改回，不用 `checkout --`）：
+    规则侧 3 次——① 注释掉整条 `auditExemptSchedules` ⇒ 2 条用例红；
+    ② 把「读不到源码」从报错改成放过 ⇒ 「失败封闭」那条红；
+    ③ 推导函数只剥尾部斜杠 ⇒ 2 条红（含一条**顺带**暴露「豁免用例也依赖推导」）。
+    真实路由侧 2 次——④ `src/app/api/health/route.ts` 的 `GET` 改 `POST` ⇒ 门禁红并点名 `/api/health`；
+    ⑤ 把 `src/app/api/ops/supabase-restore/route.ts` 移走 ⇒ 红 `[CRON_EXEMPT_ROUTE_MISSING]`。
+    **每次都复跑绿并 `git diff --stat` 确认只剩预期的改动。**
+- **一条「决定不加」的记录**（与上一轮那条同源，但这次是当场判的）：
+  考虑过给「豁免核对了几条」加一个计数器进成功日志。**不加**——
+  豁免数量已由 `report.exemptedPaths.length` 打印，而「读不到」本身就是红灯；
+  计数器与它是同一个来源，加上去只是把同一条约束抄第二遍。
+- 阻塞 / 风险：
+  - **本条不改变 #236 的合并前置**：生产写操作（`db push` 上 `034`）仍在等用户批准，
+    且顺序仍是**先推迁移、后部署 GET 修复**。
+  - 风险回滚：revert 本 commit 即恢复原门禁；新规则**不会**在当前仓库判红（实测 exit 0），
+    所以不存在「合进去就阻塞别人 PR」的情况。
+  - 仍未闭合：运行时那一层（冒烟第 8 步）本来就覆盖豁免路径的 GET，所以本条补的是静态层；
+    **「平台是否真的按 `vercel.json` 调度了这 5 条」仍是未知**（Vercel 侧调用记录读不到，本机无 vercel CLI）。
+- 下一项：
+  1. 等批准后执行 (a) `db push --linked` → (b) 合并部署 #236 → 复验 `GET /api/cron/digest` ⇒ 期望 401、
+     `pnpm smoke:production` ⇒ 期望 8/8 → 触发第一轮取真实读数。
+  2. #235 与 #236 在 `digest/route.ts` + `route.test.ts` 必冲突，解法是**重放**：
+     骨架用 #236 的 `handle` + GET/POST，塞进 #235 的 035 写侧，两组测试都留。
+     **#235 合并前必须先有 035 applied**（它会 select 那两列，而 admin 面板那条取数没有 try/catch）。
+  3. 外部凭据三项不变：B03 / B04（多语句演练 SQL）/ B05 P2–P4。
+- 更新时间：2026-10-11（UTC 07:20 前后）。
+
 ## 2026-10-11 — 恢复码的无盐 SHA-256 换成 scrypt，而我自己写的三条「实测」被重测推翻
 
 - 里程碑 / 版本：v0.12.0 之后的安全缺陷修复（roadmap 任务池外，由 CodeQL 告警排查引出）。
