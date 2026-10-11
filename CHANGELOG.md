@@ -139,6 +139,13 @@ See `docs/operations/release-tag-ledger.md`.
     只会让文档更难核对。新增的口径是——**任何「必须晚于/早于某时刻」的约束都不能靠 GitHub
     `schedule` 保证，只能在作业内部自己做前置校验**（现有 worker 正是这么做的：
     `/api/ops/supabase-restore` 只在 Management API 明确返回 `INACTIVE` 时才写）。
+  - **其中一处意图确实落空了**：`.github/workflows/e2e-parallel.yml:15` 写明挑 07:30 是为了
+    「排在 CodeQL（06:00）与每天 09:00 的 digest 之间的空档」，而实测它触发在 15:40 / 16:13
+    （n=2，晚 +8.2 ~ +8.7 小时，全仓库最晚）⇒ **「排在 09:00 之前」这半句从未成立**。
+    但这条的**真正判据没坏**：它要的是「红了能归到单一触发源」，而这依赖的是相对顺序——
+    实测它始终排在**其余 GitHub 定时 workflow** 之后、与前一条隔 2.8–3.0 小时
+    （标称只差 1.5 小时，空档反而更宽）。注释与 `docs/testing.md` 都按这个分寸重写，
+    并明写 **Vercel Cron（含标称 09:00 的 digest）时刻未实测，不得声称它排在谁之前或之后**。
   - `docs/operations/environments.md` 附上一条**可复现的只读取数命令**（`gh api` + jq），
     让文档里每个数字都能被一条命令刷新，而不是靠人记忆。
     **仍未核实**：账户级延迟的成因（GitHub 侧队列无从查证）；**Vercel Cron 的时刻本次没有实测**

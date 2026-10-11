@@ -8417,7 +8417,7 @@
 ## 2026-10-11 — GitHub `schedule` 实测晚 4–8 小时：文档里的「时间（UTC）」是计划值不是观测值
 
 - 里程碑 / 版本：v0.12.0 之后的生产 P0（PR #236）的第三条后续，纯文档更正 + 判定，不含代码。
-- 状态：DONE（5 个文件、含中英两页与一条 workflow 注释；文档门禁全绿）。
+- 状态：DONE（7 个文件：中英两页 + 两份内部文档 + 两条 workflow 注释；文档门禁全绿）。
 - 分支 / commit：`codex/cron-get-405-fix`（PR #236），基于 `origin/main`。
 - 为什么做：上一轮收尾时留下一个**未判定的事实**——6 个 `schedule` workflow 的实际触发时刻比标称
   cron 晚 5–8 小时，「不得写成结论」，因此三处文档（保活分层表、`docs-site/deployment.md` 中英两页、
@@ -8439,10 +8439,19 @@
      所以「恢复备排在保活之后」的意图仍成立；全仓库**没有**任何按「距上次运行多久」判定的时间窗逻辑
      （`scripts/**` 与 `.github/workflows/**` 逐处核对）。既然绝对时刻不可信，
      把标称值挪早几小时同样不可信，只会让文档更难核对。
-  4. 落地 5 处：`docs/operations/environments.md`（新增三条口径 + 一条**可复现的只读取数命令**）、
+  4. 落地 7 处（前 5 处随第一个 commit 推送，后 2 处是同轮排查同类论断时补的）：
+     `docs/operations/environments.md`（新增三条口径 + 一条**可复现的只读取数命令**）、
      `docs-site/deployment.md` / `docs-site/zh-CN/deployment.md`（同批，双语门禁比对 cron 与 `HH:MM UTC`）、
      `docs/architecture/12-deployment.md`、`.github/workflows/supabase-auto-restore.yml:24` 注释
-     （那句「排在 02:00 与 03:17 之后」依赖标称时刻，现改为「计划时刻」并写明只在相对顺序意义上成立）。
+     （那句「排在 02:00 与 03:17 之后」依赖标称时刻，现改为「计划时刻」并写明只在相对顺序意义上成立）、
+     `.github/workflows/e2e-parallel.yml:15` 与 `docs/testing.md` 的 E2E 一节。
+     **e2e-parallel 那句是本条里唯一「意图真的落空」的**：注释写「排在 CodeQL（06:00）与
+     digest（09:00）之间的空档」，而实测它触发在 15:40 / 16:13（n=2，晚 +8.2 ~ +8.7 小时，
+     全仓库最晚）——**「排在 09:00 之前」这半句从来没成立过**。
+     判据本身没坏，而且范围要说准：**其余 GitHub 定时 workflow** 与它的同日相对顺序 0 次违反，
+     它始终排在最后、与前一条（CodeQL）实测隔 2.8–3.0 小时（标称只差 1.5 小时，空档反而更宽），
+     所以「红了能归到单一触发源」仍然成立；
+     **Vercel Cron（含标称 09:00 的 digest）的时刻没有实测，因此不得声称它排在谁之前或之后。**
   5. 新增的通用口径写进文档：**任何「必须晚于/早于某时刻」的约束不能靠 GitHub `schedule` 保证，
      只能在作业内部自己做前置校验**——现有 worker 正是这个形态（只在 Management API 返回 `INACTIVE` 时才写）。
 - 验证命令和结果：
