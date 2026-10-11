@@ -232,6 +232,19 @@ must not treat a database blip as a dead instance (that would trigger pointless 
 | Vercel Cron (primary)   | `vercel.json`                        | `0 2 * * *`    | Runs against production deployments only; does not expire |
 | GitHub Actions (backup) | `.github/workflows/health-check.yml` | `17 3 * * *`   | GitHub disables `schedule` after 60 days without commits  |
 
+The GitHub column is a *planned* time, not an observed one. Measured on 2026-10-11 from 92
+scheduled runs of this repository: every `schedule` trigger fired **later** than its declared
+cron and never earlier, the daily ones landing **+4.2 to +7.2 hours** late, with the lateness
+growing week over week — while `created_at` equalled `run_started_at` on all 92. Two unrelated
+repositories in the same account drift the same way, so this is GitHub's scheduler rather than
+something in these files. Treat a declared `schedule` time as "around this hour, and later than
+asked", never as a deadline: anything that must run *after* a specific moment has to assert that
+precondition inside the job, not in the `cron:` field. Same-day ordering did survive (0
+violations across 29 comparable days), which is why the layered keepalive below still works —
+each layer only needs "ran at least once today", not a precise hour. Vercel Cron times were not
+measured here (the runtime-log API answers 403 without CLI credentials), so do not assume they
+drift the same way — or that they do not.
+
 The GitHub Actions job reads the repository variable `HEALTHCHECK_URL`
 (Settings → Secrets and variables → Actions → Variables); it accepts either the deployed origin or the explicit `/api/health` URL and normalizes both to `/api/health`. Manual runs can override it with the `health_url` input.
 Both keepalive probes retry transient network errors, 5xx responses, and not-ready bodies up
