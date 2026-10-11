@@ -71,7 +71,9 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
 - 默认单 worker 串行、一台 dev server，避免多个 spec 通过同一份可变 Mock 状态互相清理/覆盖
 - **全量并行的可复跑基线**：`.github/workflows/e2e-parallel.yml`（手动 `workflow_dispatch` +
-  每周一 07:30 UTC 定时，`30 7 * * 1`）跑**全量**（不带 `--shard`），条件是
+  每周一 07:30 UTC **标称**定时，`30 7 * * 1`；GitHub 的 `schedule` 实测会晚几个小时，
+  本条是全仓库最晚的，实测触发在 15:40–16:13 UTC——依据与量法见
+  `docs/operations/environments.md`）跑**全量**（不带 `--shard`），条件是
   `PW_FULLY_PARALLEL=true` + `E2E_SERVERS=3`：config 按这个数起**同样多**的 dev server，`workers`
   也取它，于是一个 worker 一台服务器。这不是退让而是首跑量出来的结论——默认 store 是**进程级**的
   （`docs/architecture/13-mock-system.md`），「一台服务器上开多 worker」的首跑
