@@ -41,3 +41,4 @@
 | [ADR-012](adr-012-passkey.md) | Passkey（WebAuthn）试点 | 已接受 |
 | [ADR-013](adr-013-tailwind-v4-native-theme.md) | Tailwind v4 原生主题迁移（移除 @config 桥接） | 已接受 |
 | [ADR-014](adr-014-react-table-v9-native.md) | React Table v9 原生 API 迁移 | 已接受 |
+| [ADR-015](adr-015-low-entropy-secret-kdf.md) | 秘密的哈希强度按熵判，不按字段名称判 | 已接受 |

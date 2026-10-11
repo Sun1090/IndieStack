@@ -8026,6 +8026,129 @@
   其余仍是外部凭据（B03/B04/B05）。
 - 更新时间：2026-10-08（UTC）。
 
+## 2026-10-11 — 恢复码的无盐 SHA-256 换成 scrypt，而我自己写的三条「实测」被重测推翻
+
+- 里程碑 / 版本：v0.12.0 之后的安全缺陷修复（roadmap 任务池外，由 CodeQL 告警排查引出）。
+- 状态：DONE（本地已 commit，未 push / 未 PR——远端分支与 PR 是下一步）。
+- 分支 / commit：`fix/recovery-code-hash-strength`（基于 `origin/main` `0762253e`），
+  两个 commit：① `test(adr)` 修门禁里那个「下一篇必红」的潜伏缺陷，② 本条的安全修复与文档。
+  拆成两个是因为它们是两个主题，且 ① 独立于 ② 也应该被修——
+  合在一起会让 bisect 时「ADR 门禁变了」和「恢复码哈希变了」混在同一个点上。
+- 为什么做：查 `code-scanning/alerts?state=open` 得到 5 条，逐条读数据流时发现两件事：
+  1. `js/insufficient-password-hash` #18（`security_severity_level=high`）报在
+     `src/lib/repositories/marketing.ts:14`，但 `hashSubscriptionToken` 哈希的是
+     `generateSubscriptionToken()` 的 **24 字节随机值**（本次读了函数体：
+     `new Uint8Array(24)` + `crypto.getRandomValues`），高熵机器凭据用快速哈希是对的 ⇒ 假阳性；
+  2. 同一条规则（CWE-916）在本仓库的**真阳性**根本没被报到：
+     `src/lib/actions/recovery-codes.ts` 用**无盐单轮 SHA-256** 存恢复码，
+     而恢复码只有 31 字符 × 8 位 = `31^8 = 852,891,037,441`（log2 ≈ 39.63 位），
+     兑换成功会解绑全部 TOTP 因子。**「去看告警报了哪里」和「去看这条规则该报哪里」是两个动作。**
+- 完成内容：
+  1. 新增 `src/lib/auth/recovery-code-hash.ts`：`scrypt$N$r$p$saltHex$derivedHex`，
+     每行独立 16 字节随机盐；参数 `N=2^15/r=8/p=3`；`TEST_KDF` 让套件跑得动。
+  2. 校验用**存储行自己记录的 N/r/p/salt**，形状解析不通过一律判否（失败封闭，绝不裸比较）；
+     scrypt 抛错折叠成 `false`，认证路径上「输错」不该变 500。
+  3. 存量兼容：64 位十六进制的裸 SHA-256 走 `legacySha256` 分支 ⇒ **不写迁移**、不作废用户自救码。
+  4. `actions/recovery-codes.ts` 兑换改成逐张 `verifyRecoveryCodeHash`（盐在行里，
+     不能先哈希一次明文）；`hashRecoveryCode` 保留导出但标 `@deprecated`。
+  5. `security/admin-client-boundary.ts` 的信任证据从 `timingSafeEqual` 改为
+     `verifyRecoveryCodeHash`。这条红是 `check:supabase-security` 的
+     `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING` 真报出来的，**没有加豁免，改的是登记**。
+     - **我随后为这条登记编了一个它做不到的用途，被实测推翻（第 ④ 类错误：把「讲得通的道理」
+       当成「验证过的性质」）**。我以为不收成单值，旧的
+       `timingSafeEqual(sha256(code))` 写法就能靠 OR 的另一支重新过门禁，
+       所以特意收紧成单值。实测：把调用点整个退回旧写法，**OR 形态和单值形态都绿**——
+       判据是 `source.includes(证据串)`，而顶部 `import { …, verifyRecoveryCodeHash }`
+       让子串恒成立。**这条清单是「哪个模块被授权」，不是行为断言，抓不住语义回退。**
+       真正抓住变异的是 3 条用例。登记仍保持单值，但理由换成「旧写法已不是当前认证路径」
+       这个事实描述，不再声称它有防回退能力。
+  6. 用例：`recovery-code-hash.test.ts` 14 条（含**生产默认参数双向**那条慢用例，
+     专门兜住「`maxmem` 不够 ⇒ 被 catch 折叠成 false」这种静默失效）；
+     `recovery-codes.test.ts` 18 条（新增：存量 SHA-256 仍可兑换、多候选命中真正那一行、
+     形状不符判否且不扣码）。
+- **本轮真正要记的是三条我自己写错的「实测」，全部由重测推翻**：
+  1. **凭记忆给外部吞吐安数值**：注释与 CHANGELOG 第一版写「hashcat mode 1400 单块
+     RTX 4090 约 22 GH/s ⇒ 穷举 39 秒」，还附了一个 `hashcat.net/forum/...tid=11277` 的链接。
+     吞吐数和那个 URL **都是我拼的**，从未打开原文。这是本仓库登记的第 ④ 个坏引用
+     （`docs/progress.md` 2026-10-11「我给 GitHub 的调度延迟安了一个官方从未给过的上界」）
+     之后**同一形状的复发**，而且发生在写下「凡引用外部口径必须打开原文」之后。
+     处置：整段删除，只保留本仓库能量到的算式（`31^8`、39.63 位、42.96 位），
+     **不折算成秒或年**。（不加豁免、不改纪律，改的是措辞。）
+  2. **把另一段脚本的读数记错当成证据**：三处写「兑换串行，`N=2^13/p=10` 实测 3.24 秒 >
+     本档 1.99 秒 ⇒ 低 N 高 p 在串行下更慢」。按本文件实现重跑（每档独立进程、进程内三轮取中位）
+     实际是 `2^13/p=10` **1587ms < `2^15/p=3` 1991ms**——结论正好相反。
+     五档最坏兑换实测：`2^17/p=1` 2818 / `2^16/p=2` 2723 / `2^15/p=3` 1991 /
+     `2^14/p=5` 1626 / `2^13/p=10` 1587（ms，中位数；三轮极差最大 50ms）。
+     **参数选择的理由因此从「时间」改成「内存」**：SMix 下界 `128·N·r` = 32 MiB vs 8 MiB（算式），
+     独立进程 RSS 增量 +37 MiB vs +13 MiB 印证方向。OWASP 把五档列为同等防护，所以是取舍不是对错。
+  3. **`maxmem` 的「下界」是拿两个数相减凑的**：写成 `128·r·(N+p) = 33,557,504`、
+     比默认 32 MiB 多 3072 字节。二分搜索实测最小可用值是 **33,559,552**（多 **5120**），
+     闭合式 `128·r·(N+p) + 2048` 在三组参数上全对（`2^13/p=10` → 8,400,896、
+     `2^17/p=1` → 134,220,800）⇒ 那 2048 字节是 OpenSSL 固定开销，**贴着 `128·r·(N+p)` 本身就失败**。
+     副产物一个：Node 的 scrypt 内存校验是**同步 `RangeError`**（不是回调里的 error），
+     所以我这里 try/catch 必须留在 Promise executor 里才接得住。
+  - **这三条的共同形状**：① 是没打开来源，②③ 是「把看起来像实测的数当实测」。
+    ②③ 尤其危险——它们**带着小数点、带着字节数**，读起来比散文更可信，而 diff 审查时我
+    正是靠「这看起来像实测」放过去的。**新纪律**：写「实测 N ms / N 字节」时，
+    那句话必须能指到一条可重跑的脚本与它的原始输出；指不到就改写成算式或删掉。
+- 变更文件：`src/lib/auth/recovery-code-hash.ts`（新增）、其 `.test.ts`（新增 14 条）、
+  `src/lib/actions/recovery-codes.ts`、其 `.test.ts`（+3 条）、
+  `src/lib/security/admin-client-boundary.ts`、`CHANGELOG.md`（Unreleased 新增 `### Security`）、
+  `docs/adr/adr-015-low-entropy-secret-kdf.md`（新增）+ `docs/adr/README.md` 索引、
+  `docs/operations/codeql-alert-triage.md`（新增「修复已合并但告警仍在」一节）、本条目。
+- 验证命令和结果：
+  - `pnpm verify`（= `check` + `test` + `build` + `check:bundle` + `check:perf`）⇒ **exit 0**；
+    全量 **270 files / 3261 tests**（进本分支前是 269 / 3260，+1 条来自 ADR 镜像用例）。
+  - `bash scripts/check-all.sh`（47 项门禁）⇒ **全部校验通过**。
+  - `pnpm lint` 0 error、`pnpm type-check` 0 error。
+  - 两个新文件单独跑：`npx vitest run src/lib/auth/recovery-code-hash.test.ts
+    src/lib/actions/recovery-codes.test.ts` → **33 passed**
+    （14 条 + 19 条）。后者基线 16 条：改名 1 条
+    （`sha256 十六进制且去分隔符归一` → `返回 scrypt 编码而不是裸 SHA-256`）、净新增 3 条。
+    **上一轮我在同一条记录里写的是「18 条」**——改动面扩大后没回头同步的旧数，
+    这次先用 `grep -c '  it('` 与 vitest 各量一遍才更正下来。
+  - `check:changelog`（12 版 + 1 Unreleased）、`check:adr`（15 篇 / 索引 15 条）、
+    `check:codeql`（21 条契约断言）、`check:supabase-security`（34 迁移 / 32 个 service-role
+    调用点分类）、`check:progress`（169 条）⇒ 全 OK。
+  - bundle 2925.4 kB（基线 2926.8 kB）、CSS 71.4 kB、无 sourcemap 泄漏。
+- 变异核对（均 `cp` 备份后字节还原，`cmp` 通过）：
+  ① `maxmem` 改成 `32 << 20` ⇒ **5 条红**（`recovery-code-hash.test.ts` 4 条 +
+     `recovery-codes.test.ts` 的「生成 10 个码并替换旧码」）。第一版这里记成「2 条红」，
+     是只看了单文件读数就写下的旧数，本次跑两个文件重测才更正。
+  ② `verifyRecoveryCodeHash` 的 catch 改成 rethrow ⇒ **1 条红**
+     （「派生失败不会抛出到调用方」），`type-check` 对这段不可达代码不报错。
+  ③ **把兑换调用点整体退回旧的 `timingSafeEqual(sha256(code))`** ⇒
+     用例侧 **3 条红**（存量 SHA-256 仍可兑换 / 多候选命中真正那一行 / 形状不符判否），
+     但 `check:supabase-security` **两种登记形态都绿**（单值与 OR 列表）——
+     判据是 `source.includes()`，而顶部 import 让子串恒成立。
+     **这条是我发现自己给门禁编了一个它做不到的用途的依据**：
+     「讲得通的道理」不等于「验证过的性质」，只有真跑一次才知道守卫站在哪。
+- 阻塞 / 风险：
+  - **未确认**：生产库 `mfa_recovery_codes` 是否真有存量行本次没查（不做生产读写）。
+    修复不依赖这个答案（新旧形状都可验证），但「弱分支还剩多少存量」需要凭据才能量化。
+  - `supabase/migrations/013_mfa_recovery_codes.sql` 头注释仍写「库中仅存 SHA-256 哈希」，
+    而该迁移被 `migration-manifest.json` 的 checksum 钉成 immutable（`check:migrations` 34 条全绿）
+    ⇒ **不能回改**，只在 ADR/CHANGELOG 登记这个矛盾。
+  - 兑换延迟从「1 次哈希 × 10 次比较」变成「10 次串行派生 ≈ 2 秒」。
+    接受理由：低频自救路径 + IP 限流 + 候选数由 `RECOVERY_CODE_COUNT` 钉住。
+  - **CodeQL 告警 #18 与 #11–#13/#17 的处置没有做**（不改告警状态、不批量 dismiss 是既有规矩）。
+    是否 dismiss #18 为 `false positive`、是否为 log-injection 四条加 model pack，
+    属需要人确认的范畴。
+  - 风险回滚：revert 本 commit 即回到 SHA-256；**已生成的新格式码会立刻不可兑换**
+    （旧实现只认 64 位十六进制），所以回滚必须同时回滚「已经用新格式写入的行」。
+    这是本修复唯一真正的不可逆点，也是**必须小步验证生产存量**的原因。
+- 下一项：
+  1. push → PR（正文带判定、实测表、变异表、「生产存量未确认」、以及本轮四条自我更正）。
+     `.husky/pre-push` 会实跑 `pnpm verify:build`，不用 `--no-verify`。
+  2. #18 / #11–#13 的处置决定（见上）。
+  3. 可选：把 code-scanning 告警台账做成**每周只读工作流**（workflow 的 `GITHUB_TOKEN`
+     带 `security-events: read` 即可），让「5 条 open、#18 是 high 且判定为假阳性」这类事实
+     变成机器检查。注意 runbook 里那句「本地无法复现」只约束 `check:codeql` 这条本地门禁，
+     **不等于 CI 里也做不到**——别把这个区别糊掉。
+  4. 等批准的生产写操作（顺序不可颠倒）：`db push --linked`（034 是 #236 硬前置）→
+     合并部署 #236 → GET 期望 401 → `smoke:production` 期望 8/8 → 人工触发一轮 digest。
+- 更新时间：2026-10-11（UTC 13:50 前后）。
+
 ## 2026-10-12 — 新克隆第一次 `pnpm install` 是红的，而 CI 全绿：把安装脚本本身也纳入门禁
 
 - 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/install-hooks-unbound-variable`（base `0762253e`）。

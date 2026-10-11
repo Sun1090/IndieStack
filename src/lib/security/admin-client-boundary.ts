@@ -261,9 +261,22 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: ["deleteFactor", "listFactors"],
-    trust: { kind: "session", evidence: ["supabase.auth.getUser", "timingSafeEqual"] },
+    trust: {
+      kind: "session",
+      evidence: ["supabase.auth.getUser", "verifyRecoveryCodeHash"],
+    },
     rationale:
-      "Recovery-code redemption requires the signed-in user and a timing-safe code match before TOTP factors are removed.",
+      "Recovery-code redemption requires the signed-in user and a timing-safe code match before " +
+      "TOTP factors are removed. The constant-time comparison now lives inside " +
+      "verifyRecoveryCodeHash() (src/lib/auth/recovery-code-hash.ts) rather than inline, because " +
+      "each stored row carries its own salt and its own recorded scrypt params — so hashing cannot " +
+      "be hoisted out of the candidate loop. Scope of this entry: it names the authorization shape " +
+      "the module uses now, and it is not a regression guard. Evidence is matched with " +
+      "source.includes(), so the import of verifyRecoveryCodeHash keeps this entry green even if " +
+      "the call site were reverted to the previous unsalted timingSafeEqual(sha256(code)) " +
+      "comparison (measured 2026-10-11). Semantic regressions are caught by " +
+      "src/lib/actions/recovery-codes.test.ts, which pins legacy-shape redemption, per-row salt " +
+      "dispatch, and reject-on-unparseable.",
   },
   {
     file: "src/lib/actions/team.ts",

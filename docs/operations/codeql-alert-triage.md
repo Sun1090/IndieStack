@@ -73,3 +73,36 @@ CodeQL 结果里的 `security-severity` 是 0–10 的 CVSS 风格分值，按�
   与本文档的事实一致性。
 - `pnpm check:security`：校验扫描器仍被启用（analyze 存在、套件、`security-events: write`）。
 - `pnpm check:workflows`：校验工作流卫生（固定版本、超时、`needs`、并发取消）。
+
+## 修复已合并但告警仍在：判定与处置口径
+
+2026-10-11 在 `main` 上实测到的形态：`js/log-injection` 告警 #11/#12/#13/#17 的
+最新实例仍指向 `refs/heads/main` 的 `0762253e`，而修复提交 `600af8a1`
+（committer 日期 2026-09-27）**已经是 `0762253e` 的祖先**，`sanitizeLogText()` 也确实在
+main 版本的 `src/lib/logger.ts` 里被调用。同时 main 在 09-27 之后有多次扫描记录
+（10-05 / 10-06 / 10-08 等）。结论：**这不是「扫描没跑」，也不是「修复没生效」**。
+
+原因是 CodeQL 的判定模型：它只认库自带的 sanitizer 与 model pack，
+**不认识本项目自己写的 `sanitizeLogText()`**。所以「代码里已经有净化」在 CodeQL 眼里不构成
+数据流终止条件，告警会一直存活。这正是 2026-09-24 台账里对 issue #132 立下的预言被证实。
+
+处置口径（按顺序）：
+
+1. **先证伪「还有真缺陷」这件事**，用数据流而不是用「我觉得已修」：确认修复提交在告警所指 commit
+   的祖先里、确认净化函数在 main 版本的调用点上、确认 main 在该日期之后确有扫描。三条都成立，
+   才允许说「告警存活是 sanitizer 不可见，不是缺陷未修」。
+2. **不要为此批量 dismiss**。09-24 已立规矩：不在合并前批量 dismiss、不擅自改告警状态。
+   要消掉这类告警，正确路径是给 CodeQL 提供 **model pack**（把 `sanitizeLogText` 声明为
+   sanitizer），让规则自己看见；这是配置工作，不是分诊工作。
+3. **同一条规则要反向复查真阳性**。CodeQL 看不见自定义 sanitizer，同样也可能看不见
+   「真正的弱点在别的文件」。2026-10-11 就是这么发现的：`js/insufficient-password-hash`
+   报在 `src/lib/repositories/marketing.ts:14`，而那里哈希的是 24 字节随机订阅 token
+   （高熵机器凭据，用快速哈希是对的）⇒ 假阳性；同一条规则（CWE-916）的**真阳性位置**是
+   `src/lib/actions/recovery-codes.ts` 里未加盐的 SHA-256 ——**CodeQL 一条都没报**。
+   所以「去看告警报了哪里」和「去看这条规则该报哪里」是两个动作，只做前者会漏。
+
+- 本仓库当前 open 告警（2026-10-11 读数，5 条）：`js/log-injection` #11/#12/#13/#17
+  （`error` / medium，已修复但 sanitizer 不可见）、`js/insufficient-password-hash` #18
+  （`security_severity_level=high`，判定为假阳性，**尚未分诊**——无 issue、无 dismissal 记录）。
+- 告警清单、严重度、实例所指的 `ref`/`commit` 都要用 `GET /repos/{owner}/{repo}/code-scanning/alerts`
+  取，不要凭记忆复述规则名或告警编号。
