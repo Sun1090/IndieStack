@@ -93,9 +93,28 @@ See `docs/operations/release-tag-ledger.md`.
     那是 **Supabase organization id，不是 Vercel team id**，别再拿它当作用域；本机亦无 vercel CLI），
     所以「平台是否有过别的调用」仍是未知；本机没有 `CRON_SECRET`，
     修复部署后的**第一轮真实读数**必须由平台或持密钥者触发。
+  - **同一形状的洞被补上：豁免名单曾经免掉「平台能不能触发它」**。本条修复只把
+    「必须导出 GET」加在 worker 侧，而 `/api/health` 与 `/api/ops/supabase-restore`
+    走的是 `CRON_SCHEDULE_EXEMPTIONS`——**它们同样每天被 Vercel Cron 用 GET 调用，
+    却完全不在静态核对射程内**。哪天其中一条只导出 POST，静态门禁全绿、线上每天 405：
+    **这就是本次事故本身的形状，只是换了一条没人看的路径。**
+    `pnpm check:cron-contract` 新增 `CRON_EXEMPT_ROUTE_MISSING`（豁免路由源码读不到 ⇒
+    文件被删/改名/不在 App Router 约定位置，平台会拿到 404）与
+    `CRON_EXEMPT_METHOD_UNDECLARED`（没导出 GET ⇒ 每天 405、代码一次都不执行），
+    并把「豁免只免 worker 契约（指标 / 跳过可见性 / 调度表），不免可触发性」写进注册表注释与
+    `docs/testing.md`。**读不到源码按失败封闭处理**，绝不当成「没问题」。
+    路径 → 路由文件用 `routeFileForSchedulePath()` **推导**而非再手写一张对照表：
+    手写表会与目录结构各自漂移，而推导式让「文件不在预期位置」直接成为红灯。
+    变异核对 3 项全部被抓（拆掉整条豁免核对 ⇒ 2 红；把「读不到源码」改成放过 ⇒ 1 红；
+    推导函数忘记剥开头斜杠 ⇒ 2 红），另在真实路由上实测两次：
+    `src/app/api/health/route.ts` 的 GET 改成 POST ⇒ 门禁红并点名 `/api/health`；
+    `src/app/api/ops/supabase-restore/route.ts` 移走 ⇒ 红 `[CRON_EXEMPT_ROUTE_MISSING]`。
+    **本轮没有为「豁免核对了几条」再加计数器**：豁免数量已在成功日志里自报，
+    而「读不到」本身就是红灯——再加一层只是把同一条约束抄第二遍。
   - 相关文档：`docs/operations/environments.md`（新增/更正 6 行生产读数 + 第 3 条分寸）、
     `docs/operations/sentry-alerts.md`「Cron 调度契约」（405 对所有既有告警不可见 + 排查顺序）、
     `docs/operations/migration-rollback-runbook.md`（部署顺序 + `db query` 的两条边界 + 只读通道口径）、
+    `docs/testing.md`（E03 一节的豁免分寸），
     `docs/progress.md`（2026-10-10 两条）。
 
 

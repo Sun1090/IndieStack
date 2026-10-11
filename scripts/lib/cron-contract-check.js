@@ -16,7 +16,9 @@ import {
   formatCronIssues,
   CRON_OPERATIONS_DOC,
   CRON_ROUTE_DIRECTORY,
+  CRON_SCHEDULE_EXEMPTIONS,
   CRON_WORKERS,
+  routeFileForSchedulePath,
 } from "../../src/lib/observability/cron-contract.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -120,6 +122,27 @@ export function collectExternalSchedules(root = REPO_ROOT) {
   return [...expressions].sort();
 }
 
+/**
+ * 读取豁免调度路径对应的路由源码。
+ *
+ * 只往 `sources` 里补键、**不**补 `routeFiles`：后者是「src/app/api/cron 下的 worker 路由」集合，
+ * 把 `/api/health`、`/api/ops/supabase-restore` 混进去会让 `CRON_ROUTE_UNDECLARED`
+ * 把豁免路径报成「未登记的 cron 路由」——那是语义错误，豁免本来就不该进 worker 注册表。
+ */
+export function collectExemptRouteSources(
+  root = REPO_ROOT,
+  excludedSchedules = CRON_SCHEDULE_EXEMPTIONS,
+) {
+  const sources = {};
+  for (const schedulePath of Object.keys(excludedSchedules)) {
+    const routeFile = routeFileForSchedulePath(schedulePath);
+    const absolute = path.join(root, routeFile);
+    // 读不到就留空：规则侧据此报 CRON_EXEMPT_ROUTE_MISSING（失败封闭），不在 IO 层猜。
+    if (fs.existsSync(absolute)) sources[routeFile] = fs.readFileSync(absolute, "utf8");
+  }
+  return sources;
+}
+
 /** 组装审计所需的完整输入，导出以便测试用临时目录验证 CLI。 */
 export function buildCronContractSnapshot(root = REPO_ROOT, overrides = {}) {
   const routeFiles = collectCronRouteFiles(root);
@@ -127,6 +150,8 @@ export function buildCronContractSnapshot(root = REPO_ROOT, overrides = {}) {
   for (const routeFile of routeFiles) {
     sources[routeFile] = fs.readFileSync(path.join(root, routeFile), "utf8");
   }
+  const excludedSchedules = overrides.excludedSchedules ?? CRON_SCHEDULE_EXEMPTIONS;
+  Object.assign(sources, collectExemptRouteSources(root, excludedSchedules));
   const operationsDocPath = path.join(root, CRON_OPERATIONS_DOC);
   return {
     workers: overrides.workers ?? CRON_WORKERS,
@@ -138,7 +163,7 @@ export function buildCronContractSnapshot(root = REPO_ROOT, overrides = {}) {
       : "",
     docs: overrides.docs ?? collectCronDocs(root),
     externalSchedules: overrides.externalSchedules ?? collectExternalSchedules(root),
-    excludedSchedules: overrides.excludedSchedules,
+    excludedSchedules,
   };
 }
 
