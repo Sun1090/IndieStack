@@ -144,6 +144,70 @@ Supabase 免费版项目 7 天无活动会被暂停，本仓库用三层兜底�
 | 恢复主 | Vercel Cron → `/api/ops/supabase-restore`     | `0 4 * * *`  | 不受仓库静默影响；`INACTIVE` 时调用 Management API |
 | 恢复备 | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 手动触发默认 `dry_run=true`                        |
 
+- **本表的「时间（UTC）」两行是计划时刻，不是实测时刻**（GitHub 那两行）。2026-10-11 取
+  92 条 `event=schedule` 运行记录量出：本仓库 6 个定时 workflow **全部晚于标称**，
+  每日类晚 **+4.2 ~ +7.2 小时**（`health-check` 标称 03:17，实测触发时刻落在
+  `07:53:04–10:30:06`），且晚的幅度**逐周递增**（W37 +4.70 → W41 +6.75）。GitHub 官方文档只说
+  `schedule` 繁忙时最多延迟约一小时，**与量到的数字差一个量级**，所以「延迟一小时」
+  这个认知不能用来安排本表的时刻。
+  **判定：与本仓库配置无关**——同一账户下另两个仓库同样晚（一个仓库那条每周一凌晨的
+  巡检实测落在 08:01 / 08:38 / 08:40 / 09:28 / 10:07，比标称晚 5.0–7.1 小时；另一个仓库
+  每月一号凌晨那条实测 10-01 10:00，晚 7.0 小时），而 `created_at == run_started_at`
+  在 92/92 条上都成立，说明排队发生在 GitHub 内部而不是 runner 排队。
+  （对照仓库的 cron 值**不写在这里**：`pnpm check:cron-contract` 的
+  `CRON_DOC_STALE_SCHEDULE` 会把「文档里出现但仓库里不存在的表达式」判红，
+  这条红是对的——它防的正是读者把别人的调度当成本仓库的。2026-10-11 写这段时踩到。）
+  **仍未核实：账户级延迟的原因**（GitHub 侧队列/配额无从查证）。
+  **Vercel Cron 那两行没有实测**：运行时日志接口对本机返回 403、本机无 `vercel` CLI，
+  所以它们目前只是标称值——**别把「GitHub 侧晚了」推成「Vercel 侧也晚了」，也别推成相反**。
+- **为什么晚几个小时不影响这三层兜底成立**：这三层都只要求「每天至少跑到一次」，
+  不依赖绝对时刻；Supabase 的暂停阈值是 7 天无活动，晚几小时不会突破；
+  而且实测**同日的相对顺序保持标称顺序**：29 个「当日至少跑了两条每日类任务」的可比日里
+  **0 次顺序违反**（其中 20 天三条都齐；`production-smoke` 总在 `health-check` 前、
+  `health-check` 总在 `supabase-auto-restore` 前，相邻间隔误差只有 −0.45 ~ +0.58 小时），
+  所以「恢复备排在保活之后」这个设计意图仍然成立。
+  **口径要说准**：是「29 个可比日 0 次违反」，不是「30 天无一例外」——
+  后者把「我没看到反例」写成了「覆盖满 30 天」，而 `production-smoke` 的 schedule
+  是 09-21 才加的，那之前根本没有可比日。
+  全仓库也**没有**任何依赖「距上次运行多久」的时间窗逻辑（`scripts/**` 与
+  `.github/workflows/**` 内核对过：只有轮询超时与重试间隔，没有日历窗判定）。
+  **要改的是表述，不是 cron 值**：既然绝对时刻不可信，把标称时刻挪早几小时同样不可信，
+  只会让文档更难核对。
+- **要新增定时任务时记住这条**：任何「必须在某时刻之后/之前执行」的约束都**不能**用
+  GitHub `schedule` 的时间保证，只能靠被调用方自己做前置校验（现有 worker 就是这么做的：
+  `/api/ops/supabase-restore` 只在 Management API 明确返回 `INACTIVE` 时才写）。
+- **上面那组数字怎么复现**（只读，`gh` 已登录即可）。标称 cron 从远端 `main` 读，
+  免得被本地功能分支上的临时改动误导：
+
+  ```bash
+  REPO=Sun1090/IndieStack
+  for path in $(gh api "repos/$REPO/actions/workflows" \
+    --jq '.workflows[] | select(.state == "active") | select(.path | startswith("dynamic") | not) | .path'); do
+    cron=$(gh api "repos/$REPO/contents/$path?ref=main" --jq .content \
+      | base64 -d | grep -oE 'cron: "[^"]*"' | head -1 | cut -d'"' -f2)
+    [ -z "$cron" ] && continue
+    id=$(gh api "repos/$REPO/actions/workflows" --jq ".workflows[] | select(.path == \"$path\") | .id")
+    # 先切出时间部分再比：min/max 直接作用在整串上取到的是「最早那天」与「最晚那天」
+    stats=$(gh api "repos/$REPO/actions/workflows/$id/runs?event=schedule&per_page=100" \
+      --jq '[.workflow_runs[].run_started_at | split("T")[1] | split("Z")[0]]
+        | if length == 0 then "无 schedule 运行" else "n=\(length)  触发时刻 \(min) – \(max)" end')
+    printf '%-42s 标称 %-12s %s\n' "$path" "$cron" "$stats"
+  done
+  ```
+
+  2026-10-11 的输出（UTC）：`health-check` 标称 `17 3 * * *` → 实际 07:53–10:30、
+  `production-smoke` 标称 `17 2 * * *` → 实际 07:34–08:59、
+  `supabase-auto-restore` 标称 `37 4 * * *` → 实际 08:47–11:47、
+  `security-config` 标称 `17 5 * * 1` → 实际 10:39–12:16。
+  **三个探针坑**（本轮全踩过，每个都会造出看似合理的假读数）：
+  ① cron 的字段顺序是「分、时、日、月、周」，按「时、分」解析会得到完全无意义的偏移
+  （第一次取数就因此崩在 `minute=37` 上）；
+  ② `min|max` 直接作用在 `run_started_at` 整串上，取到的是**最早那一天**和**最晚那一天**
+  的时刻，不是「一天里最早/最晚的触发时刻」——上面那列区间必须先把 `T…Z` 之间的时间部分
+  切出来再比，否则 `07:53–09:45` 这种数字看起来完全正常却是错的（本段第一版就是这么错的）；
+  ③ `per_page` 默认只返回一页，取全量要显式写大，而且**不要把 `cmd | tail` 的退出码
+  当成 `cmd` 自己的退出码**。
+
 - 保活与恢复探测共用有限重试：冷启动或瞬时 5xx/网络错误最多尝试 3 次（间隔 5 秒）；
   GitHub workflow 的 `health_url` 或仓库变量 `HEALTHCHECK_URL` 可填部署根地址，也会统一解析到 `/api/health`；404/401 等确定错误和持续故障仍会失败，不会把真实故障静默吞掉。
 - 恢复只在 Management API 明确返回 `status=INACTIVE` 时发生；`RESTORING`/`COMING_UP` 等中间态
