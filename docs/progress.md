@@ -8973,3 +8973,55 @@
   本机可做：把 code-scanning 告警做成每周只读 workflow（需先结案 #18 否则天天红）、
   以及 issue #245 里那条未验证问题（Management API 的多语句限制在 CLI 侧还是服务端）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — B04 的阻塞理由第三次改写：「多语句 ⇒ 必须 psql + 密码」被一条 `DO` 块推翻
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`codex/cron-get-405-fix`（PR #236，已 rebase 到 `6077d4d5` = main + #247）。
+- 状态：DONE（并入 #236）。
+- 为什么做：#245 问的是「那个 prepared statement 是 CLI 侧还是 API 服务端建的」，
+  而本机没有 `SUPABASE_ACCESS_TOKEN` ⇒ 看似答不了。但答案不需要它：
+  **`--local` 与 `--linked` 共用同一份「多语句 ⇒ 必须 psql」的推论**，
+  而这条推论在 `--local` 上就能证伪——#236 正把它写进 `preflight.ts`，
+  合进去之后错误结论就进 main 了。
+- 完成内容：
+  1. **错误文本归属查清**（三条二进制扫描，全部可重跑）：
+     `cannot insert multiple commands into a prepared statement` 在
+     supabase CLI 2.120.0 二进制里 **0 命中**、在 libpq 里 **0 命中**、
+     在 Postgres 17.6 服务端二进制里 **1 命中** ⇒ 它由**服务端**产生，
+     触发条件是客户端选了 extended query protocol（单条 prepared statement）。
+     所以 #245 那个「CLI 侧还是 API 服务端」的二分**问法本身不成立**。
+  2. **推翻过宽推论**：把 `docs/operations/drills/retention-cleanup.sql` 机械压成
+     **一条** `DO $drill$…$drill$;`，正本 **14 条断言 + 6 条 cleanup 调用逐字保留**，
+     `supabase db query --local --file` 跑通 ⇒ `failures=0 report=ALL-14-ASSERTIONS-PASSED`。
+     派生产物入库：`docs/operations/drills/retention-cleanup.single-do.sql`（让结论可重跑）。
+     变异核对：改错一条期望值 ⇒ `failures=1` 并点名那条（证明不是恒真）。
+     `begin/rollback` 也不需要显式事务：块尾 `raise exception` 令块内写入全部回滚
+     （实测五张表残留 **0 行**）。
+  3. **B04 的阻塞因此第三次收窄**：不是「多语句跑不了」，而是
+     「**`--linked` 这条路径能否吃下单条 `DO` 块，未验证**」（要 `SUPABASE_ACCESS_TOKEN`，本机没有）。
+  4. 就地更正写有「必须 psql」的**四处**：`src/lib/drills/preflight.ts`、
+     `docs/operations/environments.md`、`docs/operations/migration-rollback-runbook.md`、
+     `docs/roadmap-0.12.0.md` 的 B04；CHANGELOG 的 #236 条目同步。
+     新增 1 条单测钉住第三次更正（含「未验证的那一半不能被写成已解锁」）。
+- 两个只有实测才知道的坑（都已写进四处文档）：
+  - `raise notice` **不回传**（只输出 `DO`）⇒ 报告只能走 exception 的消息通道。
+    不知道这条就会写成假绿：块跑完了、什么都看不见。
+  - 正本夹在两个 `do` 块之间的**顶层** `select public.cleanup_*()` 在压缩时极易漏掉——
+    **漏了不报错，只会让断言安静变红**。我第一版就是这么错的：5 条红，
+    而同一份正本用 psql 跑是 0 红 ⇒ 红的是我的转换，不是方法。
+    （按规矩：先证伪自己的用法，再宣布发现缺陷。）
+- 验证命令和结果：
+  - `supabase db query --local --file docs/operations/drills/retention-cleanup.single-do.sql`
+    → `DRILL-RESULT failures=0 report=ALL-14-ASSERTIONS-PASSED`（仓库内文件，可重跑）。
+  - 变异版 → `failures=1 report=contact_messages new 永不因保留期被删：期望 99，实际 1`。
+  - 残留核对 → `residue_rows: 0`；探针表/函数已清理（`probe_tables_left: 0`）。
+  - 正本对照：`docker exec -i supabase_db_indiestack psql … -f - < retention-cleanup.sql`
+    → `failures 0 | 全部断言通过（14 条）` ⇒ 两份读数一致。
+  - `pnpm exec vitest run src/lib/drills/` ✅ 16/16；`pnpm check:all` ✅ **274 files / 3360 tests**。
+  - `pnpm check:changelog` ✅；`pnpm check:roadmap-entries` ✅ 28 条；
+    `pnpm check:docs` ✅；`node scripts/check-progress-ledger.js` ✅ 181 条；表格探测器 0 处跨行。
+- 阻塞 / 风险 / 回滚：不改运行时代码，只改登记与文档 + 一份派生 SQL；无线上风险。
+  回滚 = revert 本 commit。
+- 下一项：`--linked` 那一半仍要 `SUPABASE_ACCESS_TOKEN`（停止条件 3）。
+  #236 的硬前置仍是 034 applied；#235 的硬前置是 035 applied。
+- 更新时间：2026-10-13（UTC+8）。

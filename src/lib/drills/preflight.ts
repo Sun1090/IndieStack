@@ -102,15 +102,27 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       "但走的是 CLI 自己登录态临时建的 role，实测**不需要密码就能拿到生产读数**。" +
       "`db query --linked` 同理，但只接受**单条**语句" +
       "（`db query --local \"select 1; select 2\"` → cannot insert multiple commands），" +
-      "所以多语句 + begin/rollback 的演练脚本仍然要 psql 与密码。" +
+      "**但「多语句 ⇒ 必须 psql 与密码」这句推论是错的，2026-10-13 第三次更正**：" +
+      "把 `docs/operations/drills/retention-cleanup.sql` 机械压成**一条** `DO $drill$…$drill$;` " +
+      "之后，正本的全部 14 条断言与 6 条 `cleanup_*()` 调用在 `db query --local --file` 上跑通" +
+      "（`failures=0`；故意改错一条期望值 ⇒ `failures=1` 并点名那条，证明它不是恒真）。" +
+      "`begin/rollback` 也不需要显式事务：块尾 `raise exception` 会让块内全部写入回滚（实测残留 0 行）。" +
+      "⇒ **B04 真正未验证的是「`--linked` 这条路径能否接受单条 `DO` 块」**，不是「多语句跑不了」；" +
+      "那需要 `SUPABASE_ACCESS_TOKEN`，本机没有。" +
+      "**两个实测才知道的坑**：① `raise notice` **不回传**（只输出 `DO`），报告必须走 exception 的消息通道；" +
+      "② 正本夹在两个 `do` 块之间的**顶层** `select public.cleanup_*()` 极易在压缩时漏掉——" +
+      "漏了不会报错，只会让断言安静地变红（我第一版就是这么错的，5 条红，" +
+      "而对照正本 psql 跑是 0 红 ⇒ 红的是我的转换，不是方法）。" +
       "**混成一句「数据库级连不上」，代价是一条一分钟能跑的只读复核被推迟了两年**" +
       "——034 在生产从未 applied 就是这么被漏掉的（见 environments.md 2026-10-10 各行）。",
     requirements: [
       {
         source: "SUPABASE_DB_PASSWORD",
         purpose:
-          "**演练 SQL 这一层才需要它**：`docs/operations/drills/*.sql` 是多语句 + begin/rollback，" +
-          "`db query` 跑不了，必须 psql。平台层的 Management API 令牌替代不了这一层",
+          "**走 psql 跑演练 SQL 这条路才需要它**：`docs/operations/drills/*.sql` 是多语句 + begin/rollback，" +
+          "psql 走 simple protocol 能直接跑。**但它不是唯一的路**——压成单条 `DO` 块后 " +
+          "`db query --local` 实测能跑（见 blockedReason 的 2026-10-13 更正），" +
+          "所以「必须 psql」是手段的登记，不是能力的边界",
         remedy:
           "Supabase 项目的 Settings → Database（或连接串里的密码部分）；" +
           "**不要**提交进仓库",

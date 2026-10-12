@@ -197,9 +197,13 @@
      **实际代价已经发生**：生产 `schema_migrations` 只到 033、`034`/`035` 从未 applied，
      而「云端到了哪一版」从 2026-08 起被记成「查不到」——它就是一条一分钟能跑的只读命令
      （见 `docs/progress.md` 2026-10-10 事故条目与 `docs/operations/environments.md` 各行）。
-     **B04 剩下的真实缺口只有一个**：`docs/operations/drills/*.sql` 是多语句 + `begin/rollback`，
-     必须 psql 与 DB 密码。**登记阻塞时要写清阻塞到哪一层**——只写「做不到」，
-     下一个人会把能做的部分一起放弃。
+     **B04 剩下的真实缺口**（2026-10-13 第三次收窄，见下）：`docs/operations/drills/*.sql` 是多语句 +
+     `begin/rollback`，**不能原样**丢给 `db query`。但「所以必须 psql 与 DB 密码」这句推论已被实测推翻——
+     把整份演练压成**一条** `DO` 块后 `db query --local --file` 跑通（正本 14 条断言 + 6 条 cleanup 调用，
+     `failures=0`；改错一条期望值 ⇒ `failures=1` 并点名那条）。
+     ⇒ **现在真正未验证的是 `--linked` 这条路径能否吃下单条 `DO` 块**，那需要 `SUPABASE_ACCESS_TOKEN`。
+     **登记阻塞时要写清阻塞到哪一层**——只写「做不到」，下一个人会把能做的部分一起放弃；
+     而写「必须 X」却不检验「是不是只有 X 能做到」，代价是同一种。
    - **2026-10-12 再补一条边界，免得有人以为 B04 已经解锁**：PostgREST 的 OpenAPI 根端点
      用 service_role key 就能读到全部表与列名（**不需要 DB 密码**），
      所以「线上缺哪一列」这类问题已经能查了（`pnpm ops:schema-drift`，见 `environments.md`）。

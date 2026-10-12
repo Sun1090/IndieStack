@@ -92,7 +92,16 @@ incident 记录，不允许只留聊天记录。
    带函数调用的 `select` 一律先确认那个函数不写。
    它还有第二条边界：**只接受单条语句**（实测 `db query --local "select 1; select 2"` →
    `cannot insert multiple commands into a prepared statement`），
-   所以 `docs/operations/drills/*.sql` 那种多语句 + `begin/rollback` 的演练**仍然要 psql 与 DB 密码**。
+   所以 `docs/operations/drills/*.sql` 那种多语句 + `begin/rollback` 的演练**不能原样丢给它**。
+   但**别把这读成「必须 psql 与 DB 密码」**（2026-10-13 实测纠正）：把整份演练压成**一条**
+   `DO $drill$ … $drill$;` 之后，正本 14 条断言与 6 条 `cleanup_*()` 调用在
+   `db query --local --file` 上跑通（`failures=0`；故意改错一条期望值 ⇒ `failures=1` 并点名那条），
+   块尾 `raise exception` 顺带把块内写入全部回滚（实测残留 0 行）⇒ `begin/rollback` 也不需要显式事务。
+   **仍未验证的是 `--linked` 这条路径能否吃下单条 `DO` 块**（要 `SUPABASE_ACCESS_TOKEN`，本机没有）。
+   两个只有实测才知道的坑：① `raise notice` **不回传**，报告只能走 exception 的消息通道；
+   ② 正本夹在两个 `do` 块之间的**顶层** `select public.cleanup_*()` 在压缩时极易漏掉——
+   漏了不报错，只会让断言安静变红（我第一版就是这么错的：5 条红，而同一份正本用 psql 跑是 0 红
+   ⇒ 红的是我的转换，不是方法）。
 
 3. **`db push --linked` 同样不需要数据库密码**（2026-10-10 实测 `--dry-run`，exit 0，
    输出 `Would push these migrations` 并逐条列出待推的 034 与 035）。
