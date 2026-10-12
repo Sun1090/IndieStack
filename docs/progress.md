@@ -8614,3 +8614,55 @@
 - 下一项：`#236` / `#235` 仍被外部权限挡住（034、035 applied）。
   本机仍可做的：把 code-scanning 只读 workflow 化（等 #18 结案，否则天天红）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — CodeQL 探测的 IO 层不再是零测试：搬走映射逻辑只补了一半
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`test/codeql-alert-io-layer`（base `aedb8fc1` = main + #248）。
+- 状态：DONE（待 PR）。
+- 为什么做：上一条（#248）把 `toLiveAlert` 从 `scripts/lib` 搬进 `src/lib` 并写了「结构性根因是
+  IO 层一行测试都没有」。但**搬家只补了一半**：`scripts/lib/codeql-alert-check.js` 剩下的
+  `fetchOpenAlerts` / `readFixture` / `parseArgs` / 退出码逻辑**仍然一行测试都没有**——
+  而我自己的结论说根因是「IO 层无检查」，那么只搬一个函数、留下同一层无人核对，
+  等于把结论的适用范围悄悄缩小了。更要紧的是这一层管的正是这个探测最要命的分支：
+  **「读不到」会不会被显示成「一切正常」**。
+- 完成内容（新增 `src/lib/security/codeql-alert-io.test.ts`，19 条）：
+  - **读不到 ≠ 没有告警**（5 条）：缺 repo / 缺 token / HTTP 非 2xx / 响应不是数组 / fetch 抛错
+    ⇒ 全部返回 `{error}` 且 `alerts` 是 `undefined`；与之对照，**真读到空列表 ⇒ `[]`**。
+    这两类必须是两种不同的东西，否则「API 挂了」和「线上很干净」长得一模一样。
+  - **请求本身**（2 条）：URL 精确到 `state=open&per_page=100&page=1`、`apiBase` 带尾斜杠不产生 `//`、
+    带了 `x-github-api-version` / `Bearer` / `accept`；分页在不足一页时停、满 100 条时继续并合并。
+  - **映射在 IO 里仍生效**（1 条）：`fetchOpenAlerts` 的返回已过 `toLiveAlert`，
+    顶层塞一个 `security_severity_level: null` 不污染 `rule` 下面的取值（我实际犯过的错）。
+  - **fixture 读取**（3 条）：仓库那份读出 6 条且形状正确；文件不存在 / 坏 JSON / 没有数组
+    ⇒ `{error}`（**不返回空数组冒充「录制时就没有告警」**）；顶层直接是数组也认。
+  - **退出码**（4 条）：读不到 ⇒ 2；仓库 fixture ⇒ 1；台账与实况逐条一致 ⇒ 0；
+    实况为空列表 ⇒ 1（台账全腐烂，不是「没有告警所以通过」）。
+  - **参数解析**（3 条）：env 默认值、`GITHUB_TOKEN` 优先于 `GH_TOKEN`、未知参数与缺值都返回 error。
+- ⚠️ 一处写法上的自我约束：那条「一致 ⇒ 0」的用例**故意从 `CODEQL_ALERT_REGISTRY` 推导实况**，
+  不写死 5 条——本测的钉的是退出码路径，不是台账内容；写死会让每一次合法登记都把这个测试带红。
+  同时先断言这份临时实况真的读得出来，否则那个 0 可能来自别处。
+- 验证命令和结果：
+  - `pnpm exec vitest run src/lib/security/codeql-alert-io.test.ts` ✅ **19/19**。
+  - **9 个变异全部 CAUGHT**（`bash /tmp/mut-io.sh`）：M1 非 2xx 返回空数组 / M2 去掉形状守卫 /
+    M3 跳过映射 / M4 分页只取第一页 / **M5 未知返回 0** / M6 fixture 读不出返回空数组 /
+    M7 去掉 api-version header / M8 未知参数静默忽略 / M9 缺 token 不再报错。
+  - **这次额外核对了两件上一轮漏掉的事**（因为「全绿」本身就是我登记过的可疑信号）：
+    ① 逐个 `cmp` 确认变异**确实改了文件**（9/9 applied，不是 sed 没匹配上的假 CAUGHT）；
+    ② 逐个读失败消息确认是**预期的那条断言**红（9/9 命中对应用例，排除 import 崩溃式假红）。
+  - `pnpm exec tsc --noEmit` ✅；eslint ✅。
+  - `pnpm check:all` ✅ **275 files / 3369 tests**（较上轮 +1 文件 / +19 条）。
+  - **真实读数逐条不变**：`--today 2026-10-13` 仍 2 条红（`BLOCKING_OPEN` #18 +
+    `TRIAGE_SLA_BREACHED` 12 工作日）exit 1；`--fixture` 仍 3 条红 exit 1。
+- 顺手修的一个自己写的坑：注释里写字面的 `src/**/*.test.ts` 会提前闭合块注释
+  （`**/` 里的 `*/`），vite 的 oxc 解析器直接报 PARSE_ERROR。仓库里已记过这条，本轮又踩一次。
+- runbook 补了一句现状（IO 层已有单测，改它先跑那个文件），**这句话本身也实测了**：
+  把「读不到」错写成返回 `[]` 时，`inspectCodeqlAlerts(registry, [], "2026-10-13")` 给出
+  **5 条 `STALE_ENTRY`、不含 `LIVE_UNREADABLE` ⇒ 退出码 1**（不是 2）
+  ⇒ 混淆的后果是「看起来像查过了并报出一堆腐烂」，这比直接挂掉更难发现。
+  （第一版我把这句写成「两者混淆时以退出码 2 结束」——那是推理出来的，方向正好反了。）
+- 阻塞 / 风险 / 回滚：纯新增测试 + CHANGELOG，不改任何实现行为（读数前后一致）⇒ 无线上风险。
+  回滚 = revert 本 commit。
+- 下一项：#236 / #235 仍被外部权限挡住（034、035 applied）。
+  本机仍可做的：把 code-scanning 对账接进定时只读 workflow——但 #18 未结案 ⇒ 天天红，
+  需要先决定「只报不阻塞」（`continue-on-error`）还是等结案；本轮没有擅自选。
+- 更新时间：2026-10-13（UTC+8）。
