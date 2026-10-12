@@ -288,8 +288,12 @@ i18n/RLS/工作流等静态门禁）· `Unit Tests`（覆盖率门禁）·
 > 这里原先写的是「真实告警列表…本地无法复现」。2026-10-13 实测**是错的**：本仓库虽是 public，
 > `GET /repos/{owner}/{repo}/code-scanning/alerts` 匿名回 **401**，但本机 `gh` 的 token 就能读到
 > 全部字段 ⇒ 缺的一直不是权限，是没人写这个探测。它现在有了，并登记了 5 条真实告警作为台账。
-> ⚠️ 复用这条能力时注意：`security_severity_level` **只在带 `x-github-api-version: 2022-11-28`
-> 时才有值**，否则返回 `null`，而 `null` 看着完全像「GitHub 没给这条评分」。
+> ⚠️ 复用这条能力时注意：严重度字段是 **`rule.security_severity_level`，在 `rule` 下面**；
+> 顶层没有这个键，从顶层取会稳定得到 `null`，而 `null` 看着完全像「GitHub 没给这条评分」。
+> （我第一版把成因写成「只在带 `x-github-api-version: 2022-11-28` 时才有值」，那是错的：
+> 对照实验里我用 `gh api` 跑「不带 header」那一组，而 `gh` 自己会补默认 api-version
+> ⇒ 两组都带了 header。改用 `curl` 后，带不带、带 `2022-11-28` 还是 `2026-03-10`，
+> `rule.security_severity_level` 都有值。完整矩阵见 runbook 的「外部依赖」一节。）
 
 ### Secrets Scan 扫描强度与泄漏处置（J05）
 

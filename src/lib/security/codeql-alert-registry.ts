@@ -8,15 +8,33 @@
  * 于是「零回归」这个结论从来没有被任何自动检查核对过：
  * 2026-09-24 那 4 条 `js/log-injection` 就是这么挂了 5 天没人发现（见台账 2026-09-24 条目）。
  *
- * ## 一个必须先说清的坑（我自己刚踩过）
+ * ## 一个必须先说清的坑（我自己踩过**两次**，第一次还写错了原因）
  *
- * `security_severity_level` 这个字段**只在带上 `X-GitHub-Api-Version: 2022-11-28` 时才有值**。
- * 不带这个 header 时它返回 `null`，而 `null` 看起来完全像是「GitHub 没给这条告警评分」——
- * 我差点据此写进文档说「runbook 的 ≥7.0 阈值此刻无法求值」，**那是我自己用法错了**。
- * 实测对照（同一份数据、同一时刻）：
- *   - 无 header / 错误的 api-version ⇒ `security_severity_level = null`
- *   - `x-github-api-version: 2022-11-28` ⇒ `high` / `medium`
- * 所以本模块**拒绝**把 `null` 当成「低危」：它判成「未知」，由调用方归退出码 2。
+ * 严重度字段的真名是 `rule.security_severity_level`——**它在 `rule` 下面，不在告警顶层**。
+ * 顶层**根本没有这个键**（实测：`'security_severity_level' in alert === False`），
+ * 所以取 `alert.security_severity_level` 得到的是 `undefined`，
+ * 序列化后长得像 `null`，于是看起来完全像是「GitHub 没给这条告警评分」。
+ *
+ * **我第一次把这个坑归错了原因**，写成「它只在带 `x-github-api-version: 2022-11-28` 时才有值」。
+ * 那是错的，而且错得很典型：我拿 `gh api` 测「不带 header」这一组，
+ * 而 **`gh` 自己会补一个默认 api-version**，所以那组根本不是「不带 header」——
+ * 两组都带了 header，差异当然不在 header 上。改用 `curl` 严格对照后：
+ *   - 不带 header / 带 `2022-11-28` / 带 `2026-03-10` ⇒ `rule.security_severity_level` **全都是 `high` / `medium`**
+ *   - 不带 header 时 GitHub 实际选用的版本由响应头 `x-github-api-version-selected` 给出，
+ *     实测就是 `2022-11-28` ⇒ 这个 header 对本端点**不是**充分条件也不是必要条件
+ *   - 带一个不受支持的版本（如 `2023-03-02`）⇒ **HTTP 400**，不是 `null`。
+ *     错误信息逐字为：`supported versions are "2026-03-10" (most recent) and "2022-11-28"`
+ * ⇒ header 该带还是带着（`gh` 与 `curl` 都默认落在 2022-11-28，带着它可复现），
+ *   但**它不是这个坑的成因**。真正的成因只有一个：字段取错了嵌套层级。
+ *
+ * 顺带一条同样实测过的：查询参数 `severity=` 过滤的是 **`security_severity_level`**
+ * 而不是 `rule.severity`（`severity=high` 只回 #18，而 #18 的 `rule.severity` 是 `warning`）。
+ * 更值得防的是它**对无法识别的取值静默忽略**：`severity=low`/`critical` 回 0 条（合法值、确实没有），
+ * 但 `severity=error` / `nonsense` / `none` / `info` 一律回**全部 5 条** ⇒
+ * 拼错的过滤器看起来像「生效了且全都命中」。**所以别用查询参数筛严重度，取回来自己判。**
+ * （`security_severity_level=` 这个参数则被完全忽略，任何取值都回全部 5 条。）
+ *
+ * 本模块**拒绝**把 `null` 当成「低危」：它判成「未知」，由调用方归退出码 2。
  *
  * ## 判据
  *
@@ -61,7 +79,10 @@ export interface LiveAlert {
   ruleId: string;
   /** GitHub 的 `rule.severity`：`error` / `warning` / `note`。 */
   severity: string;
-  /** GitHub 的 `rule.security_severity_level`：**缺 header 时是 null**。 */
+  /**
+   * GitHub 的 `rule.security_severity_level`（`low`/`medium`/`high`/`critical`）。
+   * **只存在于 `rule` 下面**——顶层没有这个键，从顶层取会稳定得到 null。
+   */
   securitySeverityLevel: string | null;
   state: string;
   /** `YYYY-MM-DD`。 */
@@ -70,6 +91,63 @@ export interface LiveAlert {
   path: string | null;
   /** dismissal 状态（open 告警通常为 null）。 */
   dismissedReason: string | null;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** API 原始响应的形状（未裁剪）；只声明本模块会读的那几个字段。 */
+interface RawAlert {
+  number?: unknown;
+  state?: unknown;
+  created_at?: unknown;
+  dismissed_reason?: unknown;
+  rule?: unknown;
+  most_recent_instance?: unknown;
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function asStringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * 把 GitHub 的一条原始告警裁剪成 `LiveAlert`。
+ *
+ * **这个函数从 `scripts/lib/codeql-alert-check.js` 搬进来是有原因的**：
+ * 它是「字段在哪一层」的唯一决定点，而它原先在 IO 层 ⇒ 按本仓库惯例（规则进 `src/lib/**`
+ * 才有单测，IO 留在 `scripts/lib`）它**一行测试都没有**。
+ * 我据此把一句错误的因果解释写进了 main（以为 `null` 来自缺 api-version header，
+ * 真相是取错了嵌套层级），而没有任何检查能拦住那种注释。
+ *
+ * 严重度**只从 `rule` 下面取**。顶层的同名键不存在——
+ * 若在这里改成从顶层取，`toLiveAlert.test.ts` 会立刻红。
+ */
+export function toLiveAlert(raw: RawAlert): LiveAlert {
+  const rule = (typeof raw.rule === "object" && raw.rule !== null ? raw.rule : {}) as Record<string, unknown>;
+  const instance =
+    typeof raw.most_recent_instance === "object" && raw.most_recent_instance !== null
+      ? (raw.most_recent_instance as Record<string, unknown>)
+      : {};
+  const location =
+    typeof instance.location === "object" && instance.location !== null
+      ? (instance.location as Record<string, unknown>)
+      : {};
+  const createdAt = asString(raw.created_at);
+  return {
+    number: typeof raw.number === "number" ? raw.number : Number(raw.number),
+    ruleId: asString(rule.id),
+    severity: asString(rule.severity),
+    // **原样带回 null**：把「拿不到」洗成「低」是这个探测最坏的失败方式。
+    // 注意取的是 `rule.security_severity_level`——**顶层没有这个键**。
+    securitySeverityLevel: asStringOrNull(rule.security_severity_level),
+    state: asString(raw.state),
+    createdAt: ISO_DATE.test(createdAt.slice(0, 10)) ? createdAt.slice(0, 10) : "",
+    path: asStringOrNull(location.path),
+    dismissedReason: asStringOrNull(raw.dismissed_reason),
+  };
 }
 
 export type CodeqlAlertIssueCode =
@@ -97,8 +175,6 @@ export interface CodeqlAlertReport {
     stale: number;
   };
 }
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * runbook 的「≥7.0 阻断」落在 GitHub 分类里的哪几档。
@@ -227,7 +303,7 @@ export function inspectCodeqlAlerts(
       message:
         "读不到 GitHub 的 code-scanning 告警列表（缺 token、网络失败、或 API 换了形状）——" +
         "**未知不算通过**，但也不能据此断言「零回归」。" +
-        "注意 `security_severity_level` 只在带 `x-github-api-version: 2022-11-28` 时才有值。",
+        "注意严重度在 `rule.security_severity_level` 下——顶层没有这个键。",
     });
     return { issues, stats: emptyStats };
   }
@@ -275,8 +351,9 @@ export function inspectCodeqlAlerts(
       issues.push({
         code: "CODEQL_ALERT_SEVERITY_UNKNOWN",
         message:
-          `告警 #${alert.number} 拿不到 security_severity_level——` +
-          "**这不是「低危」**。先确认请求带了 `x-github-api-version: 2022-11-28`",
+          `告警 #${alert.number} 拿不到 rule.security_severity_level——` +
+          "**这不是「低危」**。先确认取的是 `rule` 下面的那个键：顶层没有同名字段，" +
+          "从顶层取会稳定得到 null，而那不是「没评分」",
       });
     } else if (BLOCKING_SEVERITY_LEVELS.has(level) && alert.dismissedReason === null) {
       issues.push({

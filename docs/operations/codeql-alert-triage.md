@@ -70,12 +70,29 @@ CodeQL 结果里的 `security-severity` 是 0–10 的 CVSS 风格分值，按�
   而本机 `gh` 的 token 就能读到全部字段（编号、规则 ID、`security_severity_level`、`created_at`、
   实例 path、`dismissed_reason`）。所以缺的一直不是权限，是没人写这个探测——现在有了：
   `GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack pnpm ops:codeql-alerts`。
-- ⚠️ **`security_severity_level` 只在带 `x-github-api-version: 2022-11-28` 时才有值**，
-  否则返回 `null`，而 `null` 看起来完全像「GitHub 没给这条告警评分」。同一份数据同一时刻的对照实测：
-  无 header ⇒ 5 条全是 `null`；带该 header ⇒ `high` / `medium`。
-  另证：查询参数 `security_severity_level=` 会被 API **静默忽略**（high/critical/medium/7.0 四种取值都返回同样的
-  5 条），而 `severity=error` 返回 0 条 ⇒ 过滤器本身生效，所以**不要用查询参数筛严重度**，取回来自己判。
-  本项目的判定层因此拒绝把 `null` 当低危，它报 `CODEQL_ALERT_SEVERITY_UNKNOWN`。
+- ⚠️ **严重度字段在 `rule` 下面**：`rule.security_severity_level`。**顶层没有这个键**
+  （实测 `'security_severity_level' in alert === false`，`'severity' in alert === false`），
+  所以从顶层取会稳定得到 `null`，而 `null` 看起来完全像「GitHub 没给这条告警评分」。
+  - **本节第一版把原因写成「只在带 `x-github-api-version: 2022-11-28` 时才有值」，那是错的**，
+    错因是**对照实验本身不成立**：我用 `gh api` 跑「不带 header」那一组，而 `gh` 自己会补默认
+    api-version ⇒ 两组都带了 header，看到的差异根本不在 header 上。改用 `curl` 严格对照后：
+    不带 header / 带 `2022-11-28` / 带 `2026-03-10` ⇒ `rule.security_severity_level` **都有值**。
+    不带 header 时 GitHub 实际选中的版本由响应头 `x-github-api-version-selected` 给出，实测就是 `2022-11-28`。
+  - header 仍然带着，但理由与严重度无关：**不受支持的版本值直接 HTTP 400**
+    （实测 `2023-03-02` 的 `errors` 逐字为「supported versions are "2026-03-10" (most recent) and
+    "2022-11-28"」），钉住 `2022-11-28` 是为了让读数可复现、不被平台的版本演进悄悄改掉。
+- **不要用查询参数筛严重度**，取回来自己判。实测 `severity=` 的行为有两种歧义，合起来不可用：
+  - 它过滤的字段是 `security_severity_level` 而**不是** `rule.severity`：
+    `severity=high` 只回 #18，而 #18 的 `rule.severity` 是 `warning`。
+  - **无法识别的取值被静默忽略并返回全部**：`nonsense` / `none` / `info` / `moderate` / `unknown`
+    都回全部 5 条 ⇒ 「拼错了」和「全都命中」在响应上**无法区分**。
+  - （第一版这里写的是「`severity=error` 返回 0 条 ⇒ 过滤器生效」——那推不出来：
+    `error` 是合法枚举值且确实没有告警取该值，所以 0 条既可能来自「按 `rule.severity` 过滤」
+    也可能来自「按 `security_severity_level` 过滤」。真正的证据是上一条的 #18。）
+  - `security_severity_level=` 这个参数则被**完全忽略**（high/critical/medium/7.0 一律回全部 5 条）。
+- 判定层拒绝把 `null` 当低危，它报 `CODEQL_ALERT_SEVERITY_UNKNOWN`。
+  映射逻辑（`toLiveAlert`）已从 IO 层搬进 `src/lib/security/codeql-alert-registry.ts` 并配单测——
+  **它待在 `scripts/lib` 时一行测试都没有，所以那句错误的因果解释没有任何检查能拦住。**
 - 无 token 环境（fork PR、未配凭据的机器）能跑离线复现：`pnpm ops:codeql-alerts --fixture
   fixtures/codeql-alerts.json`，它录的是 2026-10-13 的真实形状（含一条 null 严重度与一条未登记告警）。
   读不到实况时探测以退出码 2 结束并报 `CODEQL_ALERT_LIVE_UNREADABLE`——**未知不算通过**，

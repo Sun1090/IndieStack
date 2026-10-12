@@ -16,14 +16,27 @@ See `docs/operations/release-tag-ledger.md`.
   匿名仍返回 **401**，而本机 `gh` 的 token 能读到全部字段（编号、规则 ID、严重度、`created_at`、
   实例 path、`dismissed_reason`）⇒ 缺的一直不是权限，是没人写这个探测。
   代价早就付过一次：2026-09-24 那 4 条 `js/log-injection` 挂了 5 天没人发现。
-  - **⚠️ 一个足以让人写出假缺陷的坑（我自己刚踩）**：`security_severity_level`
-    **只在带 `x-github-api-version: 2022-11-28` 时才有值**，否则返回 `null`——
-    而 `null` 看起来完全像「GitHub 没给这条告警评分」。同一份数据同一时刻对照实测：
-    无 header ⇒ 5 条全 `null`；带 header ⇒ `high` / `medium`。
-    另证：查询参数 `security_severity_level=` 被 API **静默忽略**（high/critical/medium/7.0
-    四种取值都返回同样的 5 条），而 `severity=error` 返回 0 条 ⇒ 过滤器本身生效，
-    所以**不能用查询参数筛严重度**。判定层因此拒绝把 `null` 当低危，改报
-    `CODEQL_ALERT_SEVERITY_UNKNOWN`。
+  - **⚠️ 一个足以让人写出假缺陷的坑——而且我把它的成因写错过一次**：
+    严重度字段是 `rule.security_severity_level`，**在 `rule` 下面**；顶层没有这个键
+    （实测 `'security_severity_level' in alert === false`）。从顶层取会稳定得到 `null`，
+    而 `null` 看起来完全像「GitHub 没给这条告警评分」。
+    **本条第一版把成因写成「只在带 `x-github-api-version: 2022-11-28` 时才有值」，那是错的**，
+    错因是对照实验本身不成立：我用 `gh api` 跑「不带 header」那一组，而 **`gh` 自己会补默认
+    api-version** ⇒ 两组都带了 header，看到的差异根本不在 header 上。改用 `curl` 严格对照：
+    不带 header / 带 `2022-11-28` / 带 `2026-03-10` ⇒ `rule.security_severity_level` **都有值**。
+    header 仍带着，但理由不同：不受支持的版本值直接 **HTTP 400**（实测 `2023-03-02` 的 `errors`
+    逐字为「supported versions are "2026-03-10" (most recent) and "2022-11-28"」），
+    钉住它是为了让读数不被平台演进悄悄改掉。
+  - **不要用查询参数筛严重度**：`severity=` 过滤的是 `security_severity_level` 而**不是**
+    `rule.severity`（`severity=high` 只回 #18，而 #18 的 `rule.severity` 是 `warning`），
+    且**无法识别的取值被静默忽略并返回全部**（`nonsense`/`none`/`info`/`moderate`/`unknown`
+    都回全部 5 条）⇒「拼错了」与「全都命中」在响应上无法区分。
+    （第一版这里写「`severity=error` 回 0 条 ⇒ 过滤器生效」也推不出来：`error` 是合法枚举值
+    且确实没有告警取该值，0 条与两种解释都相容。）`security_severity_level=` 则被完全忽略。
+  - **映射逻辑 `toLiveAlert` 因此从 `scripts/lib`（IO 层）搬进 `src/lib/security/`**：
+    它原先按本仓库惯例**一行测试都没有**，所以那句错误的因果解释没有任何检查能拦住。
+    现在 4 条单测钉住「只从 `rule` 下面取」，变异核对（改成从顶层取 ⇒ 2 条红）已实测。
+    判定层拒绝把 `null` 当低危，报 `CODEQL_ALERT_SEVERITY_UNKNOWN`。
   - **六类判据**：实况有台账没有（`UNREGISTERED`，「零回归」的正向形态）、台账有实况没有
     （`STALE_ENTRY`，腐烂比没登记更糟）、编号复用（`RULE_MISMATCH`）、登记不完整
     （`INCOMPLETE_ENTRY`：缺判定人/日期/证据，或 `triaging` 却不写为什么没结案）、
@@ -37,11 +50,20 @@ See `docs/operations/release-tag-ledger.md`.
     fixture 读不出——**五条失败路径逐条实测**，全部归退出码 **2**（`LIVE_UNREADABLE`）。
     **未知不算通过**，但也绝不据此声称「零回归」。
   - **`--fixture fixtures/codeql-alerts.json`** 让无 token 环境（fork PR、未配凭据的机器）
-    能离线复现判定，录的是 2026-10-13 的真实形状，含一条 `null` 严重度与一条未登记告警。
+    能离线复现判定：字段名与嵌套层级逐字核对自 2026-10-13 的实况，但**内容含构造条目**
+    （#19 是虚构的未登记告警，其 `null` 严重度用来复现 `SEVERITY_UNKNOWN`；
+    **实况 5 条都不是 `null`**）。fixture 的 `_comment` 已按这个分寸改写，免得它被读成实况。
   - **刻意不接进 `check:all`，也不接进任何 workflow**：#18 未结案 ⇒ 它此刻必红，
     进 PR 门禁会阻塞每一个 PR。`ops:` 前缀与 `ops:schema-drift` / `ops:migration-status`
-    同类 = 需要凭据的运维探测。22 条单测，5 个变异全部逮到
-    （`null` 洗成 low / 未登记永不触发 / 腐烂不报 / SLA 用日历天数 / `triaging` 不要求 note）。
+    同类 = 需要凭据的运维探测。28 条单测，6 个变异全部逮到
+    （`null` 洗成 low / 未登记永不触发 / 腐烂不报 / SLA 用日历天数 / `triaging` 不要求 note /
+    **严重度改从顶层取 ⇒ 2 条红**——最后这个就是我实际犯过的错，它现在被钉住了）。
+  - **重跑变异时发现一个逃逸，并已补上**：上一轮声称「SLA 用日历天数」这个变异被逮到，
+    实际**没逮到**。原因是那条 SLA 用例只用了一对日期（09-27 → 10-13，工作日 12 / 日历 16），
+    两种算法都判红 ⇒ 把实现换成日历天，测试照样全绿。
+    现在补了一对**能区分**的边界日期（10-01 → 10-07：工作日恰好 5 = 不越界，日历 6 = 越界）
+    与它的下一天（10-08：工作日 6 ⇒ 红），两条一起把「数的是工作日」钉成可失败的断言。
+    **这是同一个老毛病的第三次**：变异「全绿」时第一怀疑必须是可达性，而不是运气。
 
 - **`pnpm ops:migration-status`：「云端到底 applied 到第几版迁移」从此有自动答案，而且不要数据库密码、也不要 CLI 登录态。**
   上一条 `ops:schema-drift` 回答的是「线上有没有这一列」，本条回答的是「**为什么没有**」——
