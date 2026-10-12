@@ -75,11 +75,16 @@ CodeQL 的 `js/insufficient-password-hash` 报在前两处（假阳性），**�
   3.3×，不是 10×），因为 libuv 默认线程池是 4；显式设 `UV_THREADPOOL_SIZE=16` 后降到
   480ms。任何「并发派生很便宜」的估算都要先量线程池。
 - `pnpm check:supabase-security` 的信任证据清单同步登记 `verifyRecoveryCodeHash`。
-  **这条登记的强度边界要说清**：它的判据是 `source.includes(证据字符串)`，
-  所以它只回答「这个模块被授权做什么」，**不回答**「它现在是不是这样做的」——
-  把兑换调用点整个退回旧的 `timingSafeEqual(sha256(code))`，
-  无论证据写成单值还是 `["timingSafeEqual", "verifyRecoveryCodeHash"]` 都仍然绿
-  （顶部那行 import 就让子串成立，实测过）。
+  **这条登记的强度边界要说清**：它只回答「这个模块被授权做什么」，
+  **不回答**「它现在是不是这样做的」——把兑换调用点整个退回旧的
+  `timingSafeEqual(sha256(code))`，无论证据写成单值还是
+  `["timingSafeEqual", "verifyRecoveryCodeHash"]` 都仍然绿
+  （顶部那行 `import { …, verifyRecoveryCodeHash }` 本身就是真实代码，
+  所以证据总能命中，实测过）。
+  判据在 PR #240 之后已收紧为「剥注释 + 标识符词边界」匹配，
+  **但这条登记的结论不变**——#240 堵住的是「注释里写一句就算证据」和
+  「旧名字只剩在新名字的子串里」两条通道，堵住不了「import 还在、调用点已退回旧写法」。
+  2026-10-12 在 #240 之上重测：调用点退回旧写法，`check:supabase-security` 仍然绿。
   **因此这条清单不能当回归防线用**；语义回退由 `src/lib/actions/recovery-codes.test.ts`
   的 3 条用例兜住。登记保持单值只因为它描述的是当前事实，不是因为它能防回退。
 - 已知遗留矛盾：`supabase/migrations/013_mfa_recovery_codes.sql` 头部注释仍写

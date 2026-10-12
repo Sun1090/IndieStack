@@ -271,10 +271,12 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
       "verifyRecoveryCodeHash() (src/lib/auth/recovery-code-hash.ts) rather than inline, because " +
       "each stored row carries its own salt and its own recorded scrypt params — so hashing cannot " +
       "be hoisted out of the candidate loop. Scope of this entry: it names the authorization shape " +
-      "the module uses now, and it is not a regression guard. Evidence is matched with " +
-      "source.includes(), so the import of verifyRecoveryCodeHash keeps this entry green even if " +
-      "the call site were reverted to the previous unsalted timingSafeEqual(sha256(code)) " +
-      "comparison (measured 2026-10-11). Semantic regressions are caught by " +
+      "the module uses now, and it is not a regression guard. Evidence is matched against " +
+      "comment-stripped source with identifier boundaries (PR #240), yet the import line of " +
+      "verifyRecoveryCodeHash is itself real code, so this entry stays green even when the " +
+      "call site is reverted to the previous unsalted timingSafeEqual(sha256(code)) comparison " +
+      "(re-measured 2026-10-12 on top of #240: gate still passes). Semantic regressions are " +
+      "caught by " +
       "src/lib/actions/recovery-codes.test.ts, which pins legacy-shape redemption, per-row salt " +
       "dispatch, and reject-on-unparseable.",
   },

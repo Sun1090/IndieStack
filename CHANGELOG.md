@@ -279,9 +279,12 @@ See `docs/operations/release-tag-ledger.md`.
   - **但要说清这条登记能做到什么、做不到什么**（我先把它说大了，实测之后更正）：
     第一版我以为「不收成单值就会让旧的 `timingSafeEqual(sha256(code))` 写法重新过门禁」，
     于是把证据改成单值并打算以此挡住回退。**实测两个方向都不红**——把调用点整个退回旧写法后，
-    `check:supabase-security` 在 OR 形态和单值形态下**都是绿的**，
-    因为它的判据是 `source.includes(证据字符串)`，而 `recovery-codes.ts` 顶部那行
-    `import { …, verifyRecoveryCodeHash }` 就让子串恒成立。
+    `check:supabase-security` 在 OR 形态和单值形态下**都是绿的**：
+    `recovery-codes.ts` 顶部那行 `import { …, verifyRecoveryCodeHash }` 本身就是真实代码，
+    证据总能命中。（当时判据还是原始文本 `source.includes()`；PR #240 之后收紧为
+    「剥注释 + 标识符词边界」，**但这条结论不变**——#240 堵住的是「注释里写一句就算证据」
+    和「旧名字只剩在新名字里当子串」两条通道，堵住不了「import 还在、调用点已退回旧写法」。
+    2026-10-12 在 #240 之上重测：调用点退回旧写法，门禁仍然绿。）
     **这条登记是「哪个模块被授权」的清单，不是行为断言，抓不住语义回退。**
     真正抓住这个变异的是用例：3 条红（存量 SHA-256 仍可兑换、多候选命中真正那一行、
     形状不符判否），见 `src/lib/actions/recovery-codes.test.ts`。
