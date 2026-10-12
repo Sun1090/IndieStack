@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildSnapshot, runHookWiringCheck } from "../../../scripts/lib/hook-wiring-check.js";
-import { auditHookWiring, formatHookIssues } from "./hook-wiring";
+import { auditHookWiring, findUnterminatedVariables, formatHookIssues } from "./hook-wiring";
 
 const tempDirs: string[] = [];
 
@@ -56,6 +56,56 @@ describe("auditHookWiring() — 安装入口", () => {
 
   it("钩子目录为空时不要求安装入口", () => {
     expect(codes(input({ hooks: [], scripts: { "verify:build": "pnpm verify" } }))).toEqual([]);
+  });
+});
+
+describe("auditHookWiring() — 安装脚本自身", () => {
+  it("`$hooks_dir` 后紧跟全角括号时报 installer-unterminated-variable", () => {
+    const issue = auditHookWiring(
+      input({ installerContent: '#!/bin/sh\nset -eu\nhooks_dir=$(pwd)\necho "  ✓ 已接入（$hooks_dir）"\n' }),
+    ).issues.find((item) => item.code === "installer-unterminated-variable");
+    expect(issue?.message).toContain("第 4 行");
+    expect(issue?.message).toContain("$hooks_dir");
+  });
+
+  it("多处命中各报一条，行号 1 起", () => {
+    const hits = findUnterminatedVariables('echo "（$a）"\necho "（$b）"\n');
+    expect(hits.map((hit) => hit.line)).toEqual([1, 2]);
+  });
+
+  it("`${hooks_dir}` 写法不报——花括号已经界定变量名边界", () => {
+    expect(
+      codes(input({ installerContent: '#!/bin/sh\necho "已接入（${hooks_dir}）"\n' })),
+    ).not.toContain("installer-unterminated-variable");
+  });
+
+  it("整行注释里的缺陷不报", () => {
+    expect(
+      codes(input({ installerContent: "#!/bin/sh\n# echo \"（$hooks_dir）\"\necho ok\n" })),
+    ).not.toContain("installer-unterminated-variable");
+  });
+
+  it("单引号区间不报——shell 在其中不做变量展开", () => {
+    expect(
+      codes(input({ installerContent: "#!/bin/sh\nprintf '%s\\n' '$hooks_dir）'\n" })),
+    ).not.toContain("installer-unterminated-variable");
+  });
+
+  it("位置参数与自动变量不报——它们不是 POSIX 标识符形态", () => {
+    expect(
+      codes(input({ installerContent: "#!/bin/sh\necho \"$1）$@）$#）\"\n" })),
+    ).not.toContain("installer-unterminated-variable");
+  });
+
+  it("读不到安装脚本时不下结论——这条判定是加强项，不能因 IO 未接线把钩子层判红", () => {
+    expect(codes(input({ installerContent: null }))).toEqual([]);
+    expect(codes(input())).toEqual([]);
+  });
+
+  it("钩子目录为空时不检查安装脚本", () => {
+    expect(
+      codes(input({ hooks: [], installerContent: '#!/bin/sh\necho "（$hooks_dir）"\n' })),
+    ).toEqual([]);
   });
 });
 

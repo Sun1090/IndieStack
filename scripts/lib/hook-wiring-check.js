@@ -34,7 +34,33 @@ export function buildSnapshot(repoRoot = REPO_ROOT) {
     bins: fs.existsSync(binDir) ? fs.readdirSync(binDir) : [],
     fileExists: (repoPath) => fs.existsSync(path.join(repoRoot, repoPath)),
     binDirPresent: fs.existsSync(binDir),
+    // 安装脚本正文：`prepare` 指向哪个就读哪个。读不到就是 null，规则侧据此**不下结论**。
+    installerContent: readInstallerContent(repoRoot, pkg.scripts ?? {}),
   };
+}
+
+/**
+ * 读取钩子安装脚本的正文。
+ *
+ * 与规则侧 `findInstaller()` 同口径：只认 `prepare` 里那个文件名含 `hook` 的 `scripts/*.sh`，
+ * 这样「判定脚本是否存在」和「判定脚本跑得完跑不完」看的是同一个文件，
+ * 不会出现一条查 A、另一条查 B 的错位。
+ */
+function readInstallerContent(repoRoot, scripts) {
+  const prepare = scripts.prepare ?? "";
+  let installer = null;
+  for (const match of prepare.matchAll(/scripts\/[\w./-]+\.sh/g)) {
+    if (/hook/i.test(match[0])) {
+      installer = match[0];
+      break;
+    }
+  }
+  if (installer === null) return null;
+  try {
+    return fs.readFileSync(path.join(repoRoot, installer), "utf8");
+  } catch {
+    return null;
+  }
 }
 
 /** 返回进程退出码：0 表示钩子层与声明一致，1 表示存在阻断问题或 IO 错误。 */
