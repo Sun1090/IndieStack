@@ -8377,3 +8377,67 @@
   实测两次都无输出、需手动终止）。这是停止条件 3（需用户提供凭据），不是能力问题：
   `pnpm ops:schema-drift` 已能在有 key 时 10 秒给出确定答案。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「云端 applied 到第几版」不再需要人问：一条只读 API，也不要 CLI 登录态
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/migration-status-probe`（base `9f4c9d70` = main + #238）。
+- 状态：DONE（本地已 commit，待 PR）。
+- 为什么做：上一条 `ops:schema-drift` 回答了「线上有没有这一列」，但**没回答「为什么没有」**。
+  而「为什么」的那一半是迁移版本号——它过去两年被登记成「本机查不了（要 DB 密码）」，
+  代价正是「034/035 从未 applied」直到线上出事才知道。
+  本轮确认：`supabase migration list` **不要密码**，但它要交互式登录态——
+  2026-10-12 本机实测两次，无 `~/.supabase/access-token` 时它**挂在登录提示上**、无输出、需 `pkill`。
+  更关键的一条是本轮才查出来的：**supabase CLI 不是本仓库的依赖**（`package.json` 里只有
+  `@supabase/ssr` 与 `@supabase/supabase-js`，`supabase` 来自本机 Homebrew），
+  所以「让 CI 跑 CLI」这个方案从一开始就不成立。
+- 能力从哪来（**不凭记忆**）：从 CLI 2.120.0 二进制内嵌的 OpenAPI 规范里读到
+  `v1ListMigrationHistory` = `GET /v1/projects/{ref}/database/migrations`，
+  描述「List applied migration versions」，output schema 是 `[{version: string, name?: string}]`。
+  2026-10-13 实测鉴权层次：匿名 **401**、格式合法的假 token **401**（端点存在且要求鉴权，不是 404）。
+  凭据用仓库里**已有**的 `SUPABASE_ACCESS_TOKEN`（secret）+ `SUPABASE_PROJECT_REF`（variable），
+  与 `security-config.yml` / `supabase-auto-restore.yml` 同一套 ⇒ **不需要用户提供任何新东西**。
+- 完成内容：
+  - `src/lib/db/migration-status.ts`（判定，23 条单测）+ `scripts/lib/migration-status-check.js`（IO）
+    + `scripts/check-migration-status.js`（入口）+ `pnpm ops:migration-status`。
+  - `.github/workflows/migration-status.yml`：每天 `23 4 * * *` 与每次 main push 各跑一次。
+    **刻意不挂 `pull_request`**——secrets 对 fork PR 不可用，那样会把「读不到实况」（exit 2）
+    算成每个外部贡献者 PR 的红灯。这条检查的读者是维护者，不是贡献者。
+  - `--expect-applied <ver>`（可重复）：点名断言「我要部署的这一版依赖的那几条上了没有」。
+  - `docs/operations/environments.md` 新增一行（**单行写完**，见下）+ 推荐顺序加第 5 条。
+- 本轮抓到的三个东西，每一个都比探测器本身值钱：
+  1. **68 条假结论**：用本地 mock 实测时，让云端返回 14 位时间戳版本号、本地是 3 位序号，
+     归一化后的键永不相交 ⇒ 探测器一口气报 **34 条「未应用」+ 34 条「本地不认识」**。
+     这 68 条结论全都建立在「两边版本号是同一种形状」这个**没有验证过的假设**上。
+     现在这种形态判 `MIGRATION_VERSION_SHAPE_MISMATCH` 并归退出码 2（未知）。
+     「云端真的空着」有专门分支（`applied.length === 0`），不会被这条吞掉。
+  2. **点名断言自带的假绿**：`--expect-applied 099` 时，099 既不在 manifest 也不在云端，
+     过滤完是 0 条 issue ⇒ 输出「✅ 点名的迁移均已 applied」。
+     **那是拿一个无法求值的断言冒充通过**。现在产出 `MIGRATION_EXPECTED_NOT_IN_REPO` 并归 2。
+  3. **一条测试用例写错，而代码是对的**：`applied("001","033")` 配 `["001","034","035"]`，
+     我断言只有 2 条 `NOT_APPLIED`，实际 3 条——033 只出现在云端、不在 manifest，
+     它**同时**是「本地不认识」。修的是断言，不是实现。
+- 分寸：**它不解锁 B04，也不替代 `supabase db push`**。只读「应用了哪些版本」，不执行任何 SQL。
+  这条已同时写进 workflow 头部注释、`--help`、`environments.md` 那一行与 CHANGELOG。
+- 顺带的小重构：`resolveProjectRef` 从 `src/lib/ops/supabase-restore.ts` 抽到
+  `src/lib/supabase-project-ref.ts`（原路径留再导出，调用点与测试不改）。
+  理由与 `stripComments` 同一条：门禁脚本被 node 以 `--experimental-strip-types` 直跑，
+  那条链路里的 `@/lib/cron-auth` 别名解析不了 ⇒ 第二个调用方**不能**导入原模块。
+  与其在脚本里再写一份正则（两份会长歪），不如把纯函数放在谁都能直连的位置。
+- 两次 lint 复杂度红（`parseArgs` 18、`runMigrationStatusCheck` 16，上限 15）：
+  **没有提豁免**，改成 flag 表 + `READERS` 分派 + 把打印抽成 `printReport`。
+  重构后重跑全部 mock 探针，退出码逐条与重构前一致。
+- 验证：
+  - `pnpm exec vitest run src/lib/db/migration-status.test.ts` ✅ 23 passed。
+  - 变异核对 4 项全部逮到（解析失败返回 `[]` → 1 红；删形状守卫 → 2 红；
+    点名版本号不在仓库时静默跳过 → 1 红；归一化保留前导零 → 3 红），复原后 `cmp` 一致。
+  - 六条失败路径逐条实测归 exit 2：缺 ref / 缺 token / 非 2xx(401) / 网络失败 / API 换形状 / manifest 读不出。
+  - `pnpm check:all` ✅ 全绿（实测 **273 个测试文件 / 3321 条用例**；`check:workflows` 10 个工作流 / 17 个作业 / 52 个 action 引用）。
+  - 表格行探测器（一次性脚本）✅ 全仓 159 个 md 文件、0 处跨行表格行。
+- 阻塞 / 风险 / 回滚：无阻塞。风险 = Management API 该端点若换形状，探测器判 2（未知）而不是误报；
+  回滚 = revert 本 commit（新增文件 + 一处再导出重构，无数据面影响）。
+- 下一项：#236（CI 11 项全 pass，硬前置仍是 034 applied）、#235（已 rebase 到含 #238 的 main）、
+  #243（本轮新建的 CodeQL 分诊文档 PR）。
+  **本轮之后，「034 到底 applied 没有」这个问题在 CI 里每天会被自动回答一次**——
+  但它仍然只是**回答**，push 依然需要 `SUPABASE_ACCESS_TOKEN` 之外的东西：
+  项目规则要求 schema 变更先在 staging 验证（本机无 staging 项目）。
+- 更新时间：2026-10-13（UTC+8）。

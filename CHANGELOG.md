@@ -10,6 +10,45 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm ops:migration-status`：「云端到底 applied 到第几版迁移」从此有自动答案，而且不要数据库密码、也不要 CLI 登录态。**
+  上一条 `ops:schema-drift` 回答的是「线上有没有这一列」，本条回答的是「**为什么没有**」——
+  两边版本号一对，缺的就是没 push 的那几条。
+  - **为什么不用 `supabase migration list --linked`**：它**不要数据库密码**（这件事被本仓库
+    误登记成「需要」两年，代价是「034/035 从未 applied」直到线上出事），但它需要一个交互式登录态——
+    2026-10-12 本机实测两次，`~/.supabase/access-token` 不存在时它**挂在交互登录上**、无输出、需手动终止。
+    更要紧的是 **supabase CLI 不是本仓库的依赖**，所以 CI 里本来也跑不了它。
+  - **能力从哪来**：Management API 的 `GET /v1/projects/{ref}/database/migrations`
+    （operation `v1ListMigrationHistory`，描述「List applied migration versions」，
+    形状 `[{version, name?}]` 从 CLI 2.120.0 内嵌的 OpenAPI 规范里读到，不是凭记忆）。
+    凭据用的是仓库里**已有**的 `SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF`
+    （`security-config.yml` / `supabase-auto-restore.yml` 同一套）。
+    2026-10-13 实测鉴权层次：匿名 **401**、格式合法的假 token **401**（端点存在且要求鉴权，不是 404）。
+  - **`.github/workflows/migration-status.yml`** 每天与每次 main push 各跑一次。
+    **刻意不挂 `pull_request`**：secrets 对 fork PR 不可用，那样会把「读不到实况」（退出码 2）
+    算成每个外部贡献者 PR 的红灯——这条检查的读者是维护者，不是贡献者。
+  - **`--expect-applied <ver>`（可重复）**：点名断言「我要部署的这一版依赖的那几条上了没有」。
+    全量比对会把**别人正在做的迁移**也算成红，而天天红的检查等于没有检查。
+    点名同时带来一个新的假绿风险，已一起堵上：**点名的版本号若在 manifest 里根本不存在**（写错、
+    或还没进仓库），过滤后是 0 条 issue ⇒ 会显示「✅ 均已 applied」。所以它产出
+    `MIGRATION_EXPECTED_NOT_IN_REPO` 并归退出码 **2**（无法求值的断言不算通过，也不算漂移）。
+  - **两边版本号完全不相交 ⇒ 判「不可比」（退出码 2），不产出差集结论**。
+    这条是本地 mock **实测**出来的：云端返回 14 位时间戳、本地是 3 位序号时，
+    归一化后的键永不相交，探测器一口气报了 **34 条「未应用」+ 34 条「本地不认识」= 68 条结论**，
+    而它们全都建立在「两边版本号是同一种形状」这个**没有验证过的假设**上。
+    「云端真的空着」有专门分支负责（`applied.length === 0`），不会被这条吞掉。
+  - **拿不到实况就说拿不到**：缺 ref、缺 token、非 2xx（实测 401）、网络失败、
+    API 换形状、manifest 读不出——**六条路径逐条实测**（后四条走本地 mock 服务），
+    全部归退出码 **2**。判定层解析不出形状时返回 `null` 而**不是 `[]`**——
+    把「token 不对」显示成「线上迁移全丢了」是这条探测器最坏的失败方式。
+  - 判定在 `src/lib/db/migration-status.ts`（23 条单测），IO 在 `scripts/lib/migration-status-check.js`。
+    变异核对 4 项全部逮到（解析失败返回 `[]` → 1 红；删掉形状不一致守卫 → 2 红；
+    点名的版本号不在仓库时静默跳过 → 1 红；归一化保留前导零 → 3 红），复原后 `cmp` 一致。
+  - 顺带把 `resolveProjectRef` 从 `src/lib/ops/supabase-restore.ts` 抽到
+    `src/lib/supabase-project-ref.ts`（原路径留再导出，调用点与测试不改）：
+    门禁脚本被 node 以 `--experimental-strip-types` 直跑，那条链路里的 `@/lib/cron-auth` 别名解析不了，
+    所以第二个调用方**不能**导入原模块。与 `stripComments` 是同一套理由。
+  - **明确边界**：它只读「应用了哪些版本」，**不执行任何 SQL** ⇒ 不解锁 B04、不替代 `supabase db push`。
+
 - **`pnpm ops:schema-drift`：「线上那个库到底有没有这一列」从此一条命令能答，而且不需要数据库密码。**
   起因是 2026-10-12 的一次实测：`check:query-columns` 把代码里每个字面列名都对着**生成的类型**核过（0 error）、
   `check:migrations` 34 条全绿、`pnpm build` 也过——**而生产库里没有 `notifications.email_skipped_reason`**

@@ -87,6 +87,7 @@
     "check:retention-cron": "node scripts/check-retention-cron.js",
     "ops:deploy-freshness": "node scripts/check-deploy-freshness.js",
     "ops:schema-drift": "node scripts/check-schema-drift.js",
+    "ops:migration-status": "node scripts/check-migration-status.js",
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
     "check:migration-history": "node scripts/check-migration-history.js",
