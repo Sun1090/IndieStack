@@ -333,9 +333,38 @@ describe("formatAdrIssues()", () => {
 describe("真实仓库与 CLI", () => {
   it("当前仓库 ADR 快照通过新规则", () => {
     const snapshot = buildSnapshot();
-    const report = auditAdrRepository({ ...snapshot, today: "2026-09-13" });
+    // 这里**不能**钉一个固定的 `today`：真实仓库里的 ADR 日期是「写下它的那一天」，
+    // 用过去的死日期审它，等价于「下一篇 ADR 必红」。此前它一直是绿的，
+    // 只因为 ADR-001–014 恰好全部早于 2026-09-13——门禁绿的原因是仓库里还没有
+    // 触发它的东西，而不是它被验证过。ADR-015（2026-10-11）第一次把它撞红。
+    // 「日期不得晚于今天」这条判定对真实仓库就该用真实时钟（`auditAdrRepository` 的默认值），
+    // 固定日期只属于合成夹具（见上面那些 `today: "2026-09-13"` 的用例）。
+    const report = auditAdrRepository(snapshot);
     expect(report.errors).toEqual([]);
     expect(report.stats.documents).toBeGreaterThanOrEqual(13);
+  });
+
+  it("真实快照配上早于最新 ADR 的 today 必然红", () => {
+    // 这条是上一红的镜像，作用是把「为什么不能给真实仓库钉死 today」变成断言。
+    // 钉死的那个日期**由仓库自己算**（最新 ADR 的前一天），所以它永远不会退化成
+    // 「此刻恰好看不出问题」的空断言——那正是上面那条曾经的样子。
+    const snapshot = buildSnapshot();
+    const dates = snapshot.files
+      .map((file: { content: string }) =>
+        /^日期\s*[:：]\s*(\d{4}-\d{2}-\d{2})/m.exec(file.content)?.[1],
+      )
+      .filter((date: string | undefined): date is string => Boolean(date))
+      .sort();
+    expect(dates.length).toBeGreaterThan(0);
+    const latest = Date.parse(`${dates.at(-1)}T00:00:00Z`);
+    expect(Number.isNaN(latest)).toBe(false);
+    const frozen = new Date(latest - 86_400_000).toISOString().slice(0, 10);
+    const report = auditAdrRepository({ ...snapshot, today: frozen });
+    const codes = report.errors.map((item: { code: string }) => item.code);
+    expect(codes).toContain("DATE_FUTURE");
+    // 日期不过关的文件会被整个踢出 documents，于是 README 里那一行反过来变成索引孤儿——
+    // 记在这里是因为它是「一个字段判坏会让两个规则同时响」的真实例子。
+    expect(codes).toContain("INDEX_ORPHAN");
   });
 
   it("buildSnapshot 读取全部 ADR 文件与 README", () => {

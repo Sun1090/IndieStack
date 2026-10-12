@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHash } from "node:crypto";
+import { deriveRecoveryCodeHash, TEST_KDF } from "@/lib/auth/recovery-code-hash";
 
 const { createClientMock, createAdminClientMock, revalidatePathMock, rateLimitCheckMock } =
   vi.hoisted(() => ({
@@ -71,13 +72,18 @@ beforeEach(() => {
 });
 
 describe("hashRecoveryCode()", () => {
-  it("sha256 十六进制且去分隔符归一", async () => {
-    await expect(hashRecoveryCode("ABCD-2345")).resolves.toBe(
-      createHash("sha256").update("ABCD2345").digest("hex"),
-    );
-    await expect(hashRecoveryCode("ABCD-2345")).resolves.toBe(
-      await hashRecoveryCode("ABCD2345"),
-    );
+  it("返回 scrypt 编码而不是裸 SHA-256（CWE-916 的修复本身）", async () => {
+    const stored = await hashRecoveryCode("ABCD-2345");
+    expect(stored.startsWith("scrypt$")).toBe(true);
+    // 形状断言不够硬：「加了前缀但底下还是 sha256」也能通过 startsWith，
+    // 所以直接断言它不等于旧实现的结果。
+    expect(stored).not.toBe(createHash("sha256").update("ABCD2345").digest("hex"));
+  });
+
+  it("同一明文两次生成结果不同（每行独立随机盐）", async () => {
+    const a = await hashRecoveryCode("ABCD-2345");
+    const b = await hashRecoveryCode("ABCD2345");
+    expect(a).not.toBe(b);
   });
 });
 
@@ -163,7 +169,7 @@ describe("redeemRecoveryCode()", () => {
   it("兑换成功消费并解绑 TOTP", async () => {
     mockServerClient();
     repo.listUnusedRecoveryCodes.mockResolvedValue([
-      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+      { id: "c1", code_hash: await deriveRecoveryCodeHash(PLAINTEXT, TEST_KDF), used_at: null },
     ]);
     repo.consumeRecoveryCode.mockResolvedValue(true);
     const { deleteFactor } = mockAdminMfa([
@@ -176,10 +182,51 @@ describe("redeemRecoveryCode()", () => {
     expect(deleteFactor).toHaveBeenCalledWith({ id: "f1", userId: "u1" });
   });
 
+  it("存量裸 SHA-256 行仍可兑换（不需要迁移，也不会把已有用户锁在门外）", async () => {
+    mockServerClient();
+    repo.listUnusedRecoveryCodes.mockResolvedValue([
+      {
+        id: "c1",
+        code_hash: createHash("sha256").update("ABCD2345").digest("hex"),
+        used_at: null,
+      },
+    ]);
+    repo.consumeRecoveryCode.mockResolvedValue(true);
+    mockAdminMfa([{ id: "f1", factor_type: "totp" }]);
+    await expect(redeemRecoveryCode(PLAINTEXT)).resolves.toEqual({ ok: true });
+    expect(repo.consumeRecoveryCode).toHaveBeenCalledWith("c1", "u1");
+  });
+
+  it("多张候选里命中的是真正匹配的那一行（每张有自己的盐）", async () => {
+    mockServerClient();
+    repo.listUnusedRecoveryCodes.mockResolvedValue([
+      { id: "c1", code_hash: await deriveRecoveryCodeHash("QQQQ7777", TEST_KDF), used_at: null },
+      { id: "c2", code_hash: await deriveRecoveryCodeHash(PLAINTEXT, TEST_KDF), used_at: null },
+    ]);
+    repo.consumeRecoveryCode.mockResolvedValue(true);
+    mockAdminMfa([{ id: "f1", factor_type: "totp" }]);
+    await expect(redeemRecoveryCode(PLAINTEXT)).resolves.toEqual({ ok: true });
+    expect(repo.consumeRecoveryCode).toHaveBeenCalledWith("c2", "u1");
+  });
+
+  it("读不出形状的存储行判否，而不是抛错或裸比较", async () => {
+    mockServerClient();
+    repo.listUnusedRecoveryCodes.mockResolvedValue([
+      { id: "c1", code_hash: "scrypt$1024$1$1$zz$aa", used_at: null },
+      { id: "c2", code_hash: "", used_at: null },
+    ]);
+    mockAdminMfa([{ id: "f1", factor_type: "totp" }]);
+    await expect(redeemRecoveryCode(PLAINTEXT)).resolves.toEqual({
+      ok: false,
+      error: "mfaInvalidCode",
+    });
+    expect(repo.consumeRecoveryCode).not.toHaveBeenCalled();
+  });
+
   it("抢占失败返回 mfaInvalidCode", async () => {
     mockServerClient();
     repo.listUnusedRecoveryCodes.mockResolvedValue([
-      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+      { id: "c1", code_hash: await deriveRecoveryCodeHash(PLAINTEXT, TEST_KDF), used_at: null },
     ]);
     repo.consumeRecoveryCode.mockResolvedValue(false);
     mockAdminMfa();
@@ -192,7 +239,7 @@ describe("redeemRecoveryCode()", () => {
   it("列因子失败时回答解绑失败，并且不扣恢复码", async () => {
     mockServerClient();
     repo.listUnusedRecoveryCodes.mockResolvedValue([
-      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+      { id: "c1", code_hash: await deriveRecoveryCodeHash(PLAINTEXT, TEST_KDF), used_at: null },
     ]);
     repo.consumeRecoveryCode.mockResolvedValue(true);
     mockAdminMfa([], { list: true });
@@ -207,7 +254,7 @@ describe("redeemRecoveryCode()", () => {
   it("删因子失败时回答解绑失败，而不是报成功", async () => {
     mockServerClient();
     repo.listUnusedRecoveryCodes.mockResolvedValue([
-      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+      { id: "c1", code_hash: await deriveRecoveryCodeHash(PLAINTEXT, TEST_KDF), used_at: null },
     ]);
     repo.consumeRecoveryCode.mockResolvedValue(true);
     const { deleteFactor } = mockAdminMfa([{ id: "f1", factor_type: "totp" }], {
@@ -224,7 +271,7 @@ describe("redeemRecoveryCode()", () => {
   it("本来就没有 TOTP 因子是合法状态，照常扣码", async () => {
     mockServerClient();
     repo.listUnusedRecoveryCodes.mockResolvedValue([
-      { id: "c1", code_hash: await hashRecoveryCode(PLAINTEXT), used_at: null },
+      { id: "c1", code_hash: await deriveRecoveryCodeHash(PLAINTEXT, TEST_KDF), used_at: null },
     ]);
     repo.consumeRecoveryCode.mockResolvedValue(true);
     const { deleteFactor } = mockAdminMfa([{ id: "f2", factor_type: "phone" }]);
