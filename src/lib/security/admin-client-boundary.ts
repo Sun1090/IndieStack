@@ -25,6 +25,7 @@
  */
 
 import ts from "typescript";
+import { stripComments } from "../source-comments.ts";
 
 export interface AdminClientSource {
   /** Repository-relative POSIX path, e.g. `src/lib/repositories/notifications.ts`. */
@@ -91,6 +92,7 @@ export type AdminClientIssueCode =
   | "ADMIN_CLIENT_STORAGE_BUCKET_NOT_ALLOWED"
   | "ADMIN_CLIENT_AUTH_ADMIN_NOT_ALLOWED"
   | "ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"
+  | "ADMIN_CLIENT_TRUST_EVIDENCE_FILE_MISSING"
   | "ADMIN_CLIENT_TRUST_EVIDENCE_EMPTY";
 
 export interface AdminClientIssue {
@@ -283,7 +285,14 @@ export const ADMIN_CLIENT_INVENTORY: AdminClientInventoryEntry[] = [
     rpc: [],
     storageBuckets: [],
     authAdmin: ["generateLink", "getUserById"],
-    trust: { kind: "caller-validated", evidence: ["调用方必须先确认"] },
+    // 授权不在本模块里——它真的在调用方，所以证据也**必须**写到调用方去。
+    // 原先这条是 `["调用方必须先确认"]`：一句 JSDoc 散文，而判定是 `source.includes(...)`
+    // 且拿原始文本比对 ⇒ 这句话**恰好只存在于注释里**，也就是说这条门禁
+    // 一直在靠注释通过，删掉那行 JSDoc 才会红。**未知不算通过，注释也不算证据。**
+    trust: {
+      kind: "caller-validated",
+      evidence: ["src/app/api/auth/passkey/auth-verify/route.ts#verifyAssertion"],
+    },
     rationale:
       "The WebAuthn assertion is validated by callers before this bridge mints an Auth session; tokens never leave the server.",
   },
@@ -814,6 +823,101 @@ function compareEntry(facts: AdminClientFacts, entry: AdminClientInventoryEntry)
   return issues;
 }
 
+/**
+ * Parse one evidence fragment.
+ *
+ * A fragment containing `#` is a **cross-file** claim: `path/in/repo.ts#symbol`, meaning
+ * "the authorization this call site relies on lives in that file". The convention already
+ * exists elsewhere in the security gates (`src/lib/security/route-auth.ts` emits
+ * `${file}#${symbol}`), and it is the only honest way to record a `caller-validated` trust:
+ * the guard genuinely is not in the module being audited, so demanding a same-file symbol
+ * would force the entry to describe its shape instead of its authorization.
+ *
+ * Fragments without `#` are matched inside the audited module itself.
+ */
+function parseEvidenceFragment(
+  fragment: string,
+): { file: string; symbol: string } | null {
+  const separator = fragment.indexOf("#");
+  if (separator === -1) return null;
+  return {
+    file: fragment.slice(0, separator),
+    symbol: fragment.slice(separator + 1),
+  };
+}
+
+/**
+ * Whether `code` contains `fragment` **as itself**, not as a prefix of something longer.
+ *
+ * Plain `includes` was the second half of the same problem as comments: renaming a guard from
+ * `verifyAssertion` to `verifyAssertionRenamed` keeps every evidence row green, because the old
+ * name is still a substring of the new one. Measured on the committed inventory: adding word
+ * boundaries turns **0 of 24** evidence rows red, so this tightens the check without inventing
+ * false alarms.
+ *
+ * Boundaries are `[\w$]` (not `\b`) because JS identifiers allow `$`, and fragments may end in a
+ * non-word character (`deleteUser(userId)`, `supabase.auth.getUser`), where `\b` would misfire.
+ */
+function containsFragment(code: string, fragment: string): boolean {
+  const escaped = fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`).test(code);
+}
+
+/**
+ * Check one evidence row (a set of alternatives, any one of which satisfies it).
+ *
+ * Returns an empty array when satisfied, otherwise exactly one issue. Fail-closed rules:
+ *   - a cross-file fragment whose target file is not in the audited source set is reported as
+ *     `ADMIN_CLIENT_TRUST_EVIDENCE_FILE_MISSING`, **not** quietly skipped — a reference to a
+ *     file that is not there is not evidence of anything;
+ *   - matching happens on comment-stripped code, so a symbol that survives only inside a
+ *     comment does not satisfy the row.
+ */
+function evidenceIssues(
+  alternatives: readonly string[],
+  ownFile: string,
+  codeByFile: Map<string, string>,
+): AdminClientIssue[] {
+  const missingFiles: string[] = [];
+
+  for (const fragment of alternatives) {
+    const target = parseEvidenceFragment(fragment);
+    if (target === null) {
+      if (containsFragment(codeByFile.get(ownFile) ?? "", fragment)) return [];
+      continue;
+    }
+    const code = codeByFile.get(target.file);
+    if (code === undefined) {
+      if (!missingFiles.includes(target.file)) missingFiles.push(target.file);
+      continue;
+    }
+    if (target.symbol !== "" && containsFragment(code, target.symbol)) return [];
+  }
+
+  if (missingFiles.length > 0) {
+    return [
+      {
+        code: "ADMIN_CLIENT_TRUST_EVIDENCE_FILE_MISSING",
+        file: ownFile,
+        message:
+          `${ownFile}: trust evidence points at ${missingFiles.join(", ")} ` +
+          "but that file is not part of the audited sources — a cross-file reference must name a " +
+          "real application source, otherwise this row can never be verified.",
+      },
+    ];
+  }
+
+  return [
+    {
+      code: "ADMIN_CLIENT_TRUST_EVIDENCE_MISSING",
+      file: ownFile,
+      message:
+        `${ownFile}: trust evidence ${alternatives.map((alt) => `"${alt}"`).join(" or ")} ` +
+        "is missing (comments do not count as evidence)",
+    },
+  ];
+}
+
 export function inspectAdminClientBoundary(
   sources: AdminClientSource[],
   inventory: AdminClientInventoryEntry[] = ADMIN_CLIENT_INVENTORY,
@@ -845,17 +949,25 @@ export function inspectAdminClientBoundary(
           "但 evidence 是空的——请写清凭什么相信这个调用点（符号必须真实出现在模块里）",
       });
     }
-    const source = sourceByFile.get(fact.file) ?? "";
+    /**
+     * 证据判定一律在**剥掉注释**的源码上做。
+     *
+     * 原始文本做子串匹配的后果是**假绿**，而且是安全门禁里最贵的一种：
+     * 只要模块里任何位置（包括注释、JSDoc、被注释掉的旧实现）出现过那串字符，
+     * 这条授权判断就算「有据可查」。实测过：把证据符号从真实代码里删干净、
+     * 只在注释里留一句，门禁只剩 `CALL_SITE_DRIFT` 一条，evidence **全过**。
+     * 也就是说这道门禁可以被人用一行注释关掉，而它自己不会说。
+     *
+     * （同一个 `stripComments` 在 i18n 侧防的是反方向——注释里的示例代码造成假红。
+     * 两处需求同形、代价不同，所以共用一份实现。）
+     */
+    const codeByFile = new Map(
+      sources.map((source) => [source.fileName, stripComments(source.content)]),
+    );
     for (const evidence of entry.trust.evidence) {
       const alternatives = typeof evidence === "string" ? [evidence] : evidence;
-      if (alternatives.some((alt) => source.includes(alt))) continue;
-      issues.push({
-        code: "ADMIN_CLIENT_TRUST_EVIDENCE_MISSING",
-        file: fact.file,
-        message:
-          `${fact.file}: trust evidence ${alternatives.map((alt) => `"${alt}"`).join(" or ")} ` +
-          "is missing",
-      });
+      const unmet = evidenceIssues(alternatives, fact.file, codeByFile);
+      for (const item of unmet) issues.push(item);
     }
   }
 

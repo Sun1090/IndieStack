@@ -325,3 +325,164 @@ describe("trust.evidence 为空", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("trust.evidence 不能靠注释通过", () => {
+  // 回归：判定原先拿**原始文本**做 `includes`，于是模块里任何位置（含注释、JSDoc、
+  // 被注释掉的旧实现）出现过那串字符，这条授权判断就算有据可查。
+  // 那是安全门禁里最贵的失效形态——**假绿**：门禁看起来在守，实际上一行注释就能关掉它。
+  const code = `export async function handler() {
+  return createAdminClient().from("profiles").select("id");
+}
+`;
+
+  it("证据符号只出现在行注释里 → 报缺失", () => {
+    const found = codes(
+      [source("src/lib/repositories/example.ts", `// requireAdmin() was here\n${code}`)],
+      [inventory({ trust: { kind: "role", evidence: ["requireAdmin"] } })],
+    );
+    expect(found).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
+  });
+
+  it("证据符号只出现在块注释 / JSDoc 里 → 报缺失", () => {
+    const found = codes(
+      [source("src/lib/repositories/example.ts", `/** 调用方必须先确认 requireAdmin */\n${code}`)],
+      [inventory({ trust: { kind: "role", evidence: ["requireAdmin"] } })],
+    );
+    expect(found).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
+  });
+
+  it("证据符号只出现在被注释掉的旧实现里 → 报缺失", () => {
+    const found = codes(
+      [source("src/lib/repositories/example.ts", `  // const admin = await requireAdmin();\n${code}`)],
+      [inventory({ trust: { kind: "role", evidence: ["requireAdmin"] } })],
+    );
+    expect(found).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
+  });
+
+  it("同一个符号在真实代码里出现 → 通过（修 bug 不能修成假红）", () => {
+    const found = codes(
+      [
+        source(
+          "src/lib/repositories/example.ts",
+          `export async function handler() {
+  const admin = await requireAdmin();
+  return createAdminClient().from("profiles").select("id") ?? admin;
+}
+`,
+        ),
+      ],
+      [inventory({ calls: ["handler"], trust: { kind: "role", evidence: ["requireAdmin"] } })],
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("证据符号被改名（旧名只剩在新名字里当子串） → 报缺失", () => {
+    // 这是 `includes` 的第二条假绿通道：`verifyAssertionRenamed` 依然满足证据 `verifyAssertion`。
+    const found = codes(
+      [
+        source(
+          "src/lib/repositories/example.ts",
+          `export async function handler() {
+  await requireAdminToo();
+  return createAdminClient().from("profiles").select("id");
+}
+`,
+        ),
+      ],
+      [inventory({ calls: ["handler"], trust: { kind: "role", evidence: ["requireAdmin"] } })],
+    );
+    expect(found).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
+  });
+
+  it("报错文案明说「注释不算证据」——否则人会先怀疑符号拼错", () => {
+    const issue = inspectAdminClientBoundary(
+      [source("src/lib/repositories/example.ts", `// requireAdmin\n${code}`)],
+      [inventory({ trust: { kind: "role", evidence: ["requireAdmin"] } })],
+    )[0];
+    expect(issue?.message).toContain("comments do not count as evidence");
+  });
+});
+
+describe("trust.evidence 的跨文件形态（file#symbol）", () => {
+  // `caller-validated` 的授权**本来就不在被审计的模块里**，所以证据也必须写到调用方去。
+  // 沿用仓库既有约定（`src/lib/security/route-auth.ts` 输出 `${file}#${symbol}`）。
+  const bridge = `export async function establishPasskeySession(userId: string) {
+  const admin = createAdminClient();
+  return admin.auth.admin.getUserById(userId);
+}
+`;
+  const caller = `async function verifyAssertion() { return null; }
+export async function POST() {
+  await verifyAssertion();
+  return establishPasskeySession("u-1");
+}
+`;
+  const crossEntry = inventory({
+    file: "src/lib/auth/passkey-session.ts",
+    surface: "auth-bridge",
+    calls: ["establishPasskeySession"],
+    authAdmin: ["getUserById"],
+    tables: [],
+    trust: { kind: "caller-validated", evidence: ["src/api/caller.ts#verifyAssertion"] },
+  });
+
+  it("被引用文件的真实代码里有该符号 → 通过", () => {
+    expect(
+      codes(
+        [
+          source("src/lib/auth/passkey-session.ts", bridge),
+          source("src/api/caller.ts", caller),
+        ],
+        [crossEntry],
+      ),
+    ).toEqual([]);
+  });
+
+  it("被引用文件里该符号只出现在注释 → 仍然报缺失（跨文件不能成为新的假绿通道）", () => {
+    expect(
+      codes(
+        [
+          source("src/lib/auth/passkey-session.ts", bridge),
+          source("src/api/caller.ts", `// verifyAssertion happens before the bridge\nfunction POST() {}\n`),
+        ],
+        [crossEntry],
+      ),
+    ).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_MISSING"]);
+  });
+
+  it("被引用文件不在审计源里 → 报 FILE_MISSING，而不是静默跳过", () => {
+    // 指向一个不存在（或未被喂进来）的文件，等于这条证据**永远无法被验证**。
+    // 静默跳过就是把它降级成装饰性文字。
+    expect(
+      codes([source("src/lib/auth/passkey-session.ts", bridge)], [crossEntry]),
+    ).toEqual(["ADMIN_CLIENT_TRUST_EVIDENCE_FILE_MISSING"]);
+  });
+
+  it("备选列表里同文件与跨文件混用，任一命中即通过", () => {
+    const entry = inventory({
+      file: "src/lib/auth/passkey-session.ts",
+      surface: "auth-bridge",
+      calls: ["establishPasskeySession"],
+      authAdmin: ["getUserById"],
+      tables: [],
+      trust: {
+        kind: "caller-validated",
+        evidence: [["src/api/caller.ts#verifyAssertion", "establishPasskeySession"]],
+      },
+    });
+    expect(
+      codes([source("src/lib/auth/passkey-session.ts", bridge)], [entry]),
+    ).toEqual([]);
+  });
+
+  it("真实清单：passkey 桥的证据指向 route 里真实存在的符号", () => {
+    // 这条登记原先是 `["调用方必须先确认"]`——一句只存在于 JSDoc 里的中文散文，
+    // 配上原始文本子串匹配 ⇒ **这条门禁一直在靠注释通过**。
+    const entry = ADMIN_CLIENT_INVENTORY.find(
+      (item) => item.file === "src/lib/auth/passkey-session.ts",
+    );
+    expect(entry?.trust.evidence).toEqual([
+      "src/app/api/auth/passkey/auth-verify/route.ts#verifyAssertion",
+    ]);
+  });
+});

@@ -8074,4 +8074,67 @@
 - 下一项：`fix/trust-evidence-comment-blind`（`admin-client-boundary` 的 trust evidence 拿**原始文本**做子串匹配
   ⇒ 一句注释就能满足一条授权门禁，属假绿；前置的共享 `stripComments` 已就绪）。
   其余仍是外部权限：B03（3 个 Supabase key + 可牺牲账号）、B04（DB 密码）、B05（Resend 测试 key + VAPID）、`CRON_SECRET`。
+## 2026-10-12 — 一句注释就能关掉一道安全门禁：evidence 从此不看注释、也不看子串
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/trust-evidence-comment-blind`（base `0762253e`）。
+- 状态：DONE（本地已验证，待 PR）。
+- 为什么做：PR #237 排查 CodeQL 告警时读到 `admin-client-boundary.ts` 的 evidence 判定
+  是 `source.includes(alt)`，而 `source` 是**原始文本含注释**。
+  这是 service-role 最小权限清单的**授权证据**门禁——它能被一行注释满足，
+  等于整道门禁可以被人悄悄关掉而门禁自己不吭声。
+- **实测（本轮亲自跑，不引用记忆）**：
+  - 反向探针（合成源文件）：证据符号只写在**行注释**、只写在 **JSDoc/块注释**、
+    只写在**被注释掉的旧实现**里 → 三种各判 1 条 `TRUST_EVIDENCE_MISSING`；
+    同一符号出现在真实代码里 → 绿（修 bug 不能修成假红）。
+  - 真实仓库对照：`调用方必须先确认` 这句散文，旧判据 `PASS(绿)`、新判据 `MISS(红)`，
+    且它在 `passkey-session.ts` 全文**只出现 1 次、且只在 JSDoc 里**
+    ⇒ **这条门禁不是"可能被绕过"，是"现在就在靠注释通过"**。
+  - **爆炸半径逐条量过**：拿 `git show origin/main:...` 的清单跑全仓源码，
+    14 条非 `server-internal` 登记 / 24 条 evidence 中**只有 1 条**由绿转红（就是上面那条）。
+  - 词边界实测：给匹配加 `[\w$]` 边界后 **0 条**假红；而它堵的是同一条 `includes` 的
+    另一条假绿通道——`verifyAssertionRenamed` 依然满足证据 `verifyAssertion`（变异实测：修前绿、修后红）。
+- 完成内容：
+  - 新增 `src/lib/source-comments.ts`（`stripComments`：抹注释为等长空白、保留换行与字符串）+ 6 条用例。
+    为什么单独成模块：同一个需求在 i18n（防**假红**）与 security（防**假绿**）各长出来一份，
+    说明它不属于任何一个领域。`src/lib/i18n/translation-usage.ts` 改为 import + 再导出，
+    i18n 侧 2 处调用点与既有单测不必改。另有 2 份测试内同名函数**语义不同**（连字符串一起剥），**故意没动**。
+  - `src/lib/security/admin-client-boundary.ts`：evidence 判定改跑在 `stripComments` 之后；
+    新增 `containsFragment()`（词边界，不用 `\b`——JS 标识符允许 `$`，
+    且证据可能以非词字符结尾如 `deleteUser(userId)`）；
+    新增跨文件形态 `path#symbol`（沿用 `route-auth.ts` 既有约定）+ 规则码
+    `ADMIN_CLIENT_TRUST_EVIDENCE_FILE_MISSING`（被引用文件不在审计源里**判红**，不静默跳过）；
+    报错文案补 `(comments do not count as evidence)`，否则人会先怀疑符号拼错。
+  - `passkey-session.ts` 那条空转登记改为
+    `src/app/api/auth/passkey/auth-verify/route.ts#verifyAssertion`（授权真的在调用方）。
+  - 测试：`admin-client-boundary.test.ts` 26 → **32 条**（新增「不能靠注释通过」5 条 +
+    子串边界 1 条 + 跨文件 5 条）；`source-comments.test.ts` 6 条。
+  - 文档：`docs/db/security-audit.md` 规则表补 1 行、新增「证据匹配三条硬规矩」、
+    失败封闭验证补 1 条、「已知边界」补 1 条（见下）。CHANGELOG `Unreleased → Fixed` 1 条。
+- 验证命令与结果：
+  - `node scripts/check-supabase-security.js` → ✅（34 迁移 / 20 表 / 32 个已分类 service-role 调用点）。
+  - `npx vitest run src/lib/security/admin-client-boundary.test.ts --project node` → **32/32**。
+  - `npx vitest run`（全量）→ **270 files / 3259 tests 全绿**（main 基线 269 /3242）。
+  - `pnpm type-check` 0 error；`pnpm lint` 0 error；`node scripts/check-bilingual-docs.js` ✅。
+  - 变异核对（`cp` 到 /tmp、复原后 `cmp` 一致）：调用方符号改名 → 红；符号整体挪进注释 → 红。
+- 一条**没有**被堵住、且如实记录的边界：**删掉 `await verifyAssertion(...)` 但保留函数定义 → 门禁仍绿**。
+  证据回答的是「那个符号还在那个文件里活着」，不是「它还在授权路径上被调用」。
+  收紧到调用可达性需要复用 `route-auth.ts` 的闭包遍历，那是另一件事，已写进「已知边界」。
+- 过程中自己踩的两个坑（都记下来，因为它们都会复发）：
+  1. **新模块的 import 必须带 `.ts` 后缀**：门禁规则模块由
+     `node --experimental-strip-types` 直跑，`from "../source-comments"` 会 `ERR_MODULE_NOT_FOUND`；
+     仓库既有约定（`../ci/workflow-policy.ts`）就是显式后缀，我没先看就凭习惯写了裸路径。
+  2. **注释里不能写字面的 `*/`**：`source-comments.ts` 头注释里那句
+     `"/* not a comment */"` 把块注释提前闭合，`--experimental-strip-types` 直接
+     `ERR_INVALID_TYPESCRIPT_SYNTAX`。写「讲注释的代码」时最容易犯。
+  3. 顺带：本 worktree 仍是未修版 `install-hooks.sh`，`pnpm <script>` 会先触发依赖安装
+     ⇒ **在 #239 合并前，这里用 `node scripts/...` 或 `npx vitest` 直跑**，
+     或加 `--config.verify-deps-before-run=false`。
+- 阻塞 / 风险 / 回滚：
+  - 风险：判定收紧后，未来若有人把授权写成散文（不带符号），会立刻红——这是想要的行为。
+  - 与 #239 无文件重叠（那边 `src/lib/release/**` + `scripts/install-hooks.sh`，这边
+    `src/lib/security/**` + `src/lib/source-comments.ts` + `src/lib/i18n/translation-usage.ts`）。
+  - 回滚：revert 本 PR，无迁移、无数据面影响。
+- 下一项：#236 / #237 / #239 / 本 PR 均等人工审批；
+  生产侧仍需用户授权（`supabase db push --linked` 应用 034、035 → 部署 → 冒烟 → digest 真实读数）。
+  可继续的本地项：把 code-scanning 告警台账做成每周只读工作流。
 - 更新时间：2026-10-12（UTC+8）。
