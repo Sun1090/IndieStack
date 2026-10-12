@@ -49,6 +49,26 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **新克隆第一次 `pnpm install` 会失败——挂在挂掉的是「安装成功」那一行。**
+  `scripts/install-hooks.sh` 里两处 `echo "...（$hooks_dir）"`：bash **按字节**判断变量名边界，
+  于是全角 `）` 的首字节被吞进变量名，`set -u` 当场报
+  `hooks_dir<U+FFFD>: unbound variable` 并退出 1 → `prepare` 非零 → `pnpm install` 整体 `[ELIFECYCLE]` 失败。
+  - **实测 A/B**（干净临时仓库、`/bin/sh`）：origin/main 版 **exit 1**，修后版 **exit 0**。
+  - **为什么 CI 抓不到**：macOS 的 `/bin/sh` 是 bash（红），ubuntu runner 的 `/bin/sh` 是 dash、zsh 也容忍（绿）。
+    典型的「CI 全绿、用户机器全红」。
+  - **为什么只有新用户会撞上**：挂掉的正是 `installed > 0` 分支里最后那行成功提示——
+    **软链已经建好了，守卫其实在**，但用户看到的是「安装失败」。老克隆幂等早退，永远走不到那一行。
+  - 修法：`$hooks_dir）` → `${hooks_dir}）`（全仓 5 个 `.sh` 逐字扫过，同类命中就这两处）。
+- **`check:hooks` 从「装钩子的脚本在不在」升级到「它跑不跑得完」。**
+  上面的缺陷之所以能进 main，是因为既有门禁只查文件存在与 `prepare` 接线——
+  **文件在、接线对、门禁全绿，而真实克隆里安装失败**。
+  新增 issue code `installer-unterminated-variable`（规则在 `src/lib/release/hook-wiring.ts`，
+  IO 侧读脚本正文，与 `findInstaller()` 同口径，避免一条查 A 另一条查 B）：
+  判据刻意保守——跳过整行注释、跳过单引号区间（shell 在其中不展开）、
+  只认 POSIX 变量名形态（`$1）`、`$@）` 不报），`${hooks_dir}）` 不报。
+  **读不到正文时不下结论**：这条是加强项，不能因为 IO 未接线把整个钩子层判红。
+  变异核对：把脚本换回 origin/main 版 → `check:hooks` 报 **2 条**红；修后版绿。
+
 - **把A05 的跨天趋势结论真的摆上面板**（接上一条「数据源」修复的后续）。
   上一条把 `created_at` 接进取数了，但面板**没人消费这个结论**——
   又一个「数据通了但没人看」。现在：

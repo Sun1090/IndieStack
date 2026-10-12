@@ -23,7 +23,7 @@ fi
 
 hooks_dir=$(git rev-parse --git-path hooks)
 if [ ! -d "$hooks_dir" ]; then
-  echo "  · 跳过 Git 钩子安装：找不到 hooks 目录（$hooks_dir）"
+  echo "  · 跳过 Git 钩子安装：找不到 hooks 目录（${hooks_dir}）"
   exit 0
 fi
 
@@ -49,7 +49,7 @@ for hook in "$repo_root/.husky/"*; do
 done
 
 if [ "$installed" -gt 0 ]; then
-  echo "  ✓ 已接入 $installed 个 Git 钩子（.husky → $hooks_dir）"
+  echo "  ✓ 已接入 $installed 个 Git 钩子（.husky → ${hooks_dir}）"
 fi
 if [ "$skipped" -gt 0 ]; then
   echo "  · 保留 $skipped 个同名自定义钩子（未覆盖）"

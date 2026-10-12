@@ -8025,3 +8025,53 @@
 - 下一项：拿到 `CRON_SECRET` 后回来把「未知」三行里的内容读数补掉；
   其余仍是外部凭据（B03/B04/B05）。
 - 更新时间：2026-10-08（UTC）。
+
+## 2026-10-12 — 新克隆第一次 `pnpm install` 是红的，而 CI 全绿：把安装脚本本身也纳入门禁
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/install-hooks-unbound-variable`（base `0762253e`）。
+- 状态：DONE（本地已验证，待 PR）。
+- 为什么做：排查 PR #237（scrypt 修复）时读 `scripts/install-hooks.sh`，
+  发现 `echo "  ✓ 已接入 …（$hooks_dir）"` —— 变量名后面紧跟全角 `）`。
+  bash **按字节**判断变量名边界，会把多字节字符的首字节吞进变量名，
+  于是查的是 `hooks_dir<U+FFFD>` 这个不存在的变量，`set -u` 下当场中止。
+- **实测 A/B（干净临时仓库，`/bin/sh`，不凭记忆）**：
+  - origin/main 版 → **exit 1**，`scripts/install-hooks.sh: line 52: hooks_dir<U+FFFD>: unbound variable`；
+  - 修后版 → **exit 0**，打印 `✓ 已接入 1 个 Git 钩子（.husky → .git/hooks）`，软链确实建好。
+  - 复现脚本：`mktemp -d` 起一个最小仓库（`package.json` 的 `prepare` 指向该脚本、
+    `.husky/pre-push` 存在），`/bin/sh scripts/install-hooks.sh; echo $?`。
+- **两个反直觉的点**（这条缺陷因此能活到 main）：
+  1. **CI 抓不到**：macOS `/bin/sh` 是 bash（红），ubuntu runner 的 `/bin/sh` 是 dash、zsh 也容忍（绿）。
+  2. **只有新克隆会撞上**：挂掉的是 `installed > 0` 分支里**最后那行成功提示**——
+     软链已经建好、守卫其实在，用户却看到 `[ELIFECYCLE] Command failed with exit code 1`。
+     老克隆幂等早退，永远走不到那一行。**「安装失败」和「守卫没装上」是两件事，报错了反而更难排查。**
+- 完成内容：
+  - `scripts/install-hooks.sh`：2 处 `$hooks_dir）` → `${hooks_dir}）`（第 26、52 行）。
+    全仓 `git ls-files '*.sh'` 只有 5 个脚本，同类命中逐字扫过，就这两处。
+  - `src/lib/release/hook-wiring.ts`：新增 issue code `installer-unterminated-variable` +
+    导出 `findUnterminatedVariables()`；`HookWiringInput.installerContent?: string | null`，
+    **读不到不下结论**（加强项不能因 IO 未接线把钩子层判红）；`hooks.length > 0` 时才检查。
+    判据保守：跳过整行注释、跳过单引号区间（shell 在其中不展开）、只认 POSIX 变量名（`$1）`/`$@）` 不报）、
+    `${hooks_dir}）` 不报。
+  - `scripts/lib/hook-wiring-check.js`：`readInstallerContent()`，与规则侧 `findInstaller()` 同口径
+    （只认 `prepare` 里文件名含 `hook` 的 `scripts/*.sh`），避免一条查 A、另一条查 B。
+  - `src/lib/release/hook-wiring.test.ts`：新增 8 条（1 阳性 + 1 行号 + 6 条阴性防假红：
+    `${VAR}）`、整行注释、单引号区间、`$1）`/`$@）`/`$#）`、正文读不到、钩子目录为空），
+    该文件 18 → **26 条**；全量 269 文件 /3250 用例（main 基线 269 /3242，+8）。
+  - `CHANGELOG.md`：`Unreleased → Fixed` 两条。
+- 验证命令与结果：
+  - `npx vitest run src/lib/release/hook-wiring.test.ts --project node` → **26/26 通过**。
+  - `pnpm check:hooks` → ✅（1 个钩子，1 条命令可解析）。
+  - **变异核对**（`cp` 到 /tmp 再 `cmp` 复原，未用 checkout/reset）：
+    把 `scripts/install-hooks.sh` 换成 origin/main 版 → `node scripts/check-hooks.js` 报
+    **2 条** `installer-unterminated-variable`（第 26、52 行），exit 1；换回修后版 → exit 0，`cmp` 确认字节一致。
+- 阻塞 / 风险 / 回滚：
+  - 风险低：脚本改动只影响输出行的变量写法；新规则读不到脚本时不下结论，不会误伤已有克隆。
+  - 回滚：revert 本 PR 的两个 commit 即可，无迁移、无数据面影响。
+  - **顺带记一次自踩**：在 worktree 里跑 `pnpm install`（`check:hooks` 会触发 `prepare`）时，
+    因所有 worktree 共享同一个 `.git/hooks` 目录，主检出的 `pre-push` 被软链到了该 worktree；
+    已 `ln -sf` 指回 `/Users/mianbaopian/Projects/IndieStack/.husky/pre-push` 并 `readlink` 确认。
+    **push 前必须 `readlink` 核对**——worktree 一删，钩子层就整体消失。
+- 下一项：`fix/trust-evidence-comment-blind`（`admin-client-boundary` 的 trust evidence 拿**原始文本**做子串匹配
+  ⇒ 一句注释就能满足一条授权门禁，属假绿；前置的共享 `stripComments` 已就绪）。
+  其余仍是外部权限：B03（3 个 Supabase key + 可牺牲账号）、B04（DB 密码）、B05（Resend 测试 key + VAPID）、`CRON_SECRET`。
+- 更新时间：2026-10-12（UTC+8）。

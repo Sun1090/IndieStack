@@ -58,7 +58,8 @@ export type HookIssueCode =
   | "unknown-pnpm-script"
   | "missing-binary"
   | "missing-file-operand"
-  | "hooks-not-installed";
+  | "hooks-not-installed"
+  | "installer-unterminated-variable";
 
 export interface HookDocument {
   /** 钩子文件名，如 `pre-push`。 */
@@ -74,6 +75,12 @@ export interface HookWiringInput {
   bins: readonly string[];
   /** 判断仓库内某个相对路径（`/` 分隔）是否存在——由调用方提供，规则本身不碰文件系统。 */
   fileExists: (repoPath: string) => boolean;
+  /**
+   * 钩子安装脚本的正文（`prepare` 指向的那个 `.sh`）。
+   * `null` / `undefined` 表示没读到——此时**不下结论**（这条判定是加强项，
+   * 不能因为 IO 侧没接线就把整个钩子层判红）。
+   */
+  installerContent?: string | null;
 }
 
 export interface HookIssue {
@@ -279,6 +286,83 @@ function findInstaller(prepare: string): string | null {
   return null;
 }
 
+/**
+ * `$VAR` 后面紧跟一个非 ASCII 字符（`echo "... 个（$hooks_dir）"` 这种写法）。
+ *
+ * 为什么这算 bug：POSIX 变量名只含 ASCII，但 **bash 按字节判断名字边界**，
+ * 于是全角括号的第一个字节被吞进变量名——`$hooks_dir）` 查的其实是
+ * `hooks_dir<E3>` 这个不存在的变量。在 `set -u` 下脚本当场中止：
+ *
+ *   scripts/install-hooks.sh: line 52: hooks_dir<U+FFFD>: unbound variable
+ *
+ * 实测分两种（同一份脚本、同一个 `set -u`）：
+ *   - macOS `/bin/sh` 是 bash ⇒ **退出码 1**；
+ *   - ubuntu 上 `/bin/sh` 是 dash（zsh 同）⇒ 正常打印，退出码 0。
+ * 所以这条缺陷**在 CI 里是绿的、在用户的笔记本上是红的**。
+ *
+ * 落地后果比报错信息严重：`prepare` 非零退出会让 `pnpm install` 整体失败
+ * （`[ELIFECYCLE] Command failed with exit code 1`），而它挂掉的那一行是
+ * 函数最后的成功提示——**软链已经建好了，钩子其实是装上的**，
+ * 于是新用户看到「安装失败」但守卫其实在，这比单纯的失败更难排查。
+ * 触发条件也恰好是「新克隆第一次装钩子」（`installed > 0`），
+ * 老克隆因为幂等早退所以永远看不到。
+ *
+ * 判据刻意保守，只抓这一种形状：
+ *   - 跳过整行注释；
+ *   - 跳过单引号区间（单引号内 shell 不做展开，`'$x）'` 是无辜的）；
+ *   - 变量名必须是 POSIX 形态（`[A-Za-z_][A-Za-z0-9_]*`），`$1）`、`$@）` 这类不算。
+ * `${hooks_dir}）` 是正确修法，不报（花括号已经界定边界）。
+ */
+const UNTERMINATED_VARIABLE = /\$([A-Za-z_][A-Za-z0-9_]*)([^\x00-\x7F])/;
+
+/** 去掉单引号包裹的区间（shell 在其中不展开变量），保留换行以维持行号。 */
+function withoutSingleQuotes(line: string): string {
+  return line.replace(/'(?:[^']|\\')*'/g, (region) => region.replace(/[^\n]/g, " "));
+}
+
+/** 扫描安装脚本，返回「`$VAR` 紧跟非 ASCII」所在的行号（1 起）与片段。 */
+export function findUnterminatedVariables(
+  content: string,
+): Array<{ line: number; snippet: string }> {
+  const found: Array<{ line: number; snippet: string }> = [];
+  const lines = content.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = lines[index];
+    if (/^\s*#/.test(raw)) continue;
+    const scannable = withoutSingleQuotes(raw);
+    const match = UNTERMINATED_VARIABLE.exec(scannable);
+    if (!match) continue;
+    found.push({ line: index + 1, snippet: raw.trim() });
+  }
+  return found;
+}
+
+/**
+ * 安装脚本自身的健康度。
+ *
+ * 已有的 `hooks-not-installed` 只回答「装钩子的脚本在不在」，
+ * 不回答「它跑不跑得完」——本次缺陷正好从这两者之间的缝里漏过去：
+ * 文件存在、`prepare` 接线正确、`check:hooks` 全绿，而真实克隆里 `pnpm install` 失败。
+ */
+function auditInstallerScript(input: HookWiringInput): HookIssue[] {
+  const content = input.installerContent;
+  if (content === null || content === undefined) return [];
+  const issues: HookIssue[] = [];
+  for (const hit of findUnterminatedVariables(content)) {
+    issues.push(
+      issue(
+        "installer-unterminated-variable",
+        "Git 钩子安装脚本",
+        `第 ${hit.line} 行 \`$变量\` 后紧跟全角字符（${hit.snippet}）：bash 按字节判断变量名边界，` +
+          "会把多字节字符的首字节吞进变量名，于是 `set -u` 下当场 unbound variable、" +
+          "`prepare` 非零退出、`pnpm install` 整体失败。改成 `${VAR}` 即可。" +
+          "（macOS /bin/sh 是 bash 会红，ubuntu 的 dash 与 zsh 不红——所以 CI 抓不到它。）",
+      ),
+    );
+  }
+  return issues;
+}
+
 /** 执行钩子层自检。 */
 export function auditHookWiring(input: HookWiringInput): HookWiringReport {
   const hooks = [...input.hooks].sort((left, right) => left.name.localeCompare(right.name));
@@ -296,6 +380,7 @@ export function auditHookWiring(input: HookWiringInput): HookWiringReport {
     }
   }
   if (hooks.length > 0) issues.push(...auditInstallation(input));
+  if (hooks.length > 0) issues.push(...auditInstallerScript(input));
 
   return { issues, checkedCommands, hookNames: hooks.map((hook) => hook.name) };
 }
