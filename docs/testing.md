@@ -282,8 +282,14 @@ i18n/RLS/工作流等静态门禁）· `Unit Tests`（覆盖率门禁）·
 - 规则本体是纯函数（`src/lib/security/codeql-alert-policy.ts`），由
   `src/lib/security/codeql-alert-policy.test.ts` 覆盖，并用真实仓库文件断言零问题。
 
-**局限**：真实告警列表、与基线分支的差异、dismissal 记录都在 GitHub 侧，需要 `security-events: read`
-权限（见 runbook 的「外部依赖」），本地无法复现；本门禁只防止扫描强度与处置策略静默漂移。
+**局限**：本门禁只防止扫描强度与处置策略静默漂移，**不核对告警数量**——数量对账是另一条检查：
+`pnpm ops:codeql-alerts`（见 runbook 的「外部依赖」一节）。
+
+> 这里原先写的是「真实告警列表…本地无法复现」。2026-10-13 实测**是错的**：本仓库虽是 public，
+> `GET /repos/{owner}/{repo}/code-scanning/alerts` 匿名回 **401**，但本机 `gh` 的 token 就能读到
+> 全部字段 ⇒ 缺的一直不是权限，是没人写这个探测。它现在有了，并登记了 5 条真实告警作为台账。
+> ⚠️ 复用这条能力时注意：`security_severity_level` **只在带 `x-github-api-version: 2022-11-28`
+> 时才有值**，否则返回 `null`，而 `null` 看着完全像「GitHub 没给这条评分」。
 
 ### Secrets Scan 扫描强度与泄漏处置（J05）
 
