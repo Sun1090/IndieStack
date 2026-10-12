@@ -186,6 +186,11 @@
      而仓库里**没有任何 DB 密码类 secret**（`gh secret list` 只有一个 `SUPABASE_ACCESS_TOKEN`）。
    - 因此 B04 的阻塞从「要一个可能已有的令牌」收窄成「要数据库密码」——
      **这是一次真实的阻塞面缩小**，不是措辞调整。
+   - **2026-10-12 再补一条边界，免得有人以为 B04 已经解锁**：PostgREST 的 OpenAPI 根端点
+     用 service_role key 就能读到全部表与列名（**不需要 DB 密码**），
+     所以「线上缺哪一列」这类问题已经能查了（`pnpm ops:schema-drift`，见 `environments.md`）。
+     但 B04 要的是**在云端跑多语句演练 SQL**——OpenAPI 只给 schema、不给执行。
+     两者是不同的能力，别把前者当成后者。
 10. B05 （**部分完成：P1 已实跑通过（2026-10-05，本地 mock 构型）；P2–P4 仍缺外部权限**——
     需要 provider 测试凭据与可牺牲的真实项目；
     前置判定已固化：`pnpm drills:preflight --drill B05`）

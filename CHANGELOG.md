@@ -10,6 +10,33 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm ops:schema-drift`：「线上那个库到底有没有这一列」从此一条命令能答，而且不需要数据库密码。**
+  起因是 2026-10-12 的一次实测：`check:query-columns` 把代码里每个字面列名都对着**生成的类型**核过（0 error）、
+  `check:migrations` 34 条全绿、`pnpm build` 也过——**而生产库里没有 `notifications.email_skipped_reason`**
+  （迁移 034 从未 applied）。三道门禁比的都是「代码 vs types vs 迁移文件」，
+  **没有一条比到线上那个库**。它们全绿证明的是一个不成立的结论。
+  - **后果不是理论上的**：`listUnsentEmailNotifications()` 对缺列是 `if (error) throw`，
+    digest worker 因此**每轮必抛**。今天没人看见，只因为 `/api/cron/digest` 对 GET 返回 405
+    （另一个缺陷，PR #236 在修）——**两个缺陷正好互相掩盖**，修好 405 的那一刻缺列才第一次露头。
+  - **能力从哪来**：PostgREST 在 `<root>/rest/v1/` 用 `Accept: application/openapi+json` 暴露完整 schema。
+    实测（2026-10-12）：匿名 **401**、service_role key **200**，`definitions` 里 26 张表。
+    这条**只读 schema，不执行 SQL**——所以它不解锁 B04（那条要跑多语句演练 SQL），
+    也不替代 `supabase db push`。已把这条边界同时写进 `environments.md` 与 roadmap 的 B04 条目，
+    免得下一个人把它当成「B04 已经能做完了」。
+  - **拿不到实况就说拿不到**：缺凭据 / 网络失败 / 非 2xx / OpenAPI 换形状，四条路径
+    实测都归为退出码 **2**（既不是「一致」的 0，也不是「漂移」的 1）。
+    一条会把「未知」显示成「通过」的检查，比没有检查更危险。
+  - **默认只报代码真的引用了的**缺失项：线上多出来 5 张本仓库生成类型里没有的表
+    （`progress`/`quiz_scores`/`replay_best`/`replay_history`/`wrongbook`）——
+    那是「这个 Supabase 项目还放了别的东西」，不是漂移，默认只数不报（`--all-tables` 列出）。
+  - **刻意不进 `check:all`**：它需要网络与一把 service_role key，
+    放进 CI 就等于制造一个天天因缺凭据而红的信号位（与 `ops:deploy-freshness` 同类，走 `ops:` 前缀）。
+  - 判定在 `src/lib/db/schema-drift.ts`（12 条单测），IO 在 `scripts/lib/schema-drift-check.js`。
+  - 变异核对（实测、复原后 `cmp` 一致）：把 types 里那一列改名 → 报错文案跟着变成新名字
+    ⇒ 证明它比对的是**生成的类型**，不是硬编码的列名。
+  - 真实读数：`❌ [SCHEMA_LIVE_COLUMN_MISSING] notifications.email_skipped_reason`，
+    退出码 1；比对 19 张表 / 172 列（生成类型 21 张，线上 26 张）。
+
 - **`pnpm check:retention-cron`：保留期调度「不会跑」这件事从此有门禁。**
   保留期清理的调度是守卫式的（`cron.schedule` 被包在
   `if exists (… pg_extension … 'pg_cron')` 里），这对「本地/最小化环境」是对的，
