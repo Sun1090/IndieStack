@@ -8505,6 +8505,9 @@
   四种取值都返回同样的 5 条），而 `severity=error` 返回 0 条 ⇒ 过滤器本身生效，
   所以不能用查询参数筛严重度。真实读数：#18 `high`、#11/#12/#13/#17 `medium`。
   ⇒ 这条坑已写进模块头、`--help`、runbook 与 CHANGELOG；判定层**拒绝把 `null` 当低危**。
+  （**⚠️ 本条给出的成因后来被推翻，见下一条 2026-10-13 的更正**：
+  真正的原因不是 api-version header，而是**字段取错了嵌套层级**。
+  教训本身成立，成因不成立。）
   复发模式：**「发现缺陷」之前先证伪「我的工具用法错了」**——这是我连续第 6 次在同类事上翻车。
 - 台账如实登记的一个区别：**#18 是 `triaging` 不是 `false-positive`**。
   判定确实是假阳性（issue #242），但**没有 dismissal**，而 runbook 说例外只能走 dismissal
@@ -8547,4 +8550,67 @@
 - 下一项：#236 / #235 仍被外部权限挡住（034、035 applied）。
   本机可做：把 code-scanning 告警做成每周只读 workflow（需先结案 #18 否则天天红）、
   以及 issue #245 里那条未验证问题（Management API 的多语句限制在 CLI 侧还是服务端）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 推翻我 30 分钟前写进 main 的「最重要教训」：成因不是 api-version header，是字段取错了嵌套层级
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/codeql-severity-field-location`（base `6077d4d5` = main + #247）。
+- 状态：DONE（待 PR）。
+- 为什么做：上一条台账记下「最重要教训」＝「`security_severity_level` 只在带
+  `x-github-api-version: 2022-11-28` 时才有值，否则 `null`」。**那条的教训成立，成因是错的**，
+  而且它已经随 #247 进了 main、写进四处文档。
+- 怎么发现的：按「写进文档的实测必须能指到可重跑脚本」复核自己的读数时，
+  用 `curl`（而非 `gh`）重跑那组对照，**不带 header 时 `rule.security_severity_level` 照样有值**。
+- **错因是对照实验本身不成立**：我用 `gh api` 跑「不带 header」那一组，
+  而 **`gh` 自己会补默认 api-version** ⇒ 两组都带了 header，看到的差异根本不在 header 上。
+  不带 header 时 GitHub 实际选中的版本由响应头 `x-github-api-version-selected` 给出，实测就是 `2022-11-28`。
+- 真正的机制（三条独立实测，`/tmp/api-matrix.sh` 可重跑）：
+  1. 顶层**没有**这个键：`'security_severity_level' in alert === False`、`'severity' in alert === False`；
+     它在 `alert["rule"]["security_severity_level"]`。从顶层取 ⇒ 稳定 `undefined` ⇒ 看着像 5 个 `null`。
+  2. header 与严重度无关，但**仍要带**：不受支持的版本值直接 **HTTP 400**
+     （实测 `2023-03-02`，`errors` 逐字为「supported versions are "2026-03-10" (most recent)
+     and "2022-11-28"」）；带 `2022-11-28` / `2026-03-10` / 不带 ⇒ 三组都有值。
+  3. 上一轮关于查询参数的推论**也站不住**：`severity=error` 回 0 条推不出「过滤器按
+     `rule.severity` 生效」——`error` 是合法枚举值且确实没有告警取该值，0 条与两种解释都相容。
+     真正的证据是 `severity=high` 只回 #18，而 #18 的 `rule.severity` 是 `warning`
+     ⇒ 它过滤的是 `security_severity_level`。
+     更要防的是**无法识别的取值被静默忽略并返回全部**（`nonsense`/`none`/`info`/`moderate`/`unknown`
+     都回全部 5 条）⇒「拼错了」与「全都命中」在响应上无法区分。
+     `security_severity_level=` 这个参数则被完全忽略（任何取值都回全部 5 条）。
+- 完成内容：
+  - **把映射逻辑 `toLiveAlert` 从 `scripts/lib`（IO 层，无单测）搬进
+    `src/lib/security/codeql-alert-registry.ts`**——这才是那句错误解释能进 main 的结构性原因：
+    「字段在哪一层」的唯一决定点当时一行测试都没有。IO 层改为 re-export，不再另写一份。
+  - 新增 4 条单测钉住「只从 `rule` 下面取」，其中一条显式覆盖「顶层放个 null 也不许污染取值」
+    （就是我实际犯的那个错）。
+  - 更正三处运行时可见的错误文案：`--help`、`CODEQL_ALERT_LIVE_UNREADABLE`、
+    `CODEQL_ALERT_SEVERITY_UNKNOWN`（后者现在直接教人去看 `rule` 下面）。
+  - 文档同步：runbook「外部依赖」重写这一段并**逐字记下我错在哪**；`docs/testing.md`、
+    `docs/operations/environments.md`、CHANGELOG 同因更正；
+    `fixtures/codeql-alerts.json` 的 `_comment` 改为「形状取自实况、内容含构造条目，
+    **实况 5 条都不是 null**」——原写法会被读成实况有 null，正是我踩的那类混淆；
+    上一条台账加指针（不回改内容）。
+- ⚠️ **重跑变异时发现一个逃逸，已补**：上一轮声称「SLA 改用日历天数」这个变异被逮到，
+  **实际没逮到**。原因是那条 SLA 用例只有一对日期（09-27 → 10-13，工作日 12 / 日历 16），
+  两种算法都判红 ⇒ 实现换成日历天，测试照样全绿。
+  现补一对**能区分**的边界（10-01 → 10-07：工作日恰 5 = 不越界，日历 6 = 越界）
+  加它的下一天（10-08：工作日 6 ⇒ 红）。
+  **同一个老毛病第三次**：变异「全绿」时第一怀疑必须是可达性。
+- 验证命令和结果：
+  - `bash /tmp/run-mutants.sh` → **6/6 CAUGHT**（M1 null 洗成 low / M2 未登记永不触发 /
+    M3 腐烂不报 / **M4 SLA 用日历天数（本轮从 ESCAPED 修成 CAUGHT）** / M5 triaging 不要求 note /
+    M6 严重度改从顶层取 ⇒ 2 条红）。变异一律 `cp` 备份 + `cmp` 校验还原（RESTORED-OK）。
+  - `pnpm exec vitest run src/lib/security/codeql-alert-registry.test.ts` ✅ **28/28**。
+  - `pnpm exec tsc --noEmit` ✅；eslint（3 files）✅。
+  - **真实读数不变**：`GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack
+    node scripts/check-codeql-alerts.js --today 2026-10-13` → 仍 2 条红
+    （`BLOCKING_OPEN` #18 + `TRIAGE_SLA_BREACHED` 12 工作日），exit 1
+    ⇒ 搬映射逻辑没有改变行为（它本来就取对了位置，**错的只是我写的解释**）。
+  - `--fixture` 读数不变（#19 UNREGISTERED + #18 两条）。
+  - `pnpm check:changelog` ✅；`check:doc-links` ✅ 153 条；`check:docs` ✅；
+    `check-progress-ledger` ✅ 177 条；表格探测器 159 md / 0 处跨行。
+- 阻塞 / 风险 / 回滚：不改判定行为（读数逐条前后一致），只改映射的归属位置、文案与文档 ⇒ 无线上风险。
+  回滚 = revert 本 commit。
+- 下一项：`#236` / `#235` 仍被外部权限挡住（034、035 applied）。
+  本机仍可做的：把 code-scanning 只读 workflow 化（等 #18 结案，否则天天红）。
 - 更新时间：2026-10-13（UTC+8）。

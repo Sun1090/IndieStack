@@ -21,14 +21,26 @@
  * `js/log-injection` 就是这么挂了 5 天没人发现。而本机 `gh` 实测能读到全部字段
  * ⇒ **缺的不是权限，是没人写这个探测**。
  *
- * ## 一个必须带上的 header（本仓库自己踩过）
+ * ## 一个 header 的坑，以及一个我把原因写错的坑（都踩过）
  *
- * `security_severity_level` **只在带 `x-github-api-version: 2022-11-28` 时才有值**。
- * 不带它，同一个字段返回 `null`——而 `null` 看起来完全像「GitHub 没给这条评分」。
- * 2026-10-13 实测对照（同一份数据、同一时刻）：
- *   无 header ⇒ `security_severity_level = null`；带 header ⇒ `high` / `medium`。
- * 所以本脚本把它当成**必需参数**，并在拿不到值时判「未知」（退出码 2），
- * **绝不**把 `null` 读成「低危」。
+ * **先说我写错的那半**：我原先在这里写「`security_severity_level` 只在带
+ * `x-github-api-version: 2022-11-28` 时才有值，不带它返回 `null`」——**那是错的**。
+ * 错因是拿 `gh api` 做「不带 header」那一组，而 **`gh` 自己会补默认 api-version**，
+ * 于是两组都带了 header，我看到的差异根本不在 header 上。改用 `curl` 严格对照后：
+ *   不带 header / 带 `2022-11-28` / 带 `2026-03-10` ⇒ `rule.security_severity_level` 都有值。
+ * 真正的成因是**字段取错了嵌套层级**：它在 `rule` 下面，顶层没有这个键。
+ * （映射逻辑因此从本文件搬进 `src/lib/.../codeql-alert-registry.ts` 并配了单测。）
+ *
+ * **header 本身仍要带**，但理由与严重度无关：不受支持的版本值会直接 **HTTP 400**
+ * （实测 `2023-03-02` 报 `supported versions are "2026-03-10" (most recent) and "2022-11-28"`），
+ * 而 `2022-11-28` 是响应头 `x-github-api-version-selected` 实测选中的那一版，钉住它让读数可复现。
+ *
+ * 还有一条实测：别用查询参数筛严重度。`severity=` 过滤的是 `security_severity_level`
+ * （`severity=high` 只回 #18，而 #18 的 `rule.severity` 是 `warning`），
+ * 且**无法识别的取值被静默忽略**（`severity=error` / `nonsense` 都回全部 5 条）
+ * ⇒ 拼错的过滤器看起来像「生效了且全命中」。
+ *
+ * 拿不到值时判「未知」（退出码 2），**绝不**把 `null` 读成「低危」。
  *
  * 只读：只发 `GET /repos/{owner}/{repo}/code-scanning/alerts`，不改任何告警状态。
  * 改 dismissal 是 maintainer 在产品界面里做的事，本脚本不碰。
@@ -36,10 +48,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { inspectCodeqlAlerts } from "../../src/lib/security/codeql-alert-registry.ts";
+import {
+  inspectCodeqlAlerts,
+  toLiveAlert,
+} from "../../src/lib/security/codeql-alert-registry.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-/** 拿不到这个 header 就拿不到 severity 分类——见文件头。 */
+/** 钉住 API 版本让读数可复现；不受支持的版本值会直接 400（不是返回 null）。 */
 export const REQUIRED_API_VERSION = "2022-11-28";
 const VALUE_FLAGS = { "--repo": "repo", "--token": "token", "--today": "today", "--fixture": "fixture" };
 const BOOLEAN_FLAGS = { "--help": "help", "-h": "help", "--json": "json" };
@@ -73,26 +88,11 @@ export function parseArgs(argv, env = process.env) {
   return { options };
 }
 
-/** 把 API 的一条告警裁剪成判定需要的形状。 */
-export function toLiveAlert(alert) {
-  const rule = typeof alert.rule === "object" && alert.rule !== null ? alert.rule : {};
-  const instance =
-    typeof alert.most_recent_instance === "object" && alert.most_recent_instance !== null
-      ? alert.most_recent_instance
-      : {};
-  const location = typeof instance.location === "object" && instance.location !== null ? instance.location : {};
-  return {
-    number: alert.number,
-    ruleId: typeof rule.id === "string" ? rule.id : "",
-    severity: typeof rule.severity === "string" ? rule.severity : "",
-    // **原样带回 null**：把「拿不到」洗成「低」是这个探测最坏的失败方式
-    securitySeverityLevel: typeof rule.security_severity_level === "string" ? rule.security_severity_level : null,
-    state: typeof alert.state === "string" ? alert.state : "",
-    createdAt: typeof alert.created_at === "string" ? alert.created_at.slice(0, 10) : "",
-    path: typeof location.path === "string" ? location.path : null,
-    dismissedReason: typeof alert.dismissed_reason === "string" ? alert.dismissed_reason : null,
-  };
-}
+// 「字段在哪一层」的唯一决定点已搬到 `src/lib/security/codeql-alert-registry.ts` 的
+// `toLiveAlert()`——那里有单测钉住它，本文件只负责发请求与读 fixture。
+// 之前在这里另写一份映射逻辑而**一行测试都没有**，于是我据此把一句错误的因果解释
+// 写进了 main（以为严重度为 null 是缺 api-version header，真相是取错了嵌套层级）。
+export { toLiveAlert };
 
 /** 从 GitHub 读 open 告警。返回 `{ alerts }` 或 `{ error }`——**不返回 `[]` 表示「没有告警」**。 */
 export async function fetchOpenAlerts(repo, token, apiBase = "https://api.github.com") {
@@ -189,8 +189,9 @@ const HELP = [
   "  --today <YYYY-MM-DD>  固定「今天」，让 SLA 与期限判定可复现",
   "  --json                机器可读输出",
   "",
-  `只读：只发 GET /repos/{repo}/code-scanning/alerts，且必须带 x-github-api-version:`,
-  `      ${REQUIRED_API_VERSION}（不带它 security_severity_level 会是 null，那是用法错误不是「没评分」）。`,
+  `只读：只发 GET /repos/{repo}/code-scanning/alerts，并钉住 x-github-api-version:`,
+  `      ${REQUIRED_API_VERSION}（不受支持的版本值会直接 HTTP 400；它不是严重度字段的前提——`,
+  `      严重度在 rule.security_severity_level 下，取顶层同名键才会得到 null）。`,
   "      不改任何告警状态——dismissal 是 maintainer 在产品界面里做的事。",
   "退出码：0 一致 / 1 发现差集或未结案或超期 / 2 用法错误或读不到实况（未知不算通过）",
 ].join("\n");
