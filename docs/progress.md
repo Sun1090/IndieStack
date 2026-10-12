@@ -8441,3 +8441,37 @@
   但它仍然只是**回答**，push 依然需要 `SUPABASE_ACCESS_TOKEN` 之外的东西：
   项目规则要求 schema 变更先在 staging 验证（本机无 staging 项目）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 新探测器的第一次真实读数：034 没上，而它和另一条探测互相印证
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/migration-status-first-reading`（base `e84ef6e5` = main + #244）。
+- 状态：DONE（待 PR）。
+- 为什么做：#244 合并后，`.github/workflows/migration-status.yml` 由那次 main push **自动跑了首跑**。
+  这是本轮唯一一次拿到**真实云端读数**——之前所有验证都在本地 mock 上做，
+  mock 能证明判定逻辑，但证明不了「端点真的存在、token 真的有效、版本号真的是那个形状」。
+- 首跑读数（run `38294116244`，`push` 事件，main = `e84ef6e5`）：
+  - `❌ [MIGRATION_NOT_APPLIED] 034: 本仓库有这条迁移，但云端没有它——多半是尚未 push 到该环境`，**exit 1**。
+  - 这一次跑同时验证了四件此前只有推断的事：
+    1. 端点存在且 CI 里的 `SUPABASE_ACCESS_TOKEN` 有效（不是 401、不是 404）；
+    2. 响应形状假设成立（`[{version, name?}]`，从 CLI 内嵌规范里读的那份）；
+    3. 版本号是 **3 位序号**形态 ⇒ `migration-status.ts` 注释里那句
+       「**这是本模块唯一一处未实测的假设**」**已被推翻**，本轮就地改成「已验证 + 为什么仍要写成形状无关」；
+    4. 它**只报 034、不报 035**——因为 035 此刻还在 PR #235 里没进 main。
+       这正是「判据是**要部署的那一版代码**依赖哪些列」应有的行为，而不是「仓库里有几条迁移」。
+  - **两条独立探测互相印证**：`pnpm ops:schema-drift`（走 PostgREST OpenAPI，用 service_role key）
+    报「线上缺 `notifications.email_skipped_reason`」；本条（走 Management API，用 access token）
+    报「034 未 applied」。**不同凭据、不同端点、同一个结论**。
+- 顺带查清的一件事（**否证型**，所以值得记）：本轮实测 `supabase db query --local --file <两条 select>`
+  与内联多语句**报同一个错**（`cannot insert multiple commands into a prepared statement`）
+  ⇒ 那个限制不在 CLI 的传参方式上。但**它到底在 CLI 侧还是 Management API 服务端，本机查不了**
+  （access token 只在 CI 里）。已开 **issue #245** 记录这条边界与一个隔离项目上 5 分钟能跑的对照实验：
+  若答案是「CLI 侧」，B04 的阻塞理由就是**第三次**写错（前两次都记在 `environments.md` 分寸第 4 条）。
+- 完成内容：`src/lib/db/migration-status.ts` 注释就地更正；
+  `docs/operations/environments.md`「云端已应用的迁移版本」那一行补上首跑读数与互相印证；本台账。
+- 验证：`node scripts/check-progress-ledger.js` ✅；表格行探测器 ✅ 全仓 0 处跨行；
+  `pnpm check:all` ✅（见下条 commit 的 CI）。
+- 阻塞 / 风险 / 回滚：纯注释与文档，无风险；回滚 = revert 本 commit。
+- 下一项：**#236 与 #235 都 CI 全绿但都不能合**——硬前置是 `034`（#236）与 `035`（#235）applied，
+  而 `supabase db push` 需要本机能交互输入 `SUPABASE_ACCESS_TOKEN`（停止条件 3）。
+  顺序不可颠倒：先 push 迁移、后部署 GET 修复，否则会把「静默死」变成「每轮 500」。
+- 更新时间：2026-10-13（UTC+8）。
