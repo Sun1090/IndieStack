@@ -71,15 +71,14 @@ export interface TranslationUsageReport {
  * 注释不是代码，扫进去就是**假红**——而这条门禁的假红不是「多查了一个 key」那么轻：
  * 它会让人开始习惯性地忽略输出。
  *
- * 实现上用**单遍 alternation**而不是状态机：字符串在前、注释在后，
- * 于是「先匹配到字符串」就天然保证了不会把 `t("a//b")` 里的 `//` 当注释。
- * 模板字面量整体按字符串处理（我们本来就不扫它内部）。
+ * 本体已搬到 `src/lib/source-comments.ts`：`check:supabase-security` 的授权证据判定需要同一个
+ * 函数，而那边的问题方向相反且更贵——**假绿**：一句注释就能满足一条安全门禁。
+ * 同一个需求在两个领域里各长出来一份实现，就说明它不属于任何一个领域。
+ * 这里再导出一次，i18n 侧的两处调用点与既有单测都不必改。
  */
-export function stripComments(content: string): string {
-  const TOKEN_RE =
-    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g;
-  return content.replace(TOKEN_RE, (match, str) => (str ? match : match.replace(/[^\n]/g, " ")));
-}
+import { stripComments } from "../source-comments.ts";
+
+export { stripComments };
 
 const NAMESPACE_RE =
   /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:useTranslations|getTranslations)\(\s*["']([^"']+)["']\s*\)/g;

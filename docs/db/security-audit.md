@@ -272,6 +272,7 @@ pnpm check:supabase-security
 | `ADMIN_CLIENT_AUTH_ADMIN_NOT_ALLOWED` | 调用未登记的 `auth.admin` 方法 |
 | `ADMIN_CLIENT_CLIENT_MODULE` | 含 `"use client"` 的模块引用 admin client |
 | `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING` | `trust.evidence` 里的字面量不再出现在源码中 |
+| `ADMIN_CLIENT_TRUST_EVIDENCE_FILE_MISSING` | 跨文件证据（`path#symbol`）指向的文件不在审计源集合里 |
 
 **失败封闭验证**（临时探针，验证后已清理，退出码均为 1）：
 
@@ -279,6 +280,8 @@ pnpm check:supabase-security
   `ADMIN_CLIENT_UNCLASSIFIED`；
 - 在 `cron/digest` 已分类模块内追加 `admin.from("secret_table")` →
   `ADMIN_CLIENT_TABLE_NOT_ALLOWED`（只报未登记的那一项，已登记的不误报）。
+- 把 passkey 调用方的 `verifyAssertion` 改名（旧名只剩在新名里当子串）→
+  `ADMIN_CLIENT_TRUST_EVIDENCE_MISSING`；把它整体挪进注释 → 同一条红。两者均已复原并 `cmp` 核对。
 
 ### 信任证据模型
 
@@ -291,11 +294,31 @@ pnpm check:supabase-security
 `mock-bearer` 类入口要求 `isMockEnabled` 与 `E2E_BEARER_TOKEN` **同时**存在，
 避免只留 mock 开关就暴露了跨用户读写。
 
+证据匹配有三条硬规矩，都是 2026-10-12 实测出来的（此前每一条都能被绕过）：
+
+1. **注释不算证据**。判定在 `stripComments()` 之后进行。原先拿原始文本做 `includes`，
+   于是模块里任何位置——JSDoc、行注释、被注释掉的旧实现——出现过那串字符，
+   这条授权判断就算"有据可查"。**一行注释就能关掉一道安全门禁，而门禁不会说**：
+   实测把证据符号从真实代码里删干净、只在注释里留一句，门禁只剩 `CALL_SITE_DRIFT` 一条，
+   evidence **全过**。已核对的爆炸半径：origin/main 的 24 条 evidence 里**只有 1 条**因此
+   由绿转红——`src/lib/auth/passkey-session.ts` 的 `["调用方必须先确认"]`，
+   一句只存在于 JSDoc 里的中文散文，也就是说那条门禁**一直在靠注释通过**。
+2. **子串不算命中**。`requireAdmin` 不再被 `requireAdminToo()` 满足：匹配带 `[\w$]` 词边界
+   （不用 `\b`，因为 JS 标识符允许 `$`，且证据可能以非词字符结尾，如 `deleteUser(userId)`）。
+   实测加边界后 24 条 evidence **0 条**假红。
+3. **跨文件证据写作 `path/in/repo.ts#symbol`**，沿用 `src/lib/security/route-auth.ts` 的既有约定。
+   这是 `caller-validated` 唯一诚实的记法：授权本来就不在被审计的模块里。
+   被引用文件**不在审计源集合里时判红**（`ADMIN_CLIENT_TRUST_EVIDENCE_FILE_MISSING`）而不是静默跳过——
+   指向不存在之处的引用不是证据，静默跳过等于把这条登记降级成装饰性文字。
+
 ### 已知边界
 
 - `surface` / `rationale` 是**审计文档**，不参与判定；门禁只校验调用点、操作集合与证据字面量。
 - 证据是字面量存在性检查，**不评估谓词语义**：`if (!isCronAuthorized)`（取反）也能通过。
   真正约束由代码评审与运行时身份矩阵保证。
+- 同理，跨文件证据只回答"那个符号还在那个文件里活着"，**不回答"它还在授权路径上被调用"**：
+  实测删掉 `await verifyAssertion(...)` 而保留函数定义，门禁仍绿。
+  要收紧到调用可达性，得复用 `route-auth.ts` 的闭包遍历，那是另一件事。
 - 操作按**模块**而非变量收集：模块内只要有 `createAdminClient()`，其余 `.from(...)`
   也要求登记。这是刻意的保守选择，宁可多要一次评审。
 - `Buffer.from()` / `Array.from()` 等内建 `.from()` 已加入豁免表；未知接收者仍保守计入。
