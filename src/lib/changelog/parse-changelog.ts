@@ -9,6 +9,16 @@ const VERSION_HEADING = /^## \[([^\]]+)\](?:\s*[—–-]\s*(\S+))?\s*$/;
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const BULLET = /^([ \t]*)-(.*)$/;
+/**
+ * ATX 标题：`#` 之后必须有空白或换行（CommonMark 的规定）。
+ *
+ * 这里曾经是一条 `text.startsWith("#")` 的兜底判断，于是**中文正文里以告警 / issue
+ * 编号开头的续行**（`#17 的判定日期是…`）被判成「非预期标题层级」，
+ * 整条 CHANGELOG 校验直接红——而它根本不是标题。
+ * 2026-10-13 写 `ops:codeql-alerts` 的条目时踩到，故按标准收紧成必须带空白。
+ * 上面三个分支（`## ` / `### ` / `# `）都要求空白，只有这条兜底不要求，属自相矛盾。
+ */
+const ANY_HEADING = /^#{1,6}(\s|$)/;
 const INTRO_MAX_LENGTH = 280;
 const MAX_BULLET_LENGTH = 2000;
 const UNRELEASED = "Unreleased";
@@ -125,7 +135,7 @@ export function parseChangelog(markdown: string): ChangelogParseResult {
       parsed.titleLine = line;
       return;
     }
-    if (text.startsWith("#")) {
+    if (ANY_HEADING.test(text)) {
       issues.push(strayHeadingIssue(`非预期标题层级：${text}`, line));
       return;
     }

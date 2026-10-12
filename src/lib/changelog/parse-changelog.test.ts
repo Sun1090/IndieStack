@@ -249,6 +249,15 @@ describe("validateChangelog() 章节与条目规则", () => {
       ),
     ).toContain("stray-heading");
   });
+
+  it("以告警编号开头的续行不是标题（#17 这类写法曾被判成 stray-heading）", () => {
+    // CommonMark：ATX 标题的 `#` 后必须有空白。旧实现用 `startsWith("#")` 兜底，
+    // 于是中文正文里「#17 的判定日期是…」这种续行被判成非法标题，整条校验红。
+    // 2026-10-13 实测踩到：它让 `pnpm test` 在真实 CHANGELOG.md 上直接失败。
+    expect(
+      codes(`# Changelog\n\nintro\n\n## [Unreleased]\n\n### Added\n\n- x\n  #17 的判定日期是 2026-10-11\n`),
+    ).toEqual([]);
+  });
 });
 
 describe("validateChangelog() 告警与文件格式", () => {

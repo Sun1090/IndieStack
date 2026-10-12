@@ -115,6 +115,13 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **`pnpm check:changelog` 不再把以告警编号开头的续行当成标题**。`src/lib/changelog/parse-changelog.ts`
+  的兜底判断是 `text.startsWith("#")`，而 CommonMark 规定 ATX 标题的 `#` 之后必须有空白——于是
+  `- x` 下面一行写 `#17 的判定日期是 2026-10-11` 会被判 `stray-heading`，**整条 CHANGELOG 校验红**。
+  上面三个分支（`## ` / `### ` / `# `）都要求空白，只有兜底不要求，属自相矛盾。
+  2026-10-13 写 `ops:codeql-alerts` 的条目时踩到：`pnpm test` 是在**仓库真实的 CHANGELOG.md** 上失败的，
+  不是某个 fixture。改成 `/^#{1,6}(\s|$)/`，并加一条断言钉住（把实现改回旧写法它必红，已实测）。
+
 - **新克隆第一次 `pnpm install` 会失败——挂在挂掉的是「安装成功」那一行。**
   `scripts/install-hooks.sh` 里两处 `echo "...（$hooks_dir）"`：bash **按字节**判断变量名边界，
   于是全角 `）` 的首字节被吞进变量名，`set -u` 当场报
