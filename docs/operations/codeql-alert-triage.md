@@ -93,6 +93,12 @@ CodeQL 结果里的 `security-severity` 是 0–10 的 CVSS 风格分值，按�
 - 判定层拒绝把 `null` 当低危，它报 `CODEQL_ALERT_SEVERITY_UNKNOWN`。
   映射逻辑（`toLiveAlert`）已从 IO 层搬进 `src/lib/security/codeql-alert-registry.ts` 并配单测——
   **它待在 `scripts/lib` 时一行测试都没有，所以那句错误的因果解释没有任何检查能拦住。**
+  IO 层剩下的部分（`fetchOpenAlerts` / `readFixture` / `parseArgs` / 退出码）在 2026-10-13
+  也补上了单测（`src/lib/security/codeql-alert-io.test.ts`，19 条）——它钉的是
+  **「读不到」绝不能长得像「一切正常」**：五类失败路径都返回 `{error}`，
+  而真读到空列表才返回 `[]`。这条分界一旦写反（把失败也返回 `[]`），探测会以退出码 **1**
+  报出一堆「台账腐烂」而不是 **2** 的「未知」——**它看起来像查过了**，而那才是最难发现的错法。
+  **改这一层之前先跑那个文件**，它是这条探测唯一的兜底。
 - 无 token 环境（fork PR、未配凭据的机器）能跑离线复现：`pnpm ops:codeql-alerts --fixture
   fixtures/codeql-alerts.json`，它录的是 2026-10-13 的真实形状（含一条 null 严重度与一条未登记告警）。
   读不到实况时探测以退出码 2 结束并报 `CODEQL_ALERT_LIVE_UNREADABLE`——**未知不算通过**，
