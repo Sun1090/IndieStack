@@ -83,9 +83,23 @@ See `docs/operations/release-tag-ledger.md`.
     **不需要数据库密码**（CLI 用自己登录态临时建 role）。原先 B04 把它记成「要真 Postgres 连接 = 要密码」，
     于是「云端到了哪一版」这个一分钟能答的事实一直挂着「本机未复核」，而它正是上面那句
     「侥幸没同步也没事」的唯一解。`docs/operations/environments.md` 与 `src/lib/drills/preflight.ts`
-    已按**「只读单条 ✅ 不要密码 / 多语句 + `begin/rollback` 演练脚本 ❌ 仍要 psql + 密码」**拆开
+    已按**「只读单条 ✅ 不要密码 / 多语句 + `begin/rollback` 演练脚本 ❌ 不能原样跑」**拆开
     （`db query --local "select 1; select 2"` 实测 `cannot insert multiple commands`）。
     **登记阻塞时只写「做不到」而不写「做到哪一层」，下一个人会把能做的部分一起放弃。**
+  - **但同一句里「所以必须 psql + 密码」这个推论，2026-10-13 被实测推翻（第三次更正）**：
+    把 `docs/operations/drills/retention-cleanup.sql` 机械压成**一条** `DO $drill$…$drill$;` 之后，
+    正本的全部 14 条断言与 6 条 `cleanup_*()` 调用在 `db query --local --file` 上跑通
+    （`failures=0`；故意改错一条期望值 ⇒ `failures=1` 并点名那条，证明它不是恒真）。
+    `begin/rollback` 也不需要显式事务——块尾 `raise exception` 会让块内全部写入回滚（实测残留 0 行）。
+    ⇒ **B04 真正未验证的是「`--linked` 这条路径能否吃下单条 `DO` 块」**（要 `SUPABASE_ACCESS_TOKEN`，本机没有），
+    而不是「多语句跑不了」。写有「必须 psql」的四处（`src/lib/drills/preflight.ts` / `docs/operations/environments.md` /
+    `docs/operations/migration-rollback-runbook.md` / `docs/roadmap-0.12.0.md` 的 B04）都已就地更正。
+    **这是同一种错误的两面**：只写「做不到」会让人放弃能做的部分；写「必须 X」却不检验
+    「是不是只有 X 能做到」，会让人多要一个本不需要的凭据。
+    两个只有实测才知道的坑一并记下：① `raise notice` **不回传**（只输出 `DO`），
+    报告只能走 exception 的消息通道；② 正本夹在两个 `do` 块之间的**顶层** `select public.cleanup_*()`
+    在压缩时极易漏掉——漏了不报错，只会让断言安静变红（第一版就是这么错的：5 条红，
+    而同一份正本用 psql 跑是 0 红 ⇒ 红的是我的转换，不是方法）。
     同一段也要交代清楚反过来的那一面：`db query --linked` **是能写的**（走真 Postgres 连接，204 也可能是真的执行了），
     本轮读数期间确实有一次带删除函数的调用落在生产上（前后各查行数均为 0，**没有删到任何东西**），
     但「没造成损失」不等于「可以做」——见 `docs/progress.md` 2026-10-10 事故条目。

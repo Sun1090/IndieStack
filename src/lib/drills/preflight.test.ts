@@ -213,6 +213,26 @@ describe("evaluateDrill", () => {
     );
   });
 
+  it("B04 的第三次纠正：「多语句 ⇒ 必须 psql」是过宽的推论（2026-10-13 实测）", () => {
+    // 实测：把 docs/operations/drills/retention-cleanup.sql 机械压成**一条** DO 块后，
+    // 正本 14 条断言 + 6 条 cleanup 调用在 `db query --local --file` 上跑通（failures=0）；
+    // 故意改错一条期望值 ⇒ failures=1 并点名那条（证明不是恒真）。
+    // 块尾 raise exception 让块内写入全部回滚（实测残留 0 行）⇒ begin/rollback 也不需要显式事务。
+    // 所以「必须 psql」是**手段**的登记，不是**能力**的边界；B04 真正未验证的是
+    // 「--linked 这条路径能否接受单条 DO 块」——那需要 SUPABASE_ACCESS_TOKEN，本机没有。
+    expect(B04.blockedReason).toContain("2026-10-13");
+    expect(B04.blockedReason).toContain("DO $drill$");
+    expect(B04.blockedReason).toContain("failures=0");
+    // 未验证的那一半必须留在原地，不能被写成「已解锁」
+    expect(B04.blockedReason).toContain("--linked");
+    // 两个只有实测才知道的坑也要留下，否则下一个人会重踩
+    expect(B04.blockedReason).toContain("raise notice");
+    expect(B04.blockedReason).toContain("顶层");
+    // DB 密码那条改成「走 psql 这条路才需要」，不再声称是唯一路径
+    const dbPassword = B04.requirements.find((r) => r.source === "SUPABASE_DB_PASSWORD")!;
+    expect(dbPassword.purpose).toContain("不是唯一的路");
+  });
+
   it("B05 的 VAPID 是复合前置：缺一个就不满足", () => {
     const both = evaluateDrill(B05, all("RESEND_API_KEY", "VAPID_PRIVATE_KEY", "NEXT_PUBLIC_VAPID_PUBLIC_KEY", "SUPABASE_ACCESS_TOKEN"));
     expect(both.ready).toBe(true);
