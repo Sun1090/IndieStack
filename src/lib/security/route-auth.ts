@@ -501,10 +501,25 @@ export const ROUTE_AUTH_LEDGER: Readonly<Record<string, RouteAuthEntry>> = {
     via: ["CRON_SECRET"],
     reason: "由外部 cron 触发，比对 Authorization: Bearer $CRON_SECRET；缺密钥即 401，不执行任何发送",
   },
+  "GET /api/cron/digest": {
+    family: "shared-secret",
+    via: ["CRON_SECRET"],
+    reason:
+      "Vercel Cron 触发用的就是这个动词（平台向生产 URL 发 HTTP GET）。与 POST 共用同一个 handle，" +
+      "先比密钥再跑业务，**不存在「GET 只读所以免鉴权」**；" +
+      "只导出 POST 的那几天里平台每轮得到 405，worker 从未执行过（2026-10-10 实测）。",
+  },
   "POST /api/cron/retention": {
     family: "shared-secret",
     via: ["CRON_SECRET"],
     reason: "保留期清理会真删数据，所以只有持密钥的调度器能触发",
+  },
+  "GET /api/cron/retention": {
+    family: "shared-secret",
+    via: ["CRON_SECRET"],
+    reason:
+      "同上：这条会真的删数据，鉴权在共用 handle 的第一步，GET 不是绕过它的通道。" +
+      "401 早退在任何 cleanup 函数之前，所以被拒的一轮一行都不会删。",
   },
   "POST /api/cron/push-retry": {
     family: "shared-secret",

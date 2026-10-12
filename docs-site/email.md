@@ -11,7 +11,7 @@ boundaries.
 | `RESEND_API_KEY` | For application email | Server-only Resend API key |
 | `RESEND_FROM` | Recommended | Verified sender, for example `IndieStack <hello@example.com>` |
 | `RESEND_API_URL` | No | Test-only endpoint override used by the E2E mail capture server |
-| `CRON_SECRET` | For digest | Authenticates `POST /api/cron/digest` through the `x-cron-secret` header |
+| `CRON_SECRET` | For digest | Authenticates `/api/cron/digest` — `Authorization: Bearer <CRON_SECRET>` (what Vercel Cron sends) or `x-cron-secret` (manual calls) |
 
 ```bash
 RESEND_API_KEY=re_xxxxxxxxx
@@ -48,9 +48,16 @@ failure: the message did leave, and the next digest run may send it again.
 
 ## Digest Worker
 
-`POST /api/cron/digest` processes up to 100 queued notifications per run. It groups them by user,
-applies that user's email preferences, and sends one digest per user. Immediate-send failures and
-items left in the queue are retried by this worker.
+`GET /api/cron/digest` (also exported as `POST`) processes up to 100 queued notifications per run.
+It groups them by user, applies that user's email preferences, and sends one digest per user.
+Immediate-send failures and items left in the queue are retried by this worker.
+
+**Why GET is the one that matters**: Vercel Cron triggers a job by making an **HTTP GET** request to
+the path listed in `vercel.json`. A route that only exports `POST` answers `405 Method Not Allowed`
+**before** the handler runs — no auth, no metrics, no run record, and `/api/health` stays green.
+That is how a scheduled worker can be silently dead for weeks. Both verbs share one handler, so GET
+is not an unauthenticated path; `pnpm check:cron-contract` fails a worker that does not declare GET,
+and `pnpm smoke:production` probes every scheduled path with an uncredentialed GET.
 
 The worker can fold large groups and caps the visible digest details, keeping the message size
 bounded. For operational monitoring it emits backlog and run metrics, plus

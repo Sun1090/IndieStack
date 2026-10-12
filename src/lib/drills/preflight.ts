@@ -96,24 +96,44 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       "而 2026-10-05 实测发现仓库里**早就有**一个可用的 Management API 令牌" +
       "（`SUPABASE_ACCESS_TOKEN` 是 repo secret，`supabase-auto-restore.yml` 每天成功跑一次、" +
       "读项目状态并报「无需恢复」）。所以平台层从来不是阻塞。" +
-      "真正缺的是**再往下一层**：演练 SQL 要用真 Postgres 连上去跑" +
-      "（`supabase migration list --linked` 同理——它读的是库里的 `schema_migrations` 表），" +
-      "而仓库里**没有任何 DB 密码类 secret**。",
+      "真正缺的是**再往下一层**：演练 SQL 要用真 Postgres 连上去跑，而仓库里没有任何 DB 密码类 secret。" +
+      "**2026-10-10 第二次把边界写准**：上一版顺手把 `supabase migration list --linked` 也算成" +
+      "「需要 DB 密码」，这是**错的**——它读库里的 `schema_migrations`，" +
+      "但走的是 CLI 自己登录态临时建的 role，实测**不需要密码就能拿到生产读数**。" +
+      "`db query --linked` 同理，但只接受**单条**语句" +
+      "（`db query --local \"select 1; select 2\"` → cannot insert multiple commands），" +
+      "**但「多语句 ⇒ 必须 psql 与密码」这句推论是错的，2026-10-13 第三次更正**：" +
+      "把 `docs/operations/drills/retention-cleanup.sql` 机械压成**一条** `DO $drill$…$drill$;` " +
+      "之后，正本的全部 14 条断言与 6 条 `cleanup_*()` 调用在 `db query --local --file` 上跑通" +
+      "（`failures=0`；故意改错一条期望值 ⇒ `failures=1` 并点名那条，证明它不是恒真）。" +
+      "`begin/rollback` 也不需要显式事务：块尾 `raise exception` 会让块内全部写入回滚（实测残留 0 行）。" +
+      "⇒ **B04 真正未验证的是「`--linked` 这条路径能否接受单条 `DO` 块」**，不是「多语句跑不了」；" +
+      "那需要 `SUPABASE_ACCESS_TOKEN`，本机没有。" +
+      "**两个实测才知道的坑**：① `raise notice` **不回传**（只输出 `DO`），报告必须走 exception 的消息通道；" +
+      "② 正本夹在两个 `do` 块之间的**顶层** `select public.cleanup_*()` 极易在压缩时漏掉——" +
+      "漏了不会报错，只会让断言安静地变红（我第一版就是这么错的，5 条红，" +
+      "而对照正本 psql 跑是 0 红 ⇒ 红的是我的转换，不是方法）。" +
+      "**混成一句「数据库级连不上」，代价是一条一分钟能跑的只读复核被推迟了两年**" +
+      "——034 在生产从未 applied 就是这么被漏掉的（见 environments.md 2026-10-10 各行）。",
     requirements: [
       {
         source: "SUPABASE_DB_PASSWORD",
         purpose:
-          "**这才是真正的缺口**：演练 SQL 与 `migration list --linked` 都要用真 Postgres 连上去，" +
-          "平台层的 Management API 令牌替代不了它",
+          "**走 psql 跑演练 SQL 这条路才需要它**：`docs/operations/drills/*.sql` 是多语句 + begin/rollback，" +
+          "psql 走 simple protocol 能直接跑。**但它不是唯一的路**——压成单条 `DO` 块后 " +
+          "`db query --local` 实测能跑（见 blockedReason 的 2026-10-13 更正），" +
+          "所以「必须 psql」是手段的登记，不是能力的边界",
         remedy:
           "Supabase 项目的 Settings → Database（或连接串里的密码部分）；" +
           "**不要**提交进仓库",
       },
       {
+        // 这条**已经满足**，列在这里是为了让它不再被误登记成阻塞。
         source: "file:~/.supabase/access-token",
         purpose:
-          "Supabase CLI 的登录态。**注意它多半已经有了**——CI 里同名 secret 每天在用；" +
-          "本地缺只是因为 GitHub Actions 的 secret 不会进本地 shell",
+          "只读的云端复核走这一层，**不需要 DB 密码**：" +
+          "`migration list --linked` 与单条 `db query --linked` 都用 CLI 登录态连进去。" +
+          "「034 到底 applied 没有」这个事实从 2026-08 起就被记成「查不到」，其实一直查得到",
         remedy: "已有则跳过；没有就 supabase login，或 export SUPABASE_ACCESS_TOKEN=<pat>",
       },
       {
@@ -123,6 +143,8 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       },
     ],
     firstCommand:
+      "pnpm exec supabase migration list --linked   # 先白拿一次只读读数（不要密码），" +
+      "确认云端到了哪一版；缺的就是这次演练要补的\n" +
       "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f - < docs/operations/drills/retention-cleanup.sql" +
       "   # 整段包在 begin/rollback 里，跑完不留数据",
     evidenceTarget: "docs/operations/production-smoke-v0.11.0.md 的云端行",

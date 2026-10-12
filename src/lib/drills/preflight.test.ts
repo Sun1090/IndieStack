@@ -82,7 +82,7 @@ describe("evaluateDrill", () => {
 
   it("B04 的真正缺口是 DB 密码，不是平台令牌（2026-10-05 实测纠正）", () => {
     // CI 里那个 SUPABASE_ACCESS_TOKEN 每天都在用，所以「缺管理凭据」是错的说法。
-    // 演练 SQL 与 migration list 都要真 Postgres 连接，平台令牌替代不了。
+    // 缺口在再下一层，但**只到「多语句演练 SQL」为止**——见下面那条 2026-10-10 的纠正。
     const onlyPlatformToken = evaluateDrill(
       B04,
       all("file:~/.supabase/access-token", "NEXT_PUBLIC_SUPABASE_URL"),
@@ -90,9 +90,51 @@ describe("evaluateDrill", () => {
     expect(onlyPlatformToken.ready).toBe(false);
     const unmet = onlyPlatformToken.requirements.find((r) => !r.satisfied)!;
     expect(unmet.source).toBe("SUPABASE_DB_PASSWORD");
-    expect(unmet.purpose).toContain("真正的缺口");
+    // 缺口必须指向**演练 SQL 这一层**，而不是含糊的「连不上库」
+    expect(unmet.purpose).toContain("演练 SQL");
     // 阻塞原因本身也要说清「平台层从来不是阻塞」，否则下一个人又会去要一个已有的令牌
     expect(onlyPlatformToken.blockedReason).toContain("平台层从来不是阻塞");
+  });
+
+  it("B04 的只读复核**不需要 DB 密码**（2026-10-10 实测纠正，防它再被写回「查不到」）", () => {
+    // 上一版把 `migration list --linked` 也归进「需要 DB 密码」，是错的：
+    // CLI 用自己的登录态临时建 role 连进库，实测不要密码就能拿到生产读数。
+    // **这条误登记的实际代价已经发生**：034 在生产从未 applied，
+    // 而「云端到了哪一版」从 2026-08 起被记成查不到，其实一条命令就能查。
+    const tokenRequirement = B04.requirements.find((r) => r.source.includes("access-token"))!;
+    expect(tokenRequirement.purpose).toContain("不需要 DB 密码");
+    expect(tokenRequirement.purpose).toContain("migration list --linked");
+    // 阻塞描述里要同时留下两次纠正，否则读的人只会拿到半个边界
+    expect(B04.blockedReason).toContain("2026-10-10");
+    expect(B04.blockedReason).toContain("单条");
+    // 而 DB 密码那条不能被改成「什么都能替代」——多语句演练 SQL 仍然要它
+    const dbPassword = B04.requirements.find((r) => r.source === "SUPABASE_DB_PASSWORD")!;
+    expect(dbPassword.purpose).toContain("多语句");
+    // 第一条命令必须是那条不要密码的：先白拿读数，再决定要不要去要密码
+    expect(B04.firstCommand).toMatch(/migration list --linked/);
+    expect(B04.firstCommand.indexOf("migration list")).toBeLessThan(
+      B04.firstCommand.indexOf("psql"),
+    );
+  });
+
+  it("B04 的第三次纠正：「多语句 ⇒ 必须 psql」是过宽的推论（2026-10-13 实测）", () => {
+    // 实测：把 docs/operations/drills/retention-cleanup.sql 机械压成**一条** DO 块后，
+    // 正本 14 条断言 + 6 条 cleanup 调用在 `db query --local --file` 上跑通（failures=0）；
+    // 故意改错一条期望值 ⇒ failures=1 并点名那条（证明不是恒真）。
+    // 块尾 raise exception 让块内写入全部回滚（实测残留 0 行）⇒ begin/rollback 也不需要显式事务。
+    // 所以「必须 psql」是**手段**的登记，不是**能力**的边界；B04 真正未验证的是
+    // 「--linked 这条路径能否接受单条 DO 块」——那需要 SUPABASE_ACCESS_TOKEN，本机没有。
+    expect(B04.blockedReason).toContain("2026-10-13");
+    expect(B04.blockedReason).toContain("DO $drill$");
+    expect(B04.blockedReason).toContain("failures=0");
+    // 未验证的那一半必须留在原地，不能被写成「已解锁」
+    expect(B04.blockedReason).toContain("--linked");
+    // 两个只有实测才知道的坑也要留下，否则下一个人会重踩
+    expect(B04.blockedReason).toContain("raise notice");
+    expect(B04.blockedReason).toContain("顶层");
+    // DB 密码那条改成「走 psql 这条路才需要」，不再声称是唯一路径
+    const dbPassword = B04.requirements.find((r) => r.source === "SUPABASE_DB_PASSWORD")!;
+    expect(dbPassword.purpose).toContain("不是唯一的路");
   });
 
   it("B05 的 VAPID 是复合前置：缺一个就不满足", () => {

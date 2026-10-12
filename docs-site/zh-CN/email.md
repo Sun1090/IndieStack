@@ -10,7 +10,7 @@ IndieStack 的应用邮件通过 Resend 发送；Supabase Auth 邮件由 Supabas
 | `RESEND_API_KEY` | 应用邮件必需 | Resend API Key，仅服务端使用 |
 | `RESEND_FROM` | 建议配置 | 已验证发件人，例如 `IndieStack <hello@example.com>` |
 | `RESEND_API_URL` | 可选 | 仅测试环境覆盖端点，E2E 用它捕获请求 |
-| `CRON_SECRET` | digest 必需 | 通过 `x-cron-secret` 请求头校验 `POST /api/cron/digest` |
+| `CRON_SECRET` | digest 必需 | 校验 `/api/cron/digest`——`Authorization: Bearer <CRON_SECRET>`（Vercel Cron 发的就是它）或 `x-cron-secret`（手动调用） |
 
 ```bash
 RESEND_API_KEY=re_xxxxxxxxx
@@ -41,8 +41,14 @@ CRON_SECRET=replace-with-a-random-secret
 
 ## Digest Worker
 
-`POST /api/cron/digest` 每轮最多拉取 100 条待发通知，按用户分组并按该用户的邮件偏好过滤，
-每人发一封摘要。实时发送失败和尚未发送的通知都由该 worker 继续处理。
+`GET /api/cron/digest`（同时导出 `POST`）每轮最多拉取 100 条待发通知，按用户分组并按该用户的
+邮件偏好过滤，每人发一封摘要。实时发送失败和尚未发送的通知都由该 worker 继续处理。
+
+**为什么 GET 才是要紧的那一个**：Vercel Cron 触发调度任务的实现是**向 `vercel.json` 里登记的路径发一个
+HTTP GET**。只导出 `POST` 的路由会在**进 handler 之前**就答 `405 Method Not Allowed`——不鉴权、不出指标、
+不落运行记录，而 `/api/health` 照旧是绿的。一条被调度的 worker 因此可以静默死掉好几周。
+本路由两个动词共用同一个 handler，所以 **GET 不是免鉴权通道**；`pnpm check:cron-contract` 会让
+没声明 GET 的 worker 直接失败，`pnpm smoke:production` 会用**不带凭据的 GET** 逐条打调度路径。
 
 Worker 会折叠大量同类型通知并限制正文明细数量，避免邮件随队列无限膨胀。运维指标除积压量与运行
 记录外，还有 `cron.digest.skipped{reason}`——本轮投递不了时按用户上报被跳过的条数

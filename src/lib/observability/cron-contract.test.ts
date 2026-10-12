@@ -10,6 +10,7 @@ import {
   isValidCronSchedule,
   isValidVercelHobbyCronSchedule,
   countCronRunsPerDay,
+  routeFileForSchedulePath,
   type CronContractInput,
   type CronContractIssueCode,
   type CronWorkerContract,
@@ -19,7 +20,8 @@ const WORKER: CronWorkerContract = {
   id: "digest",
   path: "/api/cron/digest",
   routeFile: "src/app/api/cron/digest/route.ts",
-  methods: ["POST"],
+  // 与仓库真实注册表同形：Vercel Cron 用 HTTP GET 触发，所以 GET 必须导出。
+  methods: ["GET", "POST"],
   schedule: "0 9 * * *",
   metrics: ["email.backlog", "cron.digest.completed", "cron.digest.failed"],
   skipMetrics: [],
@@ -30,11 +32,20 @@ const ROUTE_SOURCE = `
 import { recordMetric } from "@/lib/metrics";
 import { recordCronRejected } from "@/lib/cron-metrics";
 
-export async function POST() {
+async function handle() {
   recordMetric("email.backlog", 1, { unit: "count" });
   recordMetric("cron.digest.completed", 1, { unit: "ms" });
   recordMetric("cron.digest.failed", 1, {});
   recordCronRejected("digest", "invalid_credentials");
+}
+
+// Vercel Cron 走 GET，POST 是手动运维调用；两条共用 handle，所以指标与鉴权只写一次。
+export async function GET() {
+  return handle();
+}
+
+export async function POST() {
+  return handle();
 }
 `;
 
@@ -179,6 +190,7 @@ describe("auditCronContract", () => {
     expect(issues.map((issue) => issue.code)).toEqual([
       "CRON_ROUTE_MISSING",
       "CRON_METHOD_MISSING",
+      "CRON_METHOD_MISSING",
       "CRON_METRIC_MISSING",
       "CRON_METRIC_MISSING",
       "CRON_METRIC_MISSING",
@@ -191,6 +203,44 @@ describe("auditCronContract", () => {
     expect(codes(baseInput({ sources: { [WORKER.routeFile]: source } }))).toContain(
       "CRON_METHOD_MISSING",
     );
+  });
+
+  /**
+   * 这条规则来自 2026-10-10 那次实测事故：digest 与 retention 只导出 POST，
+   * 而 Vercel Cron 发的是 **HTTP GET**，于是两条 worker 从被调度那天起一次都没执行过。
+   * 「平台用哪个方法触发」以前没有任何静态证据守着——注册表里的 `methods` 是唯一的地方。
+   */
+  it("worker 不导出 GET 时失败：Vercel Cron 用 GET 触发，只给 POST 等于每轮 405", () => {
+    const postOnly = { ...WORKER, methods: ["POST" as const] };
+    const issues = auditCronContract(baseInput({ workers: [postOnly] })).issues;
+    expect(issues).toEqual([
+      expect.objectContaining({
+        code: "CRON_PLATFORM_METHOD_UNDECLARED",
+        subject: "digest",
+        message: expect.stringContaining("HTTP GET"),
+      }),
+    ]);
+  });
+
+  it("只导出 GET 也不放行：手动运维调用走 POST，注册表两条都要写全", () => {
+    const getOnly = { ...WORKER, methods: ["GET" as const] };
+    const source = ROUTE_SOURCE.replace("export async function POST", "async function POST");
+    const codes2 = codes(baseInput({ workers: [getOnly], sources: { [WORKER.routeFile]: source } }));
+    // 本规则只管「平台能不能触发到业务代码」：声明 GET 且真的导出了 ⇒ 不该报平台码
+    expect(codes2).toEqual([]);
+  });
+
+  it("两条规则可分辨：声明了 POST 却没导出 ⇒ 只报 CRON_METHOD_MISSING", () => {
+    const source = ROUTE_SOURCE.replace("export async function POST", "async function POST");
+    const codes2 = codes(baseInput({ sources: { [WORKER.routeFile]: source } }));
+    expect(codes2).toContain("CRON_METHOD_MISSING");
+    expect(codes2).not.toContain("CRON_PLATFORM_METHOD_UNDECLARED");
+  });
+
+  it("真实注册表里每个 worker 都导出 GET（否则调度器永远触发不到业务代码）", () => {
+    for (const worker of CRON_WORKERS) {
+      expect(worker.methods, `${worker.id} 必须可被 Vercel Cron 触发`).toContain("GET");
+    }
   });
 
   it("未登记到 vercel.json 的 worker 视为未被调度", () => {
@@ -268,6 +318,70 @@ describe("auditCronContract", () => {
     });
     expect(codes(kept)).not.toContain("CRON_STALE_EXEMPTION");
     expect(auditCronContract(kept).exemptedPaths).toEqual(["/api/health"]);
+  });
+
+  // 2026-10-10 的 P0 之后补的这两条：当时只把「必须导出 GET」加在 worker 侧，
+  // 于是豁免名单成了「整条路径免检」。而 Vercel Cron 对**每一条** cron 路径发的都是 GET，
+  // `/api/health` 哪天只导出 POST 就会每天 405、静态门禁全绿——正是事故本身的形状。
+  it("豁免只免 worker 契约，不免「平台能不能触发它」", () => {
+    const healthRoute = "src/app/api/health/route.ts";
+    const exempted = { "/api/health": "保活" };
+    const scheduled = [
+      { path: WORKER.path, schedule: WORKER.schedule },
+      { path: "/api/health", schedule: "0 2 * * *" },
+    ];
+    const withGet = baseInput({
+      platformCrons: scheduled,
+      excludedSchedules: exempted,
+      sources: { [WORKER.routeFile]: ROUTE_SOURCE, [healthRoute]: "export async function GET() {}" },
+    });
+    expect(codes(withGet)).toEqual([]);
+
+    // 只导出 POST：这就是那两条 worker 空转 20 天的形状。
+    const postOnly = baseInput({
+      ...withGet,
+      sources: { [WORKER.routeFile]: ROUTE_SOURCE, [healthRoute]: "export async function POST() {}" },
+    });
+    expect(auditCronContract(postOnly).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "CRON_EXEMPT_METHOD_UNDECLARED",
+          subject: "/api/health",
+        }),
+      ]),
+    );
+  });
+
+  it("豁免路由源码读不到时失败封闭，不当成「没问题」", () => {
+    const scheduled = [
+      { path: WORKER.path, schedule: WORKER.schedule },
+      { path: "/api/health", schedule: "0 2 * * *" },
+    ];
+    const missing = baseInput({
+      platformCrons: scheduled,
+      excludedSchedules: { "/api/health": "保活" },
+      // 只给 worker 源码：豁免那一侧什么都读不到（文件被删/改名的真实形状）。
+      sources: { [WORKER.routeFile]: ROUTE_SOURCE },
+    });
+    expect(auditCronContract(missing).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "CRON_EXEMPT_ROUTE_MISSING",
+          subject: "/api/health",
+        }),
+      ]),
+    );
+    // 且不与 CRON_STALE_EXEMPTION 混用：调度仍在，问题在文件不在。
+    expect(codes(missing)).not.toContain("CRON_STALE_EXEMPTION");
+  });
+
+  it("路径 → 路由文件按 App Router 约定推导，不再手写对照表", () => {
+    expect(routeFileForSchedulePath("/api/health")).toBe("src/app/api/health/route.ts");
+    expect(routeFileForSchedulePath("/api/ops/supabase-restore")).toBe(
+      "src/app/api/ops/supabase-restore/route.ts",
+    );
+    // 首尾多余的斜杠不该让推导失败（否则文件明明在却报「读不到」）。
+    expect(routeFileForSchedulePath("/api/health/")).toBe("src/app/api/health/route.ts");
   });
 
   it("指标未上报或未登记文档时分别报错", () => {

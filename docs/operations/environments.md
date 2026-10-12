@@ -52,10 +52,18 @@
 | ---- | ------------------ | -------- | ---- |
 | Supabase（平台 API） | ✅ 可用 | `gh run list --workflow supabase-auto-restore.yml`（每天 success） | Management API 令牌有效 |
 | Supabase（Auth 配置读） | ✅ 可用 | `gh run list --workflow security-config.yml`（最近一轮输出「Auth 配置已验证（scope=redirects）」） | 同上，另一条独立证据 |
-| Supabase（数据库级） | ❌ **无 DB 密码类 secret** | `gh secret list`（只有一个 `SUPABASE_ACCESS_TOKEN`） | **B04 的真正阻塞**：演练 SQL 与 `migration list --linked` 都要真 Postgres 连接 |
-| 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | 连接与凭据是好的。**但「应用侧可达」不等于「worker 跑得通」**：`/api/cron/digest` 对 GET 实测 405（2026-10-12，PR #236 在修），而它一旦能跑就会撞上下一条那个缺列 |
+| Supabase（数据库级·**只读单条**） | ✅ **连得上生产库，且不需要 DB 密码**（2026-10-10 实测） | `pnpm exec supabase db query --linked "<单条只读 SQL>"`；CLI 用自己登录态临时建 role 连进去 | 原登记的「数据库级一律连不上」**是错的**。本表下面几行生产读数就是这么取的。注意 `current_user=postgres` 且 `rolbypassrls=true`，所以 RLS 不会过滤读数——空表读数是真空，不是被策略挡住 |
+| Supabase（数据库级·**多语句脚本**） | ⚠️ **不能原样跑，但「必须 psql + 密码」是错的**（2026-10-13 第三次更正） | 实测 `pnpm exec supabase db query --local "select 1; select 2"` → `cannot insert multiple commands into a prepared statement`；但把整份演练压成**一条** `DO $drill$…$drill$;` 后 `db query --local --file` 跑通：正本 14 条断言 + 6 条 `cleanup_*()` 全部执行，`failures=0`，故意改错一条期望值 ⇒ `failures=1` 并点名那条；块尾 `raise exception` 令块内写入全部回滚（实测残留 0 行） | **B04 的阻塞被再次收窄**：不是「多语句跑不了」，而是「**`--linked` 这条路径能否吃下单条 `DO` 块，未验证**」（要 `SUPABASE_ACCESS_TOKEN`，本机没有）。⚠️ 两个实测才知道的坑：`raise notice` **不回传**（报告只能走 exception 消息通道）；正本夹在两个 `do` 块之间的**顶层** `select public.cleanup_*()` 压缩时极易漏，漏了不报错只会让断言安静变红（第一版就是这么错的：5 红 vs psql 跑同一份正本 0 红 ⇒ 红的是转换不是方法）。**只读复核从来不要密码，这条不变** |
+| 生产 Supabase（应用侧） | ⚠️ **配置可达，但摘要邮件链路线上是死的**（2026-10-10 更正） | `curl -o /dev/null -w '%{http_code}' -X GET $BASE/api/cron/digest` → **405**；`node scripts/production-smoke.js` 第 8 步 | 原先这行写的「digest / 保留期路径在线上是活的」**是未核实的推断，且是错的**：Vercel Cron 用 **HTTP GET** 触发，而这两条路由只导出 POST → 每轮 405，**自被调度以来一次都没执行过**（详见下两行与 `docs/progress.md` 2026-10-10 事故条目） |
+| 生产 cron 触发方法（2026-10-10） | ❌ **`digest` 与 `retention` 每轮 405** | `for p in digest retention push-retry; do echo -n "$p "; curl -s -o /dev/null -w '%{http_code}\n' -X GET $BASE/api/cron/$p; done` → 405 / 405 / **401** | 导出 GET 的 `push-retry` 得到 401（**进了函数**），只导出 POST 的两条得到 405（**没进函数**）。405 发生在鉴权、指标、落表之前，所以 `cron.auth.rejected`、`cron.digest.*`、`/api/health`、冒烟**全都看不见**这条故障——这就是它活了 20 天（digest，2026-09-20 起）/ 18 天（retention，2026-09-22 起）而无人察觉的原因。`pnpm smoke:production` 第 8 步（`cron-trigger-method`）现在每次都核对它。**A/B 已取到**：本地生产构建（本分支 + dummy env，无任何请求打到生产库）上同一批路径的 GET 全部变成 **401**，而**未导出的 `PUT` 照样 405**——那一列 405 是这条证据的牙齿，它证明 405 确实是「方法没导出」的框架响应，于是「GET 由 405 变 401」只能解释为 GET 真的进了 handler |
+| 生产迁移状态（2026-10-10） | ❌ **034 / 035 未 applied**（生产 schema 只到 033） | `pnpm exec supabase migration list --linked`（两条 `remote` 为空）；`pnpm exec supabase db query --linked "select version from supabase_migrations.schema_migrations order by version desc limit 3"` | **一条不要密码的只读命令就能复核，而 v0.12.0 发布时把它记成「本机未复核」**。后果分两层：① 部署中的 main 已在查 `.is("email_skipped_reason", null)`，该列不存在 → PostgREST 实测 **400 / 42703**；② 但因为上面那条 405，digest **从未走到这条查询**，所以线上表现为「静默不干活」而不是「每轮报错」。**修的顺序必须是先 `db push`、后部署 GET 修复**——反过来会把静默死变成每轮 500（见 `migration-rollback-runbook.md`「部署顺序」）。**前置精确到列**：本分支（= `origin/main`）的迁移只到 `034`、部署中的代码只读那一列，所以本 PR 的硬前置是 `034` applied；`035` 与读它那两列的代码都在 PR #235，**#235 合并后其硬前置才是 `035`**（`035` 只加两个可空列，`034` 先上不会让 #235 之前的代码坏掉）。**判据始终是「要部署的那一版代码会 select / filter 哪些列」，不是「仓库里有几条迁移」**。**`db push --linked` 同样不需要数据库密码**（2026-10-10 在主检出 `--dry-run` 实测 exit 0，`Would push these migrations` 列出 034 / 035——这条读数只说明「那个 checkout 相对云端缺什么」，且 `--linked` 依赖 gitignored 的 `supabase/.temp/`，换 worktree 就 `ProjectRefNotLinkedError`）——**挡在写操作前面的是审批，不是能力** |
+| 生产 admin 概览页（2026-10-10） | ❌ **队列取数必然抛错** | REST 实测：`notifications?email_skipped_reason=is.null` → **400 / 42703**；代码路径 `src/app/dashboard/admin/page.tsx` 的 `Promise.all([...readEmailQueueDiagnostics()])` **无 try/catch** | 与 digest 不同，这条**没有被 405 掩盖**：它是人打开面板就会撞的。整页错误态（`dashboard/error.tsx` 兜底），不是少一张卡。**未用 admin 会话实测页面本身**（本机没有生产账号），所以这条是「已实测的列缺失 + 已读到的代码路径」的推论，不是截图证据 |
+| 生产 `CRON_SECRET` | ✅ **production 与 preview 均已配置**（2026-10-10） | Vercel 项目环境变量列表（只读，取值不外泄）；`curl -X POST $BASE/api/cron/digest` 匿名 → **401** JSON | 这条**排除了一整类解释**（「cron 因漏配而静默 401」）。401 恰恰证明请求进了函数；而 GET 的 405 证明另一件事：**平台根本没进到函数里** |
+| 生产 `email_worker_runs`（2026-10-10） | ❌ **空表**（`notifications` 亦 0 行；`profiles` 1 行） | `pnpm exec supabase db query --linked "select (select count(*) from public.email_worker_runs)::int as runs, (select count(*) from public.notifications)::int as notes"` → `{"runs":0,"notes":0}` | **这条比 405 更难反驳**：digest 的成功路径与失败路径**都会** `recordWorkerRun` 落一行（失败轮走的 `recordFailedRun` 只写 033 就有的列，不会因为缺列而写失败），所以只要 worker 进过函数就必然有一行。**零行 = 一次都没进过函数** |
+| 生产 `pg_stat_statements`（2026-10-10，`stats_reset=2026-09-12`） | ✅ 可读（扩展已装） | `pnpm exec supabase db query --linked "select calls, left(query,180) as q from pg_stat_statements where query ilike '%push_delivery_attempts%' order by calls desc limit 5"` | **正向读数**：4 条 `push_delivery_attempts` 队列查询各 **19 次 calls** —— 导出 GET 的 push-retry 确实在跑，这是「平台真的按 GET 调用」的独立证据。**⚠️ 两个坑，本次都踩过**：① 不要用前缀 LIKE `insert into email_worker_runs%`——PostgREST 发的是带引号的 `"public"."…"`，那会得到一个**永远为零的假阴性**；② **被 PostgREST 在 schema cache 阶段拒掉的查询（400 / 42703）根本不会进这份统计**，所以「看不到 notifications 的队列查询」**证明不了** digest 跑过但失败——没跑与被拒两种原因在统计里长得一模一样。负向读数只作佐证，**结论靠 GET=405（直接）与零行（必要条件）**。另外**自己的探针也会进统计**（本次那条 `calls=1` 的队列查询就是我自己打的匿名 REST 核查），别把它读成 worker 的痕迹 |
+| pg_cron（生产） | ❌ **未安装**（2026-10-10 由「未核实」转为实测） | `pnpm exec supabase db query --linked "select count(*) from pg_extension where extname='pg_cron'"` → **0** | 生产同样**一行都不会自动清理**：6 个 `cleanup_old_*` 函数在、调度不在。这条 retention worker 存在的理由就是取代 SQL 侧调度——**而它自己也在 405**，所以两层都没在跑。当前无数据可清，是**潜在故障，不是已发生损失** |
 | 生产部署新鲜度（2026-10-08 观测） | ✅ fresh，阈值 5 | `pnpm ops:deploy-freshness`（生产 `d2457d74` = origin/main 同 commit） | **生产已追上 main**，不再滞后；前面几轮的 lagging 是 Vercel 构建排队的副作用 |
-| 生产冒烟（2026-10-08 观测） | ✅ 7/7 | `node scripts/production-smoke.js --url … --expected-commit d2457d74bd60b23d559a4d1a9c53d764faa5d554` | health / liveness / 主页 / 静态资源 / 安全头 / 匿名看板 307 / webhook 签名拒收 全过，commit 匹配 |
+| 生产冒烟（2026-10-08 观测） | ⚠️ **当时 7/7 全绿，但覆盖不到这条链路**（2026-10-10 更正其含义） | `node scripts/production-smoke.js --url … --expected-commit <sha>`（现为 **8 步**） | 那 7 步真实、也确实全过（health / liveness / 主页 / 静态资源 / 安全头 / 匿名看板 307 / webhook 签名）。**但「7/7 绿」与「摘要邮件在跑」之间没有蕴含关系**：`/api/health` 的 DB 探测用 **anon** 身份打 `profiles limit(1)`，那张表和那一列都在，所以 `ready=true` 只说明「连得上」，不说明「业务查询跑得通」。第 8 步 `cron-trigger-method` 就是为补这个洞加的（**不打凭据**，只看平台用的 GET 会不会被路由接受） |
 | 生产异步看板鉴权（2026-10-08 观测） | ✅ 匿名 401（admin 面板数据路径） | curl `BASE/api/ops/provider-status`（此时尚无凭据 → Unauthorized） | 与 2026-10-06 记的一致：鉴权边界在线上仍然有效；**content 读数仍需 CRON_SECRET/admin 会话（本机没有，照旧未知）** |
 | Sentry | ❌ 生产未配 DSN | 同上（输出 `sentry: configured=false status=missing`） | **告警链路空转**，详见 `sentry-alerts.md` 开头 |
 | Stripe | ❌ 生产未配 key | 同上（输出 `stripe: configured=false status=missing`） | 支付路径线上无流量，checkout 未上线 |
@@ -64,10 +72,10 @@
 | Vercel 构建配额 | ⛔ 限流中 | PR 上的 `Vercel – indie-stack` 检查（2026-10-05 报 `retry in 24 hours`） | preview 部署排队，非代码缺陷 |
 | 生产 schema vs 代码期望（2026-10-12 观测） | ❌ **线上缺 1 列**：`notifications.email_skipped_reason`（迁移 034 未 applied） | `pnpm ops:schema-drift`（只需 `SUPABASE_URL` + service_role key，**不需要 DB 密码**） | `listUnsentEmailNotifications()` 对缺列是 `throw`，所以 **digest worker 每轮必抛**；今天没人看见只因为 GET 405 先挡住了——**两个缺陷正好互相掩盖**。另有 5 张表（`progress`/`quiz_scores`/`replay_best`/`replay_history`/`wrongbook`）在本仓库的生成类型里不存在：代码从不引用 ⇒ 不算漂移，是「这个 Supabase 项目还放了别的东西」 |
 | 云端已应用的迁移版本（2026-10-13 首跑实测） | ⚙️ **一条只读 API 调用**，不需要数据库密码、也不需要 CLI 登录态；**生产实况 = `034` 未 applied** | `pnpm ops:migration-status`（`GET /v1/projects/{ref}/database/migrations`，用 `SUPABASE_ACCESS_TOKEN`；`.github/workflows/migration-status.yml` 每天与每次 main push 各跑一次） | 这条补的是**「云端到了哪一版」这个问题的自动答案**：过去两年它被登记成「本机查不了（要 DB 密码）」，代价是「034/035 从未 applied」直到线上出事才知道。`supabase migration list` 其实不要密码，但它在没有 TTY 的机器上会挂在交互登录（2026-10-12 实测），而 supabase CLI **不是本仓库依赖** ⇒ CI 里本来也跑不了它。退出码 0 一致 / 1 有差集 / 2 读不到实况（**未知不算通过**）。**它不解锁 B04，也不替代 `db push`**：只读「应用了哪些版本」，不执行任何 SQL。两边版本号完全不相交时判 2 而不是把 68 条差集当成结论（2026-10-13 用本地 mock 实测到这种形态）。**首跑读数**（run 38294116244，main push）：`❌ [MIGRATION_NOT_APPLIED] 034`、exit 1 ⇒ 端点存在、CI 里的 token 有效、版本号是 3 位序号形态；它**只报 034 不报 035**，因为 035 此刻还在 PR #235 里没进 main——这正是「判据是要部署的那一版代码依赖哪些列」的形态。与 `ops:schema-drift` 独立测得的「生产缺 `email_skipped_reason`」互相印证 |
-| pg_cron（保留期调度） | ❌ **本地栈实测未安装**（2026-10-06） | `node scripts/check-retention-cron.js --probe --container supabase_db_indiestack` | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。生产是否安装**仍未核实**（需 DB 密码） |
+| pg_cron（保留期调度） | ❌ **本地栈与生产都实测未安装**（本地 2026-10-06 / 生产 2026-10-10） | 本地：`node scripts/check-retention-cron.js --probe --container supabase_db_indiestack`；生产：`pnpm exec supabase db query --linked "select count(*) from pg_extension where extname='pg_cron'"` | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。生产这一行原写「仍未核实（需 DB 密码）」——**那是错的登记**，上面那条不要密码的命令就是它的解。注意本仓库的保留期清理**不依赖** pg_cron（走 `/api/cron/retention`），而那条 worker 正被 405 挡着，所以**两层同时是死的** |
 | CodeQL 告警台账 vs 实况（2026-10-13 首跑实测） | ❌ **2 条红，exit 1**：#18 阻断级仍 open + 分诊超 SLA（12 个工作日 > 5） | `GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack pnpm ops:codeql-alerts`（离线复现：`--fixture fixtures/codeql-alerts.json`） | 这条补的是「零回归」这个结论**从来没有被任何自动检查核对过**的缺口：过去 runbook 把它登记成「本地无法复现（要 GitHub 安全 API 权限）」，实测本机 `gh` 就能读全部字段 ⇒ **缺的一直不是权限，是没人写探测**。代价已经出现过一次：2026-09-24 那 4 条 `js/log-injection` 挂了 5 天没人发现。⚠️ `security_severity_level` **只在带 `x-github-api-version: 2022-11-28` 时才有值**，否则返回 `null`，而 `null` 看着完全像「GitHub 没评分」——我自己差点据此写进文档说「阈值此刻无法求值」，那是用法错误（对照实测与「不要用查询参数筛严重度」见 `codeql-alert-triage.md` 的「外部依赖」一节）。判定层拒绝把 `null` 当低危，报 `CODEQL_ALERT_SEVERITY_UNKNOWN`。当前 open 实况：#18 `high`、#11/#12/#13/#17 `medium`；dismissed 0 条。**它刻意不进 `check:all`、不进 workflow**：#18 未结案 ⇒ 此刻必红，进 PR 门禁会阻塞每一个 PR |
 
-**三条要读出来的分寸**：
+**四条要读出来的分寸**：
 
 1. **`configured=false` 不等于 readiness 会红**。`/api/health` 里 Sentry / Stripe 都是
    `required: false`，所以它们缺失时 `ready` 仍是 `true`——这是有意的设计（模板的可选依赖），
@@ -80,12 +88,29 @@
    变成「一条命令能回答」**（`pnpm ops:schema-drift`）。
    它替代不了 B04：那条要的是**执行多语句演练 SQL**，OpenAPI 只给 schema 不给执行。
    分寸仍然是对的，只是边界比原先写的更细。
-3. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
+3. **「调度在平台上一行不少」不等于「worker 在跑」**。Vercel Cron 触发用的是 **HTTP GET**，
+   而本仓库曾有两条 worker 只导出 POST：平台每天照常调用、每天拿到 405，`vercel.json` 与
+   `pnpm check:cron-contract` 都只显示「调度存在」。**405 发生在进路由之前**——鉴权指标、业务指标、
+   落表、`/api/health`、冒烟全都不覆盖它，于是这条故障在没有任何红灯的情况下活了 20 天。
+   能证明「平台确实在按 GET 调用」的正向读数是 `pg_stat_statements` 里 push-retry 的 19 次队列查询，
+   加上 `email_worker_runs` 的**零行**（digest 成败两条路径都会落一行）。
+   门禁在 `pnpm check:cron-contract`（`CRON_PLATFORM_METHOD_UNDECLARED`）与冒烟第 8 步。
+   **第 8 步只该打生产部署**：2026-10-10 在 PR #236 的 preview 上实测，开着 Vercel Deployment
+   Protection 时**每个**请求（连 一条**故意编造的假 cron 路径**一起）都被 302 到
+   `vercel.com/sso-api`，应用行为一次都没被观察到。所以 302 判红是**如实表达「未知」**，
+   不是误报——**别为了「让 preview 也绿」把 3xx 加进放行名单**，那等于让冒烟对受保护的部署永远绿。
+   这条自己做了变异核对：把 3xx 放行 ⇒ 新增用例红；复原 ⇒ 11 绿。
+4. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
    本文档开头的那些错误结论，一半是被一个自信的猜测撑起来的。
    **但「未知」也不该被当成常态**：它之所以长期存在，是因为「从外部查不到」。
    现在 `GET /api/ops/provider-status`（`CRON_SECRET` 鉴权，**只回键名、永不回值**）
    把「从外部查不到」变成「一条命令能回答」，所以这张表里的每个 `❓`
    都应该能被一次调用消掉——**留着的理由只能是「还没人去查」，不能是「查不了」**。
+   **2026-10-10 要给这条加一个反面教训**：有些 `❓`／`❌` 的理由其实是**「登记错了」**而不是「查不了」。
+   「`migration list --linked` 需要数据库密码」被登记了两年，而它不要密码——
+   于是「云端到了哪一版」这个一分钟能答的事实一直挂着「本机未复核」，
+   而它正好是 v0.12.0 那句「侥幸没同步也没事」的唯一解。**登记阻塞时要写清「阻塞到哪一层」**，
+   只写「做不到」会让下一个人把能做的部分一起放弃。
 
 ### 查这张表的推荐顺序
 
@@ -97,7 +122,12 @@ curl -sS -H "authorization: Bearer $CRON_SECRET" "$BASE/api/ops/provider-status"
 node scripts/check-health.js "$BASE"
 # 3) 生产落后 main 多少个提交
 node scripts/check-deploy-freshness.js --base-url "$BASE"
-# 4) 线上 schema 与代码期望是否一致（只读 OpenAPI 根端点，不查数据）
+# 4) 平台用的那条方法到底能不能进路由（不打凭据，405 就是死）
+node scripts/production-smoke.js --url "$BASE" --expected-commit "$(git rev-parse HEAD)"
+# 5) 云端 schema 到了哪一版。**不要数据库密码**（这条被误登记成「需要」两年，
+#    代价是「034/035 从未 applied」直到线上出事才发现）
+pnpm exec supabase migration list --linked
+# 6) 线上 schema 与代码期望是否一致（只读 OpenAPI 根端点，不查数据行）
 pnpm ops:schema-drift
 # 5) 云端 applied 到第几版迁移（只读 Management API，不要 DB 密码、不要 CLI 登录态）
 pnpm ops:migration-status
@@ -113,6 +143,76 @@ Supabase 免费版项目 7 天无活动会被暂停，本仓库用三层兜底�
 | 保活备 | `.github/workflows/health-check.yml`          | `17 3 * * *` | GitHub schedule 60 天静默后会被停用，仅作备份      |
 | 恢复主 | Vercel Cron → `/api/ops/supabase-restore`     | `0 4 * * *`  | 不受仓库静默影响；`INACTIVE` 时调用 Management API |
 | 恢复备 | `.github/workflows/supabase-auto-restore.yml` | `37 4 * * *` | 手动触发默认 `dry_run=true`                        |
+
+- **本表的「时间（UTC）」两行是计划时刻，不是实测时刻**（GitHub 那两行）。2026-10-11 取
+  92 条 `event=schedule` 运行记录量出：本仓库 6 个定时 workflow **全部晚于标称**，
+  每日类晚 **+4.2 ~ +7.2 小时**（`health-check` 标称 03:17，实测触发时刻落在
+  `07:53:04–10:30:06`），且晚的幅度**逐周递增**（W37 +4.70 → W41 +6.75）。
+  **官方原文只承认会延迟，没有给过任何延迟上界**（逐字核对
+  https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+  的 `schedule` 一节）：原话是「高负载期间 `schedule` 事件可能被延迟，高负载时段包括每个整点；
+  负载足够高时，排队的作业还可能被直接丢弃」，给的缓解建议是「把时刻错开整点」。
+  本仓库 6 条 cron 里 5 条本来就错开整点，量到的晚幅仍是 **+4.2 ~ +8.7 小时**，
+  所以这条建议在本账户上看不出效果——**「会延迟一会儿」不能用来安排本表的时刻**。
+  （注意：**不要凭记忆给 GitHub 的延迟安一个具体上界**。写过「官方说最多约一小时」的人
+  ——包括本仓库文档的上一版——都是在复述一句原文里不存在的句子；这类句子必须打开原文再落笔。）
+  **判定：与本仓库配置无关**——同一账户下另两个仓库同样晚（一个仓库那条每周一凌晨的
+  巡检实测落在 08:01 / 08:38 / 08:40 / 09:28 / 10:07，比标称晚 5.0–7.1 小时；另一个仓库
+  每月一号凌晨那条实测 10-01 10:00，晚 7.0 小时），而 `created_at == run_started_at`
+  在 92/92 条上都成立，说明排队发生在 GitHub 内部而不是 runner 排队。
+  （对照仓库的 cron 值**不写在这里**：`pnpm check:cron-contract` 的
+  `CRON_DOC_STALE_SCHEDULE` 会把「文档里出现但仓库里不存在的表达式」判红，
+  这条红是对的——它防的正是读者把别人的调度当成本仓库的。2026-10-11 写这段时踩到。）
+  **仍未核实：账户级延迟的原因**（GitHub 侧队列/配额无从查证）。
+  **Vercel Cron 那两行没有实测**：运行时日志接口对本机返回 403、本机无 `vercel` CLI，
+  所以它们目前只是标称值——**别把「GitHub 侧晚了」推成「Vercel 侧也晚了」，也别推成相反**。
+- **为什么晚几个小时不影响这三层兜底成立**：这三层都只要求「每天至少跑到一次」，
+  不依赖绝对时刻；Supabase 的暂停阈值是 7 天无活动，晚几小时不会突破；
+  而且实测**同日的相对顺序保持标称顺序**：29 个「当日至少跑了两条每日类任务」的可比日里
+  **0 次顺序违反**（其中 20 天三条都齐；`production-smoke` 总在 `health-check` 前、
+  `health-check` 总在 `supabase-auto-restore` 前，相邻间隔误差只有 −0.45 ~ +0.58 小时），
+  所以「恢复备排在保活之后」这个设计意图仍然成立。
+  **口径要说准**：是「29 个可比日 0 次违反」，不是「30 天无一例外」——
+  后者把「我没看到反例」写成了「覆盖满 30 天」，而 `production-smoke` 的 schedule
+  是 09-21 才加的，那之前根本没有可比日。
+  全仓库也**没有**任何依赖「距上次运行多久」的时间窗逻辑（`scripts/**` 与
+  `.github/workflows/**` 内核对过：只有轮询超时与重试间隔，没有日历窗判定）。
+  **要改的是表述，不是 cron 值**：既然绝对时刻不可信，把标称时刻挪早几小时同样不可信，
+  只会让文档更难核对。
+- **要新增定时任务时记住这条**：任何「必须在某时刻之后/之前执行」的约束都**不能**用
+  GitHub `schedule` 的时间保证，只能靠被调用方自己做前置校验（现有 worker 就是这么做的：
+  `/api/ops/supabase-restore` 只在 Management API 明确返回 `INACTIVE` 时才写）。
+- **上面那组数字怎么复现**（只读，`gh` 已登录即可）。标称 cron 从远端 `main` 读，
+  免得被本地功能分支上的临时改动误导：
+
+  ```bash
+  REPO=Sun1090/IndieStack
+  for path in $(gh api "repos/$REPO/actions/workflows" \
+    --jq '.workflows[] | select(.state == "active") | select(.path | startswith("dynamic") | not) | .path'); do
+    cron=$(gh api "repos/$REPO/contents/$path?ref=main" --jq .content \
+      | base64 -d | grep -oE 'cron: "[^"]*"' | head -1 | cut -d'"' -f2)
+    [ -z "$cron" ] && continue
+    id=$(gh api "repos/$REPO/actions/workflows" --jq ".workflows[] | select(.path == \"$path\") | .id")
+    # 先切出时间部分再比：min/max 直接作用在整串上取到的是「最早那天」与「最晚那天」
+    stats=$(gh api "repos/$REPO/actions/workflows/$id/runs?event=schedule&per_page=100" \
+      --jq '[.workflow_runs[].run_started_at | split("T")[1] | split("Z")[0]]
+        | if length == 0 then "无 schedule 运行" else "n=\(length)  触发时刻 \(min) – \(max)" end')
+    printf '%-42s 标称 %-12s %s\n' "$path" "$cron" "$stats"
+  done
+  ```
+
+  2026-10-11 的输出（UTC）：`health-check` 标称 `17 3 * * *` → 实际 07:53–10:30、
+  `production-smoke` 标称 `17 2 * * *` → 实际 07:34–08:59、
+  `supabase-auto-restore` 标称 `37 4 * * *` → 实际 08:47–11:47、
+  `security-config` 标称 `17 5 * * 1` → 实际 10:39–12:16。
+  **三个探针坑**（本轮全踩过，每个都会造出看似合理的假读数）：
+  ① cron 的字段顺序是「分、时、日、月、周」，按「时、分」解析会得到完全无意义的偏移
+  （第一次取数就因此崩在 `minute=37` 上）；
+  ② `min|max` 直接作用在 `run_started_at` 整串上，取到的是**最早那一天**和**最晚那一天**
+  的时刻，不是「一天里最早/最晚的触发时刻」——上面那列区间必须先把 `T…Z` 之间的时间部分
+  切出来再比，否则 `07:53–09:45` 这种数字看起来完全正常却是错的（本段第一版就是这么错的）；
+  ③ `per_page` 默认只返回一页，取全量要显式写大，而且**不要把 `cmd | tail` 的退出码
+  当成 `cmd` 自己的退出码**。
 
 - 保活与恢复探测共用有限重试：冷启动或瞬时 5xx/网络错误最多尝试 3 次（间隔 5 秒）；
   GitHub workflow 的 `health_url` 或仓库变量 `HEALTHCHECK_URL` 可填部署根地址，也会统一解析到 `/api/health`；404/401 等确定错误和持续故障仍会失败，不会把真实故障静默吞掉。

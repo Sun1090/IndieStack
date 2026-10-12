@@ -80,7 +80,8 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     id: "digest",
     path: "/api/cron/digest",
     routeFile: "src/app/api/cron/digest/route.ts",
-    methods: ["POST"],
+    // GET 必须由平台能触发：Vercel Cron 发的是 HTTP GET，只导出 POST 时整条链路每轮 405。
+    methods: ["GET", "POST"],
     schedule: "0 9 * * *",
     metrics: [
       "email.backlog",
@@ -114,7 +115,8 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
     id: "retention",
     path: "/api/cron/retention",
     routeFile: "src/app/api/cron/retention/route.ts",
-    methods: ["POST"],
+    // 同 digest：只导出 POST 的那几天，这条 worker 每天 405，保留期清理从未执行。
+    methods: ["GET", "POST"],
     schedule: "0 5 * * *",
     metrics: [
       "cron.retention.completed",
@@ -136,11 +138,29 @@ export const CRON_WORKERS: readonly CronWorkerContract[] = [
  *   - `/api/health`：Supabase 免费版保活探测；
  *   - `/api/ops/supabase-restore`：保活失败后的分层恢复入口。
  * 登记豁免是为了让「vercel.json 出现未注册路径」永远意味着有人漏登记，而不是噪声。
+ *
+ * **豁免的范围只有 worker 契约（指标、跳过可见性、调度表逐字一致），不含「平台能不能触发它」**：
+ * Vercel Cron 对**每一条** cron 路径发的都是 HTTP GET，所以豁免路径照样必须导出 GET。
+ * 2026-10-10 那次 P0 之后补这条口径：当时只把 GET 判据加在 worker 侧，
+ * 于是「豁免」被读成「整条路径免检」，而 `/api/health` 与 `/api/ops/supabase-restore`
+ * 一旦哪天只导出 POST，静态门禁全绿、线上每天 405——正是同一次事故的形状。
  */
 export const CRON_SCHEDULE_EXEMPTIONS: Readonly<Record<string, string>> = {
   "/api/health": "Supabase 免费版保活探测：无队列、无业务指标",
   "/api/ops/supabase-restore": "保活失败后的分层恢复入口：由运维按需触发，不产 worker 指标",
 };
+
+/**
+ * 由调度路径推导 App Router 的路由文件（仓库相对 POSIX 路径）。
+ *
+ * 刻意**不**再维护一张「豁免路径 → 文件」的对照表：手写对照表会和目录结构各自漂移，
+ * 而推导式让「文件不在预期的位置」直接成为一条红灯（`CRON_EXEMPT_ROUTE_MISSING`），
+ * 而不是让门禁去读一个仍然存在的旧文件、从而永远绿。
+ */
+export function routeFileForSchedulePath(schedulePath: string): string {
+  const trimmed = schedulePath.replace(/^\/+/, "").replace(/\/+$/, "");
+  return `src/app/${trimmed}/route.ts`;
+}
 
 export interface PlatformCron {
   path: string;
@@ -154,7 +174,13 @@ export interface CronContractInput {
   excludedSchedules?: Readonly<Record<string, string>>;
   /** 实际存在的 cron 路由文件（仓库相对 POSIX 路径）。 */
   routeFiles: readonly string[];
-  /** 路由源码，键为仓库相对路径；缺失即视为空源码并报错。 */
+  /**
+   * 路由源码，键为仓库相对路径；缺失即视为空源码并报错。
+   *
+   * 除了 `routeFiles` 里的 worker 路由，调用方还应把**豁免调度路径推导出的**路由文件源码放进来
+   * （见 `routeFileForSchedulePath`）：豁免免的是 worker 契约，不是「平台能不能触发它」。
+   * 这里读不到某个豁免路由的源码就按失败封闭报 `CRON_EXEMPT_ROUTE_MISSING`。
+   */
   sources: Readonly<Record<string, string>>;
   /** `vercel.json` 的 `crons` 数组。 */
   platformCrons: readonly PlatformCron[];
@@ -175,6 +201,7 @@ export type CronContractIssueCode =
   | "CRON_ROUTE_MISSING"
   | "CRON_ROUTE_UNDECLARED"
   | "CRON_METHOD_MISSING"
+  | "CRON_PLATFORM_METHOD_UNDECLARED"
   | "CRON_SCHEDULE_INVALID"
   | "CRON_SCHEDULE_MISSING"
   | "CRON_SCHEDULE_DUPLICATE"
@@ -193,7 +220,9 @@ export type CronContractIssueCode =
   | "CRON_DOC_UNREGISTERED_PATH"
   | "CRON_DOC_SOURCE_EMPTY"
   | "CRON_DOC_NO_SOURCES"
-  | "CRON_STALE_EXEMPTION";
+  | "CRON_STALE_EXEMPTION"
+  | "CRON_EXEMPT_ROUTE_MISSING"
+  | "CRON_EXEMPT_METHOD_UNDECLARED";
 
 export interface CronContractIssue {
   code: CronContractIssueCode;
@@ -653,6 +682,29 @@ function auditWorker(
     }
   }
 
+  /**
+   * **平台触发用的方法必须是 GET**：Vercel Cron 的实现是「向生产 URL 发一个 HTTP GET」
+   * （https://vercel.com/docs/cron-jobs：To trigger a cron job, Vercel makes an HTTP GET request
+   * to your project's production deployment URL）。只导出 POST 的 worker 会被 Next.js 答
+   * `405 Method Not Allowed`，**整轮代码一次都不执行**。
+   *
+   * 为什么这条值得成为规则而不是一句注释：405 发生在进路由之前，所以
+   *   - `cron.auth.rejected` 不会产出（鉴权代码没跑到），
+   *   - 任何业务指标都不会产出（看起来像「队列为空的安静」），
+   *   - `/api/health` 与 production smoke 全绿（它们各自打的是别的端点/方法）。
+   * 本仓库的 digest 与 retention 就因此**从被调度那天起一次都没执行过**
+   * （2026-10-10 实测：生产库的 `pg_stat_statements` 里连一条 notifications 队列查询都没有，
+   * 而导出 GET 的 push-retry 有 19 次）。注册表里的 `methods` 是唯一能静态核对这件事的地方。
+   */
+  if (!worker.methods.includes("GET")) {
+    push(
+      issues,
+      "CRON_PLATFORM_METHOD_UNDECLARED",
+      worker.id,
+      `worker 只导出 ${worker.methods.join("/") || "（空）"}，而 Vercel Cron 用 HTTP GET 触发：每轮都会 405，业务代码从不执行（必须导出 GET）`,
+    );
+  }
+
   auditWorkerSchedule(worker, input.platformCrons, issues);
   auditWorkerObservability(worker, source, input.operationsDoc, metrics, issues);
   auditWorkerSkips(worker, source, summary, issues);
@@ -673,6 +725,49 @@ function auditOrphanSchedules(
       entry.path,
       "vercel.json 调度了未注册且未豁免的路径：要么补注册表，要么删调度",
     );
+  }
+}
+
+/**
+ * 校验**豁免**路径仍然可被平台触发（GET 可达）。
+ *
+ * 豁免免掉的是 worker 契约（指标 / 跳过可见性 / 调度表），不是「路由存在且导出 GET」。
+ * 判据按路径**推导**出路由文件位置再读源码，所以三种漂移都会红：
+ *   - 文件被删或挪走 ⇒ `CRON_EXEMPT_ROUTE_MISSING`（失败封闭：读不到源码不等于没问题）；
+ *   - 文件里没有 `export … function GET` ⇒ `CRON_EXEMPT_METHOD_UNDECLARED`
+ *     （平台每天拿到 405，保活/恢复链路静默死掉）。
+ * 这条规则存在的全部理由是 2026-10-10 的 P0：那次修复只把 GET 判据加在 worker 侧，
+ * 豁免名单因此成了「免检」的代名词，而它免掉的本该只是指标那部分。
+ */
+function auditExemptSchedules(
+  platformCrons: readonly PlatformCron[],
+  exempted: Readonly<Record<string, string>>,
+  input: CronContractInput,
+  issues: CronContractIssue[],
+): void {
+  const scheduled = new Set(platformCrons.map((entry) => entry.path));
+  for (const path of Object.keys(exempted).sort()) {
+    // 已不在 vercel.json 里的豁免由 CRON_STALE_EXEMPTION 负责，这里不重复报。
+    if (!scheduled.has(path)) continue;
+    const routeFile = routeFileForSchedulePath(path);
+    const source = input.sources[routeFile];
+    if (source === undefined) {
+      push(
+        issues,
+        "CRON_EXEMPT_ROUTE_MISSING",
+        path,
+        `豁免调度读不到路由源码（预期 ${routeFile}）：文件被删、被改名，或不在 App Router 的约定位置——平台调用会 404，而静态门禁看不见这条链路`,
+      );
+      continue;
+    }
+    if (!exportsMethod(source, "GET")) {
+      push(
+        issues,
+        "CRON_EXEMPT_METHOD_UNDECLARED",
+        path,
+        `豁免调度未导出 GET（${routeFile}）：Vercel Cron 用 HTTP GET 触发每一条 cron 路径，缺 GET 就是每天 405、代码一次都不执行（豁免只免 worker 契约，不免可触发性）`,
+      );
+    }
   }
 }
 
@@ -745,6 +840,7 @@ export function auditCronContract(input: CronContractInput): CronContractReport 
   const exempted = input.excludedSchedules ?? CRON_SCHEDULE_EXEMPTIONS;
   auditOrphanSchedules(input.platformCrons, declaredPaths, exempted, issues);
   auditExemptions(input.platformCrons, exempted, issues);
+  auditExemptSchedules(input.platformCrons, exempted, input, issues);
   auditUndeclaredRoutes(routeFiles, declaredRouteFiles, issues);
   const docPages =
     input.docs === undefined
