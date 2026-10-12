@@ -1,0 +1,60 @@
+name: Cloud migration status
+
+## 云端那个库到底 applied 到第几版迁移——每天答一次，不要数据库密码。
+##
+## 为什么单独一条作业：2026-10-10 的 405 事故复盘发现，「034/035 从未 applied」
+## 这件事被登记成「本机查不了（需要数据库密码）」两年，代价是线上出事才知道。
+## 后来确认 `supabase migration list` **不要密码**——但它在没有 TTY 的机器上会挂在
+## 交互登录上（2026-10-12 本机实测两次），而 supabase CLI **不是本仓库的依赖**，
+## CI 里本来也跑不了它。
+##
+## 本作业走 Management API 的只读端点
+## `GET /v1/projects/{ref}/database/migrations`（operation `v1ListMigrationHistory`，
+## 「List applied migration versions」），凭据用仓库里已有的
+## `SUPABASE_ACCESS_TOKEN`（secret）+ `SUPABASE_PROJECT_REF`（variable），
+## 与 `security-config.yml` / `supabase-auto-restore.yml` 同一套。
+##
+## 它**不解锁 B04**：那条要的是执行多语句演练 SQL，本作业只读「应用了哪些版本」。
+## 也**不替代** `supabase db push`——它只负责在「忘了 push」变成线上故障之前喊人。
+##
+## 为什么不在 `pull_request` 上跑：secrets 对 fork PR 不可用，那样会把
+## 「读不到实况」（退出码 2）算成每个外部 PR 的红灯。这条检查的读者是维护者，
+## 不是贡献者。
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-status-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  status:
+    name: Cloud migration status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check cloud migration status
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: pnpm ops:migration-status

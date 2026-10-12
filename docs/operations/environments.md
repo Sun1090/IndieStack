@@ -63,6 +63,7 @@
 | GitHub 保活变量 | ✅ 已配置 | `gh variable list`（`HEALTHCHECK_URL`） | 每日保活 workflow 在跑 |
 | Vercel 构建配额 | ⛔ 限流中 | PR 上的 `Vercel – indie-stack` 检查（2026-10-05 报 `retry in 24 hours`） | preview 部署排队，非代码缺陷 |
 | 生产 schema vs 代码期望（2026-10-12 观测） | ❌ **线上缺 1 列**：`notifications.email_skipped_reason`（迁移 034 未 applied） | `pnpm ops:schema-drift`（只需 `SUPABASE_URL` + service_role key，**不需要 DB 密码**） | `listUnsentEmailNotifications()` 对缺列是 `throw`，所以 **digest worker 每轮必抛**；今天没人看见只因为 GET 405 先挡住了——**两个缺陷正好互相掩盖**。另有 5 张表（`progress`/`quiz_scores`/`replay_best`/`replay_history`/`wrongbook`）在本仓库的生成类型里不存在：代码从不引用 ⇒ 不算漂移，是「这个 Supabase 项目还放了别的东西」 |
+| 云端已应用的迁移版本（2026-10-13 起自动答） | ⚙️ **一条只读 API 调用**，不需要数据库密码、也不需要 CLI 登录态 | `pnpm ops:migration-status`（`GET /v1/projects/{ref}/database/migrations`，用 `SUPABASE_ACCESS_TOKEN`；`.github/workflows/migration-status.yml` 每天与每次 main push 各跑一次） | 这条补的是**「云端到了哪一版」这个问题的自动答案**：过去两年它被登记成「本机查不了（要 DB 密码）」，代价是「034/035 从未 applied」直到线上出事才知道。`supabase migration list` 其实不要密码，但它在没有 TTY 的机器上会挂在交互登录（2026-10-12 实测），而 supabase CLI **不是本仓库依赖** ⇒ CI 里本来也跑不了它。退出码 0 一致 / 1 有差集 / 2 读不到实况（**未知不算通过**）。**它不解锁 B04，也不替代 `db push`**：只读「应用了哪些版本」，不执行任何 SQL。两边版本号完全不相交时判 2 而不是把 68 条差集当成结论（2026-10-13 用本地 mock 实测到这种形态） |
 | pg_cron（保留期调度） | ❌ **本地栈实测未安装**（2026-10-06） | `node scripts/check-retention-cron.js --probe --container supabase_db_indiestack` | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。生产是否安装**仍未核实**（需 DB 密码） |
 
 **三条要读出来的分寸**：
@@ -97,6 +98,8 @@ node scripts/check-health.js "$BASE"
 node scripts/check-deploy-freshness.js --base-url "$BASE"
 # 4) 线上 schema 与代码期望是否一致（只读 OpenAPI 根端点，不查数据）
 pnpm ops:schema-drift
+# 5) 云端 applied 到第几版迁移（只读 Management API，不要 DB 密码、不要 CLI 登录态）
+pnpm ops:migration-status
 ```
 
 ## 免费版保活与自动恢复

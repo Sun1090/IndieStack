@@ -79,24 +79,10 @@ export function restoreActionFor(decision: RestoreDecision): RestoreAction {
 
 /**
  * 解析项目 ref：显式变量优先，其次从 Supabase URL 推断。
- * 只接受 `<ref>.supabase.co` 形态，避免把自建代理地址当成 ref。
+ * 实现已抽到 `@/lib/supabase-project-ref`，供恢复链路与
+ * `pnpm ops:migration-status` 共用（与 `stripComments` 同一套理由）。
  */
-export function resolveProjectRef(
-  explicit: string | undefined | null,
-  supabaseUrl: string | undefined | null,
-): string | null {
-  const trimmedExplicit = explicit?.trim();
-  if (trimmedExplicit) return trimmedExplicit;
-  const trimmedUrl = supabaseUrl?.trim();
-  if (!trimmedUrl) return null;
-  try {
-    const host = new URL(trimmedUrl).hostname;
-    const match = /^([a-z0-9]{10,32})\.supabase\.(co|in)$/.exec(host);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-}
+export { resolveProjectRef } from "@/lib/supabase-project-ref";
 
 /**
  * cron 调用鉴权：接受 `Authorization: Bearer <CRON_SECRET>`（Vercel Cron 自动附加）
