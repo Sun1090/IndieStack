@@ -101,8 +101,13 @@ main 版本的 `src/lib/logger.ts` 里被调用。同时 main 在 09-27 之后�
    `src/lib/actions/recovery-codes.ts` 里未加盐的 SHA-256 ——**CodeQL 一条都没报**。
    所以「去看告警报了哪里」和「去看这条规则该报哪里」是两个动作，只做前者会漏。
 
-- 本仓库当前 open 告警（2026-10-11 读数，5 条）：`js/log-injection` #11/#12/#13/#17
+- 本仓库当前 open 告警（2026-10-12 读数，5 条）：`js/log-injection` #11/#12/#13/#17
   （`error` / medium，已修复但 sanitizer 不可见）、`js/insufficient-password-hash` #18
-  （`security_severity_level=high`，判定为假阳性，**尚未分诊**——无 issue、无 dismissal 记录）。
+  （`warning`，`security_severity_level=high`）。
+  **#18 已于 2026-10-12 完成分诊：判定假阳性，证据与判据见 issue #242**
+  （命中处哈希的是 24 字节随机订阅 token ⇒ 192 位熵，不是口令；慢哈希与加盐在此不改变攻击可行性）。
+  仍**未 dismissal**——按本文档的规矩，改告警状态要 maintainer 决定，
+  分诊记录与状态变更是两件事。
+  同一条规则的反向复查产出的真缺陷（恢复码未加盐 SHA-256）已由 PR #237 修成加盐 scrypt。
 - 告警清单、严重度、实例所指的 `ref`/`commit` 都要用 `GET /repos/{owner}/{repo}/code-scanning/alerts`
   取，不要凭记忆复述规则名或告警编号。

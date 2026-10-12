@@ -8333,3 +8333,47 @@
 - 下一项：#235 / #236 / #237 三条 PR 待处理（#237 已 rebase 并同步表述）；
   合并 #236 之前必须先应用 034，否则 digest 上线即抛——**这条命令就是那个前置检查**。
 - 更新时间：2026-10-12（UTC+8）。
+
+## 2026-10-13 — CodeQL #18 分诊完成：假阳性，但反向复查才是这次真正的产出
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/codeql-triage-18`（base `531aceb9`）。
+- 状态：DONE（待 PR）。
+- 为什么做：#18（`js/insufficient-password-hash`，`security_severity_level=high`）
+  自 2026-10-11 起就记着「判定为假阳性，**尚未分诊**——无 issue、无 dismissal 记录」。
+  「判定过」和「分诊过」不是一回事：前者是我脑子里的结论，后者是别人能复核的证据。
+- 分诊结论（**假阳性**，证据落 issue **#242**）：
+  - 命中处 `src/lib/repositories/marketing.ts:14` 哈希的是 `generateSubscriptionToken()`
+    的返回值 = `crypto.getRandomValues` 取的 **24 字节 ⇒ 192 位熵**（同文件 26–30 行）；
+  - 哈希结果只用于**等值查询**（`.eq("token_hash", …)`，97 行），不做可逆校验；
+  - 规则的前提「被哈希的是人能记住的口令，所以离线爆破可行」在这里不成立。
+    慢哈希存在的理由是抵抗「低熵 + 离线爆破」；输入空间 2^192 时，
+    加盐与慢化都不改变攻击可行性，只改变延迟 ⇒ **高熵机器凭据用快速哈希是对的**。
+  - 判据与 ADR-015 是同一条的两侧：**熵决定 KDF 选择**。
+- **真正有价值的是反向复查**：CodeQL 看不见自定义 sanitizer，同样也可能看不见
+  「真正的弱点在别处」。沿 CWE-916 查「这条规则**该**报哪里」，
+  找到的是恢复码那处未加盐 SHA-256——**CodeQL 一条都没报**，
+  而那里输入是 8 位 / 31 字符字母表 ≈ 39.6 位熵，是真正的低熵秘密。
+  该缺陷已由 PR #237 修成加盐 scrypt（`0dd7722a`）。
+  **「去看告警报了哪里」和「去看这条规则该报哪里」是两个动作，只做前者会漏。**
+- **没有改告警状态**：按 runbook 的规矩，dismissal 要 maintainer 决定；
+  分诊记录与状态变更是两件事。issue #242 里写明了这一点与引用路径。
+- 完成内容：`docs/operations/codeql-alert-triage.md` 把「尚未分诊」更新为
+  「2026-10-12 完成分诊 ⇒ 假阳性 ⇒ 见 #242；仍未 dismissal，理由如上」，
+  并把读数日期从 10-11 更正为 10-12（5 条 open 不变）。
+- 验证：`node scripts/check-codeql.js` ✅（21 条契约断言，含被 `check:codeql` 钉住的章节标题）；
+  `node scripts/check-doc-links.js` ✅（153 条内部链接）；`check:progress` ✅。
+- 过程中自己犯的一个错（值得记，因为它破坏的是「原子 commit」这条纪律）：
+  **这条文档改动最初被写在了 PR #236 的 worktree 里**。
+  已 `git diff` 存成 patch、`git stash` 把 #236 分支恢复干净（确认 `git status` 为空），
+  再挪到独立分支 `docs/codeql-triage-18` 上应用（`git apply --check` 先验可干净应用）。
+  顺带记一条工具事实：**所有 worktree 共享同一个 stash 列表**——
+  在任一 worktree `git stash` 都会改变 `stash@{N}` 的编号，
+  所以主检出那两条历史 stash（dup-of-PR-236 / superseded-by-PR-236）的编号会顺移，
+  **按名字认、不要按编号认**。
+- 阻塞 / 风险 / 回滚：纯文档，无风险；回滚 = revert 本 commit。
+- 下一项：#236 / #235 / #238 三条 PR 待处理；
+  **034 迁移仍卡在 Supabase CLI 需要 `SUPABASE_ACCESS_TOKEN`**
+  （本机 `~/.supabase/access-token` 不存在 ⇒ `migration list --linked` / `db push` 会挂在交互登录，
+  实测两次都无输出、需手动终止）。这是停止条件 3（需用户提供凭据），不是能力问题：
+  `pnpm ops:schema-drift` 已能在有 key 时 10 秒给出确定答案。
+- 更新时间：2026-10-13（UTC+8）。
