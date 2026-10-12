@@ -8261,3 +8261,75 @@
   生产侧仍需用户授权（`supabase db push --linked` 应用 034、035 → 部署 → 冒烟 → digest 真实读数）。
   可继续的本地项：把 code-scanning 告警台账做成每周只读工作流。
 - 更新时间：2026-10-12（UTC+8）。
+
+## 2026-10-12 — 三道门禁全绿，而生产库里少一列：给「线上 schema 到底是什么」装一个不需要 DB 密码的探测器
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/schema-drift-probe`（base `7fcfdbff`）。
+- 状态：DONE（本地已验证，待 PR）。
+- 为什么做：本轮把 #239 / #240 合并之后，顺手核了一件事——
+  `check:query-columns`（代码列名 vs 生成类型）0 error、`check:migrations` 34 条全绿、
+  `pnpm build` 也过，**可生产库里就是没有 `notifications.email_skipped_reason`**
+  （迁移 034 从未 applied，实测 REST 查询返回 `42703`）。
+  也就是说**三道门禁一起绿着，证明的却是一个不成立的结论**：
+  它们比的是「代码 vs types vs 迁移文件」，**没有一条比到线上那个库**。
+- **两个缺陷正好互相掩盖**（这条是本次最值钱的判断）：
+  `listUnsentEmailNotifications()` 对缺列是 `if (error) throw new Error(error.message)`
+  ⇒ digest worker 一旦跑就必抛；而 `/api/cron/digest` 对 GET 实测 **405**（PR #236 在修）
+  ⇒ 它今天根本没被触发。**所以修好 405 的那一刻，缺列才第一次露头。**
+  如果只按优先级逐个修，就会在部署 #236 之后立刻得到「digest 上线即失败」。
+- **能力从哪来的（实测，不是推断）**：PostgREST 在根端点暴露完整 schema。
+  - `GET <root>/rest/v1/` + `Accept: application/openapi+json`：匿名 **401**、service_role key **200**；
+  - `definitions` 26 张表，`notifications` 的 11 个属性里确实没有那一列；
+  - 属性层**没有嵌套 `properties`**（26 张表全部如此），所以解析不必处理嵌入关系。
+  ⇒ **「线上缺哪一列」不需要数据库密码**。但这条只读 schema、**不执行 SQL**，
+  所以**不解锁 B04**（那条要跑多语句演练 SQL）——已把这句边界同时写进
+  `environments.md` 的分寸第 2 条与 roadmap 的 B04 条目，免得下一个人误判。
+- 完成内容：
+  - `src/lib/db/schema-drift.ts`（纯判定）+ `schema-drift.test.ts` **12 条**；
+    规则覆盖：缺列 / 整表缺失 / **读不到实况只报 UNREADABLE 且不编造缺失** /
+    线上多出的表不算漂移 / **比对集为空判红** / 代码引用了 types 里没有的表不参与比对 /
+    列顺序无关。
+  - `scripts/lib/schema-drift-check.js`（IO）+ `scripts/check-schema-drift.js`（入口）+
+    `package.json` 的 `ops:schema-drift`。
+  - `docs/operations/environments.md`：新增一行生产 schema 读数；
+    **更正**「生产 Supabase（应用侧）⇒ digest 路径在线上是活的」这句（实测 GET 405，
+    且它一旦能跑就撞缺列）；分寸第 2 条补一段能力边界。
+  - `docs/roadmap-0.12.0.md`：B04 补一条「别把这个探测器当成 B04 已解锁」。
+  - CHANGELOG `Unreleased → Added` 一条。
+- **三条设计约束（都是被教训逼出来的）**：
+  1. **未知不算通过，也不许编成结论**：缺凭据 / 网络失败 / 非 2xx / OpenAPI 换形状，
+     四条路径实测都归为退出码 **2**（不是「一致」0，也不是「漂移」1）。
+  2. **默认只报代码真的引用了的**：线上多出的 5 张表（`progress`/`quiz_scores`/`replay_best`/
+     `replay_history`/`wrongbook`）是「这个 Supabase 项目还放了别的东西」，不是漂移。
+  3. **刻意不进 `check:all`**：需要网络 + key 的检查放进 CI = 天天因缺凭据而红的信号位。
+     与 `ops:deploy-freshness` 同类，走 `ops:` 前缀。
+- 验证命令与结果：
+  - 真实读数：`❌ [SCHEMA_LIVE_COLUMN_MISSING] notifications.email_skipped_reason`，**exit 1**；
+    `--json` 统计：比对 **19 张表 / 172 列**（生成类型 21 张，线上 26 张），1 条 issue，5 张 unmanaged。
+  - 四条失败路径实测：无凭据 → exit 2；主机不可达 → `fetch failed` + exit 2；
+    错 key → `HTTP 404` + exit 2；`--help` → exit 0；未知 flag → exit 2 并打用法。
+  - **变异核对**（`cp` 到 /tmp、复原后 `cmp` 一致）：把 types 里那一列改名 →
+    报错文案跟着变成 `notifications.email_skipped_reason_renamed`
+    ⇒ 证明它比对的是**生成的类型**，不是硬编码列名。
+  - `npx vitest run src/lib/db/schema-drift.test.ts --project node` → **12/12**；
+    `pnpm lint` 0 error（`parseArgs` 第一版 complexity 超限，改成查表式 flag 表后过）；
+    `pnpm type-check` 0 error；`pnpm check:gate-rule-tests` ✅（57 个规则模块）；
+    `check:docs` / `check:gates` / `check:bilingual-docs` / `check:doc-links` /
+    `check:changelog` / `check:release-docs` / `check:roadmap-entries` 全绿。
+- 过程中自己踩的两个坑（都会复发，记下来）：
+  1. **写了导出却没有入口**：`schema-drift-check.js` 第一版只 `export`，没有
+     `invokedDirectly` 收尾 ⇒ 脚本跑起来**静默 exit 0、什么都不打印**。
+     「exit 0 但没有任何输出」是这条命令最坏的失效形态，正是它自己文档里警告的那类假绿。
+     已按仓库既有写法（`storage-orphans.js`）补上入口。
+  2. **`NEXT_PUBLIC_SUPABASE_URL` 是项目根，不是 REST 地址**：直接拼 `/` 得到 404。
+     真实端点是 `<root>/rest/v1/`；同时容忍传入已带 `/rest/v1` 的完整地址。
+- 阻塞 / 风险 / 回滚：
+  - 风险：这条命令读的是生产 schema，**只读**（单个 GET，不查数据行）。
+    它不进 CI，所以不会影响任何构建。
+  - 回滚：revert 本 PR，无迁移、无数据面影响。
+  - **仍未解决且必须由用户授权**：`supabase db push --linked` 应用 034（#236 的硬前置）
+    与 035（#235 的硬前置）。**这条探测器现在能在 10 秒内给出「应用了没有」的确定答案**，
+    不必再靠 REST 报 42703 去反推。
+- 下一项：#235 / #236 / #237 三条 PR 待处理（#237 已 rebase 并同步表述）；
+  合并 #236 之前必须先应用 034，否则 digest 上线即抛——**这条命令就是那个前置检查**。
+- 更新时间：2026-10-12（UTC+8）。

@@ -53,7 +53,7 @@
 | Supabase（平台 API） | ✅ 可用 | `gh run list --workflow supabase-auto-restore.yml`（每天 success） | Management API 令牌有效 |
 | Supabase（Auth 配置读） | ✅ 可用 | `gh run list --workflow security-config.yml`（最近一轮输出「Auth 配置已验证（scope=redirects）」） | 同上，另一条独立证据 |
 | Supabase（数据库级） | ❌ **无 DB 密码类 secret** | `gh secret list`（只有一个 `SUPABASE_ACCESS_TOKEN`） | **B04 的真正阻塞**：演练 SQL 与 `migration list --linked` 都要真 Postgres 连接 |
-| 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | digest / 保留期路径在线上是活的 |
+| 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | 连接与凭据是好的。**但「应用侧可达」不等于「worker 跑得通」**：`/api/cron/digest` 对 GET 实测 405（2026-10-12，PR #236 在修），而它一旦能跑就会撞上下一条那个缺列 |
 | 生产部署新鲜度（2026-10-08 观测） | ✅ fresh，阈值 5 | `pnpm ops:deploy-freshness`（生产 `d2457d74` = origin/main 同 commit） | **生产已追上 main**，不再滞后；前面几轮的 lagging 是 Vercel 构建排队的副作用 |
 | 生产冒烟（2026-10-08 观测） | ✅ 7/7 | `node scripts/production-smoke.js --url … --expected-commit d2457d74bd60b23d559a4d1a9c53d764faa5d554` | health / liveness / 主页 / 静态资源 / 安全头 / 匿名看板 307 / webhook 签名拒收 全过，commit 匹配 |
 | 生产异步看板鉴权（2026-10-08 观测） | ✅ 匿名 401（admin 面板数据路径） | curl `BASE/api/ops/provider-status`（此时尚无凭据 → Unauthorized） | 与 2026-10-06 记的一致：鉴权边界在线上仍然有效；**content 读数仍需 CRON_SECRET/admin 会话（本机没有，照旧未知）** |
@@ -62,6 +62,7 @@
 | Resend | ❓ **未知**（2026-10-05 起**可查了**） | `curl -H "authorization: Bearer $CRON_SECRET" $BASE/api/ops/provider-status` | **本条曾长期是「未知」**：provider 诊断逻辑（`diagnoseProviders`）写得完整、有单测，却**没有任何生产代码调用它**，`/api/health` 又只回 supabase/sentry/stripe 三项，于是「邮件链路在生产上是不是空转的」只能靠猜。现已新增只读诊断端点（见下）。**端点已在生产上线并实测过鉴权边界**（2026-10-06T00:57Z，commit `105da717`：匿名 401、错密钥 401），但**读数本身仍未知**——取它需要 `CRON_SECRET`，本机没有。**鉴权被验证不等于内容被读到**，所以这一行照旧是「未知」 |
 | GitHub 保活变量 | ✅ 已配置 | `gh variable list`（`HEALTHCHECK_URL`） | 每日保活 workflow 在跑 |
 | Vercel 构建配额 | ⛔ 限流中 | PR 上的 `Vercel – indie-stack` 检查（2026-10-05 报 `retry in 24 hours`） | preview 部署排队，非代码缺陷 |
+| 生产 schema vs 代码期望（2026-10-12 观测） | ❌ **线上缺 1 列**：`notifications.email_skipped_reason`（迁移 034 未 applied） | `pnpm ops:schema-drift`（只需 `SUPABASE_URL` + service_role key，**不需要 DB 密码**） | `listUnsentEmailNotifications()` 对缺列是 `throw`，所以 **digest worker 每轮必抛**；今天没人看见只因为 GET 405 先挡住了——**两个缺陷正好互相掩盖**。另有 5 张表（`progress`/`quiz_scores`/`replay_best`/`replay_history`/`wrongbook`）在本仓库的生成类型里不存在：代码从不引用 ⇒ 不算漂移，是「这个 Supabase 项目还放了别的东西」 |
 | pg_cron（保留期调度） | ❌ **本地栈实测未安装**（2026-10-06） | `node scripts/check-retention-cron.js --probe --container supabase_db_indiestack` | **保留期一周一行都不会删**：6 个清理函数都在（`cleanup_old_*` / `prune_deleted_upload_objects`），但 `pg_extension` 里 `pg_cron` 行数 = 0，`cron.job` 这张关系根本不存在 → 0 个调度被注册。迁移成功、门禁全绿、`/api/health` 正常，**而数据一行不动**。生产是否安装**仍未核实**（需 DB 密码） |
 
 **三条要读出来的分寸**：
@@ -71,6 +72,12 @@
    但它意味着**一个可选依赖缺失时，健康检查不会替你喊人**。
 2. **「平台可用」不等于「数据库可用」**。两者差着一层：Management API 能读项目状态，
    **读不到库里的表**。把前者当成后者会让人以为 B04 快能做完了。
+   **但这一层在 2026-10-12 被实测细化了一次**：PostgREST 的 OpenAPI 根端点
+   （`GET <root>/rest/v1/`，service_role key，实测匿名 401 / key 200）
+   **不需要 DB 密码就能读到全部表与列名**——所以「线上缺哪一列」这类问题**已经从「查不了」
+   变成「一条命令能回答」**（`pnpm ops:schema-drift`）。
+   它替代不了 B04：那条要的是**执行多语句演练 SQL**，OpenAPI 只给 schema 不给执行。
+   分寸仍然是对的，只是边界比原先写的更细。
 3. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
    本文档开头的那些错误结论，一半是被一个自信的猜测撑起来的。
    **但「未知」也不该被当成常态**：它之所以长期存在，是因为「从外部查不到」。
@@ -88,6 +95,8 @@ curl -sS -H "authorization: Bearer $CRON_SECRET" "$BASE/api/ops/provider-status"
 node scripts/check-health.js "$BASE"
 # 3) 生产落后 main 多少个提交
 node scripts/check-deploy-freshness.js --base-url "$BASE"
+# 4) 线上 schema 与代码期望是否一致（只读 OpenAPI 根端点，不查数据）
+pnpm ops:schema-drift
 ```
 
 ## 免费版保活与自动恢复
