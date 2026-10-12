@@ -10,6 +10,39 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm ops:codeql-alerts`：「CodeQL 零回归」这个结论第一次有了自动核对。**
+  runbook 里那句「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」登记了两年，
+  2026-10-13 实测**是错的**：本仓库虽是 public，`GET /repos/{owner}/{repo}/code-scanning/alerts`
+  匿名仍返回 **401**，而本机 `gh` 的 token 能读到全部字段（编号、规则 ID、严重度、`created_at`、
+  实例 path、`dismissed_reason`）⇒ 缺的一直不是权限，是没人写这个探测。
+  代价早就付过一次：2026-09-24 那 4 条 `js/log-injection` 挂了 5 天没人发现。
+  - **⚠️ 一个足以让人写出假缺陷的坑（我自己刚踩）**：`security_severity_level`
+    **只在带 `x-github-api-version: 2022-11-28` 时才有值**，否则返回 `null`——
+    而 `null` 看起来完全像「GitHub 没给这条告警评分」。同一份数据同一时刻对照实测：
+    无 header ⇒ 5 条全 `null`；带 header ⇒ `high` / `medium`。
+    另证：查询参数 `security_severity_level=` 被 API **静默忽略**（high/critical/medium/7.0
+    四种取值都返回同样的 5 条），而 `severity=error` 返回 0 条 ⇒ 过滤器本身生效，
+    所以**不能用查询参数筛严重度**。判定层因此拒绝把 `null` 当低危，改报
+    `CODEQL_ALERT_SEVERITY_UNKNOWN`。
+  - **六类判据**：实况有台账没有（`UNREGISTERED`，「零回归」的正向形态）、台账有实况没有
+    （`STALE_ENTRY`，腐烂比没登记更糟）、编号复用（`RULE_MISMATCH`）、登记不完整
+    （`INCOMPLETE_ENTRY`：缺判定人/日期/证据，或 `triaging` 却不写为什么没结案）、
+    复核期限已过（`REVIEW_OVERDUE`）、阻断级仍 open（`BLOCKING_OPEN`）、分诊超 SLA
+    （`TRIAGE_SLA_BREACHED`）。SLA 按**工作日**算：`workingDaysBetween("2026-09-27","2026-10-13") === 12`。
+  - **台账如实登记了「判定为假阳性 ≠ 已处置」**：告警 #18 的分诊结论是假阳性（issue #242），
+    但**没有 dismissal**，所以登记为 `triaging` 而非 `false-positive` ⇒ 这条探测现在**应该红**。
+    另：告警 #17 的判定日期是 `2026-10-11` 而不是 09-24 那批的日期——它出现于 09-27，
+    09-24 那批覆盖的是 #11–#14（结论来自 runbook「修复已合并但告警仍在」一节，那节点名 #11/#12/#13/#17）。
+  - **拿不到实况就说拿不到**：缺 token、坏 token（实测 401）、缺 repo、日期格式错、
+    fixture 读不出——**五条失败路径逐条实测**，全部归退出码 **2**（`LIVE_UNREADABLE`）。
+    **未知不算通过**，但也绝不据此声称「零回归」。
+  - **`--fixture fixtures/codeql-alerts.json`** 让无 token 环境（fork PR、未配凭据的机器）
+    能离线复现判定，录的是 2026-10-13 的真实形状，含一条 `null` 严重度与一条未登记告警。
+  - **刻意不接进 `check:all`，也不接进任何 workflow**：#18 未结案 ⇒ 它此刻必红，
+    进 PR 门禁会阻塞每一个 PR。`ops:` 前缀与 `ops:schema-drift` / `ops:migration-status`
+    同类 = 需要凭据的运维探测。22 条单测，5 个变异全部逮到
+    （`null` 洗成 low / 未登记永不触发 / 腐烂不报 / SLA 用日历天数 / `triaging` 不要求 note）。
+
 - **`pnpm ops:migration-status`：「云端到底 applied 到第几版迁移」从此有自动答案，而且不要数据库密码、也不要 CLI 登录态。**
   上一条 `ops:schema-drift` 回答的是「线上有没有这一列」，本条回答的是「**为什么没有**」——
   两边版本号一对，缺的就是没 push 的那几条。
