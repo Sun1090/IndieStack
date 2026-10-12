@@ -8475,3 +8475,76 @@
   而 `supabase db push` 需要本机能交互输入 `SUPABASE_ACCESS_TOKEN`（停止条件 3）。
   顺序不可颠倒：先 push 迁移、后部署 GET 修复，否则会把「静默死」变成「每轮 500」。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「本地无法复现」登记了两年，实测是错的：CodeQL 告警台账第一次和实况对上
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/codeql-alert-probe`（base `d2c62b83` = main + #246）。
+- 状态：DONE（待 PR）。
+- 为什么做：runbook `docs/operations/codeql-alert-triage.md` 里有两句互相支撑的话——
+  「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」与「读取真实告警列表…本地与无凭据环境无法执行」。
+  正因为这两句，「零回归」这个结论**从来没有被任何自动检查核对过**，
+  而代价已经付过一次：2026-09-24 那 4 条 `js/log-injection` 挂了 5 天没人发现。
+  2026-10-13 实测：**本仓库虽是 public，`code-scanning/alerts` 匿名 401，而本机 `gh` 的 token 能读全部字段**
+  ⇒ 缺的一直不是权限，是没人写这个探测。
+- 完成内容：
+  - `src/lib/security/codeql-alert-registry.ts`：判定层（纯函数）+ `CODEQL_ALERT_REGISTRY` 5 条真实登记。
+    九类 issue code：`UNREGISTERED` / `STALE_ENTRY` / `RULE_MISMATCH` / `INCOMPLETE_ENTRY` /
+    `REVIEW_OVERDUE` / `BLOCKING_OPEN` / `TRIAGE_SLA_BREACHED` / `SEVERITY_UNKNOWN` / `LIVE_UNREADABLE`。
+  - `scripts/lib/codeql-alert-check.js`（IO，`--fixture` 离线）+ `scripts/check-codeql-alerts.js`
+    + `fixtures/codeql-alerts.json`（2026-10-13 真实形状，含一条 `null` 严重度与一条未登记告警）
+    + `package.json` 的 `ops:codeql-alerts`。
+  - 文档同步：runbook 的「零回归的判定」与「外部依赖」两节**就地推翻旧表述**并写入 api-version 那个坑；
+    `environments.md` 加一行（观测命令 + 真实读数）；`codeql-alert-policy.ts` 头注释改掉
+    「数量对比属外部依赖不在门禁范围内」的说法，改为指向 `ops:codeql-alerts` 并说明为什么两者分开。
+- ⚠️ **本轮最重要的教训（差点写进文档的假缺陷）**：我先读到 5 条告警的
+  `security_severity_level` 全是 `null`，据此认定「runbook 的 ≥7.0 阈值此刻无法求值」是**真实缺陷**，
+  并已写进代码注释与台账草稿。**那是我自己的用法错误**——该字段只在带
+  `x-github-api-version: 2022-11-28` 时才有值。同一时刻同一份数据对照实测：
+  无 header ⇒ 全 `null`；带 header ⇒ `high` / `medium`。
+  另证：`security_severity_level=` 这个**查询参数被 API 静默忽略**（high/critical/medium/7.0
+  四种取值都返回同样的 5 条），而 `severity=error` 返回 0 条 ⇒ 过滤器本身生效，
+  所以不能用查询参数筛严重度。真实读数：#18 `high`、#11/#12/#13/#17 `medium`。
+  ⇒ 这条坑已写进模块头、`--help`、runbook 与 CHANGELOG；判定层**拒绝把 `null` 当低危**。
+  复发模式：**「发现缺陷」之前先证伪「我的工具用法错了」**——这是我连续第 6 次在同类事上翻车。
+- 台账如实登记的一个区别：**#18 是 `triaging` 不是 `false-positive`**。
+  判定确实是假阳性（issue #242），但**没有 dismissal**，而 runbook 说例外只能走 dismissal
+  ⇒「判定为假阳性 ≠ 已处置」。所以这条探测现在**应该红**，这不是缺陷。
+  #17 的 `decidedOn` 是 `2026-10-11` 而非 09-24 那批：它出现于 09-27，09-24 那批覆盖 #11–#14。
+- 验证命令和结果：
+  - `node node_modules/eslint/bin/eslint.js <4 files>` ✅（先修掉 `inspectCodeqlAlerts` 复杂度 18>15：
+    把「台账自身体检」那段循环抽成 `registrySelfIssues`——**拆分，不提豁免**；
+    顺手让「登记不完整 / 复核过期」在实况读不到时也照样报，否则探测挂掉会掩盖台账腐烂）。
+  - `pnpm exec tsc --noEmit` ✅；`pnpm check:codeql` ✅（21 条契约断言，章节名未动）。
+  - `pnpm exec vitest run src/lib/security/codeql-alert-registry.test.ts` ✅ 22/22。
+  - `pnpm check:all` ✅（写这条时 274 files / 3343 tests 全绿）——**但那次「全绿」是在补 CHANGELOG 条目之前跑的**，
+    补完条目后 `pnpm test` 当场红：见下条，那是本轮真正的第二个产出。
+  - **顺带修掉 `check:changelog` 自己的缺陷**：`src/lib/changelog/parse-changelog.ts` 的兜底判断是
+    `text.startsWith("#")`，而 CommonMark 规定 ATX 标题的 `#` 后必须有空白 ⇒ 续行写
+    `#17 的判定日期是…`（指告警编号）被判成 `stray-heading`，**整条 CHANGELOG 校验红**。
+    上面三个分支（`## ` / `### ` / `# `）都要求空白，只有兜底不要求，自相矛盾。
+    改成 `/^#{1,6}(\s|$)/`，并加一条断言钉住：把实现改回旧写法，该断言**必红（已实测）**。
+    红的是**仓库真实的 CHANGELOG.md**，不是 fixture ⇒ 任何以 `#数字` 开头写续行的人都会撞上。
+  - **真实读数**：`GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack
+    node scripts/check-codeql-alerts.js --today 2026-10-13` → 2 条红
+    （`BLOCKING_OPEN` #18 + `TRIAGE_SLA_BREACHED` 12 个工作日 > 5），**exit 1**。
+  - fixture 读数：额外命中 `UNREGISTERED` #19 与 `SEVERITY_UNKNOWN`，exit 1。
+  - 失败路径**五条逐条实测**（缺 token / 坏 token 401 / 缺 repo / 日期格式错 / fixture 读不出）
+    全部归 exit 2 = `LIVE_UNREADABLE`。
+  - 变异测试 5 个全部被逮到：`null` 洗成 low / 未登记永不触发 / 腐烂不报 / SLA 改用日历天数 /
+    `triaging` 不要求 note。
+  - `pnpm exec vitest run src/lib/changelog/` ✅ 39/39（新增 1 条）；`pnpm check:changelog` ✅。
+  - 修完后重跑 `pnpm check:all` ✅ **274 files / 3344 tests**（比首跑多那 1 条正是新增的断言）；
+    `pnpm verify:build` ✅（lint / type-check / test / build / bundle / perf 全绿）。
+  - `python3 /tmp/table-probe.py` → 159 个 md，跨行表格 0 处。
+- 刻意不做的事：**不把 `ops:codeql-alerts` 接进 `check:all` 或任何 workflow**。
+  #18 未结案 ⇒ 它此刻必红，进 PR 门禁会阻塞每一个 PR。`ops:` 前缀与 `ops:schema-drift` /
+  `ops:migration-status` 同类 = 需要凭据的运维探测。等 #18 结案后再考虑做成每周只读 workflow
+  （那需要 `security-events: read`，且必须带上 §⚠️ 那个 header，否则读数会退化成 5 个 `null`）。
+- 阻塞 / 风险 / 回滚：不改运行时代码、不改告警状态 ⇒ 无线上风险。
+  `parse-changelog.ts` 那条**收紧了**判据（少报一类 stray-heading），方向是放宽而非加严，
+  所以不会放过真标题：`## 0.1.0` 这类无方括号的版本标题仍走 `## ` 分支，仍被现有断言覆盖。
+  回滚 = revert 本 commit。
+- 下一项：#236 / #235 仍被外部权限挡住（034、035 applied）。
+  本机可做：把 code-scanning 告警做成每周只读 workflow（需先结案 #18 否则天天红）、
+  以及 issue #245 里那条未验证问题（Management API 的多语句限制在 CLI 侧还是服务端）。
+- 更新时间：2026-10-13（UTC+8）。

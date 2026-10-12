@@ -57,20 +57,40 @@ CodeQL 结果里的 `security-severity` 是 0–10 的 CVSS 风格分值，按�
 - 基线取 `origin/main` 最近一次已完成的 CodeQL 扫描。
 - PR 上出现的新告警必须满足：严重度 < 7.0 且已建 issue，或已按上节规则 dismissal。
 - 已存在的历史告警允许保留，但数量不得增长；每次发布收口时在 gap audit 中记录当前计数与变化。
-- 告警计数与对比需要 GitHub 安全 API，**本地无法复现**，因此 `pnpm check:codeql` 只保证扫描强度与
-  处置策略不漂移，不保证数量不变（见下节）。
+- 计数与对比由 `pnpm ops:codeql-alerts` 做：它把 GitHub 实况与 `CODEQL_ALERT_REGISTRY`
+  （`src/lib/security/codeql-alert-registry.ts`，本文件末尾那批读数的结构化形态）逐条对账，
+  新增未登记、台账腐烂、复核过期、阻断级仍 open、分诊超 SLA 都会红。
+  2026-10-13 之前的说法是「本地无法复现」，**那是错的**——见下节。
+  `pnpm check:codeql` 仍然只管扫描强度与处置策略不漂移，不管数量。
 
 ## 外部依赖
 
-- 读取真实告警列表、对比基线分支、确认 dismissal 记录，都需要 **GitHub 仓库的 code scanning 权限**
-  （`security-events: read`）与可用 token；本地与无凭据环境无法执行。
+- **2026-10-13 实测推翻本节旧表述**（原文：「读取真实告警列表…本地与无凭据环境无法执行」）。
+  本仓库是 public，但 `GET /repos/{owner}/{repo}/code-scanning/alerts` 匿名返回 **401**；
+  而本机 `gh` 的 token 就能读到全部字段（编号、规则 ID、`security_severity_level`、`created_at`、
+  实例 path、`dismissed_reason`）。所以缺的一直不是权限，是没人写这个探测——现在有了：
+  `GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack pnpm ops:codeql-alerts`。
+- ⚠️ **`security_severity_level` 只在带 `x-github-api-version: 2022-11-28` 时才有值**，
+  否则返回 `null`，而 `null` 看起来完全像「GitHub 没给这条告警评分」。同一份数据同一时刻的对照实测：
+  无 header ⇒ 5 条全是 `null`；带该 header ⇒ `high` / `medium`。
+  另证：查询参数 `security_severity_level=` 会被 API **静默忽略**（high/critical/medium/7.0 四种取值都返回同样的
+  5 条），而 `severity=error` 返回 0 条 ⇒ 过滤器本身生效，所以**不要用查询参数筛严重度**，取回来自己判。
+  本项目的判定层因此拒绝把 `null` 当低危，它报 `CODEQL_ALERT_SEVERITY_UNKNOWN`。
+- 无 token 环境（fork PR、未配凭据的机器）能跑离线复现：`pnpm ops:codeql-alerts --fixture
+  fixtures/codeql-alerts.json`，它录的是 2026-10-13 的真实形状（含一条 null 严重度与一条未登记告警）。
+  读不到实况时探测以退出码 2 结束并报 `CODEQL_ALERT_LIVE_UNREADABLE`——**未知不算通过**，
+  但也绝不据此声称「零回归」。
 - 定时扫描与历史告警状态由 GitHub 侧保存；仓库只保存扫描配置。
-- 因此本 runbook 的「零回归」结论必须在有 GitHub 访问权限的环境（发布负责人或 CI）里确认。
+- 「零回归」结论由 `pnpm ops:codeql-alerts` 的读数给出，不再依赖某个有权限的人手工确认。
+- 它**刻意没有**接进 `check:all` 或任何 workflow：台账里 #18 目前未结案，这条探测此刻是红的，
+  进 PR 门禁会阻塞每一个 PR。`ops:` 前缀表示「需要凭据的运维探测」，与 `ops:schema-drift`、
+  `ops:migration-status` 同类。等 #18 结案后再考虑接进定时只读 workflow。
 
 ## 相关门禁
 
 - `pnpm check:codeql`：校验工作流扫描强度（语言、套件、action major、权限、超时、分支覆盖、定时、路径排除）
   与本文档的事实一致性。
+- `pnpm ops:codeql-alerts`：把 GitHub 实况与下方告警台账对账（需要 `GITHUB_TOKEN`，或用 `--fixture` 离线跑）。
 - `pnpm check:security`：校验扫描器仍被启用（analyze 存在、套件、`security-events: write`）。
 - `pnpm check:workflows`：校验工作流卫生（固定版本、超时、`needs`、并发取消）。
 
