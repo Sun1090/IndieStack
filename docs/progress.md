@@ -8988,7 +8988,10 @@
   `failures=0 report=ALL-14-ASSERTIONS-PASSED`，`drill-%` 通知残留 0 行。
 - 验证命令和结果：`pnpm check:all` ✅ **280 files / 3480 tests**（+1 文件 / +10 条）；
   `type-check` exit 0；eslint（`node node_modules/eslint/bin/eslint.js` 逐文件）exit 0；
-  `check:changelog` / `check:progress`（184 条）exit 0；`falsify:rules` 见下一条 commit 补跑。
+  `check:changelog` / `check:progress`（184 条）exit 0。
+  【同条 commit 内补跑】`pnpm falsify:rules` ✅ **72/72**、exit 0，跑完 `git status` 干净。
+  其中 `stripSqlLineComments` 那条从 2 红变成 **3 红**——因为 parity 套件新加了一条
+  也依赖剥注释的用例。**变红数上升不是问题**，它说明那层判定被更多用例覆盖。
 - 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit。
 - **教训的形状**：我撞到一个现象（报错），然后给现象编了一个**听起来专业**的机制，
   并把它写进 SQL 注释、CHANGELOG、progress 三处。
