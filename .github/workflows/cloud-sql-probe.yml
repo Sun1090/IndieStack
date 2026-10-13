@@ -1,0 +1,50 @@
+name: Cloud SQL execution probe
+
+## 「云端那个库能不能执行 SQL」——一次性问答工具，**只有手动触发**。
+##
+## 为什么不做成定时：它回答的是一个**一次性事实**（issue #245：多语句限制在客户端还是
+## 服务端；以及 B04 到底需不需要数据库密码）。答案拿到之后这条就退役了，每天打一次
+## 生产 API 只会制造噪音和限流风险。
+##
+## 为什么可以对手动触发放心：脚本**没有任意 SQL 入口**，只发 `PROBE_PLAN` 里四条常量，
+## 发送前还要过 `auditProbePlan()`——任何一条被判为可写就一条都不发（退出码 2）。
+## 四条本身都是 `select` / 一条只 `raise exception` 的 DO 块（异常令块整体回滚），
+## 打「能写」的端点时额外带 `read_only: true`。
+##
+## 凭据用仓库里已有的 `SUPABASE_ACCESS_TOKEN`（secret）+ `SUPABASE_PROJECT_REF`（variable），
+## 与 `migration-status.yml` / `security-config.yml` 同一套。
+## 缺令牌时脚本自动降级成 dry-run 并以 2 退出——**未知不算通过**，不会假绿。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-sql-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Cloud SQL execution probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Probe cloud SQL execution
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: pnpm ops:cloud-sql-probe --json
