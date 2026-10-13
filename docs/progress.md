@@ -8939,3 +8939,60 @@
 - 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit（注释与台账，无行为改动）。
 - 下一项：复查 `retention-cleanup.single-do.sql` 有没有本轮发现的 `format()` 里 `%` 空格陷阱。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 我上一轮写下的「% 会吃掉空格」是错的：真机制是「RAISE 里每个裸 % 都是占位符」，而且它不报错
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（续前两条）。
+- 状态：DONE。
+- 为什么做：上一条 progress 的「下一项」是「复查 `retention-cleanup.single-do.sql`
+  有没有本轮发现的 `%` 空格陷阱」。复查动作本身没问题，**问题在于那条陷阱的描述是我编的机制**：
+  我确实撞到了报错，但把「为什么报错」写成了一个听起来合理的解释。
+- **实测否证（本地栈，每条可重跑）**：
+  | 写法 | 实测输出 |
+  |---|---|
+  | `raise 'A=20% B', 'X'` | `A=20X B` —— 空格**没被吃**，参数被贴进 "20" 后面 |
+  | `raise 'failures=% assertions=20% report=%', n, i, r` | `failures=0 assertions=20 [obj] report=ALL` |
+  | 同上只给 2 参 | `too few parameters specified for RAISE` |
+  | `raise 'A=20%% B'` | `A=20% B`（`%%` 转义，不占参数） |
+  | `raise '%', '100%'` | `100%`（参数值不被二次扫描） |
+  | `format('a=% 5s', x)` | `unrecognized format() type specifier " "` |
+  ⇒ 「`% ` 是带 flag 的转换、会吃掉空格」是 **`format()` 的行为**，我把它安到了 `RAISE` 头上。
+  两条通道语义不同：**RAISE 里每个裸 `%` 都是占位符**。
+- **比「我写错解释」更值得记的是第二行**：三个 `%` 配三个参数**不报错**，
+  输出看起来完全合理，只是内容错位了一格。**只有参数不够时才响。**
+  而演练报告恰恰爱写百分比（`assertions=20%`）——这是最容易撞上的形状。
+  「一个会静默给出错误读数的通道」比「一个会崩的通道」贵得多。
+- 完成内容：
+  1. `src/lib/drills/raise-format.ts`（新）：`countBarePercent` / `parseRaiseStatement` /
+     `findRaiseStatements` / `auditRaiseFormats` / `splitTopLevelArgs`。
+     两条判据分开：数量对不上（数据库部分会报）、**格式串里有「数字紧跟裸 %」**（数据库完全不报）。
+  2. `src/lib/drills/raise-format.test.ts`（新，9 条）：扫**所有** `.single-do.sql`，
+     不只钉擦除这一份。用 `stripSqlLineComments` 只在代码里数——
+     不剥注释会数出 4 条 RAISE（文件头拿它讲机制），**本轮刚在 parity 上踩过同一个坑，
+     这次直接复用，没有再手搓一份**。
+  3. `erasure-drill-parity.test.ts`：删掉我在那里手搓的 `parseRaiseFormat`，改调共享模块。
+     （手搓那份和共享那份**会各错一份**——这正是本仓库写过的教训。）
+  4. 派生版 SQL 的注释就地订正，并写明「此前这里的解释是错的」。
+  5. `cloud-sql-probe.ts` 的 `multiStatementWorks` 注释补上 #245 结案指针。
+- **自己抓到的一条假绿**：`%%` 转义判据第一版**没有样本钉住**——
+  把 `/\d%(?!%)/` 松成 `/\d%/` 后 9 条用例**全绿**（实测 exit=0）。
+  补上「`%%` 不报」与「真错位必须报」两侧对照才承重。
+  变异核对：`countBarePercent` 恒 0 → 7 红；`parseRaiseStatement` 中性化 → 5 红；
+  `findRaiseStatements` → 2 红；`auditRaiseFormats` → 1 红；
+  `splitTopLevelArgs` 退化成 `split(',')` → 1 红；A8「数量判据失效」→ 1 红。
+- **登记表 68 → 72 条**，4 个入口全部实测 bites。
+  `splitTopLevelArgs` **刻意不登记**：纯文本 helper，没有「报出问题」的判据，
+  失效已由 `parseRaiseStatement` 覆盖——多登记一条只会让这张表虚胖。
+- **复查 retention 那份的结论：不受影响**。它写 `failures=% report=%` 配 2 参数，
+  格式串里没有百分比字面量 ⇒ 2 占位 2 参数对齐。实跑复核
+  `failures=0 report=ALL-14-ASSERTIONS-PASSED`，`drill-%` 通知残留 0 行。
+- 验证命令和结果：`pnpm check:all` ✅ **280 files / 3480 tests**（+1 文件 / +10 条）；
+  `type-check` exit 0；eslint（`node node_modules/eslint/bin/eslint.js` 逐文件）exit 0；
+  `check:changelog` / `check:progress`（184 条）exit 0；`falsify:rules` 见下一条 commit 补跑。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit。
+- **教训的形状**：我撞到一个现象（报错），然后给现象编了一个**听起来专业**的机制，
+  并把它写进 SQL 注释、CHANGELOG、progress 三处。
+  如果当初只写「这样写会报错，换成 `||` 拼」而不解释为什么，错误就不会扩散。
+  **解释是廉价的，读数才是贵的**——以后写机制前先跑一组对照，跑不出来就只写现象。
+- 下一项：issue #245 结案评论已发（同分支）；补跑 `falsify:rules` 全量并 commit。
+- 更新时间：2026-10-13（UTC+8）。

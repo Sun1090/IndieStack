@@ -493,6 +493,35 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return sql;",
     testFile: "src/lib/drills/erasure-drill-parity.test.ts",
   },
+  // plpgsql RAISE 的占位符核对（`%` 在 RAISE 里一律算占位符，实测见 raise-format.ts 的表）。
+  // 4 个判定入口逐个实测 bites：分别 7 / 5 / 2 / 1 条变红。
+  // **刻意不登记 `splitTopLevelArgs`**：它是纯文本 helper，没有「报出问题」的判据，
+  // 它的失效已经由 `parseRaiseStatement` 那条覆盖——多登记一条只会让这张表虚胖。
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "countBarePercent",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "parseRaiseStatement",
+    neuteredReturn:
+      "return { text: statement.trim(), placeholders: 0, args: 0, digitPercent: false };",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "findRaiseStatements",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "auditRaiseFormats",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
 ];
 
 export interface MutationResult {

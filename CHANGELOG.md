@@ -10,6 +10,39 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`src/lib/drills/raise-format.ts`：plpgsql `RAISE` 的 `%` 不是「格式串里的字面百分号」——
+  每一个裸 `%` 都是占位符。** 起因是我在上一版注释里写下的解释**是错的**，
+  本轮实测把它否证了（每条读数都可在本地栈重跑）：
+  | 写法 | 实测输出 |
+  |---|---|
+  | `raise 'A=20% B', 'X'` | `A=20X B` —— 空格**没被吃掉**，但参数被贴进 "20" 后面 |
+  | `raise 'failures=% assertions=20% report=%', n, i, r` | `failures=0 assertions=20 [obj] report=ALL` |
+  | 同上但只给 2 个参数 | `too few parameters specified for RAISE` |
+  | `raise 'A=20%% B'` | `A=20% B`（`%%` 是转义，不占参数） |
+  | `raise '%', '100%'` | `100%`（参数值**不会**被二次扫描） |
+  - **原写法说「`% ` 被当成带 flag 的转换、会吃掉空格」——那是 `format()` 的行为，
+    不是 `RAISE` 的**：`format('a=% 5s', x)` 确实回
+    `unrecognized format() type specifier " "`。两条通道被我混成了一条。
+  - **真正要紧的是第二行：它不报错。** 三个 `%` 配三个参数，输出看起来完全合理，
+    只是 `v_info` 被贴到了 "20" 后面、`report` 挪了位。**静默错位**；
+    只有参数**不够**时才响。而演练报告恰恰爱写百分比（`assertions=20%`），
+    是最容易撞上的形状。
+  - 所以固化成门禁：`raise-format.test.ts` 用 `stripSqlLineComments` **只在代码里数**
+    （派生版的文件头大量引用 `raise exception` 讲机制，不剥注释会数出 4 条——
+    本轮刚在 parity 用例上踩过同一个坑，这次直接复用而不是再手搓一份）。
+    `splitTopLevelArgs` 管引号与括号深度：`coalesce(v, 'x, y')` 是**一个**参数，
+    直接 `split(",")` 会数出 4 个——**多算参数会让安全写法报错，于是检查被所有人忽略**。
+  - **一条自己抓到的假绿**：`%%` 转义那条判据第一版**没有样本钉住**，
+    把 `/\d%(?!%)/` 松成 `/\d%/` 后 9 条用例**全绿**（实测 exit=0）。
+    补上「`%%` 不报」+「真错位必须报」两侧对照才承重。
+  - 4 个判定入口进 `falsify:rules`（实测分别 7 / 5 / 2 / 1 条变红）⇒ 登记表 **68 → 72 条**。
+    `splitTopLevelArgs` **刻意不登记**：它是纯文本 helper，没有「报出问题」的判据，
+    失效已由 `parseRaiseStatement` 覆盖——多登记一条只会让这张表虚胖。
+  - **顺带复查了 `retention-cleanup.single-do.sql`**（PR #236，尚未进 main）：
+    它写的是 `raise exception 'DRILL-RESULT failures=% report=%', n_fail, v_report`
+    ——2 占位 2 参数、格式串里没有百分比字面量 ⇒ **不受影响**。
+    实跑复核：`failures=0 report=ALL-14-ASSERTIONS-PASSED`，`drill-%` 通知残留 0 行。
+
 - **B04 缺口 (a) 做完了：`docs/operations/drills/account-erasure.single-do.sql`——
   把擦除演练正本压成 HTTP 送得出去的**一条**语句，并在本地栈实测跑通。**
   读数：`failures=0 assertions=20`，三段信息性输出与正本形状一致，

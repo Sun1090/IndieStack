@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { stripSqlLineComments } from "./psql-meta";
+import { auditRaiseFormats, findRaiseStatements } from "./raise-format";
 
 const SOURCE = resolve(process.cwd(), "docs/operations/drills/account-erasure.sql");
 const DERIVED = resolve(process.cwd(), "docs/operations/drills/account-erasure.single-do.sql");
@@ -97,5 +98,15 @@ describe("account-erasure 正本 vs 单语句派生版", () => {
     // 对照：正本也是 2 开 2 关（少一次就等于少覆盖一段调用路径）
     const sourceSwitches = source.match(/^set role service_role;/gm) ?? [];
     expect(sourceSwitches).toHaveLength(2);
+  });
+
+  it("报告语句只留**一个**占位符——多占位配百分比文本会静默错位", () => {
+    // **复用 `raise-format.ts`，不在这里再手搓一份解析器**：
+    // 本仓库刚为「两处各写就会各错一份」写过一条教训（剥注释那次）。
+    // 解析器自身的形状用例在 `raise-format.test.ts`，这里只管这份文件。
+    const statements = findRaiseStatements(derivedCode);
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toMatchObject({ placeholders: 1, args: 1, digitPercent: false });
+    expect(auditRaiseFormats(statements, "derived")).toEqual([]);
   });
 });

@@ -220,9 +220,18 @@ begin
   --     同时这一句就是**回滚本身**：整条语句失败 ⇒ 上面所有写入都不留。
   select count(*) into n_fail from drill_fail;
   select coalesce(string_agg(msg, ' | '), 'ALL-20-ASSERTIONS-PASSED') into v_report from drill_fail;
-  -- 刻意**不**把 v_info 塞进 format 的 %s：`assertions=20%` 后面紧跟空格时，
-  -- PostgreSQL 把 `% ` 当成带 flag 的转换（实测会吃掉那个空格并多消费一个参数）。
-  -- 报告串用 || 拼，读起来也更直白。
+  -- 报告串**只用一个 % 占位**，其余全部用 || 拼。这不是风格选择，是躲开一个静默错位：
+  --   · plpgsql 的 RAISE 里**每一个裸 % 都是一个占位符**，包括落在字面文本里的那种。
+  --     实测 raise 'A=20% B', 'X' ⇒ `A=20X B`（空格没被吃，但参数被塞进了 "20" 后面）。
+  --   · 所以 `failures=% assertions=20% report=%` 配三个参数**不会报错**，
+  --     实测输出 `failures=0 assertions=20 [obj] report=ALL` —— 看起来完全合理，
+  --     但 v_info 已经被贴到 "20" 后面、report 挪了位。**这是静默的**，
+  --     只有参数**不够**时才响（`too few parameters specified for RAISE`）。
+  --   · 另一条实测：参数值**不会**被二次扫描，raise '%', '100%' ⇒ `100%`。
+  --     所以「拼成一个字符串、只留一个占位」是安全的写法。
+  --   · 顺带订正：本文件此前注释说「`% ` 被当成带 flag 的转换、会吃掉空格」——
+  --     那是**错的**，真行为见上。`format()` 里 `% ` 确实报错
+  --     （`unrecognized format() type specifier " "`），但 RAISE 不是 format()。
   raise exception 'DRILL-RESULT %', 'failures=' || n_fail || ' assertions=20' || v_info || ' report=' || v_report;
 end
 $drill$;
