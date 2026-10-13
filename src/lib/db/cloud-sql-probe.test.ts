@@ -265,7 +265,9 @@ describe("auditProbePlan", () => {
       on,
       response({ json: [{ transaction_read_only: "off" }] }),
     );
-    expect(contradicted.outcome).toBe("REJECTED_SQL");
+    // CONTRADICTED 而不是 REJECTED_SQL：语句执行成功了（HTTP 201），
+    // 只是回了一个与期望相反的值。把它标成「被拒绝」是自相矛盾的标签。
+    expect(contradicted.outcome).toBe("CONTRADICTED");
     expect(contradicted.evidence).toContain("[FIELD_CONTRADICTED]");
   });
 
@@ -585,12 +587,38 @@ describe("summarizeProbe / probeExitCode", () => {
       pgCron,
       response({ json: [{ pg_cron: "NOT_INSTALLED" }] }),
     );
-    expect(verdictReport.outcome).toBe("REJECTED_SQL");
+    expect(verdictReport.outcome).toBe("CONTRADICTED");
     const report = summarizeProbe([verdictReport]);
     expect(report.pgCronMissing).toBe(true);
     expect(report.pgCronInstalled).toBe(false);
     // 「未安装」是**答案**而不是故障，所以退出码是 1（被明确拒绝）而不是 2（不知道）。
     expect(probeExitCode(report)).toBe(1);
+  });
+
+  it("read_only 那一步回 off ⇒ readOnlyFlagIneffective，且它是坏答案而不是「不知道」", () => {
+    // ⚠️ 这条用例是**变异测出来的**：我把 summarizeProbe 里这个字段的判据改成一个
+    // 永不匹配的字符串，全套 88 条**全绿** ⇒ 这个字段此前没有任何覆盖。
+    // 而它承载的是本探测**对自己安全声明的核验**：文档宣称打「能写」端点有两层防护，
+    // 第二层就是 read_only 字段。它坏了而没人知道，比没写这个字段更糟。
+    const contradicted = verdict({
+      id: "READ_ONLY_FLAG_ON",
+      outcome: "CONTRADICTED",
+      evidence: "[FIELD_CONTRADICTED] 期望 transaction_read_only=on，实际 off",
+    });
+    const report = summarizeProbe([contradicted]);
+    expect(report.readOnlyFlagIneffective).toBe(true);
+    expect(report.readOnlyFlagEffective).toBe(false);
+    // 退出码 1：它是答案，但也是坏答案，不能被压成 0。
+    expect(probeExitCode(report)).toBe(1);
+  });
+
+  it("read_only 那一步因别的原因被拒 ⇒ 不算「字段是装饰性的」", () => {
+    // 与 pg_cron 那条同理：把任何失败都读成「防护失效」是一个具体的假结论。
+    const report = summarizeProbe([
+      verdict({ id: "READ_ONLY_FLAG_ON", outcome: "REJECTED_SQL", status: 400, evidence: "syntax error" }),
+    ]);
+    expect(report.readOnlyFlagIneffective).toBe(false);
+    expect(report.readOnlyFlagEffective).toBe(false);
   });
 
   it("pg_cron 回 INSTALLED ⇒ pgCronInstalled，且不带 read_only 之外的额外端点", () => {

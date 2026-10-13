@@ -332,7 +332,11 @@ describe("runCloudSqlProbe 的短路", () => {
     const code = await runCloudSqlProbe(baseOptions);
     expect(code).toBe(1);
     const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
-    expect(printed).toContain("[PG_CRON_INSTALLED] REJECTED_SQL");
+    expect(printed).toContain("[PG_CRON_INSTALLED] CONTRADICTED");
+    // ⚠️ 标记必须是 ❗ 而不是 ❌：`❌ (HTTP 201)` 自相矛盾，会被读成「探测坏了」，
+    // 于是人去查脚本而不是去查 pg_cron——生产那次实测就是这么绕了一圈的。
+    expect(printed).toMatch(/❗ \[PG_CRON_INSTALLED\] CONTRADICTED/);
+    expect(printed).not.toMatch(/❌ \[PG_CRON_INSTALLED\]/);
     // ⚠️ 输出**不许**把「没装 pg_cron」说成「保留期失效」：
     // 主执行者是 /api/cron/retention，pg_cron 只是迁移里那组周调度的第二个可选调度器。
     expect(printed).toContain("这不等于保留期失效");

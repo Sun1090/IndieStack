@@ -184,10 +184,29 @@ function printPlan(audit, plan) {
   }
 }
 
+/**
+ * 每一步的标记。
+ *
+ * `CONTRADICTED` **刻意不打 ❌**：生产实测（run `38442279610`）当时打的是
+ * `❌ [PG_CRON_INSTALLED] REJECTED_SQL (HTTP 201)`，而那一行的事实是
+ * 「**问到了答案，答案是不利的那一个**」。`❌` 配 `HTTP 201` 自相矛盾，
+ * 会被读成「探测坏了」——于是人去查脚本而不是去查 pg_cron，
+ * 本轮我自己就是这么绕了一圈才读到结论的。
+ *
+ * 它也不是 ✅：`❗` 的意思是「结论成立，但方向是坏的」。
+ */
+function markOf(outcome) {
+  if (outcome === "EXECUTED") return "✅";
+  if (outcome === "UNKNOWN" || outcome === "RATE_LIMITED") return "⚠️";
+  if (outcome === "CONTRADICTED") return "❗";
+  return "❌";
+}
+
 function printVerdicts(report) {
   for (const verdict of report.verdicts) {
-    const mark = verdict.outcome === "EXECUTED" ? "✅" : verdict.outcome === "UNKNOWN" ? "⚠️" : "❌";
-    console.log(`${mark} [${verdict.id}] ${verdict.outcome} (HTTP ${verdict.status}) ${verdict.evidence}`);
+    console.log(
+      `${markOf(verdict.outcome)} [${verdict.id}] ${verdict.outcome} (HTTP ${verdict.status}) ${verdict.evidence}`,
+    );
   }
   console.log(
     `结论：read_only 字段=${report.readOnlyFlagEffective ? "确实生效" : report.readOnlyFlagIneffective ? "装饰性的（服务端未进入只读）" : "未证实"} / ` +
@@ -206,7 +225,7 @@ function printVerdicts(report) {
       report.pgCronInstalled
         ? "✅ 已安装 ⇒ 迁移里那组周调度会注册并执行（与平台 worker 幂等共存）"
         : report.pgCronMissing
-          ? "⚙️ **未安装** ⇒ 迁移里那组周调度从未注册；保留期仍由 /api/cron/retention 执行，" +
+          ? "❗ **未安装** ⇒ 迁移里那组周调度从未注册；保留期仍由 /api/cron/retention 执行，" +
             "**这不等于保留期失效**（要判那条看 cron.retention.completed）"
           : "⚠️ 未证实（没测到 ≠ 没装，也 ≠ 装了）"
     }`,

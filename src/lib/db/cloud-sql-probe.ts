@@ -498,6 +498,21 @@ export type ProbeOutcome =
   | "EXECUTED"
   | "REFUSED_AUTH"
   | "REJECTED_SQL"
+  /**
+   * **语句执行成功、并回了一个与期望相反的值**——它不是「被拒绝」。
+   *
+   * 这个结论是本轮实测逼出来的：生产探测（run `38442279610`）把 pg_cron 那一步打成
+   * `[PG_CRON_INSTALLED] REJECTED_SQL (HTTP 201)`，而事实是查询**跑通了**、
+   * 服务端回 `201` 并给出 `pg_cron=NOT_INSTALLED`。
+   * 一个「HTTP 201 + REJECTED_SQL」的组合是自相矛盾的标签，
+   * 它会把「问到了一个答案」显示成「探测坏了」——
+   * 而读日志的人（本轮就是我）会先怀疑脚本而不是先读结论。
+   *
+   * ⚠️ 退出码仍然是 1：**「这是答案」不等于「这是个好消息」**。
+   * `read_only` 那一步回 `off` 意味着本探测宣称的第二层防护是装饰性的，
+   * 那必须让人来看；把它压成 0 才是真的藏问题。
+   */
+  | "CONTRADICTED"
   | "RATE_LIMITED"
   /** 读不懂：非预期状态码、形状变了、或传输层失败。 */
   | "UNKNOWN";
@@ -591,7 +606,7 @@ function classifyFieldStep(step: ProbeStep, response: ProbeResponse): ProbeVerdi
     // 读到了值、且与期望相反 ⇒ 这是确定结论，不是「不知道」。
     return {
       id: step.id,
-      outcome: "REJECTED_SQL",
+      outcome: "CONTRADICTED",
       status: 201,
       evidence: withElapsed(
         step,
@@ -781,11 +796,11 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
     // 这一步的判据本身就是「报错才算跑通」，所以 EXECUTED 与「前序执行了」是同一件事。
     multiStatementFullyExecutes: firstError?.outcome === "EXECUTED",
     readOnlyFlagEffective: flagOn?.outcome === "EXECUTED",
-    readOnlyFlagIneffective:
-      flagOn?.outcome === "REJECTED_SQL" && flagOn.evidence.includes("FIELD_CONTRADICTED"),
+    // 两条都改判 CONTRADICTED：它们的前提是「语句执行成功、回了一个相反的值」，
+    // 不是「语句被服务端拒绝」。判据文本仍带 FIELD_CONTRADICTED 前缀供日志核对。
+    readOnlyFlagIneffective: flagOn?.outcome === "CONTRADICTED",
     pgCronInstalled: pgCron?.outcome === "EXECUTED",
-    pgCronMissing:
-      pgCron?.outcome === "REJECTED_SQL" && pgCron.evidence.includes("FIELD_CONTRADICTED"),
+    pgCronMissing: pgCron?.outcome === "CONTRADICTED",
     multiStatementSkipsEarlier:
       firstError?.outcome === "REJECTED_SQL" &&
       firstError.evidence.includes("FIRST_STATEMENT_SKIPPED"),
@@ -796,13 +811,17 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
 }
 
 /**
- * 退出码：0 = 计划全部满足判据；1 = 至少一步被明确拒绝（那是**答案**，不是故障）；
- * 2 = 有任何一步「不知道」。**未知不算通过**，也不与「被拒」混为一谈。
+ * 退出码：0 = 计划全部满足判据；1 = 至少一步给出了**坏答案**
+ * （被明确拒绝，或执行成功但回了一个与期望相反的值）；2 = 有任何一步「不知道」。
+ *
+ * **未知不算通过**，也不与「被拒」混为一谈。
+ * 而 CONTRADICTED 也留在 1 里：它不是脚本坏了，但也不是好消息——
+ * 「read_only 字段其实是装饰性的」这种结论必须有人来看，压成 0 才是真藏问题。
  */
 export function probeExitCode(report: ProbeReport): number {
   if (report.hasUnknown) return 2;
-  const refused = report.verdicts.some((verdict) =>
-    ["REFUSED_AUTH", "REJECTED_SQL"].includes(verdict.outcome),
+  const badAnswer = report.verdicts.some((verdict) =>
+    ["REFUSED_AUTH", "REJECTED_SQL", "CONTRADICTED"].includes(verdict.outcome),
   );
-  return refused ? 1 : 0;
+  return badAnswer ? 1 : 0;
 }
