@@ -128,19 +128,46 @@ async function fetchPages(urlFor, headers, pages, timeoutMs) {
   const rows = [];
   try {
     for (let page = 1; page <= pages; page += 1) {
-      // ⚠️ **必须带超时**：本轮实测到一次 fetch 被中断（错误文本 `terminated`）。
-      // 没有超时的话，API 挂起会一路等到 workflow 自己的 5 分钟 timeout 才红——
-      // 那时读到的错误是「作业被杀」而不是「API 没响应」，排查方向就错了。
+      /**
+       * ⚠️ **超时必须覆盖「响应头 + body」两段**，不能只覆盖 `fetch()` 本身。
+       *
+       * 起因：真实跑的时候两次遇到 `terminated`，而且**等了约 6 分钟才失败**——
+       * 远超 15 秒的超时。原因是 socket 在 body 流上断，而 `clearTimeout` 已经执行了。
+       *
+       * ## 这个结论差点被我「否证」掉（值得单独记）
+       *
+       * 我为了确认机制，写了个「只发响应头、不写 body」的服务器，跑旧写法，结果它
+       * **4 秒内就报了超时** ⇒ 我当场下结论「我的解释是错的，signal 在 body 阶段仍然有效」。
+       * **那个实验是无效的**：`res.writeHead()` 之后没有 `res.write()`，头根本没 flush 出去，
+       * 于是 `fetch()` 自己就没 resolve——两组都卡在 fetch 阶段，**测的不是我要比的那件事**。
+       *
+       * 改成 `writeHead()` + `res.write("[")`（真发一个 chunk，保证 fetch 已 resolve）
+       * 再对同一服务器跑两个版本，才第一次真正区分开：
+       *   · 新版（超时覆盖 body）：**3 秒**报「请求超时（3000ms 未响应）」（时间戳 673 → 676）；
+       *   · 旧版（`finally { clearTimeout }`）：**干等到 15 秒被外部 timeout 杀掉、无任何输出**
+       *     （时间戳 711 → 726）。
+       *   第一次那个无效实验里两组都是 4 秒（599 → 603）——**同一个读数来自同一个阶段**，
+       *   所以它区分不了任何东西。
+       *
+       * ⇒ 教训：**否证一个机制解释之前，先证明实验能区分真假两种假设。**
+       * 一个「跑出来支持我原本的反结论」的实验，如果它在两种机制下都会有同一个读数，
+       * 那它什么也没说。本仓库为「现象真、解释假」付过一次学费（`RAISE` 的 `%`），
+       * 这次是它的新变种：**现象真、实验也真跑了，但实验没有区分力**。
+       */
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      let response;
+      let batch;
       try {
-        response = await fetch(urlFor(page), { method: "GET", headers, signal: controller.signal });
+        const response = await fetch(urlFor(page), {
+          method: "GET",
+          headers,
+          signal: controller.signal,
+        });
+        if (!response.ok) return { error: `HTTP ${response.status} ${response.statusText}` };
+        batch = await response.json();
       } finally {
         clearTimeout(timer);
       }
-      if (!response.ok) return { error: `HTTP ${response.status} ${response.statusText}` };
-      const batch = await response.json();
       if (!Array.isArray(batch)) return { error: "响应不是数组——API 换了形状，不猜它的含义" };
       rows.push(...batch);
       if (batch.length < 100) break;
@@ -306,8 +333,9 @@ export function formatTextReport(input) {
       .map(([env, at]) => `${env} @ ${at}`)
       .join("、");
     lines.push(
-      `   🔎 #${item.pr} 同一个 sha 在别的环境上线了（${detail}）` +
-        "⇒ **不是配额**，是本环境的部署链路单独有问题",
+        `   🔎 #${item.pr} 同一个 sha 在别的环境上线了（${detail}）` +
+          "⇒ 两个项目的构建结果不同步；**这不排除配额，也不证明链路坏了**" +
+          "（每个项目有独立的 production 构建）",
     );
   }
   for (const observation of audit.slow) {
