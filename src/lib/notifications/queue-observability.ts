@@ -46,35 +46,42 @@ export interface EmailQueueReading extends QueueDiagnostics {
  * **两个变异都全绿**，而那正是「一个永远不失败的门禁比没有门禁更糟」。
  * 抽出来之后两件事都能被直接断言（下面单测就是钉它们的）。
  *
- * 两条性质：
+ * 三条性质：
  * ① **按天去重，保留当天最新的一轮**（`recentRuns` 是从新到旧）。
  *    不去重的话同日期多轮会让 `judgeDigestSeries` 判「重复日期 → 数据不足」，
  *    而那不是数据不足，是**接线把数据搞坏了**。
- * ② **没有 `date` 的轮次直接不参与**。宁可没有趋势，
- *    也不能拿同一份 backlog 硬凑一个只有一天的假趋势。
+ * ② **四个输入（date / backlog / skipped）缺任何一个的轮次都不进序列**。
+ *    这条在迁移 035 之前只有 `date` 一项，因为 backlog/skipped 当时只能靠
+ *    「当前一次读数贯穿全序列」近似出来——**那个近似已经不成立了**：
+ *    两列现在按轮各记各的（`recordWorkerRun` 的 backlog/skipped）。
+ *    NULL 的含义是「这一轮没记录到」（崩在取数前，或该行早于迁移 035），
+ *    与「记录到了、值是 0」是两种事实。拿 0 去补，`judgeDigestSeries` 会算出
+ *    「积压在降」——那不是趋势，是**编的**。宁可少几天、判「数据不足」。
+ * ③ **不再接受任何 `current` 快照参数**。它存在的唯一理由就是造那个假趋势，
+ *    留着它等于给下一个人留一条回到近似的路。
  *
- * **必须说清的近似**：`backlog` 与 `skipped` 只有当前这一轮的取值，
- * 所以序列里每一天都用同一个值。**这是近似不是真趋势**——
- * 所以调用方要把 `trendRounds` 一起给出去，
- * 一个只基于两天的「趋势」不该被当成趋势展示。
+ * 仍然要把 `trendRounds`（参与判定的天数）一起展示：一个只基于两天的趋势
+ * 不该被当成趋势看——现在它说的是**真实可用的天数**，而不是近似的宽度。
  */
 export function toDailyDigestReadings(
   recentRuns: readonly EmailWorkerRunRow[],
-  current: { backlog: number; skipped: number },
 ): DigestRoundReading[] {
-  const daily = new Map<string, EmailWorkerRunRow>();
+  const daily = new Map<string, DigestRoundReading>();
   for (const run of recentRuns) {
     if (typeof run.date !== "string") continue;
+    // **没有本轮读数的轮次不参与趋势**：见上面性质 ②。
+    // 这里刻意不用 `?? 0` 兜底——0 在 backlog/skipped 上是一个有含义的读数。
+    if (typeof run.backlog !== "number" || typeof run.skipped !== "number") continue;
     if (daily.has(run.date)) continue;
-    daily.set(run.date, run);
+    daily.set(run.date, {
+      date: run.date,
+      pulled: run.pulled,
+      sent: run.sent,
+      backlog: run.backlog,
+      skipped: run.skipped,
+    });
   }
-  return [...daily].map(([date, run]) => ({
-    date,
-    pulled: run.pulled,
-    sent: run.sent,
-    backlog: current.backlog,
-    skipped: current.skipped,
-  }));
+  return [...daily.values()];
 }
 
 export async function readEmailQueueDiagnostics(): Promise<EmailQueueReading> {
@@ -98,12 +105,11 @@ export async function readEmailQueueDiagnostics(): Promise<EmailQueueReading> {
     nowMs: Date.now(),
   });
 
-  const daily = toDailyDigestReadings(recentRuns, {
-    backlog: pending,
-    // 只取 worker 口径的两笔原因；`readBeforeSend` 是「用户在站内读掉了」，
-    // 不经 worker，混进来会让「跳过在涨」这件事建立在另一个口径上。
-    skipped: skippedByReason.no_email + skippedByReason.preferences_off,
-  });
+  // 趋势的 backlog/skipped **逐轮来自 worker 自己记下的观测值**（迁移 035），
+  // 不从上面的 `pending` / `skippedByReason` 现算：那两个是当前快照与历史存量，
+  // 拿它们填序列就又回到「所有天同一个值」的假趋势上。
+  // `readBeforeSend` 尤其不进 skipped——它是「用户在站内读掉了」，不经 worker。
+  const daily = toDailyDigestReadings(recentRuns);
 
   return {
     ...diagnostics,

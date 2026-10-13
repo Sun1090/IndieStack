@@ -569,4 +569,91 @@ describe("POST /api/cron/digest", () => {
       expect.arrayContaining([expect.objectContaining({ name: "cron.digest.failed" })]),
     );
   });
+
+  // 迁移 035 的写侧。这四条刻意让**四种取值彼此可分辨**：
+  // 之前的断言全用 `objectContaining` 且不含这两列，所以把 `backlog`/`skipped`
+  // 整个删掉，20 条用例**一条都不红**（实测过）。一个不会被变异绕过的断言
+  // 才是断言——而这两列一旦不回传，跨天趋势就又回到「所有天同一个值」的假读数上。
+  describe("每轮的观测读数落表（backlog / skipped，迁移 035）", () => {
+    const notif = (id: string, user: string) => ({
+      id,
+      user_id: user,
+      type: "system",
+      title: `t-${id}`,
+      body: null,
+      created_at: "2026-01-01",
+      is_read: false,
+      email_sent: false,
+      link: null,
+      metadata: null,
+    });
+
+    it("成功轮：backlog 是本轮开始时的取数，skipped 是本轮跳过的条数", async () => {
+      // u1 有邮箱（寄出 1 组）、u2 没有（跳过 1 条）：
+      // 这样 skipped=1 既不是 0 也不是 pulled，删掉任一列都会红。
+      listUnsentEmailNotificationsMock.mockResolvedValue([notif("n1", "u1"), notif("n2", "u2")]);
+      countUnsentEmailNotificationsMock.mockResolvedValue(7);
+      createAdminClientMock.mockReturnValue({
+        from: vi.fn(() =>
+          chainMock({
+            data: [
+              { id: "u1", email: "a@b.c", notification_settings: { emailNotifications: true } },
+              { id: "u2", email: null, notification_settings: null },
+            ],
+          }),
+        ),
+      });
+
+      const res = await POST(req());
+      expect(res.status).toBe(200);
+      expect(recordWorkerRunMock).toHaveBeenCalledWith(
+        expect.objectContaining({ pulled: 2, sent: 1, skipped: 1, backlog: 7 }),
+      );
+    });
+
+    it("空队列轮：两笔读数都是**真实的 0**，不是 null", async () => {
+      // 这一条守的是另一侧的过度保守：把「本轮没东西可发」写成 null，
+      // 趋势里那一天就会被排除，于是面板上的可用天数凭空变少。
+      countUnsentEmailNotificationsMock.mockResolvedValue(0);
+      listUnsentEmailNotificationsMock.mockResolvedValue([]);
+
+      const res = await POST(req());
+      expect(res.status).toBe(200);
+      expect(recordWorkerRunMock).toHaveBeenCalledWith(
+        expect.objectContaining({ pulled: 0, backlog: 0, skipped: 0 }),
+      );
+    });
+
+    it("崩在取数之前：backlog 落 **null**，而不是冒充「空队列时崩的」的 0", async () => {
+      // `EMAIL_BACKLOG_ALERT_THRESHOLD` 之外的构型：countUnsent 直接抛错，
+      // 所以整轮一次积压读数都没拿到。
+      countUnsentEmailNotificationsMock.mockRejectedValue(new Error("count down"));
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const res = await POST(req());
+      expect(res.status).toBe(500);
+      const payload = { backlog: null, skipped: 0 };
+      expect(recordWorkerRunMock).toHaveBeenCalledWith(expect.objectContaining(payload));
+      // 反向钉：0 在这里是一个会被 `judgeDigestSeries` 当成「积压已清零」的读数
+      expect(recordWorkerRunMock).not.toHaveBeenCalledWith(
+        expect.objectContaining({ backlog: 0 }),
+      );
+      log.mockRestore();
+    });
+
+    it("取到 backlog 之后才崩的那一轮：真实数字照记，不被失败分支归一成 null", async () => {
+      // 与上一条配对：区别只在**崩在哪一步**，所以落表的形状也必须不同。
+      // 若失败分支统一写 null，「有读数的失败轮次」就被白白扔掉了。
+      countUnsentEmailNotificationsMock.mockResolvedValue(42);
+      listUnsentEmailNotificationsMock.mockRejectedValue(new Error("supabase down"));
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const res = await POST(req());
+      expect(res.status).toBe(500);
+      expect(recordWorkerRunMock).toHaveBeenCalledWith(
+        expect.objectContaining({ pulled: 0, backlog: 42, skipped: 0, error: "supabase down" }),
+      );
+      log.mockRestore();
+    });
+  });
 });
