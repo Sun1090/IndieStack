@@ -38,6 +38,9 @@ function verdict(overrides: Partial<ProbeVerdict>): ProbeVerdict {
     outcome: "EXECUTED",
     status: 201,
     evidence: "",
+    // 默认给一个耗时：配对判据要求两侧都有读数，
+    // 缺省值取「睡眠组慢于对照组 1 秒」这一形状。
+    elapsedMs: overrides.id === "MULTI_STATEMENT_FIRST_EFFECT" ? 2500 : 300,
     ...overrides,
   };
 }
@@ -235,7 +238,25 @@ describe("auditProbePlan", () => {
     expect(PROBE_PLAN.map((entry) => entry.id)).toContain("MULTI_STATEMENT_FIRST_EFFECT");
     const entry = step("MULTI_STATEMENT_FIRST_EFFECT");
     expect(entry.sql).toContain("pg_sleep");
-    expect(entry.expectation).toEqual({ kind: "slower_than", minMs: 700 });
+    expect(entry.expectation).toEqual({
+      kind: "slower_than",
+      minMs: 700,
+      controlStepId: "MULTI_STATEMENT_CONTROL",
+    });
+  });
+
+  it("对照组必须与睡眠组只差 pg_sleep：同端点、同 read_only、同样两条 select", () => {
+    // 配对实验只有在「只差一个变量」时才成立。这里钉住其余条件全同，
+    // 否则「慢 500ms」可能来自端点差异而不是 sleep。
+    const control = step("MULTI_STATEMENT_CONTROL");
+    const sleeper = step("MULTI_STATEMENT_FIRST_EFFECT");
+    expect(control.endpoint).toBe(sleeper.endpoint);
+    expect(control.readOnlyFlag).toBe(sleeper.readOnlyFlag);
+    expect(control.sql).not.toContain("pg_sleep");
+    expect(sleeper.sql).toContain("pg_sleep");
+    // 两条都必须是两条 select —— 形状也要一致。
+    expect(control.sql.split(";")).toHaveLength(2);
+    expect(sleeper.sql.split(";")).toHaveLength(2);
   });
 });
 
@@ -357,15 +378,24 @@ describe("classifyProbeResponse", () => {
     expect(verdictReport.evidence).toContain("elapsed=12ms");
   });
 
-  it("耗时读数只加在那一条上：其余步骤的证据保持原样", () => {
-    // 盯 withElapsed 里那条 `kind !== "slower_than"` 早退。
-    // 少了它，每条 EXECUTED 的证据都会被贴上一个无意义的 elapsed 前缀，
-    // 而「耗时」在这个探测里只对那一条有含义——把它到处贴等于稀释证据。
+  it("每条结论都带上真实耗时：孤立的耗时数需要对照组才可解释", () => {
+    // 口径在 2026-10-13 改过一次：原先只给睡眠那条贴 elapsed，
+    // 结果读数变成「2547ms ≥ 700ms」而**没有任何基线**——
+    // 如果这个 API 一次普通往返本来就要 2.5 秒，那个数什么都没证明。
+    // 现在每条都记，配对差值才能算出来。
     const plain = classifyProbeResponse(
       step("READ_ONLY_ENDPOINT"),
       response({ json: [{ probe_ok: 1 }], elapsedMs: 42 }),
     );
-    expect(plain.evidence).toBe('[{"probe_ok":1}]');
+    expect(plain.elapsedMs).toBe(42);
+    expect(plain.evidence).toContain("[elapsed=42ms]");
+    // 只有带阈值的那条才在括号里写出阈值。
+    expect(plain.evidence).not.toContain("≥");
+  });
+
+  it("拿不到耗时 ⇒ 结论里不出现 elapsed，也不出现假的 0", () => {
+    const plain = classifyProbeResponse(step("READ_ONLY_ENDPOINT"), response({ json: [{ a: 1 }] }));
+    expect(plain.elapsedMs).toBeUndefined();
     expect(plain.evidence).not.toContain("elapsed");
   });
 
@@ -397,6 +427,68 @@ describe("summarizeProbe / probeExitCode", () => {
     expect(report.multiStatementSkipsEarlier).toBe(false);
     expect(report.hasUnknown).toBe(false);
     expect(probeExitCode(report)).toBe(0);
+  });
+
+  it("睡眠组没有对照组 ⇒ 不算「前序语句执行了」，即使它自己 EXECUTED", () => {
+    // 这条盯的是配对判据本身。少了它，`multiStatementFullyExecutes`
+    // 就退化成「那一步自己说通过」——而一个孤立的耗时数不构成证据。
+    const report = summarizeProbe(
+      allExecuted.map((entry) =>
+        entry.id === "MULTI_STATEMENT_CONTROL"
+          ? verdict({ id: entry.id, outcome: "UNKNOWN", elapsedMs: undefined })
+          : entry,
+      ),
+    );
+    expect(report.sleepBeatsControl).toBe(false);
+    expect(report.multiStatementFullyExecutes).toBe(false);
+  });
+
+  it("睡眠那条自称 EXECUTED 但没跑赢对照 ⇒ 退出码不许是 0", () => {
+    // 这条盯的是「全绿 + 关键结论为假」这种并存状态。
+    // 如果放着不管，CI 会显示成功，而 multiStatementFullyExecutes=false
+    // 只藏在 JSON 里——那正是本仓库登记过多次的失效形状。
+    const verdicts = allExecuted.map((entry) =>
+      entry.id === "MULTI_STATEMENT_FIRST_EFFECT" ? verdict({ id: entry.id, elapsedMs: 620 }) : entry,
+    );
+    const report = summarizeProbe(verdicts);
+    expect(report.multiStatementFullyExecutes).toBe(false);
+    expect(report.hasUnknown).toBe(false);
+    expect(probeExitCode(report)).toBe(1);
+  });
+
+  it("睡眠组只比对照组慢一点点 ⇒ 判为没跑 sleep（网络抖动不算证据）", () => {
+    const report = summarizeProbe(
+      allExecuted.map((entry) =>
+        entry.id === "MULTI_STATEMENT_FIRST_EFFECT" ? verdict({ id: entry.id, elapsedMs: 620 }) : entry,
+      ),
+    );
+    expect(report.sleepBeatsControl).toBe(false);
+    expect(report.multiStatementFullyExecutes).toBe(false);
+  });
+
+  it("对照组整条缺席 ⇒ 配对判据为假（不是「默认通过」）", () => {
+    // 上面那条是把对照组判成 UNKNOWN，走的是「有结论但没读数」那条路；
+    // 这一条走的是「verdict 根本不在列表里」那条路。两条都要失败封闭，
+    // 而它们是两个不同的分支——变异核对实测：只测前一条时，
+    // 把 `if (!firstEffect || !control) return false` 改成 true 不会让任何用例变红。
+    const withoutControl = allExecuted.filter(
+      (entry) => entry.id !== "MULTI_STATEMENT_CONTROL",
+    );
+    const report = summarizeProbe(withoutControl);
+    expect(report.sleepBeatsControl).toBe(false);
+    expect(report.multiStatementFullyExecutes).toBe(false);
+  });
+
+  it("睡眠那条自己缺耗时读数 ⇒ 配对判据为假，且退出码不是 0", () => {
+    const noReading = allExecuted.map((entry) =>
+      entry.id === "MULTI_STATEMENT_FIRST_EFFECT"
+        ? verdict({ id: entry.id, elapsedMs: undefined })
+        : entry,
+    );
+    const report = summarizeProbe(noReading);
+    expect(report.sleepBeatsControl).toBe(false);
+    // 那一步的 outcome 仍是 EXECUTED（响应形状确实对），所以矛盾只能由配对判据兜住。
+    expect(probeExitCode(report)).toBe(1);
   });
 
   it("「没报 prepared statement 错」与「前序语句真的执行了」是两个结论", () => {

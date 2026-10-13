@@ -69,6 +69,7 @@ describe("endpointPath / requestBody", () => {
     for (const id of [
       "WRITE_ENDPOINT_GUARDED",
       "MULTI_STATEMENT",
+      "MULTI_STATEMENT_CONTROL",
       "MULTI_STATEMENT_FIRST_EFFECT",
       "SINGLE_DO_BLOCK",
     ]) {
@@ -274,7 +275,7 @@ describe("runCloudSqlProbe 的短路", () => {
     expect(code).toBe(2);
   });
 
-  /** 计划里的五条各回一个「按判据算通过」的响应。`slow` 决定耗时那条走哪条路。 */
+  /** 计划里每条都回一个「按判据算通过」的响应。`slow` 决定耗时那条走哪条路。 */
   function healthyFetch(slow: boolean) {
     return vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { query: string };
@@ -282,19 +283,20 @@ describe("runCloudSqlProbe 的短路", () => {
         return new Response('{"error":"ERROR: PROBE-RESULT ok"}', { status: 500 });
       }
       if (body.query.includes("pg_sleep") && slow) {
-        // 耗时判据读的是真实墙钟，所以这里只能真等一会儿。
+        // 耗时判据读的是真实墙钟，所以这里只能真等一会儿
+        // （要等够配对差值 500ms 那条也算过）。
         await new Promise((resolve) => setTimeout(resolve, 760));
       }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
   }
 
-  it("五条都满足判据 ⇒ 退出码 0", async () => {
+  it("计划里每条都满足判据 ⇒ 退出码 0", async () => {
     const fetchMock = healthyFetch(true);
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(console, "log").mockImplementation(() => {});
     const code = await runCloudSqlProbe(baseOptions);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledTimes(PROBE_PLAN.length);
     expect(code).toBe(0);
   });
 
