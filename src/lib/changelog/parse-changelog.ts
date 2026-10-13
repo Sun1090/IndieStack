@@ -22,6 +22,16 @@ const ANY_HEADING = /^#{1,6}(\s|$)/;
 const INTRO_MAX_LENGTH = 280;
 const MAX_BULLET_LENGTH = 2000;
 const UNRELEASED = "Unreleased";
+/**
+ * 版本章节里「不属于任何条目」的正文行。
+ *
+ * 判据：在 `## [版本]` 之下、顶格（indent 0）、非空、既不是 `- ` 条目也不是标题。
+ * 刻意放行 `>` 引用块——`### 说明` 那类小节用「> 主题：…」是既有版式，
+ * 收紧成「只许条目」会把 8 处合法写法判成缺陷（先量后写，别对着版式报警）。
+ */
+const ORPHAN_PROSE = /^(?![-#>\s])\S/;
+/** 围栏代码块：块内的 `## ` / `- ` 是示例，不参与结构判定。 */
+const FENCE = /^\s*```/;
 
 export interface ChangelogBullet {
   /** 已 trim 的条目正文（不含 "- " 前缀） */
@@ -329,6 +339,58 @@ function collectTrailingWhitespace(markdown: string): ChangelogIssue[] {
   );
 }
 
+/**
+ * 收集「掉出条目树」的正文行。
+ *
+ * ## 为什么需要它（这条规则是被两次真实损坏逼出来的）
+ *
+ * 解析器只认 `- ` 开头的行是条目。所以**一行只要丢了开头的 `- `，它对门禁就彻底隐形**：
+ * 不报 `bullet-empty`、不报 `section-empty`、字数统计里没有它、条目数里也没有它，
+ * `check:changelog` 一路绿。而它读起来完全正常——人眼看到的是一段正常的中文。
+ *
+ * 实测两处（都不是设想）：
+ *   - `2f110bf2`（PR #258）编辑 CHANGELOG 时把下一条目的整行标题
+ *     `- **summarizeRegistry()：…` 吃掉了，只剩续行 `：\`docs/testing.md\` 里那句…` 顶格悬着；
+ *   - `ce4a3b25` 写的那条「发布核对方法落成模板（D03）」，标题行在后续某次编辑中丢了
+ *     `- ` 前缀，正文 9 行从此挂在 `### Added` 下而不属于任何条目。
+ *
+ * 两处的共同点是**缺陷形态对现有判据不可见**，所以补的是「可见性」而不是「内容」。
+ * 这也是本仓库反复在做的动作：把「只有跑出来才知道的事实」变成一条会红的检查。
+ */
+function collectOrphanProse(markdown: string): ChangelogIssue[] {
+  const issues: ChangelogIssue[] = [];
+  let insideVersion = false;
+  let insideFence = false;
+  toLines(markdown).forEach((raw, index) => {
+    const text = raw.trim();
+    if (FENCE.test(raw)) {
+      insideFence = !insideFence;
+      return;
+    }
+    if (insideFence) return;
+    if (/^## \[/.test(text)) {
+      insideVersion = true;
+      return;
+    }
+    if (/^## /.test(text)) {
+      insideVersion = false;
+      return;
+    }
+    if (!insideVersion || text === "") return;
+    // 缩进行是条目的续行，合法；`#` 开头的标题由 stray-heading 那支负责。
+    if (!ORPHAN_PROSE.test(raw)) return;
+    issues.push({
+      code: "prose-outside-bullet",
+      line: index + 1,
+      message:
+        "这一行不属于任何条目（开头缺少条目符号）：" +
+        text.slice(0, 60) +
+        "——它会被解析器完全忽略，等于这条内容从未写进 CHANGELOG",
+    });
+  });
+  return issues;
+}
+
 /** 对 markdown 文本执行不变量校验。errors 阻断门禁，warnings 只提示。 */
 export function validateChangelog(markdown: string): ChangelogReport {
   const { parsed, issues: parseIssues } = parseChangelog(markdown);
@@ -337,6 +399,7 @@ export function validateChangelog(markdown: string): ChangelogReport {
     ...validateDuplicateLabels(parsed.entries),
     ...parsed.entries.flatMap(validateEntry),
     ...compareEntries(parsed.entries),
+    ...collectOrphanProse(markdown),
     ...parseIssues,
   ];
   if (markdown !== "" && !markdown.endsWith("\n")) {

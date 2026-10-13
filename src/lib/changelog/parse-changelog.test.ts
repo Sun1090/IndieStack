@@ -250,6 +250,49 @@ describe("validateChangelog() 章节与条目规则", () => {
     ).toContain("stray-heading");
   });
 
+  it("条目丢了 `- ` 前缀 ⇒ prose-outside-bullet（这一类行对解析器完全隐形）", () => {
+    // 真实成因两处：`2f110bf2` 编辑时吃掉了下一条目的整行标题；
+    // `ce4a3b25` 那条 D03 的标题行在后续编辑中丢了前缀。
+    // 旧实现下两者**都不报任何东西**——不报空条目、不报空章节，字数与条目数里也没有它。
+    const markdown = `# Changelog\n\nintro\n\n## [Unreleased]\n\n### Added\n\n- x\n新增一份模板，把核对方法写成规则\n`;
+    expect(codes(markdown)).toContain("prose-outside-bullet");
+  });
+
+  it("被吃掉的条目标题留下的悬空续行也报错", () => {
+    const markdown = `# Changelog\n\nintro\n\n## [Unreleased]\n\n### Added\n\n- x\n：从此由登记表自己算。**\n`;
+    const report = validateChangelog(markdown);
+    const issue = report.errors.find((item) => item.code === "prose-outside-bullet");
+    expect(issue?.line).toBe(10);
+  });
+
+  it("缩进的续行、引用块、代码块内的行都不算悬空正文", () => {
+    // 先量后写：真实 CHANGELOG 里 `### 说明` 小节用「> 主题：…」是既有版式（8 处），
+    // 把它们判成缺陷就是对着版式报警。
+    const markdown = [
+      "# Changelog",
+      "",
+      "intro",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Added",
+      "",
+      "- x",
+      "  缩进的续行合法",
+      "> 主题：引用块合法",
+      "```",
+      "顶格且在围栏内，不参与判定",
+      "```",
+      "",
+    ].join("\n");
+    expect(codes(markdown)).toEqual([]);
+  });
+
+  it("版本标题之前的顶格正文不报（那是前言，由 intro 规则管）", () => {
+    const markdown = `# Changelog\n\nintro\n\n前言区的顶格文字\n\n## [Unreleased]\n\n### Added\n\n- x\n`;
+    expect(codes(markdown)).not.toContain("prose-outside-bullet");
+  });
+
   it("以告警编号开头的续行不是标题（#17 这类写法曾被判成 stray-heading）", () => {
     // CommonMark：ATX 标题的 `#` 后必须有空白。旧实现用 `startsWith("#")` 兜底，
     // 于是中文正文里「#17 的判定日期是…」这种续行被判成非法标题，整条校验红。
