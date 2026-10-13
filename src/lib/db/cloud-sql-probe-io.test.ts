@@ -289,7 +289,7 @@ describe("runCloudSqlProbe 的短路", () => {
    * （= 前面的语句确实执行了）；false = 它安静地返回 201
    * （= 前面的语句被静默跳过，这是最危险的读数）。
    */
-  function healthyFetch(firstRuns: boolean) {
+  function healthyFetch(firstRuns: boolean, pgCron = "INSTALLED") {
     return vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { query: string };
       if (body.query.startsWith("do ")) {
@@ -306,6 +306,12 @@ describe("runCloudSqlProbe 的短路", () => {
         const value = (body as { read_only?: boolean }).read_only === true ? "on" : "off";
         return new Response(`[{"transaction_read_only":"${value}"}]`, { status: 201 });
       }
+      // pg_cron 那一步：期望的是 `pg_cron` 这一列。
+      // **本步骤刚加进来时这条用例就是红的**——mock 不认识它就回 `probe_ok`，
+      // 判据读不到列 ⇒ UNKNOWN ⇒ 退出码 2。那不是测试坏了，是新判据真的没被覆盖。
+      if (body.query.includes("pg_catalog.pg_extension")) {
+        return new Response(`[{"pg_cron":"${pgCron}"}]`, { status: 201 });
+      }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
   }
@@ -317,6 +323,19 @@ describe("runCloudSqlProbe 的短路", () => {
     const code = await runCloudSqlProbe(baseOptions);
     expect(fetchMock).toHaveBeenCalledTimes(PROBE_PLAN.length);
     expect(code).toBe(0);
+  });
+
+  it("pg_cron 回 NOT_INSTALLED ⇒ 退出码 1（那是答案，不是「不知道」）", async () => {
+    const fetchMock = healthyFetch(true, "NOT_INSTALLED");
+    vi.stubGlobal("fetch", fetchMock);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const code = await runCloudSqlProbe(baseOptions);
+    expect(code).toBe(1);
+    const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("[PG_CRON_INSTALLED] REJECTED_SQL");
+    // ⚠️ 输出**不许**把「没装 pg_cron」说成「保留期失效」：
+    // 主执行者是 /api/cron/retention，pg_cron 只是迁移里那组周调度的第二个可选调度器。
+    expect(printed).toContain("这不等于保留期失效");
   });
 
   it("前序语句被静默跳过 ⇒ 打印点名这一步，退出码 1", async () => {
@@ -352,6 +371,11 @@ describe("runCloudSqlProbe 的短路", () => {
         const value = body.read_only === true ? "on" : "off";
         return new Response(`[{"transaction_read_only":"${value}"}]`, { status: 201 });
       }
+      // 同上：pg_cron 那一步必须回它自己那一列，否则它判 UNKNOWN，
+      // 而这条用例要求「红只来自多语句那一步」。
+      if (body.query.includes("pg_catalog.pg_extension")) {
+        return new Response('[{"pg_cron":"INSTALLED"}]', { status: 201 });
+      }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -363,6 +387,7 @@ describe("runCloudSqlProbe 的短路", () => {
     expect(printed).toContain("[PREPARED_STATEMENT]");
     expect(printed).not.toContain("READ_ONLY_FLAG_ON] REJECTED_SQL");
     expect(printed).not.toContain("READ_ONLY_FLAG_OFF] REJECTED_SQL");
+    expect(printed).not.toContain("[PG_CRON_INSTALLED] UNKNOWN");
   });
 });
 

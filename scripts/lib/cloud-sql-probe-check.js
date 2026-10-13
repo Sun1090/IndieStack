@@ -197,6 +197,20 @@ function printVerdicts(report) {
       `单条 DO 块=${report.singleDoBlockWorks ? "可" : "未证实"} / ` +
       `多语句前序已执行=${report.multiStatementFullyExecutes ? "是" : report.multiStatementSkipsEarlier ? "否（静默跳过）" : "未证实"}`,
   );
+  // pg_cron 单独一行：混在那串斜杠分隔的「端点能力」清单里会被读成又一个能力，
+  // 而它说的是调度器。**措辞刻意不写「保留期一行都不删」**——
+  // `docs/db/retention.md` 写明主执行者是 `/api/cron/retention`，
+  // pg_cron 只是迁移里那组周调度的第二个可选调度器，没装不等于保留期失效。
+  console.log(
+    `pg_cron（保留期调度）：${
+      report.pgCronInstalled
+        ? "✅ 已安装 ⇒ 迁移里那组周调度会注册并执行（与平台 worker 幂等共存）"
+        : report.pgCronMissing
+          ? "⚙️ **未安装** ⇒ 迁移里那组周调度从未注册；保留期仍由 /api/cron/retention 执行，" +
+            "**这不等于保留期失效**（要判那条看 cron.retention.completed）"
+          : "⚠️ 未证实（没测到 ≠ 没装，也 ≠ 装了）"
+    }`,
+  );
 }
 
 /**

@@ -6,10 +6,11 @@ name: Cloud SQL execution probe
 ## 服务端；以及 B04 到底需不需要数据库密码）。答案拿到之后这条就退役了，每天打一次
 ## 生产 API 只会制造噪音和限流风险。
 ##
-## 为什么可以对手动触发放心：脚本**没有任意 SQL 入口**，只发 `PROBE_PLAN` 里四条常量，
+## 为什么可以对手动触发放心：脚本**没有任意 SQL 入口**，只发 `PROBE_PLAN` 里的常量语句
+## （**条数刻意不写在这里**——它会随计划增删漂移，而 `printPlan` 早已改成从计划本身取数）。
 ## 发送前还要过 `auditProbePlan()`——任何一条被判为可写就一条都不发（退出码 2）。
-## 四条本身都是 `select` / 一条只 `raise exception` 的 DO 块（异常令块整体回滚），
-## 打「能写」的端点时额外带 `read_only: true`。
+## 计划里的语句都是 `select` / `show`，加一条只 `raise exception` 的 DO 块
+## （异常令块整体回滚），打「能写」的端点时额外带 `read_only: true`。
 ##
 ## 凭据用仓库里已有的 `SUPABASE_ACCESS_TOKEN`（secret）+ `SUPABASE_PROJECT_REF`（variable），
 ## 与 `migration-status.yml` / `security-config.yml` 同一套。
