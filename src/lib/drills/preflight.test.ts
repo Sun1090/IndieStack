@@ -128,7 +128,10 @@ describe("evaluateDrill", () => {
     expect(unmet.source).toBe("B04_AUTHORIZE_PRODUCTION_WRITE");
     expect(unmet.purpose).toContain("人工授权");
     // 阻塞文案必须明说「别读成已解锁」，否则下一次又会当成能跑。
-    expect(onlyToken.blockedReason).toContain("别把这次更正读成");
+    // 用正则而不是整句：这句话随缺口进展会被改写（2026-10-13 缺口 (a) 做完时
+    // 就把「这次更正」改成了「(a) 做完」），而**承重的是那个警告本身**。
+    // 写成整句字面量的话，改文案会红——那不是用例在保护事实，是在保护措辞。
+    expect(onlyToken.blockedReason).toMatch(/别把[^。]{0,24}读成「B04 已解锁」/);
   });
 
   it("仓库里真实存在的那份演练 SQL 能被解析出来（不依赖 cwd）", () => {

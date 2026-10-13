@@ -79,8 +79,15 @@ function classify(command: string, text: string): PsqlMetaCommand["category"] {
   return "structural";
 }
 
-/** 剥掉行注释，但**保留字符串字面量**（`select '\echo x'` 里的不是元命令）。 */
-function stripLineComment(line: string): string {
+/**
+ * 剥掉行注释，但**保留字符串字面量**（`select '\echo x'` 里的不是元命令）。
+ *
+ * 导出它是因为 `erasure-drill-parity.test.ts` 也要问同一个问题——
+ * 「这行反斜杠 / 这句 `set role` 是在**代码**里还是在**说明文字**里」。
+ * 两处各写一份就会各错一份：派生版那条用例的第一版没剥注释，
+ * 于是把文件头解释里的 `set role service_role` 也数了进去（2 数成 3）。
+ */
+export function stripLineComment(line: string): string {
   let inString = false;
   for (let index = 0; index < line.length; index += 1) {
     const char = line[index];
@@ -88,6 +95,11 @@ function stripLineComment(line: string): string {
     else if (!inString && char === "-" && line[index + 1] === "-") return line.slice(0, index);
   }
   return line;
+}
+
+/** 整段 SQL 去掉行注释后的**代码部分**（派生版核对要用它区分「代码 vs 说明文字」）。 */
+export function stripSqlLineComments(sql: string): string {
+  return sql.split("\n").map(stripLineComment).join("\n");
 }
 
 /** 认不全的反斜杠用法——必须报出来，不能静默放过。 */

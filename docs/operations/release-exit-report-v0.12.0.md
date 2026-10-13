@@ -116,6 +116,8 @@ tag 是对外声明「做完了」，**没有证据就等于没做**。
    需要一次**人工授权**（`preflight.ts` 里的 `B04_AUTHORIZE_PRODUCTION_WRITE`）。
    原文那半句「平台层从来不是阻塞」仍然是对的——而且比当时以为的更对：
    它连「执行 SQL」这一层都不是阻塞。B04 仍计**未完成**，tag 前置不变。
+   【2026-10-13 同日加指针，不改上文】缺口 (a) 当天就做完了：`docs/operations/drills/account-erasure.single-do.sql` 已入库，本地栈实测
+   `failures=0 assertions=20`、回滚干净；(b) 的人工授权**仍未取得**，所以本条结论不变。
 3. **B05 的 P2–P4 未闭合** → 缺 Resend 测试 key、VAPID 一对与真实订阅端点、可牺牲项目。
 4. **本版本的回滚演练未做** → `rollback-runbook-v0.12.0.md` 的「演练记录」为空。
    v0.11.0 的回滚记录**不跨迁移边界**，不能用来证明本版本可用。

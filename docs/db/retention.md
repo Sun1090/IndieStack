@@ -287,6 +287,37 @@ docker exec -i supabase_db_indiestack psql -U postgres -d postgres \
   对 032/033 的 7 个函数（`erase_user_data`、3 条保留期清理、2 个对象清单函数、引用判定）
   全部 `permission denied`（14/14），`service_role` 可正常调用。
 
+### 2026-10-13 · 擦除演练的「单条语句派生版」（本地 Supabase，事务内回滚）
+
+脚本：`docs/operations/drills/account-erasure.single-do.sql`（**派生产物**，正本仍是上一节那份）。
+
+```bash
+docker exec -i supabase_db_indiestack psql -U postgres -d postgres \
+  -f docs/operations/drills/account-erasure.single-do.sql
+```
+
+- **为什么需要第二份**：Management API 的 `POST /v1/projects/{ref}/database/query` 是 HTTP 通道，
+  psql 的元命令（`\set` / `\echo` / `\gset`）送不出去。正本里 6 条这样的命令
+  （条数由 `src/lib/drills/psql-meta.ts` 量，不是手数），所以云端跑必须用派生版。
+- **读数**：`failures=0 assertions=20`，三段信息性输出与正本形状一致
+  （`erase_user_data()` 仍回 `{"apiUsage": 2, "contactMessages": 2, "auditLogsAnonymized": 3}`）。
+  跑完 `auth.users` 与 `contact_messages` 的演练行各剩 **0** 行——回滚确实发生。
+- **它永远以 `ERROR` 结束**，那是报告通道本身（`raise notice` 实测不回传）。
+  **判据是 `failures=0`，不是退出码。**
+- **两个转换坑，都是实测出来的**：
+  1. `\gset` 换成 plpgsql 变量的**真正原因**不是「HTTP 没有 psql 变量」这么表面：
+     正本切到 `service_role` 之后**读不到 temp 表**（实测 `permission denied for table`，
+     temp 表属于建它的 postgres）。plpgsql 变量不受角色切换影响，所以值走变量。
+  2. `format()` 里 `%` 后紧跟空格会被当成带 flag 的转换，吃掉空格并多消费一个参数。
+     报告串改用 `||` 拼接。
+- **刻意保留 2 次 `set role service_role` / 2 次 `reset role`**：
+  `erase_user_data` / `list_user_objects_for_erasure` / `upload_object_is_referenced`
+  的 `proacl` 实测都是 `{postgres=X/postgres, service_role=X/postgres}`，
+  权限形状本身就是演练对象的一部分，删掉角色切换就退化成「postgres 什么都能干」的自证。
+- **两份不再各自漂移的机关**：`src/lib/drills/erasure-drill-parity.test.ts` 核对
+  「断言标签的**集合与顺序**逐条相同」。它刻意**不**核对期望值——
+  真正会漂移的是「有哪些断言」。
+
 **仍未取得的生产证据**：真实 `auth.admin.deleteUser`（演练里用 `delete from auth.users` 等价替代，
 级联语义相同但没走 GoTrue 的会话清理）、真实 bucket 对象删除、隔离账号在**生产**上的删号闭环。
 这三项需要 Vercel/Supabase 侧权限与一个可牺牲账号，见 `docs/operations/production-smoke-v0.11.0.md`。

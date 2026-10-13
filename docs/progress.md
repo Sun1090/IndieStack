@@ -8832,3 +8832,68 @@
   教训的形状：**保护规则救了一次，但它是外部兜底，不是我的流程**。
   开工第一件事应该是 `git checkout -b`，而不是等 push 被拒再回头。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — B04 缺口 (a) 做完了：派生版跑通 20/20，而「跑通」这件事本身有两个坑是我自己造的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（base `d6246893` = main + #254）。
+- 状态：DONE（**B04 本身仍 DONE≠完成**：缺口 (b) 的人工授权没取得，派生版也从没在云端跑过）。
+- 为什么做：上一条把规格数对了（6 条元命令），这一条按那份规格做转换。
+  判据从开头就定死：**转换版必须给出与正本同样的 20 条 `actual = expected`**，
+  而不是「看起来能跑」。
+- **先测再写**（六问，全部在本地栈 fresh 连接上实测，答案决定设计）：
+  1. DO 块内 insert、块末 `raise exception` 会回滚吗？⇒ 块内 `before=0 after=1`，块后表里 **0 行**。
+     **单条 DO 块以 raise 结尾 = 自带回滚**，不需要 `begin;` / `rollback;`。
+  2. `execute 'set role service_role'` 在 DO 块里可用吗？⇒ 可用，块内 `current_user=service_role`。
+  3. 切换后能读 temp 表吗？⇒ **`permission denied for table`**。
+     这一条**改变了设计**：正本第 102 行那句「SET ROLE 之后就读不到 temp 表了」说的就是它，
+     `\gset` 的作用是把值**搬到角色之外**。所以派生版用 **plpgsql 变量**，不是照搬 temp 表。
+  4. plpgsql 变量能穿过角色切换吗？⇒ 能（`profiles rows=1`）。
+  5. 块以 raise 结束、没来得及 `reset role`，角色会漏到会话吗？⇒ **不会**（块后 `current_user=postgres`）。
+     ⇒ 报告通道本身就是安全网。
+  6. GUC 通道（`set_config(..., true)`）？⇒ 能穿过切换、随事务回滚。**测过但没用上**，变量更简单。
+- **权限形状是演练对象的一部分，不是噪声**：`pg_proc.proacl` 实测三个函数都是
+  `{postgres=X/postgres, service_role=X/postgres}` ⇒ 派生版保留 **2 开 2 关**，与正本逐字对应。
+  删掉角色切换，演练就变成「postgres 什么都能干」的自证。
+- 完成内容：
+  1. `docs/operations/drills/account-erasure.single-do.sql`（新，228 行）：
+     6 条元命令的处理逐条写在文件头（`\set ON_ERROR_STOP` 删 / 4 条 `\echo` 删 /
+     `\gset` **翻译成变量**）；三段信息性输出搬进报告文本、**刻意不顺手变成断言**
+     （那会让「与正本给出同样的 20 条」这条可比性判据失效）。
+  2. `src/lib/drills/erasure-drill-parity.test.ts`（新，4 条用例）：机器核对派生版与正本
+     「断言标签的**集合与顺序**逐条相同」。文件头那句「改断言请改正本，否则两份会各自漂移」
+     是**承诺**，而本仓库已经为承诺付过一次学费（「结论写进对应 runbook 的执行记录小节」——
+     那个小节根本不存在），所以这里钉住。
+  3. `src/lib/drills/psql-meta.ts`：导出 `stripLineComment`、新增 `stripSqlLineComments`。
+     **复用而不是再手搓一份**——两处各写就会各错一份。
+  4. `preflight.ts`：缺口 (a) 改成「已做完」，但**前置项刻意留着**（它盯的是「派生版还在不在」，
+     删掉的话将来重构把文件删了也没人报警）；`file:` 型前置的 remedy 补上这份的新坑。
+  5. 活文本四处同步：roadmap B04 / `environments.md` 外部依赖表 / exit-report / runbook
+     （后两份是带日期快照，**只加指针不回改**）；`docs/db/retention.md` 新增一节实跑记录。
+- **本轮自己造的错，全部当场抓到**：
+  - `format()` 里的 `%` 陷阱：原写 `'… assertions=20% report=%'`。`%` 后紧跟空格会被当成
+    **带 flag 的转换**，吃掉空格并多消费一个参数。改成 `raise exception 'DRILL-RESULT %', 'failures=' || …`。
+  - parity 用例第一版**没剥注释** ⇒ 把文件头解释文字里的 `execute 'set role service_role'`
+    也数进去（2 数成 3）。而它恰好是唯一一处能证明「角色切换被保留」的证据，多算就是假阳性。
+    修法之外还补了**对照断言**（正本确实有 `\gset drill_`、确实有 2 次 `set role`）——
+    否则「`not.toMatch` 通过」可能只是因为扫错了文件。
+  - 扫描器把 `insert … select 'avatars', …` 的表名字面量当断言标签，数出 **25** 条（真值 20）。
+    现在要求同一行出现 `count(*)`，并用 `not.toContain("avatars")` 钉住这个反例。
+  - `preflight.test.ts` 有一条断言写的是整句字面量（`别把这次更正读成`），
+    我改文案它就红——**那是在保护措辞，不是在保护事实**。换成 `toMatch(/别把[^。]{0,24}读成「B04 已解锁」/)`。
+- **变异核对：6/6 CAUGHT**（python 驱动，逐条把期望值改错 ⇒ `failures=1` 且点名正确标签）。
+  第 7 个变异「`drill_assert` 改成永真」读数仍是 `failures=0`——
+  **这是构造性的，不是缺口，别在文档里说成 SURVIVED**：harness 失效时什么都不记录，
+  所以演练自己的输出**无法**区分「全过」与「没人判」。检测手段在上一层：
+  那 6 条翻转如果全绿，就说明 harness 是装饰性的。已实测「harness 中性化 + 一条翻转 ⇒ `failures=0`」确认这个推理。
+- 验证命令和结果：
+  - 派生版本地实跑 ⇒ `ERROR: DRILL-RESULT failures=0 assertions=20 …report=ALL-20-ASSERTIONS-PASSED`；
+    回滚核对 `auth.users rows left: 0`、`contact rows left: 0`。
+  - `node node_modules/vitest/vitest.mjs run src/lib/drills/{erasure-drill-parity,psql-meta,preflight}.test.ts`
+    ⇒ **31 passed**（parity 4 + psql-meta 7 + preflight 20）。
+  - 全量门禁见本条末尾（`pnpm check:all`）。
+- 阻塞 / 风险 / 回滚：B04 仍**未完成**——缺 `B04_AUTHORIZE_PRODUCTION_WRITE`（人工授权，
+  不是凭据），且派生版从没在云端跑过。风险：正本与派生版从此是两份文件，
+  漂移由 parity 用例拦；回滚 = revert 本 commit（派生版是新增文件，正本未改）。
+- 下一项：issue #245 结案（结论已在手：限制在 CLI 侧的 extended query protocol，
+  服务端这条端点能吃多语句且全部执行）；评估 `stripSqlLineComments` 是否进 `falsify:rules`。
+- 更新时间：2026-10-13（UTC+8）。

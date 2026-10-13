@@ -10,6 +10,45 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **B04 缺口 (a) 做完了：`docs/operations/drills/account-erasure.single-do.sql`——
+  把擦除演练正本压成 HTTP 送得出去的**一条**语句，并在本地栈实测跑通。**
+  读数：`failures=0 assertions=20`，三段信息性输出与正本形状一致，
+  跑完 `auth.users` / `contact_messages` 的演练行各剩 0 行（回滚干净）。
+  派生版**永远以 `ERROR` 结束**——那是报告通道本身（实测 `raise notice` 不回传，
+  而 `raise exception` 让整条语句回滚，与正本 `rollback;` 的净效果相同）。
+  **判据是 `failures=0`，不是退出码。**
+  - **转换前先把六个问题在本地栈上实测**（而不是照常识猜）：DO 块内 insert
+    配块末 `raise exception` 会回滚（块内 `after=1`、块后表里 0 行）；
+    `execute 'set role service_role'` 在块内可用且能保留；切换后**读不到 temp 表**
+    （`permission denied for table`）；plpgsql **变量**能穿过切换；
+    块以 raise 结束时角色**不会漏到会话**（块后 `current_user=postgres`）。
+    第三条决定了 `\gset` 的替代方案：正本用 `\gset` 把值搬到角色之外，
+    这里换成变量是**语义等价**，而不是「HTTP 没有 psql 变量」那种表面理由。
+  - **`set role` 2 开 2 关是刻意保留的**：`erase_user_data` /
+    `list_user_objects_for_erasure` / `upload_object_is_referenced` 的 `proacl`
+    实测都是 `{postgres=X/postgres, service_role=X/postgres}`——
+    权限形状本身就是演练对象的一部分，删掉角色切换会让演练退化成
+    「postgres 什么都能干」的自证。
+  - **自己造、当场抓到的两个错**：① `format()` 里 `%` 后紧跟空格会被当成带 flag 的
+    转换，吃掉空格并多消费一个参数（原写法 `assertions=20% report=%`）⇒ 报告串改用 `||` 拼；
+    ② parity 用例第一版没剥注释，把文件头**解释文字里**的 `set role service_role`
+    也数了进去（2 数成 3）⇒ 复用 `psql-meta.ts` 的注释剥离
+    （导出 `stripLineComment`、新增 `stripSqlLineComments`）而不是再手搓一份，
+    并给每条 `not.toMatch` 补了**对照断言**——否则「not 通过」可能只是因为扫错了文件。
+  - **不再各自漂移的机关**：`src/lib/drills/erasure-drill-parity.test.ts`（4 条用例）
+    核对派生版与正本「断言标签的**集合与顺序**逐条相同」。它刻意**不**核对期望值：
+    真正会漂移的是「有哪些断言」。扫描器也错过一次——把
+    `insert … select 'avatars', …` 里的表名字面量当成标签，数出 25 条（真值 20），
+    现在要求同行出现 `count(*)`，并用 `not.toContain("avatars")` 钉住这个反例。
+  - **变异核对 6/6 CAUGHT**（python 驱动）：逐条把期望值改错，
+    每次都 `failures=1` 且点名正确标签。第 7 个变异（`drill_assert` 改成永真）
+    读数仍是 `failures=0`——**这是构造性的，不是缺口**：harness 失效时什么都不记录，
+    所以演练自己的输出**无法**区分「全过」与「没人判」；检测手段在上一层——
+    那 6 条翻转如果全绿，就说明 harness 是装饰性的。
+  - ⚠️ **B04 仍计未完成**。做完的是「送得出去」，缺的是「谁同意往生产库写」
+    （`B04_AUTHORIZE_PRODUCTION_WRITE`，人工授权）。派生版**从没在云端跑过**，
+    而本地跑通只证明 SQL 形状对，不证明云端迁移版本与它兼容。
+
 - **`src/lib/drills/psql-meta.ts`：B04 缺口 (a) 的那个条数从此由代码算，不再由人抄。**
   直接起因是我在 #251 里写下一句「`account-erasure.sql` 含 **5 条** psql 元命令，逐字确认」——
   **那个「逐字确认」是假的**：量法只看「行首是反斜杠」，于是漏了
