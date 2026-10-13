@@ -39,7 +39,7 @@
   `e2e-parallel.yml` 开着 mock 跑 `pnpm build` 是对的，按「出现 MOCK 字样」判会直接把它判红。
 - Stripe 使用 test key；生产 webhook secret 不进 preview
 
-## 外部依赖实况（2026-10-05 观测，每行附可重跑的查询命令）
+## 外部依赖实况（每行附观测日期与可重跑的查询命令）
 
 **这张表为什么存在**：2026-10-05 一天之内，我连续三次把「依赖外部状态」的结论写错
 （Supabase 配没配、Sentry 有没有告警链路、B04 缺什么凭据），三次都是**没去查就写**。
@@ -48,11 +48,12 @@
 所以规则是：**任何关于外部状态的结论，都必须落在这张表里，并带上观测命令与日期。**
 散落在别处的同类说法一律以本表为准。
 
-| 依赖 | 实况（2026-10-05） | 观测命令 | 影响 |
+| 依赖 | 实况（各行自带观测日期） | 观测命令 | 影响 |
 | ---- | ------------------ | -------- | ---- |
 | Supabase（平台 API） | ✅ 可用 | `gh run list --workflow supabase-auto-restore.yml`（每天 success） | Management API 令牌有效 |
 | Supabase（Auth 配置读） | ✅ 可用 | `gh run list --workflow security-config.yml`（最近一轮输出「Auth 配置已验证（scope=redirects）」） | 同上，另一条独立证据 |
-| Supabase（数据库级） | ❌ **无 DB 密码类 secret** | `gh secret list`（只有一个 `SUPABASE_ACCESS_TOKEN`） | **B04 的真正阻塞**：演练 SQL 与 `migration list --linked` 都要真 Postgres 连接 |
+| Supabase（数据库级：**执行 SQL**，2026-10-13 实测） | ✅ **不需要数据库密码**——`SUPABASE_ACCESS_TOKEN` 就能执行 | `pnpm ops:cloud-sql-probe`（`.github/workflows/cloud-sql-probe.yml`，手动触发；run `38334026946` 七条全 EXECUTED） | **这一行把原先那行否证了**。旧写法是「❌ 无 DB 密码类 secret ⇒ B04 的真正阻塞」，而「`gh secret list` 只有一个令牌」这件事**从来推不出「不能执行 SQL」**：`POST /v1/projects/{ref}/database/query` 的鉴权口径是 `database_read` 或 `database_write`，CI 里那个令牌就有。实测三件事：多语句**全部执行**（判据是让第一条语句自己报错——`select 1/0; select 2` 回 `22012: division by zero`；光看响应体不行，因为它只回**最后一条**的结果）；单条 DO 块通；`read_only: true` 确实让服务端进入只读事务（带字段回 `on`、不带回 `off`）。⇒ **B04 现在缺的不是凭据**，是 (a) 把 `account-erasure.sql` 里那 5 条 psql 元命令压成 HTTP 送得出去的单条语句，(b) 一次「可以往生产库写」的人工授权 |
+| Supabase（数据库级：**直连 Postgres**） | ❌ 仍无 DB 密码 | `gh secret list`（只有 `SUPABASE_ACCESS_TOKEN`） | 与上一行是**两个不同的能力**，别合并：走 TCP 直连（`psql`、`supabase db push`）确实还要密码。这次否证的是「B04 需要它」，**不是**「它没用」 |
 | 生产 Supabase（应用侧） | ✅ 配置且可达 | `pnpm health:check -- https://indie-stack-theta.vercel.app` | 连接与凭据是好的。**但「应用侧可达」不等于「worker 跑得通」**：`/api/cron/digest` 对 GET 实测 405（2026-10-12，PR #236 在修），而它一旦能跑就会撞上下一条那个缺列 |
 | 生产部署新鲜度（2026-10-08 观测） | ✅ fresh，阈值 5 | `pnpm ops:deploy-freshness`（生产 `d2457d74` = origin/main 同 commit） | **生产已追上 main**，不再滞后；前面几轮的 lagging 是 Vercel 构建排队的副作用 |
 | 生产冒烟（2026-10-08 观测） | ✅ 7/7 | `node scripts/production-smoke.js --url … --expected-commit d2457d74bd60b23d559a4d1a9c53d764faa5d554` | health / liveness / 主页 / 静态资源 / 安全头 / 匿名看板 307 / webhook 签名拒收 全过，commit 匹配 |
@@ -72,14 +73,25 @@
 1. **`configured=false` 不等于 readiness 会红**。`/api/health` 里 Sentry / Stripe 都是
    `required: false`，所以它们缺失时 `ready` 仍是 `true`——这是有意的设计（模板的可选依赖），
    但它意味着**一个可选依赖缺失时，健康检查不会替你喊人**。
-2. **「平台可用」不等于「数据库可用」**。两者差着一层：Management API 能读项目状态，
-   **读不到库里的表**。把前者当成后者会让人以为 B04 快能做完了。
-   **但这一层在 2026-10-12 被实测细化了一次**：PostgREST 的 OpenAPI 根端点
-   （`GET <root>/rest/v1/`，service_role key，实测匿名 401 / key 200）
-   **不需要 DB 密码就能读到全部表与列名**——所以「线上缺哪一列」这类问题**已经从「查不了」
-   变成「一条命令能回答」**（`pnpm ops:schema-drift`）。
-   它替代不了 B04：那条要的是**执行多语句演练 SQL**，OpenAPI 只给 schema 不给执行。
-   分寸仍然是对的，只是边界比原先写的更细。
+2. **「平台可用」不等于「数据库可用」——这条分寸本身已经被改过三次，值得整段留着**。
+   - **原写法**：Management API 能读项目状态，但**读不到库里的表**，
+     所以别把「平台可用」当成「B04 快能做完了」。
+   - **2026-10-12 第一次细化**：PostgREST 的 OpenAPI 根端点
+     （`GET <root>/rest/v1/`，service_role key，实测匿名 401 / key 200）
+     **不要 DB 密码就能读到全部表与列名**——「线上缺哪一列」从「查不了」
+     变成「一条命令能回答」（`pnpm ops:schema-drift`）。
+     但它只给 schema、不给执行，所以当时判断「替代不了 B04」。
+   - **2026-10-13 第二次细化，这次把原写法直接否证了**：Management API 有
+     `POST /v1/projects/{ref}/database/query`（以及跑在 `supabase_read_only_user` 下的
+     `…/query/read-only`），**用同一个令牌就能执行 SQL**，多语句也全部执行
+     （`pnpm ops:cloud-sql-probe`，run `38334026946`）。
+     所以「读不到库里的表」是错的——读得到，也写得了。
+   - **仍然成立的那半**：**直连 Postgres**（`psql`、`supabase db push`）确实还要 DB 密码。
+     分寸从「平台 ≠ 数据库」挪到了「**经 API 执行 SQL ≠ 直连数据库**」——
+     两者是不同的能力，而**这次是前者把后者衬托成了不必要的**，别反过来读。
+   - **为什么这条要留这么多历史**：同一件事被写错三次，说明错的不是措辞而是方法——
+     每次都是**从「手上有哪些 secret」倒推「能做什么」**。
+     secret 清单不是能力的证据；**打一次才知道**。
 3. **`❓ 未知` 是这一栏允许存在的状态**。写一个听起来合理的猜测，比写「未知」有害——
    本文档开头的那些错误结论，一半是被一个自信的猜测撑起来的。
    **但「未知」也不该被当成常态**：它之所以长期存在，是因为「从外部查不到」。

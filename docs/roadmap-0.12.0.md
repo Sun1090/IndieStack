@@ -174,23 +174,42 @@
    前置判定已固化：`pnpm drills:preflight --drill B03`，2026-10-05 起不必再临场回忆缺哪个凭据）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
-9. B04 （**未完成：外部权限（缺的是数据库密码，不是平台令牌）**——阻塞原因已于 2026-10-05 更正，见下；
+9. B04 （**未完成：不再是「缺外部权限」——缺的是人工授权 + 一份还没转换的 SQL 正本**；
+   阻塞原因已于 2026-10-13 **第四次**改写，见下；
    前置判定已固化：`pnpm drills:preflight --drill B04`）
    云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
-   - **原阻塞描述是错的**：写的是「需要云端 Supabase 项目的管理凭据」。实测发现仓库里
+   - **第一版是错的**：写的是「需要云端 Supabase 项目的管理凭据」。2026-10-05 实测仓库里
      **早就有**一个可用的 Management API 令牌——`SUPABASE_ACCESS_TOKEN` 是 repo secret，
-     `supabase-auto-restore.yml` 每天成功跑一次（2026-10-05T11:47Z 那轮读项目状态后报「无需恢复」）。
-     **平台层从来不是阻塞。**
-   - **真正的缺口在再下一层**：演练 SQL 要用真 Postgres 连上去跑，
-     `supabase migration list --linked` 同理（它读库里的 `schema_migrations` 表）；
-     而仓库里**没有任何 DB 密码类 secret**（`gh secret list` 只有一个 `SUPABASE_ACCESS_TOKEN`）。
-   - 因此 B04 的阻塞从「要一个可能已有的令牌」收窄成「要数据库密码」——
-     **这是一次真实的阻塞面缩小**，不是措辞调整。
-   - **2026-10-12 再补一条边界，免得有人以为 B04 已经解锁**：PostgREST 的 OpenAPI 根端点
-     用 service_role key 就能读到全部表与列名（**不需要 DB 密码**），
-     所以「线上缺哪一列」这类问题已经能查了（`pnpm ops:schema-drift`，见 `environments.md`）。
-     但 B04 要的是**在云端跑多语句演练 SQL**——OpenAPI 只给 schema、不给执行。
-     两者是不同的能力，别把前者当成后者。
+     `supabase-auto-restore.yml` 每天成功跑一次。**平台层从来不是阻塞。**
+   - **第二版也是错的**：收窄成「要数据库密码」。2026-10-13 用 `pnpm ops:cloud-sql-probe`
+     拿到真实读数（run 38334026946，七条全 EXECUTED）后**否证**：
+     `POST /v1/projects/{ref}/database/query` 用那个令牌就能**执行 SQL**，不需要密码。
+     多语句也**全部执行**——判据是让第一条语句自己报错：
+     `select 1/0 as boom; select 2 as survivor` 回 `ERROR: 22012: division by zero`。
+     单条 DO 块同样通。⇒ `SUPABASE_DB_PASSWORD` 已从 `preflight.ts` 的前置里删除。
+     （为什么「没报错」不等于「都跑了」：这个端点的响应体只回**最后一条**语句的结果。
+     计时判据试过并被同一份日志证伪——同形状的两条查询相差 478ms，
+     而 `pg_sleep(1)` 相对对照只高 483ms，噪声与信号同量级。所以换成「让第一条报错」。）
+   - **第三版是「多语句跑不了 ⇒ 必须 psql + 密码」**，被 PR #236 的单条 DO 块证伪。
+     三次的错都留在 `docs/operations/environments.md` 的分寸条目里，没有回改。
+   - **所以今天真正缺的是两件事，都不是凭据**：
+     (a) `docs/operations/drills/account-erasure.sql` 里有 **5 条 psql 元命令**
+         （`\set` / `\echo`），HTTP 通道**根本送不过去**，
+         要先照 `retention-cleanup.single-do.sql` 的做法压成单条语句并在本地跑通；
+     (b) 这两份 SQL 会真的 insert / update / delete。在云端跑等于**往生产库写**，
+         那是**人工授权**动作。`preflight.ts` 里为此立了一个
+         `B04_AUTHORIZE_PRODUCTION_WRITE` 变量：它不是密钥，是一次显式同意，
+         刻意做成「没有它执行器就拒绝启动」，这样「谁都没同意过但脚本自己跑了」
+         在结构上不可能发生。
+   - **别把这次更正读成「B04 已解锁」**：解锁的是「通道存在且不需要密码」，
+     不是「可以开跑」。v0.12.0 的 tag 前置里 B04 仍计未完成。
+   - 顺带记一条与本条相反方向的教训：上一条 commit（`684c9fc8`）里我写了
+     「`SUPABASE_DB_PASSWORD` 被登记了**八年**」——那是我**编的数字**，
+     真值是 2026-10-05 登记、2026-10-13 否证，**8 天**。
+     按本仓库「带日期的证据快照不回改、只加指针」的规矩，那条 commit 原文保留，
+     错记在这里。值得记的是**形态**而不是次数：这次编数字的地方，
+     正是「纠正别人编的数字」那同一段话里——纠正动作本身不会让人免于犯错。
+     （本仓库这类违规的累计次数没有统一台账，所以这里不写「第 N 次」。）
 10. B05 （**部分完成：P1 已实跑通过（2026-10-05，本地 mock 构型）；P2–P4 仍缺外部权限**——
     需要 provider 测试凭据与可牺牲的真实项目；
     前置判定已固化：`pnpm drills:preflight --drill B05`）

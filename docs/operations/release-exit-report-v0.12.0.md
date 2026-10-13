@@ -106,9 +106,15 @@ tag 是对外声明「做完了」，**没有证据就等于没做**。
 1. **B03 未闭合** → `0.12.0` 刻意不打 tag。缺
    `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    与一个**可牺牲**的隔离账号（`auth.admin.deleteUser` 不可逆，禁止用真实用户）。
-2. **B04 未闭合** → 缺**数据库密码**。注意平台令牌（`SUPABASE_ACCESS_TOKEN`）
-   早已具备且 `supabase-auto-restore.yml` 每天成功，**平台层从来不是阻塞**；
-   真正的缺口是 DB 密码（仓库里没有任何 DB 密码 secret）。
+2. **B04 未闭合** → ~~缺**数据库密码**~~ **这一条已于 2026-10-13 被实测否证**：
+   `pnpm ops:cloud-sql-probe`（run `38334026946`）证明平台令牌
+   `SUPABASE_ACCESS_TOKEN` 就能经 Management API **执行 SQL**（多语句全部执行、
+   单条 DO 块也通），**不需要数据库密码**。
+   现在缺的是两件别的东西：(a) `account-erasure.sql` 含 5 条 psql 元命令，
+   HTTP 送不出去，要先压成单条语句；(b) 这两份演练 SQL 会真的写生产库，
+   需要一次**人工授权**（`preflight.ts` 里的 `B04_AUTHORIZE_PRODUCTION_WRITE`）。
+   原文那半句「平台层从来不是阻塞」仍然是对的——而且比当时以为的更对：
+   它连「执行 SQL」这一层都不是阻塞。B04 仍计**未完成**，tag 前置不变。
 3. **B05 的 P2–P4 未闭合** → 缺 Resend 测试 key、VAPID 一对与真实订阅端点、可牺牲项目。
 4. **本版本的回滚演练未做** → `rollback-runbook-v0.12.0.md` 的「演练记录」为空。
    v0.11.0 的回滚记录**不跨迁移边界**，不能用来证明本版本可用。
