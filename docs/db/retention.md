@@ -81,6 +81,16 @@
 **没有 `pg_cron`**，因此 `cron.job` 关系根本不存在，本文登记的每周清理在实际数据库里
 从未执行过。`032` 之前只有 `docs` 里那句「生产需确认扩展已启用」，没有任何证据说明它做没做。
 
+> ⚠️ **上面这条当时没写「怎么读到的」，代价在 14 天后显形**：`docs/operations/environments.md`
+> 把它写成「生产是否安装**仍未核实**」——不是没人读到过，而是**没人能复核**，于是只能退回未知。
+> 这条教训已写成 `docs/operations/release-audit-template.md` 的第 6 条硬规则
+> （**结论 + 取法 + 日期**，三者缺一即视为未核实）。
+> 现在重读它一次，两条命令都不要再靠手读：
+> 生产走 `pnpm ops:cloud-sql-probe`（`PG_CRON_INSTALLED` 那一步，HTTP + 仓库里的
+> `SUPABASE_ACCESS_TOKEN`，**不需要数据库密码**）；本地栈走
+> `node scripts/check-retention-cron.js --probe --container supabase_db_indiestack`。
+> 2026-10-14 两条路径各自独立测得**生产与本地栈都未安装**，与本节 2026-09-21 的读数一致。
+
 现在的执行者是 `/api/cron/retention`（每天 05:00 UTC，登记在 `src/lib/observability/cron-contract.ts`
 并由 `pnpm check:cron-contract` 校验接线）：它用 service_role 逐个调用同一批迁移函数。于是
 
