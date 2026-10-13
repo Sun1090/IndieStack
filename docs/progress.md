@@ -8773,3 +8773,52 @@
   回滚 = revert 本 commit。
 - 下一项：`account-erasure.single-do.sql` 的转换（B04 缺口 (a)，本地栈在跑、可实测）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 我上一轮写的「逐字确认」是假的：元命令真值 6 条，漏的恰是那条结构性的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/psql-meta-count`（base `3074aa5b` = main + #252）。
+- 状态：DONE。
+- 为什么做：#251 里我写下「`account-erasure.sql` 含 **5 条** psql 元命令，**逐字确认**」，
+  并把它当作 B04 缺口 (a) 的规格。开始转换时才看见第 102 行：
+  `select uid, avatar_key, orphan_key, other_owner from d \gset drill_`。
+  **量法只看「行首是反斜杠」，行尾形态永远看不见。** 真值 **6 条**。
+- **为什么这条比「一个数写错」严重**：漏掉的 `\gset` 是 6 条里唯一**结构性**的——
+  它把 temp 表的值取进 psql 变量，供后面 **16 处** `:'drill_*'` 引用
+  （`grep -o ":'drill_" | wc -l` 实测：uid 7 / orphan_key 4 / avatar_key 3 / other_owner 2）。
+  照「5 条」去转换，会得到一份**变量来源整层缺失**的正本，而它跑起来不一定报错。
+  另外 5 条（`\set ON_ERROR_STOP` + 4 条 `\echo`）删掉就行——**按名字分类会把这条也归错**。
+- **最该记的是位置**：这条错写在上一条 progress 条目「差点把 5 条写成 0 条」的
+  同一句括注里。**发现一个量法会漏，不等于发现它会漏在哪**；
+  而「逐字确认」这个短语让一个没被核对的数看起来核对过了。
+- 完成内容：
+  1. `src/lib/drills/psql-meta.ts`（新）：把「怎么数」固化成代码。
+     三类分开判：`cosmetic`（删）/ `error-handling`（删并说明 HTTP 通道无此开关）/
+     `structural`（**必须翻译成 SQL**）。分类依据是「有没有产出后续要用的东西」，不是名字。
+     认不全的反斜杠由 `unknownBackslashes` 报出来——**不静默当成 SQL**。
+  2. `preflight.test.ts` 新增**跨文件对账**：把「`preflight.ts` 正文里写的那个数
+     与括号里那串命令名」钉到探测器对正本算出的结果。
+     **改正本而不回头改这句话，就会红**——这才是防止重演的机关，光有探测器不够。
+  3. 文档 5 处「5 条」改正（roadmap / exit-report / `preflight.ts` / CHANGELOG / 上一条
+     progress 条目就地加【同日稍后订正】，快照原文保留）。
+  4. 探测器 2 个判定函数进 `RULE_FALSIFICATION_TARGETS`：**65 → 67 条**，
+     `pnpm falsify:rules` → **67/67 会红**，跑完工作树干净。
+- **两次「用例恒真」都是当场抓出来的，不是事后**：
+  - 剥注释那条第一版写成 `-- docker exec -i psql \\`，`\\` 后面不是字母，
+    正则本来就匹配不上 ⇒ 变异「不剥注释」**存活**。换成注释里直接写已知命令名，
+    并补一条「去掉注释前缀就必须认出来」的对照，才证明那个 0 来自剥注释而非匹配失败。
+  - 对账那条第一版断言 `toContain("\\gset")`，而正文别处也有这个词 ⇒
+    变异「删掉命令列表里的 `\gset`」**存活**。改成对账**集合相等**才承重。
+  - 合计：探测器 5 个变异（A1–A5，修完 A2 后 5/5）、对账 4 个变异（X1–X4，修完 X3 后 4/4）。
+- **转换前的参照点**：正本在本地栈基线复跑**全过**——
+  擦除后 13 条 + 删号后 7 条 = **20 条断言 actual = expected**，
+  另有 3 段信息性输出（object-list / reference-detection / erasure 计数）已留档。
+  `ROLLBACK` 收尾，未留数据。
+- 验证命令和结果：`pnpm check:all` ✅ **278 files / 3466 tests**（+1 文件 / +8 条）；
+  `type-check` / eslint exit 0（**实测退出码**）；`falsify:rules` 67/67；
+  `check:progress` 181 条 / `check:changelog` / `check:doc-links` ✅。
+- 阻塞 / 风险 / 回滚：本轮**没有**产出 `account-erasure.single-do.sql`——
+  它需要先把 `\gset` + 16 处 `:'drill_*'` 翻译成 SQL 内的变量，并处理
+  `set role service_role` / `reset role`（HTTP 通道下角色语义不同）。
+  那是下一条的活，本轮先把规格数对。回滚 = revert 本 commit。
+- 下一项：按改正后的 6 条规格做转换，判据是「转换版跑出与正本同样的 20 条 actual=expected」。
+- 更新时间：2026-10-13（UTC+8）。
