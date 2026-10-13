@@ -299,12 +299,31 @@ export type ProbeStepId =
   | "WRITE_ENDPOINT_GUARDED"
   | "MULTI_STATEMENT"
   | "MULTI_STATEMENT_FIRST_ERROR"
-  | "SINGLE_DO_BLOCK";
+  | "SINGLE_DO_BLOCK"
+  | "READ_ONLY_FLAG_ON"
+  | "READ_ONLY_FLAG_OFF";
 
 /** 这一步「成功」长什么样。DO 块那条**期望服务端报错**——报错才是它跑通了的证据。 */
 export type ProbeExpectation =
   | { kind: "rows" }
   | { kind: "exception"; marker: string }
+  /**
+   * 要求**返回行的某个字段值**等于 `value`。
+   *
+   * 用来验 `read_only: true` 到底**有没有生效**：`show transaction_read_only`
+   * 是纯只读语句，但它回显服务端此刻真实处于的读只读状态。
+   * 这一步要紧在：本探测打「能写」端点时把 `read_only: true` 当成第二层防护——
+   * 如果那个字段其实是装饰性的，那么**唯一**的保护就只剩守卫本身，
+   * 而文档必须照实这么写，不能继续宣称有两层。
+   *
+   * **刻意做成「按字段值比较」而不是「在响应文本里找子串」**：
+   * 第一版写的是「在响应里找 `on`」，于是值为 `off` 的读数也算命中——
+   * 因为列名 `transaction_read_only` 自己就含 "on"。
+   * 一个同时匹配「是」与「否」的判据等于没有判据，
+   * 而且它错的方向正好是让「防护失效」看起来像「防护生效」。
+   */
+  | { kind: "fieldEquals"; column: string; value: string };
+
 export interface ProbeStep {
   id: ProbeStepId;
   /** 实际送进 `query` 字段的 SQL。全部为常量，不接受外部输入。 */
@@ -330,9 +349,10 @@ export interface ProbeStep {
 export const PROBE_MARKER = "PROBE-RESULT";
 
 /**
- * 探测计划：四条，顺序即执行顺序。每条都设计成**不改变任何状态**。
+ * 探测计划，顺序即执行顺序。每条都设计成**不改变任何状态**。
  *
- * 前两条只验「能不能执行」，后两条才是 issue #245 与 B04 真正要的答案。
+ * 前两条只验「能不能执行」；中间三条验 issue #245 与 B04 真正要的答案；
+ * 最后两条反过来验**本探测自己的第二层防护**（`read_only` 字段是否真的生效）。
  */
 export const PROBE_PLAN: readonly ProbeStep[] = [
   {
@@ -386,6 +406,24 @@ export const PROBE_PLAN: readonly ProbeStep[] = [
     readOnlyFlag: true,
     expectation: { kind: "exception", marker: PROBE_MARKER },
     question: "一条 DO 块能否跑通（B04 正本正是单条 DO 块形态）",
+  },
+  {
+    // 带 read_only 与不带 read_only 各问一次服务端「你现在是不是只读事务」。
+    // 两条都是 `show`，不改任何东西；差别只在请求体里那个字段。
+    id: "READ_ONLY_FLAG_ON",
+    sql: "show transaction_read_only",
+    endpoint: "query",
+    readOnlyFlag: true,
+    expectation: { kind: "fieldEquals", column: "transaction_read_only", value: "on" },
+    question: "read_only: true 是否真的让服务端进入只读（第二层防护是不是装饰）",
+  },
+  {
+    id: "READ_ONLY_FLAG_OFF",
+    sql: "show transaction_read_only",
+    endpoint: "query",
+    readOnlyFlag: false,
+    expectation: { kind: "fieldEquals", column: "transaction_read_only", value: "off" },
+    question: "对照组：不带该字段时服务端的默认读只读状态",
   },
 ];
 
@@ -457,7 +495,85 @@ function expectationMet(step: ProbeStep, response: ProbeResponse): boolean {
   if (step.expectation.kind === "exception") {
     return text.toLowerCase().includes(step.expectation.marker.toLowerCase());
   }
+  if (step.expectation.kind === "fieldEquals") {
+    return compareFieldValue(response.json, step.expectation) === "met";
+  }
   return Array.isArray(response.json);
+}
+
+/**
+ * 读到的列值与期望值的关系。**三种状态而不是两种**：
+ * 「读到了且相等」「读到了但不相等」「压根没读到」。
+ *
+ * 为什么中间那态必须单独存在：如果 `read_only: true` 送出去了而服务端回
+ * `transaction_read_only = off`，那是一个**关于我们自己防护层的确定结论**
+ * （字段是装饰性的），把它压成 UNKNOWN 等于把最该喊人的读数写成「不知道」。
+ */
+type FieldComparison = "met" | "contradicted" | "unreadable";
+
+function compareFieldValue(
+  json: unknown,
+  expectation: { column: string; value: string },
+): FieldComparison {
+  if (!Array.isArray(json) || json.length === 0) return "unreadable";
+  const row = json[0];
+  if (row === null || typeof row !== "object" || Array.isArray(row)) return "unreadable";
+  const actual = (row as Record<string, unknown>)[expectation.column];
+  const normalised = normaliseGucValue(actual);
+  if (normalised === null) return "unreadable";
+  return normalised === expectation.value.toLowerCase() ? "met" : "contradicted";
+}
+
+/**
+ * 把 GUC 值归一成小写字面量。认 `on`/`off`/`true`/`false` 两种写法。
+ *
+ * 为什么必须处理布尔：`show transaction_read_only` 现在回字符串 `"on"`，
+ * 但要是服务端改成回 JSON 布尔 `true`，直接 `String(true)` 会得到 `"true"`——
+ * 与期望的 `"on"` 不相等 ⇒ 判成 **contradicted**，也就是把「我们的防护生效了」
+ * 报成「防护是装饰性的」。这是一个假警报，而且假在安全声明上，代价最高。
+ * 无法归一（数字、对象、缺列）⇒ null，落到 UNKNOWN。
+ */
+function normaliseGucValue(value: unknown): string | null {
+  if (typeof value === "boolean") return value ? "on" : "off";
+  if (typeof value !== "string") return null;
+  const lowered = value.trim().toLowerCase();
+  if (lowered === "true") return "on";
+  if (lowered === "false") return "off";
+  return lowered;
+}
+
+/**
+ * 处理「按字段值比较」那两步。返回 null 表示这一步不属于该形态、或判据已满足。
+ *
+ * 单独成函数是因为 `classifyStep` 的分支数已经贴着 ESLint 上限（实测 16 > 15）。
+ */
+function classifyFieldStep(step: ProbeStep, response: ProbeResponse): ProbeVerdict | null {
+  if (step.expectation.kind !== "fieldEquals" || response.status !== 201) return null;
+  const comparison = compareFieldValue(response.json, step.expectation);
+  if (comparison === "met") return null;
+  if (comparison === "contradicted") {
+    // 读到了值、且与期望相反 ⇒ 这是确定结论，不是「不知道」。
+    return {
+      id: step.id,
+      outcome: "REJECTED_SQL",
+      status: 201,
+      evidence: withElapsed(
+        step,
+        response,
+        `[FIELD_CONTRADICTED] 期望 ${step.expectation.column}=${step.expectation.value}，实际 ${JSON.stringify(response.json)}`,
+      ),
+    };
+  }
+  return {
+    id: step.id,
+    outcome: "UNKNOWN",
+    status: 201,
+    evidence: withElapsed(
+      step,
+      response,
+      `读不到 ${step.expectation.column} 这一列的值（空响应或形状变了）`,
+    ),
+  };
 }
 
 /**
@@ -502,6 +618,8 @@ function classifyStep(step: ProbeStep, response: ProbeResponse): ProbeVerdict {
     };
   }
   const text = errorTextOf(response);
+  const fieldVerdict = classifyFieldStep(step, response);
+  if (fieldVerdict !== null) return fieldVerdict;
   if (response.status === 401 || response.status === 403) {
     return {
       id: step.id,
@@ -574,6 +692,15 @@ export interface ProbeReport {
   multiStatementFullyExecutes: boolean;
   /** 前序语句被静默跳过 ⇒ 这个端点**不能**用来跑多语句演练（比跑不了更坏）。 */
   multiStatementSkipsEarlier: boolean;
+  /**
+   * `read_only: true` 这个字段**确实**让服务端进入了只读事务。
+   *
+   * 这是本探测对自身安全声明的核验：文档一直说「打能写的端点时有两层防护」，
+   * 第二层就是这个字段。它要是装饰性的，两层就只剩一层，文档得改口。
+   */
+  readOnlyFlagEffective: boolean;
+  /** 服务端明确回了一个与期望相反的值 ⇒ 字段是装饰性的（确定结论，不是未知）。 */
+  readOnlyFlagIneffective: boolean;
   /** 有没有任何一步是「不知道」。 */
   hasUnknown: boolean;
 }
@@ -586,6 +713,7 @@ function outcomeOf(verdicts: ProbeVerdict[], id: ProbeStepId): ProbeOutcome | un
 export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
   const multi = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT");
   const firstError = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT_FIRST_ERROR");
+  const flagOn = verdicts.find((verdict) => verdict.id === "READ_ONLY_FLAG_ON");
   return {
     verdicts,
     readOnlyEndpointWorks: outcomeOf(verdicts, "READ_ONLY_ENDPOINT") === "EXECUTED",
@@ -596,6 +724,9 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
     singleDoBlockWorks: outcomeOf(verdicts, "SINGLE_DO_BLOCK") === "EXECUTED",
     // 这一步的判据本身就是「报错才算跑通」，所以 EXECUTED 与「前序执行了」是同一件事。
     multiStatementFullyExecutes: firstError?.outcome === "EXECUTED",
+    readOnlyFlagEffective: flagOn?.outcome === "EXECUTED",
+    readOnlyFlagIneffective:
+      flagOn?.outcome === "REJECTED_SQL" && flagOn.evidence.includes("FIELD_CONTRADICTED"),
     multiStatementSkipsEarlier:
       firstError?.outcome === "REJECTED_SQL" &&
       firstError.evidence.includes("FIRST_STATEMENT_SKIPPED"),

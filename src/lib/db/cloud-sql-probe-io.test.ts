@@ -59,6 +59,12 @@ afterEach(() => {
 });
 
 describe("endpointPath / requestBody", () => {
+  it("对照组那一步刻意不带 read_only：它就是「不带字段会怎样」的那一半", () => {
+    const off = step("READ_ONLY_FLAG_OFF");
+    expect(off.endpoint).toBe("query");
+    expect(requestBody(off)).not.toHaveProperty("read_only");
+  });
+
   it("只读步骤打只读端点，且不带 read_only 字段", () => {
     const entry = step("READ_ONLY_ENDPOINT");
     expect(endpointPath(entry)).toBe("/database/query/read-only");
@@ -72,6 +78,7 @@ describe("endpointPath / requestBody", () => {
       "MULTI_STATEMENT",
       "MULTI_STATEMENT_FIRST_ERROR",
       "SINGLE_DO_BLOCK",
+      "READ_ONLY_FLAG_ON",
     ]) {
       const entry = step(id as ProbeStep["id"]);
       expect(endpointPath(entry)).toBe("/database/query");
@@ -293,6 +300,12 @@ describe("runCloudSqlProbe 的短路", () => {
           ? new Response('{"error":"division by zero"}', { status: 400 })
           : new Response('[{"survivor":2}]', { status: 201 });
       }
+      // read_only 生效性那一对：按**请求体里有没有那个字段**回答 on / off。
+      // 这正是这两步要验的东西，所以 mock 必须真的把它当回事。
+      if (body.query.startsWith("show ")) {
+        const value = (body as { read_only?: boolean }).read_only === true ? "on" : "off";
+        return new Response(`[{"transaction_read_only":"${value}"}]`, { status: 201 });
+      }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
   }
@@ -323,7 +336,7 @@ describe("runCloudSqlProbe 的短路", () => {
 
   it("多语句被 prepared statement 拒 ⇒ 退出码 1（那是答案，不是故障）", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const body = JSON.parse(String(init.body)) as { query: string };
+      const body = JSON.parse(String(init.body)) as { query: string; read_only?: boolean };
       if (body.query.includes(";")) {
         return new Response(
           '{"error":"cannot insert multiple commands into a prepared statement"}',
@@ -333,11 +346,23 @@ describe("runCloudSqlProbe 的短路", () => {
       if (body.query.startsWith("do ")) {
         return new Response('{"error":"ERROR: PROBE-RESULT ok"}', { status: 500 });
       }
+      // 按请求体里那个字段如实回答。写死成 "on" 会让对照组那一步也判成矛盾，
+      // 于是「退出码 1」就不再来自它标题所说的那件事了。
+      if (body.query.startsWith("show ")) {
+        const value = body.read_only === true ? "on" : "off";
+        return new Response(`[{"transaction_read_only":"${value}"}]`, { status: 201 });
+      }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect(await runCloudSqlProbe(baseOptions)).toBe(1);
+    // 红必须只来自多语句那一步：否则这条用例断言的不是它标题说的那件事。
+    const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(printed).toContain("[MULTI_STATEMENT] REJECTED_SQL");
+    expect(printed).toContain("[PREPARED_STATEMENT]");
+    expect(printed).not.toContain("READ_ONLY_FLAG_ON] REJECTED_SQL");
+    expect(printed).not.toContain("READ_ONLY_FLAG_OFF] REJECTED_SQL");
   });
 });
 

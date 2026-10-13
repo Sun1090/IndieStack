@@ -18,6 +18,11 @@ import {
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 
+/** 取一条 SQL 的首关键字，用于断言计划里某步的形状。 */
+function firstOf(sql: string): string {
+  return sql.trim().split(/\s+/)[0].toLowerCase();
+}
+
 function readOnly(sql: string): boolean {
   return assertProbeSqlReadOnly(sql).readOnly;
 }
@@ -230,6 +235,55 @@ describe("auditProbePlan", () => {
     const audit = auditProbePlan(tampered);
     expect(audit.ok).toBe(false);
     expect(audit.rejections.map((entry) => entry.id)).toContain("MULTI_STATEMENT");
+  });
+
+  it("计划里有验 read_only 字段是否生效的一对（带 / 不带）", () => {
+    // 这一对要紧在：本探测打「能写」端点时宣称有两层防护，
+    // 第二层就是 `read_only: true`。不验它，那句「两层」就只是文档里的一句话。
+    const on = step("READ_ONLY_FLAG_ON");
+    const off = step("READ_ONLY_FLAG_OFF");
+    expect(on.sql).toBe(off.sql);
+    expect(on.readOnlyFlag).toBe(true);
+    expect(off.readOnlyFlag).toBe(false);
+    expect(on.expectation).toEqual({
+      kind: "fieldEquals",
+      column: "transaction_read_only",
+      value: "on",
+    });
+    // 两条都必须是 `show`：验防护本身不能引入写入风险。
+    expect(firstOf(on.sql)).toBe("show");
+    expect(firstOf(off.sql)).toBe("show");
+  });
+
+  it("判据按字段值比较，不按响应文本子串：`on` 会命中列名里的 on", () => {
+    // 第一版写的是「在响应里找子串 on」，于是值为 off 的响应也算命中——
+    // 因为列名 `transaction_read_only` 自己含 "on"。
+    // 一个同时匹配「是」与「否」的判据等于没有判据，而且它错的方向
+    // 正好是让「防护失效」看起来像「防护生效」。
+    const on = step("READ_ONLY_FLAG_ON");
+    const contradicted = classifyProbeResponse(
+      on,
+      response({ json: [{ transaction_read_only: "off" }] }),
+    );
+    expect(contradicted.outcome).toBe("REJECTED_SQL");
+    expect(contradicted.evidence).toContain("[FIELD_CONTRADICTED]");
+  });
+
+  it("读不到那一列 ⇒ UNKNOWN，不压成「失效」也不压成「生效」", () => {
+    const on = step("READ_ONLY_FLAG_ON");
+    for (const json of [[], null, [{ other_column: "on" }], "not-an-array"]) {
+      expect(classifyProbeResponse(on, response({ json })).outcome).toBe("UNKNOWN");
+    }
+  });
+
+  it("值为布尔 true 或字符串 on（含大写）两种形状都认", () => {
+    const on = step("READ_ONLY_FLAG_ON");
+    expect(
+      classifyProbeResponse(on, response({ json: [{ transaction_read_only: true }] })).outcome,
+    ).toBe("EXECUTED");
+    expect(
+      classifyProbeResponse(on, response({ json: [{ transaction_read_only: "ON" }] })).outcome,
+    ).toBe("EXECUTED");
   });
 
   it("多语句的决定性判据是「前序语句报错」，不是耗时", () => {
