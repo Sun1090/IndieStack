@@ -17,6 +17,8 @@ import {
   readingChainText,
   readingCount,
   readingVerdict,
+  type QuotaOutcome,
+  type QuotaReading,
 } from "./quota-readings";
 
 const DOC = resolve(process.cwd(), "docs/operations/environments.md");
@@ -90,12 +92,40 @@ describe("跨文件对账：文档里的那句话必须等于台账算出的结�
     expect(claimed).toBe(consecutivePassFromTail());
   });
 
-  it("尾部连击与最长连击是两个不同的数，不能互相顶替", () => {
-    // 今天：尾部 0（最近一次是 #256 fail）、最长 2（#255 那两条 pass）
-    expect(consecutivePassFromTail()).toBe(0);
-    expect(longestPassStreak()).toBe(2);
-    // **两者不相等本身就是这条用例存在的理由**：
-    // 如果哪天它们相等，用其中一个数冒充另一个就会静默通过。
-    expect(consecutivePassFromTail()).not.toBe(longestPassStreak());
+  it("尾部连击与最长连击是两个不同的数——用合成链验，不抄今天的数", () => {
+    /**
+     * ⚠️ **这条原先写的是 `expect(...).toBe(0)` / `toBe(2)`**——那是**对今天数据的快照**，
+     * 不是不变量。追加第 7 条读数（#257 pass）时尾部就从 0 变成 1，
+     * 用例红的原因不是逻辑坏了，而是**我把一个会变的数钉进了测试里**。
+     * 本仓库为「文档里的数字」付过三次学费，这是**第四次、换了个地方**：
+     * **测试里的快照数一样会漂移**，而且它漂移时只会带来一次「顺手改掉」的噪音，
+     * 久而久之人就学会忽略它红了。
+     *
+     * ⇒ 改成**合成链**：形状由我构造，所以「尾部 ≠ 最长」是**结构性事实**，
+     * 与台账今天有几条无关。真实台账的那两个数仍由上面两条正则对账用例盯住文档那一侧。
+     */
+    const chain = (outcomes: readonly QuotaOutcome[]): QuotaReading[] =>
+      outcomes.map((outcome, index) => ({
+        pr: 900 + index,
+        pool: "preview" as const,
+        outcome,
+        at: "2026-10-13",
+        note: `合成链第 ${index + 1} 条`,
+      }));
+
+    // pass 在前、fail 收尾：最长 2、尾部 0——**不相等**，正是最容易被混的那个形状
+    const flapped = chain(["pass", "pass", "fail"]);
+    expect(longestPassStreak(flapped)).toBe(2);
+    expect(consecutivePassFromTail(flapped)).toBe(0);
+    expect(consecutivePassFromTail(flapped)).not.toBe(longestPassStreak(flapped));
+
+    // 反过来：全 pass 时两个数**恰好相等**——这就是为什么必须用合成链断言不等，
+    // 而不是拿真实台账断言：真实台账哪天真的解除了，两个数会合法地相等。
+    const allPass = chain(["pass", "pass"]);
+    expect(consecutivePassFromTail(allPass)).toBe(longestPassStreak(allPass));
+
+    // `mixed` 不算 pass：一 fail 一 pass 的那次观察恰恰是配额在挡路的形态
+    expect(consecutivePassFromTail(chain(["pass", "mixed"]))).toBe(0);
+    expect(longestPassStreak(chain(["pass", "mixed"]))).toBe(1);
   });
 });

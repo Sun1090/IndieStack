@@ -559,6 +559,34 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return 99;",
     testFile: "src/lib/ops/quota-readings.test.ts",
   },
+  // 生产部署台账（`ops:deploy-ledger`）。两条都实测 bites：各 **9 条红 / 9 条通过**。
+  // `auditDeploymentLedger` 的中性化返回值刻意做成「一切正常」的形态——
+  // 因为这条判定的失效方式不是「算错数」，而是**把故障读成健康**。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "auditDeploymentLedger",
+    neuteredReturn:
+      'return { code: "CONSISTENT", passed: true, neverDeployed: [], pending: [], slow: [], skippedCount: 0, lagMinutes: () => 0, message: "" };',
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
+  // 字段映射层。它比判定层更容易「静默读错」：字段取错嵌套层级时不会抛异常，
+  // 只会让每个提交都变成「无部署记录」⇒ 报出「226 个提交从未上线」这种自信的错误结论。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "toObservations",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
+  // 结论 → 退出码。中性化成 `return 0` 实测 **1 条红 / 20 条通过**。
+  // 只红 1 条**不是覆盖不足**：那 4 个断言写在同一条用例里，首个断言失败即止。
+  // 这条登记的意义在于「未知」与「失败」共用一个码时，
+  // 没有任何测试会注意到——而它恰好是排查方向的分岔点。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "deployExitCode",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
   // 登记表自己的读数（`docs/testing.md` 那句「N 条判定 / M 个规则模块」的对账方）。
   // 中性化实测 bites：1 条红 / 19 条通过。
   // **这条有点自指**——它核对的是「这张表有几条」，所以登记它本身会让条数 +1，
