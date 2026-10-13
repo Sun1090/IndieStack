@@ -462,6 +462,20 @@ function expectationMet(step: ProbeStep, response: ProbeResponse): boolean {
  * 「未知」是独立结论，既不被压成「没跑通」也不被压成「跑通了」——
  * 本仓库吃过太多次把「读不到」写成「不存在」的亏。
  */
+/**
+ * 给耗时那条判据的证据**前置真实读数**。
+ *
+ * 为什么必须做：`MULTI_STATEMENT_FIRST_EFFECT` 的结论是「前序语句确实执行了」，
+ * 而它的唯一依据是墙钟耗时。如果日志里只留下响应体，那这个结论在 CI 记录上
+ * 就是**不可核对的**——下一个人只能选择相信，而本仓库对「相信」的处置是重查一遍。
+ * 第一版的读数正是这样：判据用了 `elapsedMs`，输出里却根本没有这个数。
+ */
+function withElapsed(step: ProbeStep, response: ProbeResponse, text: string): string {
+  if (step.expectation.kind !== "slower_than") return text;
+  const minMs = step.expectation.minMs;
+  return `[elapsed=${response.elapsedMs}ms ≥ ${minMs}ms] ${text}`;
+}
+
 export function classifyProbeResponse(step: ProbeStep, response: ProbeResponse): ProbeVerdict {
   if (response.transportError) {
     return {
@@ -485,7 +499,12 @@ export function classifyProbeResponse(step: ProbeStep, response: ProbeResponse):
   }
   // 判据先于状态码：DO 块那条**就是靠服务端报错**证明它跑到了执行阶段。
   if (expectationMet(step, response)) {
-    return { id: step.id, outcome: "EXECUTED", status: response.status, evidence: text };
+    return {
+      id: step.id,
+      outcome: "EXECUTED",
+      status: response.status,
+      evidence: withElapsed(step, response, text),
+    };
   }
   if (step.expectation.kind === "slower_than" && response.status === 201) {
     if (typeof response.elapsedMs !== "number") {
@@ -501,7 +520,7 @@ export function classifyProbeResponse(step: ProbeStep, response: ProbeResponse):
       id: step.id,
       outcome: "REJECTED_SQL",
       status: 201,
-      evidence: `[FIRST_STATEMENT_SKIPPED] ${response.elapsedMs}ms < ${step.expectation.minMs}ms：多语句里前面的语句被静默跳过`,
+      evidence: `[FIRST_STATEMENT_SKIPPED][elapsed=${response.elapsedMs}ms < ${step.expectation.minMs}ms] 多语句里前面的语句被静默跳过`,
     };
   }
   if ([400, 422, 500].includes(response.status)) {

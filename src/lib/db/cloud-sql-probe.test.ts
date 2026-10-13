@@ -330,11 +330,17 @@ describe("classifyProbeResponse", () => {
     );
   });
 
-  it("耗时判据：达标 ⇒ EXECUTED", () => {
+  it("耗时判据：达标 ⇒ EXECUTED，且证据里带上真实耗时读数", () => {
     const slow = step("MULTI_STATEMENT_FIRST_EFFECT");
-    expect(
-      classifyProbeResponse(slow, response({ json: [{ fast_two: 2 }], elapsedMs: 1020 })).outcome,
-    ).toBe("EXECUTED");
+    const verdictReport = classifyProbeResponse(
+      slow,
+      response({ json: [{ fast_two: 2 }], elapsedMs: 1020 }),
+    );
+    expect(verdictReport.outcome).toBe("EXECUTED");
+    // 结论的依据是耗时，所以耗时必须出现在日志里——否则「前序语句确实执行了」
+    // 这条结论在 CI 记录上不可核对，下一个人只能选择相信。
+    expect(verdictReport.evidence).toContain("elapsed=1020ms");
+    expect(verdictReport.evidence).toContain("≥ 700ms");
   });
 
   it("耗时判据：明显比 sleep 短 ⇒ 前序语句被静默跳过，且单独打标签", () => {
@@ -348,6 +354,19 @@ describe("classifyProbeResponse", () => {
     );
     expect(verdictReport.outcome).toBe("REJECTED_SQL");
     expect(verdictReport.evidence).toContain("[FIRST_STATEMENT_SKIPPED]");
+    expect(verdictReport.evidence).toContain("elapsed=12ms");
+  });
+
+  it("耗时读数只加在那一条上：其余步骤的证据保持原样", () => {
+    // 盯 withElapsed 里那条 `kind !== "slower_than"` 早退。
+    // 少了它，每条 EXECUTED 的证据都会被贴上一个无意义的 elapsed 前缀，
+    // 而「耗时」在这个探测里只对那一条有含义——把它到处贴等于稀释证据。
+    const plain = classifyProbeResponse(
+      step("READ_ONLY_ENDPOINT"),
+      response({ json: [{ probe_ok: 1 }], elapsedMs: 42 }),
+    );
+    expect(plain.evidence).toBe('[{"probe_ok":1}]');
+    expect(plain.evidence).not.toContain("elapsed");
   });
 
   it("耗时判据：拿不到耗时读数 ⇒ UNKNOWN，不猜", () => {
