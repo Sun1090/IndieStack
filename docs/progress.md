@@ -9319,3 +9319,34 @@
   - 回滚 = revert 本 commit（含删除 workflow 与两个新文件）。
 - 下一项：把 `ops:deploy-ledger` 的读数写进 roadmap 的 B 域证据链；#236 / #235 仍等 `db push`。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 补 191 条没预支的两个读数：`check:all` 3515 条、`falsify:rules` 81/81
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：上一条（191）在验证栏写了「全量 `check:all` 与 `falsify:rules` 的读数见下一条，本条不预支」——
+  因为写它时树是脏的，而 `falsify:rules` 的设计就是**脏树直接 exit 1**（在脏树上做变异核对会连带丢掉未提交改动）。
+  这是同一规矩的第三次执行（前两次：#255 那轮、#257 那轮）。
+- 做了什么：commit `70cb32a3` 落地后按顺序补跑。**本条只补读数，不改代码**。
+- 验证命令和结果：
+  - `git status --porcelain | wc -l` = **0**（前置，实测而非假设）。
+  - `pnpm check:all` ⇒ **exit 0**，`Test Files 282 passed` / `Tests 3515 passed`。
+    与上一轮的 281 / 3494 相比 **+1 文件 / +21 条**，正是 `deployment-ledger.test.ts`（21 条）。
+    含 `check:progress`（191 条）、`check:roadmap-entries`（29 条任务池均有交代）、
+    `check:gates`（49 门禁 / **12 个工作流**，新增的 `deploy-ledger.yml` 已被门禁接线审计认到）、
+    `check:docs`（**94 个脚本**同步）、`check:doc-links`、`check:changelog`、`check:gate-rule-tests` 全绿。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**81/81 条判定被证明「测试真的会红」**」。
+    本轮新登记的 3 个入口读数：`auditDeploymentLedger` **11 红 / 10 通过**、
+    `toObservations` **9 红 / 12 通过**、`deployExitCode` **1 红 / 20 通过**——
+    与登记前逐个走 `falsifyTarget` 的实测读数一致。
+  - 跑完再测 `git status --porcelain | wc -l` = **0**（复原保证成立）。
+- **本轮 `check:all` 抓到、`falsify:rules` 抓不到的两类问题**（值得记一句区别）：
+  - `type-check` 抓到 `Pick<DeployAudit, "code">` 里不含 `passed` 却被使用——**纯类型错**，
+    变异核对对这类问题无感（中性化返回值不会引入类型错）。
+  - ESLint 的 `complexity` 两次撞上限（`parseArgs` 17、`runDeployLedgerCheck` 16）。
+    两次都不是「把上限调高」的事：**它在提醒一件事不属于这个函数**。
+    第一次把数值 flag 变成表里的数据；第二次把退出码分流搬进判定层成 `deployExitCode()`。
+    ⇒ 复杂度报警当**架构信号**读，而不是当噪音调掉。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert `70cb32a3`。
+- 下一项：开 PR；随后把 `ops:deploy-ledger` 接进 B 域证据链（roadmap 的 release evidence 任务池）。
+- 更新时间：2026-10-13（UTC+8）。
