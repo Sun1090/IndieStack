@@ -9227,3 +9227,28 @@
   只能靠 review 时逐字读 diff（本轮正是这么抓到的）。回滚 = revert 本 commit。
 - 下一项：#236 / #235 仍等 `db push`（缺 DB 密码，外部权限）；B04 缺第二份进 main + 人工授权。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 补上上一条刻意没预支的两个读数：`check:all` 3494 条、`falsify:rules` 78/78
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-readings-ledger`（base `16c23e15` = main + #256）。
+- 状态：DONE。
+- 为什么做：上一条（189）在验证栏里写了「全量 `check:all` 与 `falsify:rules` 的读数见下一条，
+  **本条不预支**」——因为写那条时树是脏的，而 `falsify:rules` 的设计就是**脏树直接 exit 1**
+  （在脏树上做变异核对会连带丢掉未提交改动）。这是上一轮立过的规矩的第二次执行：
+  **带读数的结论只能出现在读数真实存在的那条里**。
+- 做了什么：commit `68e8aa60` 落地后按顺序补跑，读数如下。
+- 验证命令和结果：
+  - `git status --porcelain | wc -l` = **0**（跑 `falsify:rules` 的前置，实测而非假设）。
+  - `pnpm check:all` ⇒ **exit 0**，`Test Files 281 passed` / `Tests 3494 passed`，
+    含 `check:progress` 报 **189 条**、`check:roadmap-entries` 报 29 条任务池均有交代、
+    `check:gate-rule-tests`、`check:migration-runbook`（34 条迁移，最新 `034_email_skip_reason.sql`）等全部通过。
+    - 与上一轮那个「3491」的差 **+3 条**，正是 `summarizeRegistry` 的 3 条对账用例——
+      数目对得上，说明 3491 那次确实是在登记 `summarizeRegistry` **之前**跑的，不作数的判断成立。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**78/78 条判定被证明「测试真的会红」**」。
+    新登记的 `summarizeRegistry()` 读数 **1 条变红 / 19 条通过**，
+    与登记前逐个走 `falsifyTarget` 的读数一致。
+  - `node node_modules/eslint/bin/eslint.js`（逐文件，绕开 rtk 的汇总输出）exit 0。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert `68e8aa60`。
+- 下一项：把 #257 的 PR 正文扩到覆盖两批（quota-readings 台账 + `summarizeRegistry` 对账），
+  因为它标题只写了前者，而分支上现在有两批内容——**PR 描述与实际内容不符是 review 的敌人**。
+- 更新时间：2026-10-13（UTC+8）。
