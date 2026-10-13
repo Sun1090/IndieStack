@@ -10,7 +10,7 @@
  *  - 只判一条时其余两条不出现，避免输出里混进没问的演练；
  *  - `summarize` 的措辞**永远不说「通过」**：这是这套输出最容易骗人的地方。
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -21,8 +21,14 @@ import {
   summarize,
   type EnvProbe,
 } from "./preflight";
+import { findPsqlMetaCommands } from "./psql-meta";
 
 const B03 = DRILL_SPECS.find((spec) => spec.id === "B03")!;
+/** 擦除演练的正本——B04 缺口 (a) 说的就是这份文件里的元命令。 */
+const ERASURE_SOURCE = resolve(
+  process.cwd(),
+  "docs/operations/drills/account-erasure.sql",
+);
 const B04 = DRILL_SPECS.find((spec) => spec.id === "B04")!;
 const B05 = DRILL_SPECS.find((spec) => spec.id === "B05")!;
 
@@ -195,6 +201,36 @@ describe("evaluateDrill", () => {
         `${spec.id} 的证据落点 ${docPath} 不存在`,
       ).toBe(true);
     }
+  });
+});
+
+describe("B04 的元命令条数——文档里的数字必须由代码量出来", () => {
+  /**
+   * 这条用例是**跨文件对账**，不是重复验证探测器自己。
+   *
+   * 起因：B04 的阻塞理由里写着「`account-erasure.sql` 有 5 条 psql 元命令」，
+   * 那个数是**手数**的，而量法只看「行首是反斜杠」，于是漏了挂在语句末尾的
+   * `select … from d \gset drill_`。真实条数是 6，漏掉的偏偏是唯一那条
+   * **结构性**的（它供后面 16 处 `:'drill_*'` 引用）。
+   *
+   * 光加一个探测器**不能**防止这件事重演：文档里的数字仍然是人抄进去的。
+   * 所以这里把「`preflight.ts` 正文里出现的那个数」和「探测器算出的条数」钉在一起——
+   * **改正本里的 SQL 而不回头改这句话，就会红**。
+   */
+  it("preflight 正文里写的条数 = 探测器对正本算出的条数", async () => {
+    const commands = findPsqlMetaCommands(readFileSync(ERASURE_SOURCE, "utf8"));
+    const claimed = Number(B04.blockedReason.match(/有 (\d+) 条 psql 元命令/)?.[1]);
+    expect(claimed, "B04 正文里那句「N 条 psql 元命令」的格式变了，对账失效").not.toBeNaN();
+    expect(claimed).toBe(commands.length);
+    // 只核对总数不够：还可能「数对了但**命令种类**说漏了」。
+    // 所以把正文括号里列出的命令名，与探测器实际算出的种类对账。
+    const listed = B04.blockedReason.match(/（(`\\[a-z]+`( \/ `\\[a-z]+`)*)）/)?.[1];
+    expect(listed, "B04 正文里那串（`\\set` / …）的格式变了，种类对账失效").toBeTruthy();
+    const listedNames = listed!.split("/").map((token) => token.trim().replace(/`/g, ""));
+    const actualNames = [...new Set(commands.map((command) => `\\${command.command}`))].sort();
+    expect([...listedNames].sort()).toEqual(actualNames);
+    // 结构性的那条必须在列（它就是上次被漏掉的那条）
+    expect(listedNames).toContain("\\gset");
   });
 });
 

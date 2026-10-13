@@ -110,7 +110,8 @@ tag 是对外声明「做完了」，**没有证据就等于没做**。
    `pnpm ops:cloud-sql-probe`（run `38334026946`）证明平台令牌
    `SUPABASE_ACCESS_TOKEN` 就能经 Management API **执行 SQL**（多语句全部执行、
    单条 DO 块也通），**不需要数据库密码**。
-   现在缺的是两件别的东西：(a) `account-erasure.sql` 含 5 条 psql 元命令，
+   现在缺的是两件别的东西：(a) `account-erasure.sql` 含 **6** 条 psql 元命令
+   （本条第一版写「5 条」，漏了行尾形态的 `\gset`——它由 `src/lib/drills/psql-meta.ts` 量出），
    HTTP 送不出去，要先压成单条语句；(b) 这两份演练 SQL 会真的写生产库，
    需要一次**人工授权**（`preflight.ts` 里的 `B04_AUTHORIZE_PRODUCTION_WRITE`）。
    原文那半句「平台层从来不是阻塞」仍然是对的——而且比当时以为的更对：

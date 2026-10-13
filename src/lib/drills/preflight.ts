@@ -109,8 +109,11 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       "`select 1/0; select 2` 回 `22012: division by zero`，" +
       "run 38334026946）；单条 DO 块也通。\n" +
       "⇒ 现在缺的**不是任何凭据**，而是两件事：\n" +
-      "  (a) `account-erasure.sql` 里有 5 条 psql 元命令（`\\set` / `\\echo`），" +
-      "HTTP 通道**根本送不过去**，要先像 retention 那份一样机械压成单条语句；\n" +
+      "  (a) `account-erasure.sql` 里有 6 条 psql 元命令（`\\set` / `\\echo` / `\\gset`），" +
+      "     HTTP 通道**根本送不过去**，要先像 retention 那份一样机械压成单条语句。" +
+      "     这个 6 由 `src/lib/drills/psql-meta.ts` 量；原写法「5 条」是手数，" +
+      "     漏了行尾那条 `\\gset`——`preflight.test.ts` 里有一条用例把两者对上，" +
+      "     改正本不改数就会红；\n" +
       "  (b) 这两份 SQL 会真的 insert / update / delete。在云端跑等于**往生产库写**，" +
       "那是人工授权动作——不是我能替谁决定的，也不是脚本该自动做的。\n" +
       "**别把这次更正读成「B04 已解锁」**：解锁的是「通道存在且不需要密码」，" +
