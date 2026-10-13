@@ -9560,7 +9560,8 @@
   - 生产：run `38442279610` ⇒ 8 步中 7 步 EXECUTED、`PG_CRON_INSTALLED` CONTRADICTED、exit 1。
   - `pnpm check:all` ⇒ exit 0，`282 files / 3531 tests`（本条 +6：判定层 5 + IO 层 1）。
   - 两次局部变异各自确认会红：新判据（改 `return []`）、`readOnlyFlagIneffective`（改永不匹配）。
-  - `pnpm falsify:rules` 见本条之后的补记。
+  - `pnpm falsify:rules` ⇒ exit 0，末行 **82/82**（登记表条数未变：新判据走的是
+    `summarizeProbe` 那条既有登记；本轮另做两次局部变异单独确认新分支会被抓到）。
 - 阻塞 / 风险 / 回滚：
   - **无新增阻塞**。生产没装 pg_cron **不是故障**：保留期由 `/api/cron/retention` 执行；
     要判那条得看 `cron.retention.completed`，本条**没有**替它下结论。
