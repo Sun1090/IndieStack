@@ -679,7 +679,15 @@ export interface ProbeReport {
   readOnlyEndpointWorks: boolean;
   /** 写端点在 read_only 下可用。 */
   writeEndpointWorks: boolean;
-  /** 多语句被接受 ⇒ issue #245 的答案是「限制在 CLI 侧」。 */
+  /**
+   * 多语句被接受 ⇒ issue #245 的答案是「限制在 CLI 侧」。
+   *
+   * **#245 已于 2026-10-13 结案**，用的就是这条判据：run `38334026946` 回
+   * `multiStatementWorks=true` / `multiStatementFullyExecutes=true`，
+   * 决定性证据是 `MULTI_STATEMENT_FIRST_ERROR` 报出 `22012: division by zero`
+   * （前序语句确实执行了）。⇒ 限制在 Postgres 服务端的 extended query protocol，
+   * 直接打这个 HTTP 端点**不受影响**，因此它从来不构成「必须用 psql + DB 密码」。
+   */
   multiStatementWorks: boolean;
   /** 多语句被拒且错误提到 prepared statement ⇒ 答案反过来。 */
   multiStatementBlocked: boolean;

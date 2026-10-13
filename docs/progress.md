@@ -8903,3 +8903,39 @@
 - 下一项：issue #245 结案（结论已在手：限制在 CLI 侧的 extended query protocol，
   服务端这条端点能吃多语句且全部执行）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — issue #245 结案：那条「未知」不是等出来的，是拿读数换出来的；登记表 67 → 68
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（同上，续前一条）。
+- 状态：DONE。
+- 为什么做：#245 的最后一条评论留了一句**诚实的保留**——
+  「Management API 服务端用什么协议执行，本机无 `SUPABASE_ACCESS_TOKEN` ⇒ 未实测，
+  这一半仍是未知，不折算成结论」。今天它不再是未知：**「本机没有」不等于「取不到」**，
+  那个令牌是 CI 的 repo secret，`gh secret list` 早就看得见它。
+  用 `pnpm ops:cloud-sql-probe` 在 CI 上触发即可，不必等任何人给凭据。
+- 读数（run `38334026946`，`gh run view --log` 复核）：
+  `MULTI_STATEMENT_FIRST_ERROR` ⇒ `Failed to run sql query: ERROR: 22012: division by zero`；
+  `multiStatementWorks=true` / `multiStatementBlocked=false` /
+  `multiStatementFullyExecutes=true` / `multiStatementSkipsEarlier=false`。
+- **答案的形状**：限制在 **Postgres 服务端的 extended query protocol**（single-statement 限制），
+  触发它的是**客户端选了那条协议**；直接打 HTTP 端点不受影响。
+  所以「多语句跑不了 ⇒ 必须 psql + 密码」这个推论**从来就不成立**——
+  这是 B04 阻塞理由的第三次收窄，而三次都是同一个错：**从「我手上没有」推到「这件事做不到」**。
+- 结案评论里刻意**没有**声称 `db query --linked` 的读数：那条路径经手的正是这个端点，
+  但 CLI 侧用什么协议发请求我没测 ⇒ 表里单列一行写「未知不算通过」，不折算进结论。
+- 同一条 commit 里另一件事：`stripSqlLineComments` 进 `falsify:rules`，**67 → 68 条**。
+  登记前实测两个套件：中性化它 ⇒ `erasure-drill-parity.test.ts` **2 failed / 2 passed**，
+  而 `psql-meta.test.ts` 仍 **7/7 全绿**（exit=0）。
+  - ⇒ **登记表的 `testFile` 不必是「该模块自己的套件」**。按惯例填成自己的套件，
+    表上会多一条 ✅ 而那层判定其实没人测——**「核对过但其实没核对」的假证据比不登记更贵**。
+  - 这条限制写在登记表注释里，而不是把 ✅ 留给一个会误导人的目标。
+- 完成内容：`cloud-sql-probe.ts` 的 `multiStatementWorks` 注释补上结案指针；
+  CHANGELOG / roadmap / environments / exit-report / retention.md 的活文本同步；
+  issue #245 关闭（`COMPLETED`）。
+- 验证命令和结果：`pnpm check:all` ✅（上一条 commit 已跑全量：279 files / 3470 tests）；
+  `pnpm falsify:rules` ✅ **68/68**，跑完 `git status` 干净；
+  `type-check` exit 0；eslint（`node node_modules/eslint/bin/eslint.js` 逐个文件）exit 0；
+  `check:changelog` / `check:progress`（183 条）exit 0。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit（注释与台账，无行为改动）。
+- 下一项：复查 `retention-cleanup.single-do.sql` 有没有本轮发现的 `format()` 里 `%` 空格陷阱。
+- 更新时间：2026-10-13（UTC+8）。
