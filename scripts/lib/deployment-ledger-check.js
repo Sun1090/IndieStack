@@ -48,6 +48,7 @@ import { fileURLToPath } from "node:url";
 import {
   auditDeploymentLedger,
   deployExitCode,
+  diagnoseNeverDeployed,
   toObservations,
 } from "../../src/lib/ops/deployment-ledger.ts";
 
@@ -199,6 +200,38 @@ export async function fetchDeploymentLedger(
 // 本文件**不再自己写一份映射**——`codeql-alert-check.js` 的教训就是：
 // IO 层里一份没有测试的映射，会让错误的因果解释一路写进 main。
 
+/**
+ * 为**少数几个 sha** 拉全环境的部署记录（用于跨环境对比）。
+ *
+ * ⚠️ **为什么不干脆去掉 `?environment=` 一次拉全量**：试过，会把结果读错。
+ * 实测本仓库 `--pages 5`（500 条）不带过滤时只有 **90 条**属于主应用生产，
+ * 而带过滤能拿到 **230 条**——覆盖范围从 08-23 缩到 09-27。
+ * ⇒ 目标环境的记录被其它环境的记录**稀释**，「已上线」的计数从 115 掉到 90，
+ *   而**这个变化看起来完全合理**（没有报错、没有异常形态），只有对照旧读数才发现。
+ * 所以：目标环境用服务端过滤拉全量，其它环境**只按需查那几个 sha**（通常 1–2 个）。
+ */
+export async function fetchDeploymentsForShas(repo, token, apiBase, shas, timeoutMs) {
+  const headers = {
+    accept: "application/vnd.github+json",
+    "x-github-api-version": REQUIRED_API_VERSION,
+    "user-agent": "indiestack-deploy-ledger-check",
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const base = apiBase.replace(/\/+$/, "");
+  const rows = [];
+  for (const sha of shas) {
+    const fetched = await fetchPages(
+      () => `${base}/repos/${repo}/deployments?sha=${sha}&per_page=100`,
+      headers,
+      1,
+      timeoutMs,
+    );
+    if (fetched.error) return { error: `读不到 ${sha.slice(0, 8)} 的部署记录：${fetched.error}` };
+    rows.push(...fetched.rows);
+  }
+  return { rows };
+}
+
 /** 读录制好的 fixture（离线复现与无网络环境用）。 */
 export function readFixture(file, repoRoot = REPO_ROOT) {
   try {
@@ -212,32 +245,106 @@ export function readFixture(file, repoRoot = REPO_ROOT) {
   }
 }
 
-/** 跑一次对账并打印结果，返回进程退出码。 */
-export async function runDeployLedgerCheck(options, repoRoot = REPO_ROOT) {
-  let fetched;
-  if (options.fixture) {
-    const fixture = readFixture(options.fixture, repoRoot);
-    if (fixture.error) {
-      console.error(`❌ ${fixture.error}`);
-      return 2;
-    }
-    fetched = fixture;
-  } else {
-    fetched = await fetchDeploymentLedger(
-      options.repo,
-      options.token,
-      options.environment,
-      options.apiBase,
-      options.pages,
-      options.timeoutMs,
+/** 机器可读输出。抽成函数是为了让 `runDeployLedgerCheck` 只负责编排。 */
+export function formatJsonReport(audit, observations, options) {
+  return JSON.stringify(
+    {
+      code: audit.code,
+      passed: audit.passed,
+      environment: options.environment,
+      now: options.now,
+      observations: observations.length,
+      skippedCount: audit.skippedCount,
+      neverDeployed: audit.neverDeployed,
+      pending: audit.pending,
+      slow: audit.slow.map((observation) => ({ ...observation, lagMinutes: audit.lagMinutes(observation) })),
+      message: audit.message,
+    },
+    null,
+    2,
+  );
+}
+
+/**
+ * 人读输出，返回**行数组**而不是直接打印。
+ *
+ * 为什么要抽出来：`runDeployLedgerCheck` 第三次撞上 ESLint 的复杂度上限（17 > 15）。
+ * 前两次撞墙时它都在说真话（一次是 flag 该变成数据、一次是退出码该进判定层），
+ * 这次说的是「一个函数在同时做取数、判定和排版」。
+ * 排版留在 IO 层是对的（它不属于 `src/lib/`），但它不该和编排挤在一个函数里。
+ */
+export function formatTextReport(input) {
+  const { audit, observations, options, icon, diagnosis, crossEnvError } = input;
+  const lines = [];
+  const minutes = (value) => (value === null ? "（算不出）" : `${Math.round(value)} 分钟`);
+  lines.push(`${icon} 生产部署台账: ${audit.code}（环境「${options.environment}」）`);
+  lines.push(`   ${audit.message}`);
+  lines.push(
+    `   观察 ${observations.length} 个已合并提交：` +
+      `已上线 ${observations.filter((observation) => observation.deployedAt !== null).length}、` +
+      `被合并部署跳过 ${audit.skippedCount}、` +
+      `从未上线 ${audit.neverDeployed.length}、窗口内待观察 ${audit.pending.length}`,
+  );
+  for (const observation of audit.neverDeployed) {
+    lines.push(
+      `   ❌ #${observation.pr} ${observation.sha.slice(0, 8)} 合并于 ${observation.mergedAt}，` +
+        `至今 ${minutes(audit.lagMinutes(observation))}仍无部署记录`,
     );
   }
+  if (crossEnvError) {
+    lines.push(`   ℹ️ 跨环境对比读不到：${crossEnvError}`);
+  }
+  // 跨环境对比：**能自动做的对照不该靠人想起来**。
+  // 本轮就是靠它发现「配额挡住生产」这个解释站不住——同一次合并里另一个
+  // Vercel 项目 30 秒内就上线了。
+  for (const item of diagnosis ?? []) {
+    if (!item.projectSpecific) {
+      lines.push(`   ℹ️ #${item.pr} 在其它环境也没有记录 ⇒ 这次合并**可能整体没构建**（先看配额）`);
+      continue;
+    }
+    const detail = Object.entries(item.otherEnvironments)
+      .map(([env, at]) => `${env} @ ${at}`)
+      .join("、");
+    lines.push(
+      `   🔎 #${item.pr} 同一个 sha 在别的环境上线了（${detail}）` +
+        "⇒ **不是配额**，是本环境的部署链路单独有问题",
+    );
+  }
+  for (const observation of audit.slow) {
+    lines.push(
+      `   ⚠️ #${observation.pr} ${observation.sha.slice(0, 8)} 上线滞后 ` +
+        `${minutes(audit.lagMinutes(observation))}（最终部署了，所以不判红）`,
+    );
+  }
+  return lines;
+}
+
+/** 跑一次对账并打印结果，返回进程退出码。 */
+/**
+ * 取数：fixture 或 API。**两条入口只在这里分岔一次**——
+ * 分岔留在 IO 层是对的（它是取数细节），但塞进编排函数里会让复杂度撞上限
+ * （本函数撞过三次，每次都在说真话：见 `formatTextReport` 的注释）。
+ */
+async function loadLedgerData(options, repoRoot) {
+  if (options.fixture) return readFixture(options.fixture, repoRoot);
+  return fetchDeploymentLedger(
+    options.repo,
+    options.token,
+    options.environment,
+    options.apiBase,
+    options.pages,
+    options.timeoutMs,
+  );
+}
+
+export async function runDeployLedgerCheck(options, repoRoot = REPO_ROOT) {
+  const fetched = await loadLedgerData(options, repoRoot);
   if (fetched.error) {
     console.error(`❌ 读不到生产部署台账：${fetched.error}`);
     return 2;
   }
 
-  const observations = toObservations(fetched.deployments, fetched.pulls);
+  const observations = toObservations(fetched.deployments, fetched.pulls, options.environment);
   /**
    * 「一条部署记录都没有」的判据**在判定层**（`NO_DEPLOYMENT_RECORDS`），不在这里。
    *
@@ -258,48 +365,40 @@ export async function runDeployLedgerCheck(options, repoRoot = REPO_ROOT) {
   const icon = audit.passed ? "✅" : deployExitCode(audit) === 2 ? "⚠️" : "❌";
 
   if (options.json) {
-    console.log(
-      JSON.stringify(
-        {
-          code: audit.code,
-          passed: audit.passed,
-          environment: options.environment,
-          now: options.now,
-          observations: observations.length,
-          skippedCount: audit.skippedCount,
-          neverDeployed: audit.neverDeployed,
-          pending: audit.pending,
-          slow: audit.slow.map((o) => ({ ...o, lagMinutes: audit.lagMinutes(o) })),
-          message: audit.message,
-        },
-        null,
-        2,
-      ),
-    );
-  } else {
-    console.log(`${icon} 生产部署台账: ${audit.code}（环境「${options.environment}」）`);
-    console.log(`   ${audit.message}`);
-    console.log(
-      `   观察 ${observations.length} 个已合并提交：` +
-        `已上线 ${observations.filter((o) => o.deployedAt !== null).length}、` +
-        `被合并部署跳过 ${audit.skippedCount}、` +
-        `从未上线 ${audit.neverDeployed.length}、窗口内待观察 ${audit.pending.length}`,
-    );
-    for (const observation of audit.neverDeployed) {
-      const lag = audit.lagMinutes(observation);
-      console.log(
-        `   ❌ #${observation.pr} ${observation.sha.slice(0, 8)} 合并于 ${observation.mergedAt}，` +
-          `至今 ${lag === null ? "（算不出）" : `${Math.round(lag)} 分钟`}仍无部署记录`,
-      );
-    }
-    for (const observation of audit.slow) {
-      const lag = audit.lagMinutes(observation);
-      console.log(
-        `   ⚠️ #${observation.pr} ${observation.sha.slice(0, 8)} 上线滞后 ` +
-          `${lag === null ? "（算不出）" : `${Math.round(lag)} 分钟`}（最终部署了，所以不判红）`,
-      );
-    }
+    console.log(formatJsonReport(audit, observations, options));
+    return deployExitCode(audit);
   }
+
+  // 跨环境对比的数据**在这里取**（而不是塞进打印函数）：它是网络调用，
+  // 而打印函数要保持纯、可单测。
+  let crossEnv = fetched.deployments;
+  if (!options.fixture && audit.neverDeployed.length > 0) {
+    const extra = await fetchDeploymentsForShas(
+      options.repo,
+      options.token,
+      options.apiBase,
+      audit.neverDeployed.map((observation) => observation.sha),
+      options.timeoutMs,
+    );
+    // 读不到对比数据**不改变主结论**，只是少一条缩小方向的线索——所以不 return 2
+    if (extra.error) crossEnv = { error: extra.error };
+    else crossEnv = extra.rows;
+  }
+  const diagnosis =
+    crossEnv && crossEnv.error
+      ? null
+      : diagnoseNeverDeployed(audit.neverDeployed, crossEnv, options.environment);
+
+  const lines = formatTextReport({
+    audit,
+    observations,
+    options,
+    icon,
+    diagnosis,
+    crossEnvError: crossEnv?.error ?? "",
+  });
+  for (const line of lines) console.log(line);
+
   return deployExitCode(audit);
 }
 

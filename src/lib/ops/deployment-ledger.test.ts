@@ -3,6 +3,7 @@ import {
   DEFAULT_MAX_LAG_MINUTES,
   auditDeploymentLedger,
   deployExitCode,
+  diagnoseNeverDeployed,
   toObservations,
   type DeployObservation,
   type RawDeployment,
@@ -299,5 +300,80 @@ describe("阈值与 lag 计算", () => {
     expect(audit.slow.map((item) => item.pr)).toEqual([40]);
     expect(audit.passed).toBe(true);
     expect(audit.code).toBe("CONSISTENT");
+  });
+});
+
+
+describe("diagnoseNeverDeployed()：跨环境对比", () => {
+  const MAIN = "Production – indie-stack";
+  const DOCS = "Production – indie-stack-docs-site";
+  const dep = (sha: string, environment: string, created: string) => ({ sha, environment, created_at: created });
+
+  it("同一 sha 在**别的环境**上线了 ⇒ projectSpecific（不是配额）", () => {
+    // 本轮实测到的形态：#256 / #257 主应用零记录，docs-site 都在 30 秒内上线
+    const rows = [observation({ pr: 257, sha: "75b011ba", deployedAt: null })];
+    const [item] = diagnoseNeverDeployed(
+      rows,
+      [dep("75b011ba", DOCS, "2026-10-13T09:01:33Z")],
+      MAIN,
+    );
+    expect(item.projectSpecific).toBe(true);
+    expect(item.otherEnvironments[DOCS]).toBe("2026-10-13T09:01:33Z");
+  });
+
+  it("同一 sha 在**任何**环境都没记录 ⇒ 不是 projectSpecific（该先看配额）", () => {
+    const rows = [observation({ pr: 260, sha: "deadbeef", deployedAt: null })];
+    const [item] = diagnoseNeverDeployed(rows, [dep("cafe1234", DOCS, "2026-10-13T09:01:33Z")], MAIN);
+    expect(item.projectSpecific).toBe(false);
+    expect(item.otherEnvironments).toEqual({});
+  });
+
+  it("目标环境自己的记录**不算**对比（否则永远判不出 projectSpecific）", () => {
+    const rows = [observation({ pr: 257, sha: "75b011ba", deployedAt: null })];
+    const [item] = diagnoseNeverDeployed(rows, [dep("75b011ba", MAIN, "2026-10-13T09:01:33Z")], MAIN);
+    expect(item.projectSpecific).toBe(false);
+  });
+
+  it("同 sha 同环境多条 ⇒ 取最早那条（与 `toObservations` 同一口径）", () => {
+    const rows = [observation({ pr: 257, sha: "75b011ba", deployedAt: null })];
+    const [item] = diagnoseNeverDeployed(
+      rows,
+      [dep("75b011ba", DOCS, "2026-10-13T09:30:00Z"), dep("75b011ba", DOCS, "2026-10-13T09:01:33Z")],
+      MAIN,
+    );
+    expect(item.otherEnvironments[DOCS]).toBe("2026-10-13T09:01:33Z");
+  });
+
+  it("缺字段的脏响应被跳过而不造出假对比", () => {
+    const rows = [observation({ pr: 257, sha: "75b011ba", deployedAt: null })];
+    const [item] = diagnoseNeverDeployed(
+      rows,
+      [
+        { sha: "75b011ba", created_at: "t" } as never, // 没有 environment
+        { environment: DOCS, created_at: "t" } as never, // 没有 sha
+        dep("75b011ba", DOCS, "2026-10-13T09:01:33Z"),
+      ],
+      MAIN,
+    );
+    expect(Object.keys(item.otherEnvironments)).toEqual([DOCS]);
+  });
+
+  it("多条 neverDeployed 各自配对，不互相串", () => {
+    const rows = [
+      observation({ pr: 256, sha: "16c23e15", deployedAt: null }),
+      observation({ pr: 257, sha: "75b011ba", deployedAt: null }),
+    ];
+    const items = diagnoseNeverDeployed(
+      rows,
+      [
+        dep("16c23e15", DOCS, "2026-10-13T07:50:18Z"),
+        dep("75b011ba", DOCS, "2026-10-13T09:01:33Z"),
+      ],
+      MAIN,
+    );
+    expect(items.map((item) => [item.pr, item.projectSpecific])).toEqual([
+      [256, true],
+      [257, true],
+    ]);
   });
 });

@@ -559,7 +559,10 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return 99;",
     testFile: "src/lib/ops/quota-readings.test.ts",
   },
-  // 生产部署台账（`ops:deploy-ledger`）。两条都实测 bites：各 **9 条红 / 9 条通过**。
+  // 生产部署台账（`ops:deploy-ledger`）。三条都实测 bites。
+  // ⚠️ **这里刻意不写「N 条红 / M 条通过」**：那两个数会随**测试文件**增删而变
+  // （本模块从 21 条长到 27 条时，`toObservations` 的读数就从 9/12 变成 9/18），
+  // 而登记表不是它们的家。要读数就跑 `pnpm falsify:rules`。
   // `auditDeploymentLedger` 的中性化返回值刻意做成「一切正常」的形态——
   // 因为这条判定的失效方式不是「算错数」，而是**把故障读成健康**。
   {
@@ -577,14 +580,23 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return [];",
     testFile: "src/lib/ops/deployment-ledger.test.ts",
   },
-  // 结论 → 退出码。中性化成 `return 0` 实测 **1 条红 / 20 条通过**。
-  // 只红 1 条**不是覆盖不足**：那 4 个断言写在同一条用例里，首个断言失败即止。
+  // 结论 → 退出码。中性化成 `return 0` 实测 bites，但**只红 1 条**。
+  // 这**不是覆盖不足**：那 4 个断言写在同一条用例里，首个断言失败即止。
+  // 记在这里是因为「红 1 条」很容易被读成「登记得马虎」——它考验的是登记人的判断，
+  // 而判断的依据是**为什么只红 1 条**，不是红了几条。
   // 这条登记的意义在于「未知」与「失败」共用一个码时，
   // 没有任何测试会注意到——而它恰好是排查方向的分岔点。
   {
     file: "src/lib/ops/deployment-ledger.ts",
     function: "deployExitCode",
     neuteredReturn: "return 0;",
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
+  // 跨环境对比（「不是配额」这个结论的来源）。实测 bites：6 条红。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "diagnoseNeverDeployed",
+    neuteredReturn: "return [];",
     testFile: "src/lib/ops/deployment-ledger.test.ts",
   },
   // 登记表自己的读数（`docs/testing.md` 那句「N 条判定 / M 个规则模块」的对账方）。

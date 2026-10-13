@@ -113,6 +113,7 @@ export function deployExitCode(audit: Pick<DeployAudit, "code" | "passed">): num
 export interface RawDeployment {
   sha?: unknown;
   created_at?: unknown;
+  environment?: unknown;
 }
 export interface RawPull {
   number?: unknown;
@@ -131,12 +132,20 @@ export interface RawPull {
  * 「字段在哪一层」是一个**会读错的事实**，读错时不会报错、只会静默给出错误结论
  * ——正是最该有单测的那类代码。
  */
+/**
+ * @param environment 只统计**这个环境**的部署记录。传空串 = 不按环境过滤。
+ *   ⚠️ 之所以由本函数过滤而不是让 IO 层用 `?environment=` 查询参数过滤：
+ *   跨环境对比（`diagnoseNeverDeployed`）需要**全环境**的数据，
+ *   拉两次等于多打一倍 API（匿名限流只有 60 次/小时）。
+ */
 export function toObservations(
   deployments: readonly RawDeployment[],
   pulls: readonly RawPull[],
+  environment = "",
 ): DeployObservation[] {
   const deployedAtBySha = new Map<string, string>();
   for (const deployment of deployments) {
+    if (environment && deployment?.environment !== environment) continue;
     const sha = deployment?.sha;
     const created = deployment?.created_at;
     if (typeof sha !== "string" || typeof created !== "string") continue;
@@ -267,8 +276,12 @@ export function auditDeploymentLedger(
       message:
         `${neverDeployed.length} 个已合并提交**从未上线**（无部署记录，且没有任何后续部署包含它们）：${list}。` +
         `已超过阈值 ${maxLagMinutes} 分钟——生产停在比它们更早的构建上。` +
-        "先看 PR 上的 Vercel 检查是否写着 `Deployment rate limited`（构建配额），" +
-        "再看 Vercel 项目是否被暂停。",
+        "排查顺序（**本轮实测证明前两条不能混**）：" +
+        "① 先比**同一次合并里另一个 Vercel 项目**有没有上线——若它照常上线，" +
+        "那**不是配额**，而是本项目的生产链路（production branch 配置 / 项目暂停 / 提升失败）；" +
+        "② 再看 PR 上的 Vercel 检查是否写着 `Deployment rate limited`；" +
+        "③ 两者都不成立才是「构建成功但没提升」。" +
+        "**别把「没找到原因」写成「原因是配额」**——2026-10-13 就是这么错过方向的。",
     };
   }
 
@@ -289,4 +302,74 @@ export function auditDeploymentLedger(
       "已合并提交均有生产部署记录，或已被后续部署覆盖" +
       `（其中 ${skippedCount} 个属于「被 Vercel 合并部署跳过」的正常形态）。`,
   };
+}
+
+
+/** 一条「从未上线」的跨环境对比结论。 */
+export interface NeverDeployedDiagnosis {
+  pr: number;
+  sha: string;
+  /** 同一个 sha 在**其它**环境里的最早上线时间（环境名 → 时间）。空 = 哪儿都没上。 */
+  otherEnvironments: Record<string, string>;
+  /**
+   * 「同一个 sha 在别的环境上线了、只有本环境没上」。
+   * 这个形态**指向本项目的生产链路**，而不是配额。
+   */
+  projectSpecific: boolean;
+}
+
+/**
+ * 对「从未上线」的提交做一次**跨环境对比**。
+ *
+ * ## 为什么需要它
+ *
+ * 2026-10-13 实测：#256 / #257 合并后主应用生产零记录，我据此写下「配额挡住了生产」。
+ * 但把**同仓另一个 Vercel 项目**（docs-site）的记录摆在一起看，结论就翻了：
+ * 两次合并 docs-site 生产都在 **30 秒内**建好（07:50:18Z / 09:01:33Z），
+ * 而 #257 的 preview 构建本身是 **pass**。
+ * **配额若是原因，docs-site 没道理照常上线** ⇒ 是主应用的生产链路单独有问题。
+ *
+ * 这个对照本来只要多查一次 API 就能看到，而我没做——所以把它做成代码：
+ * **能自动做的对照不该靠人想起来**。
+ *
+ * ⚠️ 它**只缩小方向、不定因**：`projectSpecific: true` 说的是「不是配额」，
+ * 不是「原因是 X」。本机没有 Vercel 凭据，往下仍是假设清单
+ * （production branch 配置 / 项目被暂停 / 构建提升失败）。
+ */
+export function diagnoseNeverDeployed(
+  neverDeployed: readonly DeployObservation[],
+  allDeployments: readonly RawDeployment[],
+  targetEnvironment: string,
+): NeverDeployedDiagnosis[] {
+  const bySha = new Map<string, Record<string, string>>();
+  for (const deployment of allDeployments) {
+    const sha = deployment?.sha;
+    const environment = deployment?.environment;
+    const created = deployment?.created_at;
+    if (
+      typeof sha !== "string" ||
+      typeof environment !== "string" ||
+      typeof created !== "string"
+    ) {
+      continue;
+    }
+    // 本环境本来就没记录（所以才进了 neverDeployed），跳过它自己
+    if (environment === targetEnvironment) continue;
+    const bucket = bySha.get(sha) ?? {};
+    // 同一 sha 同一环境有多条 ⇒ 取最早那条（与 `toObservations` 同一口径）
+    if (!bucket[environment] || Date.parse(created) < Date.parse(bucket[environment])) {
+      bucket[environment] = created;
+    }
+    bySha.set(sha, bucket);
+  }
+
+  return neverDeployed.map((observation) => {
+    const otherEnvironments = bySha.get(observation.sha) ?? {};
+    return {
+      pr: observation.pr,
+      sha: observation.sha,
+      otherEnvironments,
+      projectSpecific: Object.keys(otherEnvironments).length > 0,
+    };
+  });
 }
