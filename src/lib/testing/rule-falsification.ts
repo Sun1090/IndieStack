@@ -522,6 +522,43 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return [];",
     testFile: "src/lib/drills/raise-format.test.ts",
   },
+  // Vercel 配额读数台账：文档表头那句「今天有 N 个读数」原先是人抄的，
+  // 而它**当场复现了本仓库那个老错**——表头写「四个读数」，同一行正文已数到「第 6 个」。
+  // 5 个入口逐个实测 bites（1 / 1 / 1 / 2 / 2 条变红）。
+  // ⚠️ `consecutivePassFromTail` 第一版**只有 1 条红**，而那一条是硬编码的 `toBe(0)`——
+  // 文档里「尾部连击 0」那个数字当时仍然没人对账。补一条正则对账后变成 2 条红。
+  // **红数从 1 升到 2 才是这条登记有意义的证据**；只凭「它红了」就登记，
+  // 会把「代码被自己的单测守着、文档仍靠人抄」这种半吊子状态写进表里。
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingCount",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingChainText",
+    neuteredReturn: "return '';",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingVerdict",
+    neuteredReturn: 'return "stable-pass";',
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "consecutivePassFromTail",
+    neuteredReturn: "return 99;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "longestPassStreak",
+    neuteredReturn: "return 99;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
 ];
 
 export interface MutationResult {
