@@ -17,6 +17,7 @@ import {
   DRILL_SPECS,
   evaluateAllDrills,
   evaluateDrill,
+  fileRequirementPaths,
   summarize,
   type EnvProbe,
 } from "./preflight";
@@ -66,33 +67,101 @@ describe("evaluateDrill", () => {
   });
 
   it("B04 的文件型前置按键名判定（IO 层负责把文件存在解析成这个键）", () => {
+    // 这条测的是机制，不是 B04 的内容：`file:` 前缀只看这个键有没有被点亮。
     const full = evaluateDrill(
       B04,
-      all("SUPABASE_DB_PASSWORD", "file:~/.supabase/access-token", "NEXT_PUBLIC_SUPABASE_URL"),
+      all(
+        "SUPABASE_ACCESS_TOKEN",
+        "B04_AUTHORIZE_PRODUCTION_WRITE",
+        "file:docs/operations/drills/account-erasure.single-do.sql",
+        "NEXT_PUBLIC_SUPABASE_URL",
+      ),
     );
     expect(full.ready).toBe(true);
 
-    // 只缺 CLI 登录态时，缺口应指向 token，而不是含糊地说「缺凭据」
-    const withoutToken = evaluateDrill(B04, all("SUPABASE_DB_PASSWORD", "NEXT_PUBLIC_SUPABASE_URL"));
-    expect(withoutToken.ready).toBe(false);
-    const unmet = withoutToken.requirements.find((r) => !r.satisfied)!;
-    expect(unmet.source).toContain("access-token");
-    expect(unmet.remedy).toContain("supabase login");
+    // 只缺那一份还没转换的正本时，缺口要指向它，而不是含糊地说「缺凭据」。
+    const withoutArtifact = evaluateDrill(
+      B04,
+      all(
+        "SUPABASE_ACCESS_TOKEN",
+        "B04_AUTHORIZE_PRODUCTION_WRITE",
+        "NEXT_PUBLIC_SUPABASE_URL",
+      ),
+    );
+    expect(withoutArtifact.ready).toBe(false);
+    const unmet = withoutArtifact.requirements.find((r) => !r.satisfied)!;
+    expect(unmet.source).toContain("account-erasure.single-do.sql");
+    expect(unmet.remedy).toContain("retention-cleanup.single-do.sql");
   });
 
-  it("B04 的真正缺口是 DB 密码，不是平台令牌（2026-10-05 实测纠正）", () => {
-    // CI 里那个 SUPABASE_ACCESS_TOKEN 每天都在用，所以「缺管理凭据」是错的说法。
-    // 演练 SQL 与 migration list 都要真 Postgres 连接，平台令牌替代不了。
-    const onlyPlatformToken = evaluateDrill(
+  it("B04 不再需要数据库密码：那次读数否证了它（2026-10-13）", () => {
+    // 这条用例存在的意义是**防止有人把「需要 DB 密码」再写回来**——
+    // 它是 B04 第二版阻塞理由的墓碑，而那个版本害得「云端到了哪一版」
+    // 被登记成查不了 21 天（最早可查 2026-09-22），代价是 034 从未 applied 直到线上出事。
+    // 原写法「两年」已否证：仓库第一个 commit 是 2026-08-09，到 2026-10-13 只有 65 天。
+    const sources = B04.requirements.map((requirement) => requirement.source);
+    expect(sources).not.toContain("SUPABASE_DB_PASSWORD");
+    expect(sources).toContain("SUPABASE_ACCESS_TOKEN");
+    // 而且令牌现在被明说成「不是缺口」。
+    const token = B04.requirements.find((r) => r.source === "SUPABASE_ACCESS_TOKEN")!;
+    expect(token.purpose).toContain("否证");
+  });
+
+  it("B04 今天缺的是人工授权，不是凭据：只给令牌不算 ready", () => {
+    // 这是本次更正的分寸所在。通道打通了 ≠ 可以往生产库写。
+    const onlyToken = evaluateDrill(
       B04,
-      all("file:~/.supabase/access-token", "NEXT_PUBLIC_SUPABASE_URL"),
+      all(
+        "SUPABASE_ACCESS_TOKEN",
+        "file:docs/operations/drills/account-erasure.single-do.sql",
+        "NEXT_PUBLIC_SUPABASE_URL",
+      ),
     );
-    expect(onlyPlatformToken.ready).toBe(false);
-    const unmet = onlyPlatformToken.requirements.find((r) => !r.satisfied)!;
-    expect(unmet.source).toBe("SUPABASE_DB_PASSWORD");
-    expect(unmet.purpose).toContain("真正的缺口");
-    // 阻塞原因本身也要说清「平台层从来不是阻塞」，否则下一个人又会去要一个已有的令牌
-    expect(onlyPlatformToken.blockedReason).toContain("平台层从来不是阻塞");
+    expect(onlyToken.ready).toBe(false);
+    const unmet = onlyToken.requirements.find((r) => !r.satisfied)!;
+    expect(unmet.source).toBe("B04_AUTHORIZE_PRODUCTION_WRITE");
+    expect(unmet.purpose).toContain("人工授权");
+    // 阻塞文案必须明说「别读成已解锁」，否则下一次又会当成能跑。
+    expect(onlyToken.blockedReason).toContain("别把这次更正读成");
+  });
+
+  it("仓库里真实存在的那份演练 SQL 能被解析出来（不依赖 cwd）", () => {
+    // 上一条测的是纯函数的形状，这条测的是它对本仓库事实的判断对不对：
+    // 保留期那份单语句正本此刻在 PR #236 里，还没进 main，
+    // 所以断言只取两份**已在 main 上**的正本，避免用例随分支状态漂。
+    const repoRoot = resolve(__dirname, "../../..");
+    for (const relative of [
+      "docs/operations/drills/retention-cleanup.sql",
+      "docs/operations/drills/account-erasure.sql",
+    ]) {
+      const [resolved] = fileRequirementPaths(`file:${relative}`, "/home/u", repoRoot);
+      expect(resolved).toBe(resolve(repoRoot, relative));
+      expect(existsSync(resolved)).toBe(true);
+    }
+  });
+
+  it("`file:` 前置锚在仓库根，与当前目录无关", () => {
+    // 这条盯的是 IO 层原先的写法：直接拿 `file:` 后面的字符串当路径，
+    // 于是仓库相对的前置会随 cwd 变化——从仓库外面跑会把已满足的报成未满足。
+    const paths = fileRequirementPaths(
+      "file:docs/operations/drills/account-erasure.single-do.sql",
+      "/home/u",
+      "/repo",
+    );
+    expect(paths).toEqual(["/repo/docs/operations/drills/account-erasure.single-do.sql"]);
+  });
+
+  it("`~` 开头的前置仍锚到 HOME", () => {
+    expect(fileRequirementPaths("file:~/.supabase/access-token", "/home/u", "/repo")).toEqual([
+      "/home/u/.supabase/access-token",
+    ]);
+  });
+
+  it("授权变量排在凭据之后：缺口顺序就是处置顺序", () => {
+    const sources = B04.requirements.map((requirement) => requirement.source);
+    expect(sources.indexOf("SUPABASE_ACCESS_TOKEN")).toBeLessThan(
+      sources.indexOf("B04_AUTHORIZE_PRODUCTION_WRITE"),
+    );
   });
 
   it("B05 的 VAPID 是复合前置：缺一个就不满足", () => {

@@ -1,7 +1,8 @@
 /**
  * CodeQL 告警台账与实况的对账判定。
  *
- * 起因是 `docs/operations/codeql-alert-triage.md` 里那句被登记了两年的话：
+ * 起因是 `docs/operations/codeql-alert-triage.md` 里那句被登记了 **30 天**的话
+ * （2026-09-13 `536c3ea3` 写入 → 2026-10-13 否证）：
  * 「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」。
  * 2026-10-13 实测：本机 `gh` 就能读到全部 5 条 open 告警及其严重度、创建时间、
  * 实例位置与 dismissal 状态。**「无法复现」是错的**——真正缺的不是权限，是没人写这个探测。

@@ -59,6 +59,12 @@ afterEach(() => {
 });
 
 describe("endpointPath / requestBody", () => {
+  it("对照组那一步刻意不带 read_only：它就是「不带字段会怎样」的那一半", () => {
+    const off = step("READ_ONLY_FLAG_OFF");
+    expect(off.endpoint).toBe("query");
+    expect(requestBody(off)).not.toHaveProperty("read_only");
+  });
+
   it("只读步骤打只读端点，且不带 read_only 字段", () => {
     const entry = step("READ_ONLY_ENDPOINT");
     expect(endpointPath(entry)).toBe("/database/query/read-only");
@@ -66,7 +72,14 @@ describe("endpointPath / requestBody", () => {
   });
 
   it("另外三条打「能写」的端点，但必须带 read_only: true", () => {
-    for (const id of ["WRITE_ENDPOINT_GUARDED", "MULTI_STATEMENT", "SINGLE_DO_BLOCK"]) {
+    // 除第一条之外，其余都打「能写」的端点——包括那条会故意报错的。
+    for (const id of [
+      "WRITE_ENDPOINT_GUARDED",
+      "MULTI_STATEMENT",
+      "MULTI_STATEMENT_FIRST_ERROR",
+      "SINGLE_DO_BLOCK",
+      "READ_ONLY_FLAG_ON",
+    ]) {
       const entry = step(id as ProbeStep["id"]);
       expect(endpointPath(entry)).toBe("/database/query");
       expect(requestBody(entry).read_only).toBe(true);
@@ -196,12 +209,14 @@ describe("postProbeStep", () => {
       }),
     );
     const response = await postProbeStep(step("READ_ONLY_ENDPOINT"), baseOptions);
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       status: 0,
       json: null,
       bodyText: "",
       transportError: "connection refused",
     });
+    // 传输层失败也要带耗时：它是「这次请求花了多久」的读数，与成功与否无关。
+    expect(typeof response.elapsedMs).toBe("number");
     expect(JSON.stringify(response)).not.toContain("sbp_token");
   });
 
@@ -267,24 +282,61 @@ describe("runCloudSqlProbe 的短路", () => {
     expect(code).toBe(2);
   });
 
-  it("四条都 201 且 DO 块按判据报错 ⇒ 退出码 0", async () => {
-    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+  /**
+   * 计划里每条都回一个「按判据算通过」的响应。
+   *
+   * `firstRuns` 决定决定性那条走哪条路：true = 服务端报出 division by zero
+   * （= 前面的语句确实执行了）；false = 它安静地返回 201
+   * （= 前面的语句被静默跳过，这是最危险的读数）。
+   */
+  function healthyFetch(firstRuns: boolean) {
+    return vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { query: string };
       if (body.query.startsWith("do ")) {
         return new Response('{"error":"ERROR: PROBE-RESULT ok"}', { status: 500 });
       }
+      if (body.query.includes("1/0")) {
+        return firstRuns
+          ? new Response('{"error":"division by zero"}', { status: 400 })
+          : new Response('[{"survivor":2}]', { status: 201 });
+      }
+      // read_only 生效性那一对：按**请求体里有没有那个字段**回答 on / off。
+      // 这正是这两步要验的东西，所以 mock 必须真的把它当回事。
+      if (body.query.startsWith("show ")) {
+        const value = (body as { read_only?: boolean }).read_only === true ? "on" : "off";
+        return new Response(`[{"transaction_read_only":"${value}"}]`, { status: 201 });
+      }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
+  }
+
+  it("计划里每条都满足判据 ⇒ 退出码 0", async () => {
+    const fetchMock = healthyFetch(true);
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(console, "log").mockImplementation(() => {});
     const code = await runCloudSqlProbe(baseOptions);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(PROBE_PLAN.length);
     expect(code).toBe(0);
+  });
+
+  it("前序语句被静默跳过 ⇒ 打印点名这一步，退出码 1", async () => {
+    // 这条钉的是本探测最要紧的一个读数：多语句端点只回最后一条的结果，
+    // 光看响应体分不清「两条都跑了」与「只跑了最后一条」。
+    // 决定性判据（让第一条自己报错）就是为了把这两种分开。
+    // 若是后者，把多语句演练 SQL 交给这个端点就是**静默少跑**——
+    // 演练会报「通过」而它其实什么都没做，那比跑不了更坏。
+    const fetchMock = healthyFetch(false);
+    vi.stubGlobal("fetch", fetchMock);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(await runCloudSqlProbe(baseOptions)).toBe(1);
+    const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(printed).toContain("MULTI_STATEMENT_FIRST_ERROR");
+    expect(printed).toContain("FIRST_STATEMENT_SKIPPED");
   });
 
   it("多语句被 prepared statement 拒 ⇒ 退出码 1（那是答案，不是故障）", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const body = JSON.parse(String(init.body)) as { query: string };
+      const body = JSON.parse(String(init.body)) as { query: string; read_only?: boolean };
       if (body.query.includes(";")) {
         return new Response(
           '{"error":"cannot insert multiple commands into a prepared statement"}',
@@ -294,11 +346,23 @@ describe("runCloudSqlProbe 的短路", () => {
       if (body.query.startsWith("do ")) {
         return new Response('{"error":"ERROR: PROBE-RESULT ok"}', { status: 500 });
       }
+      // 按请求体里那个字段如实回答。写死成 "on" 会让对照组那一步也判成矛盾，
+      // 于是「退出码 1」就不再来自它标题所说的那件事了。
+      if (body.query.startsWith("show ")) {
+        const value = body.read_only === true ? "on" : "off";
+        return new Response(`[{"transaction_read_only":"${value}"}]`, { status: 201 });
+      }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect(await runCloudSqlProbe(baseOptions)).toBe(1);
+    // 红必须只来自多语句那一步：否则这条用例断言的不是它标题说的那件事。
+    const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(printed).toContain("[MULTI_STATEMENT] REJECTED_SQL");
+    expect(printed).toContain("[PREPARED_STATEMENT]");
+    expect(printed).not.toContain("READ_ONLY_FLAG_ON] REJECTED_SQL");
+    expect(printed).not.toContain("READ_ONLY_FLAG_OFF] REJECTED_SQL");
   });
 });
 

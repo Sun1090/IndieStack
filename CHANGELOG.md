@@ -10,8 +10,34 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm ops:cloud-sql-probe` 拿到真实读数，并因此否证了 B04 的阻塞理由**。
+  上一节（PR #250）交付的是探测工具本体，当时**读数尚未取得**。本轮在 CI 上手动触发
+  （run `38334026946`，`headBranch` 就是当时的功能分支——新 workflow 还没进默认分支也能
+  用 `gh workflow run <ID> --ref <branch>` 打），**7 条全部 `EXECUTED`、exit 0**。
+  - **「多语句到底有没有全部执行」的判据换了一次**：原计划的计时判据（`pg_sleep`）
+    被同一份日志否证——两条形状完全相同的 `select;select` 相差 **478ms**，
+    而 `pg_sleep(1)` 相对对照组只高 **483ms**，噪声与信号同量级，量不出结论。
+    改成**让第一条语句自己报错**：`select 1/0 as boom; select 2 as survivor`
+    回 `ERROR: 22012: division by zero` ⇒ 前序语句确实执行了。
+    光看响应体不行：这个端点**只回最后一条**语句的结果（`[{"second_ok":2}]`）。
+  - **`read_only: true` 是真实防护，不是装饰**：`show transaction_read_only`
+    带该字段回 `"on"`、不带回 `"off"`。这一步是探测**核验自己的第二层防护**——
+    如果它是装饰性的，文档宣称的「两层」其实只剩一层。
+    判据第一版写成「在响应里找子串 `on`」，而列名 `transaction_read_only` 自己含 "on"
+    ⇒ 值为 `off` 也算命中；改成按字段值比较。**一个同时匹配「是」与「否」的判据等于没有判据**，
+    而且它错的方向正好是让「防护失效」看起来像「防护生效」。
+  - ⇒ `SUPABASE_DB_PASSWORD` 从 `pnpm drills:preflight --drill B04` 的前置里**删除**。
+    它被登记为「真正的缺口」是 2026-10-05（`1a18be40`），被读数否证是 2026-10-13——**8 天**。
+    B04 现在缺的是两件别的东西：(a) `account-erasure.sql` 含 **5 条 psql 元命令**
+    （`\set` / `\echo`，逐字确认；同目录的 `retention-cleanup.sql` 是 0 条），
+    HTTP 通道送不出去，要先压成单条语句；(b) 这两份 SQL 会真写生产库 ⇒ 需要一次**人工授权**。
+    **这不是「B04 已解锁」**：解锁的是通道，不是「可以开跑」；v0.12.0 的 tag 前置里 B04 仍计未完成。
+  - 探测计划从 4 条扩到 **7 条**（新增决定性那条 + `read_only` 一开一关两条），
+    守卫审计相应要求「7 条全部可证只读」。
+
 - **`pnpm ops:codeql-alerts`：「CodeQL 零回归」这个结论第一次有了自动核对。**
-  runbook 里那句「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」登记了两年，
+  runbook 里那句「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」登记了 **30 天**
+  （2026-09-13 `536c3ea3` 写入 → 2026-10-13 否证），
   2026-10-13 实测**是错的**：本仓库虽是 public，`GET /repos/{owner}/{repo}/code-scanning/alerts`
   匿名仍返回 **401**，而本机 `gh` 的 token 能读到全部字段（编号、规则 ID、严重度、`created_at`、
   实例 path、`dismissed_reason`）⇒ 缺的一直不是权限，是没人写这个探测。
@@ -80,7 +106,9 @@ See `docs/operations/release-tag-ledger.md`.
   上一条 `ops:schema-drift` 回答的是「线上有没有这一列」，本条回答的是「**为什么没有**」——
   两边版本号一对，缺的就是没 push 的那几条。
   - **为什么不用 `supabase migration list --linked`**：它**不要数据库密码**（这件事被本仓库
-    误登记成「需要」两年，代价是「034/035 从未 applied」直到线上出事），但它需要一个交互式登录态——
+    误登记成「需要」，最早可查是 2026-09-22 `7ea846c1` 把「云端到了哪一版」记成
+    「仍未取得的生产证据」，**21 天**；「要 DB 密码」这一具体说法是 2026-10-05 `1a18be40`，
+    **8 天**），代价是「034/035 从未 applied」直到线上出事；而它还需要一个交互式登录态——
     2026-10-12 本机实测两次，`~/.supabase/access-token` 不存在时它**挂在交互登录上**、无输出、需手动终止。
     更要紧的是 **supabase CLI 不是本仓库的依赖**，所以 CI 里本来也跑不了它。
   - **能力从哪来**：Management API 的 `GET /v1/projects/{ref}/database/migrations`
@@ -181,6 +209,14 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **`drills:preflight` 的 `file:` 前置改锚仓库根**（`src/lib/drills/preflight.ts` 的
+  `fileRequirementPaths`）。原先 IO 层直接把 `file:` 后面的部分当路径用：唯一的老前置是
+  `~/.supabase/access-token`，锚在 HOME 上、从哪个目录跑都一样，所以缺陷一直没露头。
+  B04 新增的前置是**仓库相对**路径，按 cwd 解析会让任何人从仓库外面跑一次就得到
+  「文件不存在 ⇒ 前置没齐」，而真相是文件好好地躺在仓库里——**把已满足的报成未满足**，
+  代价是这条演练被永久挡住，且挡住它的理由看起来完全可信。
+  口径：`~` 锚 HOME，其余一律锚仓库根；刻意不把 cwd 当候选（那会让「在别处碰巧有个同名文件」
+  变成假阳性）。
 - **`pnpm check:changelog` 不再把以告警编号开头的续行当成标题**。`src/lib/changelog/parse-changelog.ts`
   的兜底判断是 `text.startsWith("#")`，而 CommonMark 规定 ATX 标题的 `#` 之后必须有空白——于是
   `- x` 下面一行写 `#17 的判定日期是 2026-10-11` 会被判 `stray-heading`，**整条 CHANGELOG 校验红**。

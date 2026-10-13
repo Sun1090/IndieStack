@@ -65,6 +65,10 @@ SHA 即 5/6 + exit 1），详见 `docs/operations/release-runbook-v0.11.0.md` �
 （`~/.supabase/access-token` 不存在、环境变量未设置，`supabase migration list --linked`
 阻塞在交互登录），虽然 `supabase/.temp/` 里有一个 linked project ref。
 **「有一个 ref」不等于「有凭据」**——所以 B03/B04/B05 仍是外部权限阻塞。
+（**2026-10-13 更正其中一条**：上面这段把 B04 归进「外部权限阻塞」是错的——
+它缺的凭据其实一直都在。`pnpm ops:cloud-sql-probe` 实测平台令牌就能执行 SQL，
+B04 现在缺的是「一份还没转换的 SQL 正本」加「一次人工授权」，不是权限。
+B03 与 B05 不受影响。原文按日期快照保留。）
 tag **仍然刻意不打**：理由从「三项全缺」变成「一条仍缺」，
 **没有证据就等于没做**，而打 tag 是对外声明「做完了」。
 

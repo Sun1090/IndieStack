@@ -149,6 +149,11 @@ tag：未打（理由见 release-tag-ledger.md）
   `auth.admin.deleteUser` 不可逆，**禁止用真实用户演练**。
 - **B04 / B05 的 P2–P4 未闭合**：B04 缺数据库密码（平台令牌早已具备），
   B05 的 P2–P4 需要 Resend 测试 key、VAPID 一对与可牺牲项目。
+  **↑ 这一句里关于 B04 的部分已于 2026-10-13 被实测否证**（那是本节 2026-10-05
+  快照的一部分，按「带日期的证据不回改」保留原文）。真实情况：执行 SQL 不要数据库密码，
+  `pnpm ops:cloud-sql-probe` 可重跑；B04 现在缺的是「把含 psql 元命令的那份正本压成
+  单条语句」加「一次往生产库写的人工授权」。见 `docs/roadmap-0.12.0.md` B04 与
+  `docs/operations/environments.md` 的外部依赖表。
 - **生产未配置 `RESEND_API_KEY` / `NEXT_PUBLIC_SENTRY_DSN` / `STRIPE_SECRET_KEY`**：
   邮件、告警、支付三条外部链路在生产上是空转的。这些是外部凭据，不是代码问题。
 - **跨迁移边界的真实生产回滚证据**仍不存在（`rollback-runbook-v0.12.0.md` 的

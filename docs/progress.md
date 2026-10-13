@@ -8385,6 +8385,10 @@
 - 为什么做：上一条 `ops:schema-drift` 回答了「线上有没有这一列」，但**没回答「为什么没有」**。
   而「为什么」的那一半是迁移版本号——它过去两年被登记成「本机查不了（要 DB 密码）」，
   代价正是「034/035 从未 applied」直到线上出事才知道。
+  **【2026-10-13 当日订正】「两年」是编的数字**：仓库第一个 commit 是 2026-08-09
+  （GitHub `createdAt` 同日），到 2026-10-13 只有 **65 天**；按可查锚点是 **21 天**
+  （2026-09-22 `7ea846c1` 首次记为「仍未取得的生产证据」）。
+  原文按快照惯例保留，真实口径见 `docs/operations/environments.md` 同名行。
   本轮确认：`supabase migration list` **不要密码**，但它要交互式登录态——
   2026-10-12 本机实测两次，无 `~/.supabase/access-token` 时它**挂在登录提示上**、无输出、需 `pkill`。
   更关键的一条是本轮才查出来的：**supabase CLI 不是本仓库的依赖**（`package.json` 里只有
@@ -8482,6 +8486,10 @@
 - 状态：DONE（待 PR）。
 - 为什么做：runbook `docs/operations/codeql-alert-triage.md` 里有两句互相支撑的话——
   「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」与「读取真实告警列表…本地与无凭据环境无法执行」。
+  **【2026-10-13 当日订正】标题与本条正文里的「两年」是编的数字**：该句由 2026-09-13
+  `536c3ea3` 写入 `codeql-alert-triage.md`，到否证那天是 **30 天**；而仓库第一个 commit
+  是 2026-08-09，总共只有 65 天，「两年」在口径上不可能成立。
+  这条错和它要纠正的那条错是**同一个形状**：都是没查就写。
   正因为这两句，「零回归」这个结论**从来没有被任何自动检查核对过**，
   而代价已经付过一次：2026-09-24 那 4 条 `js/log-injection` 挂了 5 天没人发现。
   2026-10-13 实测：**本仓库虽是 public，`code-scanning/alerts` 匿名 401，而本机 `gh` 的 token 能读全部字段**
@@ -8665,4 +8673,57 @@
 - 下一项：#236 / #235 仍被外部权限挡住（034、035 applied）。
   本机仍可做的：把 code-scanning 对账接进定时只读 workflow——但 #18 未结案 ⇒ 天天红，
   需要先决定「只报不阻塞」（`continue-on-error`）还是等结案；本轮没有擅自选。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 探测的读数回来了，B04 的「需要数据库密码」被否证；重跑变异时发现我自己的一条计数是假的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/b04-fourth-correction`（base `b2ffab71` = main + #250）。
+- 状态：DONE。
+- 为什么做：上一条合并的是探测**工具本体**，commit message 自己写明「读数**尚未取得**」。
+  没有读数，B04 的阻塞理由就还是第四次靠推理改写——而前三次全是推理改的，全错。
+- 完成内容：
+  1. **拿到读数**：run `38334026946`（手动触发，7 条全 `EXECUTED`、exit 0）。
+     新 workflow 还没进默认分支也能跑：`gh workflow run <ID> --ref <branch>`。
+     `MULTI_STATEMENT_FIRST_ERROR` 回 `ERROR: 22012: division by zero` ⇒ 多语句的**前序确实执行**；
+     `READ_ONLY_FLAG_ON`/`_OFF` 回 `"on"`/`"off"` ⇒ `read_only: true` 是**真实防护**。
+     原始证据（含每步 `elapsedMs`）落在 `/tmp/ev6.txt`，且**可从 run 日志重取**。
+  2. **`SUPABASE_DB_PASSWORD` 从 B04 前置删除**，换成「一次人工授权」
+     （`B04_AUTHORIZE_PRODUCTION_WRITE`）加「一份还没转换的 SQL 正本」。
+     同步 5 个文档文件：roadmap B04 第四次改写、`environments.md` 把
+     「经 API 执行 SQL」与「直连 Postgres」**拆成两行**（两个不同能力，别合并）、
+     exit-report 改正缺口第 2 条、runbook 与 tag-ledger **只加指针不回改**（2026-10-05 快照）。
+  3. **修一个自己造的缺陷**：`drills:preflight` 的 `file:` 前置原先按 **cwd** 解析。
+     老前置 `~/.supabase/access-token` 锚在 HOME，从哪跑都一样，所以缺陷一直没露头；
+     B04 新增的是**仓库相对**路径 ⇒ 任何人从仓库外面跑一次就得到「文件不存在 ⇒ 前置没齐」，
+     而文件好好躺在仓库里。**把已满足的报成未满足**，代价是演练被永久挡住、
+     且挡住它的理由看起来完全可信。抽成 `fileRequirementPaths`（`~`→HOME，其余→仓库根），
+     刻意不把 cwd 当候选（否则「别处碰巧同名文件」会变成假阳性）。
+- **重跑变异时发现：我上一轮写下的一个计数是假的**。
+  - 本轮把 `/tmp` 里那三个变异脚本**逐个重跑**（不信任交接摘要里的数字），结果：
+    判定层 11/11 CAUGHT、判据重写 6/6 CAUGHT、preflight 3/3 CAUGHT —— 这三条对得上。
+  - **IO 层对不上**：commit message 写「IO 层 11/11 CAUGHT」，脚本里实际只有 **10** 条 `run`，
+    而且 M8（尾斜杠）**根本没应用上**——它的搜索串写成 `/\\/+$/`，源码是 `/\/+$/`，
+    多一个反斜杠就 `NOT-APPLIED` 静默跳过。修好锚之后 M8 才真的 CAUGHT，**诚实数字是 10/10**。
+    这正是本仓库登记过三次的老毛病第四次现形：**变异「全绿」时第一怀疑可达性**。
+    这次连「全绿」都不是——是「有一条压根没跑」，而汇总行把它算进了分子。
+    **这里刻意不写「第 N 次」**：本仓库没有这类违规的统一台账，上一条条目里的「第三次」
+    本身也没有出处可指——写次数等于再造一个查不到的数。记**形态**：
+    变异脚本的 `run` 条数与汇总声称的条数**必须用同一条命令量出来**，不能靠人抄。
+  - 已改口：CHANGELOG 与本条都写 10/10；那条 commit（`6b0f9772`）原文按快照惯例保留不回改。
+- 验证命令和结果：
+  - `pnpm check:all` ✅ **277 files / 3458 tests**（较上轮 +2 files / +89 tests）。
+  - 单文件复跑：`cloud-sql-probe.test.ts` **56**、`cloud-sql-probe-io.test.ts` **28**、
+    `preflight.test.ts` **19**（`it(` 声明数与 vitest 实跑数**逐个对上**，不是抄上轮的）。
+  - `bash /tmp/mut-probe.sh` 11/11、`/tmp/mut-pair2.sh` 6/6、`/tmp/mut-probe-io.sh` 10/10（修锚后）、
+    `/tmp/mut-preflight.sh` 3/3，每条都 `cmp` 确认变异真的改了文件、并读失败消息确认红的是预期断言。
+  - `check:doc-links` 153 条 / `check:release-docs` / `check:changelog` / `check:docs` /
+    `check:roadmap-entries` 29 条 / `check:progress` 179 条 全 ✅。
+  - 元命令条数用 python 逐字量：`account-erasure.sql` **5 条**（24/106/127/131/183 行），
+    `retention-cleanup.sql` **0 条**。（上一轮用 `grep -c '^\\\\'` 得到 0 条——shell 把模式切坏了，
+    差点把「有 5 条要转换」写成「不用转换」。）
+- 阻塞 / 风险 / 回滚：本轮**不做任何生产写操作**，探测本身 7 条全为只读且经守卫审计。
+  风险是「B04 被读成已解锁」——roadmap、exit-report、`preflight.ts` 三处都写明
+  解锁的是**通道**不是「可以开跑」。回滚 = revert 本 commit。
+- 下一项：`account-erasure.single-do.sql` 的转换（本轮新解锁的本机工作，
+  最容易漏的是夹在两个 do 块之间的顶层 `select public.cleanup_*()`）；issue #245 结案。
 - 更新时间：2026-10-13（UTC+8）。

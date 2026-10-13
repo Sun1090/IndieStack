@@ -6,7 +6,7 @@
  *   node scripts/check-cloud-sql-probe.js --project-ref … --token … [--dry-run]
  *
  * 退出码：
- *   0  计划四条全部满足判据
+ *   0  计划每一条都满足判据
  *   1  至少一步被明确拒绝（**这是答案，不是故障**——例如多语句确实撞上服务端限制）
  *   2  用法错误，或有任何一步「不知道」（缺凭据 / 网络失败 / 端点换形状 / 限流）
  *
@@ -14,14 +14,15 @@
  *
  * 一旦能传任意 SQL，「探测不会写库」就从代码性质退化成「调用的人今天没乱传」——
  * 而这条探测打的端点**确实能写**（`POST /v1/projects/{ref}/database/query`）。
- * 所以它只发 `PROBE_PLAN` 里那四条常量，发送前先过 `auditProbePlan()`：
+ * 所以它只发 `PROBE_PLAN` 里那几条常量语句，发送前先过 `auditProbePlan()`：
  * 任何一条被判为可写，整份计划一条都不发。B04 的演练 SQL 会被守卫判为可写，
  * 因此**不可能**经由这个脚本被自动送到生产库——那是人工授权动作，另有一条命令。
  *
- * ## 为什么四条里有两条打「能写」的端点
+ * ## 为什么计划里有几条打「能写」的端点
  *
  * 因为要回答的正是那个端点的问题（issue #245：多语句限制在客户端还是服务端）。
- * 缓解措施是两层：请求带 `read_only: true`，且四条语句本身都可证只读。
+ * 缓解措施是两层：请求带 `read_only: true`（**这一层本身也被探测核验**，见
+ * `READ_ONLY_FLAG_ON` / `READ_ONLY_FLAG_OFF` 那一对），且每条语句本身都可证只读。
  * `--dry-run` 只打印计划与守卫结论、不发任何请求——**在没有凭据的机器上这就是默认行为**。
  */
 import path from "node:path";
@@ -123,6 +124,10 @@ export async function postProbeStep(step, options) {
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  // 耗时是 MULTI_STATEMENT_FIRST_EFFECT 那条判据的**唯一**证据来源，
+  // 所以它在 try 外面起表：传输层失败时我们宁可拿到一个偏大的数，
+  // 也不要因为没测而把结论写成 UNKNOWN。
+  const startedAt = Date.now();
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -141,7 +146,13 @@ export async function postProbeStep(step, options) {
     } catch {
       json = null;
     }
-    return { status: response.status, json, bodyText, transportError: null };
+    return {
+      status: response.status,
+      json,
+      bodyText,
+      transportError: null,
+      elapsedMs: Date.now() - startedAt,
+    };
   } catch (error) {
     // 绝不回显请求头：令牌不能进日志。
     return {
@@ -149,6 +160,7 @@ export async function postProbeStep(step, options) {
       json: null,
       bodyText: "",
       transportError: error instanceof Error ? error.message : String(error),
+      elapsedMs: Date.now() - startedAt,
     };
   } finally {
     clearTimeout(timer);
@@ -156,7 +168,13 @@ export async function postProbeStep(step, options) {
 }
 
 function printPlan(audit, plan) {
-  console.log(audit.ok ? "✅ 守卫审计通过：四条语句全部可证只读" : "❌ 守卫审计不通过");
+  // 条数从计划本身取，不写死：上一版把「四条」抄进文案，
+  // 计划加到第六条后这些字全过期了——而它们正是读者判断「跑完了没有」的依据。
+  console.log(
+    audit.ok
+      ? `✅ 守卫审计通过：${plan.length} 条语句全部可证只读`
+      : "❌ 守卫审计不通过",
+  );
   for (const rejection of audit.rejections) {
     console.log(`   ${rejection.id}: ${rejection.reasons.join("；")}`);
   }
@@ -172,10 +190,12 @@ function printVerdicts(report) {
     console.log(`${mark} [${verdict.id}] ${verdict.outcome} (HTTP ${verdict.status}) ${verdict.evidence}`);
   }
   console.log(
-    `结论：只读端点=${report.readOnlyEndpointWorks ? "可执行" : "未证实"} / ` +
+    `结论：read_only 字段=${report.readOnlyFlagEffective ? "确实生效" : report.readOnlyFlagIneffective ? "装饰性的（服务端未进入只读）" : "未证实"} / ` +
+      `只读端点=${report.readOnlyEndpointWorks ? "可执行" : "未证实"} / ` +
       `写端点(read_only)=${report.writeEndpointWorks ? "可执行" : "未证实"} / ` +
       `多语句=${report.multiStatementWorks ? "可" : report.multiStatementBlocked ? "服务端限制" : "未证实"} / ` +
-      `单条 DO 块=${report.singleDoBlockWorks ? "可" : "未证实"}`,
+      `单条 DO 块=${report.singleDoBlockWorks ? "可" : "未证实"} / ` +
+      `多语句前序已执行=${report.multiStatementFullyExecutes ? "是" : report.multiStatementSkipsEarlier ? "否（静默跳过）" : "未证实"}`,
   );
 }
 
@@ -249,8 +269,8 @@ const HELP = [
   "  --json                机器可读输出",
   "  --timeout-ms <n>      单步超时（默认 20000）",
   "",
-  "只跑内置的四条常量语句，**不接受任意 SQL**：这个端点能写，所以「不会写库」必须是代码性质。",
-  "退出码：0 四条都满足判据 / 1 有步骤被明确拒绝（那是答案）/ 2 有用一步不知道（未知不算通过）",
+  "只跑内置的常量语句计划，**不接受任意 SQL**：这个端点能写，所以「不会写库」必须是代码性质。",
+  "退出码：0 每条都满足判据 / 1 有步骤被明确拒绝（那是答案）/ 2 有任一步不知道（未知不算通过）",
 ].join("\n");
 
 /** 解析参数、跑探测并返回退出码。 */
