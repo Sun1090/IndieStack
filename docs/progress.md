@@ -9502,7 +9502,8 @@
     丢前缀的行、被吃标题留下的悬空续行）。
   - `check:changelog` / `check:release-docs` / `check:gates` / `check:roadmap-entries` /
     `check:doc-links` / `check:docs` / `type-check` / 逐文件 eslint 全 exit 0。
-  - `pnpm falsify:rules` 见本条之后的补记（要求工作树干净）。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行 **82/82**（登记表条数未变：新判据走的是
+    `validateChangelog` 那条既有登记，阉掉整个函数即红——本轮另用局部变异单独验证过新函数本身会红 2 条）。
 - 阻塞 / 风险 / 回滚：
   - 无新增阻塞。B03/B04/B05 的外部权限缺口**没有**因为这条而变小——台账只回答「上线了没有」，
     不回答「演练做了没有」。
