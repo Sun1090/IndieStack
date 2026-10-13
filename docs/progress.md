@@ -9350,3 +9350,62 @@
 - 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert `70cb32a3`。
 - 下一项：开 PR；随后把 `ops:deploy-ledger` 接进 B 域证据链（roadmap 的 release evidence 任务池）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「配额挡住生产」是我没做对照就写下的结论：跨环境对比否证了它
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：上一条（191）做完 `ops:deploy-ledger` 之后，我在代码提示语、文档、CHANGELOG
+  三处都写了「生产没跟上是因为**配额**」。写完回头把同仓**另一个 Vercel 项目**的记录摆在一起看，
+  结论就翻了：
+
+  | 合并 | 主应用生产 | docs-site 生产 | #257 preview |
+  |---|---|---|---|
+  | #255 06:59:07Z | 07:00:11Z ✓ | 06:59:34Z ✓ | pass |
+  | #256 07:49:50Z | **无记录** | 07:50:18Z ✓（28 秒） | fail |
+  | #257 09:00:58Z | **无记录** | 09:01:33Z ✓（35 秒） | **pass** |
+
+  **配额若是原因，docs-site 没道理照常上线**；而 #257 的 preview 构建本身是 pass。
+  ⇒ 是**主应用的生产部署链路单独**有问题，与 preview 配额是两件事。
+- **这个对照本来只要多查一次 API 就能看到，而我没做。**
+  ⇒ 做成代码：`diagnoseNeverDeployed()`——**能自动做的对照不该靠人想起来**。
+  ⚠️ 它**只缩小方向、不定因**：`projectSpecific: true` 说的是「不是配额」，**不是**「原因是 X」。
+  本机没有 Vercel 凭据，往下仍是假设清单（production branch 配置 / 项目被暂停 / 构建提升失败）。
+- 做了什么：
+  1. `diagnoseNeverDeployed()` + 6 条单测；判定层提示语改成**排查顺序**
+     （① 跨环境对比 → ② 配额 → ③ 构建成功但没提升），并明写
+     「**别把「没找到原因」写成「原因是配额」**」。
+  2. `quota-readings.ts` 第 10 条读数的 `note` 与 `environments.md` 同步订正。
+  3. 登记表新增第 4 个入口 ⇒ 对账用例当场红（`expected 81 to be 82`）⇒ 文档改 82。
+- **本轮自己造成的一个回归（当场发现并修）**：为了拿跨环境数据，我把 `?environment=`
+  查询参数去掉、改成一次拉全量。结果「已上线」从 **115 掉到 90**——
+  实测 500 条里只有 90 条属于目标环境，而带过滤能拿到 230 条（覆盖从 08-23 缩到 09-27）。
+  **而它看起来完全合理、不报任何错**，只有对照旧读数才发现。
+  ⇒ 恢复服务端过滤，跨环境对比改为**只按需查那几个 sha**（通常 1–2 个）。
+  教训：**改数据源时，旧读数是唯一的报警器**——所以读数要留在能对照的地方。
+- **ESLint 复杂度第三次撞上限**（`runDeployLedgerCheck` 17 > 15）。
+  三次撞墙都在说真话：第一次「flag 该变成数据」、第二次「退出码该进判定层」、
+  这次「一个函数在同时做取数、判定和排版」。
+  ⇒ 抽出 `loadLedgerData()` / `formatJsonReport()` / `formatTextReport()`，**没有调高上限**。
+  排版留在 IO 层是对的（它不属于 `src/lib/`），但不该和编排挤在一个函数里。
+- **登记表注释里的快照数也删了**：原先写「各 9 条红 / 9 条通过」，
+  而本轮测试从 21 条长到 27 条，`toObservations` 的读数就变成 9/18。
+  **登记表不是那些数的家**——要读数就跑 `falsify:rules`。
+- 验证命令和结果：
+  - `node scripts/check-deploy-ledger.js --repo Sun1090/IndieStack --now 2026-10-13T13:00:00Z`
+    ⇒ exit 1，`观察 226 个：已上线 115、跳过 109、从未上线 2`（**115 已恢复**），
+    两条 `🔎 … ⇒ **不是配额**`。
+  - 四条 CLI 路径回归：真实 API exit 1；fixture 空记录 exit 2；fixture 文件不存在 exit 2；
+    `--json` exit 1 且 `code=NEVER_DEPLOYED / observations=226 / skippedCount=109`。
+  - `pnpm check:all` ⇒ **exit 0**，`282 files / 3521 tests`（较上条 +6，恰为映射用例）。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**82/82 条判定被证明「测试真的会红」**」；
+    本模块 4 个入口读数 11 / 9 / 1 / 6 条变红；跑完 `git status --porcelain | wc -l` = **0**。
+  - `type-check` exit 0（中途抓到 `Pick<DeployAudit,"code">` 不含 `passed` 的类型错）；
+    eslint 逐文件 exit 0；`check:changelog` / `check:doc-links` exit 0。
+- 阻塞 / 风险 / 回滚：
+  - **仍未定因**：主应用生产自 07:00:11Z 起无新部署。本机无 Vercel 凭据 ⇒ 属外部权限，
+    需要人去 Vercel 控制台看该项目的 production 分支配置与部署列表。
+  - 风险：新作业是**非 required** check（分支保护那 7 项不含它），报红而不阻塞合并——刻意如此。
+  - 回滚 = revert `b57112aa`（诊断）与 `70cb32a3`（探针本体）。
+- 下一项：开 PR；随后把 `ops:deploy-ledger` 接进 roadmap 的 B 域 release evidence 任务池。
+- 更新时间：2026-10-13（UTC+8）。
