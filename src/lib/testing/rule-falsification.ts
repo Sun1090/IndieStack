@@ -430,6 +430,12 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
   // 其中一条变异的搜索串多了一个反斜杠 ⇒ 它**根本没打上**却被算进了分子。
   // 本表由 `pnpm falsify:rules` 跑，`mutationApplied=false` 会被单独计数，
   // 「没打上」和「打了但没红」不再能被同一行汇总掩盖。
+  //
+  // **这张表盖不住探测的 IO 层**（`scripts/lib/cloud-sql-probe-check.js` 的 10 条变异）：
+  // 上面那条「只登记 `src/lib/**.ts`」的约定把它挡在外面。所以
+  // **`65/65` 不等于「云端 SQL 探测被完整核对过」**——判定层在表内，
+  // IO 层仍要靠 `src/lib/db/cloud-sql-probe-io.test.ts` 自己那 28 条 + 手工变异。
+  // 把它写在这里而不是省掉：一个看起来完整的数字比一个残缺的数字更危险。
   {
     file: "src/lib/db/cloud-sql-probe.ts",
     function: "assertProbeSqlReadOnly",
