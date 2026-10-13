@@ -424,6 +424,48 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return [];",
     testFile: "src/lib/release/client-artifact-env.test.ts",
   },
+  // 云端 SQL 探测的**只读守卫**。它的全部价值在于「这条探测不会写生产库」这句话
+  // 是代码性质而不是口头承诺——所以它必须在这张表里，而不是只活在某个人的 /tmp 脚本里。
+  // 2026-10-13 的教训：那条「IO 层 11/11 CAUGHT」的结论来自一次性 shell 脚本，
+  // 其中一条变异的搜索串多了一个反斜杠 ⇒ 它**根本没打上**却被算进了分子。
+  // 本表由 `pnpm falsify:rules` 跑，`mutationApplied=false` 会被单独计数，
+  // 「没打上」和「打了但没红」不再能被同一行汇总掩盖。
+  //
+  // **这张表盖不住探测的 IO 层**（`scripts/lib/cloud-sql-probe-check.js` 的 10 条变异）：
+  // 上面那条「只登记 `src/lib/**.ts`」的约定把它挡在外面。所以
+  // **`65/65` 不等于「云端 SQL 探测被完整核对过」**——判定层在表内，
+  // IO 层仍要靠 `src/lib/db/cloud-sql-probe-io.test.ts` 自己那 28 条 + 手工变异。
+  // 把它写在这里而不是省掉：一个看起来完整的数字比一个残缺的数字更危险。
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "assertProbeSqlReadOnly",
+    neuteredReturn: "return { sql, readOnly: true, reasons: [] };",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "auditProbePlan",
+    neuteredReturn: "return { ok: true, rejections: [] };",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "findWriteKeyword",
+    neuteredReturn: "return null;",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "summarizeProbe",
+    neuteredReturn: "return { verdicts, hasUnknown: false };",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "probeExitCode",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
 ];
 
 export interface MutationResult {

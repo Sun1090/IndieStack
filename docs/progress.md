@@ -8727,3 +8727,43 @@
 - 下一项：`account-erasure.single-do.sql` 的转换（本轮新解锁的本机工作，
   最容易漏的是夹在两个 do 块之间的顶层 `select public.cleanup_*()`）；issue #245 结案。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 把「变异没打上」变成结构上不可能：云端 SQL 探测的守卫进登记表
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`test/cloud-sql-probe-falsify`（base `b584b2ce` = main + #251）。
+- 状态：DONE。
+- 为什么做：#251 记下的是一个**工具缺口**而不只是一次笔误——「IO 层 11/11 CAUGHT」
+  里那条 M8 变异因为搜索串多了一个反斜杠而 `NOT-APPLIED`，却被算进了分子。
+  一次性 shell 脚本**不区分「没打上」与「打了没红」**，所以只要取证还留在 `/tmp`，
+  同一种错就还会以另一个数字的形式重演。本仓库其实**早就有**防这件事的工具。
+- 完成内容：
+  1. `RULE_FALSIFICATION_TARGETS` 从 **60 条推到 65 条**，收 `src/lib/db/cloud-sql-probe.ts`
+     的 5 个判定函数。逐个实测全部 `bites`：`assertProbeSqlReadOnly` 12 红 /
+     `auditProbePlan` 1 / `findWriteKeyword` 3 / `summarizeProbe` 12 / `probeExitCode` 6。
+     `falsifyTarget` 的 `finally` 无条件复原，跑完 `git status` 干净。
+  2. **中性化必须「永远判合格」而不是让模块崩**：`summarizeProbe` 给部分对象，
+     实测失败消息全是 `AssertionError`、无 `TypeError`。这条规矩本轮已为它付过一次代价
+     （上一轮未闭合 dollar-quote 直接 `TypeError` 时，「崩溃」差点被当成「拒绝」）。
+  3. **登记表的边界写进注释**：这张表只收 `src/lib/**.ts`（`rule-falsification.test.ts`
+     里有断言钉着），所以探测的 **IO 层进不来**。⇒ **`65/65` 不等于「云端 SQL 探测
+     被完整核对过」**，这句话写在表里而不是省掉。
+- 顺带量到但**没有**据此改工具的一件事：`neuterFunction` 的正则是
+  `export\s+function\s+`，**不匹配 `export async function`**（实测 `postProbeStep` /
+  `runCloudSqlProbe` 返回 `changed: false`）。`src/lib` 下确有 12 处 `export async function`，
+  `src/lib` 下非测试文件里有 **157 处** `export async function`
+  （`grep -rn … | grep -v '\.test\.ts' | wc -l` 量出来的，**不是** `head -12` 的行数——
+  本条第一版就把它写成了「12 处」，那是截断输出被当成计数，同属本轮在改的那类错）。
+  但登记表里 65 个函数名与这 157 个 async 函数名**交集为空**
+  （`comm -12` 实测），所以今天这张表没有因此漏掉任何一条证据。
+  不改：那是「工具能力边界」，不是「本轮结论的前提」；要改得连带设计
+  「async 判定的中性化返回值该长什么样」，属另一件事。
+- 验证命令和结果：
+  - `pnpm falsify:rules` → **65/65 会红**，exit 0，跑完工作树干净。
+  - 脏树守卫**当场生效过一次**：未提交时直接拒跑并说明原因（它会改源码，
+    脏树上复原会连带丢掉别人的未提交改动）。
+  - `pnpm check:all` ✅ 277 files / 3458 tests；`type-check` / eslint exit 0；
+    `check:changelog` / `check:progress` ✅。
+- 阻塞 / 风险 / 回滚：纯新增登记项 + 注释 + CHANGELOG，不改任何判定行为 ⇒ 无线上风险。
+  回滚 = revert 本 commit。
+- 下一项：`account-erasure.single-do.sql` 的转换（B04 缺口 (a)，本地栈在跑、可实测）。
+- 更新时间：2026-10-13（UTC+8）。

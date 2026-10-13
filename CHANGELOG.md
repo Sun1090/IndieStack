@@ -10,6 +10,23 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **云端 SQL 探测的只读守卫进了变异登记表（`pnpm falsify:rules` 现在盖得住它）**。
+  登记表从 **60 条推到 65 条**：`assertProbeSqlReadOnly` / `auditProbePlan` /
+  `findWriteKeyword` / `summarizeProbe` / `probeExitCode`，逐个实测全部 bites
+  （分别 12 / 1 / 3 / 12 / 6 条变红），跑完 `cmp` 确认树复原。
+  - **为什么这次不是再写一个脚本**：#251 登记的教训是「IO 层 11/11 CAUGHT」里有一条
+    变异**根本没打上**（搜索串多了一个反斜杠）却被算进分子。一次性 shell 脚本
+    不区分「没打上」与「打了没红」，而本表的 `mutationApplied=false` 单独归入
+    「读不出/没打上」并让退出码非零 ⇒ 汇总行再也混不了这两个数。
+  - `summarizeProbe` 的中性化刻意给**部分对象**而不是让它崩：约定是「永远判合格」，
+    红必须是**断言红**。实测失败消息全是 `AssertionError`、无 `TypeError`
+    ——import 崩溃式的红不能当证据。
+  - ⚠️ **`65/65` 不等于「云端 SQL 探测被完整核对过」**：这张表只收
+    `src/lib/**.ts`（`rule-falsification.test.ts` 里有断言），所以探测的 **IO 层
+    （`scripts/lib/cloud-sql-probe-check.js`）进不来**，仍要靠它自己那 28 条单测
+    加手工变异。这条限制写在登记表注释里而不是省掉——**一个看起来完整的数字
+    比一个残缺的数字更危险**。
+
 - **`pnpm ops:cloud-sql-probe` 拿到真实读数，并因此否证了 B04 的阻塞理由**。
   上一节（PR #250）交付的是探测工具本体，当时**读数尚未取得**。本轮在 CI 上手动触发
   （run `38334026946`，`headBranch` 就是当时的功能分支——新 workflow 还没进默认分支也能
