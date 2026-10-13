@@ -466,6 +466,21 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return 0;",
     testFile: "src/lib/db/cloud-sql-probe.test.ts",
   },
+  // B04 缺口 (a) 的「正本里有几条 psql 元命令」——这个数字原先是人抄进文档的，
+  // 抄错过一次（「5 条」漏了行尾的 `\gset`）。现在它由代码算，
+  // 并且 `preflight.test.ts` 会把文档里那句话和代码算出的结果**对账**。
+  {
+    file: "src/lib/drills/psql-meta.ts",
+    function: "findPsqlMetaCommands",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/psql-meta.test.ts",
+  },
+  {
+    file: "src/lib/drills/psql-meta.ts",
+    function: "unknownBackslashes",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/psql-meta.test.ts",
+  },
 ];
 
 export interface MutationResult {

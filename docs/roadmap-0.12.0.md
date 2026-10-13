@@ -193,7 +193,9 @@
    - **第三版是「多语句跑不了 ⇒ 必须 psql + 密码」**，被 PR #236 的单条 DO 块证伪。
      三次的错都留在 `docs/operations/environments.md` 的分寸条目里，没有回改。
    - **所以今天真正缺的是两件事，都不是凭据**：
-     (a) `docs/operations/drills/account-erasure.sql` 里有 **5 条 psql 元命令**
+     (a) `docs/operations/drills/account-erasure.sql` 里有 **6 条 psql 元命令**
+         （`pnpm falsify:rules` 之外另有一条机器判据：`src/lib/drills/psql-meta.ts` 量出来的，
+         **不是手数**——原先登记的「5 条」是手数漏了行尾那条 `\gset`，见下）
          （`\set` / `\echo`），HTTP 通道**根本送不过去**，
          要先照 `retention-cleanup.single-do.sql` 的做法压成单条语句并在本地跑通；
      (b) 这两份 SQL 会真的 insert / update / delete。在云端跑等于**往生产库写**，

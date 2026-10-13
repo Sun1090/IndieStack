@@ -10,6 +10,32 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`src/lib/drills/psql-meta.ts`：B04 缺口 (a) 的那个条数从此由代码算，不再由人抄。**
+  直接起因是我在 #251 里写下一句「`account-erasure.sql` 含 **5 条** psql 元命令，逐字确认」——
+  **那个「逐字确认」是假的**：量法只看「行首是反斜杠」，于是漏了
+  `select uid, … from d \gset drill_`（第 102 行，**行尾**形态）。
+  真值 **6 条**，而漏掉的偏偏是唯一那条**结构性**的：`\gset` 把 temp 表的值取进
+  psql 变量，供后面 **16 处** `:'drill_*'` 引用（`grep -o | wc -l` 实测）。
+  少算它，转换工作会从一开始就少一整层，而表面上只是「一个数写错了」。
+  - **三类元命令的代价不同，所以分开判**：`cosmetic`（`\echo` 标题，删掉就行）/
+    `error-handling`（`\set ON_ERROR_STOP`，HTTP 通道没这个开关）/
+    `structural`（`\gset`，**必须翻译成 SQL**）。
+    **分类只看「有没有产出后续要用的东西」，不看名字**——`\set x 5` 和 `\gset` 一样在造变量，
+    按名字一律归成「错误处理」就会把这条又漏一次。
+  - **认不全的反斜杠一律报出来**（`unknownBackslashes`），不静默当成 SQL：
+    「5 条」这个错的本质就是**带着一个没验证的形状假设去数**。
+  - **7 条单测 + 5 个变异全部 CAUGHT**。其中一条用例第一版是**恒真的**：
+    写成 `-- docker exec -i psql \\`，而 `\\` 后面不是字母，正则本来就匹配不上 ⇒
+    变异「不剥注释」当场存活。换成注释里**直接写已知命令名**，并补一条
+    「去掉注释前缀就必须认出来」的对照，才证明那个 0 真的来自剥注释。
+  - **光有探测器不够**：文档里的数字仍然是人抄的。所以 `preflight.test.ts` 新增一条
+    **跨文件对账**——把「`preflight.ts` 正文里写的那个数与那串命令名」
+    和「探测器对正本算出的结果」钉在一起。**改正本不改这句话就会红**。
+    4 个变异实测（改数成 5 / 改成 99 / 删掉 `\gset` / 改句式让正则失配）全部 CAUGHT；
+    第三条最初**存活**，因为断言写的是 `toContain("\\gset")`，而正文别处也有这个词——
+    改成对账「括号里列出的命令名集合」才承重。
+  - 探测器本体 2 条 + 上表既有 5 条 ⇒ `pnpm falsify:rules` 的登记表 **65 → 67 条**。
+
 - **云端 SQL 探测的只读守卫进了变异登记表（`pnpm falsify:rules` 现在盖得住它）**。
   登记表从 **60 条推到 65 条**：`assertProbeSqlReadOnly` / `auditProbePlan` /
   `findWriteKeyword` / `summarizeProbe` / `probeExitCode`，逐个实测全部 bites
@@ -45,8 +71,14 @@ See `docs/operations/release-tag-ledger.md`.
     而且它错的方向正好是让「防护失效」看起来像「防护生效」。
   - ⇒ `SUPABASE_DB_PASSWORD` 从 `pnpm drills:preflight --drill B04` 的前置里**删除**。
     它被登记为「真正的缺口」是 2026-10-05（`1a18be40`），被读数否证是 2026-10-13——**8 天**。
-    B04 现在缺的是两件别的东西：(a) `account-erasure.sql` 含 **5 条 psql 元命令**
-    （`\set` / `\echo`，逐字确认；同目录的 `retention-cleanup.sql` 是 0 条），
+    B04 现在缺的是两件别的东西：(a) `account-erasure.sql` 含 **6 条 psql 元命令**
+    （`\set` / `\echo` / `\gset`；同目录的 `retention-cleanup.sql` 是 0 条）。
+    ⚠️ 本条第一版写的是「5 条」，并称其「逐字确认」——**那个确认是假的**：
+    量法只看「行首是反斜杠」，于是漏了挂在语句**末尾**的 `select … from d \gset drill_`。
+    漏掉的偏偏是唯一那条**结构性**的：`\gset` 把 temp 表的值取进 psql 变量，
+    供后面 **16 处** `:'drill_*'` 引用（`grep -o` 实测）。写「逐字确认」而实际用了一个
+    有形状假设的行首匹配，比不写这个短语更糟——它让一个没被核对的数看起来核对过。
+    现在条数由 `src/lib/drills/psql-meta.ts` 算，文档只引用它的结论。
     HTTP 通道送不出去，要先压成单条语句；(b) 这两份 SQL 会真写生产库 ⇒ 需要一次**人工授权**。
     **这不是「B04 已解锁」**：解锁的是通道，不是「可以开跑」；v0.12.0 的 tag 前置里 B04 仍计未完成。
   - 探测计划从 4 条扩到 **7 条**（新增决定性那条 + `read_only` 一开一关两条），
