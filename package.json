@@ -86,6 +86,7 @@
     "drills:preflight": "node scripts/lib/drill-preflight.js",
     "check:retention-cron": "node scripts/check-retention-cron.js",
     "ops:deploy-freshness": "node scripts/check-deploy-freshness.js",
+    "ops:deploy-ledger": "node scripts/check-deploy-ledger.js",
     "ops:schema-drift": "node scripts/check-schema-drift.js",
     "ops:migration-status": "node scripts/check-migration-status.js",
     "ops:cloud-sql-probe": "node scripts/check-cloud-sql-probe.js",

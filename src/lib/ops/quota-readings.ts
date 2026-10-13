@@ -73,6 +73,20 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     at: "2026-10-13",
     note: "两项全 fail，错误文本 `retry in 24 hours`",
   },
+  // ⚠️ **这条是补记的，而且我第一版把漏记的原因写错了**（写成「#254 是纯文档 PR
+  // 所以没被当成新观察」——那是猜的）。实测：台账模块创建于 09:00:57Z
+  // （`git log --diff-filter=A`），而 #254 早在 **05:13:55Z** 就合并了——
+  // 建台账时它已经存在 3h47m。⇒ 真实原因是**回填时靠记忆而不是靠重跑查询**：
+  // 我只把自己当时记得的那几个 PR 抄进台账，没有遍历 `gh pr list` 逐个查 checks。
+  // 教训：**手工回填的清单，完整性等于记忆的长度**。要它可信就得由一次遍历生成，
+  // 这也是下面那条生产部署探针存在的理由——**能自动读的观察不该靠人记**。
+  {
+    pr: 254,
+    pool: "preview",
+    outcome: "fail",
+    at: "2026-10-13",
+    note: "两项全 fail（`gh pr checks 254` 实测）——本条为事后补记，当时漏了",
+  },
   {
     pr: 255,
     pool: "preview",
@@ -93,6 +107,33 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     outcome: "fail",
     at: "2026-10-13",
     note: "两项又全 fail——把「已解除」当场按回去的那条",
+  },
+  {
+    pr: 256,
+    pool: "production",
+    outcome: "fail",
+    at: "2026-10-13",
+    note: "生产部署记录里**没有** `16c23e15`，且没有任何后续部署包含它（`gh api .../deployments`）",
+  },
+  {
+    pr: 257,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-13",
+    note: "两项（主应用 + docs-site）都 pass，`gh pr checks 257` 实测；方向再次反转",
+  },
+  {
+    pr: 257,
+    pool: "production",
+    outcome: "fail",
+    at: "2026-10-13",
+    // ⚠️ 本条**推翻了我原本写下的解释**。我一开始把「生产没跟上」归因给配额，
+    // 但三个读数放在一起就对不上了：#257 的 **preview 构建是 pass**、
+    // 同一次合并的 **docs-site 生产 35 秒内上线**（09:01:33Z，合并于 09:00:58Z），
+    // 而**主应用生产零记录**。配额若是原因，docs-site 没道理照常上线。
+    // ⇒ 「配额挡住生产」解释不了 #257；主应用的生产部署链路**单独**有问题。
+    // 本机没有 Vercel 凭据，往下只能列假设、不能定因（见 `environments.md` 那一行）。
+    note: "合并后始终无生产部署记录（历史 lag 中位 1.5min、最大 57.2min）；而同期 docs-site 生产 35 秒内上线 ⇒ 不是配额",
   },
 ];
 
@@ -157,8 +198,12 @@ export function consecutivePassFromTail(
  * 与 `consecutivePassFromTail` 是两个问题，别混：
  *   · 尾部连击回答「**现在**攒到几连」——它决定能不能宣布解除；
  *   · 最长连击回答「**今天最好到过几连**」——它决定「会不会波动」这句话的证据强度。
- * 今天（六个读数）尾部是 0、最长是 2。只报其中一个都会误导：
- * 报 0 像是「从没通过过」，报 2 像是「快解除了」。
+ * ⚠️ **这里刻意不写「今天是几」**：台账每追加一条读数，这两个数就可能变，
+ * 而注释不在任何对账门禁里——写死它等于又立一个没人回头改的数
+ * （本仓库为「文档里的数字」付过三次学费，见 `docs/testing.md`）。
+ * 要读数就跑 `summarizeRegistry` 之外的这两个函数，或看 `environments.md` 那一行
+ * （**那里的两个数由 `quota-readings.test.ts` 的正则对账钉住**）。
+ * 只报其中一个数都会误导：报尾部像是「从没通过过」，报最长像是「快解除了」。
  */
 export function longestPassStreak(
   readings: readonly QuotaReading[] = QUOTA_READINGS,

@@ -9252,3 +9252,160 @@
 - 下一项：把 #257 的 PR 正文扩到覆盖两批（quota-readings 台账 + `summarizeRegistry` 对账），
   因为它标题只写了前者，而分支上现在有两批内容——**PR 描述与实际内容不符是 review 的敌人**。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「本机取不到」是错的：deployments API 匿名可读，一判就判出两个提交从未上线
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：#257 合并后回去查生产是否跟上，发现 `ops:deploy-freshness` 报「落后 2 个提交、阈值 5、判通过」，
+  而合并已近 4 小时。于是回去读 `environments.md` 那一行反复写的那句话——
+  「**生产是否也被挡住 = 未知，需要 Vercel 侧部署记录，本机取不到**」。
+  **那句话是错的**：`GET /repos/{owner}/{repo}/deployments` **匿名可读**
+  （实测 `curl -sI` 不带 token 回 **200**）。⇒ 本仓库**第三次**把「我不知道怎么查」写成「这件事查不了」
+  （前两次：`supabase migration list` 曾记为「要 DB 密码」、CodeQL 告警曾记为「本地无法复现」）。
+- **判出来的真故障**：生产最新一条 `Production – indie-stack` 记录是 `a5b38466`（#255）07:00:11Z；
+  #256（`16c23e15`，07:49:50Z 合并）与 #257（`75b011ba`，09:00:58Z 合并）**都没有记录**，
+  而 `75b011ba` 是 main 的 HEAD ⇒ **没有任何后续部署能覆盖它**。docs-site 同期两次都正常上线。
+- 做了什么：
+  1. `src/lib/ops/deployment-ledger.ts`（判定层）+ `deployment-ledger.test.ts`（**18 条**）。
+  2. `scripts/lib/deployment-ledger-check.js` + `scripts/check-deploy-ledger.js` + `pnpm ops:deploy-ledger`。
+  3. `.github/workflows/deploy-ledger.yml`（每天 05:37 + 每次 main push + 手动）。
+  4. 台账补 3 条读数（#254 preview fail、#256 生产 fail、#257 生产 fail）⇒ **7 → 10 条**。
+     （⚠️ 第一版这里写成「补 3 条」却列了 4 项——多出的 `#257 preview pass` 是上一轮加的。
+     **数与列出不一致**正是本仓库反复犯的那类错，这次犯在讲它的条目里。）
+  5. `environments.md`：配额行订正 + **新增「生产部署台账」独立一行**（两个问题分开答）。
+- **判据为什么不是「有没有部署记录」——这条是本模块的主要价值**：
+  实测 226 个已合并 PR 里 **111 个无生产记录**，绝大多数被 Vercel 的**合并部署**跳过
+  （#251–#254 全被 #255 那次带走）。只按「无记录 = 故障」判会**天天误报**。
+  真判据：「**无记录，且没有任何后续部署包含它**」。
+  ⚠️ 这个等价依赖 main 的**线性 squash 历史**（实测最近 200 提交全为单父、`--merges` 计数 2、
+  已合并 PR 的 base 全是 main）⇒ 改用 merge commit 后判据会开始漏判，前提写在代码与 workflow 注释里。
+- **阈值 90 分钟有出处**：73 个可配对样本（合并时间 → 该 sha 的生产记录时间）
+  **中位 1.5 分钟、最大 57.2 分钟**，90 = 最大值的 1.6 倍。
+  对照本轮实测到的真实停滞：#257 已 239–323 分钟无记录 ⇒ 判红。**阈值要么来自样本，要么标成假设。**
+- **实测到的两个坑（都不是设计时想到的）**：
+  1. **环境名写错 ⇒ API 回 200 + 空数组 ⇒ 226 个提交全被读成「从未上线」**。
+     一个**自信而完全错误**的结论。修：空记录判「未知」（exit 2）。这是「会说出相反结论的读数比没有读数更贵」的又一实例。
+  2. `toObservations()` 一开始写在 IO 层**没有测试** ⇒ 按 `codeql-alert-check.js` 那次的教训搬进 `src/lib/` 并配 9 条映射用例
+     （字段层级、同 sha 多条取最早、`base.ref != main` 不参与、乱序输入、脏响应跳过）。
+- **本轮自己造的错（4 处，全部当场抓到并改）**：
+  1. 台账漏记 **#254**（两项 Vercel 检查都 fail）。第一版我把原因写成「#254 是纯文档 PR 所以没被当成新观察」——
+     **那是猜的**。实测台账模块创建于 09:00:57Z，而 #254 早在 05:13:55Z 就合并了 ⇒
+     真实原因是**回填靠记忆而不是靠重跑查询**。⇒ 新规矩：**能自动读的观察不靠人记**（也正是这个探针存在的理由）。
+  2. 文档里写「生产侧从没连续赢过两次」——而生产侧**只有 1 条**读数。**一个样本谈不上趋势**。删掉，改成「够不上门槛」。
+  3. `docs/testing.md` 那句交叉引用「下面那句『57 个规则模块』」——**下面那句其实写的是 58**，引用从一开始就指错对象。
+  4. **CHANGELOG 讲「数字会漂移」的条目里，我自己写了「实测：78 / 59 / 718」，同一轮就漂成 80 / 60**。
+     连讲这条规矩的条目都会立刻开始漂移 ⇒ 删数、只留「它漂了」这个事实。
+- **`docs/testing.md` 那段被改到第三层补丁，这次重写了而不是继续加补丁**：
+  删掉「交集 53 / 本表独有 6 / 门禁独有 4」三个数——它们**当时是实测对的**，
+  但登记 `deployment-ledger.ts` 后「本表独有」立刻从 6 变 7（新模块走 `ops:` 前缀、不被任何 `check:` 引用），
+  而**没有任何用例在盯它们**。⇒ 原则的完整表述：**凡是一次性读出、又没有对账用例盯住的数，
+  不写进静态文本**——表格、正文、注释一视同仁。
+- 验证命令和结果：
+  - `node scripts/check-deploy-ledger.js --repo Sun1090/IndieStack --now 2026-10-13T13:00:00Z` ⇒ **exit 1**，
+    `NEVER_DEPLOYED`，观察 226 个提交：已上线 115 / 被合并部署跳过 109 / **从未上线 2**（#256、#257）。
+  - 错环境名 ⇒ **exit 2**（判未知，不判红）；缺 `--repo` ⇒ exit 2；`--help` ⇒ exit 0。
+  - 变异核对（登记前实测）：`auditDeploymentLedger` **9 红 / 9 通过**、`toObservations` **9 红 / 9 通过**，均 `bites`。
+  - 对账用例**当场红过两次**：`rule-falsification.test.ts` 报 `expected 78 to be 80`（登记表对账）、
+    `quota-readings.test.ts` 报 `expected 7 to be 10` + 链不匹配 + `expected 1 to be +0`（台账对账）。
+    补文档后 `48 passed (48)`。
+  - `check:docs`（94 个脚本同步）、`check:doc-links`、`check:changelog`、`check:gates`（49 门禁 / 12 工作流）、
+    `check:action-errors`、`check:gate-rule-tests` 全部 exit 0。
+  - ⚠️ 全量 `check:all` 与 `falsify:rules` 的读数见下一条，**本条不预支**（树是脏的，`falsify:rules` 会直接 exit 1）。
+- 阻塞 / 风险 / 回滚：
+  - **新发现的真实状态**：生产自 07:00:11Z 起未再部署主应用。这**不是本条引入的**，但本条让它可见。
+    解除需要 Vercel 侧构建放行（配额），本机无法代为操作 ⇒ 属外部权限。
+  - 风险：新作业是**非 required** check（分支保护的 7 项不含它），所以它会报红而不阻塞合并——这是刻意的。
+  - 回滚 = revert 本 commit（含删除 workflow 与两个新文件）。
+- 下一项：把 `ops:deploy-ledger` 的读数写进 roadmap 的 B 域证据链；#236 / #235 仍等 `db push`。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 补 191 条没预支的两个读数：`check:all` 3515 条、`falsify:rules` 81/81
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：上一条（191）在验证栏写了「全量 `check:all` 与 `falsify:rules` 的读数见下一条，本条不预支」——
+  因为写它时树是脏的，而 `falsify:rules` 的设计就是**脏树直接 exit 1**（在脏树上做变异核对会连带丢掉未提交改动）。
+  这是同一规矩的第三次执行（前两次：#255 那轮、#257 那轮）。
+- 做了什么：commit `70cb32a3` 落地后按顺序补跑。**本条只补读数，不改代码**。
+- 验证命令和结果：
+  - `git status --porcelain | wc -l` = **0**（前置，实测而非假设）。
+  - `pnpm check:all` ⇒ **exit 0**，`Test Files 282 passed` / `Tests 3515 passed`。
+    与上一轮的 281 / 3494 相比 **+1 文件 / +21 条**，正是 `deployment-ledger.test.ts`（21 条）。
+    含 `check:progress`（191 条）、`check:roadmap-entries`（29 条任务池均有交代）、
+    `check:gates`（49 门禁 / **12 个工作流**，新增的 `deploy-ledger.yml` 已被门禁接线审计认到）、
+    `check:docs`（**94 个脚本**同步）、`check:doc-links`、`check:changelog`、`check:gate-rule-tests` 全绿。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**81/81 条判定被证明「测试真的会红」**」。
+    本轮新登记的 3 个入口读数：`auditDeploymentLedger` **11 红 / 10 通过**、
+    `toObservations` **9 红 / 12 通过**、`deployExitCode` **1 红 / 20 通过**——
+    与登记前逐个走 `falsifyTarget` 的实测读数一致。
+  - 跑完再测 `git status --porcelain | wc -l` = **0**（复原保证成立）。
+- **本轮 `check:all` 抓到、`falsify:rules` 抓不到的两类问题**（值得记一句区别）：
+  - `type-check` 抓到 `Pick<DeployAudit, "code">` 里不含 `passed` 却被使用——**纯类型错**，
+    变异核对对这类问题无感（中性化返回值不会引入类型错）。
+  - ESLint 的 `complexity` 两次撞上限（`parseArgs` 17、`runDeployLedgerCheck` 16）。
+    两次都不是「把上限调高」的事：**它在提醒一件事不属于这个函数**。
+    第一次把数值 flag 变成表里的数据；第二次把退出码分流搬进判定层成 `deployExitCode()`。
+    ⇒ 复杂度报警当**架构信号**读，而不是当噪音调掉。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert `70cb32a3`。
+- 下一项：开 PR；随后把 `ops:deploy-ledger` 接进 B 域证据链（roadmap 的 release evidence 任务池）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「配额挡住生产」是我没做对照就写下的结论：跨环境对比否证了它
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：上一条（191）做完 `ops:deploy-ledger` 之后，我在代码提示语、文档、CHANGELOG
+  三处都写了「生产没跟上是因为**配额**」。写完回头把同仓**另一个 Vercel 项目**的记录摆在一起看，
+  结论就翻了：
+
+  | 合并 | 主应用生产 | docs-site 生产 | #257 preview |
+  |---|---|---|---|
+  | #255 06:59:07Z | 07:00:11Z ✓ | 06:59:34Z ✓ | pass |
+  | #256 07:49:50Z | **无记录** | 07:50:18Z ✓（28 秒） | fail |
+  | #257 09:00:58Z | **无记录** | 09:01:33Z ✓（35 秒） | **pass** |
+
+  **配额若是原因，docs-site 没道理照常上线**；而 #257 的 preview 构建本身是 pass。
+  ⇒ 是**主应用的生产部署链路单独**有问题，与 preview 配额是两件事。
+- **这个对照本来只要多查一次 API 就能看到，而我没做。**
+  ⇒ 做成代码：`diagnoseNeverDeployed()`——**能自动做的对照不该靠人想起来**。
+  ⚠️ 它**只缩小方向、不定因**：`projectSpecific: true` 说的是「不是配额」，**不是**「原因是 X」。
+  本机没有 Vercel 凭据，往下仍是假设清单（production branch 配置 / 项目被暂停 / 构建提升失败）。
+- 做了什么：
+  1. `diagnoseNeverDeployed()` + 6 条单测；判定层提示语改成**排查顺序**
+     （① 跨环境对比 → ② 配额 → ③ 构建成功但没提升），并明写
+     「**别把「没找到原因」写成「原因是配额」**」。
+  2. `quota-readings.ts` 第 10 条读数的 `note` 与 `environments.md` 同步订正。
+  3. 登记表新增第 4 个入口 ⇒ 对账用例当场红（`expected 81 to be 82`）⇒ 文档改 82。
+- **本轮自己造成的一个回归（当场发现并修）**：为了拿跨环境数据，我把 `?environment=`
+  查询参数去掉、改成一次拉全量。结果「已上线」从 **115 掉到 90**——
+  实测 500 条里只有 90 条属于目标环境，而带过滤能拿到 230 条（覆盖从 08-23 缩到 09-27）。
+  **而它看起来完全合理、不报任何错**，只有对照旧读数才发现。
+  ⇒ 恢复服务端过滤，跨环境对比改为**只按需查那几个 sha**（通常 1–2 个）。
+  教训：**改数据源时，旧读数是唯一的报警器**——所以读数要留在能对照的地方。
+- **ESLint 复杂度第三次撞上限**（`runDeployLedgerCheck` 17 > 15）。
+  三次撞墙都在说真话：第一次「flag 该变成数据」、第二次「退出码该进判定层」、
+  这次「一个函数在同时做取数、判定和排版」。
+  ⇒ 抽出 `loadLedgerData()` / `formatJsonReport()` / `formatTextReport()`，**没有调高上限**。
+  排版留在 IO 层是对的（它不属于 `src/lib/`），但不该和编排挤在一个函数里。
+- **登记表注释里的快照数也删了**：原先写「各 9 条红 / 9 条通过」，
+  而本轮测试从 21 条长到 27 条，`toObservations` 的读数就变成 9/18。
+  **登记表不是那些数的家**——要读数就跑 `falsify:rules`。
+- 验证命令和结果：
+  - `node scripts/check-deploy-ledger.js --repo Sun1090/IndieStack --now 2026-10-13T13:00:00Z`
+    ⇒ exit 1，`观察 226 个：已上线 115、跳过 109、从未上线 2`（**115 已恢复**），
+    两条 `🔎 … ⇒ **不是配额**`。
+  - 四条 CLI 路径回归：真实 API exit 1；fixture 空记录 exit 2；fixture 文件不存在 exit 2；
+    `--json` exit 1 且 `code=NEVER_DEPLOYED / observations=226 / skippedCount=109`。
+  - `pnpm check:all` ⇒ **exit 0**，`282 files / 3521 tests`（较上条 +6，恰为映射用例）。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**82/82 条判定被证明「测试真的会红」**」；
+    本模块 4 个入口读数 11 / 9 / 1 / 6 条变红；跑完 `git status --porcelain | wc -l` = **0**。
+  - `type-check` exit 0（中途抓到 `Pick<DeployAudit,"code">` 不含 `passed` 的类型错）；
+    eslint 逐文件 exit 0；`check:changelog` / `check:doc-links` exit 0。
+- 阻塞 / 风险 / 回滚：
+  - **仍未定因**：主应用生产自 07:00:11Z 起无新部署。本机无 Vercel 凭据 ⇒ 属外部权限，
+    需要人去 Vercel 控制台看该项目的 production 分支配置与部署列表。
+  - 风险：新作业是**非 required** check（分支保护那 7 项不含它），报红而不阻塞合并——刻意如此。
+  - 回滚 = revert `b57112aa`（诊断）与 `70cb32a3`（探针本体）。
+- 下一项：开 PR；随后把 `ops:deploy-ledger` 接进 roadmap 的 B 域 release evidence 任务池。
+- 更新时间：2026-10-13（UTC+8）。

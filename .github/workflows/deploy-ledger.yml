@@ -1,0 +1,59 @@
+name: Production deploy ledger
+
+## 每个合并进 main 的提交到底上线了没有——每天答一次，不需要任何密钥。
+##
+## 为什么单独加一条：`docs/operations/environments.md` 的 Vercel 配额那一行，
+## 从 2026-10-13 上午起反复写着「**生产是否也被挡住 = 未知，需要 Vercel 侧部署记录，
+## 本机取不到**」。**那句话是错的**——Vercel 把每次部署上报成 GitHub Deployment，
+## 而 `GET /repos/{owner}/{repo}/deployments` 匿名可读（2026-10-13 实测不带 token 回 200）。
+##
+## 一判就判出了真故障：#256（`16c23e15`）与 #257（`75b011ba`）合并后都没有生产部署记录，
+## 而 `75b011ba` 是 main 的 HEAD ⇒ 没有任何后续部署能覆盖它。
+## 而已有的 `ops:deploy-freshness` **看不到这件事**：它判的是「落后几个提交」，
+## 当时落后 2 个、阈值 5 个，于是判通过。**距离小不等于部署正常。**
+##
+## 为什么判据不是「有没有部署记录」：226 个已合并 PR 里 111 个无记录，
+## 绝大多数是被 Vercel 的合并部署跳过的（连续合并并成一次上线）。
+## 只按「无记录 = 故障」判会让这条作业天天误报。
+## 真判据是「**无记录，且没有任何后续部署包含它**」——见 `src/lib/ops/deployment-ledger.ts`。
+##
+## 为什么不在 `pull_request` 上跑：本作业读的是**生产当前状态**，与 PR 改了什么无关。
+## 生产停顿时给每个无关 PR 挂一盏红灯，只会让人学会忽略它。
+## 而且它匿名可读，所以连 secret 都不需要——`GITHUB_TOKEN` 只是用来避开匿名限流。
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ledger-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ledger:
+    name: Production deploy ledger
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check production deploy ledger
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm ops:deploy-ledger
