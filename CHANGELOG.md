@@ -28,7 +28,7 @@ See `docs/operations/release-tag-ledger.md`.
   - 「未探测」的输出语与 `retention-cron-audit.ts` / `retention-cron-check.ts` 的注释
     同步去掉「需要 DB 密码」，但**保留**「静态审计永远可跑」这条真实理由。
   - 新判据**当场被 IO 层测试抓到**：mock 不认识新语句就回 `probe_ok` ⇒ UNKNOWN ⇒ 退出码 2。
-    那不是测试坏了，是新判据真的没被覆盖；补 mock 分支 + 3 条用例（装了 / 没装 / 读不到）。
+    那不是测试坏了，是新判据真的没被覆盖。补 mock 分支 + 4 条用例：判定层「装了 / 没装 / 读不到」三条，IO 层端到端「没装 ⇒ 退出码 1 且输出不夸大」一条。
 
 - **`prose-outside-bullet`：CHANGELOG 里丢了 `- ` 前缀的正文行从此报红——这类行对门禁**完全隐形**。**
   解析器只认 `- ` 开头的行是条目，所以一行只要丢了前缀，就不报空条目、不报空章节、
