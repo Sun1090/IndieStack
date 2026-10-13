@@ -309,8 +309,11 @@ describe("diagnoseNeverDeployed()：跨环境对比", () => {
   const DOCS = "Production – indie-stack-docs-site";
   const dep = (sha: string, environment: string, created: string) => ({ sha, environment, created_at: created });
 
-  it("同一 sha 在**别的环境**上线了 ⇒ projectSpecific（不是配额）", () => {
-    // 本轮实测到的形态：#256 / #257 主应用零记录，docs-site 都在 30 秒内上线
+  it("同一 sha 在**别的环境**上线了 ⇒ projectSpecific（只报「不同步」，**不下原因的结论**）", () => {
+    // 实测形态：#256 / #257 主应用零记录，docs-site 分别在 28 秒 / 35 秒内建好。
+    // ⚠️ 用例名原先写的是「（不是配额）」——那是**用未验证前提做的排除法**，
+    // 同一轮里被 #258 否证（它合并 2 分 11 秒后就上线了，无人做任何修复）。
+    // 见 `diagnoseNeverDeployed` 的注释：本函数只报观察，不缩小候选。
     const rows = [observation({ pr: 257, sha: "75b011ba", deployedAt: null })];
     const [item] = diagnoseNeverDeployed(
       rows,
@@ -321,7 +324,7 @@ describe("diagnoseNeverDeployed()：跨环境对比", () => {
     expect(item.otherEnvironments[DOCS]).toBe("2026-10-13T09:01:33Z");
   });
 
-  it("同一 sha 在**任何**环境都没记录 ⇒ 不是 projectSpecific（该先看配额）", () => {
+  it("同一 sha 在**任何**环境都没记录 ⇒ 不是 projectSpecific（连「不同步」这个观察都不成立）", () => {
     const rows = [observation({ pr: 260, sha: "deadbeef", deployedAt: null })];
     const [item] = diagnoseNeverDeployed(rows, [dep("cafe1234", DOCS, "2026-10-13T09:01:33Z")], MAIN);
     expect(item.projectSpecific).toBe(false);
