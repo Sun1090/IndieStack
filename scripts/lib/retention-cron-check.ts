@@ -10,10 +10,14 @@
  *
  * 退出码：0 通过 / 1 发现问题 / 2 用法错误。
  *
- * **为什么静态审计与真实探测分成两步**：查 `pg_extension` 需要真 Postgres 连接，
- * 而本机没有 DB 密码（这正是 B04 的阻塞，见 `docs/operations/environments.md`）。
- * 把两者分开是为了让**静态审计永远可跑**——
+ * **为什么静态审计与真实探测分成两步**：查 `pg_extension` 需要一个真连接，
+ * 而静态审计在任何机器上都能跑。把两者分开是为了让**静态审计永远可跑**——
  * 一个需要凭据才跑得起来的检查，迟早会因为没人有凭据而长期不跑。
+ *
+ * ⚠️ 本文件头原先写的理由是「本机没有 DB 密码，这正是 B04 的阻塞」——**那个前提是错的**
+ * （2026-10-13 实测 Management API 用仓库里的令牌就能执行 SQL，见
+ * `docs/operations/environments.md` 与 `pnpm ops:cloud-sql-probe`）。
+ * 分成两步的理由仍然成立，但它**不是**「拿不到凭据」，而是「让不需要凭据的那一半永远可跑」。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -91,7 +95,12 @@ function reportProbe(args) {
 
   if (!probe.probed) {
     console.log(`\n⚠️ 未探测 pg_cron：${probe.reason}`);
-    console.log("   这**不等于「pg_cron 已安装」**——要读真库需要 DB 密码（B04 的阻塞）。");
+    // 「未探测」既不等于「没装」也不等于「装了」；而它**也不是**「查不了」——
+    // 本仓库一度把这句写成「要读真库需要 DB 密码」，那个前提已于 2026-10-13 被否证。
+    console.log(
+      "   这**不等于「pg_cron 已安装」**，也不等于「查不了」：" +
+        "生产实况可走 `pnpm ops:cloud-sql-probe`（HTTP，CI 里有令牌）或本命令配 --db-url / --container。",
+    );
     return;
   }
   console.log(

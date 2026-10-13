@@ -9512,3 +9512,62 @@
 - 下一项：`docs/operations/codeql-alert-triage.md` 里「本地无法复现」类陈述，
   用同样的匿名 API 路径复核一遍。
 - 更新时间：2026-10-14 01:00（UTC+8）。
+
+## 2026-10-14 — 生产 pg_cron 的答案 14 天前就躺在仓库里，而我在 10-06 写下了「仍未核实」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/retention-cron-dead-code`（base `48da611b` = main + #260）。
+- 状态：DONE。
+- 为什么做：#260 的下一项是「用同样的匿名 API 路径复核 `codeql-alert-triage.md` 里『本地无法复现』类陈述」。
+  扫「取不到 / 查不了 / 仍未核实」时发现 `environments.md` 的 pg_cron 那一行写着
+  「生产是否安装**仍未核实（需 DB 密码）**」。
+- **两层错误，第二层比第一层严重**：
+  1. **答案早就在仓库里。** `docs/db/retention.md:79`（2026-09-21 复核，commit `9ab8c154`）
+     就写着**同一个 ref** `ntqggnztzvoavjbiillb` 的 `pg_extension` 清单里没有 `pg_cron`，
+     而 `environments.md` 自己下面一节把这个 ref 称为「**生产 Supabase 项目**」
+     （本轮用 `.env.local` 的 host 前缀与 CI 的 `SUPABASE_PROJECT_REF` 逐字比对，**确认同一个项目**）。
+     ⇒ 「仍未核实」是答案入库 **14 天之后**（`2b3551d0`，2026-10-06）写下的，**写之前没搜过仓库**。
+     **根因**：那份记录只写结论、**没写可复跑的命令**，所以 14 天后没人能判断它是否仍然成立，只能退回「未知」。
+     ⇒ **「文档已写」不等于「证据可复核」**——这条本仓库已写进 `release-audit-template.md`，这次轮到它自己踩。
+  2. **「需 DB 密码」这个前提本身也错了**（2026-10-13 已被同一个端点否证，run `38334026946`）。
+- 做了什么：
+  1. `PROBE_PLAN` 加 `PG_CRON_INSTALLED`（走 HTTP + 仓库已有的 `SUPABASE_ACCESS_TOKEN`）。
+     **刻意只问「装没装」，不问「注册了几个调度」**：后者要读 `cron.job`，
+     而它在没装时根本不存在 ⇒ 报 `relation does not exist`，与「查询被拒」无法区分。
+  2. **生产实况已取到**：run `38442279610`（本分支 `workflow_dispatch`）回
+     `pg_cron = NOT_INSTALLED` ⇒ `environments.md` 那一行从「未知」变成实测结论。
+  3. **顺手修掉一个自相矛盾的标签**：那次跑出来是 `❌ [PG_CRON_INSTALLED] REJECTED_SQL (HTTP 201)`
+     ——查询**执行成功**、服务端回 201 并给出答案，却标成「SQL 被拒绝」。
+     ⇒ 新增 `CONTRADICTED` 结论 + `markOf()` 打 `❗`（不是 ❌）。**退出码仍留 1**：
+     「是答案」不等于「是好消息」，`read_only` 那步回 `off` 意味着第二层防护是装饰性的，压成 0 才是真藏问题。
+  4. ⚠️ **测出一个覆盖缺口**：把 `readOnlyFlagIneffective` 的判据改成永不匹配的字符串 ⇒
+     **全套用例全绿**（几条不写在这里，那是会漂移的数）。而它承载的恰是
+     「本探测对自己的安全声明是否成立」。⇒ 补 2 条用例 + 重跑同一变异确认现在会红。
+     **这正是本仓库那条纪律说的：变异全绿时第一怀疑可达性，而不是「代码是对的」。**
+  5. 删掉 `scripts/check-retention-cron.js` 里 **93 行永不执行的旧实现**（独立 commit）：
+     `process.exit()` 无条件 ⇒ 下面整段 `main()` 到不了；而它 `require` 的
+     `./lib/retention-cron-audit.cjs` **不存在**、`fs` / `execFileSync` 也没 import
+     ⇒ **它不但死，而且坏**。实测 `no-unreachable` 抓不到（`process.exit(1); const a = 1;` 零告警）
+     ⇒ 教训不是「lint 配漏了」，是 **lint 在这件事上没有判断力**。
+  6. `retention-cron-audit.ts` / `retention-cron-check.ts` 的注释与「未探测」输出语同步去掉
+     「需要 DB 密码」，但**保留**「让不需要凭据的那一半永远可跑」这条仍然成立的理由。
+- **本轮自己犯的另一个错（当场否证）**：第一版把影响写成「生产若没装 pg_cron ⇒ 保留期一行都不删」，
+  而 `docs/db/retention.md` 写明主执行者是 `/api/cron/retention`，pg_cron 只是**第二个可选调度器**。
+  我读了那一行的**标题**就推断了影响面，没打开正文——**违反的对象是本仓库自己的文档**。
+  措辞已订正，并写成断言钉住（输出必须含「这不等于保留期失效」、且不得出现 `❌ [PG_CRON_INSTALLED]`）。
+- 验证命令和结果：
+  - `node scripts/check-cloud-sql-probe.js` ⇒ exit 2（无令牌的 dry-run），
+    `守卫审计通过：8 条语句全部可证只读`。
+  - 生产：run `38442279610` ⇒ 8 步中 7 步 EXECUTED、`PG_CRON_INSTALLED` CONTRADICTED、exit 1。
+  - `pnpm check:all` ⇒ exit 0，`282 files / 3531 tests`（本条 +6：判定层 5 + IO 层 1）。
+  - 两次局部变异各自确认会红：新判据（改 `return []`）、`readOnlyFlagIneffective`（改永不匹配）。
+  - `pnpm falsify:rules` ⇒ exit 0，末行 **82/82**（登记表条数未变：新判据走的是
+    `summarizeProbe` 那条既有登记；本轮另做两次局部变异单独确认新分支会被抓到）。
+- 阻塞 / 风险 / 回滚：
+  - **无新增阻塞**。生产没装 pg_cron **不是故障**：保留期由 `/api/cron/retention` 执行；
+    要判那条得看 `cron.retention.completed`，本条**没有**替它下结论。
+  - 风险：`CONTRADICTED` 是新枚举值，任何按 outcome 字符串做告警匹配的外部脚本需要同步
+    （仓库内没有这种脚本，`markOf` 与退出码都已改）。
+  - 回滚 = revert 本 PR 的三个 commit。
+- 下一项：把「一次性读出的结论必须附可复跑命令」这条写进 `release-audit-template.md`
+  的核对规则（本轮的根因正是缺它），并检查该模板里是否已有等价条款。
+- 更新时间：2026-10-14 02:30（UTC+8）。

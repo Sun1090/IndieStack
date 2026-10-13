@@ -226,7 +226,7 @@ describe("assertProbeSqlReadOnly：拒绝（失败封闭）", () => {
 });
 
 describe("auditProbePlan", () => {
-  it("内置计划四条全部可证只读", () => {
+  it("内置计划全部可证只读（条数不写进用例名：它会随计划增删而过期）", () => {
     expect(auditProbePlan()).toEqual({ ok: true, rejections: [] });
   });
 
@@ -265,7 +265,9 @@ describe("auditProbePlan", () => {
       on,
       response({ json: [{ transaction_read_only: "off" }] }),
     );
-    expect(contradicted.outcome).toBe("REJECTED_SQL");
+    // CONTRADICTED 而不是 REJECTED_SQL：语句执行成功了（HTTP 201），
+    // 只是回了一个与期望相反的值。把它标成「被拒绝」是自相矛盾的标签。
+    expect(contradicted.outcome).toBe("CONTRADICTED");
     expect(contradicted.evidence).toContain("[FIELD_CONTRADICTED]");
   });
 
@@ -422,7 +424,7 @@ describe("classifyProbeResponse", () => {
 describe("summarizeProbe / probeExitCode", () => {
   const allExecuted = PROBE_PLAN.map((entry) => verdict({ id: entry.id }));
 
-  it("五条都跑通 ⇒ 各能力结论都为真，退出码 0", () => {
+  it("计划全部跑通 ⇒ 各能力结论都为真，退出码 0", () => {
     const report = summarizeProbe(allExecuted);
     expect(report.readOnlyEndpointWorks).toBe(true);
     expect(report.writeEndpointWorks).toBe(true);
@@ -570,5 +572,73 @@ describe("summarizeProbe / probeExitCode", () => {
     expect(report.multiStatementFullyExecutes).toBe(false);
     // 「没测」不等于「跳过了」：后者是一个明确的坏结论，不能由缺步推出。
     expect(report.multiStatementSkipsEarlier).toBe(false);
+    // 同理，pg_cron 的「没测到」两个布尔都为 false，不偏向任何一侧。
+    expect(report.pgCronInstalled).toBe(false);
+    expect(report.pgCronMissing).toBe(false);
+  });
+
+  it("pg_cron 回 NOT_INSTALLED ⇒ pgCronMissing（周调度未注册，**不**推断保留期失效）", () => {
+    const pgCron = step("PG_CRON_INSTALLED");
+    expect(pgCron.sql).toContain("pg_catalog.pg_extension");
+    // 只问「装没装」，不碰 cron.job：那张表在未安装时根本不存在，
+    // 报出的 `relation does not exist` 与「查询被拒」无法区分。
+    expect(pgCron.sql).not.toContain("cron.job");
+    const verdictReport = classifyProbeResponse(
+      pgCron,
+      response({ json: [{ pg_cron: "NOT_INSTALLED" }] }),
+    );
+    expect(verdictReport.outcome).toBe("CONTRADICTED");
+    const report = summarizeProbe([verdictReport]);
+    expect(report.pgCronMissing).toBe(true);
+    expect(report.pgCronInstalled).toBe(false);
+    // 「未安装」是**答案**而不是故障，所以退出码是 1（被明确拒绝）而不是 2（不知道）。
+    expect(probeExitCode(report)).toBe(1);
+  });
+
+  it("read_only 那一步回 off ⇒ readOnlyFlagIneffective，且它是坏答案而不是「不知道」", () => {
+    // ⚠️ 这条用例是**变异测出来的**：我把 summarizeProbe 里这个字段的判据改成一个
+    // 永不匹配的字符串，全套 88 条**全绿** ⇒ 这个字段此前没有任何覆盖。
+    // 而它承载的是本探测**对自己安全声明的核验**：文档宣称打「能写」端点有两层防护，
+    // 第二层就是 read_only 字段。它坏了而没人知道，比没写这个字段更糟。
+    const contradicted = verdict({
+      id: "READ_ONLY_FLAG_ON",
+      outcome: "CONTRADICTED",
+      evidence: "[FIELD_CONTRADICTED] 期望 transaction_read_only=on，实际 off",
+    });
+    const report = summarizeProbe([contradicted]);
+    expect(report.readOnlyFlagIneffective).toBe(true);
+    expect(report.readOnlyFlagEffective).toBe(false);
+    // 退出码 1：它是答案，但也是坏答案，不能被压成 0。
+    expect(probeExitCode(report)).toBe(1);
+  });
+
+  it("read_only 那一步因别的原因被拒 ⇒ 不算「字段是装饰性的」", () => {
+    // 与 pg_cron 那条同理：把任何失败都读成「防护失效」是一个具体的假结论。
+    const report = summarizeProbe([
+      verdict({ id: "READ_ONLY_FLAG_ON", outcome: "REJECTED_SQL", status: 400, evidence: "syntax error" }),
+    ]);
+    expect(report.readOnlyFlagIneffective).toBe(false);
+    expect(report.readOnlyFlagEffective).toBe(false);
+  });
+
+  it("pg_cron 回 INSTALLED ⇒ pgCronInstalled，且不带 read_only 之外的额外端点", () => {
+    const pgCron = step("PG_CRON_INSTALLED");
+    expect(pgCron.endpoint).toBe("query");
+    expect(pgCron.readOnlyFlag).toBe(true);
+    const report = summarizeProbe([verdict({ id: "PG_CRON_INSTALLED" })]);
+    expect(report.pgCronInstalled).toBe(true);
+    expect(report.pgCronMissing).toBe(false);
+  });
+
+  it("pg_cron 读不到值 ⇒ 两个布尔都 false 且算「不知道」（退出码 2）", () => {
+    const verdictReport = classifyProbeResponse(
+      step("PG_CRON_INSTALLED"),
+      response({ json: [] }),
+    );
+    expect(verdictReport.outcome).toBe("UNKNOWN");
+    const report = summarizeProbe([verdictReport]);
+    expect(report.pgCronInstalled).toBe(false);
+    expect(report.pgCronMissing).toBe(false);
+    expect(probeExitCode(report)).toBe(2);
   });
 });

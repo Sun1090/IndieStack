@@ -301,7 +301,8 @@ export type ProbeStepId =
   | "MULTI_STATEMENT_FIRST_ERROR"
   | "SINGLE_DO_BLOCK"
   | "READ_ONLY_FLAG_ON"
-  | "READ_ONLY_FLAG_OFF";
+  | "READ_ONLY_FLAG_OFF"
+  | "PG_CRON_INSTALLED";
 
 /** 这一步「成功」长什么样。DO 块那条**期望服务端报错**——报错才是它跑通了的证据。 */
 export type ProbeExpectation =
@@ -425,6 +426,41 @@ export const PROBE_PLAN: readonly ProbeStep[] = [
     expectation: { kind: "fieldEquals", column: "transaction_read_only", value: "off" },
     question: "对照组：不带该字段时服务端的默认读只读状态",
   },
+  {
+    /**
+     * **生产到底装没装 pg_cron**——回答的是「迁移里那组周调度有没有注册」。
+     *
+     * 先记一条**本步骤写作过程中犯的错**，它比这条判据本身更值得读：
+     * 我第一版在这里写的是「生产若是同一形状，模板承诺的保留期就是空话」，
+     * 而 `docs/db/retention.md` 早就写明 **pg_cron 现在只是第二个可选调度器**，
+     * 主执行者是 `/api/cron/retention`（每天 05:00 UTC，用 service_role 调同一批迁移函数）。
+     * ⇒ 「没装 pg_cron」**不等于**「保留期一行都不删」。
+     * 我读了那一行文档的**标题**（「pg_cron（保留期调度）」）就推断了它的影响面，
+     * 没打开正文——这是本仓库「引用外部口径前必须打开原文」那条纪律的反面教材，
+     * 而且这次违反的对象是**本仓库自己的文档**。
+     *
+     * 那这条还剩什么价值？两件事，都更小但都真实：
+     *   1. `docs/operations/environments.md` 那一行长期写着「生产是否安装**仍未核实
+     *      （需 DB 密码）**」，而「执行 SQL 需要 DB 密码」**已于 2026-10-13 被同一个端点否证**
+     *      （run `38334026946`，七条全 EXECUTED）——那是 B04 的阻塞理由被写错的第三版。
+     *      ⇒ 属于「前提修好了、依赖它的那句结论留在原地」这一类（刻意不报「第几处」：这类残留没有统一台账）。
+     *   2. 装了 pg_cron 意味着**两条链路都在跑**（幂等，见 retention.md），
+     *      那是要知道的运维事实；没装则说明周调度那一半从未注册——**它不是故障，
+     *      但也不该继续被写成「未知」**。
+     *
+     * 刻意只问「装没装」，不问「注册了几个调度」：后者要读 `cron.job`，
+     * 而它**在没装时根本不存在** ⇒ 报的是 `relation does not exist`，
+     * 与「查询被服务端拒绝」无法区分。**一个会产生歧义读数的判据不如没有判据。**
+     */
+    id: "PG_CRON_INSTALLED",
+    sql:
+      "select case when exists(select 1 from pg_catalog.pg_extension where extname='pg_cron') " +
+      "then 'INSTALLED' else 'NOT_INSTALLED' end as pg_cron",
+    endpoint: "query",
+    readOnlyFlag: true,
+    expectation: { kind: "fieldEquals", column: "pg_cron", value: "INSTALLED" },
+    question: "生产有没有装 pg_cron（不装 ⇒ 迁移里那组周调度从未注册，不代表保留期失效）",
+  },
 ];
 
 /** 守卫审计：整份计划必须全部可证只读，否则一条都不许发。 */
@@ -462,6 +498,21 @@ export type ProbeOutcome =
   | "EXECUTED"
   | "REFUSED_AUTH"
   | "REJECTED_SQL"
+  /**
+   * **语句执行成功、并回了一个与期望相反的值**——它不是「被拒绝」。
+   *
+   * 这个结论是本轮实测逼出来的：生产探测（run `38442279610`）把 pg_cron 那一步打成
+   * `[PG_CRON_INSTALLED] REJECTED_SQL (HTTP 201)`，而事实是查询**跑通了**、
+   * 服务端回 `201` 并给出 `pg_cron=NOT_INSTALLED`。
+   * 一个「HTTP 201 + REJECTED_SQL」的组合是自相矛盾的标签，
+   * 它会把「问到了一个答案」显示成「探测坏了」——
+   * 而读日志的人（本轮就是我）会先怀疑脚本而不是先读结论。
+   *
+   * ⚠️ 退出码仍然是 1：**「这是答案」不等于「这是个好消息」**。
+   * `read_only` 那一步回 `off` 意味着本探测宣称的第二层防护是装饰性的，
+   * 那必须让人来看；把它压成 0 才是真的藏问题。
+   */
+  | "CONTRADICTED"
   | "RATE_LIMITED"
   /** 读不懂：非预期状态码、形状变了、或传输层失败。 */
   | "UNKNOWN";
@@ -555,7 +606,7 @@ function classifyFieldStep(step: ProbeStep, response: ProbeResponse): ProbeVerdi
     // 读到了值、且与期望相反 ⇒ 这是确定结论，不是「不知道」。
     return {
       id: step.id,
-      outcome: "REJECTED_SQL",
+      outcome: "CONTRADICTED",
       status: 201,
       evidence: withElapsed(
         step,
@@ -709,6 +760,17 @@ export interface ProbeReport {
   readOnlyFlagEffective: boolean;
   /** 服务端明确回了一个与期望相反的值 ⇒ 字段是装饰性的（确定结论，不是未知）。 */
   readOnlyFlagIneffective: boolean;
+  /**
+   * 生产装了 pg_cron。**只有真读到 `INSTALLED` 才为 true。**
+   *
+   * 与 `pgCronMissing` 是两个字段而不是一个三态值，是为了沿用本模块既有形状
+   * （每个能力一个布尔，缺步时两个都 false）；但**读代码的人要注意**：
+   * 两者都 false 的意思是「没测到」，不是「装没装都未知所以无所谓」——
+   * 那种情况下 `hasUnknown` 或退出码 1 会出声。
+   */
+  pgCronInstalled: boolean;
+  /** 服务端明确回了 `NOT_INSTALLED` ⇒ 迁移里那组 pg_cron 周调度在生产上从未注册。 */
+  pgCronMissing: boolean;
   /** 有没有任何一步是「不知道」。 */
   hasUnknown: boolean;
 }
@@ -722,6 +784,7 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
   const multi = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT");
   const firstError = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT_FIRST_ERROR");
   const flagOn = verdicts.find((verdict) => verdict.id === "READ_ONLY_FLAG_ON");
+  const pgCron = verdicts.find((verdict) => verdict.id === "PG_CRON_INSTALLED");
   return {
     verdicts,
     readOnlyEndpointWorks: outcomeOf(verdicts, "READ_ONLY_ENDPOINT") === "EXECUTED",
@@ -733,8 +796,11 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
     // 这一步的判据本身就是「报错才算跑通」，所以 EXECUTED 与「前序执行了」是同一件事。
     multiStatementFullyExecutes: firstError?.outcome === "EXECUTED",
     readOnlyFlagEffective: flagOn?.outcome === "EXECUTED",
-    readOnlyFlagIneffective:
-      flagOn?.outcome === "REJECTED_SQL" && flagOn.evidence.includes("FIELD_CONTRADICTED"),
+    // 两条都改判 CONTRADICTED：它们的前提是「语句执行成功、回了一个相反的值」，
+    // 不是「语句被服务端拒绝」。判据文本仍带 FIELD_CONTRADICTED 前缀供日志核对。
+    readOnlyFlagIneffective: flagOn?.outcome === "CONTRADICTED",
+    pgCronInstalled: pgCron?.outcome === "EXECUTED",
+    pgCronMissing: pgCron?.outcome === "CONTRADICTED",
     multiStatementSkipsEarlier:
       firstError?.outcome === "REJECTED_SQL" &&
       firstError.evidence.includes("FIRST_STATEMENT_SKIPPED"),
@@ -745,13 +811,17 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
 }
 
 /**
- * 退出码：0 = 计划全部满足判据；1 = 至少一步被明确拒绝（那是**答案**，不是故障）；
- * 2 = 有任何一步「不知道」。**未知不算通过**，也不与「被拒」混为一谈。
+ * 退出码：0 = 计划全部满足判据；1 = 至少一步给出了**坏答案**
+ * （被明确拒绝，或执行成功但回了一个与期望相反的值）；2 = 有任何一步「不知道」。
+ *
+ * **未知不算通过**，也不与「被拒」混为一谈。
+ * 而 CONTRADICTED 也留在 1 里：它不是脚本坏了，但也不是好消息——
+ * 「read_only 字段其实是装饰性的」这种结论必须有人来看，压成 0 才是真藏问题。
  */
 export function probeExitCode(report: ProbeReport): number {
   if (report.hasUnknown) return 2;
-  const refused = report.verdicts.some((verdict) =>
-    ["REFUSED_AUTH", "REJECTED_SQL"].includes(verdict.outcome),
+  const badAnswer = report.verdicts.some((verdict) =>
+    ["REFUSED_AUTH", "REJECTED_SQL", "CONTRADICTED"].includes(verdict.outcome),
   );
-  return refused ? 1 : 0;
+  return badAnswer ? 1 : 0;
 }
