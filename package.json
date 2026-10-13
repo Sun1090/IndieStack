@@ -88,6 +88,7 @@
     "ops:deploy-freshness": "node scripts/check-deploy-freshness.js",
     "ops:schema-drift": "node scripts/check-schema-drift.js",
     "ops:migration-status": "node scripts/check-migration-status.js",
+    "ops:cloud-sql-probe": "node scripts/check-cloud-sql-probe.js",
     "ops:codeql-alerts": "node scripts/check-codeql-alerts.js",
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
