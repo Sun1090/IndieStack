@@ -174,7 +174,7 @@
    前置判定已固化：`pnpm drills:preflight --drill B03`，2026-10-05 起不必再临场回忆缺哪个凭据）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
-9. B04 （**未完成：不再是「缺外部权限」——缺口 (a) 已于 2026-10-13 做完，只剩人工授权**；
+9. B04 （**未完成：不再是「缺外部权限」——缺口 (a) 于 2026-10-13 做完两份中的一份，剩第二份 + 人工授权**；
    阻塞原因已于 2026-10-13 **第四次**改写，见下；
    前置判定已固化：`pnpm drills:preflight --drill B04`）
    云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
@@ -198,7 +198,7 @@
          **不是手数**——原先登记的「5 条」是手数漏了行尾那条 `\gset`，见下）
          （`\set` / `\echo` / `\gset`），HTTP 通道**根本送不过去**，
          要先照 `retention-cleanup.single-do.sql` 的做法压成单条语句并在本地跑通。
-         **【2026-10-13 已做完】**派生版 `docs/operations/drills/account-erasure.single-do.sql`
+         **【2026-10-13 做完两份中的一份】**派生版 `docs/operations/drills/account-erasure.single-do.sql`
          已入库：本地栈实测 `failures=0 assertions=20`、`auth.users` 与 `contact_messages`
          各剩 0 行（回滚干净）。断言标签与正本**逐条同序**由
          `src/lib/drills/erasure-drill-parity.test.ts` 机器核对（4 条用例）。
@@ -213,7 +213,16 @@
          `B04_AUTHORIZE_PRODUCTION_WRITE` 变量：它不是密钥，是一次显式同意，
          刻意做成「没有它执行器就拒绝启动」，这样「谁都没同意过但脚本自己跑了」
          在结构上不可能发生。
-   - **别把这次更正读成「B04 已解锁」**：解锁的是「通道存在且不需要密码」，
+      - ⚠️ **(a) 不是一份，是两份**：本条正文写的是「把本地**两份**
+       `docs/operations/drills/*.sql` 在云端跑一遍」。保留期那份的派生版
+       `retention-cleanup.single-do.sql` 由 **PR #236** 产出，**至今没进 main**
+       （`git ls-tree origin/main` 实测只有两份正本，没有 `.single-do`）。
+       所以 `preflight.ts` 的 B04 下现在挂着**两条** `file:` 前置，
+       少一份就不算 ready——`preflight.test.ts` 有一条用例专门钉「SQL 型前置必须覆盖两份」。
+       为什么这条值得单独立用例：只登记一份的后果是
+       **「有人给了人工授权 ⇒ preflight 报 ready=true ⇒ 执行器到第二份才发现没东西可跑」**，
+       而 ready=true 正是让人按下生产写按钮的那个信号。
+  - **别把这次更正读成「B04 已解锁」**：解锁的是「通道存在且不需要密码」，
      不是「可以开跑」。v0.12.0 的 tag 前置里 B04 仍计未完成。
      【同日稍后】(a) 做完之后这句话更要留着：现在「送得出去」也成立，
      B04 **仍然**未完成——缺的是人工授权，而授权不是进度，是别人的决定。

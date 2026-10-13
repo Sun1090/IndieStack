@@ -80,12 +80,13 @@ describe("evaluateDrill", () => {
         "SUPABASE_ACCESS_TOKEN",
         "B04_AUTHORIZE_PRODUCTION_WRITE",
         "file:docs/operations/drills/account-erasure.single-do.sql",
+        "file:docs/operations/drills/retention-cleanup.single-do.sql",
         "NEXT_PUBLIC_SUPABASE_URL",
       ),
     );
     expect(full.ready).toBe(true);
 
-    // 只缺那一份还没转换的正本时，缺口要指向它，而不是含糊地说「缺凭据」。
+    // 两份都缺时，缺口指向**列在前面的那一份**（擦除）。
     const withoutArtifact = evaluateDrill(
       B04,
       all(
@@ -98,6 +99,45 @@ describe("evaluateDrill", () => {
     const unmet = withoutArtifact.requirements.find((r) => !r.satisfied)!;
     expect(unmet.source).toContain("account-erasure.single-do.sql");
     expect(unmet.remedy).toContain("retention-cleanup.single-do.sql");
+  });
+
+  it("B04 的 SQL 型前置**必须覆盖两份**——只登记一份会让 ready 说谎", () => {
+    /**
+     * 这条用例是本轮补的，起因很具体：缺口 (a) 做完之后，我只登记了擦除那一份。
+     * 而 B04 的正文写的是「把本地**两份** `docs/operations/drills/*.sql` 在云端跑一遍」。
+     *
+     * 只登记一份的后果：**有人给了人工授权，preflight 报 `ready=true`，
+     * 执行器到第二份文件时才发现没东西可跑。**
+     * 那是「把未满足的报成已满足」——比反过来危险，因为它会触发一次生产写。
+     */
+    const sqlSources = B04.requirements
+      .map((requirement) => requirement.source)
+      .filter((source) => source.startsWith("file:docs/operations/drills/"));
+    expect(sqlSources).toHaveLength(2);
+    expect(sqlSources).toContain(
+      "file:docs/operations/drills/account-erasure.single-do.sql",
+    );
+    expect(sqlSources).toContain(
+      "file:docs/operations/drills/retention-cleanup.single-do.sql",
+    );
+
+    // 只给一份文件时**不算 ready**——这条断言才是防重演的机关
+    const onlyOne = evaluateDrill(
+      B04,
+      all(
+        "SUPABASE_ACCESS_TOKEN",
+        "B04_AUTHORIZE_PRODUCTION_WRITE",
+        "file:docs/operations/drills/account-erasure.single-do.sql",
+        "NEXT_PUBLIC_SUPABASE_URL",
+      ),
+    );
+    expect(onlyOne.ready).toBe(false);
+    const unmet = onlyOne.requirements.find((r) => !r.satisfied)!;
+    expect(unmet.source).toContain("retention-cleanup.single-do.sql");
+    // 而且 remedy 要指回**唯一那条正确的路**（合并 #236），
+    // 不能让人就地复制一份——两份会各自漂移。
+    expect(unmet.remedy).toContain("#236");
+    expect(unmet.remedy).toContain("不要为了让判定变绿而把这条删掉");
   });
 
   it("B04 不再需要数据库密码：那次读数否证了它（2026-10-13）", () => {

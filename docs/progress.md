@@ -8999,3 +8999,55 @@
   **解释是廉价的，读数才是贵的**——以后写机制前先跑一组对照，跑不出来就只写现象。
 - 下一项：issue #245 结案评论已发（同分支）；补跑 `falsify:rules` 全量并 commit。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — B04 的 SQL 前置我只登记了一份，而 `ready=true` 正是让人按下生产写按钮的信号
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（续前几条，同进 PR #255）。
+- 状态：DONE。
+- 为什么做：做完缺口 (a) 的第一份之后，我在 `preflight.ts` 只挂了
+  `file:…account-erasure.single-do.sql` 一条前置。
+  而 B04 的正文一直写着「把本地**两份** `docs/operations/drills/*.sql` 在云端跑一遍」。
+  保留期那份的派生版 `retention-cleanup.single-do.sql` **仍在 PR #236 里没进 main**——
+  `git ls-tree -r --name-only origin/main | grep drills/` 实测只有两份**正本**，
+  没有任何 `.single-do` 文件。
+- **这条的价值全在后果的方向**：只登记一份 ⇒ 有人给了 `B04_AUTHORIZE_PRODUCTION_WRITE`
+  ⇒ preflight 报 `ready=true` ⇒ 执行器到第二份文件时才发现没东西可跑。
+  `preflight.ts` 的注释里明写「注意它只说『可以跑了』，不说『跑过了』」——
+  而 `ready=true` 就是**让人按下生产写按钮的那个信号**。
+  所以这是「把未满足的报成已满足」，与它相反的错误（把已满足报成未满足）
+  只是挡住一条演练，代价差一个量级。
+  **我上一轮刚在 `fileRequirementPaths` 的注释里写下过后者那个坑，
+  这一轮造的是它更贵的镜像。**
+- 完成内容：
+  1. `preflight.ts`：B04 下新增第二条 `file:` 前置（retention 那份），
+     remedy 指回**唯一正确的路**——合并 PR #236（它同时带着 034 的应用与两条 cron 修复，
+     顺序不能颠倒），并明写「不要为了让判定变绿而删掉这条，也不要就地复制一份」。
+  2. `blockedReason` 补一句「**(a) 只做了一半**」，并把「别把 (a) 做完读成已解锁」
+     那句的分寸跟着事实挪位。
+  3. `preflight.test.ts` 新增一条用例：SQL 型前置**数量必须是 2**、
+     两条路径各自点名、**只给一份时不算 ready**、缺口指向 retention、
+     remedy 含 `#236` 与那句禁令。
+     原来那条「按键名判定」的用例补上第二份文件后仍然测的是机制（`full.ready` 为 true）。
+  4. 活文本四处跟着改准：roadmap B04（标题 + (a) 小节 + 新增一条 ⚠️ 子项）、
+     `environments.md` 的外部依赖表、exit-report 与 runbook 的**同日指针**（快照原文不动）。
+- 验证命令和结果：
+  - `pnpm drills:preflight --drill B04` 实跑（IO 层，非单测）⇒
+    `✓ file:…account-erasure.single-do.sql`、
+    `· file:…retention-cleanup.single-do.sql ← 缺`、整体 exit 1。
+    **这条前置能被机器判，所以它不需要人记住。**
+  - `node node_modules/vitest/vitest.mjs run src/lib/drills` ⇒ 4 files / 42 passed；
+  - `pnpm check:all` ✅ **280 files / 3481 tests**（+1 条用例）；
+  - `check:doc-links` 153 条内部链接全可达。
+- **同一条 commit 里另一个新读数**：PR #255 的 14 项 checks **全 pass，含两个 Vercel 项**
+  （`gh pr checks 255 --json name,bucket` 实测 14/14 pass）。
+  这是 `environments.md` Vercel 配额那行的**第 4 个读数**，方向与前三次相反
+  （#251 全 pass → #252 主应用 fail → #253 两项全 fail → **#255 两项全 pass**）。
+  ⚠️ **但它仍不能判「生产是否也被挡住」**：`pnpm ops:deploy-freshness` 同时实测
+  生产仍停在 `b2ffab71`（#250），落后 `origin/main`（`d6246893`）**4 个提交**——
+  比 #254 记录时的 3 又多了 1。preview 池放行 ≠ 生产跟上。
+  所以那行文档里「解除需账户侧动作」的判据**没被这次读数推翻**，
+  而「生产是否也被挡住 = 未知」继续按未知记。
+- 阻塞 / 风险 / 回滚：无新增阻塞（B04 仍缺 retention 那份进 main + 人工授权）。
+  回滚 = revert 本 commit。
+- 下一项：把第 4 个 Vercel 读数写进 `environments.md` 那行（活文本，直接改准）。
+- 更新时间：2026-10-13（UTC+8）。

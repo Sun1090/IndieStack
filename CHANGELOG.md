@@ -10,6 +10,26 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **B04 的 SQL 型前置从 1 条补到 2 条——只登记一份会让 `ready` 说谎。**
+  做完缺口 (a) 的第一份之后，我在 `preflight.ts` 里只挂了
+  `file:...account-erasure.single-do.sql` 一条。而 B04 的正文写的是
+  「把本地**两份** `docs/operations/drills/*.sql` 在云端跑一遍」——
+  保留期那份的派生版 `retention-cleanup.single-do.sql` **仍在 PR #236 里没进 main**
+  （`git ls-tree origin/main` 实测：main 上只有两份正本，没有任何 `.single-do`）。
+  - **后果的方向决定了它有多贵**：只登记一份 ⇒ 有人给了
+    `B04_AUTHORIZE_PRODUCTION_WRITE` ⇒ preflight 报 `ready=true` ⇒
+    执行器到第二份文件时才发现没东西可跑。
+    **`ready=true` 正是让人按下生产写按钮的那个信号**，
+    所以这里是「把未满足的报成已满足」，不是相反的良性错误。
+  - `preflight.test.ts` 新增一条用例专门钉「SQL 型前置必须覆盖两份」，
+    并断言只给一份时**不算 ready**、缺口指向 `retention-cleanup.single-do.sql`、
+    remedy 指回**唯一正确的路**（合并 #236）——
+    不许删这条让判定变绿，也不许就地复制一份（两份会各自漂移）。
+  - IO 层实跑复核（`pnpm drills:preflight --drill B04`）：
+    `✓ file:...account-erasure.single-do.sql`（已满足）、
+    `· file:...retention-cleanup.single-do.sql ← 缺`。
+    这条前置**能被机器判**，所以它不需要人记住。
+
 - **`src/lib/drills/raise-format.ts`：plpgsql `RAISE` 的 `%` 不是「格式串里的字面百分号」——
   每一个裸 `%` 都是占位符。** 起因是我在上一版注释里写下的解释**是错的**，
   本轮实测把它否证了（每条读数都可在本地栈重跑）：

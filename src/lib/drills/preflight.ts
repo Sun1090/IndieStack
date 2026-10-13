@@ -117,6 +117,9 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       "那个 6 由 `src/lib/drills/psql-meta.ts` 量；原写法「5 条」是手数，" +
       "漏了行尾那条 `\\gset`——`preflight.test.ts` 里有一条用例把两者对上，" +
       "改正本不改数就会红；\n" +
+      "     **但 (a) 只做了一半**：B04 跑的是**两份** SQL，保留期那份的派生版" +
+      "还在 PR #236 里、**没进 main**。所以这条前置下面还挂着第二条 `file:`，" +
+      "少一份就不算 ready——**「把未满足的报成已满足」在这里会直接触发一次生产写**。\n" +
       "  (b) 这两份 SQL 会真的 insert / update / delete。在云端跑等于**往生产库写**，" +
       "那是人工授权动作——不是我能替谁决定的，也不是脚本该自动做的。\n" +
       "**别把 (a) 做完读成「B04 已解锁」**：做完的是「送得出去」，" +
@@ -158,6 +161,17 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
         source: "NEXT_PUBLIC_SUPABASE_URL",
         purpose: "确认写的是**哪个**项目——演练 SQL 是不可逆的，连错项目等于在错库上擦",
         remedy: "Supabase 项目的 Settings → API",
+      },
+      {
+        source: "file:docs/operations/drills/retention-cleanup.single-do.sql",
+        purpose:
+          "**B04 要跑的是两份 SQL，不是一份**——保留期那份也必须压成单条语句。" +
+          "它由 PR #236 产出，**至今没进 main**，所以这条前置此刻**未满足**。" +
+          "把它漏掉的后果很具体：有人给了 `B04_AUTHORIZE_PRODUCTION_WRITE`，" +
+          "preflight 报 `ready=true`，执行器到第二份文件时才发现没东西可跑。",
+        remedy:
+          "合并 PR #236（它同时带着 034 的应用与两条 cron 的修复，顺序不能颠倒）。" +
+          "不要为了让判定变绿而把这条删掉，也不要就地复制一份——两份会各自漂移。",
       },
     ],
     firstCommand:
