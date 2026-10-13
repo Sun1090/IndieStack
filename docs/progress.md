@@ -9456,7 +9456,7 @@
   - `pnpm type-check` exit 0；`pnpm check:all` exit 0，**282 files / 3521 tests**
     （本轮只改注释、文案与读数，**没加测试，数不该变**——它没变）。
   - `check:progress` 通过（本条为第 194 条）；`check:changelog` / `check:doc-links` exit 0。
-  - `pnpm falsify:rules` 见本条之后的补记（要求工作树干净，故在 commit 后跑）。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**82/82 条判定被证明「测试真的会红」**」（本模块 4 个入口读数 11 / 9 / 1 / 6 条变红；本轮未新增登记，故与上一条同为 82）。要求工作树干净，所以在 commit 后跑；跑完 `git status --porcelain | wc -l` = **0**。
 - 阻塞 / 风险 / 回滚：
   - **仍未定因**（这是刻意保留的状态，不是没做完）：本机无 Vercel 凭据，
     往下需要人去控制台看该项目的 production 分支配置与部署列表 ⇒ 属外部权限。
