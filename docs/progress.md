@@ -8832,3 +8832,222 @@
   教训的形状：**保护规则救了一次，但它是外部兜底，不是我的流程**。
   开工第一件事应该是 `git checkout -b`，而不是等 push 被拒再回头。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — B04 缺口 (a) 做完了：派生版跑通 20/20，而「跑通」这件事本身有两个坑是我自己造的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（base `d6246893` = main + #254）。
+- 状态：DONE（**B04 本身仍 DONE≠完成**：缺口 (b) 的人工授权没取得，派生版也从没在云端跑过）。
+- 为什么做：上一条把规格数对了（6 条元命令），这一条按那份规格做转换。
+  判据从开头就定死：**转换版必须给出与正本同样的 20 条 `actual = expected`**，
+  而不是「看起来能跑」。
+- **先测再写**（六问，全部在本地栈 fresh 连接上实测，答案决定设计）：
+  1. DO 块内 insert、块末 `raise exception` 会回滚吗？⇒ 块内 `before=0 after=1`，块后表里 **0 行**。
+     **单条 DO 块以 raise 结尾 = 自带回滚**，不需要 `begin;` / `rollback;`。
+  2. `execute 'set role service_role'` 在 DO 块里可用吗？⇒ 可用，块内 `current_user=service_role`。
+  3. 切换后能读 temp 表吗？⇒ **`permission denied for table`**。
+     这一条**改变了设计**：正本第 102 行那句「SET ROLE 之后就读不到 temp 表了」说的就是它，
+     `\gset` 的作用是把值**搬到角色之外**。所以派生版用 **plpgsql 变量**，不是照搬 temp 表。
+  4. plpgsql 变量能穿过角色切换吗？⇒ 能（`profiles rows=1`）。
+  5. 块以 raise 结束、没来得及 `reset role`，角色会漏到会话吗？⇒ **不会**（块后 `current_user=postgres`）。
+     ⇒ 报告通道本身就是安全网。
+  6. GUC 通道（`set_config(..., true)`）？⇒ 能穿过切换、随事务回滚。**测过但没用上**，变量更简单。
+- **权限形状是演练对象的一部分，不是噪声**：`pg_proc.proacl` 实测三个函数都是
+  `{postgres=X/postgres, service_role=X/postgres}` ⇒ 派生版保留 **2 开 2 关**，与正本逐字对应。
+  删掉角色切换，演练就变成「postgres 什么都能干」的自证。
+- 完成内容：
+  1. `docs/operations/drills/account-erasure.single-do.sql`（新，228 行）：
+     6 条元命令的处理逐条写在文件头（`\set ON_ERROR_STOP` 删 / 4 条 `\echo` 删 /
+     `\gset` **翻译成变量**）；三段信息性输出搬进报告文本、**刻意不顺手变成断言**
+     （那会让「与正本给出同样的 20 条」这条可比性判据失效）。
+  2. `src/lib/drills/erasure-drill-parity.test.ts`（新，4 条用例）：机器核对派生版与正本
+     「断言标签的**集合与顺序**逐条相同」。文件头那句「改断言请改正本，否则两份会各自漂移」
+     是**承诺**，而本仓库已经为承诺付过一次学费（「结论写进对应 runbook 的执行记录小节」——
+     那个小节根本不存在），所以这里钉住。
+  3. `src/lib/drills/psql-meta.ts`：导出 `stripLineComment`、新增 `stripSqlLineComments`。
+     **复用而不是再手搓一份**——两处各写就会各错一份。
+  4. `preflight.ts`：缺口 (a) 改成「已做完」，但**前置项刻意留着**（它盯的是「派生版还在不在」，
+     删掉的话将来重构把文件删了也没人报警）；`file:` 型前置的 remedy 补上这份的新坑。
+  5. 活文本四处同步：roadmap B04 / `environments.md` 外部依赖表 / exit-report / runbook
+     （后两份是带日期快照，**只加指针不回改**）；`docs/db/retention.md` 新增一节实跑记录。
+- **本轮自己造的错，全部当场抓到**：
+  - `format()` 里的 `%` 陷阱：原写 `'… assertions=20% report=%'`。`%` 后紧跟空格会被当成
+    **带 flag 的转换**，吃掉空格并多消费一个参数。改成 `raise exception 'DRILL-RESULT %', 'failures=' || …`。
+  - parity 用例第一版**没剥注释** ⇒ 把文件头解释文字里的 `execute 'set role service_role'`
+    也数进去（2 数成 3）。而它恰好是唯一一处能证明「角色切换被保留」的证据，多算就是假阳性。
+    修法之外还补了**对照断言**（正本确实有 `\gset drill_`、确实有 2 次 `set role`）——
+    否则「`not.toMatch` 通过」可能只是因为扫错了文件。
+  - 扫描器把 `insert … select 'avatars', …` 的表名字面量当断言标签，数出 **25** 条（真值 20）。
+    现在要求同一行出现 `count(*)`，并用 `not.toContain("avatars")` 钉住这个反例。
+  - `preflight.test.ts` 有一条断言写的是整句字面量（`别把这次更正读成`），
+    我改文案它就红——**那是在保护措辞，不是在保护事实**。换成 `toMatch(/别把[^。]{0,24}读成「B04 已解锁」/)`。
+- **变异核对：6/6 CAUGHT**（python 驱动，逐条把期望值改错 ⇒ `failures=1` 且点名正确标签）。
+  第 7 个变异「`drill_assert` 改成永真」读数仍是 `failures=0`——
+  **这是构造性的，不是缺口，别在文档里说成 SURVIVED**：harness 失效时什么都不记录，
+  所以演练自己的输出**无法**区分「全过」与「没人判」。检测手段在上一层：
+  那 6 条翻转如果全绿，就说明 harness 是装饰性的。已实测「harness 中性化 + 一条翻转 ⇒ `failures=0`」确认这个推理。
+- 验证命令和结果：
+  - 派生版本地实跑 ⇒ `ERROR: DRILL-RESULT failures=0 assertions=20 …report=ALL-20-ASSERTIONS-PASSED`；
+    回滚核对 `auth.users rows left: 0`、`contact rows left: 0`。
+  - `node node_modules/vitest/vitest.mjs run src/lib/drills/{erasure-drill-parity,psql-meta,preflight}.test.ts`
+    ⇒ **31 passed**（parity 4 + psql-meta 7 + preflight 20）。
+  - 全量门禁见本条末尾（`pnpm check:all`）。
+- 阻塞 / 风险 / 回滚：B04 仍**未完成**——缺 `B04_AUTHORIZE_PRODUCTION_WRITE`（人工授权，
+  不是凭据），且派生版从没在云端跑过。风险：正本与派生版从此是两份文件，
+  漂移由 parity 用例拦；回滚 = revert 本 commit（派生版是新增文件，正本未改）。
+- 追加（同一条 commit 内）：**`stripSqlLineComments` 已进 `falsify:rules`，登记表 67 → 68 条**。
+  登记前先实测：中性化它 ⇒ `erasure-drill-parity.test.ts` **2 failed / 2 passed**
+  （`verdict: bites`、`mutationApplied: true`），而 `psql-meta.test.ts` 仍 **7/7 全绿**。
+  ⇒ 这条的 `testFile` 必须指向 parity 套件，不是模块自己的套件——
+  **登记表里「✅ 会红」的语义是「有测试会红」，不是「它自己的测试会红」**。
+  写错目标会让那条证据变成装饰。
+- 下一项：issue #245 结案（结论已在手：限制在 CLI 侧的 extended query protocol，
+  服务端这条端点能吃多语句且全部执行）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — issue #245 结案：那条「未知」不是等出来的，是拿读数换出来的；登记表 67 → 68
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（同上，续前一条）。
+- 状态：DONE。
+- 为什么做：#245 的最后一条评论留了一句**诚实的保留**——
+  「Management API 服务端用什么协议执行，本机无 `SUPABASE_ACCESS_TOKEN` ⇒ 未实测，
+  这一半仍是未知，不折算成结论」。今天它不再是未知：**「本机没有」不等于「取不到」**，
+  那个令牌是 CI 的 repo secret，`gh secret list` 早就看得见它。
+  用 `pnpm ops:cloud-sql-probe` 在 CI 上触发即可，不必等任何人给凭据。
+- 读数（run `38334026946`，`gh run view --log` 复核）：
+  `MULTI_STATEMENT_FIRST_ERROR` ⇒ `Failed to run sql query: ERROR: 22012: division by zero`；
+  `multiStatementWorks=true` / `multiStatementBlocked=false` /
+  `multiStatementFullyExecutes=true` / `multiStatementSkipsEarlier=false`。
+- **答案的形状**：限制在 **Postgres 服务端的 extended query protocol**（single-statement 限制），
+  触发它的是**客户端选了那条协议**；直接打 HTTP 端点不受影响。
+  所以「多语句跑不了 ⇒ 必须 psql + 密码」这个推论**从来就不成立**——
+  这是 B04 阻塞理由的第三次收窄，而三次都是同一个错：**从「我手上没有」推到「这件事做不到」**。
+- 结案评论里刻意**没有**声称 `db query --linked` 的读数：那条路径经手的正是这个端点，
+  但 CLI 侧用什么协议发请求我没测 ⇒ 表里单列一行写「未知不算通过」，不折算进结论。
+- 同一条 commit 里另一件事：`stripSqlLineComments` 进 `falsify:rules`，**67 → 68 条**。
+  登记前实测两个套件：中性化它 ⇒ `erasure-drill-parity.test.ts` **2 failed / 2 passed**，
+  而 `psql-meta.test.ts` 仍 **7/7 全绿**（exit=0）。
+  - ⇒ **登记表的 `testFile` 不必是「该模块自己的套件」**。按惯例填成自己的套件，
+    表上会多一条 ✅ 而那层判定其实没人测——**「核对过但其实没核对」的假证据比不登记更贵**。
+  - 这条限制写在登记表注释里，而不是把 ✅ 留给一个会误导人的目标。
+- 完成内容：`cloud-sql-probe.ts` 的 `multiStatementWorks` 注释补上结案指针；
+  CHANGELOG / roadmap / environments / exit-report / retention.md 的活文本同步；
+  issue #245 关闭（`COMPLETED`）。
+- 验证命令和结果：`pnpm check:all` ✅（上一条 commit 已跑全量：279 files / 3470 tests）；
+  `pnpm falsify:rules` ✅ **68/68**，跑完 `git status` 干净；
+  `type-check` exit 0；eslint（`node node_modules/eslint/bin/eslint.js` 逐个文件）exit 0；
+  `check:changelog` / `check:progress`（183 条）exit 0。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit（注释与台账，无行为改动）。
+- 下一项：复查 `retention-cleanup.single-do.sql` 有没有本轮发现的 `format()` 里 `%` 空格陷阱。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 我上一轮写下的「% 会吃掉空格」是错的：真机制是「RAISE 里每个裸 % 都是占位符」，而且它不报错
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（续前两条）。
+- 状态：DONE。
+- 为什么做：上一条 progress 的「下一项」是「复查 `retention-cleanup.single-do.sql`
+  有没有本轮发现的 `%` 空格陷阱」。复查动作本身没问题，**问题在于那条陷阱的描述是我编的机制**：
+  我确实撞到了报错，但把「为什么报错」写成了一个听起来合理的解释。
+- **实测否证（本地栈，每条可重跑）**：
+  | 写法 | 实测输出 |
+  |---|---|
+  | `raise 'A=20% B', 'X'` | `A=20X B` —— 空格**没被吃**，参数被贴进 "20" 后面 |
+  | `raise 'failures=% assertions=20% report=%', n, i, r` | `failures=0 assertions=20 [obj] report=ALL` |
+  | 同上只给 2 参 | `too few parameters specified for RAISE` |
+  | `raise 'A=20%% B'` | `A=20% B`（`%%` 转义，不占参数） |
+  | `raise '%', '100%'` | `100%`（参数值不被二次扫描） |
+  | `format('a=% 5s', x)` | `unrecognized format() type specifier " "` |
+  ⇒ 「`% ` 是带 flag 的转换、会吃掉空格」是 **`format()` 的行为**，我把它安到了 `RAISE` 头上。
+  两条通道语义不同：**RAISE 里每个裸 `%` 都是占位符**。
+- **比「我写错解释」更值得记的是第二行**：三个 `%` 配三个参数**不报错**，
+  输出看起来完全合理，只是内容错位了一格。**只有参数不够时才响。**
+  而演练报告恰恰爱写百分比（`assertions=20%`）——这是最容易撞上的形状。
+  「一个会静默给出错误读数的通道」比「一个会崩的通道」贵得多。
+- 完成内容：
+  1. `src/lib/drills/raise-format.ts`（新）：`countBarePercent` / `parseRaiseStatement` /
+     `findRaiseStatements` / `auditRaiseFormats` / `splitTopLevelArgs`。
+     两条判据分开：数量对不上（数据库部分会报）、**格式串里有「数字紧跟裸 %」**（数据库完全不报）。
+  2. `src/lib/drills/raise-format.test.ts`（新，9 条）：扫**所有** `.single-do.sql`，
+     不只钉擦除这一份。用 `stripSqlLineComments` 只在代码里数——
+     不剥注释会数出 4 条 RAISE（文件头拿它讲机制），**本轮刚在 parity 上踩过同一个坑，
+     这次直接复用，没有再手搓一份**。
+  3. `erasure-drill-parity.test.ts`：删掉我在那里手搓的 `parseRaiseFormat`，改调共享模块。
+     （手搓那份和共享那份**会各错一份**——这正是本仓库写过的教训。）
+  4. 派生版 SQL 的注释就地订正，并写明「此前这里的解释是错的」。
+  5. `cloud-sql-probe.ts` 的 `multiStatementWorks` 注释补上 #245 结案指针。
+- **自己抓到的一条假绿**：`%%` 转义判据第一版**没有样本钉住**——
+  把 `/\d%(?!%)/` 松成 `/\d%/` 后 9 条用例**全绿**（实测 exit=0）。
+  补上「`%%` 不报」与「真错位必须报」两侧对照才承重。
+  变异核对：`countBarePercent` 恒 0 → 7 红；`parseRaiseStatement` 中性化 → 5 红；
+  `findRaiseStatements` → 2 红；`auditRaiseFormats` → 1 红；
+  `splitTopLevelArgs` 退化成 `split(',')` → 1 红；A8「数量判据失效」→ 1 红。
+- **登记表 68 → 72 条**，4 个入口全部实测 bites。
+  `splitTopLevelArgs` **刻意不登记**：纯文本 helper，没有「报出问题」的判据，
+  失效已由 `parseRaiseStatement` 覆盖——多登记一条只会让这张表虚胖。
+- **复查 retention 那份的结论：不受影响**。它写 `failures=% report=%` 配 2 参数，
+  格式串里没有百分比字面量 ⇒ 2 占位 2 参数对齐。实跑复核
+  `failures=0 report=ALL-14-ASSERTIONS-PASSED`，`drill-%` 通知残留 0 行。
+- 验证命令和结果：`pnpm check:all` ✅ **280 files / 3480 tests**（+1 文件 / +10 条）；
+  `type-check` exit 0；eslint（`node node_modules/eslint/bin/eslint.js` 逐文件）exit 0；
+  `check:changelog` / `check:progress`（184 条）exit 0。
+  【同条 commit 内补跑】`pnpm falsify:rules` ✅ **72/72**、exit 0，跑完 `git status` 干净。
+  其中 `stripSqlLineComments` 那条从 2 红变成 **3 红**——因为 parity 套件新加了一条
+  也依赖剥注释的用例。**变红数上升不是问题**，它说明那层判定被更多用例覆盖。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit。
+- **教训的形状**：我撞到一个现象（报错），然后给现象编了一个**听起来专业**的机制，
+  并把它写进 SQL 注释、CHANGELOG、progress 三处。
+  如果当初只写「这样写会报错，换成 `||` 拼」而不解释为什么，错误就不会扩散。
+  **解释是廉价的，读数才是贵的**——以后写机制前先跑一组对照，跑不出来就只写现象。
+- 下一项：issue #245 结案评论已发（同分支）；补跑 `falsify:rules` 全量并 commit。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — B04 的 SQL 前置我只登记了一份，而 `ready=true` 正是让人按下生产写按钮的信号
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（续前几条，同进 PR #255）。
+- 状态：DONE。
+- 为什么做：做完缺口 (a) 的第一份之后，我在 `preflight.ts` 只挂了
+  `file:…account-erasure.single-do.sql` 一条前置。
+  而 B04 的正文一直写着「把本地**两份** `docs/operations/drills/*.sql` 在云端跑一遍」。
+  保留期那份的派生版 `retention-cleanup.single-do.sql` **仍在 PR #236 里没进 main**——
+  `git ls-tree -r --name-only origin/main | grep drills/` 实测只有两份**正本**，
+  没有任何 `.single-do` 文件。
+- **这条的价值全在后果的方向**：只登记一份 ⇒ 有人给了 `B04_AUTHORIZE_PRODUCTION_WRITE`
+  ⇒ preflight 报 `ready=true` ⇒ 执行器到第二份文件时才发现没东西可跑。
+  `preflight.ts` 的注释里明写「注意它只说『可以跑了』，不说『跑过了』」——
+  而 `ready=true` 就是**让人按下生产写按钮的那个信号**。
+  所以这是「把未满足的报成已满足」，与它相反的错误（把已满足报成未满足）
+  只是挡住一条演练，代价差一个量级。
+  **我上一轮刚在 `fileRequirementPaths` 的注释里写下过后者那个坑，
+  这一轮造的是它更贵的镜像。**
+- 完成内容：
+  1. `preflight.ts`：B04 下新增第二条 `file:` 前置（retention 那份），
+     remedy 指回**唯一正确的路**——合并 PR #236（它同时带着 034 的应用与两条 cron 修复，
+     顺序不能颠倒），并明写「不要为了让判定变绿而删掉这条，也不要就地复制一份」。
+  2. `blockedReason` 补一句「**(a) 只做了一半**」，并把「别把 (a) 做完读成已解锁」
+     那句的分寸跟着事实挪位。
+  3. `preflight.test.ts` 新增一条用例：SQL 型前置**数量必须是 2**、
+     两条路径各自点名、**只给一份时不算 ready**、缺口指向 retention、
+     remedy 含 `#236` 与那句禁令。
+     原来那条「按键名判定」的用例补上第二份文件后仍然测的是机制（`full.ready` 为 true）。
+  4. 活文本四处跟着改准：roadmap B04（标题 + (a) 小节 + 新增一条 ⚠️ 子项）、
+     `environments.md` 的外部依赖表、exit-report 与 runbook 的**同日指针**（快照原文不动）。
+- 验证命令和结果：
+  - `pnpm drills:preflight --drill B04` 实跑（IO 层，非单测）⇒
+    `✓ file:…account-erasure.single-do.sql`、
+    `· file:…retention-cleanup.single-do.sql ← 缺`、整体 exit 1。
+    **这条前置能被机器判，所以它不需要人记住。**
+  - `node node_modules/vitest/vitest.mjs run src/lib/drills` ⇒ 4 files / 42 passed；
+  - `pnpm check:all` ✅ **280 files / 3481 tests**（+1 条用例）；
+  - `check:doc-links` 153 条内部链接全可达。
+- **同一条 commit 里另一个新读数**：PR #255 的 14 项 checks **全 pass，含两个 Vercel 项**
+  （`gh pr checks 255 --json name,bucket` 实测 14/14 pass）。
+  这是 `environments.md` Vercel 配额那行的**第 4 个读数**，方向与前三次相反
+  （#251 全 pass → #252 主应用 fail → #253 两项全 fail → **#255 两项全 pass**）。
+  ⚠️ **但它仍不能判「生产是否也被挡住」**：`pnpm ops:deploy-freshness` 同时实测
+  生产仍停在 `b2ffab71`（#250），落后 `origin/main`（`d6246893`）**4 个提交**——
+  比 #254 记录时的 3 又多了 1。preview 池放行 ≠ 生产跟上。
+  所以那行文档里「解除需账户侧动作」的判据**没被这次读数推翻**，
+  而「生产是否也被挡住 = 未知」继续按未知记。
+- 阻塞 / 风险 / 回滚：无新增阻塞（B04 仍缺 retention 那份进 main + 人工授权）。
+  回滚 = revert 本 commit。
+- 下一项：把第 4 个 Vercel 读数写进 `environments.md` 那行（活文本，直接改准）。
+- 更新时间：2026-10-13（UTC+8）。

@@ -110,14 +110,21 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       "run 38334026946）；单条 DO 块也通。\n" +
       "⇒ 现在缺的**不是任何凭据**，而是两件事：\n" +
       "  (a) `account-erasure.sql` 里有 6 条 psql 元命令（`\\set` / `\\echo` / `\\gset`），" +
-      "     HTTP 通道**根本送不过去**，要先像 retention 那份一样机械压成单条语句。" +
-      "     这个 6 由 `src/lib/drills/psql-meta.ts` 量；原写法「5 条」是手数，" +
-      "     漏了行尾那条 `\\gset`——`preflight.test.ts` 里有一条用例把两者对上，" +
-      "     改正本不改数就会红；\n" +
+      "     HTTP 通道**根本送不过去**。\n" +
+      "     **这一条已于 2026-10-13 做完**：派生版 " +
+      "`docs/operations/drills/account-erasure.single-do.sql` 已入库，" +
+      "本地栈实测 `failures=0 assertions=20`、跑完不留数据。" +
+      "那个 6 由 `src/lib/drills/psql-meta.ts` 量；原写法「5 条」是手数，" +
+      "漏了行尾那条 `\\gset`——`preflight.test.ts` 里有一条用例把两者对上，" +
+      "改正本不改数就会红；\n" +
+      "     **但 (a) 只做了一半**：B04 跑的是**两份** SQL，保留期那份的派生版" +
+      "还在 PR #236 里、**没进 main**。所以这条前置下面还挂着第二条 `file:`，" +
+      "少一份就不算 ready——**「把未满足的报成已满足」在这里会直接触发一次生产写**。\n" +
       "  (b) 这两份 SQL 会真的 insert / update / delete。在云端跑等于**往生产库写**，" +
       "那是人工授权动作——不是我能替谁决定的，也不是脚本该自动做的。\n" +
-      "**别把这次更正读成「B04 已解锁」**：解锁的是「通道存在且不需要密码」，" +
-      "不是「可以开跑」。",
+      "**别把 (a) 做完读成「B04 已解锁」**：做完的是「送得出去」，" +
+      "还缺的是「谁同意往生产库写」。正本也**从没在云端跑过**——" +
+      "本地跑通只证明 SQL 形状对，不证明云端迁移版本与它兼容。",
     requirements: [
       {
         source: "SUPABASE_ACCESS_TOKEN",
@@ -140,16 +147,31 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       {
         source: "file:docs/operations/drills/account-erasure.single-do.sql",
         purpose:
-          "擦除那份正本含 psql 元命令，HTTP 送不出去，需要先压成单条语句" +
-          "（保留期那份已由 PR #236 压好：`retention-cleanup.single-do.sql`）",
+          "**已满足**（2026-10-13）：擦除那份正本的 6 条元命令已压成单条语句，" +
+          "与正本 20 条断言逐条对齐，并在本地栈跑通。" +
+          "这条前置**留着是有意的**——它盯的是「派生版还在不在」：" +
+          "删掉它，将来有人重构时把派生版删了也没人报警。",
         remedy:
-          "照 `retention-cleanup.single-do.sql` 的做法转换，并在本地栈上跑通再入库；" +
-          "转换时最容易漏的是夹在两个 do 块之间的顶层 `select public.cleanup_*()`",
+          "若这个文件丢失：照 `retention-cleanup.single-do.sql` 的做法重新转换，" +
+          "并在本地栈上跑通再入库。转换时最容易漏的两件事——" +
+          "夹在两个 do 块之间的顶层 `select public.cleanup_*()`（保留期那份），" +
+          "以及 `\\gset` 取出的值在 `set role service_role` 之后读不到 temp 表（擦除这份）。",
       },
       {
         source: "NEXT_PUBLIC_SUPABASE_URL",
         purpose: "确认写的是**哪个**项目——演练 SQL 是不可逆的，连错项目等于在错库上擦",
         remedy: "Supabase 项目的 Settings → API",
+      },
+      {
+        source: "file:docs/operations/drills/retention-cleanup.single-do.sql",
+        purpose:
+          "**B04 要跑的是两份 SQL，不是一份**——保留期那份也必须压成单条语句。" +
+          "它由 PR #236 产出，**至今没进 main**，所以这条前置此刻**未满足**。" +
+          "把它漏掉的后果很具体：有人给了 `B04_AUTHORIZE_PRODUCTION_WRITE`，" +
+          "preflight 报 `ready=true`，执行器到第二份文件时才发现没东西可跑。",
+        remedy:
+          "合并 PR #236（它同时带着 034 的应用与两条 cron 的修复，顺序不能颠倒）。" +
+          "不要为了让判定变绿而把这条删掉，也不要就地复制一份——两份会各自漂移。",
       },
     ],
     firstCommand:

@@ -154,6 +154,9 @@ tag：未打（理由见 release-tag-ledger.md）
   `pnpm ops:cloud-sql-probe` 可重跑；B04 现在缺的是「把含 psql 元命令的那份正本压成
   单条语句」加「一次往生产库写的人工授权」。见 `docs/roadmap-0.12.0.md` B04 与
   `docs/operations/environments.md` 的外部依赖表。
+  【2026-10-13 同日加指针】前一半做完了**两份中的一份**（`account-erasure.single-do.sql` 入库并本地跑通；
+  保留期那份的派生版仍在 PR #236 里没进 main），后一半——往生产库写的授权——
+  **不在我能决定的范围里**，B04 因此仍计未完成。
 - **生产未配置 `RESEND_API_KEY` / `NEXT_PUBLIC_SENTRY_DSN` / `STRIPE_SECRET_KEY`**：
   邮件、告警、支付三条外部链路在生产上是空转的。这些是外部凭据，不是代码问题。
 - **跨迁移边界的真实生产回滚证据**仍不存在（`rollback-runbook-v0.12.0.md` 的

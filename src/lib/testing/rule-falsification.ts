@@ -481,6 +481,47 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return [];",
     testFile: "src/lib/drills/psql-meta.test.ts",
   },
+  // 派生版核对里**唯一承重的那一层**：「在代码里数，不在说明文字里数」。
+  // 中性化它 ⇒ 文件头解释中的 `execute 'set role service_role'` 被算进代码
+  // （2 数成 3），parity 用例的**两条**同时变红（实测 2 failed / 2 passed）。
+  // ⚠️ `testFile` 这里**不是** `psql-meta.test.ts`：把它中性化后那个套件仍然
+  // **7/7 全绿**（实测 exit=0）——剥注释只在跨文件核对时才暴露后果。
+  // 登记成自己的套件会得到一条「核对过但其实没核对」的假证据。
+  {
+    file: "src/lib/drills/psql-meta.ts",
+    function: "stripSqlLineComments",
+    neuteredReturn: "return sql;",
+    testFile: "src/lib/drills/erasure-drill-parity.test.ts",
+  },
+  // plpgsql RAISE 的占位符核对（`%` 在 RAISE 里一律算占位符，实测见 raise-format.ts 的表）。
+  // 4 个判定入口逐个实测 bites：分别 7 / 5 / 2 / 1 条变红。
+  // **刻意不登记 `splitTopLevelArgs`**：它是纯文本 helper，没有「报出问题」的判据，
+  // 它的失效已经由 `parseRaiseStatement` 那条覆盖——多登记一条只会让这张表虚胖。
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "countBarePercent",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "parseRaiseStatement",
+    neuteredReturn:
+      "return { text: statement.trim(), placeholders: 0, args: 0, digitPercent: false };",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "findRaiseStatements",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "auditRaiseFormats",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
 ];
 
 export interface MutationResult {

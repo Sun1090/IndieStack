@@ -10,6 +10,108 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **B04 的 SQL 型前置从 1 条补到 2 条——只登记一份会让 `ready` 说谎。**
+  做完缺口 (a) 的第一份之后，我在 `preflight.ts` 里只挂了
+  `file:...account-erasure.single-do.sql` 一条。而 B04 的正文写的是
+  「把本地**两份** `docs/operations/drills/*.sql` 在云端跑一遍」——
+  保留期那份的派生版 `retention-cleanup.single-do.sql` **仍在 PR #236 里没进 main**
+  （`git ls-tree origin/main` 实测：main 上只有两份正本，没有任何 `.single-do`）。
+  - **后果的方向决定了它有多贵**：只登记一份 ⇒ 有人给了
+    `B04_AUTHORIZE_PRODUCTION_WRITE` ⇒ preflight 报 `ready=true` ⇒
+    执行器到第二份文件时才发现没东西可跑。
+    **`ready=true` 正是让人按下生产写按钮的那个信号**，
+    所以这里是「把未满足的报成已满足」，不是相反的良性错误。
+  - `preflight.test.ts` 新增一条用例专门钉「SQL 型前置必须覆盖两份」，
+    并断言只给一份时**不算 ready**、缺口指向 `retention-cleanup.single-do.sql`、
+    remedy 指回**唯一正确的路**（合并 #236）——
+    不许删这条让判定变绿，也不许就地复制一份（两份会各自漂移）。
+  - IO 层实跑复核（`pnpm drills:preflight --drill B04`）：
+    `✓ file:...account-erasure.single-do.sql`（已满足）、
+    `· file:...retention-cleanup.single-do.sql ← 缺`。
+    这条前置**能被机器判**，所以它不需要人记住。
+
+- **`src/lib/drills/raise-format.ts`：plpgsql `RAISE` 的 `%` 不是「格式串里的字面百分号」——
+  每一个裸 `%` 都是占位符。** 起因是我在上一版注释里写下的解释**是错的**，
+  本轮实测把它否证了（每条读数都可在本地栈重跑）：
+  | 写法 | 实测输出 |
+  |---|---|
+  | `raise 'A=20% B', 'X'` | `A=20X B` —— 空格**没被吃掉**，但参数被贴进 "20" 后面 |
+  | `raise 'failures=% assertions=20% report=%', n, i, r` | `failures=0 assertions=20 [obj] report=ALL` |
+  | 同上但只给 2 个参数 | `too few parameters specified for RAISE` |
+  | `raise 'A=20%% B'` | `A=20% B`（`%%` 是转义，不占参数） |
+  | `raise '%', '100%'` | `100%`（参数值**不会**被二次扫描） |
+  - **原写法说「`% ` 被当成带 flag 的转换、会吃掉空格」——那是 `format()` 的行为，
+    不是 `RAISE` 的**：`format('a=% 5s', x)` 确实回
+    `unrecognized format() type specifier " "`。两条通道被我混成了一条。
+  - **真正要紧的是第二行：它不报错。** 三个 `%` 配三个参数，输出看起来完全合理，
+    只是 `v_info` 被贴到了 "20" 后面、`report` 挪了位。**静默错位**；
+    只有参数**不够**时才响。而演练报告恰恰爱写百分比（`assertions=20%`），
+    是最容易撞上的形状。
+  - 所以固化成门禁：`raise-format.test.ts` 用 `stripSqlLineComments` **只在代码里数**
+    （派生版的文件头大量引用 `raise exception` 讲机制，不剥注释会数出 4 条——
+    本轮刚在 parity 用例上踩过同一个坑，这次直接复用而不是再手搓一份）。
+    `splitTopLevelArgs` 管引号与括号深度：`coalesce(v, 'x, y')` 是**一个**参数，
+    直接 `split(",")` 会数出 4 个——**多算参数会让安全写法报错，于是检查被所有人忽略**。
+  - **一条自己抓到的假绿**：`%%` 转义那条判据第一版**没有样本钉住**，
+    把 `/\d%(?!%)/` 松成 `/\d%/` 后 9 条用例**全绿**（实测 exit=0）。
+    补上「`%%` 不报」+「真错位必须报」两侧对照才承重。
+  - 4 个判定入口进 `falsify:rules`（实测分别 7 / 5 / 2 / 1 条变红）⇒ 登记表 **68 → 72 条**。
+    `splitTopLevelArgs` **刻意不登记**：它是纯文本 helper，没有「报出问题」的判据，
+    失效已由 `parseRaiseStatement` 覆盖——多登记一条只会让这张表虚胖。
+  - **顺带复查了 `retention-cleanup.single-do.sql`**（PR #236，尚未进 main）：
+    它写的是 `raise exception 'DRILL-RESULT failures=% report=%', n_fail, v_report`
+    ——2 占位 2 参数、格式串里没有百分比字面量 ⇒ **不受影响**。
+    实跑复核：`failures=0 report=ALL-14-ASSERTIONS-PASSED`，`drill-%` 通知残留 0 行。
+
+- **B04 缺口 (a) 做完了：`docs/operations/drills/account-erasure.single-do.sql`——
+  把擦除演练正本压成 HTTP 送得出去的**一条**语句，并在本地栈实测跑通。**
+  读数：`failures=0 assertions=20`，三段信息性输出与正本形状一致，
+  跑完 `auth.users` / `contact_messages` 的演练行各剩 0 行（回滚干净）。
+  派生版**永远以 `ERROR` 结束**——那是报告通道本身（实测 `raise notice` 不回传，
+  而 `raise exception` 让整条语句回滚，与正本 `rollback;` 的净效果相同）。
+  **判据是 `failures=0`，不是退出码。**
+  - **转换前先把六个问题在本地栈上实测**（而不是照常识猜）：DO 块内 insert
+    配块末 `raise exception` 会回滚（块内 `after=1`、块后表里 0 行）；
+    `execute 'set role service_role'` 在块内可用且能保留；切换后**读不到 temp 表**
+    （`permission denied for table`）；plpgsql **变量**能穿过切换；
+    块以 raise 结束时角色**不会漏到会话**（块后 `current_user=postgres`）。
+    第三条决定了 `\gset` 的替代方案：正本用 `\gset` 把值搬到角色之外，
+    这里换成变量是**语义等价**，而不是「HTTP 没有 psql 变量」那种表面理由。
+  - **`set role` 2 开 2 关是刻意保留的**：`erase_user_data` /
+    `list_user_objects_for_erasure` / `upload_object_is_referenced` 的 `proacl`
+    实测都是 `{postgres=X/postgres, service_role=X/postgres}`——
+    权限形状本身就是演练对象的一部分，删掉角色切换会让演练退化成
+    「postgres 什么都能干」的自证。
+  - **自己造、当场抓到的两个错**：① `format()` 里 `%` 后紧跟空格会被当成带 flag 的
+    转换，吃掉空格并多消费一个参数（原写法 `assertions=20% report=%`）⇒ 报告串改用 `||` 拼；
+    ② parity 用例第一版没剥注释，把文件头**解释文字里**的 `set role service_role`
+    也数了进去（2 数成 3）⇒ 复用 `psql-meta.ts` 的注释剥离
+    （导出 `stripLineComment`、新增 `stripSqlLineComments`）而不是再手搓一份，
+    并给每条 `not.toMatch` 补了**对照断言**——否则「not 通过」可能只是因为扫错了文件。
+  - **不再各自漂移的机关**：`src/lib/drills/erasure-drill-parity.test.ts`（4 条用例）
+    核对派生版与正本「断言标签的**集合与顺序**逐条相同」。它刻意**不**核对期望值：
+    真正会漂移的是「有哪些断言」。扫描器也错过一次——把
+    `insert … select 'avatars', …` 里的表名字面量当成标签，数出 25 条（真值 20），
+    现在要求同行出现 `count(*)`，并用 `not.toContain("avatars")` 钉住这个反例。
+  - **变异核对 6/6 CAUGHT**（python 驱动）：逐条把期望值改错，
+    每次都 `failures=1` 且点名正确标签。第 7 个变异（`drill_assert` 改成永真）
+    读数仍是 `failures=0`——**这是构造性的，不是缺口**：harness 失效时什么都不记录，
+    所以演练自己的输出**无法**区分「全过」与「没人判」；检测手段在上一层——
+    那 6 条翻转如果全绿，就说明 harness 是装饰性的。
+  - ⚠️ **B04 仍计未完成**。做完的是「送得出去」，缺的是「谁同意往生产库写」
+    （`B04_AUTHORIZE_PRODUCTION_WRITE`，人工授权）。派生版**从没在云端跑过**，
+    而本地跑通只证明 SQL 形状对，不证明云端迁移版本与它兼容。
+  - ⚠️ **B04 仍计未完成**。做完的是「送得出去」，缺的是「谁同意往生产库写」
+    （`B04_AUTHORIZE_PRODUCTION_WRITE`，人工授权）。派生版**从没在云端跑过**，
+    而本地跑通只证明 SQL 形状对，不证明云端迁移版本与它兼容。
+  - **`stripSqlLineComments` 进了 `pnpm falsify:rules` 登记表：67 → 68 条**，
+    而它暴露了登记表的一条**隐含约定**：`testFile` 不必是「该模块自己的套件」。
+    把它中性化后 `psql-meta.test.ts` 仍然 **7/7 全绿**（实测 exit=0）——
+    剥注释的后果只在**跨文件核对**时才露头。所以这条的 `testFile` 指向
+    `erasure-drill-parity.test.ts`（实测 **2 failed / 2 passed**，verdict `bites`）。
+    **登记成自己的套件会得到一条「核对过但其实没核对」的假证据**：
+    表上写着 ✅，而那层判定其实没人测。
+
 - **`src/lib/drills/psql-meta.ts`：B04 缺口 (a) 的那个条数从此由代码算，不再由人抄。**
   直接起因是我在 #251 里写下一句「`account-erasure.sql` 含 **5 条** psql 元命令，逐字确认」——
   **那个「逐字确认」是假的**：量法只看「行首是反斜杠」，于是漏了
