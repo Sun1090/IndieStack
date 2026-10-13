@@ -298,27 +298,13 @@ export type ProbeStepId =
   | "READ_ONLY_ENDPOINT"
   | "WRITE_ENDPOINT_GUARDED"
   | "MULTI_STATEMENT"
-  | "MULTI_STATEMENT_CONTROL"
-  | "MULTI_STATEMENT_FIRST_EFFECT"
+  | "MULTI_STATEMENT_FIRST_ERROR"
   | "SINGLE_DO_BLOCK";
 
 /** 这一步「成功」长什么样。DO 块那条**期望服务端报错**——报错才是它跑通了的证据。 */
 export type ProbeExpectation =
   | { kind: "rows" }
   | { kind: "exception"; marker: string }
-  /**
-   * 要求**响应至少花了这么久**——用来证明「排在前面的语句真的执行了」。
-   *
-   * 为什么需要这第四种判据：`MULTI_STATEMENT` 实测只回最后一条的结果
-   * （`[{"second_ok":2}]`，run 38328251418）。这有两种解释：
-   * 「两条都跑了、只回最后一条」与「只跑了最后一条」。
-   * 两者的**响应完全相同**，光看响应体分不出来——而如果是后者，
-   * 把多语句演练 SQL 交给这个端点就是**静默少跑**，
-   * 那比跑不了更坏（演练会报告「通过」，而它其实什么都没做）。
-   * `pg_sleep` 不改任何状态，所以用墙钟时间区分这两种是**纯只读**的手段。
-   */
-  | { kind: "slower_than"; minMs: number; controlStepId: ProbeStepId };
-
 export interface ProbeStep {
   id: ProbeStepId;
   /** 实际送进 `query` 字段的 SQL。全部为常量，不接受外部输入。 */
@@ -327,6 +313,15 @@ export interface ProbeStep {
   /** 是否带 `read_only: true`（仅对 `query` 端点有意义）。 */
   readOnlyFlag: boolean;
   expectation: ProbeExpectation;
+  /**
+   * 这条语句的意义是「**它必须报错**」：拿到 201（没报错）不是成功，
+   * 而是「这条语句被跳过了」的正面证据。
+   *
+   * 为什么要单独一个字段而不是让分类器去看 step.id：DO 块那条也期望 exception，
+   * 但它拿到 201 只能算「不知道」（服务端可能吞了异常，也可能换了报告形状）。
+   * 两条的「没报错」是两种不同的结论，所以这个差别要写在数据里。
+   */
+  raisesIfExecuted?: boolean;
   /** 这一步想回答什么。 */
   question: string;
 }
@@ -365,25 +360,24 @@ export const PROBE_PLAN: readonly ProbeStep[] = [
     question: "两条语句会不会撞上 prepared statement 限制（issue #245 的核心）",
   },
   {
-    // **对照组**：与下一条同形状（两条 select、同一个端点、同样带 read_only），
-    // 唯一区别是把 `pg_sleep(1)` 换成一个不睡眠的表达式。
-    // 没有它，「2547ms ≥ 700ms」这句话是**没有基线的**——
-    // 如果这个 API 一次普通往返本来就要 2.5 秒，那 2547ms 什么都没证明。
-    id: "MULTI_STATEMENT_CONTROL",
-    sql: "select 1 as ctl_one; select 2 as ctl_two",
+    // **决定性的一步**：让第一条语句自己报错。
+    //
+    // 为什么不用耗时：run 38331295999 实测把这套计时判据**证伪**了——
+    // 两条形状完全相同的 `select …; select …`（对照组 2102ms / MULTI_STATEMENT 1624ms）
+    // 相差 478ms，而 `pg_sleep(1)` 那组相对对照只高出 483ms。
+    // **噪声与信号同量级**，所以「慢了多少」在这个端点上答不了任何问题。
+    //
+    // 报错就不需要基线：`1/0` 若被执行，服务端必然回 "division by zero"；
+    // 若被静默跳过，请求会成功并只回最后一条的结果。
+    // 两者是**互斥的可观测状态**，没有第三种解释。
+    // 而且 `select 1/0` 不写任何东西——它连读都不需要表。
+    id: "MULTI_STATEMENT_FIRST_ERROR",
+    sql: "select 1/0 as boom; select 2 as survivor",
     endpoint: "query",
     readOnlyFlag: true,
-    expectation: { kind: "rows" },
-    question: "同样两条语句、但不含 pg_sleep 时花多久（给下一条当基线）",
-  },
-  {
-    id: "MULTI_STATEMENT_FIRST_EFFECT",
-    // pg_sleep 不写任何东西；它唯一的作用是让「第一条跑过」这件事留下时间痕迹。
-    sql: "select pg_sleep(1) as slow_one; select 2 as fast_two",
-    endpoint: "query",
-    readOnlyFlag: true,
-    expectation: { kind: "slower_than", minMs: 700, controlStepId: "MULTI_STATEMENT_CONTROL" },
-    question: "多语句里排在前面的那条到底有没有执行（静默少跑 vs 只回最后一条）",
+    expectation: { kind: "exception", marker: "division by zero" },
+    raisesIfExecuted: true,
+    question: "多语句里排在前面的那条到底有没有被执行（决定性判据）",
   },
   {
     id: "SINGLE_DO_BLOCK",
@@ -463,11 +457,6 @@ function expectationMet(step: ProbeStep, response: ProbeResponse): boolean {
   if (step.expectation.kind === "exception") {
     return text.toLowerCase().includes(step.expectation.marker.toLowerCase());
   }
-  if (step.expectation.kind === "slower_than") {
-    // 只有「确实拿到了耗时」才算数；elapsedMs 缺失 ⇒ 交给下面的 UNKNOWN 分支。
-    if (typeof response.elapsedMs !== "number") return false;
-    return response.elapsedMs >= step.expectation.minMs;
-  }
   return Array.isArray(response.json);
 }
 
@@ -489,8 +478,7 @@ function expectationMet(step: ProbeStep, response: ProbeResponse): boolean {
  */
 function withElapsed(step: ProbeStep, response: ProbeResponse, text: string): string {
   if (typeof response.elapsedMs !== "number") return text;
-  const floor = step.expectation.kind === "slower_than" ? ` ≥ ${step.expectation.minMs}ms` : "";
-  return `[elapsed=${response.elapsedMs}ms${floor}] ${text}`;
+  return `[elapsed=${response.elapsedMs}ms] ${text}`;
 }
 
 export function classifyProbeResponse(step: ProbeStep, response: ProbeResponse): ProbeVerdict {
@@ -534,16 +522,9 @@ function classifyStep(step: ProbeStep, response: ProbeResponse): ProbeVerdict {
       evidence: withElapsed(step, response, text),
     };
   }
-  if (step.expectation.kind === "slower_than" && response.status === 201) {
-    if (typeof response.elapsedMs !== "number") {
-      return {
-        id: step.id,
-        outcome: "UNKNOWN",
-        status: 201,
-        evidence: "201 但没有耗时读数，无法判断前序语句是否执行",
-      };
-    }
-    // 201 且明显比 sleep 短 ⇒ 前序语句**没跑**。这是最危险的读数，必须单列。
+  if (step.raisesIfExecuted === true && response.status === 201) {
+    // 期望它报错却没报 ⇒ 这条语句**根本没被执行**。这是一个明确的坏结论，
+    // 不是「不知道」：多语句在这个端点上会静默丢掉前面的语句。
     return {
       id: step.id,
       outcome: "REJECTED_SQL",
@@ -551,7 +532,7 @@ function classifyStep(step: ProbeStep, response: ProbeResponse): ProbeVerdict {
       evidence: withElapsed(
         step,
         response,
-        "[FIRST_STATEMENT_SKIPPED] 多语句里前面的语句被静默跳过",
+        `[FIRST_STATEMENT_SKIPPED] 期望 division by zero，实际 ${errorTextOf(response) || "正常返回"} —— 前面的语句被静默跳过`,
       ),
     };
   }
@@ -573,24 +554,6 @@ function classifyStep(step: ProbeStep, response: ProbeResponse): ProbeVerdict {
   };
 }
 
-/**
- * 睡眠那条是否**明显**慢于对照组。
- *
- * 判据是「至少慢 500ms」而不是「大于」：网络抖动几百毫秒在这个端点上是常态
- * （本仓库 2026-10-05 就记过 alias 切换后第一次探测会假失败），
- * 用「>」会让一次抖动就把「前序语句没跑」这个坏结论翻成好结论。
- * 任一侧缺耗时读数 ⇒ false（**不知道不等于通过**）。
- */
-export function sleepsPastControl(
-  firstEffect: ProbeVerdict | undefined,
-  control: ProbeVerdict | undefined,
-): boolean {
-  if (!firstEffect || !control) return false;
-  if (typeof firstEffect.elapsedMs !== "number") return false;
-  if (typeof control.elapsedMs !== "number") return false;
-  return firstEffect.elapsedMs - control.elapsedMs >= 500;
-}
-
 /** 一份计划跑完的总结论。 */
 export interface ProbeReport {
   verdicts: ProbeVerdict[];
@@ -605,18 +568,10 @@ export interface ProbeReport {
   /** 单条 DO 块跑通 ⇒ B04 不再需要数据库密码。 */
   singleDoBlockWorks: boolean;
   /**
-   * 多语句里**前面的语句确实执行了**（靠耗时证明）。
+   * 多语句里**前面的语句确实执行了**——判据是「它报出了 division by zero」。
    * 与 `multiStatementWorks` 是两件事：后者只说明「没报 prepared statement 错」。
    */
   multiStatementFullyExecutes: boolean;
-  /**
-   * 睡眠那条**确实明显慢于对照组**——`multiStatementFullyExecutes` 成立的前提。
-   *
-   * 为什么单列：一个孤立的 `elapsed=2547ms` 不是证据。这个 API 一次普通往返
-   * 本来就要一两秒的话，2547ms 什么都没证明。所以判据写成**配对差值**：
-   * 同形状、同端点、只差一个 `pg_sleep(1)` 的两条请求，慢的那条才算真跑了 sleep。
-   */
-  sleepBeatsControl: boolean;
   /** 前序语句被静默跳过 ⇒ 这个端点**不能**用来跑多语句演练（比跑不了更坏）。 */
   multiStatementSkipsEarlier: boolean;
   /** 有没有任何一步是「不知道」。 */
@@ -630,8 +585,7 @@ function outcomeOf(verdicts: ProbeVerdict[], id: ProbeStepId): ProbeOutcome | un
 /** 汇总。纯函数：给定各步结论就能推出里程碑级判断，便于单测。 */
 export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
   const multi = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT");
-  const firstEffect = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT_FIRST_EFFECT");
-  const control = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT_CONTROL");
+  const firstError = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT_FIRST_ERROR");
   return {
     verdicts,
     readOnlyEndpointWorks: outcomeOf(verdicts, "READ_ONLY_ENDPOINT") === "EXECUTED",
@@ -640,12 +594,11 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
     multiStatementBlocked:
       multi?.outcome === "REJECTED_SQL" && multi.evidence.includes("PREPARED_STATEMENT"),
     singleDoBlockWorks: outcomeOf(verdicts, "SINGLE_DO_BLOCK") === "EXECUTED",
-    sleepBeatsControl: sleepsPastControl(firstEffect, control),
-    multiStatementFullyExecutes:
-      firstEffect?.outcome === "EXECUTED" && sleepsPastControl(firstEffect, control),
+    // 这一步的判据本身就是「报错才算跑通」，所以 EXECUTED 与「前序执行了」是同一件事。
+    multiStatementFullyExecutes: firstError?.outcome === "EXECUTED",
     multiStatementSkipsEarlier:
-      firstEffect?.outcome === "REJECTED_SQL" &&
-      firstEffect.evidence.includes("FIRST_STATEMENT_SKIPPED"),
+      firstError?.outcome === "REJECTED_SQL" &&
+      firstError.evidence.includes("FIRST_STATEMENT_SKIPPED"),
     hasUnknown: verdicts.some(
       (verdict) => verdict.outcome === "UNKNOWN" || verdict.outcome === "RATE_LIMITED",
     ),
@@ -661,10 +614,5 @@ export function probeExitCode(report: ProbeReport): number {
   const refused = report.verdicts.some((verdict) =>
     ["REFUSED_AUTH", "REJECTED_SQL"].includes(verdict.outcome),
   );
-  // 配对判据单独算一次「不算通过」：睡眠那条自己报 EXECUTED、
-  // 但没跑赢对照组时，退出码若是 0 就等于「全绿 + 一个关键结论为假」并存。
-  // 这正是本仓库反复登记的那类失效——看起来像查过了。
-  const sleepStepRan = outcomeOf(report.verdicts, "MULTI_STATEMENT_FIRST_EFFECT") === "EXECUTED";
-  const pairingContradiction = sleepStepRan && !report.sleepBeatsControl;
-  return refused || pairingContradiction ? 1 : 0;
+  return refused ? 1 : 0;
 }

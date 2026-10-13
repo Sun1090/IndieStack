@@ -66,11 +66,11 @@ describe("endpointPath / requestBody", () => {
   });
 
   it("另外三条打「能写」的端点，但必须带 read_only: true", () => {
+    // 除第一条之外，其余都打「能写」的端点——包括那条会故意报错的。
     for (const id of [
       "WRITE_ENDPOINT_GUARDED",
       "MULTI_STATEMENT",
-      "MULTI_STATEMENT_CONTROL",
-      "MULTI_STATEMENT_FIRST_EFFECT",
+      "MULTI_STATEMENT_FIRST_ERROR",
       "SINGLE_DO_BLOCK",
     ]) {
       const entry = step(id as ProbeStep["id"]);
@@ -275,17 +275,23 @@ describe("runCloudSqlProbe 的短路", () => {
     expect(code).toBe(2);
   });
 
-  /** 计划里每条都回一个「按判据算通过」的响应。`slow` 决定耗时那条走哪条路。 */
-  function healthyFetch(slow: boolean) {
+  /**
+   * 计划里每条都回一个「按判据算通过」的响应。
+   *
+   * `firstRuns` 决定决定性那条走哪条路：true = 服务端报出 division by zero
+   * （= 前面的语句确实执行了）；false = 它安静地返回 201
+   * （= 前面的语句被静默跳过，这是最危险的读数）。
+   */
+  function healthyFetch(firstRuns: boolean) {
     return vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { query: string };
       if (body.query.startsWith("do ")) {
         return new Response('{"error":"ERROR: PROBE-RESULT ok"}', { status: 500 });
       }
-      if (body.query.includes("pg_sleep") && slow) {
-        // 耗时判据读的是真实墙钟，所以这里只能真等一会儿
-        // （要等够配对差值 500ms 那条也算过）。
-        await new Promise((resolve) => setTimeout(resolve, 760));
+      if (body.query.includes("1/0")) {
+        return firstRuns
+          ? new Response('{"error":"division by zero"}', { status: 400 })
+          : new Response('[{"survivor":2}]', { status: 201 });
       }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
@@ -300,18 +306,19 @@ describe("runCloudSqlProbe 的短路", () => {
     expect(code).toBe(0);
   });
 
-  it("耗时那条不达标 ⇒ 报「前序语句被静默跳过」，退出码 1", async () => {
+  it("前序语句被静默跳过 ⇒ 打印点名这一步，退出码 1", async () => {
     // 这条钉的是本探测最要紧的一个读数：多语句端点只回最后一条的结果，
     // 光看响应体分不清「两条都跑了」与「只跑了最后一条」。
-    // 如果是后者，把多语句演练 SQL 交给这个端点就是**静默少跑**——
+    // 决定性判据（让第一条自己报错）就是为了把这两种分开。
+    // 若是后者，把多语句演练 SQL 交给这个端点就是**静默少跑**——
     // 演练会报「通过」而它其实什么都没做，那比跑不了更坏。
     const fetchMock = healthyFetch(false);
     vi.stubGlobal("fetch", fetchMock);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect(await runCloudSqlProbe(baseOptions)).toBe(1);
     const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
-    expect(printed).toContain("MULTI_STATEMENT_FIRST_EFFECT");
-    expect(printed).toContain("静默跳过");
+    expect(printed).toContain("MULTI_STATEMENT_FIRST_ERROR");
+    expect(printed).toContain("FIRST_STATEMENT_SKIPPED");
   });
 
   it("多语句被 prepared statement 拒 ⇒ 退出码 1（那是答案，不是故障）", async () => {

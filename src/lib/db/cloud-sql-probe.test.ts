@@ -38,9 +38,9 @@ function verdict(overrides: Partial<ProbeVerdict>): ProbeVerdict {
     outcome: "EXECUTED",
     status: 201,
     evidence: "",
-    // 默认给一个耗时：配对判据要求两侧都有读数，
-    // 缺省值取「睡眠组慢于对照组 1 秒」这一形状。
-    elapsedMs: overrides.id === "MULTI_STATEMENT_FIRST_EFFECT" ? 2500 : 300,
+    // 默认给一个耗时读数：证据里要带上它，而缺省值刻意不是 0
+    // （0 会被读成「快得可疑」而不是「没测」）。
+    elapsedMs: 300,
     ...overrides,
   };
 }
@@ -232,31 +232,17 @@ describe("auditProbePlan", () => {
     expect(audit.rejections.map((entry) => entry.id)).toContain("MULTI_STATEMENT");
   });
 
-  it("pg_sleep 那条必须留在计划里：它是「前序语句有没有执行」的唯一证据", () => {
-    // 去掉这一步，探测就只剩「有没有报 prepared statement 错」，
-    // 于是「两条都跑」与「只跑最后一条」会被读成同一个答案。
-    expect(PROBE_PLAN.map((entry) => entry.id)).toContain("MULTI_STATEMENT_FIRST_EFFECT");
-    const entry = step("MULTI_STATEMENT_FIRST_EFFECT");
-    expect(entry.sql).toContain("pg_sleep");
-    expect(entry.expectation).toEqual({
-      kind: "slower_than",
-      minMs: 700,
-      controlStepId: "MULTI_STATEMENT_CONTROL",
-    });
-  });
-
-  it("对照组必须与睡眠组只差 pg_sleep：同端点、同 read_only、同样两条 select", () => {
-    // 配对实验只有在「只差一个变量」时才成立。这里钉住其余条件全同，
-    // 否则「慢 500ms」可能来自端点差异而不是 sleep。
-    const control = step("MULTI_STATEMENT_CONTROL");
-    const sleeper = step("MULTI_STATEMENT_FIRST_EFFECT");
-    expect(control.endpoint).toBe(sleeper.endpoint);
-    expect(control.readOnlyFlag).toBe(sleeper.readOnlyFlag);
-    expect(control.sql).not.toContain("pg_sleep");
-    expect(sleeper.sql).toContain("pg_sleep");
-    // 两条都必须是两条 select —— 形状也要一致。
-    expect(control.sql.split(";")).toHaveLength(2);
-    expect(sleeper.sql.split(";")).toHaveLength(2);
+  it("多语句的决定性判据是「前序语句报错」，不是耗时", () => {
+    // 换成报错判据的原因写在 PROBE_PLAN 那条注释里：
+    // run 38331295999 实测同形状的两条查询相差 478ms，
+    // 而 pg_sleep(1) 相对对照只高出 483ms——噪声与信号同量级，计时答不了这个问题。
+    const entry = step("MULTI_STATEMENT_FIRST_ERROR");
+    expect(entry.sql).toContain("1/0");
+    expect(entry.raisesIfExecuted).toBe(true);
+    expect(entry.expectation).toEqual({ kind: "exception", marker: "division by zero" });
+    // 计划里不该再有计时步骤。
+    expect(PROBE_PLAN.map((item) => item.id)).not.toContain("MULTI_STATEMENT_FIRST_EFFECT");
+    expect(PROBE_PLAN.map((item) => item.id)).not.toContain("MULTI_STATEMENT_CONTROL");
   });
 });
 
@@ -351,59 +337,23 @@ describe("classifyProbeResponse", () => {
     );
   });
 
-  it("耗时判据：达标 ⇒ EXECUTED，且证据里带上真实耗时读数", () => {
-    const slow = step("MULTI_STATEMENT_FIRST_EFFECT");
-    const verdictReport = classifyProbeResponse(
-      slow,
-      response({ json: [{ fast_two: 2 }], elapsedMs: 1020 }),
-    );
-    expect(verdictReport.outcome).toBe("EXECUTED");
-    // 结论的依据是耗时，所以耗时必须出现在日志里——否则「前序语句确实执行了」
-    // 这条结论在 CI 记录上不可核对，下一个人只能选择相信。
-    expect(verdictReport.evidence).toContain("elapsed=1020ms");
-    expect(verdictReport.evidence).toContain("≥ 700ms");
-  });
-
-  it("耗时判据：明显比 sleep 短 ⇒ 前序语句被静默跳过，且单独打标签", () => {
-    // 本探测最危险的一种读数：HTTP 201，看起来完全成功，
-    // 但排在前面的语句根本没跑。当成「多语句可用」的话，
-    // 多语句演练 SQL 会「通过」而实际什么都没做。
-    const slow = step("MULTI_STATEMENT_FIRST_EFFECT");
-    const verdictReport = classifyProbeResponse(
-      slow,
-      response({ json: [{ fast_two: 2 }], elapsedMs: 12 }),
-    );
-    expect(verdictReport.outcome).toBe("REJECTED_SQL");
-    expect(verdictReport.evidence).toContain("[FIRST_STATEMENT_SKIPPED]");
-    expect(verdictReport.evidence).toContain("elapsed=12ms");
-  });
-
-  it("每条结论都带上真实耗时：孤立的耗时数需要对照组才可解释", () => {
-    // 口径在 2026-10-13 改过一次：原先只给睡眠那条贴 elapsed，
-    // 结果读数变成「2547ms ≥ 700ms」而**没有任何基线**——
-    // 如果这个 API 一次普通往返本来就要 2.5 秒，那个数什么都没证明。
-    // 现在每条都记，配对差值才能算出来。
+  it("每条结论都带上真实耗时读数", () => {
+    // 口径在 2026-10-13 改过一次：原先只给「耗时判据」那条贴 elapsed，
+    // 结果读数变成孤零零一个「2547ms」而没有任何基线可比。
+    // 后来整个计时判据被废弃（见 PROBE_PLAN 里决定性那条的注释），
+    // 但**每条都记耗时**保留下来：它现在是这个探测唯一的延迟观测点。
     const plain = classifyProbeResponse(
       step("READ_ONLY_ENDPOINT"),
       response({ json: [{ probe_ok: 1 }], elapsedMs: 42 }),
     );
     expect(plain.elapsedMs).toBe(42);
     expect(plain.evidence).toContain("[elapsed=42ms]");
-    // 只有带阈值的那条才在括号里写出阈值。
-    expect(plain.evidence).not.toContain("≥");
   });
 
   it("拿不到耗时 ⇒ 结论里不出现 elapsed，也不出现假的 0", () => {
     const plain = classifyProbeResponse(step("READ_ONLY_ENDPOINT"), response({ json: [{ a: 1 }] }));
     expect(plain.elapsedMs).toBeUndefined();
     expect(plain.evidence).not.toContain("elapsed");
-  });
-
-  it("耗时判据：拿不到耗时读数 ⇒ UNKNOWN，不猜", () => {
-    const slow = step("MULTI_STATEMENT_FIRST_EFFECT");
-    const verdictReport = classifyProbeResponse(slow, response({ json: [{ fast_two: 2 }] }));
-    expect(verdictReport.outcome).toBe("UNKNOWN");
-    expect(verdictReport.evidence).toContain("没有耗时读数");
   });
 
   it("证据文本被截断：不把整页 HTML 抄进日志", () => {
@@ -429,78 +379,77 @@ describe("summarizeProbe / probeExitCode", () => {
     expect(probeExitCode(report)).toBe(0);
   });
 
-  it("睡眠组没有对照组 ⇒ 不算「前序语句执行了」，即使它自己 EXECUTED", () => {
-    // 这条盯的是配对判据本身。少了它，`multiStatementFullyExecutes`
-    // 就退化成「那一步自己说通过」——而一个孤立的耗时数不构成证据。
+  it("决定性那条报出 division by zero ⇒ 前序语句确实执行了", () => {
     const report = summarizeProbe(
       allExecuted.map((entry) =>
-        entry.id === "MULTI_STATEMENT_CONTROL"
-          ? verdict({ id: entry.id, outcome: "UNKNOWN", elapsedMs: undefined })
+        entry.id === "MULTI_STATEMENT_FIRST_ERROR"
+          ? verdict({
+              id: entry.id,
+              outcome: "EXECUTED",
+              status: 400,
+              evidence: "division by zero",
+            })
           : entry,
       ),
     );
-    expect(report.sleepBeatsControl).toBe(false);
-    expect(report.multiStatementFullyExecutes).toBe(false);
+    expect(report.multiStatementFullyExecutes).toBe(true);
+    expect(report.multiStatementSkipsEarlier).toBe(false);
+    expect(probeExitCode(report)).toBe(0);
   });
 
-  it("睡眠那条自称 EXECUTED 但没跑赢对照 ⇒ 退出码不许是 0", () => {
-    // 这条盯的是「全绿 + 关键结论为假」这种并存状态。
-    // 如果放着不管，CI 会显示成功，而 multiStatementFullyExecutes=false
-    // 只藏在 JSON 里——那正是本仓库登记过多次的失效形状。
-    const verdicts = allExecuted.map((entry) =>
-      entry.id === "MULTI_STATEMENT_FIRST_EFFECT" ? verdict({ id: entry.id, elapsedMs: 620 }) : entry,
-    );
-    const report = summarizeProbe(verdicts);
-    expect(report.multiStatementFullyExecutes).toBe(false);
-    expect(report.hasUnknown).toBe(false);
-    expect(probeExitCode(report)).toBe(1);
-  });
-
-  it("睡眠组只比对照组慢一点点 ⇒ 判为没跑 sleep（网络抖动不算证据）", () => {
+  it("决定性那条拿到 201 ⇒ 判为「前序语句被静默跳过」，退出码 1", () => {
+    // 这是本探测最要紧的一种坏读数：HTTP 201，看起来完全成功，
+    // 但排在前面的语句根本没跑。当成「多语句可用」的话，
+    // 多语句演练 SQL 会「通过」而实际什么都没做——比跑不了更坏，
+    // 因为跑不了会喊人，静默少跑不会。
     const report = summarizeProbe(
       allExecuted.map((entry) =>
-        entry.id === "MULTI_STATEMENT_FIRST_EFFECT" ? verdict({ id: entry.id, elapsedMs: 620 }) : entry,
+        entry.id === "MULTI_STATEMENT_FIRST_ERROR"
+          ? verdict({
+              id: entry.id,
+              outcome: "REJECTED_SQL",
+              status: 201,
+              evidence: "[FIRST_STATEMENT_SKIPPED] 期望 division by zero",
+            })
+          : entry,
       ),
     );
-    expect(report.sleepBeatsControl).toBe(false);
+    expect(report.multiStatementWorks).toBe(true);
     expect(report.multiStatementFullyExecutes).toBe(false);
-  });
-
-  it("对照组整条缺席 ⇒ 配对判据为假（不是「默认通过」）", () => {
-    // 上面那条是把对照组判成 UNKNOWN，走的是「有结论但没读数」那条路；
-    // 这一条走的是「verdict 根本不在列表里」那条路。两条都要失败封闭，
-    // 而它们是两个不同的分支——变异核对实测：只测前一条时，
-    // 把 `if (!firstEffect || !control) return false` 改成 true 不会让任何用例变红。
-    const withoutControl = allExecuted.filter(
-      (entry) => entry.id !== "MULTI_STATEMENT_CONTROL",
-    );
-    const report = summarizeProbe(withoutControl);
-    expect(report.sleepBeatsControl).toBe(false);
-    expect(report.multiStatementFullyExecutes).toBe(false);
-  });
-
-  it("睡眠那条自己缺耗时读数 ⇒ 配对判据为假，且退出码不是 0", () => {
-    const noReading = allExecuted.map((entry) =>
-      entry.id === "MULTI_STATEMENT_FIRST_EFFECT"
-        ? verdict({ id: entry.id, elapsedMs: undefined })
-        : entry,
-    );
-    const report = summarizeProbe(noReading);
-    expect(report.sleepBeatsControl).toBe(false);
-    // 那一步的 outcome 仍是 EXECUTED（响应形状确实对），所以矛盾只能由配对判据兜住。
+    expect(report.multiStatementSkipsEarlier).toBe(true);
     expect(probeExitCode(report)).toBe(1);
+  });
+
+  it("决定性那条因别的原因被拒 ⇒ 不许算成「静默跳过」", () => {
+    // 把「任何拒绝」都读成「服务端会静默跳过前序语句」是一个具体的假结论，
+    // 而且方向很坏：它会让人以为这个端点不能用于多语句，
+    // 而真相只是我们那条 SQL 没跑成（语法、权限、端点换形状都可能）。
+    const report = summarizeProbe(
+      allExecuted.map((entry) =>
+        entry.id === "MULTI_STATEMENT_FIRST_ERROR"
+          ? verdict({
+              id: entry.id,
+              outcome: "REJECTED_SQL",
+              status: 400,
+              evidence: 'operator does not exist: integer / integer',
+            })
+          : entry,
+      ),
+    );
+    expect(report.multiStatementFullyExecutes).toBe(false);
+    expect(report.multiStatementSkipsEarlier).toBe(false);
   });
 
   it("「没报 prepared statement 错」与「前序语句真的执行了」是两个结论", () => {
     // 这两个字段必须能各自独立为真假，否则汇总层就把它们悄悄合并成一个了。
     const report = summarizeProbe(
       allExecuted.map((entry) =>
-        entry.id === "MULTI_STATEMENT_FIRST_EFFECT"
+        entry.id === "MULTI_STATEMENT_FIRST_ERROR"
           ? verdict({
               id: entry.id,
               outcome: "REJECTED_SQL",
               status: 201,
-              evidence: "[FIRST_STATEMENT_SKIPPED] 12ms < 700ms",
+              evidence: "[FIRST_STATEMENT_SKIPPED] 前面的语句被静默跳过",
             })
           : entry,
       ),
@@ -557,27 +506,6 @@ describe("summarizeProbe / probeExitCode", () => {
     expect(report.singleDoBlockWorks).toBe(false);
     expect(report.hasUnknown).toBe(false);
     expect(probeExitCode(report)).toBe(1);
-  });
-
-  it("那一步因别的原因被拒 ⇒ 不许算成「前序语句被静默跳过」", () => {
-    // pg_sleep 那条也可能只是普通地报错了（语法、权限、端点换形状）。
-    // 把「任何拒绝」都读成「服务端会静默跳过前序语句」是一个**具体的假结论**，
-    // 而且方向很坏：它会让人以为这个端点根本不能用于多语句，
-    // 而真相只是我们那条 SQL 没跑成。
-    const report = summarizeProbe(
-      allExecuted.map((entry) =>
-        entry.id === "MULTI_STATEMENT_FIRST_EFFECT"
-          ? verdict({
-              id: entry.id,
-              outcome: "REJECTED_SQL",
-              status: 400,
-              evidence: 'function pg_sleep(integer) does not exist',
-            })
-          : entry,
-      ),
-    );
-    expect(report.multiStatementFullyExecutes).toBe(false);
-    expect(report.multiStatementSkipsEarlier).toBe(false);
   });
 
   it("计划缺步 ⇒ 对应结论 false（不会因为「没测」而算通过）", () => {
