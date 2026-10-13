@@ -14,7 +14,14 @@ import { fileURLToPath } from "node:url";
  */
 // 类型走 JSDoc 而不是 `import type`：本文件是 .js，node 的类型剥离只作用于 .ts，
 // 在 .js 里写类型导入会直接语法报错（第一版就踩了）。
-import { evaluateAllDrills, summarize } from "../../src/lib/drills/preflight.ts";
+import {
+  evaluateAllDrills,
+  fileRequirementPaths,
+  summarize,
+} from "../../src/lib/drills/preflight.ts";
+
+/** 仓库根：`file:` 型前置里不带 `~` 的路径一律相对它解析。 */
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** @typedef {import("../../src/lib/drills/preflight.ts").DrillId} DrillId */
 /** @typedef {import("../../src/lib/drills/preflight.ts").EnvProbe} EnvProbe */
@@ -49,8 +56,12 @@ function readEnvProbe() {
   }
   for (const name of names) {
     if (name.startsWith("file:")) {
-      const file = name.slice("file:".length).replace(/^~/, process.env.HOME ?? "~");
-      probe[name] = fs.existsSync(file) && fs.readFileSync(file, "utf8").trim().length > 0;
+      // 候选路径由纯函数给出：仓库相对的前置必须**与 cwd 无关**地成立，
+      // 否则从仓库外面跑一次就会把已满足的报成未满足（详见那个函数的注释）。
+      const candidates = fileRequirementPaths(name, process.env.HOME ?? "~", REPO_ROOT);
+      probe[name] = candidates.some(
+        (file) => fs.existsSync(file) && fs.readFileSync(file, "utf8").trim().length > 0,
+      );
       continue;
     }
     // 空字符串按「没有」处理：`.env` 里写了 `KEY=` 是最常见的踩法。
