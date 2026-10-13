@@ -9466,3 +9466,48 @@
   （它已把「生产是否被挡住」从「本机取不到」变成可自动判，且判出过真故障）；
   `docs/operations/codeql-alert-triage.md` 里「本地无法复现」类陈述用同样的匿名 API 路径复核。
 - 更新时间：2026-10-14 00:30（UTC+8）。
+
+## 2026-10-14 — `ops:deploy-ledger` 接进 B 域发布证据链，顺手补上一条「条目丢了前缀就彻底隐形」的门禁
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/b-domain-deploy-ledger-evidence`（base `c2eecf21` = main + #259）。
+- 状态：DONE。
+- 为什么做：上一条（194）留下的下一项是「把 `ops:deploy-ledger` 接进 roadmap 的 B 域 release evidence 任务池」。
+  它把「生产是否被挡住」从「本机取不到」变成可自动判，且判出过真故障——但**它只存在于自己的文档行里**，
+  发布证据链三处（检查清单 / 发布 runbook / 冒烟文档）都还只认 `ops:deploy-freshness`。
+  ⇒ 一个没人被要求跑的门禁等于没有门禁（本仓库在 `check:docs` / `check:agents` 上踩过同一件事）。
+- 做了什么：
+  1. `.github/RELEASE_CHECKLIST.md` 门禁一节新增一条台账勾选项，并写明它**不是**新鲜度检查的重复。
+  2. `docs/operations/release-runbook-v0.12.0.md` 发布步骤补**第 5 步**（`ops:deploy-ledger`，
+     含「90 分钟内读到 `PENDING` 是正常形态，等过窗口再判」与「exit 2 不算通过」）；
+     原「新增两条运维门禁」那条**不回改**，只加一条指针说明此后多了第三条。
+  3. `docs/operations/production-smoke-v0.12.0.md` 加「生产部署台账」小节，
+     写清「新鲜度绿 + 有提交从未上线」曾同时成立 ⇒ **距离小不等于部署正常**。
+  4. `docs/roadmap-0.12.0.md` 两处：B01 加指针（**不改变 B01 的完成状态**，它欠的是另外 17 项）；
+     风险一节补「Vercel 部署不再是外部权限」，同时写明**仍未定因、四个候选一个都没排除**。
+- **接进去的时候撞出一个真缺陷**（本条的主要交付）：
+  `CHANGELOG.md` 里有**两处**条目丢了 `- ` 前缀——
+  `2f110bf2`（#258）编辑时吃掉了下一条目的整行标题，留下顶格悬着的续行
+  `：docs/testing.md 里那句…`；更早的 `ce4a3b25` 那条 D03 也是同样形态（正文 9 行挂在章节下而不属于任何条目）。
+  **两处都不报任何错**：解析器只认 `- ` 开头的行是条目，所以丢了前缀的行
+  不报 `bullet-empty`、不报 `section-empty`、字数与条目数里都没有它，`check:changelog` 一路绿。
+  ⇒ 补判据 `prose-outside-bullet`（`src/lib/changelog/parse-changelog.ts`）+ 复原两处标题 + 4 条单测。
+  ⚠️ **判据刻意放行 `>` 引用块与围栏代码块**：先扫全文发现真实文件里有 8 处「> 主题：…」的既有版式，
+  收紧成「版本下只许条目」会一次误伤 8 处——**先量后写，别对着版式报警**。
+- 验证命令和结果：
+  - `GITHUB_REPOSITORY=Sun1090/IndieStack pnpm ops:deploy-ledger` ⇒ exit 0，`PENDING`
+    （#259 刚合并，在 90 分钟窗口内）——**这正是新文档里写的那种正常形态**。
+  - `pnpm check:all` ⇒ **exit 0**，`282 files / 3525 tests`（+4 条，恰为本条新增的 4 条用例：
+    其中「缩进续行 / 引用块 / 围栏」那条断言 `toEqual([])`，负责盯住误伤）。
+  - 变异核对：把 `collectOrphanProse` 改成 `return []` ⇒ **2 条用例红**（新判据的两侧：
+    丢前缀的行、被吃标题留下的悬空续行）。
+  - `check:changelog` / `check:release-docs` / `check:gates` / `check:roadmap-entries` /
+    `check:doc-links` / `check:docs` / `type-check` / 逐文件 eslint 全 exit 0。
+  - `pnpm falsify:rules` 见本条之后的补记（要求工作树干净）。
+- 阻塞 / 风险 / 回滚：
+  - 无新增阻塞。B03/B04/B05 的外部权限缺口**没有**因为这条而变小——台账只回答「上线了没有」，
+    不回答「演练做了没有」。
+  - 风险：新判据是 error 级，历史 CHANGELOG 若再被编辑坏一次会立刻红（这正是目的）。
+  - 回滚 = revert 本 PR（squash 后的单个 commit）。
+- 下一项：`docs/operations/codeql-alert-triage.md` 里「本地无法复现」类陈述，
+  用同样的匿名 API 路径复核一遍。
+- 更新时间：2026-10-14 01:00（UTC+8）。

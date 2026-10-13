@@ -70,6 +70,9 @@ C01–C02）、文档事实门禁与版本收口（D 域，D01–D02）。
      **退出码 0/1/2 里没有「演练通过」**——这个命令只回答「还缺什么」，
      别把它的 0 当成演练已通过。
    - 冒烟从 6 步增至 7 步（新增 liveness）。
+     【2026-10-14 追加】本条「两条运维门禁」是**发布当时**的记述，不回改；
+     此后又多了第三条 `pnpm ops:deploy-ledger`，它与本条第一条**回答两个不同的问题**，
+     见下一节第 5 步。
 
 6. **未变化的既有约束**（发布时不要重新评估）：Vercel Hobby 的 cron 预算仍是每路径每天一次
    （`digest` 09:00 UTC、`push-retry` 22:00 UTC、`retention`、`supabase-restore`），
@@ -102,6 +105,17 @@ pnpm audit
    ```bash
    pnpm ops:deploy-freshness --base-url https://indie-stack-theta.vercel.app
    ```
+5. 核对**生产部署台账**（本次合并的提交到底上线了没有）：
+   ```bash
+   GITHUB_REPOSITORY=<owner>/<repo> pnpm ops:deploy-ledger
+   ```
+   期望 `CONSISTENT`、exit 0。合并后 90 分钟内跑，读到 `PENDING` 是正常形态
+   （Vercel 常把连续合并的提交并成一次部署），**等过窗口再判**。
+   ⚠️ **这一步不能与第 4 步互相替代**，它们问的不是同一件事：
+   `ops:deploy-freshness` 问「生产落后几个提交」（阈值 5，落后 2 个照样判通过），
+   `ops:deploy-ledger` 问「**这个提交今天在不在线上**」（无记录**且**无任何后续部署包含它才算故障）。
+   2026-10-13 实测到两者同时给出「通过 / 有提交从未上线」的组合——**距离小不等于部署正常**。
+   退出码 0 一致 / 1 有提交从未上线 / 2 读不到（**未知不算通过**，不要按第 4 步的绿推断这一步的绿）。
 
 ## 打标签与发布说明
 
