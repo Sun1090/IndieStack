@@ -36,7 +36,8 @@ See `docs/operations/release-tag-ledger.md`.
     守卫审计相应要求「7 条全部可证只读」。
 
 - **`pnpm ops:codeql-alerts`：「CodeQL 零回归」这个结论第一次有了自动核对。**
-  runbook 里那句「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」登记了两年，
+  runbook 里那句「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」登记了 **30 天**
+  （2026-09-13 `536c3ea3` 写入 → 2026-10-13 否证），
   2026-10-13 实测**是错的**：本仓库虽是 public，`GET /repos/{owner}/{repo}/code-scanning/alerts`
   匿名仍返回 **401**，而本机 `gh` 的 token 能读到全部字段（编号、规则 ID、严重度、`created_at`、
   实例 path、`dismissed_reason`）⇒ 缺的一直不是权限，是没人写这个探测。
@@ -105,7 +106,9 @@ See `docs/operations/release-tag-ledger.md`.
   上一条 `ops:schema-drift` 回答的是「线上有没有这一列」，本条回答的是「**为什么没有**」——
   两边版本号一对，缺的就是没 push 的那几条。
   - **为什么不用 `supabase migration list --linked`**：它**不要数据库密码**（这件事被本仓库
-    误登记成「需要」两年，代价是「034/035 从未 applied」直到线上出事），但它需要一个交互式登录态——
+    误登记成「需要」，最早可查是 2026-09-22 `7ea846c1` 把「云端到了哪一版」记成
+    「仍未取得的生产证据」，**21 天**；「要 DB 密码」这一具体说法是 2026-10-05 `1a18be40`，
+    **8 天**），代价是「034/035 从未 applied」直到线上出事；而它还需要一个交互式登录态——
     2026-10-12 本机实测两次，`~/.supabase/access-token` 不存在时它**挂在交互登录上**、无输出、需手动终止。
     更要紧的是 **supabase CLI 不是本仓库的依赖**，所以 CI 里本来也跑不了它。
   - **能力从哪来**：Management API 的 `GET /v1/projects/{ref}/database/migrations`

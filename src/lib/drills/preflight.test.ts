@@ -97,7 +97,8 @@ describe("evaluateDrill", () => {
   it("B04 不再需要数据库密码：那次读数否证了它（2026-10-13）", () => {
     // 这条用例存在的意义是**防止有人把「需要 DB 密码」再写回来**——
     // 它是 B04 第二版阻塞理由的墓碑，而那个版本害得「云端到了哪一版」
-    // 被登记成查不了两年，代价是 034 从未 applied 直到线上出事。
+    // 被登记成查不了 21 天（最早可查 2026-09-22），代价是 034 从未 applied 直到线上出事。
+    // 原写法「两年」已否证：仓库第一个 commit 是 2026-08-09，到 2026-10-13 只有 65 天。
     const sources = B04.requirements.map((requirement) => requirement.source);
     expect(sources).not.toContain("SUPABASE_DB_PASSWORD");
     expect(sources).toContain("SUPABASE_ACCESS_TOKEN");

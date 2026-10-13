@@ -96,7 +96,9 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
       "· 初版：「需要云端项目的管理凭据」——2026-10-05 实测仓库里**早就有** " +
       "`SUPABASE_ACCESS_TOKEN`，平台层从来不是阻塞。\n" +
       "· 第二版：收窄成「需要数据库密码」——2026-10-10 实测 " +
-      "`supabase migration list --linked` **不要密码**；这件事被当成查不了两年，" +
+      "`supabase migration list --linked` **不要密码**；这件事被当成查不了 **21 天**" +
+      "（最早可查 2026-09-22 `7ea846c1`；原写法是「两年」，被仓库历史否证——" +
+      "第一个 commit 是 2026-08-09，到今天只有 65 天），" +
       "代价是 034 从未 applied 直到线上出事。\n" +
       "· 第三版：「多语句跑不了 ⇒ 必须 psql + 密码」——被一条 DO 块证伪" +
       "（PR #236，`retention-cleanup.single-do.sql` 在本地跑通）。\n" +
