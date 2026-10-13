@@ -123,6 +123,10 @@ export async function postProbeStep(step, options) {
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  // 耗时是 MULTI_STATEMENT_FIRST_EFFECT 那条判据的**唯一**证据来源，
+  // 所以它在 try 外面起表：传输层失败时我们宁可拿到一个偏大的数，
+  // 也不要因为没测而把结论写成 UNKNOWN。
+  const startedAt = Date.now();
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -141,7 +145,13 @@ export async function postProbeStep(step, options) {
     } catch {
       json = null;
     }
-    return { status: response.status, json, bodyText, transportError: null };
+    return {
+      status: response.status,
+      json,
+      bodyText,
+      transportError: null,
+      elapsedMs: Date.now() - startedAt,
+    };
   } catch (error) {
     // 绝不回显请求头：令牌不能进日志。
     return {
@@ -149,6 +159,7 @@ export async function postProbeStep(step, options) {
       json: null,
       bodyText: "",
       transportError: error instanceof Error ? error.message : String(error),
+      elapsedMs: Date.now() - startedAt,
     };
   } finally {
     clearTimeout(timer);
@@ -175,7 +186,8 @@ function printVerdicts(report) {
     `结论：只读端点=${report.readOnlyEndpointWorks ? "可执行" : "未证实"} / ` +
       `写端点(read_only)=${report.writeEndpointWorks ? "可执行" : "未证实"} / ` +
       `多语句=${report.multiStatementWorks ? "可" : report.multiStatementBlocked ? "服务端限制" : "未证实"} / ` +
-      `单条 DO 块=${report.singleDoBlockWorks ? "可" : "未证实"}`,
+      `单条 DO 块=${report.singleDoBlockWorks ? "可" : "未证实"} / ` +
+      `多语句前序已执行=${report.multiStatementFullyExecutes ? "是" : report.multiStatementSkipsEarlier ? "否（静默跳过）" : "未证实"}`,
   );
 }
 

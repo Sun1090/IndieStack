@@ -228,6 +228,15 @@ describe("auditProbePlan", () => {
     expect(audit.ok).toBe(false);
     expect(audit.rejections.map((entry) => entry.id)).toContain("MULTI_STATEMENT");
   });
+
+  it("pg_sleep 那条必须留在计划里：它是「前序语句有没有执行」的唯一证据", () => {
+    // 去掉这一步，探测就只剩「有没有报 prepared statement 错」，
+    // 于是「两条都跑」与「只跑最后一条」会被读成同一个答案。
+    expect(PROBE_PLAN.map((entry) => entry.id)).toContain("MULTI_STATEMENT_FIRST_EFFECT");
+    const entry = step("MULTI_STATEMENT_FIRST_EFFECT");
+    expect(entry.sql).toContain("pg_sleep");
+    expect(entry.expectation).toEqual({ kind: "slower_than", minMs: 700 });
+  });
 });
 
 describe("classifyProbeResponse", () => {
@@ -321,6 +330,33 @@ describe("classifyProbeResponse", () => {
     );
   });
 
+  it("耗时判据：达标 ⇒ EXECUTED", () => {
+    const slow = step("MULTI_STATEMENT_FIRST_EFFECT");
+    expect(
+      classifyProbeResponse(slow, response({ json: [{ fast_two: 2 }], elapsedMs: 1020 })).outcome,
+    ).toBe("EXECUTED");
+  });
+
+  it("耗时判据：明显比 sleep 短 ⇒ 前序语句被静默跳过，且单独打标签", () => {
+    // 本探测最危险的一种读数：HTTP 201，看起来完全成功，
+    // 但排在前面的语句根本没跑。当成「多语句可用」的话，
+    // 多语句演练 SQL 会「通过」而实际什么都没做。
+    const slow = step("MULTI_STATEMENT_FIRST_EFFECT");
+    const verdictReport = classifyProbeResponse(
+      slow,
+      response({ json: [{ fast_two: 2 }], elapsedMs: 12 }),
+    );
+    expect(verdictReport.outcome).toBe("REJECTED_SQL");
+    expect(verdictReport.evidence).toContain("[FIRST_STATEMENT_SKIPPED]");
+  });
+
+  it("耗时判据：拿不到耗时读数 ⇒ UNKNOWN，不猜", () => {
+    const slow = step("MULTI_STATEMENT_FIRST_EFFECT");
+    const verdictReport = classifyProbeResponse(slow, response({ json: [{ fast_two: 2 }] }));
+    expect(verdictReport.outcome).toBe("UNKNOWN");
+    expect(verdictReport.evidence).toContain("没有耗时读数");
+  });
+
   it("证据文本被截断：不把整页 HTML 抄进日志", () => {
     const verdictReport = classifyProbeResponse(
       step("READ_ONLY_ENDPOINT"),
@@ -333,13 +369,35 @@ describe("classifyProbeResponse", () => {
 describe("summarizeProbe / probeExitCode", () => {
   const allExecuted = PROBE_PLAN.map((entry) => verdict({ id: entry.id }));
 
-  it("四条都跑通 ⇒ 三个能力结论都为真，退出码 0", () => {
+  it("五条都跑通 ⇒ 各能力结论都为真，退出码 0", () => {
     const report = summarizeProbe(allExecuted);
     expect(report.readOnlyEndpointWorks).toBe(true);
     expect(report.writeEndpointWorks).toBe(true);
     expect(report.singleDoBlockWorks).toBe(true);
+    expect(report.multiStatementFullyExecutes).toBe(true);
+    expect(report.multiStatementSkipsEarlier).toBe(false);
     expect(report.hasUnknown).toBe(false);
     expect(probeExitCode(report)).toBe(0);
+  });
+
+  it("「没报 prepared statement 错」与「前序语句真的执行了」是两个结论", () => {
+    // 这两个字段必须能各自独立为真假，否则汇总层就把它们悄悄合并成一个了。
+    const report = summarizeProbe(
+      allExecuted.map((entry) =>
+        entry.id === "MULTI_STATEMENT_FIRST_EFFECT"
+          ? verdict({
+              id: entry.id,
+              outcome: "REJECTED_SQL",
+              status: 201,
+              evidence: "[FIRST_STATEMENT_SKIPPED] 12ms < 700ms",
+            })
+          : entry,
+      ),
+    );
+    expect(report.multiStatementWorks).toBe(true);
+    expect(report.multiStatementFullyExecutes).toBe(false);
+    expect(report.multiStatementSkipsEarlier).toBe(true);
+    expect(probeExitCode(report)).toBe(1);
   });
 
   it("多语句被接受 ⇒ issue #245 的答案是「限制在 CLI 侧」", () => {
@@ -390,10 +448,34 @@ describe("summarizeProbe / probeExitCode", () => {
     expect(probeExitCode(report)).toBe(1);
   });
 
+  it("那一步因别的原因被拒 ⇒ 不许算成「前序语句被静默跳过」", () => {
+    // pg_sleep 那条也可能只是普通地报错了（语法、权限、端点换形状）。
+    // 把「任何拒绝」都读成「服务端会静默跳过前序语句」是一个**具体的假结论**，
+    // 而且方向很坏：它会让人以为这个端点根本不能用于多语句，
+    // 而真相只是我们那条 SQL 没跑成。
+    const report = summarizeProbe(
+      allExecuted.map((entry) =>
+        entry.id === "MULTI_STATEMENT_FIRST_EFFECT"
+          ? verdict({
+              id: entry.id,
+              outcome: "REJECTED_SQL",
+              status: 400,
+              evidence: 'function pg_sleep(integer) does not exist',
+            })
+          : entry,
+      ),
+    );
+    expect(report.multiStatementFullyExecutes).toBe(false);
+    expect(report.multiStatementSkipsEarlier).toBe(false);
+  });
+
   it("计划缺步 ⇒ 对应结论 false（不会因为「没测」而算通过）", () => {
     const report = summarizeProbe([verdict({ id: "READ_ONLY_ENDPOINT" })]);
     expect(report.readOnlyEndpointWorks).toBe(true);
     expect(report.writeEndpointWorks).toBe(false);
     expect(report.multiStatementWorks).toBe(false);
+    expect(report.multiStatementFullyExecutes).toBe(false);
+    // 「没测」不等于「跳过了」：后者是一个明确的坏结论，不能由缺步推出。
+    expect(report.multiStatementSkipsEarlier).toBe(false);
   });
 });

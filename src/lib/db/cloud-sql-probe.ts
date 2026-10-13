@@ -298,12 +298,25 @@ export type ProbeStepId =
   | "READ_ONLY_ENDPOINT"
   | "WRITE_ENDPOINT_GUARDED"
   | "MULTI_STATEMENT"
+  | "MULTI_STATEMENT_FIRST_EFFECT"
   | "SINGLE_DO_BLOCK";
 
 /** 这一步「成功」长什么样。DO 块那条**期望服务端报错**——报错才是它跑通了的证据。 */
 export type ProbeExpectation =
   | { kind: "rows" }
-  | { kind: "exception"; marker: string };
+  | { kind: "exception"; marker: string }
+  /**
+   * 要求**响应至少花了这么久**——用来证明「排在前面的语句真的执行了」。
+   *
+   * 为什么需要这第四种判据：`MULTI_STATEMENT` 实测只回最后一条的结果
+   * （`[{"second_ok":2}]`，run 38328251418）。这有两种解释：
+   * 「两条都跑了、只回最后一条」与「只跑了最后一条」。
+   * 两者的**响应完全相同**，光看响应体分不出来——而如果是后者，
+   * 把多语句演练 SQL 交给这个端点就是**静默少跑**，
+   * 那比跑不了更坏（演练会报告「通过」，而它其实什么都没做）。
+   * `pg_sleep` 不改任何状态，所以用墙钟时间区分这两种是**纯只读**的手段。
+   */
+  | { kind: "slower_than"; minMs: number };
 
 export interface ProbeStep {
   id: ProbeStepId;
@@ -351,6 +364,15 @@ export const PROBE_PLAN: readonly ProbeStep[] = [
     question: "两条语句会不会撞上 prepared statement 限制（issue #245 的核心）",
   },
   {
+    id: "MULTI_STATEMENT_FIRST_EFFECT",
+    // pg_sleep 不写任何东西；它唯一的作用是让「第一条跑过」这件事留下时间痕迹。
+    sql: "select pg_sleep(1) as slow_one; select 2 as fast_two",
+    endpoint: "query",
+    readOnlyFlag: true,
+    expectation: { kind: "slower_than", minMs: 700 },
+    question: "多语句里排在前面的那条到底有没有执行（静默少跑 vs 只回最后一条）",
+  },
+  {
     id: "SINGLE_DO_BLOCK",
     sql: `do $probe$ begin raise exception '${PROBE_MARKER} ok'; end $probe$;`,
     endpoint: "query",
@@ -382,6 +404,12 @@ export interface ProbeResponse {
   bodyText: string;
   /** 传输层失败（超时 / DNS / 连接被拒）——此时 status 为 0。 */
   transportError: string | null;
+  /**
+   * 本次请求花了多久。**`slower_than` 判据唯一依赖它**，
+   * 所以缺省值是 0（「没测到」）而不是一个看起来合理的数——
+   * 拿不到耗时的话那条判据必须落到 UNKNOWN，不能猜。
+   */
+  elapsedMs?: number;
 }
 
 export type ProbeOutcome =
@@ -420,6 +448,11 @@ function expectationMet(step: ProbeStep, response: ProbeResponse): boolean {
   if (step.expectation.kind === "exception") {
     return text.toLowerCase().includes(step.expectation.marker.toLowerCase());
   }
+  if (step.expectation.kind === "slower_than") {
+    // 只有「确实拿到了耗时」才算数；elapsedMs 缺失 ⇒ 交给下面的 UNKNOWN 分支。
+    if (typeof response.elapsedMs !== "number") return false;
+    return response.elapsedMs >= step.expectation.minMs;
+  }
   return Array.isArray(response.json);
 }
 
@@ -454,6 +487,23 @@ export function classifyProbeResponse(step: ProbeStep, response: ProbeResponse):
   if (expectationMet(step, response)) {
     return { id: step.id, outcome: "EXECUTED", status: response.status, evidence: text };
   }
+  if (step.expectation.kind === "slower_than" && response.status === 201) {
+    if (typeof response.elapsedMs !== "number") {
+      return {
+        id: step.id,
+        outcome: "UNKNOWN",
+        status: 201,
+        evidence: "201 但没有耗时读数，无法判断前序语句是否执行",
+      };
+    }
+    // 201 且明显比 sleep 短 ⇒ 前序语句**没跑**。这是最危险的读数，必须单列。
+    return {
+      id: step.id,
+      outcome: "REJECTED_SQL",
+      status: 201,
+      evidence: `[FIRST_STATEMENT_SKIPPED] ${response.elapsedMs}ms < ${step.expectation.minMs}ms：多语句里前面的语句被静默跳过`,
+    };
+  }
   if ([400, 422, 500].includes(response.status)) {
     const prepared = text.toLowerCase().includes("prepared statement");
     return {
@@ -485,6 +535,13 @@ export interface ProbeReport {
   multiStatementBlocked: boolean;
   /** 单条 DO 块跑通 ⇒ B04 不再需要数据库密码。 */
   singleDoBlockWorks: boolean;
+  /**
+   * 多语句里**前面的语句确实执行了**（靠耗时证明）。
+   * 与 `multiStatementWorks` 是两件事：后者只说明「没报 prepared statement 错」。
+   */
+  multiStatementFullyExecutes: boolean;
+  /** 前序语句被静默跳过 ⇒ 这个端点**不能**用来跑多语句演练（比跑不了更坏）。 */
+  multiStatementSkipsEarlier: boolean;
   /** 有没有任何一步是「不知道」。 */
   hasUnknown: boolean;
 }
@@ -496,6 +553,7 @@ function outcomeOf(verdicts: ProbeVerdict[], id: ProbeStepId): ProbeOutcome | un
 /** 汇总。纯函数：给定各步结论就能推出里程碑级判断，便于单测。 */
 export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
   const multi = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT");
+  const firstEffect = verdicts.find((verdict) => verdict.id === "MULTI_STATEMENT_FIRST_EFFECT");
   return {
     verdicts,
     readOnlyEndpointWorks: outcomeOf(verdicts, "READ_ONLY_ENDPOINT") === "EXECUTED",
@@ -504,6 +562,10 @@ export function summarizeProbe(verdicts: ProbeVerdict[]): ProbeReport {
     multiStatementBlocked:
       multi?.outcome === "REJECTED_SQL" && multi.evidence.includes("PREPARED_STATEMENT"),
     singleDoBlockWorks: outcomeOf(verdicts, "SINGLE_DO_BLOCK") === "EXECUTED",
+    multiStatementFullyExecutes: firstEffect?.outcome === "EXECUTED",
+    multiStatementSkipsEarlier:
+      firstEffect?.outcome === "REJECTED_SQL" &&
+      firstEffect.evidence.includes("FIRST_STATEMENT_SKIPPED"),
     hasUnknown: verdicts.some(
       (verdict) => verdict.outcome === "UNKNOWN" || verdict.outcome === "RATE_LIMITED",
     ),

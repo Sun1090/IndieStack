@@ -66,7 +66,12 @@ describe("endpointPath / requestBody", () => {
   });
 
   it("另外三条打「能写」的端点，但必须带 read_only: true", () => {
-    for (const id of ["WRITE_ENDPOINT_GUARDED", "MULTI_STATEMENT", "SINGLE_DO_BLOCK"]) {
+    for (const id of [
+      "WRITE_ENDPOINT_GUARDED",
+      "MULTI_STATEMENT",
+      "MULTI_STATEMENT_FIRST_EFFECT",
+      "SINGLE_DO_BLOCK",
+    ]) {
       const entry = step(id as ProbeStep["id"]);
       expect(endpointPath(entry)).toBe("/database/query");
       expect(requestBody(entry).read_only).toBe(true);
@@ -196,12 +201,14 @@ describe("postProbeStep", () => {
       }),
     );
     const response = await postProbeStep(step("READ_ONLY_ENDPOINT"), baseOptions);
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       status: 0,
       json: null,
       bodyText: "",
       transportError: "connection refused",
     });
+    // 传输层失败也要带耗时：它是「这次请求花了多久」的读数，与成功与否无关。
+    expect(typeof response.elapsedMs).toBe("number");
     expect(JSON.stringify(response)).not.toContain("sbp_token");
   });
 
@@ -267,19 +274,42 @@ describe("runCloudSqlProbe 的短路", () => {
     expect(code).toBe(2);
   });
 
-  it("四条都 201 且 DO 块按判据报错 ⇒ 退出码 0", async () => {
-    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+  /** 计划里的五条各回一个「按判据算通过」的响应。`slow` 决定耗时那条走哪条路。 */
+  function healthyFetch(slow: boolean) {
+    return vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { query: string };
       if (body.query.startsWith("do ")) {
         return new Response('{"error":"ERROR: PROBE-RESULT ok"}', { status: 500 });
       }
+      if (body.query.includes("pg_sleep") && slow) {
+        // 耗时判据读的是真实墙钟，所以这里只能真等一会儿。
+        await new Promise((resolve) => setTimeout(resolve, 760));
+      }
       return new Response("[{\"probe_ok\":1}]", { status: 201 });
     });
+  }
+
+  it("五条都满足判据 ⇒ 退出码 0", async () => {
+    const fetchMock = healthyFetch(true);
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(console, "log").mockImplementation(() => {});
     const code = await runCloudSqlProbe(baseOptions);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(code).toBe(0);
+  });
+
+  it("耗时那条不达标 ⇒ 报「前序语句被静默跳过」，退出码 1", async () => {
+    // 这条钉的是本探测最要紧的一个读数：多语句端点只回最后一条的结果，
+    // 光看响应体分不清「两条都跑了」与「只跑了最后一条」。
+    // 如果是后者，把多语句演练 SQL 交给这个端点就是**静默少跑**——
+    // 演练会报「通过」而它其实什么都没做，那比跑不了更坏。
+    const fetchMock = healthyFetch(false);
+    vi.stubGlobal("fetch", fetchMock);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(await runCloudSqlProbe(baseOptions)).toBe(1);
+    const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(printed).toContain("MULTI_STATEMENT_FIRST_EFFECT");
+    expect(printed).toContain("静默跳过");
   });
 
   it("多语句被 prepared statement 拒 ⇒ 退出码 1（那是答案，不是故障）", async () => {
