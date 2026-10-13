@@ -522,6 +522,54 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return [];",
     testFile: "src/lib/drills/raise-format.test.ts",
   },
+  // Vercel 配额读数台账：文档表头那句「今天有 N 个读数」原先是人抄的，
+  // 而它**当场复现了本仓库那个老错**——表头写「四个读数」，同一行正文已数到「第 6 个」。
+  // 5 个入口逐个实测 bites（1 / 1 / 1 / 2 / 2 条变红）。
+  // ⚠️ `consecutivePassFromTail` 第一版**只有 1 条红**，而那一条是硬编码的 `toBe(0)`——
+  // 文档里「尾部连击 0」那个数字当时仍然没人对账。补一条正则对账后变成 2 条红。
+  // **红数从 1 升到 2 才是这条登记有意义的证据**；只凭「它红了」就登记，
+  // 会把「代码被自己的单测守着、文档仍靠人抄」这种半吊子状态写进表里。
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingCount",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingChainText",
+    neuteredReturn: "return '';",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingVerdict",
+    neuteredReturn: 'return "stable-pass";',
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "consecutivePassFromTail",
+    neuteredReturn: "return 99;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "longestPassStreak",
+    neuteredReturn: "return 99;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  // 登记表自己的读数（`docs/testing.md` 那句「N 条判定 / M 个规则模块」的对账方）。
+  // 中性化实测 bites：1 条红 / 19 条通过。
+  // **这条有点自指**——它核对的是「这张表有几条」，所以登记它本身会让条数 +1，
+  // 而文档那句必须跟着改，否则对账用例就红。**这正是它该有的样子**：
+  // 一个会强迫自己保持正确的数。
+  {
+    file: "src/lib/testing/rule-falsification.ts",
+    function: "summarizeRegistry",
+    neuteredReturn: "return { entryCount: 60, moduleCount: 54, testFileCount: 54 };",
+    testFile: "src/lib/testing/rule-falsification.test.ts",
+  },
 ];
 
 export interface MutationResult {
@@ -717,4 +765,38 @@ export function formatFalsificationOutcome(outcome: FalsificationOutcome): strin
       : `${failedTests} 条变红${passedTests === null ? "" : ` / ${passedTests} 条通过`}`;
   const mark = verdict === "bites" ? "✅ 会红" : verdict === "survived" ? "❌ 存活" : "⚠️ 读不出";
   return `${mark} ${target.file} → ${target.function}()：${reading}`;
+}
+
+/**
+ * 登记表自身的**可对账读数**——给文档引用，避免人抄。
+ *
+ * **为什么需要它**：`docs/testing.md` 里那句「当前读数：60 条判定 / 54 个规则模块，
+ * 全部会红（合计 644 条用例变红）」三个数**全都漂移了**——
+ * 文档写的是 60 / 54，而登记表自己算出来是另一回事（读数以本函数为准，
+ * **这里刻意不抄具体数**——本函数每被登记一条就会变，抄进注释就是又造一个会漂移的数）。
+ * 前两个数**只依赖这张表**，
+ * 所以它们该由代码算；**第三个数只有真跑一次才知道**，
+ * 写死在文档里必然漂移，所以那种数**不该出现在文档里**（见下）。
+ *
+ * ⚠️ **`moduleCount` 的口径是「`file` 字段去重」，不是「本仓库有多少规则模块」**。
+ * 一个模块可以登记多个判定函数（`cloud-sql-probe.ts` 就有 5 条），
+ * 所以这个数**必然小于**表里的条数。文档里引用它时必须带上这个口径，
+ * 否则「58 个规则模块」会被读成「全库只有 58 个规则模块」——
+ * 那正是本仓库反复犯的那类错：**一个口径没写清的数，会被读成一个结论**。
+ */
+export function summarizeRegistry(targets: readonly FalsificationTarget[] = RULE_FALSIFICATION_TARGETS): {
+  /** 登记的判定条数。 */
+  entryCount: number;
+  /** 涉及的规则模块文件数（按 `file` 去重）。 */
+  moduleCount: number;
+  /** 涉及的测试文件数（按 `testFile` 去重）——**与模块数可以不相等**，
+   * 因为一条登记的 `testFile` 允许指向别的模块的套件（见上面对
+   * `stripSqlLineComments` 的说明）。 */
+  testFileCount: number;
+} {
+  return {
+    entryCount: targets.length,
+    moduleCount: new Set(targets.map((target) => target.file)).size,
+    testFileCount: new Set(targets.map((target) => target.testFile)).size,
+  };
 }
