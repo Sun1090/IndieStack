@@ -481,6 +481,18 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return [];",
     testFile: "src/lib/drills/psql-meta.test.ts",
   },
+  // 派生版核对里**唯一承重的那一层**：「在代码里数，不在说明文字里数」。
+  // 中性化它 ⇒ 文件头解释中的 `execute 'set role service_role'` 被算进代码
+  // （2 数成 3），parity 用例的**两条**同时变红（实测 2 failed / 2 passed）。
+  // ⚠️ `testFile` 这里**不是** `psql-meta.test.ts`：把它中性化后那个套件仍然
+  // **7/7 全绿**（实测 exit=0）——剥注释只在跨文件核对时才暴露后果。
+  // 登记成自己的套件会得到一条「核对过但其实没核对」的假证据。
+  {
+    file: "src/lib/drills/psql-meta.ts",
+    function: "stripSqlLineComments",
+    neuteredReturn: "return sql;",
+    testFile: "src/lib/drills/erasure-drill-parity.test.ts",
+  },
 ];
 
 export interface MutationResult {

@@ -8894,6 +8894,12 @@
 - 阻塞 / 风险 / 回滚：B04 仍**未完成**——缺 `B04_AUTHORIZE_PRODUCTION_WRITE`（人工授权，
   不是凭据），且派生版从没在云端跑过。风险：正本与派生版从此是两份文件，
   漂移由 parity 用例拦；回滚 = revert 本 commit（派生版是新增文件，正本未改）。
+- 追加（同一条 commit 内）：**`stripSqlLineComments` 已进 `falsify:rules`，登记表 67 → 68 条**。
+  登记前先实测：中性化它 ⇒ `erasure-drill-parity.test.ts` **2 failed / 2 passed**
+  （`verdict: bites`、`mutationApplied: true`），而 `psql-meta.test.ts` 仍 **7/7 全绿**。
+  ⇒ 这条的 `testFile` 必须指向 parity 套件，不是模块自己的套件——
+  **登记表里「✅ 会红」的语义是「有测试会红」，不是「它自己的测试会红」**。
+  写错目标会让那条证据变成装饰。
 - 下一项：issue #245 结案（结论已在手：限制在 CLI 侧的 extended query protocol，
-  服务端这条端点能吃多语句且全部执行）；评估 `stripSqlLineComments` 是否进 `falsify:rules`。
+  服务端这条端点能吃多语句且全部执行）。
 - 更新时间：2026-10-13（UTC+8）。

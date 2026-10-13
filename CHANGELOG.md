@@ -48,6 +48,16 @@ See `docs/operations/release-tag-ledger.md`.
   - ⚠️ **B04 仍计未完成**。做完的是「送得出去」，缺的是「谁同意往生产库写」
     （`B04_AUTHORIZE_PRODUCTION_WRITE`，人工授权）。派生版**从没在云端跑过**，
     而本地跑通只证明 SQL 形状对，不证明云端迁移版本与它兼容。
+  - ⚠️ **B04 仍计未完成**。做完的是「送得出去」，缺的是「谁同意往生产库写」
+    （`B04_AUTHORIZE_PRODUCTION_WRITE`，人工授权）。派生版**从没在云端跑过**，
+    而本地跑通只证明 SQL 形状对，不证明云端迁移版本与它兼容。
+  - **`stripSqlLineComments` 进了 `pnpm falsify:rules` 登记表：67 → 68 条**，
+    而它暴露了登记表的一条**隐含约定**：`testFile` 不必是「该模块自己的套件」。
+    把它中性化后 `psql-meta.test.ts` 仍然 **7/7 全绿**（实测 exit=0）——
+    剥注释的后果只在**跨文件核对**时才露头。所以这条的 `testFile` 指向
+    `erasure-drill-parity.test.ts`（实测 **2 failed / 2 passed**，verdict `bites`）。
+    **登记成自己的套件会得到一条「核对过但其实没核对」的假证据**：
+    表上写着 ✅，而那层判定其实没人测。
 
 - **`src/lib/drills/psql-meta.ts`：B04 缺口 (a) 的那个条数从此由代码算，不再由人抄。**
   直接起因是我在 #251 里写下一句「`account-erasure.sql` 含 **5 条** psql 元命令，逐字确认」——
