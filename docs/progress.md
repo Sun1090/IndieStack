@@ -9051,3 +9051,43 @@
   回滚 = revert 本 commit。
 - 下一项：把第 4 个 Vercel 读数写进 `environments.md` 那行（活文本，直接改准）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 第 5 个 Vercel 读数答掉了那个「未知」：生产当时确实被挡住，但挡住它的是配额不是链路
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/vercel-production-not-blocked`（base `a5b38466` = main + #255）。
+- 状态：DONE。
+- 为什么做：#255 合并本身就是 `environments.md` 里预告的那次判别——
+  那一行写着「**生产是否也被挡住 = 未知**……判别要等下一个生产部署的成败」。
+  合并发生了，所以去取那个读数，而不是让它再挂一轮。
+- **读数（两条独立来源，同一时刻）**：
+  - `#255` 于 **06:59:07Z** 合并为 `a5b38466`（`gh pr view --json mergedAt,mergeCommit`）；
+  - **07:05:43Z** `curl https://indie-stack-theta.vercel.app/api/health` ⇒
+    `{"status":"ok","version":"0.12.0","commit":"a5b3846682…","ready":true}`；
+  - 同一时刻 `pnpm ops:deploy-freshness` ⇒ **fresh，距离 0**（生产跑的就是 main）。
+  - 刻意**不只信那个脚本**：脚本会解析错字段，`/api/health` 的原始 JSON 是独立的一手证据。
+- **答案是什么**：生产**当时确实被挡住了**（它落后过 4 个提交），
+  但**挡住它的是配额，不是部署链路坏了**——
+  **一次成功的构建就把 4 个提交的落后量全部清空**，那是一条排空了的队列，不是一个断掉的管道。
+- **⚠️ 这条结论刻意不外推到「配额已解除」**：今天五个读数在 pass / fail 之间来回
+  （#251 pass → #252 fail → #253 fail → #255 preview pass → #255 生产 pass）。
+  它证明的是**「会波动」**，不是**「已恢复」**。判「解除」需要连续多个 PR 都 pass 且生产跟上，
+  今天只攒到一次。
+- 完成内容：`environments.md` 的「Vercel 构建配额」行补第 5 个读数并把结论收在分寸内；
+  `roadmap-0.12.0.md` 的风险小节订正一条口径——那一行原本把「Vercel 部署」与「build 配额」
+  **并列**成外部权限，读数说明部署链路本身不是阻塞。
+- **教训的形状**：「生产落后了 4 个提交」我上一轮写成「距离还在涨，说明部署始终没跟上」。
+  那半句是**推断**，不是读数——落后量增长只说明**没有新构建**，
+  它既可能是配额挡着，也可能是链路坏了，**两者当时都成立**（这一点我写对了），
+  但我顺手加了「说明部署始终没跟上」，把一个未判别的解释当成了观察。
+  这次判别之后回头看，那句话**方向恰好是对的**（确实没跟上），
+  **可它错在把推断写成了读数**——对了也不能改成读数的口气。
+- 验证命令和结果：`check:doc-links`（153 条内部链接）/ `check:roadmap-entries`（29 条）/
+  `check:release-docs`（21 份）/ `check:progress` 全部 exit 0；
+  本轮**只改两份文档**，无代码改动，故不重跑 `check:all`
+  （上一条 commit `a5b38466` 的 main CI 实测：CI success、CodeQL success、
+  Secrets Scan success、Security and configuration checks success；
+  `Cloud migration status` **failure 是预期红**——034 仍未 applied，需 `db push`）。
+- 阻塞 / 风险 / 回滚：无。回滚 = revert 本 commit。
+- 下一项：main 的 `Cloud migration status` 那条预期红仍挂在每次 push 上；
+  它需要 `db push` 应用 034（缺 DB 密码，直连能力仍不具备）——属外部权限。
+- 更新时间：2026-10-13（UTC+8）。
