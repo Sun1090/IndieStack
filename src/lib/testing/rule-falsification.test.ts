@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   RULE_FALSIFICATION_TARGETS,
@@ -5,6 +7,7 @@ import {
   neuterFunction,
   stripAnsi,
   summarizeFalsification,
+  summarizeRegistry,
   type FalsificationTarget,
 } from "./rule-falsification.ts";
 
@@ -168,5 +171,44 @@ describe("RULE_FALSIFICATION_TARGETS", () => {
   it("同一个函数不会被登记两次（重复会让表里的证据条数虚高）", () => {
     const keys = RULE_FALSIFICATION_TARGETS.map((target) => `${target.file}#${target.function}`);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("summarizeRegistry() 与 docs/testing.md 的对账", () => {
+  /**
+   * **这条用例是被文档逼出来的**：`docs/testing.md` 里那句「当前读数：
+   * 60 条判定 / 54 个规则模块」三个数**全都漂移了**，
+   * 而它正是本仓库为「5 条 psql 元命令」建 `psql-meta.ts` 时立过的那条规矩——
+   * **文档里的数字必须由代码算，并且要有一条用例把两边对上**。
+   * 第一次修法只覆盖了那一处，没覆盖「文档里的数字」这个类别，所以它又漂了一次。
+   *
+   * ⚠️ **这条注释里不写「真值是几」**：那两个数由本函数算，每登记一条就 +1，
+   * 抄在这里等于又立一个没人回头对的数。要读数就跑 `summarizeRegistry()`。
+   */
+  const doc = readFileSync(resolve(process.cwd(), "docs/testing.md"), "utf8");
+
+  it("文档里那句「N 条判定 / M 个规则模块文件」= 登记表算出的读数", () => {
+    const claimed = /当前读数：\*\*(\d+) 条判定 \/ (\d+) 个规则模块文件\*\*/.exec(doc);
+    expect(claimed, "docs/testing.md 里那句「当前读数」的格式变了，对账失效").not.toBeNull();
+    const registry = summarizeRegistry();
+    expect(Number(claimed![1])).toBe(registry.entryCount);
+    expect(Number(claimed![2])).toBe(registry.moduleCount);
+  });
+
+  it("登记表的条数与「模块文件数」口径不同：一个模块可登记多个判定", () => {
+    const registry = summarizeRegistry();
+    // **对照**：如果哪天每条登记都落在不同文件上，这两个数会相等，
+    // 那时这条断言会红——那是提醒「口径说明该删了」，不是 bug。
+    expect(registry.entryCount).toBeGreaterThan(registry.moduleCount);
+    // 测试文件数可以**多于**模块数：一条登记的 testFile 允许指向别的模块的套件
+    // （`stripSqlLineComments` 就是——中性化它时它自己的套件全绿）。
+    expect(registry.testFileCount).toBeGreaterThanOrEqual(registry.moduleCount);
+  });
+
+  it("文档刻意**不**写「合计多少条用例变红」——那个数只有跑出来才知道", () => {
+    // 这里原先写着 644，而 2026-10-13 实跑是 718。**跑出来才可知的数不该抄进静态文档**。
+    // 这条用例盯的是「别又把它抄回来」：文档里出现「合计 N 条用例变红」就红。
+    expect(doc).not.toMatch(/合计\s*\d+\s*条用例变红/);
+    expect(doc).toContain("刻意不写进本文档");
   });
 });
