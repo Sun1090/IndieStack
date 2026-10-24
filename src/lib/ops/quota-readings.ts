@@ -168,6 +168,42 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     // 教训：**跨环境不同步只能说明两个构建结果不同，不能替我排除任何一个候选。**
     note: "合并 2 分 11 秒后上生产（无人干预）⇒ 上一轮「链路单独坏了」的推断被否证",
   },
+  {
+    pr: 279,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两个 Vercel 检查都 pass（`gh pr checks 279`，2026-10-25 实测）",
+  },
+  {
+    pr: 280,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr checks 280`）——与 #281 相隔约 20 分钟，形状相反",
+  },
+  {
+    pr: 281,
+    pool: "preview",
+    outcome: "fail",
+    at: "2026-10-25",
+    // 错误文本逐字：`Deployment rate limited — retry in 24 hours.`
+    // ⇒ 与 2026-10-13 那两次同形（同一句 rate limited），**不是新的失效模式**。
+    note: "两项全 fail，错误文本 `Deployment rate limited — retry in 24 hours`（`gh pr checks 281`）",
+  },
+  {
+    pr: 281,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    // ⚠️ **这条与上一条是同一次观察的两个池子，方向相反**：preview 被限流，生产照样上去了
+    // （`pnpm ops:deploy-freshness` ⇒ 生产 commit = `f36523c8` = #281 的合并提交）。
+    // 与 #256/#257 那次是**镜像形状**（那时 preview pass、生产零记录）。
+    // 按 #258 那条立下的分寸：**跨环境不同步只能说明两个构建结果不同，
+    // 不能替我排除任何一个候选**——这里既不能读成「配额只挡 preview」，
+    // 也不能读成「生产链路免疫」，只能说这两次结果不同。
+    note: "preview 被限流的同时生产已含本 PR 的合并提交（`ops:deploy-freshness` 实测，2026-10-25）",
+  },
 ];
 
 /** 台账里读数的条数——文档表头那句「今天有 N 个读数」必须等于它。 */
