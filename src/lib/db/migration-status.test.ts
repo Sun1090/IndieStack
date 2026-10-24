@@ -4,7 +4,9 @@ import {
   inspectMigrationStatus,
   normalizeMigrationVersion,
   parseAppliedMigrations,
+  parseManifestEntries,
   parseManifestVersions,
+  planVersionShapeFix,
   type AppliedMigration,
 } from "./migration-status";
 
@@ -172,5 +174,67 @@ describe("点名单断言（--expect-applied）", () => {
     expect(inspectMigrationStatus(["001", "033", "034"], applied("001"), ["034"]).pendingVersions).toEqual([
       "034",
     ]);
+  });
+});
+
+describe("parseManifestEntries", () => {
+  it("读出版本号与文件名，失败形状返回 null（与 parseManifestVersions 同一口径）", () => {
+    const manifest = JSON.stringify({
+      migrations: [
+        { version: "034", fileName: "034_email_skip_reason.sql" },
+        { version: "035", fileName: "035_worker_run_backlog_skipped.sql" },
+      ],
+    });
+    expect(parseManifestEntries(manifest)).toEqual([
+      { version: "034", fileName: "034_email_skip_reason.sql" },
+      { version: "035", fileName: "035_worker_run_backlog_skipped.sql" },
+    ]);
+    expect(parseManifestEntries("{ not json")).toBeNull();
+    expect(parseManifestEntries("{}")).toBeNull();
+    expect(parseManifestEntries('{"migrations":[{"version":"001"}]}')).toEqual([{ version: "001" }]);
+  });
+});
+
+describe("planVersionShapeFix（版本号形状订正计划）", () => {
+  const entries = [
+    { version: "034", fileName: "034_email_skip_reason.sql" },
+    { version: "035", fileName: "035_worker_run_backlog_skipped.sql" },
+  ];
+
+  it("按迁移文件名把时间戳形状的行映射回序号", () => {
+    const live = [
+      { raw: "2026102409000000", version: normalizeMigrationVersion("2026102409000000"), name: "034_email_skip_reason" },
+    ];
+    const plan = planVersionShapeFix(live, entries);
+    expect(plan.updates).toEqual([
+      { fromRaw: "2026102409000000", toVersion: "034", matchedBy: "name=034_email_skip_reason" },
+    ]);
+    expect(plan.unmapped).toEqual([]);
+  });
+
+  it("对不上文件名的行一律不动——不拿猜测当证据", () => {
+    const live = [
+      { raw: "2026102409000000", version: "2026102409000000", name: "036_not_in_repo" },
+      { raw: "2026102509000000", version: "2026102509000000" },
+    ];
+    const plan = planVersionShapeFix(live, entries);
+    expect(plan.updates).toEqual([]);
+    expect(plan.unmapped.map((entry) => entry.raw)).toEqual(["2026102409000000", "2026102509000000"]);
+  });
+
+  it("已在 manifest 里的行（正常形状）不参与订正", () => {
+    const plan = planVersionShapeFix(applied("034", "035"), entries);
+    expect(plan.updates).toEqual([]);
+    expect(plan.unmapped).toEqual([]);
+  });
+
+  it("两行认领同一个目标版本号 = 计划自相矛盾，涉及的行全部拒判", () => {
+    const live = [
+      { raw: "2026102409000000", version: "2026102409000000", name: "034_email_skip_reason" },
+      { raw: "2026102409000001", version: "2026102409000001", name: "034_email_skip_reason" },
+    ];
+    const plan = planVersionShapeFix(live, entries);
+    expect(plan.updates).toEqual([]);
+    expect(plan.unmapped.map((entry) => entry.raw)).toEqual(["2026102409000000", "2026102409000001"]);
   });
 });

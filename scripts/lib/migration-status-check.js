@@ -13,10 +13,13 @@
  * 为什么 2 而不是 1：读不到云端不是「一致」，也不是「未应用」，是「不知道」。
  * 把它压成 0 会让这条检查在没配凭据的环境里长期假绿。
  *
- * 只读：只发一个 `GET /v1/projects/{ref}/database/migrations`
+ * 默认只读：只发一个 `GET /v1/projects/{ref}/database/migrations`
  * （operation `v1ListMigrationHistory`，「List applied migration versions」）。
- * 不跑任何 SQL、不 push、不写任何东西——**它替代不了 `supabase db push`**，
- * 也不解锁 B04（那条要执行多语句演练 SQL）。
+ * 不跑 SQL、不 push——**它替代不了 `supabase db push`**，也不解锁 B04
+ * （那条要执行多语句演练 SQL）。
+ * 唯一的写通道是 `--fix-version-shape --apply`：把云端以时间戳形状落库的
+ * 迁移版本号订正回 manifest 序号（Management API 应用迁移的已知副作用，
+ * 2026-10-24 之前靠人手工 UPDATE），默认 dry-run、按迁移文件名匹配、对不上不动。
  *
  * 为什么不用 `supabase migration list --linked`：那条**不要数据库密码**，
  * 但需要一个交互式登录态；在没有 TTY 的机器上它会挂在登录提示上
@@ -30,7 +33,9 @@ import { fileURLToPath } from "node:url";
 import {
   inspectMigrationStatus,
   parseAppliedMigrations,
+  parseManifestEntries,
   parseManifestVersions,
+  planVersionShapeFix,
 } from "../../src/lib/db/migration-status.ts";
 import { resolveProjectRef } from "../../src/lib/supabase-project-ref.ts";
 
@@ -60,7 +65,13 @@ const VALUE_FLAGS = {
   "--expect-applied": { option: "expectApplied", kind: "list" },
 };
 /** 无值 flag：出现即为真。 */
-const BOOLEAN_FLAGS = { "--help": "help", "-h": "help", "--json": "json" };
+const BOOLEAN_FLAGS = {
+  "--help": "help",
+  "-h": "help",
+  "--json": "json",
+  "--fix-version-shape": "fixVersionShape",
+  "--apply": "apply",
+};
 
 /**
  * 各取值方式的实现。返回字符串表示这个 flag 用法不对（错误文案）。
@@ -98,6 +109,8 @@ export function parseArgs(argv, env = process.env) {
     apiBase: env.SUPABASE_API_BASE || DEFAULT_API_BASE,
     supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL || "",
     json: false,
+    fixVersionShape: false,
+    apply: false,
     timeoutMs: 15_000,
     expectApplied: [],
     help: false,
@@ -164,6 +177,114 @@ export async function fetchAppliedMigrations(options) {
   }
 }
 
+/**
+ * 执行一条订正 SQL。写端点 `POST /v1/projects/{ref}/database/query`，
+ * 与 `scripts/lib/cloud-sql-probe-check.js` 同一封装口径：
+ * 只带状态码与短文本、绝不回显请求头（令牌不能进日志）。
+ */
+export async function executeFixStatement(options, sql) {
+  const ref = resolveProjectRef(options.projectRef, options.supabaseUrl);
+  if (!ref) return { ok: false, error: "解析不出 project ref" };
+  let endpoint;
+  try {
+    endpoint = new URL(
+      `${String(options.apiBase).replace(/\/+$/, "")}/projects/${encodeURIComponent(ref)}/database/query`,
+    );
+  } catch {
+    return { ok: false, error: `API 地址无法解析：${options.apiBase}` };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${options.token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ query: sql }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 200);
+      return { ok: false, error: `HTTP ${response.status} ${response.statusText} ${detail}` };
+    }
+    return { ok: true, error: null };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 订正一条 `schema_migrations.version` 的 SQL。唯一出处，计划打印与执行共用。 */
+export function fixStatement(fix) {
+  const from = fix.fromRaw.replaceAll("'", "''");
+  const to = fix.toVersion.replaceAll("'", "''");
+  return `update supabase_migrations.schema_migrations set version = '${to}' where version = '${from}';`;
+}
+
+/**
+ * 版本号形状订正流程（`--fix-version-shape`）。
+ *
+ * 背景：用 Management API 应用迁移时 `schema_migrations.version` 落 14 位时间戳
+ * 形态，与 manifest 的序号不匹配，判定层把它读成「本地不认识的迁移」——
+ * 2026-10-24 之前每次都要人手工 UPDATE。本流程把那次的手工活固化下来：
+ * 默认 dry-run 只打印计划；`--apply` 才真正写，写完复跑一次探测给最终结论。
+ * 计划由判定层 `planVersionShapeFix` 生成：**按迁移文件名匹配，对不上就不动**。
+ */
+export async function runVersionShapeFix(options, repoRoot = REPO_ROOT) {
+  const manifestFile = path.join(repoRoot, MANIFEST_PATH);
+  if (!fs.existsSync(manifestFile)) {
+    console.error(`❌ 找不到 ${MANIFEST_PATH}——先跑 pnpm update:migrations-manifest`);
+    return 2;
+  }
+  const entries = parseManifestEntries(fs.readFileSync(manifestFile, "utf8"));
+  if (entries === null) {
+    console.error("❌ 读不出 manifest 的版本号与文件名——比对基准缺失，不做任何订正");
+    return 2;
+  }
+
+  const fetched = await fetchAppliedMigrations(options);
+  if (fetched.error) {
+    console.error(`❌ 读不到云端迁移状态：${fetched.error}`);
+    return 2;
+  }
+  const applied = parseAppliedMigrations(fetched.payload);
+  if (applied === null) {
+    console.error("❌ 云端响应形状不认识——不基于读不到的实况做订正");
+    return 2;
+  }
+
+  const plan = planVersionShapeFix(applied, entries);
+  for (const entry of plan.unmapped) {
+    console.log(`⚠️ 不动 ${entry.raw}${entry.name ? `（name=${entry.name}）` : ""}：对不上仓库任何一条迁移`);
+  }
+  if (plan.updates.length === 0) {
+    console.log(plan.unmapped.length > 0 ? "⚠️ 有对不上的行，但没有可安全订正的——见上方清单" : "✅ 没有需要订正的版本号形状");
+    return runMigrationStatusCheck(options, repoRoot);
+  }
+  for (const fix of plan.updates) {
+    console.log(`计划：${fix.fromRaw} → ${fix.toVersion}（${fix.matchedBy}）`);
+    console.log(`  ${fixStatement(fix)}`);
+  }
+  if (!options.apply) {
+    console.log(`dry-run：以上 ${plan.updates.length} 条**未写入**。确认无误后加 --apply 执行。`);
+    return 0;
+  }
+  for (const fix of plan.updates) {
+    const result = await executeFixStatement(options, fixStatement(fix));
+    if (!result.ok) {
+      console.error(`❌ 订正失败（${fix.fromRaw}）：${result.error}——后续条目未执行，复跑本命令继续`);
+      return 2;
+    }
+    console.log(`✅ 已订正 ${fix.fromRaw} → ${fix.toVersion}`);
+  }
+  console.log("复跑探测核对最终状态：");
+  return runMigrationStatusCheck(options, repoRoot);
+}
+
 /** 人读输出。抽出去是因为 `runMigrationStatusCheck` 的分支复杂度贴着 ESLint 上限。 */
 function printReport(report, options) {
   for (const issue of report.issues) {
@@ -220,8 +341,15 @@ const HELP = [
   "  --json                   机器可读输出",
   "  --timeout-ms <n>         探测超时（默认 15000）",
   "",
-  "只读：只发一个 GET /v1/projects/{ref}/database/migrations，不跑 SQL、不 push、不写任何东西。",
-  "它不解锁 B04：那条要的是执行多语句演练 SQL，本探测只读「应用了哪些版本」。",
+  "  --fix-version-shape      订正模式：云端迁移行以时间戳形状落库（Management API 应用",
+  "                           迁移的副作用）时，按迁移文件名把它映射回 manifest 序号。",
+  "                           默认 dry-run 只打印计划；加 --apply 才写库，写完复跑探测。",
+  "  --apply                  与 --fix-version-shape 连用：真正执行订正",
+  "",
+  "默认只读：只发一个 GET /v1/projects/{ref}/database/migrations，不跑 SQL、不 push。",
+  "--fix-version-shape --apply 会发 POST /database/query 执行 UPDATE——",
+  "只动按文件名能对上 manifest 的行，对不上的一律不动。",
+  "它不解锁 B04：那条要的是执行多语句演练 SQL，本探测只管「应用了哪些版本」。",
   "退出码：0 一致 / 1 发现差集 / 2 用法错误或读不到实况（未知不算通过）",
 ].join("\n");
 
@@ -237,6 +365,7 @@ export async function runCli(argv, repoRoot = REPO_ROOT) {
     console.log(HELP);
     return 0;
   }
+  if (parsed.options.fixVersionShape) return runVersionShapeFix(parsed.options, repoRoot);
   return runMigrationStatusCheck(parsed.options, repoRoot);
 }
 
