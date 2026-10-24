@@ -367,7 +367,21 @@ describe("inspectAuditReport()", () => {
           },
         },
       },
-      { today: "2026-10-03" },
+      // shipped 台账 2026-10-24 起为空，例外机制改用显式传入的条目验证。
+      {
+        today: "2026-10-03",
+        exceptions: [
+          {
+            advisoryId: "GHSA-vfj7-8cjw-p6xm",
+            module: "braces",
+            severity: "high",
+            reachability: "仅开发期可达",
+            justification: "fixture",
+            reviewedOn: "2026-10-03",
+            reviewBy: "2026-11-02",
+          },
+        ],
+      },
     );
     expect(result).toEqual({ high: 1, critical: 0, excepted: ["GHSA-vfj7-8cjw-p6xm"] });
   });

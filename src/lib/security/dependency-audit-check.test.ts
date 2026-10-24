@@ -46,8 +46,25 @@ describe("runDependencyAuditCheck()", () => {
 
   it("reports which registered exception carried the verdict", () => {
     // 只印「通过」而不印「有 1 条是靠例外放行的」，等于把读数丢掉一半。
+    // shipped 台账 2026-10-24 起为空，例外机制改用显式传入的条目验证。
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    expect(runDependencyAuditCheck({ runAudit: () => WITH_BRACES, today: "2026-10-03" })).toBe(0);
+    expect(
+      runDependencyAuditCheck({
+        runAudit: () => WITH_BRACES,
+        exceptions: [
+          {
+            advisoryId: "GHSA-vfj7-8cjw-p6xm",
+            module: "braces",
+            severity: "high",
+            reachability: "仅开发期可达",
+            justification: "fixture",
+            reviewedOn: "2026-10-03",
+            reviewBy: "2026-11-02",
+          },
+        ],
+        today: "2026-10-03",
+      }),
+    ).toBe(0);
     const output = log.mock.calls.flat().join(" ");
     expect(output).toContain("0 critical / 1 high");
     expect(output).toContain("1 条已登记例外（GHSA-vfj7-8cjw-p6xm）");

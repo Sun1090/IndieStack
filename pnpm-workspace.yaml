@@ -11,6 +11,18 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+minimumReleaseAgeExclude:
+  - '@next/env@16.4.3'
+  - '@next/swc-darwin-arm64@16.4.3'
+  - '@next/swc-darwin-x64@16.4.3'
+  - '@next/swc-linux-arm64-gnu@16.4.3'
+  - '@next/swc-linux-arm64-musl@16.4.3'
+  - '@next/swc-linux-x64-gnu@16.4.3'
+  - '@next/swc-linux-x64-musl@16.4.3'
+  - '@next/swc-win32-arm64-msvc@16.4.3'
+  - '@next/swc-win32-x64-msvc@16.4.3'
+  - next@16.4.3
+
 # 依赖覆盖：修复审计发现的传递依赖漏洞（pnpm v11 设置在 pnpm-workspace.yaml）
 overrides:
   # 同上：先前钉的 ^3.1.6 在新 advisory 下自身已是漏洞版本（需 >=3.1.8）
@@ -24,7 +36,10 @@ overrides:
   'brace-expansion@>=5.0.0': ^5.0.12
   js-yaml: ^4.3.2
   '@sentry/webpack-plugin>uuid': ^11.1.1
-  'vitepress>vite': ^6.4.3
+  'vitepress>vite': ^6.4.4
+  # GHSA-587h-7wmj-h5pm：vite 8.x 需 >=8.1.6；主链路的 vite 是 vitest / @vitejs/plugin-react
+  # 的传递依赖（本仓库不直接依赖 vite），所以按既有做法走 override。
+  vite: ^8.1.6
   postcss: ^8.5.23
   # 2026-10-06：两个新 advisory，都有上游修复版本，所以按本仓库既有做法走 override
   #（与上面 fast-uri / brace-expansion 同理），而不是登记进 DEPENDENCY_AUDIT_EXCEPTIONS
