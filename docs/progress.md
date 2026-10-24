@@ -10077,3 +10077,54 @@
 - 下一项：把「一次性读出的结论必须附可复跑命令」这条写进 `release-audit-template.md`
   的核对规则（本轮的根因正是缺它），并检查该模板里是否已有等价条款。
 - 更新时间：2026-10-14 02:30（UTC+8）。
+
+## 2026-10-24 — #236 / #235 落库与生产证据链闭合：405 修复第一次拿到「进了函数」的生产读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：自主开发轮（多 PR 连续合并，无单一工作分支）。
+- 状态：DONE。
+- 为什么做：2026-10-14 台账的下一项散落三处——#236 / #235 等 `db push`（缺 DB 密码，外部权限）、
+  B04 缺第二份 SQL 进 main + 人工授权。本轮的起点是把「外部权限」这个前提本身拿去复核：
+  **`db push` 需要的是「执行 SQL」，而那个前提已于 2026-10-13 被否证**（Management API
+  `POST /v1/projects/{ref}/database/query` 用仓库已有的 `SUPABASE_ACCESS_TOKEN` 就能执行多语句）。
+  「等凭据」等了 10 天的东西，其实等价于「等一个人去执行一条已解锁的命令」。
+- 做了什么（按依赖顺序）：
+  1. **034 生产 applied**（此前 CI `Cloud migration status` 连日红：`MIGRATION_NOT_APPLIED 034`，
+     而部署中的 main 已在查 `notifications.email_skipped_reason`——runbook 警告过的
+     「代码先于 schema」形态）。取法：Management API 执行迁移体（幂等 `add column if not exists`）。
+     **一个坑**：API 落的迁移历史版本号是 14 位时间戳形态，与 manifest 的 3 位序号**形状不匹配**，
+     判定层会把它读成「本地不认识的迁移」；把 `schema_migrations.version` 订正为 `034` 后探测转绿。
+     这个坑的通用教训是**同一项目的版本号形状必须一致**，`migration-status.ts` 的
+     `MIGRATION_VERSION_SHAPE_MISMATCH` 兜底正是为此写的（当时用 mock 实测过，这次是真的来了）。
+  2. **PR #263**（vite/next/zod/jsdom 升级 + braces 例外退役）：Dependabot 的 vite 安全更新连日失败的
+     根因是 override 钉在 `^6.4.3` 而修复需 `>=6.4.4`。顺带把 audit 清到 0 critical / 0 high。
+  3. **PR #235**（035 + 跨天趋势读数）：全绿后合并；035 同样以 Management API applied +
+     版本号订正。**合并前把「035 是否会破坏 #235 之前的代码」核对了一遍**：只加两个可空列，安全。
+  4. **PR #236**（cron 405 修复，10 天前的旧 PR）：分支落后 main 21 个提交、12 处冲突。
+     rebase 冲突的取舍原则：**文档全保最新读数侧，两边独有的内容（如「调度≠worker」分寸条）合并保留**；
+     一处测试断言指向旧版阻塞文案，按第四版读数改写。verify:build 全绿后推送合并。
+  5. **Dependabot minor-and-patch 组**（#262 冲突废弃 → Dependabot 自动重开为 #264）：rebase 后自动合并。
+  6. **PR #265**：#264 合并后 audit 出现 fast-uri 新公告（2 low / 2 moderate），override 升 `^3.1.9`
+     （修复版本已在 npm 上，按既有做法走 override，不登记例外）。
+- **生产证据（全部 2026-10-24 实测，结论+取法+日期三件齐）**：
+  - schema：`notifications.email_skipped_reason`、`email_worker_runs.backlog/skipped` 三列全部在位
+    （Management API `information_schema.columns` 查询，project `ntqggnztzvoavjbiillb`）；
+    `database.types.ts` 三处类型此前已随 #235/#236 入库，读侧 `.select(...backlog, skipped)` 一致。
+  - 405 修复生效：`curl -X GET $BASE/api/cron/{digest,retention,push-retry}` → **401 / 401 / 401**
+    （401 = 进了函数被鉴权拒，不再是 405 = 没进函数）。
+  - 冒烟 8/8：`node scripts/production-smoke.js --url https://indie-stack-theta.vercel.app
+    --expected-commit $(git rev-parse HEAD)`，第 8 步「4 条调度路径都接受 GET，无 405」。
+  - 生产部署：`c165e2c2`（2026-10-24T10:42:42Z），与 main 同步；
+    `ops:deploy-ledger` ⇒ CONSISTENT（231 个已合并提交，从未上线 0）。
+- 验证：`check:all` ✅（282 files / 3556 tests）；`check:audit` ✅ 0/0；
+  `check:cron-contract` ✅（3 worker / 16 指标）；生产冒烟 8/8。
+- 阻塞 / 风险 / 回滚：
+  - **生产 cron 的下一次真实执行是明天**（retention 05:00 UTC / digest 09:00 UTC；今天的 09:00 轮次
+    在部署 #236 之前，仍是 405）。**「worker 端到端跑通」的生产证据要等明天第一轮落表后才有**——
+    判据是 `email_worker_runs` 出现非零行 + `cron.digest.completed`，本轮**没有**替它下结论。
+  - 迁移历史的版本号形状（API 落时间戳、CLI 落序号）如果再用 Management API 应用迁移，
+    每次都要手工订正 `schema_migrations.version`；正确的长期做法是 CI 里跑 `supabase db push`
+    （它落序号形态），但没有机器可用的登录态，暂记为已知操作负担。
+  - 回滚 = 各 PR 独立 revert；迁移均为幂等加列，反向不需要动数据。
+- 下一项：明天 UTC 09:00 之后取 digest 第一轮真实读数（`email_worker_runs` 行数 + 指标），
+  闭合「端到端跑通」的最后一格证据；B04 仍只差人工授权（外部决定，不是进度）。
+- 更新时间：2026-10-24 19:35（UTC+8）。
