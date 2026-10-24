@@ -184,6 +184,18 @@
    ⚠️ 这条「不必再临场回忆」在 2026-10-25 之前**并不成立**：探针读不到 `.env.local`，于是它自信地报了一个与本机实况相反的缺口——**固化判定不等于判定读对了来源**）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
+   - **【2026-10-25 读数收窄：那两项的替代方案本可以在本地验，现已各自闭合】**
+     `pnpm drills:auth-deletion-equivalence` 实测「SQL 删号」与真 `deleteUser` 的
+     **可观察行为逐项相同**（auth 侧五表删后全 0、旧 refresh_token 都回 400、旧 access_token
+     打 `/user` 都回 403）⇒ 原文那句「没走 GoTrue 的会话清理」**是一个从未被验证的担心**；
+     `pnpm drills:storage-erasure` 走**应用自己的驱动**实测
+     建对象 → 公共读可见 → 经 `cleanupStorageObject` 删除 → 删后不可读，四步全过
+     ⇒ 「真实 bucket 对象删除」这一格此前**三份绿着的证据都盖不住它**
+     （`.single-do.sql` 碰不到 provider、`smoke:supabase-identity` 走原始 REST 不经驱动、
+     e2e 跑 mock）——它看起来像被验过，其实没有。
+     两条都**不自动迁移到生产**（本地 GoTrue v2.195.0 ≠ 生产 v2.197.0 ⇒ `EQUIVALENT_LOCAL_ONLY`），
+     所以本条仍计**未完成**，但缺口从「三项」收窄为**一项决定**：在生产用可牺牲账号跑通闭环。
+     B03 由此不再是「缺外部权限所以没法动」——**能在本地答的部分已经答完了**。
 9. B04 （**未完成：阻塞已收窄为「外部权限」——缺口 (a) 于 2026-10-24 读数全部闭合，只剩 (b) 人工授权**；
    阻塞原因已于 2026-10-24 **第五次**改写，见下；
    前置判定已固化：`pnpm drills:preflight --drill B04`）

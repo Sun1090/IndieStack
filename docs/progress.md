@@ -10469,3 +10469,62 @@
 - 下一项：今天 17:30 后 `pnpm ops:digest-observation`；B03 剩生产可牺牲账号、
   B04 剩人工授权。
 - 更新时间：2026-10-25 03:30（UTC+8）。
+
+## 2026-10-25 — `drills:storage-erasure`：B03「真实 bucket 删除」这格被三份绿着的证据盖住了，实测补上
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/storage-erasure-drill`。
+- 状态：DONE。
+- 为什么做：延续上一条的方法——**把「需要生产的证据」逐条问一遍「本地能不能答」**。
+  B03 三项里的「真实 bucket 对象删除」看着像已被覆盖：`smoke:supabase-identity`
+  有 13 项 storage 检查、本轮实跑 20/20 全绿。但逐层看实现就发现**没有一份经过
+  `src/lib/storage` 那层驱动**：identity 探测自己发原始 REST（验的是 RLS 策略，
+  不是我们的代码）；`.single-do.sql` 只动数据库元数据，碰不到 provider；
+  `e2e/uploads.spec.ts` 跑 mock 后端。⇒ 「cleanupStorageObject 这条擦除链路
+  真能删掉字节吗」从来没有被自动化答过，而三份绿让它**看起来像答过了**——
+  这正是本仓库反复写的那句：它比没这张卡更糟。
+- 做了什么：
+  1. 判定层 `src/lib/drills/storage-erasure-drill.ts`：目标闸 `assertLocalOnlyTarget`
+     （只允许 `http:` + `127.0.0.1|localhost|::1`；空值/解析不出**拒绝而非放行**；
+     放行 https 等于给「误配成生产」留通道）+ `judgeStorageErasure` 四步判据，
+     **`FAILED_STILL_PRESENT` 单独成档**——remove 回 200 但对象还在 = 擦除链路静默失效，
+     比抛错危险，因为没有任何信号会去找它。
+  2. **做成 vitest 集成用例而不是 `scripts/` CLI**（这是实现方式的关键判断）：
+     node 直接 import 带 `@/` 别名的应用模块会挂（`Cannot find package '@/lib'`，本轮实测），
+     而 vitest 经 `resolve.alias` 能解析。做成 CLI 就得把存储调用重写一遍——
+     **那样测的是我的复制品，不是应用代码**，又是一格假绿。所以 `pnpm drills:storage-erasure`
+     = 带 `DRILL_STORAGE_REQUIRE=1` 的定向 vitest 运行。
+  3. 两条闸的分工：默认 `pnpm test`/CI **整组不执行**（单测不该依赖 docker，
+     否则「栈没起」变成全绿套件里一格与代码无关的红）；专用命令声明要验时
+     **没栈判失败、不 skip**（扫不到东西的检查等于没有检查）。目标闸那条用例
+     **无条件跑**——即使整组被跳，把 `DRILL_STORAGE_URL` 指到生产也必须当场红。
+- **本轮自己造成并修掉的三个缺陷**（都是「差点又交出一个假绿」）：
+  ① 第一版用 `reachable()`（docker 容器可达）当执行门，**与 URL 指向无关**——
+  把 `DRILL_STORAGE_URL` 指到生产时，内层仍会先 `driver.put` 往生产发一次 PUT
+  （会被 401 拒掉，但我判定层写的承诺是「一个写请求都不发」）。补 `earlyGuard`
+  在任何请求之前拦截。**修后用一次干净运行留档**：
+  `DRILL_STORAGE_REQUIRE=1 DRILL_STORAGE_URL=https://<生产ref>.supabase.co pnpm exec vitest run …`
+  ⇒ 套件退出 1（按设计失败）、`storage.upload` 指标**出现 0 次**（一个请求都没发）、
+  「目标闸拒绝」出现 2 次；「修前会发」是**读代码路径推出来的**
+  （`reachable()` 只判容器、与 URL 无关），没有留修前的读数——按本仓库
+  「结论与取法同日」的规矩，这里如实标注它是推理不是实测。
+  ② 单测把「协议检查先命中」这个**实现细节**钉成了断言（`toContain("宿主不是本机")`
+  用在生产 https URL 上）——顺序一改就红，而红的是我的断言不是世界。
+  拆成两条与顺序无关的用例：http+生产域名 ⇒ 宿主规则拒；https+本机 ⇒ 协议规则拒。
+  ③ 文档结构被我上一轮的插入**切断**：`retention.md` 那段订正插在「三项清单」与它的
+  续句「这三项需要…」之间，续句孤悬在引文块之后、还与新内容自相矛盾；
+  「⚠️ 但它不能自动迁移」的「它」在插了两段之后指代不明。本轮整段重排：
+  原句恢复完整、两条订正统一后置、缺口明确收窄为「一项决定」。
+- 实测读数（本地栈，2026-10-25）：`PASSED`——探针对象建得起（`storage.upload`
+  指标 provider=supabase outcome=success）、公共读 200、经 `cleanupStorageObject`
+  删除后读不回（非 2xx）。负向：URL 指生产 ⇒ 2 failed（闸在任何请求前拒绝）；
+  栈不可达 + REQUIRE ⇒ 2 failed（不是 skip）。
+- 验证：`pnpm drills:storage-erasure` 正向通过；两组负向按设计失败；
+  `vitest src/lib/drills` 82 passed / 1 skipped；`check:all` ✅（exit 0）；
+  doc-links / doc-commands（1118 条）/ bilingual / roadmap-entries 全绿。
+- 阻塞 / 风险 / 回滚：探测只写本地 bucket 且失败路径也 best-effort 清理
+  （否则探针残留会被孤儿巡检报成真问题）。B03 仍**未完成**：两条结论都不自动
+  迁移生产（本地 GoTrue v2.195.0 ≠ 生产 v2.197.0 ⇒ `EQUIVALENT_LOCAL_ONLY`），
+  剩的是「在生产用可牺牲账号跑通闭环」这一项**决定**。
+  回滚 = revert 本 PR。
+- 下一项：17:30 后 `pnpm ops:digest-observation`；B03 剩可牺牲账号、B04 剩人工授权。
+- 更新时间：2026-10-25 04:12（UTC+8）。

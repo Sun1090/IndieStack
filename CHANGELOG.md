@@ -10,6 +10,23 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm drills:storage-erasure`：用应用自己的存储驱动实测「建对象 → 可见 → 删除 → 不可见」。**
+  B03 登记的「真实 bucket 对象删除仍未取得」此前有三份绿着的证据守着，却没有一份经过
+  `src/lib/storage` 那层驱动：`.single-do.sql` 只动数据库元数据（碰不到 provider）、
+  `smoke:supabase-identity` 的 13 项 storage 检查验的是原始 REST + RLS（自己发 HTTP）、
+  `e2e/uploads.spec.ts` 跑 mock 后端 ⇒ 「我们的代码删得掉对象吗」这格**看起来像被验过，其实没有**。
+  2026-10-25 本地栈实测四步全过（对象建得起、读得到、经 `cleanupStorageObject` 删除后读不到）。
+  它做成 vitest 集成用例而不是 CLI：node 直接 import 带 `@/` 别名的应用模块会挂
+  （`Cannot find package '@/lib'`，实测），只有 vitest 经 `resolve.alias` 能引到真驱动——
+  做成 CLI 就得把存储调用重写一遍，那测的是复制品不是应用代码。
+  两条闸：`assertLocalOnlyTarget` 只允许 `http://127.0.0.1|localhost`（本机 `.env.local`
+  的 URL 指向**生产**，且闸必须在任何请求发出之前生效——第一版只判容器可达，
+  指生产时按代码路径推断会先发一次 PUT（未留修前读数）；已加 earlyGuard 在任何请求前拦截，
+  并有负向用例钉住「闸拒绝生产 URL」这条行为）；
+  `DRILL_STORAGE_REQUIRE=1` 才执行真写组（默认 `pnpm test`/CI 不依赖 docker，
+  专用命令声明要验时没栈**判失败**不 skip）。判定层把「remove 报成功但对象还在」
+  单独成档 `FAILED_STILL_PRESENT`——那是静默失效，比抛错危险。
+
 - **`pnpm drills:auth-deletion-equivalence`：在本地栈实测「SQL 删号」与「真 `auth.admin.deleteUser`」是否等价。**
   B03 的登记写着演练用 `delete from auth.users` 替代真 deleteUser，
   「级联语义相同但**没走 GoTrue 的会话清理**」——那是**一个从未被验证的担心**，
