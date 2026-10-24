@@ -330,7 +330,27 @@ docker exec -i supabase_db_indiestack psql -U postgres -d postgres \
 
 **仍未取得的生产证据**：真实 `auth.admin.deleteUser`（演练里用 `delete from auth.users` 等价替代，
 级联语义相同但没走 GoTrue 的会话清理）、真实 bucket 对象删除、隔离账号在**生产**上的删号闭环。
-这三项需要 Vercel/Supabase 侧权限与一个可牺牲账号，见 `docs/operations/production-smoke-v0.11.0.md`。
+这三项需要 Vercel/Supabase 侧权限与一个可牺牲账号，见 `docs/operations/production-smoke-v0.12.0.md` 的「需要隔离账号」一节（**指针订正**：原文指向 v0.11.0，当前版本的权威行在 v0.12.0）。
+【2026-10-25 读数】「缺 Supabase 侧权限」这半句对**本机不成立**：`SUPABASE_SERVICE_ROLE_KEY` 可用——`GET /auth/v1/admin/users` 返回 200、`REST /profiles` 读到 1 行。真正缺的是「一个敢删的账号」：生产当前唯一的账号（2026-08-23 注册）**不是**可牺牲的。
+
+**`/api/cron/retention` 没有可久查的执行证据（2026-10-25 读数）**：
+digest 每轮往 `email_worker_runs` **插一行**，所以「跑没跑」在库里可查
+（`pnpm ops:digest-observation`）；retention 只发 `cron.retention.completed` 指标
+（走 stdout/Sentry），**库里不留痕**。所以它的端到端判定只能读 Vercel 函数日志，
+不能像 digest 那样一条命令答。
+
+**而且不能拿「保留期表空」当证据**：2026-10-25 实跑
+`curl -s "$SUPABASE_URL/rest/v1/<表>?select=id&limit=1" -H "apikey: $SERVICE_ROLE_KEY" -H "Prefer: count=exact" -I`
+读 `content-range`，六张表 `notifications` / `webhook_events` / `email_worker_runs` /
+`api_usage` / `upload_objects` 全为 **0**（`contact_messages` = 1）。
+⇒ 「超期未删行数 = 0」这个探测**结构上无法区分「retention 正常清空了」与
+「retention 从未执行」**：空表在两种世界里长得一模一样。写出来就是一个自信的假绿
+（本仓库的规矩：**扫不到东西的检查等于没有检查**）。
+
+判 retention 真跑通的正向证据只有两条，都要**主动制造**而不是被动等空表：
+① Vercel 函数日志里 05:00 UTC 那条带 `ran`/`failed` 维度的 `cron.retention.completed`；
+② 先造一行超期数据（如 `api_usage` 插一条 `created_at` 早于 90 天），下一轮后它消失。
+②是唯一能在库里留下可复跑判据的做法——**但它是往生产写**，与 B04 同属人工授权范围。
 
 ## 变更痕迹
 

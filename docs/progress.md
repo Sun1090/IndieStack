@@ -10374,3 +10374,49 @@
 - 下一项：今天 17:30 后 `pnpm ops:digest-observation` 取 digest 第一轮读数；
   B04 剩人工授权、B03 剩隔离账号凭据（均待 maintainer）。
 - 更新时间：2026-10-25 01:40（UTC+8）。
+
+## 2026-10-25 — 凭据探针读错来源：B03 的「缺凭据」登记是假阴性滚出来的（固化判定≠判定读对来源）
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/preflight-env-source`。
+- 状态：DONE。
+- 为什么做：本轮起因是「digest 有写侧落表、retention 没有」这个证据不对称。
+  查 retention 时顺手实跑了生产行数，再往下就撞出 B03 那句登记与本机实况相反。
+- 做了什么（一条链，三个缺陷）：
+  1. **retention 的证据缺口如实登记**（`docs/db/retention.md` 新增小节）：
+     `/api/cron/retention` 只发 `cron.retention.completed` 指标（走 stdout/Sentry），
+     **库里不留痕**——而 digest 每轮往 `email_worker_runs` 插一行，所以有
+     `ops:digest-observation` 能答。更要命的是**不能拿「保留期表空」当证据**：
+     实跑六张表计数 ⇒ `notifications`/`webhook_events`/`email_worker_runs`/`api_usage`/
+     `upload_objects` 全 **0**、`contact_messages` **1** ⇒
+     「超期未删行数 = 0」这个探测**结构上区分不了「正常清空」与「从未执行」**，
+     写出来就是一个自信的假绿（扫不到东西的检查等于没有检查）。正向证据只有两条，
+     都要主动制造：① Vercel 函数日志那条指标；② 先造一行超期数据、看它下轮消失——
+     而 ② 是往生产写，与 B04 同属人工授权范围。**没有为它写探测**。
+  2. **preflight 探针的两个反向错误一起修**：旧实现只看 `process.env`，而
+     `node scripts/*` 不加载 `.env.local`（Next 运行时才加载）⇒ **假阴性**，
+     B03 被登记成「缺 SUPABASE_URL / SERVICE_ROLE_KEY / ANON_KEY」；
+     同时判据是「非空即有」⇒ `.env.local` 里那个项目名还是 `your-project` 的
+     模板 `SUPABASE_DB_URL` 被算成凭据已有，**假阳性**。
+     新增纯函数 `credentialLooksConfigured` / `parseEnvFileText` / `mergeEnvSources`
+     进 `src/lib/drills/preflight.ts`（判定进 src 才有单测兜底，本仓库惯例），
+     IO 层按 `process.env → .env.local → .env.development.local → .env.development → .env`
+     先到先得合并。**判据只认明确可识别的模板形态，不做「像不像真密钥」的猜测。**
+  3. **拟判据时被 `.env.example` 反证一次**：Supabase 的 anon / service_role key 是 JWT，
+     `your-project` 被 base64url 包在 payload 里，明文词表命中不到 ⇒ 我第一版判据
+     **自己造了一个假阳性**。补 `jwtPayloadIsPlaceholder`（解 payload 再判，解不开按原样判，
+     不把「读不出形状」当成「占位符」）。回归用例直接读仓库里的 `.env.example` 取值——
+     第一版写成了 `process.env.TEMPLATE_ANON_KEY`，那会在 CI 上红（CI 没有我本地 shell），
+     当场改成确定性取法。测试 44 → 50 条。
+- 验证：`drills:preflight --drill B03` 实测 ⇒ 三项凭据 ✓、只缺 `DRILL_ISOLATED_ACCOUNT_EMAIL`；
+  `GET $U/auth/v1/admin/users`（service_role）⇒ **HTTP 200，生产 1 个账号**（2026-08-23 注册，
+  非可牺牲）；`ops:schema-drift` ⇒ 19 表 / 174 列一致；`vitest src/lib/drills` 50 条全绿；
+  `check:all` ✅（exit 0）、lint / type-check 干净。
+- 阻塞 / 风险 / 回滚：
+  - **B03 的真实缺口由此收窄为「一个可牺牲账号」**，不再是「缺凭据」。生产唯一的账号不是
+    可牺牲的，`auth.admin.deleteUser` 不可逆 ⇒ 需要 maintainer 建一个专用账号（这是决定，不是进度）。
+  - 风险：探针现在读 `.env.local`，输出可能随机器变化——但这是**它本来就该读的**；
+    判定全在纯函数里，用例钉住方向（假阴性与假阳性各一侧）。
+  - 回滚 = revert 本 PR。
+- 下一项：今天 17:30 后 `pnpm ops:digest-observation` 取 digest 第一轮读数；
+  B04 剩人工授权、B03 剩可牺牲账号。
+- 更新时间：2026-10-25 02:35（UTC+8）。

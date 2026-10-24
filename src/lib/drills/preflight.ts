@@ -269,6 +269,104 @@ export interface DrillVerdict {
 export type EnvProbe = Readonly<Record<string, boolean>>;
 
 /**
+ * 「这个环境变量值算不算已配置」的判定——纯函数，由单测覆盖。
+ *
+ * 起因（2026-10-25 实测）：IO 层的旧探针是「非空即有」，于是
+ * `.env.local` 里 `SUPABASE_DB_URL=postgres://…:…@db.your-project.supabase.co/…`
+ * 这种**从模板抄来的占位符**被算成「凭据已有」——假阳性会顺着 preflight
+ * 的 ready 信号直通生产写按钮。反过来，真实凭据住在 `.env.local` 里而
+ * `node scripts/*` 不加载它，「非 process.env 即无」又把它们算成缺失——
+ * 假阴性顺着文档滚成了「B03 缺 SUPABASE_URL / SERVICE_ROLE_KEY」这句
+ * **与本机实况相反**的登记（同一天 `auth/v1/admin/users` 用本机 key 返回 200）。
+ * 两个方向的错共用同一个根：**判定没被写成可单测的函数**。
+ *
+ * 规则刻意保守：只把**明确可识别的模板形态**判成未配置，
+ * 不做「像不像真密钥」的猜测——猜出来的判定比非空判定更危险。
+ */
+const PLACEHOLDER_TOKENS = [
+  "your-project",
+  "your_project",
+  "example.com",
+  "changeme",
+  "xxxxxx",
+  "<",
+  "${",
+] as const;
+
+/**
+ * 解析 dotenv 形态的文本成键值表（纯函数，供 IO 层合并 env 文件用）。
+ *
+ * 只认本仓库实际用的写法：`KEY=value`、`#` 注释、空行、可选 `export` 前缀、
+ * 成对的单/双引号包裹。**刻意不实现**多行值与变量插值——
+ * 预检只问「这个键有没有被配成一个不像占位符的值」，
+ * 把 shell 的完整语义搬进来只会多出一处没人测的解析面。
+ */
+export function parseEnvFileText(content: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim();
+    if (line.length === 0 || line.startsWith("#")) continue;
+    const withoutExport = line.startsWith("export ") ? line.slice("export ".length).trim() : line;
+    const eq = withoutExport.indexOf("=");
+    if (eq <= 0) continue;
+    const key = withoutExport.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let value = withoutExport.slice(eq + 1).trim();
+    const quote = value[0];
+    if ((quote === "\"" || quote === "'") && value.length > 1 && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+/**
+ * 合并多份来源，后者不覆盖已配上的值：**判据是「有没有」而不是「谁赢」**。
+ * `process.env` 由调用方放在最前面，所以它优先。
+ */
+export function mergeEnvSources(sources: readonly Record<string, string | undefined>[]): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const source of sources) {
+    for (const [key, value] of Object.entries(source)) {
+      if (typeof value !== "string") continue;
+      if (!(key in merged) || !credentialLooksConfigured(merged[key])) merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
+
+/**
+ * JWT 形态的值要**解 payload 再判**，不能只看明文。
+ *
+ * 这不是「像不像真密钥」的猜测：Supabase 的 anon / service_role key 是 JWT，
+ * `.env.example` 的模板里那个 `ref` 就是 `your-project`，但它被 base64url 包在
+ * payload 里，明文词表命中不到——**判据若漏掉这一型，就是它自己造出来的假阳性**。
+ * 解不开（非合法 base64 / 非 JSON）就按原样判，不因此判成「未配置」：
+ * 那是读不出形状，不是占位符。
+ */
+function jwtPayloadIsPlaceholder(value: string): boolean {
+  if (!JWT_SHAPE.test(value)) return false;
+  try {
+    const payload = Buffer.from(value.split(".")[1] ?? "", "base64url").toString("utf8");
+    const lowered = payload.toLowerCase();
+    return PLACEHOLDER_TOKENS.some((token) => lowered.includes(token));
+  } catch {
+    return false;
+  }
+}
+
+export function credentialLooksConfigured(value: string | undefined): boolean {
+  const trimmed = (value ?? "").trim();
+  if (trimmed.length === 0) return false;
+  const lowered = trimmed.toLowerCase();
+  if (PLACEHOLDER_TOKENS.some((token) => lowered.includes(token))) return false;
+  return !jwtPayloadIsPlaceholder(trimmed);
+}
+
+/**
  * 判定一条演练的前置是否齐。
  *
  * `env` 里出现 `A + B` 这种复合 source 时，**任何一项缺失就算不满足**——

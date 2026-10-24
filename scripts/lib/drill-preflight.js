@@ -15,8 +15,11 @@ import { fileURLToPath } from "node:url";
 // 类型走 JSDoc 而不是 `import type`：本文件是 .js，node 的类型剥离只作用于 .ts，
 // 在 .js 里写类型导入会直接语法报错（第一版就踩了）。
 import {
+  credentialLooksConfigured,
   evaluateAllDrills,
   fileRequirementPaths,
+  mergeEnvSources,
+  parseEnvFileText,
   summarize,
 } from "../../src/lib/drills/preflight.ts";
 
@@ -50,6 +53,7 @@ function parseOnly(argv) {
 function readEnvProbe() {
   /** @type {EnvProbe} */
   const probe = {};
+  const resolved = readEnvSources();
   const names = new Set();
   for (const spec of evaluateAllDrills({}).flatMap((verdict) => verdict.requirements)) {
     for (const part of spec.source.split(" + ")) names.add(part.trim());
@@ -59,15 +63,43 @@ function readEnvProbe() {
       // 候选路径由纯函数给出：仓库相对的前置必须**与 cwd 无关**地成立，
       // 否则从仓库外面跑一次就会把已满足的报成未满足（详见那个函数的注释）。
       const candidates = fileRequirementPaths(name, process.env.HOME ?? "~", REPO_ROOT);
-      probe[name] = candidates.some(
-        (file) => fs.existsSync(file) && fs.readFileSync(file, "utf8").trim().length > 0,
-      );
+      probe[name] = candidates.some((file) => {
+        try {
+          return fs.existsSync(file) && fs.readFileSync(file, "utf8").trim().length > 0;
+        } catch {
+          return false;
+        }
+      });
       continue;
     }
-    // 空字符串按「没有」处理：`.env` 里写了 `KEY=` 是最常见的踩法。
-    probe[name] = (process.env[name] ?? "").trim().length > 0;
+    probe[name] = credentialLooksConfigured(resolved[name]);
   }
   return probe;
+}
+
+/**
+ * env 文件名单：**Next.js 运行时会自动加载这些**，而 `node scripts/*` 不会。
+ * 预检必须读同一批文件，否则「机器明明配了、探针却报缺」的假阴性
+ * 会顺着 ready 信号与文档一路滚出去（2026-10-25 实测就是这么把 B03
+ * 登记成「缺 SUPABASE_URL / SERVICE_ROLE_KEY」的，而当天本机那两个 key
+ * 打 `auth/v1/admin/users` 返回 200）。`.env.local` 优先于 `.env`，
+ * `process.env` 覆盖一切——与 Next 的加载顺序一致。
+ */
+const ENV_FILE_NAMES = [".env.local", ".env.development.local", ".env.development", ".env"];
+
+/** 读一份 env 文件；不存在就返回空表，读错也不炸——预检不是配置校验器。 */
+function readEnvFile(name) {
+  try {
+    return parseEnvFileText(fs.readFileSync(path.join(REPO_ROOT, name), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function readEnvSources() {
+  // 顺序即优先级：`mergeEnvSources` 是先到先得，所以名单必须按「具体→笼统」排，
+  // **不能 reverse**——否则最不具体的 `.env` 会赢（我第一版就写反了）。
+  return mergeEnvSources([process.env, ...ENV_FILE_NAMES.map(readEnvFile)]);
 }
 
 function runDrillPreflight() {

@@ -40,6 +40,24 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **`pnpm drills:preflight` 的凭据探针读错了来源，把「本机明明配着」报成「缺凭据」。**
+  旧实现只看 `process.env`，而 `node scripts/*` 不加载 `.env.local`（Next.js 运行时才加载）——
+  于是 B03 登记的「缺 `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` /
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`」与本机实况相反：当日 `GET /auth/v1/admin/users`
+  用 `.env.local` 里的 key 返回 **200**。假阴性顺着 ready 信号与文档一路滚出去，
+  而 roadmap 那句「2026-10-05 起不必再临场回忆缺哪个凭据」恰好给了它权威外观——
+  **固化判定不等于判定读对了来源**。现在按 `process.env` → `.env.local` →
+  `.env.development.local` → `.env.development` → `.env` 的顺序合并（先到先得，与 Next 一致）。
+- **同一条链上的假阳性一并修掉**：旧判据是「非空即有」，而 `.env.local` 里
+  `SUPABASE_DB_URL` 是从模板抄来的占位符（项目名还是 `your-project`）也被算成凭据已有。
+  新增纯函数 `credentialLooksConfigured`（只认明确可识别的模板形态，**不做「像不像真密钥」
+  的猜测**——猜出来的判定比非空判定更危险）与 `parseEnvFileText` / `mergeEnvSources`，
+  判定全部进 `src/lib/drills/preflight.ts` 由单测覆盖（+6 条用例）。
+- **B03 的真实缺口由此澄清**：三项凭据 ✓，只差 `DRILL_ISOLATED_ACCOUNT_EMAIL`
+  （生产当前唯一的账号不是可牺牲的）。roadmap / `production-smoke-v0.12.0.md` /
+  `docs/db/retention.md` 四处登记按「快照不回改、只加日期指针」订正，
+  并修掉 `retention.md` 那个指向 v0.11.0 的过期指针。
+
 - **【生产 P0】摘要邮件与保留期清理在线上从未执行过——Vercel Cron 用的是 HTTP GET，而这两条 worker 只导出 POST。**
   2026-10-10 实测：`curl -X GET $BASE/api/cron/digest` ⇒ **405**，同一条路径 `POST` ⇒ 401，
   而导出 GET 的 `push-retry` ⇒ 401。401 意味着**进了函数**（鉴权在 handler 里），

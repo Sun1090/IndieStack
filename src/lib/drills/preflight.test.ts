@@ -14,10 +14,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  credentialLooksConfigured,
   DRILL_SPECS,
   evaluateAllDrills,
   evaluateDrill,
   fileRequirementPaths,
+  mergeEnvSources,
+  parseEnvFileText,
   summarize,
   type EnvProbe,
 } from "./preflight";
@@ -347,5 +350,74 @@ describe("summarize", () => {
         expect(headline).toMatch(/演练|前置/);
       }
     }
+  });
+});
+
+describe("credentialLooksConfigured（占位符判据，2026-10-25 实测催生）", () => {
+  it("空、缺失、纯空白都算未配置", () => {
+    expect(credentialLooksConfigured(undefined)).toBe(false);
+    expect(credentialLooksConfigured("")).toBe(false);
+    expect(credentialLooksConfigured("   ")).toBe(false);
+  });
+
+  it("从模板抄来的占位符值算未配置——这是旧「非空即有」的假阳性", () => {
+    expect(credentialLooksConfigured("postgres://u:p@db.your-project.supabase.co:5432/postgres")).toBe(false);
+    expect(credentialLooksConfigured("https://changeme.invalid")).toBe(false);
+    expect(credentialLooksConfigured("<paste-your-key>")).toBe(false);
+    expect(credentialLooksConfigured("sbp_${TOKEN}")).toBe(false);
+  });
+
+  it("模板里的 JWT key 也要判成未配置——明文词表命中不到，盲点就在这", () => {
+    // 用例直接取 `.env.example` 第 23 行的真实模板值：Supabase 的 anon / service_role
+    // key 是 JWT，`your-project` 被 base64url 包在 payload 里。
+    // 这条钉的是「判据不许漏掉自己造的假阳性」——改判据词表而不解 payload，这里就红。
+    // 从仓库里的 `.env.example` 取值而不是外部变量：CI 上没有我本地的 shell 环境，
+    // 依赖变量的用例会直接在 CI 变红（我写第一版时就踩了这一点）。
+    const example = parseEnvFileText(readFileSync(resolve(process.cwd(), ".env.example"), "utf8"));
+    const templateKey = example.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+    expect(templateKey.length).toBeGreaterThan(20);
+    expect(credentialLooksConfigured(templateKey)).toBe(false);
+    expect(credentialLooksConfigured(example.SUPABASE_DB_URL ?? "x")).toBe(false);
+  });
+
+  it("真实形态的凭据算已配置", () => {
+    expect(credentialLooksConfigured("https://ntqggnztzvoavjbiillb.supabase.co")).toBe(true);
+    expect(credentialLooksConfigured("sbp_realpathtoken123")).toBe(true);
+  });
+});
+
+describe("parseEnvFileText", () => {
+  it("解析 KEY=value、注释、export 前缀与引号包裹；畸形行跳过", () => {
+    const parsed = parseEnvFileText(
+      [
+        "# comment",
+        "",
+        "A=1",
+        'B="two"',
+        "C='three'",
+        "export D=four",
+        "=nokey",
+        "E",
+        "2BAD=x",
+        'F="unclosed',
+      ].join("\n"),
+    );
+    expect(parsed).toEqual({ A: "1", B: "two", C: "three", D: "four", F: '"unclosed' });
+  });
+});
+
+describe("mergeEnvSources", () => {
+  it("process.env 优先；env 文件只补位，占位符值可被后面的真实值顶掉", () => {
+    const merged = mergeEnvSources([
+      { SUPABASE_DB_URL: "postgres://x@db.your-project.supabase.co/y" },
+      { SUPABASE_DB_URL: "postgres://x@db.real123.supabase.co/y", TOKEN: "sbp_ok" },
+    ]);
+    expect(merged.SUPABASE_DB_URL).toBe("postgres://x@db.real123.supabase.co/y");
+    expect(merged.TOKEN).toBe("sbp_ok");
+  });
+
+  it("已配上真实值的键不被后面的占位符覆盖（先到先得，占位符只让位）", () => {
+    const merged = mergeEnvSources([{ K: "real-value" }, { K: "your-project" }]);
+    expect(merged.K).toBe("real-value");
   });
 });
