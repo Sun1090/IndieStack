@@ -66,6 +66,7 @@
  | Command | Description |
  |--------|------------|
 | `pnpm db:migrate` | Push migrations to Supabase |
+| `pnpm db:apply` | Apply one migration to a cloud Supabase project via the Management API (SHA-256 verified, ordinal-shaped history row; dry-run by default, `--apply` to execute) |
 | `pnpm db:seed` | Run seed data script |
 | `pnpm db:types` | Generate TypeScript types from Supabase |
 | `pnpm db:status` | Check Supabase local service status |
