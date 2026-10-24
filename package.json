@@ -86,6 +86,7 @@
     "smoke:production": "node scripts/production-smoke.js",
     "drills:preflight": "node scripts/lib/drill-preflight.js",
     "drills:auth-deletion-equivalence": "node scripts/auth-deletion-equivalence.js",
+    "drills:storage-erasure": "DRILL_STORAGE_REQUIRE=1 DRILL_STORAGE_URL=http://127.0.0.1:54321 vitest run src/lib/drills/storage-erasure.drill.test.ts",
     "check:retention-cron": "node scripts/check-retention-cron.js",
     "ops:deploy-freshness": "node scripts/check-deploy-freshness.js",
     "ops:deploy-ledger": "node scripts/check-deploy-ledger.js",
