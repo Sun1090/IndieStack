@@ -10236,3 +10236,30 @@
   （triage 文档里已写明前置条件）。
 - 下一项：明天 UTC 09:00 之后取 digest 第一轮真实生产读数（不变）；B04 / B03 仍为外部阻塞。
 - 更新时间：2026-10-24 22:20（UTC+8）。
+
+## 2026-10-24 — `ops:digest-observation`：把「worker 端到端跑通」的口头判据固化成可复跑的只读探测
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/digest-observation-probe`。
+- 状态：DONE。
+- 为什么做：上一条台账给「明天取 digest 第一轮读数」立了判据，但那是**口头描述**
+  （“`email_worker_runs` 非零行 + `cron.digest.completed`”）。本仓库的规矩是一次性
+  读出的结论必须附可复跑命令——而且读数窗口是明天的事，明天的我要能一条命令出结论，
+  不需要重新回忆今天的判据形状。
+- 做了什么：
+  1. 判定层 `src/lib/db/digest-observation.ts`：五档 verdict。关键是
+     `TOO_EARLY` 与 `NOT_TRIGGERED` **分开**——调度是每日 09:00 UTC，窗口未开时
+     「没有行」是预期内的，绝不能读成「没进函数（405 同型）」。
+     `COMPLETED_FAILING` / `COMPLETED_BACKLOG` 不打 ❌（跑通了但方向坏），沿用
+     `cloud-sql-probe` 的 `❗` 语义。判据只看 worker 自己落的表，不重放队列谓词——
+     重放等于把 repository 逻辑抄第二份，必然漂移（backlog 列本来就是 worker 记的读数）。
+  2. IO 层 `scripts/lib/digest-observation-check.js`：经只读端点跑一条 SELECT
+     （`query/read-only`，与 ops:cloud-sql-probe 同族通道）。时间锚默认 405 修复的
+     部署时刻（`2026-10-24T10:42:42Z`，ops:deploy-ledger 实测）与其后第一个 09:00 UTC，
+     都可被 flag 覆盖——锚点是证据的一部分，但换部署必须能换。
+  3. 测试 18 条（判定 10 + IO 8）；CHANGELOG 记账。
+- 验证：`vitest src/lib/db` 241 条全绿；lint / type-check 干净；CLI 冒烟
+  （`--help`、非法时间 ⇒ 2、缺 token ⇒ 2 优雅收场）。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 PR（纯新增探测，不碰任何默认路径）。
+- 下一项：明天 09:00 UTC 后跑 `pnpm ops:digest-observation`，读数补进台账，闭合
+  「端到端跑通」的最后一格证据（提醒已设）；B04 / B03 仍为外部阻塞。
+- 更新时间：2026-10-24 23:15（UTC+8）。

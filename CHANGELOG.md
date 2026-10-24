@@ -10,6 +10,14 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm ops:digest-observation`：把「digest worker 端到端跑通」的判据固化成只读探测。**
+  405 修复（#236）部署后，台账给的判据是口头描述（「`email_worker_runs` 非零行 +
+  `cron.digest.completed`」）——按本仓库「一次性读出的结论必须附可复跑命令」的规矩，
+  它需要自己的命令。新探测经只读端点跑一条 SELECT，分五档 verdict：
+  `TOO_EARLY`（窗口未开，**不把「没有行」读成「坏了」**）、`NOT_TRIGGERED`（未落表）、
+  `COMPLETED_OK` / `COMPLETED_BACKLOG` / `COMPLETED_FAILING`（跑通了，方向分别是好/仍堵/失败侧）。
+  时间锚默认为 405 修复的部署时刻与「其后第一个 09:00 UTC 调度」，两者都可覆盖。
+
 - **`pnpm db:apply -- <序号>`：把「经 Management API 应用一条迁移」固化成脚本，从根上消掉版本号形状坑。**
   此前手工流程是「`POST /database/query` 执行迁移体 + 手工 INSERT 一行迁移历史」，
   而那行历史的 `version` 落 14 位时间戳形态，与 manifest 序号不匹配（034 / 035 各踩一次，

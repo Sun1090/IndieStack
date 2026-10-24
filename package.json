@@ -92,6 +92,7 @@
     "ops:migration-status": "node scripts/check-migration-status.js",
     "ops:cloud-sql-probe": "node scripts/check-cloud-sql-probe.js",
     "ops:codeql-alerts": "node scripts/check-codeql-alerts.js",
+    "ops:digest-observation": "node scripts/digest-observation.js",
     "auth:email-config": "node scripts/apply-auth-email-templates.js",
     "smoke:supabase-identity": "node scripts/verify-supabase-identity.js",
     "check:migration-history": "node scripts/check-migration-history.js",
