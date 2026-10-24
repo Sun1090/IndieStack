@@ -455,4 +455,20 @@ export const CODEQL_ALERT_REGISTRY: readonly AlertRegistryEntry[] = [
       "分诊为假阳性（命中处哈希的是 24 字节随机 token ⇒ 192 位熵，不是口令），" +
       "但 dismissal 要 maintainer 决定，故仍未结案。严重度 high ⇒ 落在阻断档。",
   },
+  {
+    number: 19,
+    ruleId: "js/file-access-to-http",
+    // 与 #18 同一状态：判定为「按预期设计」（迁移文件 → Management API 是工具本职，
+    // 内容被 manifest SHA-256 锁定、默认 dry-run、不在任何自动流程里），
+    // 但没有 dismissal，所以仍按 triaging 登记。
+    verdict: "triaging",
+    decidedBy: "Sun1090",
+    decidedOn: "2026-10-24",
+    evidence: "issue #271",
+    reviewBy: "2026-11-21",
+    note:
+      "分诊为按预期设计（读的是 manifest 锁定的仓库迁移文件，端点为常量，" +
+      "威胁模型里攻击者若能改文件就已拥有整个仓库），dismissal 待 maintainer 决定。" +
+      "严重度 medium，不在阻断档。",
+  },
 ];
