@@ -293,7 +293,7 @@ describe("inspectDependencyAudit() — 失败封闭", () => {
 
 describe("shipped DEPENDENCY_AUDIT_EXCEPTIONS", () => {
   it("every shipped entry is complete and inside its own review window", () => {
-    expect(DEPENDENCY_AUDIT_EXCEPTIONS.length).toBeGreaterThan(0);
+    // 台账允许为空（所有公告都已修复时就是空）；非空时每条都必须形状完整、未过期。
     for (const exception of DEPENDENCY_AUDIT_EXCEPTIONS) {
       const result = inspectDependencyAudit(report({}), {
         exceptions: [exception],
@@ -308,10 +308,11 @@ describe("shipped DEPENDENCY_AUDIT_EXCEPTIONS", () => {
   });
 
   it("accounts for the real braces advisory the repository currently reports", () => {
-    // 这条 fixture 抄的是 `pnpm audit --json` 在 2026-10-03 的真实输出形状。
-    // 台账与现实脱节时（上游改了字段、例外被删了），这里会红。
-    const result = inspectDependencyAudit(report({ "1240992": advisory() }), { today: TODAY });
-    expect(verdict(result).excepted).toEqual(["GHSA-vfj7-8cjw-p6xm"]);
+    // 2026-10-24：vite/next/zod/undici 升级后 audit 报告里已没有 braces 这条公告
+    // （门禁的「no longer present」规则会强迫删掉台账条目），空台账对干净报告必须绿。
+    expect(DEPENDENCY_AUDIT_EXCEPTIONS).toHaveLength(0);
+    const result = inspectDependencyAudit(report({}), { today: TODAY });
+    expect(verdict(result)).toEqual({ high: 0, critical: 0, excepted: [] });
   });
 });
 describe("inspectBareAuditCommands()", () => {

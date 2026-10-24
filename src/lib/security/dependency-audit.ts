@@ -80,23 +80,7 @@ export const EXCEPTION_MODULE_PATH = "src/lib/security/dependency-audit.ts";
  * 而且我答应在某天之前重新查一遍」的登记簿。能修就修，修不了才写在这里，并接受第 4 条
  * 规则在 `reviewBy` 那天把仓库变红。
  */
-export const DEPENDENCY_AUDIT_EXCEPTIONS: readonly AuditException[] = [
-  {
-    advisoryId: "GHSA-vfj7-8cjw-p6xm",
-    module: "braces",
-    severity: "high",
-    reachability:
-      "仅开发期可达：eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch → braces，" +
-      "eslint-config-next 是 devDependencies，不进任何运行时依赖图，也不进产物。",
-    justification:
-      "上游未发布任何修复版本：公告写 patched >=3.0.4，而 npm 上 braces 的最新发布版仍是 3.0.3" +
-      "（2026-10-03 用 `npm view braces versions` 核过，GitHub Advisory Database 的 " +
-      "Patched versions 一栏为 None）。往上游看也堵不住：fast-glob 3.3.3 仍依赖 micromatch ^4.0.8，" +
-      "micromatch 4.0.8 仍依赖 braces ^3.0.3。触发面是 lint 时读 glob 模式，不接受网络输入。",
-    reviewedOn: "2026-10-03",
-    reviewBy: "2026-11-02",
-  },
-];
+export const DEPENDENCY_AUDIT_EXCEPTIONS: readonly AuditException[] = [];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
