@@ -26,7 +26,7 @@ minimumReleaseAgeExclude:
 # 依赖覆盖：修复审计发现的传递依赖漏洞（pnpm v11 设置在 pnpm-workspace.yaml）
 overrides:
   # 同上：先前钉的 ^3.1.6 在新 advisory 下自身已是漏洞版本（需 >=3.1.8）
-  fast-uri: ^3.1.8
+  fast-uri: ^3.1.9
   nanoid: ^3.3.18
   # GHSA-qhr7-859c-m2p7 / GHSA-6j4f-fj2g-mc7p：DoS via uncontrolled recursion。
   # 2026-09-30 上调：先前钉的 ^2.1.4 / ^5.0.9 在新 advisory 下**自身已是漏洞版本**
