@@ -204,6 +204,25 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     // 也不能读成「生产链路免疫」，只能说这两次结果不同。
     note: "preview 被限流的同时生产已含本 PR 的合并提交（`ops:deploy-freshness` 实测，2026-10-25）",
   },
+  {
+    pr: 282,
+    pool: "preview",
+    outcome: "fail",
+    at: "2026-10-25",
+    note: "两项全 fail，错误文本同 `Deployment rate limited — retry in 24 hours`（`gh pr checks 282`）",
+  },
+  {
+    pr: 282,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    // ⚠️ **同一次 24h 限流窗口里，这个镜像形状连续出现了两次**（#281、#282）：
+    // preview 被限流，生产合并后约 90 秒就跟上了（`ops:deploy-freshness` ⇒ 生产 = `5f41bdd1`）。
+    // 两次同形**仍然不构成因果结论**——它只说明「preview 失败与生产上线在这两次观察里
+    // 可以同时发生」，不说明为什么。上一条立下的分寸在这里继续生效：
+    // 不能读成「配额只挡 preview」（那是一次概括），也不能读成「生产链路免疫」。
+    note: "合并约 90 秒后生产已含 `5f41bdd1`（`ops:deploy-freshness` 实测）⇒ 镜像形状第二次出现",
+  },
 ];
 
 /** 台账里读数的条数——文档表头那句「今天有 N 个读数」必须等于它。 */
