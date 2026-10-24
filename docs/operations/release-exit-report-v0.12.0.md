@@ -120,6 +120,9 @@ tag 是对外声明「做完了」，**没有证据就等于没做**。
    `docs/operations/drills/account-erasure.single-do.sql` 已入库，本地栈实测
    `failures=0 assertions=20`、回滚干净；**保留期那份的派生版仍在 PR #236 里没进 main**，
    而 (b) 的人工授权**也仍未取得**——所以本条结论不变。
+   【2026-10-24 加指针】「没进 main」为 10-13 快照，不回改：#236 已合并（`917beb41`），
+   `git ls-tree origin/main` 复跑读数两份 `.single-do` 都在 main ⇒ (a) 已全部闭合；
+   (b) 人工授权**仍未取得**——本条结论不变，tag 前置不变。
 3. **B05 的 P2–P4 未闭合** → 缺 Resend 测试 key、VAPID 一对与真实订阅端点、可牺牲项目。
 4. **本版本的回滚演练未做** → `rollback-runbook-v0.12.0.md` 的「演练记录」为空。
    v0.11.0 的回滚记录**不跨迁移边界**，不能用来证明本版本可用。

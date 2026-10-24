@@ -176,6 +176,10 @@ tag：未打（理由见 release-tag-ledger.md）
   【2026-10-13 同日加指针】前一半做完了**两份中的一份**（`account-erasure.single-do.sql` 入库并本地跑通；
   保留期那份的派生版仍在 PR #236 里没进 main），后一半——往生产库写的授权——
   **不在我能决定的范围里**，B04 因此仍计未完成。
+  【2026-10-24 加指针】上面「仍在 PR #236 里没进 main」是 10-13 的快照，不回改；
+  #236 已于 2026-10-24 合并（`917beb41`），`git ls-tree origin/main` 复跑读数：两份 `.single-do` 都在 main 上
+  ⇒ 前一半**已全部闭合**。后一半的判定不变：往生产库写的授权不在自主代理能决定的范围里，
+  B04 仍计未完成。阻塞理由第五次改写的完整口径见 `docs/roadmap-0.12.0.md` B04 与 `preflight.ts`。
 - **生产未配置 `RESEND_API_KEY` / `NEXT_PUBLIC_SENTRY_DSN` / `STRIPE_SECRET_KEY`**：
   邮件、告警、支付三条外部链路在生产上是空转的。这些是外部凭据，不是代码问题。
 - **跨迁移边界的真实生产回滚证据**仍不存在（`rollback-runbook-v0.12.0.md` 的

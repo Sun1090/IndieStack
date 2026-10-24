@@ -10323,3 +10323,23 @@
   **等用户的事项**：B04 授权（看过两份 SQL 后设 `B04_AUTHORIZE_PRODUCTION_WRITE=yes`）、
   B03 隔离账号凭据。
 - 更新时间：2026-10-25 00:35（UTC+8）。
+
+## 2026-10-25 —【#275 的漏网】release-runbook 与 release-exit-report 里同一条「没进 main」也加了指针
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/b04-release-pointers`。
+- 状态：DONE。
+- 为什么做：上一条（#275）扫的锚是 `preflight` / roadmap / environments，
+  而这条过期论断在仓库里一共落了**五处**——`release-runbook-v0.12.0.md` 与
+  `release-exit-report-v0.12.0.md` 各剩一处没修。本轮把同一锚扫到全库
+  （`grep "没进 main"` 打 src + docs + docs-site），命中即修，剩下三处命中
+  是引用旧读数的订正文字，合法保留。
+- 做了什么：两份发布文档各加一条【2026-10-24 加指针】：10-13 的「仍在 PR #236 里没进 main」
+  快照原文不回改，写明 #236 已合并（`917beb41`）+ 复跑读数（`git ls-tree origin/main`
+  两份 `.single-do` 都在 main）⇒ 缺口 (a) 已全部闭合；(b) 人工授权仍未取得，
+  **B04 结论不变、tag 前置不变**——指针只更新事实，不替 maintainer 决定。
+- 验证：`check:release-docs` / `check:changelog` / `check:doc-links` / `check:doc-commands` ✅；
+  全库再扫「没进 main」，无漏网（除三处合法的订正引用文字）。
+- 阻塞 / 风险 / 回滚：纯文档指针，回滚 = revert。
+- 下一项：今天 17:30（UTC 09:00 后）跑 `pnpm ops:digest-observation` 取第一轮读数；
+  B04 剩人工授权、B03 剩隔离账号凭据（均待 maintainer）。
+- 更新时间：2026-10-25 01:10（UTC+8）。
