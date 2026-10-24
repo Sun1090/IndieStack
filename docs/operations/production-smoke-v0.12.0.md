@@ -10,7 +10,10 @@
   pnpm smoke:production --expected-commit "<上面读到的 commit>"
   ```
 
-## 无副作用检查（自动化，`pnpm smoke:production`，本版本 7 步）
+## 无副作用检查（自动化，`pnpm smoke:production`，本版本 8 步）
+
+> 本行原写「7 步」，是 2026-10-05 发布当时的快照；**2026-10-10 起冒烟为 8 步**
+> （新增 `cron-trigger-method`，见 `release-runbook-v0.12.0.md` 与下表最后一行）。
 
 | 检查项 | 期望 | 状态 |
 | --- | --- | --- |
@@ -19,6 +22,7 @@
 | 首页/静态资源 | 首页 200 且含 `#main-content`；`/icon.svg` 200 且 MIME 为 SVG | ✅ `homepage:200`、`static-asset:200`（icon.svg 以 SVG 提供） |
 | 未授权 dashboard | 匿名请求重定向到 `/auth/login`，不返回受保护内容 | ✅ `anonymous-dashboard:307` → `/auth/login` |
 | Webhook 缺签名 | HTTP 400，`Missing signature`，`no-store` | ✅ `webhook-signature-rejection:400`，拒绝且无副作用 |
+| `cron-trigger-method`（2026-10-10 新增第 8 步） | `vercel.json` 的每条 cron 路径 GET 必须**不是 405**（401=进了函数被鉴权拒，可接受） | ✅ 2026-10-24 实测：`/api/cron/{digest,retention,push-retry}` GET ⇒ 401/401/401，8/8 通过（405 修复 #236 部署后） |
 | 安全头 | CSP、HSTS、nosniff、DENY、Referrer-Policy、Permissions-Policy、request ID 齐全 | ✅ CSP（含 nonce + `strict-dynamic`）、HSTS `max-age=63072000; includeSubDomains; preload`、nosniff、`DENY`、`strict-origin-when-cross-origin`、permissions-policy、`x-request-id` |
 
 > **本版本新增第 7 步的理由**：`/api/health` 拆成就绪与存活两个端点后，
@@ -55,7 +59,7 @@
 
 | 检查项 | 期望 | 状态 |
 | --- | --- | --- |
-| 迁移已 applied | `supabase migration list --linked` 显示 001–034 全部 applied；`db push --linked --dry-run` 为空 | ⛔ 本机无 Supabase 凭据（`~/.supabase/access-token` 不存在），**发布前必须在有凭据处复核**——034 未 applied 而代码已部署会让 digest worker 抛错 |
+| 迁移已 applied | `pnpm ops:migration-status` 报告本仓库登记的迁移全部已在云端 applied | ✅ **2026-10-24 转绿**：034/035 经 Management API applied + 版本号订正后探测一致。旧行写「⛔ 本机无凭据、034 未 applied」是 10-13 的快照——CLI 登录态那条路确实走不通，但 `ops:migration-status` 只要 repo secret 就能答（见 roadmap B 组「第四版否证」与 `migration-rollback-runbook.md` 的等价路径节） |
 | 队列语义（A05） | `notifications.email_skipped_reason` 列存在；`countEmailSkippedByReason` 能按 `EMAIL_SKIP_REASONS` 返回计数 | ⛔ 同上，需要 service-role 读权限 |
 | `email.backlog` 趋势 | A05 落地后积压应**下降**（原先不可投递的行不再占队首） | ⏳ 需要部署后观察 |
 
@@ -94,7 +98,7 @@ allConfigured=false degraded=false
 
 ## 为什么这一版不能只跑自动化的 7 项
 
-自动化 7 步全部无副作用且不需要任何凭据，但它**证明不了三件事**：
+自动化 8 步全部无副作用且不需要任何凭据，但它**证明不了三件事**：
 
 1. **迁移 034 在云端真的 applied 了**（自动化检查完全不碰数据库）；
 2. **A05 的队列语义在真实数据上成立**（需要 service-role 读权限与观察窗口）；

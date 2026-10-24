@@ -134,10 +134,9 @@ describe("evaluateDrill", () => {
     expect(onlyOne.ready).toBe(false);
     const unmet = onlyOne.requirements.find((r) => !r.satisfied)!;
     expect(unmet.source).toContain("retention-cleanup.single-do.sql");
-    // 而且 remedy 要指回**唯一那条正确的路**（合并 #236），
+    // 而且 remedy 要指回**唯一那条正确的路**（重新转换并在本地栈跑通），
     // 不能让人就地复制一份——两份会各自漂移。
-    expect(unmet.remedy).toContain("#236");
-    expect(unmet.remedy).toContain("不要为了让判定变绿而把这条删掉");
+    expect(unmet.remedy).toContain("不要就地复制正本");
   });
 
   it("B04 不再需要数据库密码：那次读数否证了它（2026-10-13）", () => {
@@ -175,13 +174,15 @@ describe("evaluateDrill", () => {
   });
 
   it("仓库里真实存在的那份演练 SQL 能被解析出来（不依赖 cwd）", () => {
-    // 上一条测的是纯函数的形状，这条测的是它对本仓库事实的判断对不对：
-    // 保留期那份单语句正本此刻在 PR #236 里，还没进 main，
-    // 所以断言只取两份**已在 main 上**的正本，避免用例随分支状态漂。
+    // 上一条测的是纯函数的形状，这条测的是它对本仓库事实的判断对不对。
+    // 2026-10-24 起四份都在 main 上（两份 .single-do 派生版随 #236/#237 落地），
+    // 所以全部覆盖——旧写法「只取两份正本」是因为保留期派生版当时还没进 main。
     const repoRoot = resolve(__dirname, "../../..");
     for (const relative of [
       "docs/operations/drills/retention-cleanup.sql",
       "docs/operations/drills/account-erasure.sql",
+      "docs/operations/drills/retention-cleanup.single-do.sql",
+      "docs/operations/drills/account-erasure.single-do.sql",
     ]) {
       const [resolved] = fileRequirementPaths(`file:${relative}`, "/home/u", repoRoot);
       expect(resolved).toBe(resolve(repoRoot, relative));
@@ -213,7 +214,7 @@ describe("evaluateDrill", () => {
     );
   });
 
-  it("B04 的第三、四次纠正都要留在阻塞文案里（2026-10-13 实测）", () => {
+  it("B04 的第三、四次纠正与第五次订正都要留在阻塞文案里", () => {
     // 第三次：把 retention-cleanup.sql 压成一条 DO 块在本地跑通（failures=0），
     // 否证「多语句 ⇒ 必须 psql」；第四次：Management API 用令牌就能执行 SQL，
     // 连「要数据库密码」也被否证。两个版本的读数与坑都必须留在 blockedReason 里，
@@ -222,8 +223,11 @@ describe("evaluateDrill", () => {
     expect(B04.blockedReason).toContain("DO 块");
     expect(B04.blockedReason).toContain("run 38334026946");
     expect(B04.blockedReason).toContain("22012");
-    // 未验证的那一半必须留在原地，不能被写成「已解锁」
-    expect(B04.blockedReason).toContain("没进 main");
+    // 第五次（2026-10-24）：(a) 的两份都已进 main（#236 合入 917beb41，
+    // `git ls-tree origin/main` 读数），缺口只剩 (b) 人工授权。
+    // 钉「已闭合」而不是钉旧的「没进 main」——上一轮正是被后者反噬的：
+    // 事实变了而文案没回头改，腐烂的却是生产写决策的输入。
+    expect(B04.blockedReason).toContain("已于 2026-10-24 闭合");
   });
 
   it("B05 的 VAPID 是复合前置：缺一个就不满足", () => {
