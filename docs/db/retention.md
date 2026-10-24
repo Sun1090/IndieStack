@@ -330,25 +330,46 @@ docker exec -i supabase_db_indiestack psql -U postgres -d postgres \
 
 **仍未取得的生产证据**：真实 `auth.admin.deleteUser`（演练里用 `delete from auth.users` 等价替代，
 级联语义相同但没走 GoTrue 的会话清理）、真实 bucket 对象删除、隔离账号在**生产**上的删号闭环。
+这三项需要 Vercel/Supabase 侧权限与一个可牺牲账号，见 `docs/operations/production-smoke-v0.12.0.md`
+的「需要隔离账号」一节（**指针订正**：原文指向 v0.11.0，当前版本的权威行在 v0.12.0）。
 
-> **【2026-10-25 订正上面那句「没走 GoTrue 的会话清理」】**：那是**一个从未被验证的担心**，
-> 却被写成了登记事实。本地栈有真 GoTrue，所以这件事本可以在本地答：
-> `pnpm drills:auth-deletion-equivalence` 把同一个演练跑两遍
-> （`delete from auth.users` vs `DELETE /auth/v1/admin/users/<id>`），
-> 实测两种删法的**可观察行为逐项相同**——auth 侧
-> `sessions` / `refresh_tokens` / `identities` / `one_time_tokens` / `mfa_factors` 删后全 0，
-> 旧 `refresh_token` 刷新都回 **400 `refresh_token_not_found`**，
-> 旧 `access_token` 打 `/user` 都回 **403**。
-> ⇒ **等价替代是等价的**，至少在本机 GoTrue 上；那句担心不成立。
+> **【2026-10-25 三条读数把上面这段收窄成一项】**原文写于 2026-09-21，按「带日期的证据
+> 快照不回改」留原文；但其中**前两项本可以在本地答**，现已各自有实测，
+> 真正仍未闭合的只剩第三项「**在生产**用可牺牲账号跑通删号闭环」。
 >
-> ⚠️ **但它不能自动迁移到生产**：探测带回生产版本读数后判定降为
-> `EQUIVALENT_LOCAL_ONLY`——本地 GoTrue **v2.195.0** 与生产 **v2.197.0** 不同版
-> （`/auth/v1/health` 实读；该端点生产侧要 apikey，不带回 401）。
-> 判生产仍需在**生产**用可牺牲账号重跑，即 B03 本体不变。
-> 这条订正减少的是「演练结论会不会因为没用真 deleteUser 而失真」这个不确定性，
-> **不减少**「需要隔离账号」这项外部权限。
-这三项需要 Vercel/Supabase 侧权限与一个可牺牲账号，见 `docs/operations/production-smoke-v0.12.0.md` 的「需要隔离账号」一节（**指针订正**：原文指向 v0.11.0，当前版本的权威行在 v0.12.0）。
-【2026-10-25 读数】「缺 Supabase 侧权限」这半句对**本机不成立**：`SUPABASE_SERVICE_ROLE_KEY` 可用——`GET /auth/v1/admin/users` 返回 200、`REST /profiles` 读到 1 行。真正缺的是「一个敢删的账号」：生产当前唯一的账号（2026-08-23 注册）**不是**可牺牲的。
+> **① 「没走 GoTrue 的会话清理」不成立。**那是一个从未被验证的担心，却被写成登记事实。
+> 本地栈有真 GoTrue，`pnpm drills:auth-deletion-equivalence` 把同一演练跑两遍
+> （`delete from auth.users` vs `DELETE /auth/v1/admin/users/<id>`），实测两种删法的
+> **可观察行为逐项相同**：auth 侧 `sessions` / `refresh_tokens` / `identities` /
+> `one_time_tokens` / `mfa_factors` 删后全 0；旧 `refresh_token` 刷新都回
+> **400 `refresh_token_not_found`**；旧 `access_token` 打 `/user` 都回 **403**。
+> ⇒ 等价替代是等价的（在本机 GoTrue 上）。
+>
+> **② 「真实 bucket 对象删除」同样过头了。**`pnpm drills:storage-erasure` 走
+> **应用自己的代码路径**（`getStorageDriver().put` → 公共读 → `cleanupStorageObject` → 再读），
+> 2026-10-25 本地栈实测四步全过：对象建得起、读得到、经擦除链路删除后**读不到**。
+> ⇒ 账户删除链路的存储那一半在本机已被证成。
+>
+> 为什么此前三份绿着的证据都盖不住 ②：`.single-do.sql` 只动数据库元数据（碰不到 provider）；
+> `smoke:supabase-identity` 的 13 项 storage 检查（实跑 20/20 全绿）验的是**原始 REST + RLS**，
+> 自己发 HTTP，**不经过 `src/lib/storage` 那层驱动**；`e2e/uploads.spec.ts` 跑 mock 后端。
+> ⇒ 「我们的代码删得掉对象吗」这一格从来没被自动化答过，而三份绿让它**看起来像答过了**。
+>
+> 这两条探测各带一道闸（写侧实验的边界）：`assertLocalOnlyTarget` 只允许
+> `http://127.0.0.1|localhost`——本机 `.env.local` 的 `NEXT_PUBLIC_SUPABASE_URL` 指向
+> **生产**（实测），且闸必须在**任何请求发出之前**生效（storage 探测第一版只判容器可达、
+> 与 URL 无关，按代码路径推断把 URL 指生产时仍会先发一次 PUT——**「修前会发」是推理，
+> 没留修前读数**；实测覆盖的是修后：URL 指生产时输出里不再出现 `storage.upload` 指标 ⇒ 确实没发。
+> 负向用例钉的是「闸拒绝生产 URL」这条行为。
+> `DRILL_STORAGE_REQUIRE=1` 才执行真写组：默认 `pnpm test` / CI 不依赖 docker，
+> 而专用命令声明要验时**没栈就判失败**、不 skip（扫不到东西的检查等于没有检查）。
+>
+> ⚠️ **两条都不自动迁移到生产**：带回生产读数后判定降为 `EQUIVALENT_LOCAL_ONLY`——
+> 本地 GoTrue **v2.195.0** 与生产 **v2.197.0** 不同版（`/auth/v1/health` 实读；
+> 该端点生产侧要 apikey，不带回 401）。「缺 Supabase 侧凭据」这半句对**本机**也不成立：
+> `SUPABASE_SERVICE_ROLE_KEY` 可用（`GET /auth/v1/admin/users` 返回 200）。
+> ⇒ 剩下的缺口是**决定**而不是能力：需要一个敢删的账号，而生产当前唯一的账号
+> （2026-08-23 注册）不是可牺牲的。见 roadmap B03 与 `pnpm drills:preflight --drill B03`。
 
 **`/api/cron/retention` 没有可久查的执行证据（2026-10-25 读数）**：
 digest 每轮往 `email_worker_runs` **插一行**，所以「跑没跑」在库里可查
