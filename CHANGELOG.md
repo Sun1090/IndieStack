@@ -8,6 +8,18 @@ See `docs/operations/release-tag-ledger.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **`ops:migration-status` 新增 `--fix-version-shape [--apply]`：把「Management API 应用迁移后手工订正版本号形状」固化成脚本。**
+  用 `POST /v1/projects/{ref}/database/query` 应用迁移时，`schema_migrations.version` 落的是
+  14 位时间戳形态，与 manifest 的 3 位序号形状不匹配，判定层把它读成「本地不认识的迁移」
+  （2026-10-24 台账记录的已知操作负担：每次都要人手工 UPDATE）。订正流程默认 dry-run
+  只打印计划；`--apply` 才执行 `update supabase_migrations.schema_migrations` 并复跑探测给最终结论。
+  计划由判定层 `planVersionShapeFix`（`src/lib/db/migration-status.ts`，Vitest 覆盖）生成：
+  **只按迁移文件名匹配**（云端 `name` ↔ manifest `fileName`，剥 `.sql` 后全等）——
+  对不上仓库任何一条迁移的行一律不动，两行认领同一个目标版本号的计划整体拒判。
+  判据：不拿「时间戳先后 ≈ 序号先后」这个没验证过的假设去写生产表。
+
 ### Fixed
 
 - **【生产 P0】摘要邮件与保留期清理在线上从未执行过——Vercel Cron 用的是 HTTP GET，而这两条 worker 只导出 POST。**

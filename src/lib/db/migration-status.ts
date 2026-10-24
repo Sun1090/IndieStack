@@ -116,12 +116,21 @@ export function parseAppliedMigrations(payload: unknown): AppliedMigration[] | n
   return parsed;
 }
 
+export interface ManifestMigrationEntry {
+  version: string;
+  /** 可缺：没有文件名的条目只意味着「无法按名订正」，不该让版本解析失败。 */
+  fileName?: string;
+}
+
 /**
- * 从 `supabase/migration-manifest.json` 的文本里读出登记的版本号。
+ * 从 manifest 文本里读出「版本号 + 文件名」完整条目。
  *
- * 解析失败返回 null——**由调用方判成「未知」，不是「0 条迁移」**。
+ * 版本号形状订正（`planVersionShapeFix`）需要 `fileName` 做匹配键：
+ * Management API 的 `v1ListMigrationHistory` 每条带可选 `name`，而手工订正
+ * `schema_migrations.version` 之前必须先知道那条时间戳形状的行对应仓库里
+ * 哪一条迁移——**名字对得上才动，对不上就不动**。
  */
-export function parseManifestVersions(manifestContent: string): string[] | null {
+export function parseManifestEntries(manifestContent: string): ManifestMigrationEntry[] | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(manifestContent);
@@ -131,14 +140,28 @@ export function parseManifestVersions(manifestContent: string): string[] | null 
   if (typeof parsed !== "object" || parsed === null) return null;
   const migrations = (parsed as { migrations?: unknown }).migrations;
   if (!Array.isArray(migrations)) return null;
-  const versions: string[] = [];
+  const entries: ManifestMigrationEntry[] = [];
   for (const entry of migrations) {
     if (typeof entry !== "object" || entry === null) return null;
     const version = (entry as { version?: unknown }).version;
+    const fileName = (entry as { fileName?: unknown }).fileName;
     if (typeof version !== "string") return null;
-    versions.push(version);
+    entries.push({
+      version,
+      ...(typeof fileName === "string" ? { fileName } : {}),
+    });
   }
-  return versions;
+  return entries;
+}
+
+/**
+ * 从 `supabase/migration-manifest.json` 的文本里读出登记的版本号。
+ *
+ * 解析失败返回 null——**由调用方判成「未知」，不是「0 条迁移」**。
+ */
+export function parseManifestVersions(manifestContent: string): string[] | null {
+  const entries = parseManifestEntries(manifestContent);
+  return entries ? entries.map((entry) => entry.version) : null;
 }
 
 /** 版本号排序：能归一化的按数值，归一化不了的排在最后并按原始串稳定排序。 */
@@ -336,4 +359,86 @@ export function inspectMigrationStatus(
   // 点名断言只收窄「哪些算未应用」这一类结论；云端多出来的迁移与「扫不到东西」
   // 那两条兜底**照报**——它们与点名无关，藏起来就是把探测器调成只会单向报错。
   return filterToExpectedVersions(report, manifestVersions, expected);
+}
+
+/** 一笔版本号订正：把云端 `fromRaw` 那行的版本号改成仓库登记的 `toVersion`。 */
+export interface VersionShapeFix {
+  /** 云端 `schema_migrations.version` 里的原始值（14 位时间戳形态等）。 */
+  fromRaw: string;
+  /** manifest 里登记的目标版本号（3 位序号形态）。 */
+  toVersion: string;
+  /** 匹配依据（现在只有一种：按迁移文件名对上）。 */
+  matchedBy: string;
+}
+
+export interface VersionShapeFixPlan {
+  updates: VersionShapeFix[];
+  /** 对不上仓库任何一条迁移的云端行——只报不动，留给人工判断。 */
+  unmapped: AppliedMigration[];
+}
+
+/** 剥掉迁移文件名的 `.sql` 后缀，作为与 API `name` 字段比较的键。 */
+function normalizeFileName(fileName: string): string {
+  return fileName.replace(/\.sql$/i, "");
+}
+
+/**
+ * 生成「版本号形状订正计划」：把云端以时间戳形状落库的行映射回 manifest 的序号。
+ *
+ * 起因（2026-10-24 台账）：用 Management API `POST /database/query` 应用迁移时，
+ * `schema_migrations.version` 落的是 14 位时间戳形态，与 manifest 的 3 位序号
+ * **形状不匹配**，判定层把它读成「本地不认识的迁移」，需要人手工 UPDATE。
+ * 本函数把那次的手工活变成可判定的计划——但**只做能证明安全的部分**：
+ *   - 只动「归一化版本号不在 manifest 里」的行（已在 manifest 里的行不可能订正）；
+ *   - 匹配键**只有迁移文件名**（云端 `name` ↔ manifest `fileName`，剥 `.sql` 后全等）——
+ *     没有名字、名字对不上，就不猜：时间戳的先后顺序与 manifest 序号的对应关系
+ *     是一个没有验证过的假设，拿它去 UPDATE 生产表是拿猜测当证据；
+ *   - 两行映射到同一个目标版本号 = 计划自相矛盾，这两行**整体拒判**，
+ *     宁可留给人看，也不挑一个「看起来更像」的写进去。
+ */
+export function planVersionShapeFix(
+  applied: AppliedMigration[],
+  entries: ManifestMigrationEntry[],
+): VersionShapeFixPlan {
+  const declaredKeys = new Set(
+    entries.map((entry) => normalizeMigrationVersion(entry.version)).filter((value): value is string => value !== null),
+  );
+  const versionByFileName = new Map(
+    entries
+      .filter((entry): entry is ManifestMigrationEntry & { fileName: string } => typeof entry.fileName === "string")
+      .map((entry) => [normalizeFileName(entry.fileName), entry.version]),
+  );
+
+  const updates: VersionShapeFix[] = [];
+  const unmapped: AppliedMigration[] = [];
+  for (const entry of applied) {
+    if (entry.version !== null && declaredKeys.has(entry.version)) continue;
+    const target = entry.name === undefined ? undefined : versionByFileName.get(normalizeFileName(entry.name));
+    if (target === undefined) {
+      unmapped.push(entry);
+      continue;
+    }
+    updates.push({ fromRaw: entry.raw, toVersion: target, matchedBy: `name=${entry.name}` });
+  }
+
+  // 目标版本号被两行同时认领：计划自相矛盾，涉及的行全部转 unmapped。
+  const byTarget = new Map<string, number>();
+  for (const fix of updates) {
+    byTarget.set(fix.toVersion, (byTarget.get(fix.toVersion) ?? 0) + 1);
+  }
+  const ambiguous = new Set([...byTarget].filter(([, count]) => count > 1).map(([version]) => version));
+  if (ambiguous.size > 0) {
+    const kept: VersionShapeFix[] = [];
+    for (const fix of updates) {
+      if (ambiguous.has(fix.toVersion)) {
+        unmapped.push({ raw: fix.fromRaw, version: normalizeMigrationVersion(fix.fromRaw) });
+      } else {
+        kept.push(fix);
+      }
+    }
+    updates.length = 0;
+    updates.push(...kept);
+  }
+
+  return { updates, unmapped };
 }

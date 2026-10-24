@@ -10128,3 +10128,35 @@
 - 下一项：明天 UTC 09:00 之后取 digest 第一轮真实读数（`email_worker_runs` 行数 + 指标），
   闭合「端到端跑通」的最后一格证据；B04 仍只差人工授权（外部决定，不是进度）。
 - 更新时间：2026-10-24 19:35（UTC+8）。
+
+## 2026-10-24 — 已知操作负担固化：`ops:migration-status --fix-version-shape` 把「API 落时间戳、手工订正序号」变成脚本
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`ops/migration-status-fix-version-shape`。
+- 状态：DONE。
+- 为什么做：上一条台账（同日）把「迁移历史版本号形状（API 落时间戳、CLI 落序号）
+  每次都要手工订正 `schema_migrations.version`」记为已知操作负担。按本轮自主开发轮的原则，
+  **同一项目内重复出现两次的手工操作就该固化**：2026-10-24 已经为 034、035 各订正过一次，
+  下次再用 Management API 应用迁移就是第三次。
+- 做了什么：
+  1. 判定层（`src/lib/db/migration-status.ts`）新增 `parseManifestEntries`（版本号 + 文件名，
+     `fileName` 可缺——它只影响「能否按名订正」，不该让版本解析失败）与
+     `planVersionShapeFix`：把云端归一化后不认识、但 `name` 能按迁移文件名对上 manifest 的行
+     生成订正计划；对不上的一律不动，两行认领同一目标版本号的计划整体拒判。
+     **匹配键只有文件名**——「时间戳先后 ≈ 序号先后」是个没验证过的假设，不拿它写生产表。
+  2. IO 层（`scripts/lib/migration-status-check.js`）新增 `--fix-version-shape`（默认 dry-run，
+     只打印计划与 UPDATE 语句）与 `--apply`（经 `POST /database/query` 逐条执行，
+     单条失败即停、后续未执行要复跑继续；全部成功后复跑探测给最终结论）。
+     头注释与 `--help` 同步改写：默认只读的声明收窄为「除订正模式外只读」。
+  3. 测试：判定层 4 条（映射 / 不动 / 拒判 / 可选 fileName），IO 层 7 条
+     （dry-run 绝不发 POST、apply 执行后复跑转绿、对不上全部不动退出码 2、无事可订正跟随探测），
+     与 `cloud-sql-probe-io.test.ts` 同一结构成因——**IO 层是唯一真正往生产库写东西的分支**。
+- 验证：`vitest src/lib/db` 205 条全绿；lint / type-check ✅；无凭据冒烟
+  `node scripts/check-migration-status.js --fix-version-shape --project-ref …` ⇒ 缺 token 优雅退出 2。
+  `check:all` 结果见本条目合并时的补记。
+- 阻塞 / 风险 / 回滚：
+  - 风险：订正写的是生产 `supabase_migrations.schema_migrations`。缓解：默认 dry-run、
+    按名匹配、对上才动、单条失败即停；命令不在任何 CI/自动流程里，只能人显式带 `--apply` 触发。
+  - 回滚 = revert 本 PR；它不改变默认路径（不带 flag 时行为与之前逐字节相同）。
+- 下一项：明天 UTC 09:00 之后取 digest 第一轮真实读数（上一条的「下一项」不变，仍待时间）；
+  B04 与 B03 仍为外部阻塞。
+- 更新时间：2026-10-24 20:10（UTC+8）。
