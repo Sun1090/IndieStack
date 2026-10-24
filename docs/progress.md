@@ -10213,3 +10213,26 @@
   - 回滚 = revert 本 PR；不改任何默认门禁行为。
 - 下一项：明天 UTC 09:00 之后取 digest 第一轮真实生产读数（不变）；B04 / B03 仍为外部阻塞。
 - 更新时间：2026-10-24 21:45（UTC+8）。
+
+## 2026-10-24 — CodeQL #19（js/file-access-to-http）分诊：`db:apply` 的本职数据流，登记台账恢复与实况一致
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`chore/codeql-alert-19-triage`。
+- 状态：DONE。
+- 为什么做：PR #270 合并后 main 的 CodeQL 扫描产出正式告警
+  **#19 `js/file-access-to-http`（medium，`scripts/lib/migration-apply-cli.js:103`）**
+  ——就是合并前 bot 在 PR 上评论、当时按证据解决的那条流的正式形态。
+  告警台账（5 条）与实况（6 条）因此漂移，`ops:codeql-alerts` 会报 UNREGISTERED。
+- 做了什么：按 #242 先例走完整分诊——
+  1. 证据与判据落 issue **#271**：读的是 manifest 锁定的仓库迁移文件（不接受任意路径）、
+     内容先过 SHA-256 核对、端点是常量、写操作只能人显式 `--apply`；
+     威胁模型判据：能篡改迁移文件的人已拥有整个仓库，这条数据流没有新增能力。
+  2. `CODEQL_ALERT_REGISTRY` 登记 #19：`verdict: "triaging"`（判定是「按预期设计」，
+     但没有 dismissal——**判定 ≠ 处置**，状态变更要 maintainer 决定，与 #18 同一状态）、
+     `evidence: "issue #271"`、复核期限 2026-11-21。严重度 medium，不在阻断档。
+  3. `codeql-alert-triage.md` 的 open 清单 5 → 6 条，#19 的分诊结论与 #18 并列。
+- 验证：`vitest src/lib/security` 453 条全绿；lint / type-check 干净。
+- 阻塞 / 风险 / 回滚：无。**留给 maintainer 的一件事**：#18 与 #19 若都判定关闭，
+  正确路径是 dismissal（或 model pack），届时 `ops:codeql-alerts` 可考虑接进定时 workflow
+  （triage 文档里已写明前置条件）。
+- 下一项：明天 UTC 09:00 之后取 digest 第一轮真实生产读数（不变）；B04 / B03 仍为外部阻塞。
+- 更新时间：2026-10-24 22:20（UTC+8）。

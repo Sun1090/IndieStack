@@ -144,12 +144,16 @@ main 版本的 `src/lib/logger.ts` 里被调用。同时 main 在 09-27 之后�
    `src/lib/actions/recovery-codes.ts` 里未加盐的 SHA-256 ——**CodeQL 一条都没报**。
    所以「去看告警报了哪里」和「去看这条规则该报哪里」是两个动作，只做前者会漏。
 
-- 本仓库当前 open 告警（2026-10-12 读数，5 条）：`js/log-injection` #11/#12/#13/#17
+- 本仓库当前 open 告警（2026-10-24 读数，6 条）：`js/log-injection` #11/#12/#13/#17
   （`error` / medium，已修复但 sanitizer 不可见）、`js/insufficient-password-hash` #18
-  （`warning`，`security_severity_level=high`）。
+  （`warning`，`security_severity_level=high`）、`js/file-access-to-http` #19
+  （`error` / medium，`scripts/lib/migration-apply-cli.js`）。
   **#18 已于 2026-10-12 完成分诊：判定假阳性，证据与判据见 issue #242**
   （命中处哈希的是 24 字节随机订阅 token ⇒ 192 位熵，不是口令；慢哈希与加盐在此不改变攻击可行性）。
-  仍**未 dismissal**——按本文档的规矩，改告警状态要 maintainer 决定，
+  **#19 已于 2026-10-24 完成分诊：判定按预期设计，证据与判据见 issue #271**
+  （`pnpm db:apply` 把 manifest SHA-256 锁定的仓库迁移文件发给 Management API 是工具本职；
+  威胁模型里能改文件的人已拥有整个仓库，该数据流没有新增能力）。
+  两条都**未 dismissal**——按本文档的规矩，改告警状态要 maintainer 决定，
   分诊记录与状态变更是两件事。
   同一条规则的反向复查产出的真缺陷（恢复码未加盐 SHA-256）已由 PR #237 修成加盐 scrypt。
 - 告警清单、严重度、实例所指的 `ref`/`commit` 都要用 `GET /repos/{owner}/{repo}/code-scanning/alerts`
