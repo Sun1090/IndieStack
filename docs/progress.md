@@ -10343,3 +10343,34 @@
 - 下一项：今天 17:30（UTC 09:00 后）跑 `pnpm ops:digest-observation` 取第一轮读数；
   B04 剩人工授权、B03 剩隔离账号凭据（均待 maintainer）。
 - 更新时间：2026-10-25 01:10（UTC+8）。
+
+## 2026-10-25 — environments.md 的四处同源腐烂：把「登记错了前提」的残句和重复编号的命令块一次扫干净
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/environments-stale-readings`。
+- 状态：DONE。
+- 为什么做：前两轮连续证明「修一处腐烂必漏另一处」（#275 漏了 release-runbook/exit-report，
+  #276 才补上）。本轮不再等下一轮，而是把**已否证前提的锚**一次扫到全库
+  （`需要数据库密码` / `本机查不了` / `无法复现` / `未 applied` / `两年`），
+  命中逐条分类：合法的订正引用保留，过期的收口。`environments.md` 这张
+  「外部依赖实况」表里中了四处——它正是这套「登记错了」教训的产地，自己却带着旧读数。
+- 做了什么（每处只写本轮实际取过的读数）：
+  1. **`ops:schema-drift` 行**：原写 `❌ 线上缺 1 列`（10-12 观测，034 未 applied）。
+     本轮实跑 `. ./.env.local` 后取数 ⇒ `✅ 一致：比对 19 张表 / 174 列`
+     （线上 26 张，生成类型 21 张）。旧快照按「不回改、只加指针」在解释列注明：
+     10-12 那天那句因果**当时成立**（034 的列真的不在，`listUnsentEmailNotifications()` 对它 `throw`）。
+  2. **「被登记了两年」**（第 115 行的分寸条目）：与同一个文件下一行自相矛盾——
+     那里已否证「两年」是编的（仓库第一个 commit 2026-08-09，到 10-13 只 65 天），
+     真值 8 天（10-05 `1a18be40` → 10-13 否证）。改为 8 天并就地记下原文为何不可信。
+  3. **「查这张表的推荐顺序」代码块**：有**两条同编号 `# 5)`**，且第一条走
+     `supabase migration list --linked`——它不要密码但在无 TTY 机器上挂死（10-12 实测），
+     CLI 又不是本仓库依赖 ⇒ 收敛为 `ops:migration-status` 一条，编号 5/6 重排。
+  4. **CodeQL 行的 open 实况**：原记 5 条（10-13 读数）。本轮 `gh api` 复跑为 6 条——
+     新增 #19 `js/file-access-to-http`（今天 `db:apply` 引入，已按 issue #271 分诊、
+     registry 登记 `triaging`）；注明权威清单以 `codeql-alert-triage.md` 为准。
+- 验证：两处读数为实跑所得（`ops:schema-drift` 与 `gh api code-scanning/alerts`）；
+  文档门禁 `check:doc-links` / `check:doc-commands`（1113 条命令）✅、
+  `check:security` ✅、`check:all` ✅（exit 0）。docs-site 扫过无同类残留。
+- 阻塞 / 风险 / 回滚：无新增。回滚 = revert 本 PR（纯文档订正）。
+- 下一项：今天 17:30 后 `pnpm ops:digest-observation` 取 digest 第一轮读数；
+  B04 剩人工授权、B03 剩隔离账号凭据（均待 maintainer）。
+- 更新时间：2026-10-25 01:40（UTC+8）。
