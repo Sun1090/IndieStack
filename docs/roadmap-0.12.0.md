@@ -9,7 +9,8 @@
 > `CHANGELOG.md` 已有 `## [0.12.0] — 2026-10-05` 章节，`package.json` 版本已升到 `0.12.0`，
 > 分版本发布文档三族齐全（`check:release-docs` 覆盖 7 个版本 / 21 份文档）。
 > **`0.12.0` tag 仍然刻意不打**，但理由已从「三项全缺」收窄为**一条**：
-> B03（隔离账号的账户删除全链路演练）缺外部凭据。
+> B03（隔离账号的账户删除全链路演练）缺**一个可牺牲的隔离账号**。
+> 【2026-10-25 订正】本行原写「缺外部凭据」是错的：`pnpm drills:preflight --drill B03` 现已能读到 `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` 三项 ✓（旧探针只看 `process.env`，而 `node scripts/*` 不加载 `.env.local` —— 假阴性滚成了「缺凭据」这句登记）。当日实跑 `GET /auth/v1/admin/users` 用本机 key 返回 **200**（生产共 1 个账号），凭据可用性已被直接证成。
 > 上面那段「缺 B01/B02」是发布当时的记述——B01/B02 已于 2026-10-05 闭合（B02 是第一次真实回滚演练），
 > 留下的唯一缺口是 B03。
 > 输入：`docs/operations/release-exit-report-v0.6.0.md`（v0.6.0 任务池 100 项的逐条核对结果，
@@ -178,8 +179,9 @@
    - 顺带记下一条对事故处置有用的观察：**alias 切换后的第一次 health 探测不可靠**
      （两个方向都出现过一次 `fetch failed` / `This operation was aborted`，重试即通过）——
      「刚切换、边缘还在热」与「health 挂了」必须分开，runbook 已写入。
-8. B03 （**未完成：外部权限**——需要一个可牺牲的隔离账号与云端 Supabase 凭据；
-   前置判定已固化：`pnpm drills:preflight --drill B03`，2026-10-05 起不必再临场回忆缺哪个凭据）
+8. B03 （**未完成：外部权限**——需要一个可牺牲的隔离账号（**云端 Supabase 凭据已于 2026-10-25 读数确认本机已有**，见上）；
+   前置判定已固化：`pnpm drills:preflight --drill B03`，2026-10-05 起不必再临场回忆缺哪个凭据。
+   ⚠️ 这条「不必再临场回忆」在 2026-10-25 之前**并不成立**：探针读不到 `.env.local`，于是它自信地报了一个与本机实况相反的缺口——**固化判定不等于判定读对了来源**）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
 9. B04 （**未完成：阻塞已收窄为「外部权限」——缺口 (a) 于 2026-10-24 读数全部闭合，只剩 (b) 人工授权**；
