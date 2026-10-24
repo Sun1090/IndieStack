@@ -10,6 +10,19 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm drills:auth-deletion-equivalence`：在本地栈实测「SQL 删号」与「真 `auth.admin.deleteUser`」是否等价。**
+  B03 的登记写着演练用 `delete from auth.users` 替代真 deleteUser，
+  「级联语义相同但**没走 GoTrue 的会话清理**」——那是**一个从未被验证的担心**，
+  却被写成登记事实并在阻塞 tag 前置。本地栈有真 GoTrue，所以这件事本可以在本地答：
+  同一个演练跑两遍（SQL 删除 vs `DELETE /auth/v1/admin/users/<id>`），
+  比对 auth 侧残留与**旧凭据可用性**。2026-10-25 实测：`sessions`/`refresh_tokens`/
+  `identities`/`one_time_tokens`/`mfa_factors` 删后全 0，旧 refresh_token 都回 400
+  `refresh_token_not_found`，旧 access_token 打 `/user` 都回 403 ⇒ **等价成立**。
+  判定层刻意把「等价」与「可迁移到生产」分成两档：本地 GoTrue v2.195.0 与
+  生产 v2.197.0 不同版 ⇒ verdict 自动降为 `EQUIVALENT_LOCAL_ONLY`，
+  **不冒充「生产也这样」**（生产侧 health 要 apikey，不带 ⇒ 401，已实测）。
+  B03 的不确定性因此减少一格，但**「需要可牺牲账号」这项外部权限不变**。
+
 - **`pnpm ops:digest-observation`：把「digest worker 端到端跑通」的判据固化成只读探测。**
   405 修复（#236）部署后，台账给的判据是口头描述（「`email_worker_runs` 非零行 +
   `cron.digest.completed`」）——按本仓库「一次性读出的结论必须附可复跑命令」的规矩，

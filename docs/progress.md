@@ -10420,3 +10420,52 @@
 - 下一项：今天 17:30 后 `pnpm ops:digest-observation` 取 digest 第一轮读数；
   B04 剩人工授权、B03 剩可牺牲账号。
 - 更新时间：2026-10-25 02:35（UTC+8）。
+
+## 2026-10-25 — B03 那句「没走 GoTrue 会话清理」在本地实测掉了：等价替代确实等价（但不可自动迁移生产）
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/auth-deletion-equivalence-probe`。
+- 状态：DONE。
+- 为什么做：上一条把 B03 收窄成「缺可牺牲账号」后继续追这条链。B03 的登记原文写着
+  演练用 `delete from auth.users` 替代真 `auth.admin.deleteUser`，
+  「级联语义相同但**没走 GoTrue 的会话清理**」——这是一个**从未被验证的担心**，
+  却被写成登记事实，还给「演练结论可能失真」留了一个没人复核的口子。
+  而本地栈**有真 GoTrue**：这件事本可以在本地答，不需要任何外部权限。
+- 做了什么：
+  1. 判定层 `src/lib/drills/auth-deletion-equivalence.ts`：四档 verdict。
+     承重设计是 **`EQUIVALENT` 与「可迁移到生产」分成两档**——版本不同版 ⇒
+     自动降 `EQUIVALENT_LOCAL_ONLY`；任一侧没跑成 ⇒ `UNVERIFIABLE`（退出码 2），
+     **不把「没测到」压成「相同」**。两侧同轮版本不一致也算 UNVERIFIABLE
+     （否则「相同」可能是版本差造成的假象）。
+  2. IO 层 `scripts/lib/auth-deletion-equivalence-check.js` + 入口
+     `pnpm drills:auth-deletion-equivalence`：建已确认账号 → 真登录拿凭据 →
+     分别用 `delete from auth.users` 与 `DELETE /auth/v1/admin/users/<id>` 删 →
+     读 auth 侧五张表残留 + **旧凭据还能不能用**（这才是「会话失效」的真判据，
+     sessions 行被删 ≠ 旧 token 立刻失效——JWT 无状态）。用本地 HS256 自签
+     service_role JWT，**不碰生产凭据、不写生产**（生产侧只读 `/auth/v1/health`）。
+  3. 测试 17 条（判定 8 + IO 9，判定层先例同 `preflight.ts`）；
+     `docs/db/retention.md` 就地订正那句担心；`docs/operations/drills/account-erasure.sql`
+     的「等价于 deleteUser」那行补实测指针（只加注释，parity 283 条仍绿、
+     `check:migrations` 未受影响）。CHANGELOG 记账。
+- **实测读数（2026-10-25，本地栈 GoTrue v2.195.0）**：两种删法逐项相同——
+  `sessions`/`refresh_tokens`/`identities`/`one_time_tokens`/`mfa_factors` 删后全 0；
+  旧 refresh_token 刷新都回 **400 `refresh_token_not_found`**；旧 access_token 打
+  `/user` 都回 **403**。⇒ **等价替代成立**，那句担心不成立。
+  带上生产读数后 verdict 自动降级：生产 GoTrue **v2.197.0** 与本地不同版 ⇒
+  `EQUIVALENT_LOCAL_ONLY`，**不冒充「生产也这样」**。B03 仍需生产侧可牺牲账号。
+- 验证：`vitest src/lib/drills src/lib/release` 283 条全绿；`drill parity` 未破；
+  lint / type-check 0 error；探测实跑两种形态（不带 --prod-url 与带）结论如设计分级。
+- **本轮自己踩的三个坑（都修了，值得留字）**：
+  ① 判定「残留是否相同」第一版是**假差异**——我把 `mfa_amr_claims` /
+  `audit_log_entries` 按不存在的 `user_id` 列去查，错误串里含各自 user_id，
+  于是「不等」。列名实测后换成五张真按 user_id 键的表。**基于错误输出给结论，
+  错的是我的查询不是世界**——与 cloud-sql-probe 那轮同一个教训的形状。
+  ② `healthVersion` 漏传 apikey ⇒ 生产 health 回 401 ⇒ 探测「读不到」而**安静降级**，
+  看不出自己有个 401。已实测生产该端点确实要 apikey（不带 401），补传并注明。
+  ③ 前两次实验脚本都是 f-string 转义在**解析期**失败（无任何执行、无残留）；
+  本机 Python 3.9 还不支持 `str | None`。最终落成 /tmp 下的独立脚本、由仓库内的
+  Node 探测替代——**实验一次性跑在 shell 里，结论就不可复跑**，这正是本仓库反复治的病。
+- 阻塞 / 风险 / 回滚：探测只写本地栈且自删账号；生产侧只读一个版本端点。
+  回滚 = revert 本 PR（纯新增 + 注释订正）。
+- 下一项：今天 17:30 后 `pnpm ops:digest-observation`；B03 剩生产可牺牲账号、
+  B04 剩人工授权。
+- 更新时间：2026-10-25 03:30（UTC+8）。

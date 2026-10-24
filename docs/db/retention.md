@@ -330,6 +330,23 @@ docker exec -i supabase_db_indiestack psql -U postgres -d postgres \
 
 **仍未取得的生产证据**：真实 `auth.admin.deleteUser`（演练里用 `delete from auth.users` 等价替代，
 级联语义相同但没走 GoTrue 的会话清理）、真实 bucket 对象删除、隔离账号在**生产**上的删号闭环。
+
+> **【2026-10-25 订正上面那句「没走 GoTrue 的会话清理」】**：那是**一个从未被验证的担心**，
+> 却被写成了登记事实。本地栈有真 GoTrue，所以这件事本可以在本地答：
+> `pnpm drills:auth-deletion-equivalence` 把同一个演练跑两遍
+> （`delete from auth.users` vs `DELETE /auth/v1/admin/users/<id>`），
+> 实测两种删法的**可观察行为逐项相同**——auth 侧
+> `sessions` / `refresh_tokens` / `identities` / `one_time_tokens` / `mfa_factors` 删后全 0，
+> 旧 `refresh_token` 刷新都回 **400 `refresh_token_not_found`**，
+> 旧 `access_token` 打 `/user` 都回 **403**。
+> ⇒ **等价替代是等价的**，至少在本机 GoTrue 上；那句担心不成立。
+>
+> ⚠️ **但它不能自动迁移到生产**：探测带回生产版本读数后判定降为
+> `EQUIVALENT_LOCAL_ONLY`——本地 GoTrue **v2.195.0** 与生产 **v2.197.0** 不同版
+> （`/auth/v1/health` 实读；该端点生产侧要 apikey，不带回 401）。
+> 判生产仍需在**生产**用可牺牲账号重跑，即 B03 本体不变。
+> 这条订正减少的是「演练结论会不会因为没用真 deleteUser 而失真」这个不确定性，
+> **不减少**「需要隔离账号」这项外部权限。
 这三项需要 Vercel/Supabase 侧权限与一个可牺牲账号，见 `docs/operations/production-smoke-v0.12.0.md` 的「需要隔离账号」一节（**指针订正**：原文指向 v0.11.0，当前版本的权威行在 v0.12.0）。
 【2026-10-25 读数】「缺 Supabase 侧权限」这半句对**本机不成立**：`SUPABASE_SERVICE_ROLE_KEY` 可用——`GET /auth/v1/admin/users` 返回 200、`REST /profiles` 读到 1 行。真正缺的是「一个敢删的账号」：生产当前唯一的账号（2026-08-23 注册）**不是**可牺牲的。
 

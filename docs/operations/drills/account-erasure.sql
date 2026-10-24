@@ -178,6 +178,9 @@ select 'profile-still-exists-before-delete',
        (select count(*) from public.profiles where id = :'drill_uid'::uuid), 1;
 
 -- 10) 再删号（等价于 auth.admin.deleteUser 触发的级联）
+--     【2026-10-25 实测这个「等价」成立】`pnpm drills:auth-deletion-equivalence` 在本地栈
+--     把两种删法各跑一遍：auth 侧残留与旧凭据可用性（refresh 400 / access 403）逐项相同。
+--     本机 GoTrue v2.195.0 ≠ 生产 v2.197.0 ⇒ 判生产要在生产重跑（B03 本体不变）。
 delete from auth.users where id = :'drill_uid'::uuid;
 
 \echo '--- 删号后（期望 actual = expected）---'
