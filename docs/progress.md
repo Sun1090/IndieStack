@@ -10160,3 +10160,24 @@
 - 下一项：明天 UTC 09:00 之后取 digest 第一轮真实读数（上一条的「下一项」不变，仍待时间）；
   B04 与 B03 仍为外部阻塞。
 - 更新时间：2026-10-24 20:10（UTC+8）。
+
+## 2026-10-24 —【同日稍后补记】#268：vitest.config 改名 .mts，测试基建的 Vite deprecation 警告清零
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`chore/vitest-config-mts`（已 squash 合并）。
+- 状态：DONE。
+- 为什么做：自主开发轮跑 `check:all` 与 vitest 时，每次都打两条
+  `(configLoader: 'native')` 警告——`.ts` 配置里的 ESM 语法被按 CommonJS 加载，
+  Vite 声明下个大版本默认行为会变。警告天天在，等于把「配置加载语义即将变」
+  埋进每次运行的噪声里。
+- 做了什么：`vitest.config.ts` 改名 `vitest.config.mts`（官方建议的修法）；
+  `__dirname`（CJS 全局，`.mts` 下不存在）换成 `import.meta.dirname`，
+  `path` 导入补 `node:` 前缀。运行时行为零变化。
+- 验证：node / jsdom 两个 project 均正常加载与执行（30 用例绿，警告消失）；
+  `tsc --noEmit` / `eslint .` 干净；PR CI 14 项与 pre-push `verify:build` 全绿
+  （#268，main `68b6575d`）。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 单个 rename 提交。
+  **补记原因**：本条所属的变更在上一条台账落笔时还没做，落笔后做了却没回头记
+  ——台账是只追加的审计 trail，漏一条就是审计上的洞，补上比「当时就该一起写」诚实。
+- 下一项：明天 UTC 09:00 之后取 digest 第一轮真实生产读数（不变，仍待时间）；
+  B04 / B03 仍为外部阻塞。
+- 更新时间：2026-10-24 20:55（UTC+8）。
