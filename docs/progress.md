@@ -10284,3 +10284,42 @@
 - 下一项：明天 09:00 UTC 后跑 `pnpm ops:digest-observation` 取第一轮读数闭合端到端证据；
   B04 / B03 仍为外部阻塞。
 - 更新时间：2026-10-24 23:40（UTC+8）。
+
+## 2026-10-24 — B04 判定输入的第五次改写：两份演练 SQL 都已进 main，缺口收窄为「只剩人工授权」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/b04-preflight-staleness`。
+- 状态：DONE。
+- 为什么做：查 B04 能不能替用户推进时撞上的。`preflight.ts` 的 B04 文案还钉着
+  「保留期那份派生版**没进 main**」，而 `git ls-tree origin/main` 实测两份 `.single-do`
+  都在 main 上（`retention-cleanup.single-do.sql` 昨天随 #236 的 `917beb41` 合入）。
+  **腐烂的正是生产写决策的输入**：下一轮如果拿着「没进 main」去判断「B04 还差 SQL」，
+  或者反过来拿着 ready 信号去按生产写按钮，两边都错。roadmap 与 environments.md
+  同源过期两处。AGENTS.md 立的「结论做完要回头改那一行」第三次被踩中——
+  而且这次门禁拦不住：`check:roadmap-entries` 只核对条目标注，管不到 spec 字符串的时效。
+- 做了什么（阻塞理由**第五次**改写，每一版都留着，按「快照不回改、只加指针」）：
+  1. `preflight.ts`：blockedReason 的 (a) 段改为「已于 2026-10-24 闭合」（订正本身入文案，
+     写明旧读数何时被什么否证）；保留期那份 `file:` 前置的 purpose 改「已满足」+ 读数命令，
+     remedy 从「合并 #236」改为「丢失时重新转换并本地跑通」；`evidenceTarget` 的落点
+     从 v0.11.0 冒烟文档改指 v0.12.0。**两条 `file:` 前置刻意保留**——它们盯「派生版还在不在」。
+  2. `preflight.test.ts` 三处：「第三、四次纠正」用例改钉「已于 2026-10-24 闭合」
+     （不再钉「没进 main」——上一轮正是被它反噬的）；SQL 型前置覆盖两份的用例跟 remedy 走；
+     「真实存在的 SQL」用例从两份扩到四份全查。
+  3. roadmap B04 条目：就地标注第五次改写 + (a) 已闭合，快照原文保留；
+     environments.md 同两处加指针订正；顺带把「生产实况 = 034 未 applied」
+     刷成 2026-10-24 的 applied 读数（`ops:migration-status` 转绿）。
+  4. 同一次核对里顺手清掉的另外两处同源腐烂（都是「改完没回头改那一行」）：
+     `production-smoke-v0.12.0.md` 头部还写「本版本 7 步」而 2026-10-10 起冒烟是 8 步
+     （`cron-trigger-method` 那行整行缺失，runbook 早就记了）——补行 + 快照指针 +
+     迁移 applied 行刷成 10-24 转绿读数；`preflight.ts` 的 B04 `evidenceTarget`
+     从 v0.11.0 冒烟文档改指 v0.12.0 的「需要只读凭证」行。
+- 验证：`vitest src/lib/drills` 43 条全绿；`check:all` ✅；
+  `pnpm drills:preflight --drill B04` 实测输出：两份 `file:` ✓、
+  缺口只剩 `B04_AUTHORIZE_PRODUCTION_WRITE`（+ 本机没导出的令牌），exit 1 语义正确。
+- 阻塞 / 风险 / 回滚：B04 的 (b) 仍是**人工授权**——`preflight.ts` 文案明写
+  「不要为了跑通而把它写进任何自动化的环境里」，**自主开发代理设这个变量正是该机制
+  要拦的「谁都没同意过但脚本自己跑起来了」**，所以这一轮到此为止，等用户的决定。
+  回滚 = revert 本 PR。
+- 下一项：明天 09:00 UTC 后 `pnpm ops:digest-observation` 取第一轮读数；
+  **等用户的事项**：B04 授权（看过两份 SQL 后设 `B04_AUTHORIZE_PRODUCTION_WRITE=yes`）、
+  B03 隔离账号凭据。
+- 更新时间：2026-10-25 00:35（UTC+8）。
