@@ -223,6 +223,25 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     // 不能读成「配额只挡 preview」（那是一次概括），也不能读成「生产链路免疫」。
     note: "合并约 90 秒后生产已含 `5f41bdd1`（`ops:deploy-freshness` 实测）⇒ 镜像形状第二次出现",
   },
+  {
+    pr: 283,
+    pool: "preview",
+    outcome: "fail",
+    at: "2026-10-25",
+    note: "两项全 fail，错误文本同 `Deployment rate limited — retry in 24 hours`（`gh pr checks 283`）",
+  },
+  {
+    pr: 283,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    // ⚠️ **计数不写进台账注释，也不写进文档散文**：这条注释原先写「连续两次」，
+    // 而 #283 一合并它就过期了——**我在写下「散文不许写会漂移的数」那条教训的
+    // 同一个 PR 里，于另一处埋了同样会漂移的数**。判「第几次」请数
+    // `preview === fail && 同 PR 的 production === pass` 的 PR 个数（可复跑），
+    // 别信任何写死的计数。
+    note: "合并约 60 秒后生产已含 `ebb13b1d`（`ops:deploy-freshness` 实测）⇒ 同一 24h 窗口内再次同形",
+  },
 ];
 
 /** 台账里读数的条数——文档表头那句「今天有 N 个读数」必须等于它。 */
