@@ -120,6 +120,8 @@ export interface ManifestMigrationEntry {
   version: string;
   /** 可缺：没有文件名的条目只意味着「无法按名订正」，不该让版本解析失败。 */
   fileName?: string;
+  /** 可缺：迁移应用流程（migration-apply）用它做执行前的完整性校验。 */
+  sha256?: string;
 }
 
 /**
@@ -145,10 +147,12 @@ export function parseManifestEntries(manifestContent: string): ManifestMigration
     if (typeof entry !== "object" || entry === null) return null;
     const version = (entry as { version?: unknown }).version;
     const fileName = (entry as { fileName?: unknown }).fileName;
+    const sha256 = (entry as { sha256?: unknown }).sha256;
     if (typeof version !== "string") return null;
     entries.push({
       version,
       ...(typeof fileName === "string" ? { fileName } : {}),
+      ...(typeof sha256 === "string" ? { sha256 } : {}),
     });
   }
   return entries;

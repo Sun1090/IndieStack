@@ -65,6 +65,7 @@
  | 命令 | 说明 |
  |------|------|
 | `pnpm db:migrate` | 推送数据库迁移到 Supabase |
+| `pnpm db:apply` | 经 Management API 把一条迁移应用到云端 Supabase 项目（SHA-256 校验、序号形状落迁移历史；默认 dry-run，`--apply` 执行） |
 | `pnpm db:seed` | 执行种子数据脚本 |
 | `pnpm db:types` | 从 Supabase 生成 TypeScript 类型定义 |
 | `pnpm db:status` | 查看 Supabase 本地服务状态 |

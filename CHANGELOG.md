@@ -10,6 +10,16 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm db:apply -- <序号>`：把「经 Management API 应用一条迁移」固化成脚本，从根上消掉版本号形状坑。**
+  此前手工流程是「`POST /database/query` 执行迁移体 + 手工 INSERT 一行迁移历史」，
+  而那行历史的 `version` 落 14 位时间戳形态，与 manifest 序号不匹配（034 / 035 各踩一次，
+  订正已由 `ops:migration-status --fix-version-shape` 固化）。新脚本执行前先过三道闸：
+  manifest 里有这条、文件 SHA-256 与登记一致（与 `check:migrations` 同一把尺）、
+  云端未 applied（迁移文件不承诺幂等，拒绝重放）；执行体后按**序号形状**落历史
+  （`version`=序号、`name`=文件名），最后 GET 复核。默认 dry-run；
+  历史行写入失败时会打印补救 INSERT（迁移体已生效但 `schema_migrations` 缺行的形态）。
+  判定层 `src/lib/db/migration-apply.ts` + IO 层共 18 条用例。
+
 - **`ops:migration-status` 新增 `--fix-version-shape [--apply]`：把「Management API 应用迁移后手工订正版本号形状」固化成脚本。**
   用 `POST /v1/projects/{ref}/database/query` 应用迁移时，`schema_migrations.version` 落的是
   14 位时间戳形态，与 manifest 的 3 位序号形状不匹配，判定层把它读成「本地不认识的迁移」

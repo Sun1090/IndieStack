@@ -10181,3 +10181,35 @@
 - 下一项：明天 UTC 09:00 之后取 digest 第一轮真实生产读数（不变，仍待时间）；
   B04 / B03 仍为外部阻塞。
 - 更新时间：2026-10-24 20:55（UTC+8）。
+
+## 2026-10-24 — `pnpm db:apply`：把「经 Management API 应用一条迁移」从手工流程固化成脚本，从根上消掉版本号形状坑
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/db-apply-migration`。
+- 状态：DONE。
+- 为什么做：今天早些的两条台账（#236/#235 落库、`--fix-version-shape`）都指向同一件事——
+  「用 Management API 应用迁移」本身还是手工流程：执行迁移体 + 手工 INSERT 历史行 +
+  事后订正时间戳形状（034 / 035 各踩一次）。订正已固化，但**制造坑的那一步**还在手工。
+  这是重复出现的第三次同源劳动，按本轮的原则该固化了。
+- 做了什么：
+  1. 判定层 `src/lib/db/migration-apply.ts`：`buildMigrationApplyPlan` 组装计划，
+     执行前过三道闸——manifest 里有这条（`APPLY_VERSION_NOT_IN_MANIFEST`）、
+     文件 SHA-256 与登记一致（`APPLY_SHA_MISMATCH`，与 `check:migrations` 同一把尺）、
+     云端未 applied（`APPLY_ALREADY_APPLIED`，迁移文件不承诺幂等，拒绝重放）。
+     `buildHistoryInsertSql` 按**序号形状**落历史（`version`=序号、`name`=去 `.sql` 文件名），
+     与 CLI 落的形状一致——形状坑从根上不再产生，`--fix-version-shape` 只清历史遗留。
+  2. IO 层 `scripts/lib/migration-apply-cli.js` + 入口 `scripts/apply-migration.js`
+     （`pnpm db:apply`）：默认 dry-run 只打印计划；`--apply` 依次执行迁移体 → 历史 INSERT →
+     GET 复核。两条失败路径都有明确交接面：迁移体失败提示「可能只执行了一部分」；
+     历史行失败打印补救 INSERT（那是「迁移体已生效但 schema_migrations 缺行」的形态，
+     探测会把它报成 MIGRATION_NOT_APPLIED）。
+  3. 测试 18 条（判定 11 + IO 7）；`docs-site/scripts.md` 双语表加行（`check:docs` ✅ 95 个脚本）；
+     CHANGELOG [Unreleased] 记账。
+- 验证：`vitest src/lib/db` 223 条全绿；无凭据冒烟（401 ⇒ 退出码 2，优雅拒绝）；
+  lint / type-check 干净；`check:all` 结果见合并补记。
+- 阻塞 / 风险 / 回滚：
+  - 风险：这是写工具（往生产库发两条 SQL）。缓解：三道闸 + SHA 锁定执行内容 +
+    默认 dry-run + 不在任何 CI / 自动流程里，只能人显式带 `--apply` 触发；
+    何时应用一条迁移仍是人的决定，脚本只消灭执行环节的手工与形状坑。
+  - 回滚 = revert 本 PR；不改任何默认门禁行为。
+- 下一项：明天 UTC 09:00 之后取 digest 第一轮真实生产读数（不变）；B04 / B03 仍为外部阻塞。
+- 更新时间：2026-10-24 21:45（UTC+8）。
