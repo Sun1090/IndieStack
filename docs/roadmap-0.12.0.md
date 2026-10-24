@@ -172,6 +172,9 @@
      要闭合还需要一次跨越迁移边界的生产变更。schema 向前兼容的**本地**侧已核对
      （`check:migrations` 34 条与 manifest 的 SHA-256 一致、`check:migration-runbook` ✅）；
      **云端 `supabase migration list --linked` 仍未取得**（B04，需云端项目凭据）。
+     **2026-10-10 更正**：这条当时记的「需云端项目凭据」把阻塞写大了——
+     该命令只要 CLI 登录态，实测已取到读数（生产到 033，034/035 未 applied）。
+     当时那个「侥幸没同步也没事」的判断因此是**错的**，见条目 9 与 `docs/progress.md`。
    - 顺带记下一条对事故处置有用的观察：**alias 切换后的第一次 health 探测不可靠**
      （两个方向都出现过一次 `fetch failed` / `This operation was aborted`，重试即通过）——
      「刚切换、边缘还在热」与「health 挂了」必须分开，runbook 已写入。

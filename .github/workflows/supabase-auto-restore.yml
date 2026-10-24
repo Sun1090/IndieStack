@@ -21,7 +21,12 @@ on:
         type: boolean
         default: true
   schedule:
-    # 排在 Vercel Cron（02:00 UTC）与 health-check（03:17 UTC）之后
+    # 排在 Vercel Cron（计划 02:00 UTC）与 health-check（计划 03:17 UTC）之后。
+    # 注意「之后」只在**同日相对顺序**意义上成立：GitHub 的 schedule 会晚触发几小时
+    # （2026-10-11 取 92 条运行记录实测：本 workflow 的触发时刻落在 08:47–11:47 UTC，
+    # 比标称晚 +4.2 ~ +7.2 小时，且逐周递增）。同日的相对顺序在 29 个可比日里 0 次违反，
+    # 而这三层兜底要的都是「每天至少跑到一次」，不依赖绝对时刻，所以不需要修 cron 值。
+    # 依据与量法见 docs/operations/environments.md「免费版保活与自动恢复」。
     - cron: "37 4 * * *"
 
 permissions:

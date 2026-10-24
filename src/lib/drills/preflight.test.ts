@@ -213,6 +213,19 @@ describe("evaluateDrill", () => {
     );
   });
 
+  it("B04 的第三、四次纠正都要留在阻塞文案里（2026-10-13 实测）", () => {
+    // 第三次：把 retention-cleanup.sql 压成一条 DO 块在本地跑通（failures=0），
+    // 否证「多语句 ⇒ 必须 psql」；第四次：Management API 用令牌就能执行 SQL，
+    // 连「要数据库密码」也被否证。两个版本的读数与坑都必须留在 blockedReason 里，
+    // 防止有人把「需要 DB 密码」再写回来。
+    expect(B04.blockedReason).toContain("2026-10-13");
+    expect(B04.blockedReason).toContain("DO 块");
+    expect(B04.blockedReason).toContain("run 38334026946");
+    expect(B04.blockedReason).toContain("22012");
+    // 未验证的那一半必须留在原地，不能被写成「已解锁」
+    expect(B04.blockedReason).toContain("没进 main");
+  });
+
   it("B05 的 VAPID 是复合前置：缺一个就不满足", () => {
     const both = evaluateDrill(B05, all("RESEND_API_KEY", "VAPID_PRIVATE_KEY", "NEXT_PUBLIC_VAPID_PUBLIC_KEY", "SUPABASE_ACCESS_TOKEN"));
     expect(both.ready).toBe(true);

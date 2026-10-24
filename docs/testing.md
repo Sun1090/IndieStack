@@ -71,7 +71,9 @@ Vitest 每个项目最多 2 个 worker，避免本机高并发创建 jsdom 导�
 - 运行于 Mock 模式（`NEXT_PUBLIC_MOCK_ENABLED=true`），无需真实 Supabase
 - 默认单 worker 串行、一台 dev server，避免多个 spec 通过同一份可变 Mock 状态互相清理/覆盖
 - **全量并行的可复跑基线**：`.github/workflows/e2e-parallel.yml`（手动 `workflow_dispatch` +
-  每周一 07:30 UTC 定时，`30 7 * * 1`）跑**全量**（不带 `--shard`），条件是
+  每周一 07:30 UTC **标称**定时，`30 7 * * 1`；GitHub 的 `schedule` 实测会晚几个小时，
+  本条是全仓库最晚的，实测触发在 15:40–16:13 UTC——依据与量法见
+  `docs/operations/environments.md`）跑**全量**（不带 `--shard`），条件是
   `PW_FULLY_PARALLEL=true` + `E2E_SERVERS=3`：config 按这个数起**同样多**的 dev server，`workers`
   也取它，于是一个 worker 一台服务器。这不是退让而是首跑量出来的结论——默认 store 是**进程级**的
   （`docs/architecture/13-mock-system.md`），「一台服务器上开多 worker」的首跑
@@ -894,7 +896,9 @@ job 的独立步骤，只跑审计这一段）。**CI 里那一步此前是裸�
   两者都没有就报 `CRON_SKIP_UNCOUNTED`。规则用 TypeScript 解析器读源码，只认「同一函数、同一 if 分支」里的证据，
   无法解析的源码按 `CRON_SKIP_UNPARSEABLE` 失败封闭；
 - **文档里的调度事实必须能在仓库里找到对应**（D01）：扫描 `docs-site/**` 与 `docs/**`（带日期的快照除外——发布页、runbook、roadmap 记录的是当时的事实，改它们等于伪造证据），抽出合法的 5 字段 cron 表达式与 `/api/cron/*` 路径，逐个对回「worker 注册表 ∪ `vercel.json` ∪ GitHub workflow 的 `schedule`」：文档教一条仓库里不存在的调度报 `CRON_DOC_STALE_SCHEDULE`，提到一条没人调度的路由报 `CRON_DOC_UNREGISTERED_PATH`（E03 就是后者的形状），收集不到任何文档则报 `CRON_DOC_NO_SOURCES` 失败封闭。故意**不**核对「路径 ↔ 表达式」的同行配对：那要求解析表格行与句子，会把散文式引用全部误伤，所以「digest 写成 push-retry 的表达式」这类错不在本规则射程内，由注册表与告警文档那一层负责；
-- 非 worker 的 `/api/health` 与 `/api/ops/supabase-restore` 使用带理由的显式豁免，避免把平台保活任务误当成 worker；
+- 非 worker 的 `/api/health` 与 `/api/ops/supabase-restore` 使用带理由的显式豁免，避免把平台保活任务误当成 worker。**但豁免的范围只有 worker 契约（指标、跳过可见性、调度表逐字一致），不含「平台能不能触发它」**：Vercel Cron 对**每一条** cron 路径发的都是 HTTP GET，所以这两条照样必须导出 GET——路由源码读不到报 `CRON_EXEMPT_ROUTE_MISSING`（文件被删/改名/不在 App Router 约定位置 ⇒ 平台拿到 404），没导出 GET 报 `CRON_EXEMPT_METHOD_UNDECLARED`（⇒ 每天 405、代码一次都不执行）。
+  **这两条规则是 2026-10-10 那次 P0 的直接后续**：当时只把 GET 判据加在 worker 侧，于是「豁免」被读成「整条路径免检」，而形状与事故本身一模一样（静默、全绿、无人察觉）。
+  路径 → 路由文件按 `routeFileForSchedulePath()` **推导**而不是再维护一张对照表：手写对照表会和目录结构各自漂移，推导式让「文件不在预期位置」直接成为红灯，而不是让门禁去读一个仍在原地的旧文件、从此永远绿；
 - 注册表、路由集合、调度表或指标文档为空时失败封闭。
 
 两条 cron 路由统一使用 `checkCronAuth()`：`CRON_SECRET` 未配置、缺失凭据与无效凭据会以稳定原因上报
