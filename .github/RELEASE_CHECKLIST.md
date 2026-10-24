@@ -29,6 +29,10 @@
 - [ ] `pnpm smoke:production -- "$PRODUCTION_URL" --expected-version "$EXPECTED_APP_VERSION" --expected-commit "$(git rev-parse HEAD)" --output production-smoke.json` 通过，或 `Production Smoke` workflow 的 `smoke` 作业（只能由 `workflow_dispatch` 触发）成功并保留 30 天 artifact `production-smoke-evidence`；记下 artifact 的 run 与文件名，定时漂移检查的证据是**另一个** artifact `production-version-drift-evidence`
 - [ ] 冒烟断言过 commit：生产 `/api/health` 的 `commit` 与被验证的 commit 一致（短 SHA 按前缀匹配）。生产不上报 `commit` 时这条判**失败**，不要改用「版本一致就行」绕过——同一版本号内的多个构建在外部不可区分，回滚也就不知道该回到哪一个
 - [ ] `Production Smoke` workflow 的定时漂移检测 `smoke-main` 为通过（期望版本来自 `package.json`；失败表示生产部署落后，禁止发布）
+- [ ] `Production deploy ledger` 作业（或本地 `pnpm ops:deploy-ledger`）判一致，即本次合并的提交已在生产部署台账里找到归属。
+      ⚠️ 它**不是**上面那条新鲜度检查的重复：新鲜度量「落后几个提交」（阈值 5，落后 2 个照样绿），
+      台账问「**这个提交今天在不在线上**」。2026-10-13 实测到「新鲜度绿 + 有提交从未上线」同时成立。
+      exit 2（读不到）判**不通过**，不要按前一条的绿推断；合并后 90 分钟内读到「窗口内待观察」是正常形态，等过窗口再判
 - [ ] RLS 回归脚本通过；`pnpm audit` 无高危
 
 ## 打标签

@@ -31,9 +31,17 @@
  * - 全部调度都在守卫里且都有说明 → 绿，并**明确打印这个前提**，
  *   让「保留期依赖 pg_cron」不再只活在文档里。
  *
- * **刻意不判定「pg_cron 到底装没装」**：那需要真 Postgres 连接，
- * 本机没有 DB 密码（见 `docs/operations/environments.md`），而这正是 B04 的阻塞。
- * 这条检查只保证**代码把话说清楚了**；装没装由 `scripts/check-retention-cron.js --probe` 去问真库。
+ * **刻意不判定「pg_cron 到底装没装」**：那是**运行时事实**，不是仓库里的文本能回答的。
+ * 这条检查只保证**代码把话说清楚了**。
+ *
+ * ⚠️ 本模块的注释原先把这句写成「那需要真 Postgres 连接，本机没有 DB 密码，
+ * 而这正是 B04 的阻塞」——**那个前提是错的**：2026-10-13 实测
+ * `POST /v1/projects/{ref}/database/query` 用仓库里已有的 `SUPABASE_ACCESS_TOKEN`
+ * 就能执行 SQL，不需要数据库密码（run `38334026946`，见 `docs/operations/environments.md`）。
+ * ⇒ 问「装没装」现在有两条路，都不依赖 DB 密码：
+ *   · `pnpm ops:cloud-sql-probe` 的 `PG_CRON_INSTALLED` 那一步（HTTP，CI 里就能跑）；
+ *   · `node scripts/check-retention-cron.js --probe`（走 `psql` 或 `docker exec`，
+ *     适合本地栈——生产实测未安装 pg_cron 的那份读数就是这么来的）。
  */
 
 /** 从迁移 SQL 里抽出 `cron.schedule('<任务名>', ...)` 的任务名与所在文件。 */

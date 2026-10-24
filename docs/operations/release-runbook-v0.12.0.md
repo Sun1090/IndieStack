@@ -70,6 +70,9 @@ C01–C02）、文档事实门禁与版本收口（D 域，D01–D02）。
      **退出码 0/1/2 里没有「演练通过」**——这个命令只回答「还缺什么」，
      别把它的 0 当成演练已通过。
    - 冒烟从 6 步增至 7 步（新增 liveness）。
+     【2026-10-14 追加】本条「两条运维门禁」是**发布当时**的记述，不回改；
+     此后又多了第三条 `pnpm ops:deploy-ledger`，它与本条第一条**回答两个不同的问题**，
+     见下一节第 5 步。
 
 6. **未变化的既有约束**（发布时不要重新评估）：Vercel Hobby 的 cron 预算仍是每路径每天一次
    （`digest` 09:00 UTC、`push-retry` 22:00 UTC、`retention`、`supabase-restore`），
@@ -102,6 +105,17 @@ pnpm audit
    ```bash
    pnpm ops:deploy-freshness --base-url https://indie-stack-theta.vercel.app
    ```
+5. 核对**生产部署台账**（本次合并的提交到底上线了没有）：
+   ```bash
+   GITHUB_REPOSITORY=<owner>/<repo> pnpm ops:deploy-ledger
+   ```
+   期望 `CONSISTENT`、exit 0。合并后 90 分钟内跑，读到 `PENDING` 是正常形态
+   （Vercel 常把连续合并的提交并成一次部署），**等过窗口再判**。
+   ⚠️ **这一步不能与第 4 步互相替代**，它们问的不是同一件事：
+   `ops:deploy-freshness` 问「生产落后几个提交」（阈值 5，落后 2 个照样判通过），
+   `ops:deploy-ledger` 问「**这个提交今天在不在线上**」（无记录**且**无任何后续部署包含它才算故障）。
+   2026-10-13 实测到两者同时给出「通过 / 有提交从未上线」的组合——**距离小不等于部署正常**。
+   退出码 0 一致 / 1 有提交从未上线 / 2 读不到（**未知不算通过**，不要按第 4 步的绿推断这一步的绿）。
 
 ## 打标签与发布说明
 
@@ -149,6 +163,14 @@ tag：未打（理由见 release-tag-ledger.md）
   `auth.admin.deleteUser` 不可逆，**禁止用真实用户演练**。
 - **B04 / B05 的 P2–P4 未闭合**：B04 缺数据库密码（平台令牌早已具备），
   B05 的 P2–P4 需要 Resend 测试 key、VAPID 一对与可牺牲项目。
+  **↑ 这一句里关于 B04 的部分已于 2026-10-13 被实测否证**（那是本节 2026-10-05
+  快照的一部分，按「带日期的证据不回改」保留原文）。真实情况：执行 SQL 不要数据库密码，
+  `pnpm ops:cloud-sql-probe` 可重跑；B04 现在缺的是「把含 psql 元命令的那份正本压成
+  单条语句」加「一次往生产库写的人工授权」。见 `docs/roadmap-0.12.0.md` B04 与
+  `docs/operations/environments.md` 的外部依赖表。
+  【2026-10-13 同日加指针】前一半做完了**两份中的一份**（`account-erasure.single-do.sql` 入库并本地跑通；
+  保留期那份的派生版仍在 PR #236 里没进 main），后一半——往生产库写的授权——
+  **不在我能决定的范围里**，B04 因此仍计未完成。
 - **生产未配置 `RESEND_API_KEY` / `NEXT_PUBLIC_SENTRY_DSN` / `STRIPE_SECRET_KEY`**：
   邮件、告警、支付三条外部链路在生产上是空转的。这些是外部凭据，不是代码问题。
 - **跨迁移边界的真实生产回滚证据**仍不存在（`rollback-runbook-v0.12.0.md` 的

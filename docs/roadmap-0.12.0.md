@@ -150,6 +150,11 @@
    取证据的过程本身抓出一条缺陷——手动 `smoke` 作业在每次定时运行里都因空 `inputs` 崩溃，
    已由 `check:production-smoke` 的两条新规则钉住。**B01 只覆盖无副作用面**：
    只读凭证类 3 项与隔离账号 14 项仍未执行，它们是 B03/B04 的内容，也是打 tag 的前置）
+   - 【2026-10-14 补一条指针】上面那句「这条**不**等于 `main` 已部署」以前只能靠人记住，
+     现在有自动判据了：`pnpm ops:deploy-ledger` 逐个回答「每个已合并提交在不在线上」，
+     匿名可读、每天与每次 main push 各跑一次。判据、阈值出处与「未知不算通过」见
+     `docs/operations/environments.md` 的「生产部署台账」行。**它不改变 B01 的完成状态**——
+     B01 欠的是只读凭证与隔离账号那 17 项，与「有没有部署」是两件事。
 7. B02 （**2026-10-05 已完成：外部权限到位后第一次真实执行**，v0.6.0 起从未闭合的 J08 就此闭合）
    执行一次真实回滚演练（切回上一 deployment、验证 health 与 schema 向前兼容），
    记录填进 `docs/operations/rollback-runbook-v0.11.0.md` 的「演练记录」。
@@ -174,23 +179,65 @@
    前置判定已固化：`pnpm drills:preflight --drill B03`，2026-10-05 起不必再临场回忆缺哪个凭据）
    隔离账号上的账户删除全链路（真实 `auth.admin.deleteUser` + 真实 bucket 对象删除），
    替换目前用 `delete from auth.users` 的等价替代（记录在 `docs/db/retention.md` 的「仍未取得的生产证据」）
-9. B04 （**未完成：外部权限（缺的是数据库密码，不是平台令牌）**——阻塞原因已于 2026-10-05 更正，见下；
+9. B04 （**未完成：不再是「缺外部权限」——缺口 (a) 于 2026-10-13 做完两份中的一份，剩第二份 + 人工授权**；
+   阻塞原因已于 2026-10-13 **第四次**改写，见下；
    前置判定已固化：`pnpm drills:preflight --drill B04`）
    云端 Supabase 上的保留期与擦除同型演练（把本地两份 `docs/operations/drills/*.sql` 在云端跑一遍）
-   - **原阻塞描述是错的**：写的是「需要云端 Supabase 项目的管理凭据」。实测发现仓库里
+   - **第一版是错的**：写的是「需要云端 Supabase 项目的管理凭据」。2026-10-05 实测仓库里
      **早就有**一个可用的 Management API 令牌——`SUPABASE_ACCESS_TOKEN` 是 repo secret，
-     `supabase-auto-restore.yml` 每天成功跑一次（2026-10-05T11:47Z 那轮读项目状态后报「无需恢复」）。
-     **平台层从来不是阻塞。**
-   - **真正的缺口在再下一层**：演练 SQL 要用真 Postgres 连上去跑，
-     `supabase migration list --linked` 同理（它读库里的 `schema_migrations` 表）；
-     而仓库里**没有任何 DB 密码类 secret**（`gh secret list` 只有一个 `SUPABASE_ACCESS_TOKEN`）。
-   - 因此 B04 的阻塞从「要一个可能已有的令牌」收窄成「要数据库密码」——
-     **这是一次真实的阻塞面缩小**，不是措辞调整。
-   - **2026-10-12 再补一条边界，免得有人以为 B04 已经解锁**：PostgREST 的 OpenAPI 根端点
-     用 service_role key 就能读到全部表与列名（**不需要 DB 密码**），
-     所以「线上缺哪一列」这类问题已经能查了（`pnpm ops:schema-drift`，见 `environments.md`）。
-     但 B04 要的是**在云端跑多语句演练 SQL**——OpenAPI 只给 schema、不给执行。
-     两者是不同的能力，别把前者当成后者。
+     `supabase-auto-restore.yml` 每天成功跑一次。**平台层从来不是阻塞。**
+   - **第二版也是错的**：收窄成「要数据库密码」。2026-10-13 用 `pnpm ops:cloud-sql-probe`
+     拿到真实读数（run 38334026946，七条全 EXECUTED）后**否证**：
+     `POST /v1/projects/{ref}/database/query` 用那个令牌就能**执行 SQL**，不需要密码。
+     多语句也**全部执行**——判据是让第一条语句自己报错：
+     `select 1/0 as boom; select 2 as survivor` 回 `ERROR: 22012: division by zero`。
+     单条 DO 块同样通。⇒ `SUPABASE_DB_PASSWORD` 已从 `preflight.ts` 的前置里删除。
+     （为什么「没报错」不等于「都跑了」：这个端点的响应体只回**最后一条**语句的结果。
+     计时判据试过并被同一份日志证伪——同形状的两条查询相差 478ms，
+     而 `pg_sleep(1)` 相对对照只高 483ms，噪声与信号同量级。所以换成「让第一条报错」。）
+   - **第三版是「多语句跑不了 ⇒ 必须 psql + 密码」**，被 PR #236 的单条 DO 块证伪。
+     三次的错都留在 `docs/operations/environments.md` 的分寸条目里，没有回改。
+   - **所以真正缺的是两件事，都不是凭据**：
+     (a) `docs/operations/drills/account-erasure.sql` 里有 **6 条 psql 元命令**
+         （`pnpm falsify:rules` 之外另有一条机器判据：`src/lib/drills/psql-meta.ts` 量出来的，
+         **不是手数**——原先登记的「5 条」是手数漏了行尾那条 `\gset`，见下）
+         （`\set` / `\echo` / `\gset`），HTTP 通道**根本送不过去**，
+         要先照 `retention-cleanup.single-do.sql` 的做法压成单条语句并在本地跑通。
+         **【2026-10-13 做完两份中的一份】**派生版 `docs/operations/drills/account-erasure.single-do.sql`
+         已入库：本地栈实测 `failures=0 assertions=20`、`auth.users` 与 `contact_messages`
+         各剩 0 行（回滚干净）。断言标签与正本**逐条同序**由
+         `src/lib/drills/erasure-drill-parity.test.ts` 机器核对（4 条用例）。
+         转换时踩到的两个坑记在该文件头：`\gset` 换成 plpgsql 变量的真正原因
+         是**切到 service_role 之后读不到 temp 表**（实测 `permission denied for table`），
+         以及 `format()` 里 `%` 后紧跟空格会被当成带 flag 的转换。
+         派生版**刻意保留** 2 次 `set role service_role` / 2 次 `reset role`：
+         那三个函数的 `EXECUTE` 只给了 service_role（`pg_proc.proacl` 实测），
+         权限形状本身就是演练对象的一部分。
+     (b) 这两份 SQL 会真的 insert / update / delete。在云端跑等于**往生产库写**，
+         那是**人工授权**动作。`preflight.ts` 里为此立了一个
+         `B04_AUTHORIZE_PRODUCTION_WRITE` 变量：它不是密钥，是一次显式同意，
+         刻意做成「没有它执行器就拒绝启动」，这样「谁都没同意过但脚本自己跑了」
+         在结构上不可能发生。
+      - ⚠️ **(a) 不是一份，是两份**：本条正文写的是「把本地**两份**
+       `docs/operations/drills/*.sql` 在云端跑一遍」。保留期那份的派生版
+       `retention-cleanup.single-do.sql` 由 **PR #236** 产出，**至今没进 main**
+       （`git ls-tree origin/main` 实测只有两份正本，没有 `.single-do`）。
+       所以 `preflight.ts` 的 B04 下现在挂着**两条** `file:` 前置，
+       少一份就不算 ready——`preflight.test.ts` 有一条用例专门钉「SQL 型前置必须覆盖两份」。
+       为什么这条值得单独立用例：只登记一份的后果是
+       **「有人给了人工授权 ⇒ preflight 报 ready=true ⇒ 执行器到第二份才发现没东西可跑」**，
+       而 ready=true 正是让人按下生产写按钮的那个信号。
+  - **别把这次更正读成「B04 已解锁」**：解锁的是「通道存在且不需要密码」，
+     不是「可以开跑」。v0.12.0 的 tag 前置里 B04 仍计未完成。
+     【同日稍后】(a) 做完之后这句话更要留着：现在「送得出去」也成立，
+     B04 **仍然**未完成——缺的是人工授权，而授权不是进度，是别人的决定。
+   - 顺带记一条与本条相反方向的教训：上一条 commit（`684c9fc8`）里我写了
+     「`SUPABASE_DB_PASSWORD` 被登记了**八年**」——那是我**编的数字**，
+     真值是 2026-10-05 登记、2026-10-13 否证，**8 天**。
+     按本仓库「带日期的证据快照不回改、只加指针」的规矩，那条 commit 原文保留，
+     错记在这里。值得记的是**形态**而不是次数：这次编数字的地方，
+     正是「纠正别人编的数字」那同一段话里——纠正动作本身不会让人免于犯错。
+     （本仓库这类违规的累计次数没有统一台账，所以这里不写「第 N 次」。）
 10. B05 （**部分完成：P1 已实跑通过（2026-10-05，本地 mock 构型）；P2–P4 仍缺外部权限**——
     需要 provider 测试凭据与可牺牲的真实项目；
     前置判定已固化：`pnpm drills:preflight --drill B05`）
@@ -726,6 +773,13 @@
    `docs/operations/release-audit-template.md` 把退出报告/缺口审计共用的判定规则写成可复用模板
    （三档状态各要什么证据、「文档已写」不算证据、门禁自身要做变异复核、范围由 CHANGELOG 章节生成、
    「代码合并 / 已部署 / 已发布 / 演练过」四件事不得互相冒充）。
+   - 【2026-10-14 加第六条规则，此处只加指针】上面那五项是**完成当时**的记述，保留原文。
+     本轮新增第 6 条：**一条外部事实的结论必须连着「怎么再读它一次」一起写**。
+     它补的是规则 2 抓不到的失效方式——规则 2 管**承诺**，这条管**已经读到的事实**：
+     结论正确但没附命令，就会在 N 天后自动退化成「未知」。
+     反例是本轮实测到的：`docs/db/retention.md:79`（2026-09-21）已记下生产没有 `pg_cron`
+     却没写取法，14 天后 `environments.md` 把它写成「仍未核实（需 DB 密码）」，
+     而那个前提本身也已被否证——**答案在仓库里，却当不成证据**。
    审计当场量出三处口径问题并如实记录：runbook 声称范围内有 5 项其实更早就完成了、J06 只做到
    「无副作用 6/6 + 只读 3/6」，而整个 D 域（5 道 i18n/a11y 门禁 + 逻辑方向迁移）交付了却没进范围段；
    另外记录 `D01` 这类编号在 v0.6.0 池与 v0.12.0 池含义不同，引用必须带池子名。
@@ -787,6 +841,28 @@
 
 - B 域全部依赖外部权限（Vercel 部署与 build 配额、云端 Supabase 凭据、可牺牲的隔离账号）。
   若权限未到位，v0.12.0 不得因为「代码都改了」而宣布退出标准达成。
+  - 【2026-10-13 读数订正一条口径】这一行把「Vercel 部署」与「build 配额」并列成外部权限，
+    今天的第 5 个读数说明**部署链路本身不是阻塞**：#255 合并为 `a5b38466` 后 6 分钟，
+    生产 `/api/health` 就回同一个 SHA、`ops:deploy-freshness` 报 fresh（距离 0），
+    **一次成功构建清空了此前 4 个提交的落后量**。
+    ⇒ 该守的口径改成：**「配额会波动」是风险，「部署坏了」不是**——
+    不要因为生产落后过就推断需要账户侧动作才能恢复。
+    读数与分寸见 `docs/operations/environments.md` 的「Vercel 构建配额」行。
+  - 【2026-10-14 补一条：这一格里「Vercel 部署」不再是外部权限】上面那条订正说的是
+    「部署链路本身不是阻塞」，而**「生产到底上线没有」这件事本身也不再需要人工去控制台看**：
+    `pnpm ops:deploy-ledger`（判定层 `src/lib/ops/deployment-ledger.ts`）读
+    `GET /repos/{owner}/{repo}/deployments`，**匿名可读**。
+    此前 B 域文档里那句「需要 Vercel 侧部署记录，**本机取不到**」是错的
+    ——那是本仓库第三次把「我不知道怎么查」写成「这件事查不了」。
+    已接进发布证据链三处：`.github/RELEASE_CHECKLIST.md` 的门禁一节、
+    `release-runbook-v0.12.0.md` 发布步骤第 5 步、`production-smoke-v0.12.0.md` 的台账小节；
+    另有 `.github/workflows/deploy-ledger.yml`（每天 + 每次 main push，非 required）。
+    **它已经判出过一次真故障**（#256 / #257 合并后主应用生产零记录，而 `75b011ba` 当时是 main HEAD），
+    但**至今仍未定因**：本机没有 Vercel 凭据，配额 / production branch 配置 / 项目暂停 /
+    构建提升失败四个候选**一个都没被排除**——
+    ⚠️ 我在这一条上**过早定因两次**（先写「原因是配额」、再写「不是配额，是链路单独坏了」），
+    第二次被 #258 否证（合并 2 分 11 秒后无人干预自己上了生产）。
+    ⇒ 台账只报「不同步」这一个观察，**不缩小候选**；再往下要的是 Vercel 侧读数，属外部权限。
 - ~~C02 一旦解锁并行，历史共享状态缺陷会一次性暴露，需要预留排障时间。~~ **已发生并按预期处理**：
   解锁并行（一个 worker 一台服务器）后首跑红 4 条，全部归因到进程级共享 store；清零后又红过 3 条，
   归因是冷编译计时而不是状态。两种红分开记录，见 C02 与 run `35727094401` / `35746785602`。

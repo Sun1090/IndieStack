@@ -91,40 +91,92 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
     id: "B04",
     title: "云端 Supabase 的保留期与擦除同型演练",
     blockedReason:
-      "两份演练 SQL（`docs/operations/drills/*.sql`）已经在本地跑过；云端跑需要**数据库级**访问。" +
-      "**这里曾经写错过一次，值得留着**：初稿把阻塞写成「需要云端项目的管理凭据」，" +
-      "而 2026-10-05 实测发现仓库里**早就有**一个可用的 Management API 令牌" +
-      "（`SUPABASE_ACCESS_TOKEN` 是 repo secret，`supabase-auto-restore.yml` 每天成功跑一次、" +
-      "读项目状态并报「无需恢复」）。所以平台层从来不是阻塞。" +
-      "真正缺的是**再往下一层**：演练 SQL 要用真 Postgres 连上去跑" +
-      "（`supabase migration list --linked` 同理——它读的是库里的 `schema_migrations` 表），" +
-      "而仓库里**没有任何 DB 密码类 secret**。",
+      "**阻塞理由已改写四次，每一版都留着**（前三次的错都记在 " +
+      "`docs/operations/environments.md` 的分寸条目里）。\n" +
+      "· 初版：「需要云端项目的管理凭据」——2026-10-05 实测仓库里**早就有** " +
+      "`SUPABASE_ACCESS_TOKEN`，平台层从来不是阻塞。\n" +
+      "· 第二版：收窄成「需要数据库密码」——2026-10-10 实测 " +
+      "`supabase migration list --linked` **不要密码**；这件事被当成查不了 **21 天**" +
+      "（最早可查 2026-09-22 `7ea846c1`；原写法是「两年」，被仓库历史否证——" +
+      "第一个 commit 是 2026-08-09，到今天只有 65 天），" +
+      "代价是 034 从未 applied 直到线上出事。\n" +
+      "· 第三版：「多语句跑不了 ⇒ 必须 psql + 密码」——被一条 DO 块证伪" +
+      "（PR #236，`retention-cleanup.single-do.sql` 在本地跑通）。\n" +
+      "· **第四版（2026-10-13，`pnpm ops:cloud-sql-probe` 的真实读数）**：" +
+      "「需要数据库密码」**根本不成立**。Management API 的 " +
+      "`POST /v1/projects/{ref}/database/query` 用 CI 里那个令牌就能执行 SQL，" +
+      "而且多语句**全部执行**（判据是让第一条语句自己报错：" +
+      "`select 1/0; select 2` 回 `22012: division by zero`，" +
+      "run 38334026946）；单条 DO 块也通。\n" +
+      "⇒ 现在缺的**不是任何凭据**，而是两件事：\n" +
+      "  (a) `account-erasure.sql` 里有 6 条 psql 元命令（`\\set` / `\\echo` / `\\gset`），" +
+      "     HTTP 通道**根本送不过去**。\n" +
+      "     **这一条已于 2026-10-13 做完**：派生版 " +
+      "`docs/operations/drills/account-erasure.single-do.sql` 已入库，" +
+      "本地栈实测 `failures=0 assertions=20`、跑完不留数据。" +
+      "那个 6 由 `src/lib/drills/psql-meta.ts` 量；原写法「5 条」是手数，" +
+      "漏了行尾那条 `\\gset`——`preflight.test.ts` 里有一条用例把两者对上，" +
+      "改正本不改数就会红；\n" +
+      "     **但 (a) 只做了一半**：B04 跑的是**两份** SQL，保留期那份的派生版" +
+      "还在 PR #236 里、**没进 main**。所以这条前置下面还挂着第二条 `file:`，" +
+      "少一份就不算 ready——**「把未满足的报成已满足」在这里会直接触发一次生产写**。\n" +
+      "  (b) 这两份 SQL 会真的 insert / update / delete。在云端跑等于**往生产库写**，" +
+      "那是人工授权动作——不是我能替谁决定的，也不是脚本该自动做的。\n" +
+      "**别把 (a) 做完读成「B04 已解锁」**：做完的是「送得出去」，" +
+      "还缺的是「谁同意往生产库写」。正本也**从没在云端跑过**——" +
+      "本地跑通只证明 SQL 形状对，不证明云端迁移版本与它兼容。",
     requirements: [
       {
-        source: "SUPABASE_DB_PASSWORD",
+        source: "SUPABASE_ACCESS_TOKEN",
         purpose:
-          "**这才是真正的缺口**：演练 SQL 与 `migration list --linked` 都要用真 Postgres 连上去，" +
-          "平台层的 Management API 令牌替代不了它",
-        remedy:
-          "Supabase 项目的 Settings → Database（或连接串里的密码部分）；" +
-          "**不要**提交进仓库",
+          "**执行 SQL 只需要这一个**——2026-10-13 实测：CI 里的 repo secret 就能打 " +
+          "`POST /v1/projects/{ref}/database/query` 并拿到结果。" +
+          "原先登记的 `SUPABASE_DB_PASSWORD` 已被那次读数**否证**，不再是前置",
+        remedy: "已有（GitHub repo secret）；本机要用的话 supabase login 或 export 一个 PAT",
       },
       {
-        source: "file:~/.supabase/access-token",
+        source: "B04_AUTHORIZE_PRODUCTION_WRITE",
         purpose:
-          "Supabase CLI 的登录态。**注意它多半已经有了**——CI 里同名 secret 每天在用；" +
-          "本地缺只是因为 GitHub Actions 的 secret 不会进本地 shell",
-        remedy: "已有则跳过；没有就 supabase login，或 export SUPABASE_ACCESS_TOKEN=<pat>",
+          "**这才是今天真正缺的东西**：演练 SQL 会往生产库写。这个变量不是凭据，" +
+          "是一次**显式的人工授权**——刻意做成「没有它执行器就拒绝启动」的形态，" +
+          "这样『谁都没同意过，但脚本自己跑起来了』在结构上不可能发生",
+        remedy:
+          "由项目负责人在看过将要执行的 SQL 之后手动设为 yes。" +
+          "**不要**为了跑通而把它写进任何自动化的环境里",
+      },
+      {
+        source: "file:docs/operations/drills/account-erasure.single-do.sql",
+        purpose:
+          "**已满足**（2026-10-13）：擦除那份正本的 6 条元命令已压成单条语句，" +
+          "与正本 20 条断言逐条对齐，并在本地栈跑通。" +
+          "这条前置**留着是有意的**——它盯的是「派生版还在不在」：" +
+          "删掉它，将来有人重构时把派生版删了也没人报警。",
+        remedy:
+          "若这个文件丢失：照 `retention-cleanup.single-do.sql` 的做法重新转换，" +
+          "并在本地栈上跑通再入库。转换时最容易漏的两件事——" +
+          "夹在两个 do 块之间的顶层 `select public.cleanup_*()`（保留期那份），" +
+          "以及 `\\gset` 取出的值在 `set role service_role` 之后读不到 temp 表（擦除这份）。",
       },
       {
         source: "NEXT_PUBLIC_SUPABASE_URL",
-        purpose: "确认连的是**哪个**项目——演练 SQL 是不可逆的，连错项目等于在错库上擦",
+        purpose: "确认写的是**哪个**项目——演练 SQL 是不可逆的，连错项目等于在错库上擦",
         remedy: "Supabase 项目的 Settings → API",
+      },
+      {
+        source: "file:docs/operations/drills/retention-cleanup.single-do.sql",
+        purpose:
+          "**B04 要跑的是两份 SQL，不是一份**——保留期那份也必须压成单条语句。" +
+          "它由 PR #236 产出，**至今没进 main**，所以这条前置此刻**未满足**。" +
+          "把它漏掉的后果很具体：有人给了 `B04_AUTHORIZE_PRODUCTION_WRITE`，" +
+          "preflight 报 `ready=true`，执行器到第二份文件时才发现没东西可跑。",
+        remedy:
+          "合并 PR #236（它同时带着 034 的应用与两条 cron 的修复，顺序不能颠倒）。" +
+          "不要为了让判定变绿而把这条删掉，也不要就地复制一份——两份会各自漂移。",
       },
     ],
     firstCommand:
-      "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f - < docs/operations/drills/retention-cleanup.sql" +
-      "   # 整段包在 begin/rollback 里，跑完不留数据",
+      "pnpm ops:cloud-sql-probe   # 先只读核验通道与 read_only 防护，再谈要不要写；" +
+      "本机无令牌时会如实报 dry-run + exit 2",
     evidenceTarget: "docs/operations/production-smoke-v0.11.0.md 的云端行",
   },
   {
@@ -160,6 +212,40 @@ export const DRILL_SPECS: readonly DrillSpec[] = [
     evidenceTarget: "docs/operations/provider-incident-drills.md 的「执行记录」小节",
   },
 ];
+
+/**
+ * 把 `file:` 型前置解析成可判定存在性的路径。
+ *
+ * **为什么需要这一层**：IO 层原先直接把 `file:` 后面的部分当路径用。
+ * 唯一的老前置是 `~/.supabase/access-token`——它锚在 HOME 上，
+ * 从哪个目录跑都一样，所以这个缺陷一直没露头。
+ * 而 B04 现在多了一条**仓库相对**的前置
+ * （`file:docs/operations/drills/account-erasure.single-do.sql`）：
+ * 按 cwd 解析的话，谁从仓库外面跑一次 `drills:preflight`，
+ * 就会看到「文件不存在 ⇒ 前置没齐」，而真相是文件好好地躺在仓库里。
+ * 那是**把已满足的报成未满足**——代价是这条演练被永久挡住，
+ * 而且挡住它的理由看起来完全可信。
+ *
+ * 口径：`~` 开头的锚到 HOME，其余一律锚到**仓库根**。
+ * 刻意不把 cwd 也当候选：那会让「在别的目录下碰巧有个同名文件」
+ * 变成一个假阳性，而仓库相对路径的权威解释就是仓库根。
+ */
+export function fileRequirementPaths(
+  source: string,
+  homeDir: string,
+  repoRoot: string,
+): string[] {
+  const relative = source.slice("file:".length);
+  if (relative.startsWith("~")) return [relative.replace(/^~/, homeDir)];
+  return [joinPath(repoRoot, relative)];
+}
+
+/** 极简路径拼接：只处理「基址 + 相对段」，不解析 `.` / `..`。 */
+function joinPath(base: string, relative: string): string {
+  const trimmedBase = base.endsWith("/") ? base.slice(0, -1) : base;
+  const trimmedRelative = relative.startsWith("/") ? relative.slice(1) : relative;
+  return `${trimmedBase}/${trimmedRelative}`;
+}
 
 /** 一条前置条件的判定结果。 */
 export interface RequirementVerdict {

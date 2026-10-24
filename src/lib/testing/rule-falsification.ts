@@ -424,6 +424,192 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return [];",
     testFile: "src/lib/release/client-artifact-env.test.ts",
   },
+  // 云端 SQL 探测的**只读守卫**。它的全部价值在于「这条探测不会写生产库」这句话
+  // 是代码性质而不是口头承诺——所以它必须在这张表里，而不是只活在某个人的 /tmp 脚本里。
+  // 2026-10-13 的教训：那条「IO 层 11/11 CAUGHT」的结论来自一次性 shell 脚本，
+  // 其中一条变异的搜索串多了一个反斜杠 ⇒ 它**根本没打上**却被算进了分子。
+  // 本表由 `pnpm falsify:rules` 跑，`mutationApplied=false` 会被单独计数，
+  // 「没打上」和「打了但没红」不再能被同一行汇总掩盖。
+  //
+  // **这张表盖不住探测的 IO 层**（`scripts/lib/cloud-sql-probe-check.js` 的 10 条变异）：
+  // 上面那条「只登记 `src/lib/**.ts`」的约定把它挡在外面。所以
+  // **`65/65` 不等于「云端 SQL 探测被完整核对过」**——判定层在表内，
+  // IO 层仍要靠 `src/lib/db/cloud-sql-probe-io.test.ts` 自己那 28 条 + 手工变异。
+  // 把它写在这里而不是省掉：一个看起来完整的数字比一个残缺的数字更危险。
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "assertProbeSqlReadOnly",
+    neuteredReturn: "return { sql, readOnly: true, reasons: [] };",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "auditProbePlan",
+    neuteredReturn: "return { ok: true, rejections: [] };",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "findWriteKeyword",
+    neuteredReturn: "return null;",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "summarizeProbe",
+    neuteredReturn: "return { verdicts, hasUnknown: false };",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  {
+    file: "src/lib/db/cloud-sql-probe.ts",
+    function: "probeExitCode",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/db/cloud-sql-probe.test.ts",
+  },
+  // B04 缺口 (a) 的「正本里有几条 psql 元命令」——这个数字原先是人抄进文档的，
+  // 抄错过一次（「5 条」漏了行尾的 `\gset`）。现在它由代码算，
+  // 并且 `preflight.test.ts` 会把文档里那句话和代码算出的结果**对账**。
+  {
+    file: "src/lib/drills/psql-meta.ts",
+    function: "findPsqlMetaCommands",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/psql-meta.test.ts",
+  },
+  {
+    file: "src/lib/drills/psql-meta.ts",
+    function: "unknownBackslashes",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/psql-meta.test.ts",
+  },
+  // 派生版核对里**唯一承重的那一层**：「在代码里数，不在说明文字里数」。
+  // 中性化它 ⇒ 文件头解释中的 `execute 'set role service_role'` 被算进代码
+  // （2 数成 3），parity 用例的**两条**同时变红（实测 2 failed / 2 passed）。
+  // ⚠️ `testFile` 这里**不是** `psql-meta.test.ts`：把它中性化后那个套件仍然
+  // **7/7 全绿**（实测 exit=0）——剥注释只在跨文件核对时才暴露后果。
+  // 登记成自己的套件会得到一条「核对过但其实没核对」的假证据。
+  {
+    file: "src/lib/drills/psql-meta.ts",
+    function: "stripSqlLineComments",
+    neuteredReturn: "return sql;",
+    testFile: "src/lib/drills/erasure-drill-parity.test.ts",
+  },
+  // plpgsql RAISE 的占位符核对（`%` 在 RAISE 里一律算占位符，实测见 raise-format.ts 的表）。
+  // 4 个判定入口逐个实测 bites：分别 7 / 5 / 2 / 1 条变红。
+  // **刻意不登记 `splitTopLevelArgs`**：它是纯文本 helper，没有「报出问题」的判据，
+  // 它的失效已经由 `parseRaiseStatement` 那条覆盖——多登记一条只会让这张表虚胖。
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "countBarePercent",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "parseRaiseStatement",
+    neuteredReturn:
+      "return { text: statement.trim(), placeholders: 0, args: 0, digitPercent: false };",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "findRaiseStatements",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  {
+    file: "src/lib/drills/raise-format.ts",
+    function: "auditRaiseFormats",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/drills/raise-format.test.ts",
+  },
+  // Vercel 配额读数台账：文档表头那句「今天有 N 个读数」原先是人抄的，
+  // 而它**当场复现了本仓库那个老错**——表头写「四个读数」，同一行正文已数到「第 6 个」。
+  // 5 个入口逐个实测 bites（1 / 1 / 1 / 2 / 2 条变红）。
+  // ⚠️ `consecutivePassFromTail` 第一版**只有 1 条红**，而那一条是硬编码的 `toBe(0)`——
+  // 文档里「尾部连击 0」那个数字当时仍然没人对账。补一条正则对账后变成 2 条红。
+  // **红数从 1 升到 2 才是这条登记有意义的证据**；只凭「它红了」就登记，
+  // 会把「代码被自己的单测守着、文档仍靠人抄」这种半吊子状态写进表里。
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingCount",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingChainText",
+    neuteredReturn: "return '';",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "readingVerdict",
+    neuteredReturn: 'return "stable-pass";',
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "consecutivePassFromTail",
+    neuteredReturn: "return 99;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "longestPassStreak",
+    neuteredReturn: "return 99;",
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  // 生产部署台账（`ops:deploy-ledger`）。三条都实测 bites。
+  // ⚠️ **这里刻意不写「N 条红 / M 条通过」**：那两个数会随**测试文件**增删而变
+  // （本模块从 21 条长到 27 条时，`toObservations` 的读数就从 9/12 变成 9/18），
+  // 而登记表不是它们的家。要读数就跑 `pnpm falsify:rules`。
+  // `auditDeploymentLedger` 的中性化返回值刻意做成「一切正常」的形态——
+  // 因为这条判定的失效方式不是「算错数」，而是**把故障读成健康**。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "auditDeploymentLedger",
+    neuteredReturn:
+      'return { code: "CONSISTENT", passed: true, neverDeployed: [], pending: [], slow: [], skippedCount: 0, lagMinutes: () => 0, message: "" };',
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
+  // 字段映射层。它比判定层更容易「静默读错」：字段取错嵌套层级时不会抛异常，
+  // 只会让每个提交都变成「无部署记录」⇒ 报出「226 个提交从未上线」这种自信的错误结论。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "toObservations",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
+  // 结论 → 退出码。中性化成 `return 0` 实测 bites，但**只红 1 条**。
+  // 这**不是覆盖不足**：那 4 个断言写在同一条用例里，首个断言失败即止。
+  // 记在这里是因为「红 1 条」很容易被读成「登记得马虎」——它考验的是登记人的判断，
+  // 而判断的依据是**为什么只红 1 条**，不是红了几条。
+  // 这条登记的意义在于「未知」与「失败」共用一个码时，
+  // 没有任何测试会注意到——而它恰好是排查方向的分岔点。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "deployExitCode",
+    neuteredReturn: "return 0;",
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
+  // 跨环境对比（「不是配额」这个结论的来源）。实测 bites：6 条红。
+  {
+    file: "src/lib/ops/deployment-ledger.ts",
+    function: "diagnoseNeverDeployed",
+    neuteredReturn: "return [];",
+    testFile: "src/lib/ops/deployment-ledger.test.ts",
+  },
+  // 登记表自己的读数（`docs/testing.md` 那句「N 条判定 / M 个规则模块」的对账方）。
+  // 中性化实测 bites：1 条红 / 19 条通过。
+  // **这条有点自指**——它核对的是「这张表有几条」，所以登记它本身会让条数 +1，
+  // 而文档那句必须跟着改，否则对账用例就红。**这正是它该有的样子**：
+  // 一个会强迫自己保持正确的数。
+  {
+    file: "src/lib/testing/rule-falsification.ts",
+    function: "summarizeRegistry",
+    neuteredReturn: "return { entryCount: 60, moduleCount: 54, testFileCount: 54 };",
+    testFile: "src/lib/testing/rule-falsification.test.ts",
+  },
 ];
 
 export interface MutationResult {
@@ -619,4 +805,38 @@ export function formatFalsificationOutcome(outcome: FalsificationOutcome): strin
       : `${failedTests} 条变红${passedTests === null ? "" : ` / ${passedTests} 条通过`}`;
   const mark = verdict === "bites" ? "✅ 会红" : verdict === "survived" ? "❌ 存活" : "⚠️ 读不出";
   return `${mark} ${target.file} → ${target.function}()：${reading}`;
+}
+
+/**
+ * 登记表自身的**可对账读数**——给文档引用，避免人抄。
+ *
+ * **为什么需要它**：`docs/testing.md` 里那句「当前读数：60 条判定 / 54 个规则模块，
+ * 全部会红（合计 644 条用例变红）」三个数**全都漂移了**——
+ * 文档写的是 60 / 54，而登记表自己算出来是另一回事（读数以本函数为准，
+ * **这里刻意不抄具体数**——本函数每被登记一条就会变，抄进注释就是又造一个会漂移的数）。
+ * 前两个数**只依赖这张表**，
+ * 所以它们该由代码算；**第三个数只有真跑一次才知道**，
+ * 写死在文档里必然漂移，所以那种数**不该出现在文档里**（见下）。
+ *
+ * ⚠️ **`moduleCount` 的口径是「`file` 字段去重」，不是「本仓库有多少规则模块」**。
+ * 一个模块可以登记多个判定函数（`cloud-sql-probe.ts` 就有 5 条），
+ * 所以这个数**必然小于**表里的条数。文档里引用它时必须带上这个口径，
+ * 否则「58 个规则模块」会被读成「全库只有 58 个规则模块」——
+ * 那正是本仓库反复犯的那类错：**一个口径没写清的数，会被读成一个结论**。
+ */
+export function summarizeRegistry(targets: readonly FalsificationTarget[] = RULE_FALSIFICATION_TARGETS): {
+  /** 登记的判定条数。 */
+  entryCount: number;
+  /** 涉及的规则模块文件数（按 `file` 去重）。 */
+  moduleCount: number;
+  /** 涉及的测试文件数（按 `testFile` 去重）——**与模块数可以不相等**，
+   * 因为一条登记的 `testFile` 允许指向别的模块的套件（见上面对
+   * `stripSqlLineComments` 的说明）。 */
+  testFileCount: number;
+} {
+  return {
+    entryCount: targets.length,
+    moduleCount: new Set(targets.map((target) => target.file)).size,
+    testFileCount: new Set(targets.map((target) => target.testFile)).size,
+  };
 }

@@ -8468,6 +8468,10 @@
 - 为什么做：上一条 `ops:schema-drift` 回答了「线上有没有这一列」，但**没回答「为什么没有」**。
   而「为什么」的那一半是迁移版本号——它过去两年被登记成「本机查不了（要 DB 密码）」，
   代价正是「034/035 从未 applied」直到线上出事才知道。
+  **【2026-10-13 当日订正】「两年」是编的数字**：仓库第一个 commit 是 2026-08-09
+  （GitHub `createdAt` 同日），到 2026-10-13 只有 **65 天**；按可查锚点是 **21 天**
+  （2026-09-22 `7ea846c1` 首次记为「仍未取得的生产证据」）。
+  原文按快照惯例保留，真实口径见 `docs/operations/environments.md` 同名行。
   本轮确认：`supabase migration list` **不要密码**，但它要交互式登录态——
   2026-10-12 本机实测两次，无 `~/.supabase/access-token` 时它**挂在登录提示上**、无输出、需 `pkill`。
   更关键的一条是本轮才查出来的：**supabase CLI 不是本仓库的依赖**（`package.json` 里只有
@@ -8524,3 +8528,1129 @@
   但它仍然只是**回答**，push 依然需要 `SUPABASE_ACCESS_TOKEN` 之外的东西：
   项目规则要求 schema 变更先在 staging 验证（本机无 staging 项目）。
 - 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 新探测器的第一次真实读数：034 没上，而它和另一条探测互相印证
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/migration-status-first-reading`（base `e84ef6e5` = main + #244）。
+- 状态：DONE（待 PR）。
+- 为什么做：#244 合并后，`.github/workflows/migration-status.yml` 由那次 main push **自动跑了首跑**。
+  这是本轮唯一一次拿到**真实云端读数**——之前所有验证都在本地 mock 上做，
+  mock 能证明判定逻辑，但证明不了「端点真的存在、token 真的有效、版本号真的是那个形状」。
+- 首跑读数（run `38294116244`，`push` 事件，main = `e84ef6e5`）：
+  - `❌ [MIGRATION_NOT_APPLIED] 034: 本仓库有这条迁移，但云端没有它——多半是尚未 push 到该环境`，**exit 1**。
+  - 这一次跑同时验证了四件此前只有推断的事：
+    1. 端点存在且 CI 里的 `SUPABASE_ACCESS_TOKEN` 有效（不是 401、不是 404）；
+    2. 响应形状假设成立（`[{version, name?}]`，从 CLI 内嵌规范里读的那份）；
+    3. 版本号是 **3 位序号**形态 ⇒ `migration-status.ts` 注释里那句
+       「**这是本模块唯一一处未实测的假设**」**已被推翻**，本轮就地改成「已验证 + 为什么仍要写成形状无关」；
+    4. 它**只报 034、不报 035**——因为 035 此刻还在 PR #235 里没进 main。
+       这正是「判据是**要部署的那一版代码**依赖哪些列」应有的行为，而不是「仓库里有几条迁移」。
+  - **两条独立探测互相印证**：`pnpm ops:schema-drift`（走 PostgREST OpenAPI，用 service_role key）
+    报「线上缺 `notifications.email_skipped_reason`」；本条（走 Management API，用 access token）
+    报「034 未 applied」。**不同凭据、不同端点、同一个结论**。
+- 顺带查清的一件事（**否证型**，所以值得记）：本轮实测 `supabase db query --local --file <两条 select>`
+  与内联多语句**报同一个错**（`cannot insert multiple commands into a prepared statement`）
+  ⇒ 那个限制不在 CLI 的传参方式上。但**它到底在 CLI 侧还是 Management API 服务端，本机查不了**
+  （access token 只在 CI 里）。已开 **issue #245** 记录这条边界与一个隔离项目上 5 分钟能跑的对照实验：
+  若答案是「CLI 侧」，B04 的阻塞理由就是**第三次**写错（前两次都记在 `environments.md` 分寸第 4 条）。
+- 完成内容：`src/lib/db/migration-status.ts` 注释就地更正；
+  `docs/operations/environments.md`「云端已应用的迁移版本」那一行补上首跑读数与互相印证；本台账。
+- 验证：`node scripts/check-progress-ledger.js` ✅；表格行探测器 ✅ 全仓 0 处跨行；
+  `pnpm check:all` ✅（见下条 commit 的 CI）。
+- 阻塞 / 风险 / 回滚：纯注释与文档，无风险；回滚 = revert 本 commit。
+- 下一项：**#236 与 #235 都 CI 全绿但都不能合**——硬前置是 `034`（#236）与 `035`（#235）applied，
+  而 `supabase db push` 需要本机能交互输入 `SUPABASE_ACCESS_TOKEN`（停止条件 3）。
+  顺序不可颠倒：先 push 迁移、后部署 GET 修复，否则会把「静默死」变成「每轮 500」。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「本地无法复现」登记了两年，实测是错的：CodeQL 告警台账第一次和实况对上
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/codeql-alert-probe`（base `d2c62b83` = main + #246）。
+- 状态：DONE（待 PR）。
+- 为什么做：runbook `docs/operations/codeql-alert-triage.md` 里有两句互相支撑的话——
+  「告警计数与对比需要 GitHub 安全 API，**本地无法复现**」与「读取真实告警列表…本地与无凭据环境无法执行」。
+  **【2026-10-13 当日订正】标题与本条正文里的「两年」是编的数字**：该句由 2026-09-13
+  `536c3ea3` 写入 `codeql-alert-triage.md`，到否证那天是 **30 天**；而仓库第一个 commit
+  是 2026-08-09，总共只有 65 天，「两年」在口径上不可能成立。
+  这条错和它要纠正的那条错是**同一个形状**：都是没查就写。
+  正因为这两句，「零回归」这个结论**从来没有被任何自动检查核对过**，
+  而代价已经付过一次：2026-09-24 那 4 条 `js/log-injection` 挂了 5 天没人发现。
+  2026-10-13 实测：**本仓库虽是 public，`code-scanning/alerts` 匿名 401，而本机 `gh` 的 token 能读全部字段**
+  ⇒ 缺的一直不是权限，是没人写这个探测。
+- 完成内容：
+  - `src/lib/security/codeql-alert-registry.ts`：判定层（纯函数）+ `CODEQL_ALERT_REGISTRY` 5 条真实登记。
+    九类 issue code：`UNREGISTERED` / `STALE_ENTRY` / `RULE_MISMATCH` / `INCOMPLETE_ENTRY` /
+    `REVIEW_OVERDUE` / `BLOCKING_OPEN` / `TRIAGE_SLA_BREACHED` / `SEVERITY_UNKNOWN` / `LIVE_UNREADABLE`。
+  - `scripts/lib/codeql-alert-check.js`（IO，`--fixture` 离线）+ `scripts/check-codeql-alerts.js`
+    + `fixtures/codeql-alerts.json`（2026-10-13 真实形状，含一条 `null` 严重度与一条未登记告警）
+    + `package.json` 的 `ops:codeql-alerts`。
+  - 文档同步：runbook 的「零回归的判定」与「外部依赖」两节**就地推翻旧表述**并写入 api-version 那个坑；
+    `environments.md` 加一行（观测命令 + 真实读数）；`codeql-alert-policy.ts` 头注释改掉
+    「数量对比属外部依赖不在门禁范围内」的说法，改为指向 `ops:codeql-alerts` 并说明为什么两者分开。
+- ⚠️ **本轮最重要的教训（差点写进文档的假缺陷）**：我先读到 5 条告警的
+  `security_severity_level` 全是 `null`，据此认定「runbook 的 ≥7.0 阈值此刻无法求值」是**真实缺陷**，
+  并已写进代码注释与台账草稿。**那是我自己的用法错误**——该字段只在带
+  `x-github-api-version: 2022-11-28` 时才有值。同一时刻同一份数据对照实测：
+  无 header ⇒ 全 `null`；带 header ⇒ `high` / `medium`。
+  另证：`security_severity_level=` 这个**查询参数被 API 静默忽略**（high/critical/medium/7.0
+  四种取值都返回同样的 5 条），而 `severity=error` 返回 0 条 ⇒ 过滤器本身生效，
+  所以不能用查询参数筛严重度。真实读数：#18 `high`、#11/#12/#13/#17 `medium`。
+  ⇒ 这条坑已写进模块头、`--help`、runbook 与 CHANGELOG；判定层**拒绝把 `null` 当低危**。
+  （**⚠️ 本条给出的成因后来被推翻，见下一条 2026-10-13 的更正**：
+  真正的原因不是 api-version header，而是**字段取错了嵌套层级**。
+  教训本身成立，成因不成立。）
+  复发模式：**「发现缺陷」之前先证伪「我的工具用法错了」**——这是我连续第 6 次在同类事上翻车。
+- 台账如实登记的一个区别：**#18 是 `triaging` 不是 `false-positive`**。
+  判定确实是假阳性（issue #242），但**没有 dismissal**，而 runbook 说例外只能走 dismissal
+  ⇒「判定为假阳性 ≠ 已处置」。所以这条探测现在**应该红**，这不是缺陷。
+  #17 的 `decidedOn` 是 `2026-10-11` 而非 09-24 那批：它出现于 09-27，09-24 那批覆盖 #11–#14。
+- 验证命令和结果：
+  - `node node_modules/eslint/bin/eslint.js <4 files>` ✅（先修掉 `inspectCodeqlAlerts` 复杂度 18>15：
+    把「台账自身体检」那段循环抽成 `registrySelfIssues`——**拆分，不提豁免**；
+    顺手让「登记不完整 / 复核过期」在实况读不到时也照样报，否则探测挂掉会掩盖台账腐烂）。
+  - `pnpm exec tsc --noEmit` ✅；`pnpm check:codeql` ✅（21 条契约断言，章节名未动）。
+  - `pnpm exec vitest run src/lib/security/codeql-alert-registry.test.ts` ✅ 22/22。
+  - `pnpm check:all` ✅（写这条时 274 files / 3343 tests 全绿）——**但那次「全绿」是在补 CHANGELOG 条目之前跑的**，
+    补完条目后 `pnpm test` 当场红：见下条，那是本轮真正的第二个产出。
+  - **顺带修掉 `check:changelog` 自己的缺陷**：`src/lib/changelog/parse-changelog.ts` 的兜底判断是
+    `text.startsWith("#")`，而 CommonMark 规定 ATX 标题的 `#` 后必须有空白 ⇒ 续行写
+    `#17 的判定日期是…`（指告警编号）被判成 `stray-heading`，**整条 CHANGELOG 校验红**。
+    上面三个分支（`## ` / `### ` / `# `）都要求空白，只有兜底不要求，自相矛盾。
+    改成 `/^#{1,6}(\s|$)/`，并加一条断言钉住：把实现改回旧写法，该断言**必红（已实测）**。
+    红的是**仓库真实的 CHANGELOG.md**，不是 fixture ⇒ 任何以 `#数字` 开头写续行的人都会撞上。
+  - **真实读数**：`GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack
+    node scripts/check-codeql-alerts.js --today 2026-10-13` → 2 条红
+    （`BLOCKING_OPEN` #18 + `TRIAGE_SLA_BREACHED` 12 个工作日 > 5），**exit 1**。
+  - fixture 读数：额外命中 `UNREGISTERED` #19 与 `SEVERITY_UNKNOWN`，exit 1。
+  - 失败路径**五条逐条实测**（缺 token / 坏 token 401 / 缺 repo / 日期格式错 / fixture 读不出）
+    全部归 exit 2 = `LIVE_UNREADABLE`。
+  - 变异测试 5 个全部被逮到：`null` 洗成 low / 未登记永不触发 / 腐烂不报 / SLA 改用日历天数 /
+    `triaging` 不要求 note。
+  - `pnpm exec vitest run src/lib/changelog/` ✅ 39/39（新增 1 条）；`pnpm check:changelog` ✅。
+  - 修完后重跑 `pnpm check:all` ✅ **274 files / 3344 tests**（比首跑多那 1 条正是新增的断言）；
+    `pnpm verify:build` ✅（lint / type-check / test / build / bundle / perf 全绿）。
+  - `python3 /tmp/table-probe.py` → 159 个 md，跨行表格 0 处。
+- 刻意不做的事：**不把 `ops:codeql-alerts` 接进 `check:all` 或任何 workflow**。
+  #18 未结案 ⇒ 它此刻必红，进 PR 门禁会阻塞每一个 PR。`ops:` 前缀与 `ops:schema-drift` /
+  `ops:migration-status` 同类 = 需要凭据的运维探测。等 #18 结案后再考虑做成每周只读 workflow
+  （那需要 `security-events: read`，且必须带上 §⚠️ 那个 header，否则读数会退化成 5 个 `null`）。
+- 阻塞 / 风险 / 回滚：不改运行时代码、不改告警状态 ⇒ 无线上风险。
+  `parse-changelog.ts` 那条**收紧了**判据（少报一类 stray-heading），方向是放宽而非加严，
+  所以不会放过真标题：`## 0.1.0` 这类无方括号的版本标题仍走 `## ` 分支，仍被现有断言覆盖。
+  回滚 = revert 本 commit。
+- 下一项：#236 / #235 仍被外部权限挡住（034、035 applied）。
+  本机可做：把 code-scanning 告警做成每周只读 workflow（需先结案 #18 否则天天红）、
+  以及 issue #245 里那条未验证问题（Management API 的多语句限制在 CLI 侧还是服务端）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 推翻我 30 分钟前写进 main 的「最重要教训」：成因不是 api-version header，是字段取错了嵌套层级
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/codeql-severity-field-location`（base `6077d4d5` = main + #247）。
+- 状态：DONE（待 PR）。
+- 为什么做：上一条台账记下「最重要教训」＝「`security_severity_level` 只在带
+  `x-github-api-version: 2022-11-28` 时才有值，否则 `null`」。**那条的教训成立，成因是错的**，
+  而且它已经随 #247 进了 main、写进四处文档。
+- 怎么发现的：按「写进文档的实测必须能指到可重跑脚本」复核自己的读数时，
+  用 `curl`（而非 `gh`）重跑那组对照，**不带 header 时 `rule.security_severity_level` 照样有值**。
+- **错因是对照实验本身不成立**：我用 `gh api` 跑「不带 header」那一组，
+  而 **`gh` 自己会补默认 api-version** ⇒ 两组都带了 header，看到的差异根本不在 header 上。
+  不带 header 时 GitHub 实际选中的版本由响应头 `x-github-api-version-selected` 给出，实测就是 `2022-11-28`。
+- 真正的机制（三条独立实测，`/tmp/api-matrix.sh` 可重跑）：
+  1. 顶层**没有**这个键：`'security_severity_level' in alert === False`、`'severity' in alert === False`；
+     它在 `alert["rule"]["security_severity_level"]`。从顶层取 ⇒ 稳定 `undefined` ⇒ 看着像 5 个 `null`。
+  2. header 与严重度无关，但**仍要带**：不受支持的版本值直接 **HTTP 400**
+     （实测 `2023-03-02`，`errors` 逐字为「supported versions are "2026-03-10" (most recent)
+     and "2022-11-28"」）；带 `2022-11-28` / `2026-03-10` / 不带 ⇒ 三组都有值。
+  3. 上一轮关于查询参数的推论**也站不住**：`severity=error` 回 0 条推不出「过滤器按
+     `rule.severity` 生效」——`error` 是合法枚举值且确实没有告警取该值，0 条与两种解释都相容。
+     真正的证据是 `severity=high` 只回 #18，而 #18 的 `rule.severity` 是 `warning`
+     ⇒ 它过滤的是 `security_severity_level`。
+     更要防的是**无法识别的取值被静默忽略并返回全部**（`nonsense`/`none`/`info`/`moderate`/`unknown`
+     都回全部 5 条）⇒「拼错了」与「全都命中」在响应上无法区分。
+     `security_severity_level=` 这个参数则被完全忽略（任何取值都回全部 5 条）。
+- 完成内容：
+  - **把映射逻辑 `toLiveAlert` 从 `scripts/lib`（IO 层，无单测）搬进
+    `src/lib/security/codeql-alert-registry.ts`**——这才是那句错误解释能进 main 的结构性原因：
+    「字段在哪一层」的唯一决定点当时一行测试都没有。IO 层改为 re-export，不再另写一份。
+  - 新增 4 条单测钉住「只从 `rule` 下面取」，其中一条显式覆盖「顶层放个 null 也不许污染取值」
+    （就是我实际犯的那个错）。
+  - 更正三处运行时可见的错误文案：`--help`、`CODEQL_ALERT_LIVE_UNREADABLE`、
+    `CODEQL_ALERT_SEVERITY_UNKNOWN`（后者现在直接教人去看 `rule` 下面）。
+  - 文档同步：runbook「外部依赖」重写这一段并**逐字记下我错在哪**；`docs/testing.md`、
+    `docs/operations/environments.md`、CHANGELOG 同因更正；
+    `fixtures/codeql-alerts.json` 的 `_comment` 改为「形状取自实况、内容含构造条目，
+    **实况 5 条都不是 null**」——原写法会被读成实况有 null，正是我踩的那类混淆；
+    上一条台账加指针（不回改内容）。
+- ⚠️ **重跑变异时发现一个逃逸，已补**：上一轮声称「SLA 改用日历天数」这个变异被逮到，
+  **实际没逮到**。原因是那条 SLA 用例只有一对日期（09-27 → 10-13，工作日 12 / 日历 16），
+  两种算法都判红 ⇒ 实现换成日历天，测试照样全绿。
+  现补一对**能区分**的边界（10-01 → 10-07：工作日恰 5 = 不越界，日历 6 = 越界）
+  加它的下一天（10-08：工作日 6 ⇒ 红）。
+  **同一个老毛病第三次**：变异「全绿」时第一怀疑必须是可达性。
+- 验证命令和结果：
+  - `bash /tmp/run-mutants.sh` → **6/6 CAUGHT**（M1 null 洗成 low / M2 未登记永不触发 /
+    M3 腐烂不报 / **M4 SLA 用日历天数（本轮从 ESCAPED 修成 CAUGHT）** / M5 triaging 不要求 note /
+    M6 严重度改从顶层取 ⇒ 2 条红）。变异一律 `cp` 备份 + `cmp` 校验还原（RESTORED-OK）。
+  - `pnpm exec vitest run src/lib/security/codeql-alert-registry.test.ts` ✅ **28/28**。
+  - `pnpm exec tsc --noEmit` ✅；eslint（3 files）✅。
+  - **真实读数不变**：`GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=Sun1090/IndieStack
+    node scripts/check-codeql-alerts.js --today 2026-10-13` → 仍 2 条红
+    （`BLOCKING_OPEN` #18 + `TRIAGE_SLA_BREACHED` 12 工作日），exit 1
+    ⇒ 搬映射逻辑没有改变行为（它本来就取对了位置，**错的只是我写的解释**）。
+  - `--fixture` 读数不变（#19 UNREGISTERED + #18 两条）。
+  - `pnpm check:changelog` ✅；`check:doc-links` ✅ 153 条；`check:docs` ✅；
+    `check-progress-ledger` ✅ 177 条；表格探测器 159 md / 0 处跨行。
+- 阻塞 / 风险 / 回滚：不改判定行为（读数逐条前后一致），只改映射的归属位置、文案与文档 ⇒ 无线上风险。
+  回滚 = revert 本 commit。
+- 下一项：`#236` / `#235` 仍被外部权限挡住（034、035 applied）。
+  本机仍可做的：把 code-scanning 只读 workflow 化（等 #18 结案，否则天天红）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — CodeQL 探测的 IO 层不再是零测试：搬走映射逻辑只补了一半
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`test/codeql-alert-io-layer`（base `aedb8fc1` = main + #248）。
+- 状态：DONE（待 PR）。
+- 为什么做：上一条（#248）把 `toLiveAlert` 从 `scripts/lib` 搬进 `src/lib` 并写了「结构性根因是
+  IO 层一行测试都没有」。但**搬家只补了一半**：`scripts/lib/codeql-alert-check.js` 剩下的
+  `fetchOpenAlerts` / `readFixture` / `parseArgs` / 退出码逻辑**仍然一行测试都没有**——
+  而我自己的结论说根因是「IO 层无检查」，那么只搬一个函数、留下同一层无人核对，
+  等于把结论的适用范围悄悄缩小了。更要紧的是这一层管的正是这个探测最要命的分支：
+  **「读不到」会不会被显示成「一切正常」**。
+- 完成内容（新增 `src/lib/security/codeql-alert-io.test.ts`，19 条）：
+  - **读不到 ≠ 没有告警**（5 条）：缺 repo / 缺 token / HTTP 非 2xx / 响应不是数组 / fetch 抛错
+    ⇒ 全部返回 `{error}` 且 `alerts` 是 `undefined`；与之对照，**真读到空列表 ⇒ `[]`**。
+    这两类必须是两种不同的东西，否则「API 挂了」和「线上很干净」长得一模一样。
+  - **请求本身**（2 条）：URL 精确到 `state=open&per_page=100&page=1`、`apiBase` 带尾斜杠不产生 `//`、
+    带了 `x-github-api-version` / `Bearer` / `accept`；分页在不足一页时停、满 100 条时继续并合并。
+  - **映射在 IO 里仍生效**（1 条）：`fetchOpenAlerts` 的返回已过 `toLiveAlert`，
+    顶层塞一个 `security_severity_level: null` 不污染 `rule` 下面的取值（我实际犯过的错）。
+  - **fixture 读取**（3 条）：仓库那份读出 6 条且形状正确；文件不存在 / 坏 JSON / 没有数组
+    ⇒ `{error}`（**不返回空数组冒充「录制时就没有告警」**）；顶层直接是数组也认。
+  - **退出码**（4 条）：读不到 ⇒ 2；仓库 fixture ⇒ 1；台账与实况逐条一致 ⇒ 0；
+    实况为空列表 ⇒ 1（台账全腐烂，不是「没有告警所以通过」）。
+  - **参数解析**（3 条）：env 默认值、`GITHUB_TOKEN` 优先于 `GH_TOKEN`、未知参数与缺值都返回 error。
+- ⚠️ 一处写法上的自我约束：那条「一致 ⇒ 0」的用例**故意从 `CODEQL_ALERT_REGISTRY` 推导实况**，
+  不写死 5 条——本测的钉的是退出码路径，不是台账内容；写死会让每一次合法登记都把这个测试带红。
+  同时先断言这份临时实况真的读得出来，否则那个 0 可能来自别处。
+- 验证命令和结果：
+  - `pnpm exec vitest run src/lib/security/codeql-alert-io.test.ts` ✅ **19/19**。
+  - **9 个变异全部 CAUGHT**（`bash /tmp/mut-io.sh`）：M1 非 2xx 返回空数组 / M2 去掉形状守卫 /
+    M3 跳过映射 / M4 分页只取第一页 / **M5 未知返回 0** / M6 fixture 读不出返回空数组 /
+    M7 去掉 api-version header / M8 未知参数静默忽略 / M9 缺 token 不再报错。
+  - **这次额外核对了两件上一轮漏掉的事**（因为「全绿」本身就是我登记过的可疑信号）：
+    ① 逐个 `cmp` 确认变异**确实改了文件**（9/9 applied，不是 sed 没匹配上的假 CAUGHT）；
+    ② 逐个读失败消息确认是**预期的那条断言**红（9/9 命中对应用例，排除 import 崩溃式假红）。
+  - `pnpm exec tsc --noEmit` ✅；eslint ✅。
+  - `pnpm check:all` ✅ **275 files / 3369 tests**（较上轮 +1 文件 / +19 条）。
+  - **真实读数逐条不变**：`--today 2026-10-13` 仍 2 条红（`BLOCKING_OPEN` #18 +
+    `TRIAGE_SLA_BREACHED` 12 工作日）exit 1；`--fixture` 仍 3 条红 exit 1。
+- 顺手修的一个自己写的坑：注释里写字面的 `src/**/*.test.ts` 会提前闭合块注释
+  （`**/` 里的 `*/`），vite 的 oxc 解析器直接报 PARSE_ERROR。仓库里已记过这条，本轮又踩一次。
+- runbook 补了一句现状（IO 层已有单测，改它先跑那个文件），**这句话本身也实测了**：
+  把「读不到」错写成返回 `[]` 时，`inspectCodeqlAlerts(registry, [], "2026-10-13")` 给出
+  **5 条 `STALE_ENTRY`、不含 `LIVE_UNREADABLE` ⇒ 退出码 1**（不是 2）
+  ⇒ 混淆的后果是「看起来像查过了并报出一堆腐烂」，这比直接挂掉更难发现。
+  （第一版我把这句写成「两者混淆时以退出码 2 结束」——那是推理出来的，方向正好反了。）
+- 阻塞 / 风险 / 回滚：纯新增测试 + CHANGELOG，不改任何实现行为（读数前后一致）⇒ 无线上风险。
+  回滚 = revert 本 commit。
+- 下一项：#236 / #235 仍被外部权限挡住（034、035 applied）。
+  本机仍可做的：把 code-scanning 对账接进定时只读 workflow——但 #18 未结案 ⇒ 天天红，
+  需要先决定「只报不阻塞」（`continue-on-error`）还是等结案；本轮没有擅自选。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 探测的读数回来了，B04 的「需要数据库密码」被否证；重跑变异时发现我自己的一条计数是假的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/b04-fourth-correction`（base `b2ffab71` = main + #250）。
+- 状态：DONE。
+- 为什么做：上一条合并的是探测**工具本体**，commit message 自己写明「读数**尚未取得**」。
+  没有读数，B04 的阻塞理由就还是第四次靠推理改写——而前三次全是推理改的，全错。
+- 完成内容：
+  1. **拿到读数**：run `38334026946`（手动触发，7 条全 `EXECUTED`、exit 0）。
+     新 workflow 还没进默认分支也能跑：`gh workflow run <ID> --ref <branch>`。
+     `MULTI_STATEMENT_FIRST_ERROR` 回 `ERROR: 22012: division by zero` ⇒ 多语句的**前序确实执行**；
+     `READ_ONLY_FLAG_ON`/`_OFF` 回 `"on"`/`"off"` ⇒ `read_only: true` 是**真实防护**。
+     原始证据（含每步 `elapsedMs`）落在 `/tmp/ev6.txt`，且**可从 run 日志重取**。
+  2. **`SUPABASE_DB_PASSWORD` 从 B04 前置删除**，换成「一次人工授权」
+     （`B04_AUTHORIZE_PRODUCTION_WRITE`）加「一份还没转换的 SQL 正本」。
+     同步 5 个文档文件：roadmap B04 第四次改写、`environments.md` 把
+     「经 API 执行 SQL」与「直连 Postgres」**拆成两行**（两个不同能力，别合并）、
+     exit-report 改正缺口第 2 条、runbook 与 tag-ledger **只加指针不回改**（2026-10-05 快照）。
+  3. **修一个自己造的缺陷**：`drills:preflight` 的 `file:` 前置原先按 **cwd** 解析。
+     老前置 `~/.supabase/access-token` 锚在 HOME，从哪跑都一样，所以缺陷一直没露头；
+     B04 新增的是**仓库相对**路径 ⇒ 任何人从仓库外面跑一次就得到「文件不存在 ⇒ 前置没齐」，
+     而文件好好躺在仓库里。**把已满足的报成未满足**，代价是演练被永久挡住、
+     且挡住它的理由看起来完全可信。抽成 `fileRequirementPaths`（`~`→HOME，其余→仓库根），
+     刻意不把 cwd 当候选（否则「别处碰巧同名文件」会变成假阳性）。
+- **重跑变异时发现：我上一轮写下的一个计数是假的**。
+  - 本轮把 `/tmp` 里那三个变异脚本**逐个重跑**（不信任交接摘要里的数字），结果：
+    判定层 11/11 CAUGHT、判据重写 6/6 CAUGHT、preflight 3/3 CAUGHT —— 这三条对得上。
+  - **IO 层对不上**：commit message 写「IO 层 11/11 CAUGHT」，脚本里实际只有 **10** 条 `run`，
+    而且 M8（尾斜杠）**根本没应用上**——它的搜索串写成 `/\\/+$/`，源码是 `/\/+$/`，
+    多一个反斜杠就 `NOT-APPLIED` 静默跳过。修好锚之后 M8 才真的 CAUGHT，**诚实数字是 10/10**。
+    这正是本仓库登记过三次的老毛病第四次现形：**变异「全绿」时第一怀疑可达性**。
+    这次连「全绿」都不是——是「有一条压根没跑」，而汇总行把它算进了分子。
+    **这里刻意不写「第 N 次」**：本仓库没有这类违规的统一台账，上一条条目里的「第三次」
+    本身也没有出处可指——写次数等于再造一个查不到的数。记**形态**：
+    变异脚本的 `run` 条数与汇总声称的条数**必须用同一条命令量出来**，不能靠人抄。
+  - 已改口：CHANGELOG 与本条都写 10/10；那条 commit（`6b0f9772`）原文按快照惯例保留不回改。
+- 验证命令和结果：
+  - `pnpm check:all` ✅ **277 files / 3458 tests**（较上轮 +2 files / +89 tests）。
+  - 单文件复跑：`cloud-sql-probe.test.ts` **56**、`cloud-sql-probe-io.test.ts` **28**、
+    `preflight.test.ts` **19**（`it(` 声明数与 vitest 实跑数**逐个对上**，不是抄上轮的）。
+  - `bash /tmp/mut-probe.sh` 11/11、`/tmp/mut-pair2.sh` 6/6、`/tmp/mut-probe-io.sh` 10/10（修锚后）、
+    `/tmp/mut-preflight.sh` 3/3，每条都 `cmp` 确认变异真的改了文件、并读失败消息确认红的是预期断言。
+  - `check:doc-links` 153 条 / `check:release-docs` / `check:changelog` / `check:docs` /
+    `check:roadmap-entries` 29 条 / `check:progress` 179 条 全 ✅。
+  - 元命令条数用 python 逐字量：`account-erasure.sql` **5 条**（24/106/127/131/183 行），
+    `retention-cleanup.sql` **0 条**。（上一轮用 `grep -c '^\\\\'` 得到 0 条——shell 把模式切坏了，
+    差点把「有 5 条要转换」写成「不用转换」。）
+    **【同日稍后订正】上面那个「5 条」也是错的**：量法只看「行首是反斜杠」，
+    漏了挂在语句末尾的 `select … from d \gset drill_`（第 102 行）。真值 **6 条**，
+    而漏掉的恰是唯一那条**结构性**的——它供后面 16 处 `:'drill_*'` 引用。
+    讽刺的是这条错就写在「差点把 5 条写成 0 条」的同一条括注里：
+    **发现一个量法会漏，不等于发现它会漏在哪**。
+    现在条数改由 `src/lib/drills/psql-meta.ts` 算，并有 7 条单测 + 5 个变异钉住。
+- 阻塞 / 风险 / 回滚：本轮**不做任何生产写操作**，探测本身 7 条全为只读且经守卫审计。
+  风险是「B04 被读成已解锁」——roadmap、exit-report、`preflight.ts` 三处都写明
+  解锁的是**通道**不是「可以开跑」。回滚 = revert 本 commit。
+- 下一项：`account-erasure.single-do.sql` 的转换（本轮新解锁的本机工作，
+  最容易漏的是夹在两个 do 块之间的顶层 `select public.cleanup_*()`）；issue #245 结案。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 把「变异没打上」变成结构上不可能：云端 SQL 探测的守卫进登记表
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`test/cloud-sql-probe-falsify`（base `b584b2ce` = main + #251）。
+- 状态：DONE。
+- 为什么做：#251 记下的是一个**工具缺口**而不只是一次笔误——「IO 层 11/11 CAUGHT」
+  里那条 M8 变异因为搜索串多了一个反斜杠而 `NOT-APPLIED`，却被算进了分子。
+  一次性 shell 脚本**不区分「没打上」与「打了没红」**，所以只要取证还留在 `/tmp`，
+  同一种错就还会以另一个数字的形式重演。本仓库其实**早就有**防这件事的工具。
+- 完成内容：
+  1. `RULE_FALSIFICATION_TARGETS` 从 **60 条推到 65 条**，收 `src/lib/db/cloud-sql-probe.ts`
+     的 5 个判定函数。逐个实测全部 `bites`：`assertProbeSqlReadOnly` 12 红 /
+     `auditProbePlan` 1 / `findWriteKeyword` 3 / `summarizeProbe` 12 / `probeExitCode` 6。
+     `falsifyTarget` 的 `finally` 无条件复原，跑完 `git status` 干净。
+  2. **中性化必须「永远判合格」而不是让模块崩**：`summarizeProbe` 给部分对象，
+     实测失败消息全是 `AssertionError`、无 `TypeError`。这条规矩本轮已为它付过一次代价
+     （上一轮未闭合 dollar-quote 直接 `TypeError` 时，「崩溃」差点被当成「拒绝」）。
+  3. **登记表的边界写进注释**：这张表只收 `src/lib/**.ts`（`rule-falsification.test.ts`
+     里有断言钉着），所以探测的 **IO 层进不来**。⇒ **`65/65` 不等于「云端 SQL 探测
+     被完整核对过」**，这句话写在表里而不是省掉。
+- 顺带量到但**没有**据此改工具的一件事：`neuterFunction` 的正则是
+  `export\s+function\s+`，**不匹配 `export async function`**（实测 `postProbeStep` /
+  `runCloudSqlProbe` 返回 `changed: false`）。`src/lib` 下确有 12 处 `export async function`，
+  `src/lib` 下非测试文件里有 **157 处** `export async function`
+  （`grep -rn … | grep -v '\.test\.ts' | wc -l` 量出来的，**不是** `head -12` 的行数——
+  本条第一版就把它写成了「12 处」，那是截断输出被当成计数，同属本轮在改的那类错）。
+  但登记表里 65 个函数名与这 157 个 async 函数名**交集为空**
+  （`comm -12` 实测），所以今天这张表没有因此漏掉任何一条证据。
+  不改：那是「工具能力边界」，不是「本轮结论的前提」；要改得连带设计
+  「async 判定的中性化返回值该长什么样」，属另一件事。
+- 验证命令和结果：
+  - `pnpm falsify:rules` → **65/65 会红**，exit 0，跑完工作树干净。
+  - 脏树守卫**当场生效过一次**：未提交时直接拒跑并说明原因（它会改源码，
+    脏树上复原会连带丢掉别人的未提交改动）。
+  - `pnpm check:all` ✅ 277 files / 3458 tests；`type-check` / eslint exit 0；
+    `check:changelog` / `check:progress` ✅。
+- 阻塞 / 风险 / 回滚：纯新增登记项 + 注释 + CHANGELOG，不改任何判定行为 ⇒ 无线上风险。
+  回滚 = revert 本 commit。
+- 下一项：`account-erasure.single-do.sql` 的转换（B04 缺口 (a)，本地栈在跑、可实测）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 我上一轮写的「逐字确认」是假的：元命令真值 6 条，漏的恰是那条结构性的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/psql-meta-count`（base `3074aa5b` = main + #252）。
+- 状态：DONE。
+- 为什么做：#251 里我写下「`account-erasure.sql` 含 **5 条** psql 元命令，**逐字确认**」，
+  并把它当作 B04 缺口 (a) 的规格。开始转换时才看见第 102 行：
+  `select uid, avatar_key, orphan_key, other_owner from d \gset drill_`。
+  **量法只看「行首是反斜杠」，行尾形态永远看不见。** 真值 **6 条**。
+- **为什么这条比「一个数写错」严重**：漏掉的 `\gset` 是 6 条里唯一**结构性**的——
+  它把 temp 表的值取进 psql 变量，供后面 **16 处** `:'drill_*'` 引用
+  （`grep -o ":'drill_" | wc -l` 实测：uid 7 / orphan_key 4 / avatar_key 3 / other_owner 2）。
+  照「5 条」去转换，会得到一份**变量来源整层缺失**的正本，而它跑起来不一定报错。
+  另外 5 条（`\set ON_ERROR_STOP` + 4 条 `\echo`）删掉就行——**按名字分类会把这条也归错**。
+- **最该记的是位置**：这条错写在上一条 progress 条目「差点把 5 条写成 0 条」的
+  同一句括注里。**发现一个量法会漏，不等于发现它会漏在哪**；
+  而「逐字确认」这个短语让一个没被核对的数看起来核对过了。
+- 完成内容：
+  1. `src/lib/drills/psql-meta.ts`（新）：把「怎么数」固化成代码。
+     三类分开判：`cosmetic`（删）/ `error-handling`（删并说明 HTTP 通道无此开关）/
+     `structural`（**必须翻译成 SQL**）。分类依据是「有没有产出后续要用的东西」，不是名字。
+     认不全的反斜杠由 `unknownBackslashes` 报出来——**不静默当成 SQL**。
+  2. `preflight.test.ts` 新增**跨文件对账**：把「`preflight.ts` 正文里写的那个数
+     与括号里那串命令名」钉到探测器对正本算出的结果。
+     **改正本而不回头改这句话，就会红**——这才是防止重演的机关，光有探测器不够。
+  3. 文档 5 处「5 条」改正（roadmap / exit-report / `preflight.ts` / CHANGELOG / 上一条
+     progress 条目就地加【同日稍后订正】，快照原文保留）。
+  4. 探测器 2 个判定函数进 `RULE_FALSIFICATION_TARGETS`：**65 → 67 条**，
+     `pnpm falsify:rules` → **67/67 会红**，跑完工作树干净。
+- **两次「用例恒真」都是当场抓出来的，不是事后**：
+  - 剥注释那条第一版写成 `-- docker exec -i psql \\`，`\\` 后面不是字母，
+    正则本来就匹配不上 ⇒ 变异「不剥注释」**存活**。换成注释里直接写已知命令名，
+    并补一条「去掉注释前缀就必须认出来」的对照，才证明那个 0 来自剥注释而非匹配失败。
+  - 对账那条第一版断言 `toContain("\\gset")`，而正文别处也有这个词 ⇒
+    变异「删掉命令列表里的 `\gset`」**存活**。改成对账**集合相等**才承重。
+  - 合计：探测器 5 个变异（A1–A5，修完 A2 后 5/5）、对账 4 个变异（X1–X4，修完 X3 后 4/4）。
+- **转换前的参照点**：正本在本地栈基线复跑**全过**——
+  擦除后 13 条 + 删号后 7 条 = **20 条断言 actual = expected**，
+  另有 3 段信息性输出（object-list / reference-detection / erasure 计数）已留档。
+  `ROLLBACK` 收尾，未留数据。
+- 验证命令和结果：`pnpm check:all` ✅ **278 files / 3466 tests**（+1 文件 / +8 条）；
+  `type-check` / eslint exit 0（**实测退出码**）；`falsify:rules` 67/67；
+  `check:progress` 181 条 / `check:changelog` / `check:doc-links` ✅。
+- 阻塞 / 风险 / 回滚：本轮**没有**产出 `account-erasure.single-do.sql`——
+  它需要先把 `\gset` + 16 处 `:'drill_*'` 翻译成 SQL 内的变量，并处理
+  `set role service_role` / `reset role`（HTTP 通道下角色语义不同）。
+  那是下一条的活，本轮先把规格数对。回滚 = revert 本 commit。
+- 下一项：按改正后的 6 条规格做转换，判据是「转换版跑出与正本同样的 20 条 actual=expected」。
+- ⚠️ **本轮还犯了一个流程错，值得记**：写完台账条目后我在 **main 上**直接
+  `git push -u origin HEAD`——本仓库规则明写「默认使用 feat 分支」「main 只走 PR」，
+  而我这一轮**从头到尾没建过功能分支**（前两个 PR 是从别的分支发的，这次忘了）。
+  是 GitHub 的分支保护把它挡下来的（`protected branch hook declined`），
+  **远端 main 始终停在 `3074aa5b`，没有产生违规提交**。
+  补救用的是「先 `git branch fix/psql-meta-count` 保住两个 commit，
+  再 `git branch -f main origin/main` 把本地 main 挪回去」——
+  **刻意不用 `reset --hard`**：那条命令在这里会直接吃掉未推送的工作。
+  教训的形状：**保护规则救了一次，但它是外部兜底，不是我的流程**。
+  开工第一件事应该是 `git checkout -b`，而不是等 push 被拒再回头。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — B04 缺口 (a) 做完了：派生版跑通 20/20，而「跑通」这件事本身有两个坑是我自己造的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（base `d6246893` = main + #254）。
+- 状态：DONE（**B04 本身仍 DONE≠完成**：缺口 (b) 的人工授权没取得，派生版也从没在云端跑过）。
+- 为什么做：上一条把规格数对了（6 条元命令），这一条按那份规格做转换。
+  判据从开头就定死：**转换版必须给出与正本同样的 20 条 `actual = expected`**，
+  而不是「看起来能跑」。
+- **先测再写**（六问，全部在本地栈 fresh 连接上实测，答案决定设计）：
+  1. DO 块内 insert、块末 `raise exception` 会回滚吗？⇒ 块内 `before=0 after=1`，块后表里 **0 行**。
+     **单条 DO 块以 raise 结尾 = 自带回滚**，不需要 `begin;` / `rollback;`。
+  2. `execute 'set role service_role'` 在 DO 块里可用吗？⇒ 可用，块内 `current_user=service_role`。
+  3. 切换后能读 temp 表吗？⇒ **`permission denied for table`**。
+     这一条**改变了设计**：正本第 102 行那句「SET ROLE 之后就读不到 temp 表了」说的就是它，
+     `\gset` 的作用是把值**搬到角色之外**。所以派生版用 **plpgsql 变量**，不是照搬 temp 表。
+  4. plpgsql 变量能穿过角色切换吗？⇒ 能（`profiles rows=1`）。
+  5. 块以 raise 结束、没来得及 `reset role`，角色会漏到会话吗？⇒ **不会**（块后 `current_user=postgres`）。
+     ⇒ 报告通道本身就是安全网。
+  6. GUC 通道（`set_config(..., true)`）？⇒ 能穿过切换、随事务回滚。**测过但没用上**，变量更简单。
+- **权限形状是演练对象的一部分，不是噪声**：`pg_proc.proacl` 实测三个函数都是
+  `{postgres=X/postgres, service_role=X/postgres}` ⇒ 派生版保留 **2 开 2 关**，与正本逐字对应。
+  删掉角色切换，演练就变成「postgres 什么都能干」的自证。
+- 完成内容：
+  1. `docs/operations/drills/account-erasure.single-do.sql`（新，228 行）：
+     6 条元命令的处理逐条写在文件头（`\set ON_ERROR_STOP` 删 / 4 条 `\echo` 删 /
+     `\gset` **翻译成变量**）；三段信息性输出搬进报告文本、**刻意不顺手变成断言**
+     （那会让「与正本给出同样的 20 条」这条可比性判据失效）。
+  2. `src/lib/drills/erasure-drill-parity.test.ts`（新，4 条用例）：机器核对派生版与正本
+     「断言标签的**集合与顺序**逐条相同」。文件头那句「改断言请改正本，否则两份会各自漂移」
+     是**承诺**，而本仓库已经为承诺付过一次学费（「结论写进对应 runbook 的执行记录小节」——
+     那个小节根本不存在），所以这里钉住。
+  3. `src/lib/drills/psql-meta.ts`：导出 `stripLineComment`、新增 `stripSqlLineComments`。
+     **复用而不是再手搓一份**——两处各写就会各错一份。
+  4. `preflight.ts`：缺口 (a) 改成「已做完」，但**前置项刻意留着**（它盯的是「派生版还在不在」，
+     删掉的话将来重构把文件删了也没人报警）；`file:` 型前置的 remedy 补上这份的新坑。
+  5. 活文本四处同步：roadmap B04 / `environments.md` 外部依赖表 / exit-report / runbook
+     （后两份是带日期快照，**只加指针不回改**）；`docs/db/retention.md` 新增一节实跑记录。
+- **本轮自己造的错，全部当场抓到**：
+  - `format()` 里的 `%` 陷阱：原写 `'… assertions=20% report=%'`。`%` 后紧跟空格会被当成
+    **带 flag 的转换**，吃掉空格并多消费一个参数。改成 `raise exception 'DRILL-RESULT %', 'failures=' || …`。
+  - parity 用例第一版**没剥注释** ⇒ 把文件头解释文字里的 `execute 'set role service_role'`
+    也数进去（2 数成 3）。而它恰好是唯一一处能证明「角色切换被保留」的证据，多算就是假阳性。
+    修法之外还补了**对照断言**（正本确实有 `\gset drill_`、确实有 2 次 `set role`）——
+    否则「`not.toMatch` 通过」可能只是因为扫错了文件。
+  - 扫描器把 `insert … select 'avatars', …` 的表名字面量当断言标签，数出 **25** 条（真值 20）。
+    现在要求同一行出现 `count(*)`，并用 `not.toContain("avatars")` 钉住这个反例。
+  - `preflight.test.ts` 有一条断言写的是整句字面量（`别把这次更正读成`），
+    我改文案它就红——**那是在保护措辞，不是在保护事实**。换成 `toMatch(/别把[^。]{0,24}读成「B04 已解锁」/)`。
+- **变异核对：6/6 CAUGHT**（python 驱动，逐条把期望值改错 ⇒ `failures=1` 且点名正确标签）。
+  第 7 个变异「`drill_assert` 改成永真」读数仍是 `failures=0`——
+  **这是构造性的，不是缺口，别在文档里说成 SURVIVED**：harness 失效时什么都不记录，
+  所以演练自己的输出**无法**区分「全过」与「没人判」。检测手段在上一层：
+  那 6 条翻转如果全绿，就说明 harness 是装饰性的。已实测「harness 中性化 + 一条翻转 ⇒ `failures=0`」确认这个推理。
+- 验证命令和结果：
+  - 派生版本地实跑 ⇒ `ERROR: DRILL-RESULT failures=0 assertions=20 …report=ALL-20-ASSERTIONS-PASSED`；
+    回滚核对 `auth.users rows left: 0`、`contact rows left: 0`。
+  - `node node_modules/vitest/vitest.mjs run src/lib/drills/{erasure-drill-parity,psql-meta,preflight}.test.ts`
+    ⇒ **31 passed**（parity 4 + psql-meta 7 + preflight 20）。
+  - 全量门禁见本条末尾（`pnpm check:all`）。
+- 阻塞 / 风险 / 回滚：B04 仍**未完成**——缺 `B04_AUTHORIZE_PRODUCTION_WRITE`（人工授权，
+  不是凭据），且派生版从没在云端跑过。风险：正本与派生版从此是两份文件，
+  漂移由 parity 用例拦；回滚 = revert 本 commit（派生版是新增文件，正本未改）。
+- 追加（同一条 commit 内）：**`stripSqlLineComments` 已进 `falsify:rules`，登记表 67 → 68 条**。
+  登记前先实测：中性化它 ⇒ `erasure-drill-parity.test.ts` **2 failed / 2 passed**
+  （`verdict: bites`、`mutationApplied: true`），而 `psql-meta.test.ts` 仍 **7/7 全绿**。
+  ⇒ 这条的 `testFile` 必须指向 parity 套件，不是模块自己的套件——
+  **登记表里「✅ 会红」的语义是「有测试会红」，不是「它自己的测试会红」**。
+  写错目标会让那条证据变成装饰。
+- 下一项：issue #245 结案（结论已在手：限制在 CLI 侧的 extended query protocol，
+  服务端这条端点能吃多语句且全部执行）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — issue #245 结案：那条「未知」不是等出来的，是拿读数换出来的；登记表 67 → 68
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（同上，续前一条）。
+- 状态：DONE。
+- 为什么做：#245 的最后一条评论留了一句**诚实的保留**——
+  「Management API 服务端用什么协议执行，本机无 `SUPABASE_ACCESS_TOKEN` ⇒ 未实测，
+  这一半仍是未知，不折算成结论」。今天它不再是未知：**「本机没有」不等于「取不到」**，
+  那个令牌是 CI 的 repo secret，`gh secret list` 早就看得见它。
+  用 `pnpm ops:cloud-sql-probe` 在 CI 上触发即可，不必等任何人给凭据。
+- 读数（run `38334026946`，`gh run view --log` 复核）：
+  `MULTI_STATEMENT_FIRST_ERROR` ⇒ `Failed to run sql query: ERROR: 22012: division by zero`；
+  `multiStatementWorks=true` / `multiStatementBlocked=false` /
+  `multiStatementFullyExecutes=true` / `multiStatementSkipsEarlier=false`。
+- **答案的形状**：限制在 **Postgres 服务端的 extended query protocol**（single-statement 限制），
+  触发它的是**客户端选了那条协议**；直接打 HTTP 端点不受影响。
+  所以「多语句跑不了 ⇒ 必须 psql + 密码」这个推论**从来就不成立**——
+  这是 B04 阻塞理由的第三次收窄，而三次都是同一个错：**从「我手上没有」推到「这件事做不到」**。
+- 结案评论里刻意**没有**声称 `db query --linked` 的读数：那条路径经手的正是这个端点，
+  但 CLI 侧用什么协议发请求我没测 ⇒ 表里单列一行写「未知不算通过」，不折算进结论。
+- 同一条 commit 里另一件事：`stripSqlLineComments` 进 `falsify:rules`，**67 → 68 条**。
+  登记前实测两个套件：中性化它 ⇒ `erasure-drill-parity.test.ts` **2 failed / 2 passed**，
+  而 `psql-meta.test.ts` 仍 **7/7 全绿**（exit=0）。
+  - ⇒ **登记表的 `testFile` 不必是「该模块自己的套件」**。按惯例填成自己的套件，
+    表上会多一条 ✅ 而那层判定其实没人测——**「核对过但其实没核对」的假证据比不登记更贵**。
+  - 这条限制写在登记表注释里，而不是把 ✅ 留给一个会误导人的目标。
+- 完成内容：`cloud-sql-probe.ts` 的 `multiStatementWorks` 注释补上结案指针；
+  CHANGELOG / roadmap / environments / exit-report / retention.md 的活文本同步；
+  issue #245 关闭（`COMPLETED`）。
+- 验证命令和结果：`pnpm check:all` ✅（上一条 commit 已跑全量：279 files / 3470 tests）；
+  `pnpm falsify:rules` ✅ **68/68**，跑完 `git status` 干净；
+  `type-check` exit 0；eslint（`node node_modules/eslint/bin/eslint.js` 逐个文件）exit 0；
+  `check:changelog` / `check:progress`（183 条）exit 0。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit（注释与台账，无行为改动）。
+- 下一项：复查 `retention-cleanup.single-do.sql` 有没有本轮发现的 `format()` 里 `%` 空格陷阱。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 我上一轮写下的「% 会吃掉空格」是错的：真机制是「RAISE 里每个裸 % 都是占位符」，而且它不报错
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（续前两条）。
+- 状态：DONE。
+- 为什么做：上一条 progress 的「下一项」是「复查 `retention-cleanup.single-do.sql`
+  有没有本轮发现的 `%` 空格陷阱」。复查动作本身没问题，**问题在于那条陷阱的描述是我编的机制**：
+  我确实撞到了报错，但把「为什么报错」写成了一个听起来合理的解释。
+- **实测否证（本地栈，每条可重跑）**：
+  | 写法 | 实测输出 |
+  |---|---|
+  | `raise 'A=20% B', 'X'` | `A=20X B` —— 空格**没被吃**，参数被贴进 "20" 后面 |
+  | `raise 'failures=% assertions=20% report=%', n, i, r` | `failures=0 assertions=20 [obj] report=ALL` |
+  | 同上只给 2 参 | `too few parameters specified for RAISE` |
+  | `raise 'A=20%% B'` | `A=20% B`（`%%` 转义，不占参数） |
+  | `raise '%', '100%'` | `100%`（参数值不被二次扫描） |
+  | `format('a=% 5s', x)` | `unrecognized format() type specifier " "` |
+  ⇒ 「`% ` 是带 flag 的转换、会吃掉空格」是 **`format()` 的行为**，我把它安到了 `RAISE` 头上。
+  两条通道语义不同：**RAISE 里每个裸 `%` 都是占位符**。
+- **比「我写错解释」更值得记的是第二行**：三个 `%` 配三个参数**不报错**，
+  输出看起来完全合理，只是内容错位了一格。**只有参数不够时才响。**
+  而演练报告恰恰爱写百分比（`assertions=20%`）——这是最容易撞上的形状。
+  「一个会静默给出错误读数的通道」比「一个会崩的通道」贵得多。
+- 完成内容：
+  1. `src/lib/drills/raise-format.ts`（新）：`countBarePercent` / `parseRaiseStatement` /
+     `findRaiseStatements` / `auditRaiseFormats` / `splitTopLevelArgs`。
+     两条判据分开：数量对不上（数据库部分会报）、**格式串里有「数字紧跟裸 %」**（数据库完全不报）。
+  2. `src/lib/drills/raise-format.test.ts`（新，9 条）：扫**所有** `.single-do.sql`，
+     不只钉擦除这一份。用 `stripSqlLineComments` 只在代码里数——
+     不剥注释会数出 4 条 RAISE（文件头拿它讲机制），**本轮刚在 parity 上踩过同一个坑，
+     这次直接复用，没有再手搓一份**。
+  3. `erasure-drill-parity.test.ts`：删掉我在那里手搓的 `parseRaiseFormat`，改调共享模块。
+     （手搓那份和共享那份**会各错一份**——这正是本仓库写过的教训。）
+  4. 派生版 SQL 的注释就地订正，并写明「此前这里的解释是错的」。
+  5. `cloud-sql-probe.ts` 的 `multiStatementWorks` 注释补上 #245 结案指针。
+- **自己抓到的一条假绿**：`%%` 转义判据第一版**没有样本钉住**——
+  把 `/\d%(?!%)/` 松成 `/\d%/` 后 9 条用例**全绿**（实测 exit=0）。
+  补上「`%%` 不报」与「真错位必须报」两侧对照才承重。
+  变异核对：`countBarePercent` 恒 0 → 7 红；`parseRaiseStatement` 中性化 → 5 红；
+  `findRaiseStatements` → 2 红；`auditRaiseFormats` → 1 红；
+  `splitTopLevelArgs` 退化成 `split(',')` → 1 红；A8「数量判据失效」→ 1 红。
+- **登记表 68 → 72 条**，4 个入口全部实测 bites。
+  `splitTopLevelArgs` **刻意不登记**：纯文本 helper，没有「报出问题」的判据，
+  失效已由 `parseRaiseStatement` 覆盖——多登记一条只会让这张表虚胖。
+- **复查 retention 那份的结论：不受影响**。它写 `failures=% report=%` 配 2 参数，
+  格式串里没有百分比字面量 ⇒ 2 占位 2 参数对齐。实跑复核
+  `failures=0 report=ALL-14-ASSERTIONS-PASSED`，`drill-%` 通知残留 0 行。
+- 验证命令和结果：`pnpm check:all` ✅ **280 files / 3480 tests**（+1 文件 / +10 条）；
+  `type-check` exit 0；eslint（`node node_modules/eslint/bin/eslint.js` 逐文件）exit 0；
+  `check:changelog` / `check:progress`（184 条）exit 0。
+  【同条 commit 内补跑】`pnpm falsify:rules` ✅ **72/72**、exit 0，跑完 `git status` 干净。
+  其中 `stripSqlLineComments` 那条从 2 红变成 **3 红**——因为 parity 套件新加了一条
+  也依赖剥注释的用例。**变红数上升不是问题**，它说明那层判定被更多用例覆盖。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert 本 commit。
+- **教训的形状**：我撞到一个现象（报错），然后给现象编了一个**听起来专业**的机制，
+  并把它写进 SQL 注释、CHANGELOG、progress 三处。
+  如果当初只写「这样写会报错，换成 `||` 拼」而不解释为什么，错误就不会扩散。
+  **解释是廉价的，读数才是贵的**——以后写机制前先跑一组对照，跑不出来就只写现象。
+- 下一项：issue #245 结案评论已发（同分支）；补跑 `falsify:rules` 全量并 commit。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — B04 的 SQL 前置我只登记了一份，而 `ready=true` 正是让人按下生产写按钮的信号
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/account-erasure-single-do`（续前几条，同进 PR #255）。
+- 状态：DONE。
+- 为什么做：做完缺口 (a) 的第一份之后，我在 `preflight.ts` 只挂了
+  `file:…account-erasure.single-do.sql` 一条前置。
+  而 B04 的正文一直写着「把本地**两份** `docs/operations/drills/*.sql` 在云端跑一遍」。
+  保留期那份的派生版 `retention-cleanup.single-do.sql` **仍在 PR #236 里没进 main**——
+  `git ls-tree -r --name-only origin/main | grep drills/` 实测只有两份**正本**，
+  没有任何 `.single-do` 文件。
+- **这条的价值全在后果的方向**：只登记一份 ⇒ 有人给了 `B04_AUTHORIZE_PRODUCTION_WRITE`
+  ⇒ preflight 报 `ready=true` ⇒ 执行器到第二份文件时才发现没东西可跑。
+  `preflight.ts` 的注释里明写「注意它只说『可以跑了』，不说『跑过了』」——
+  而 `ready=true` 就是**让人按下生产写按钮的那个信号**。
+  所以这是「把未满足的报成已满足」，与它相反的错误（把已满足报成未满足）
+  只是挡住一条演练，代价差一个量级。
+  **我上一轮刚在 `fileRequirementPaths` 的注释里写下过后者那个坑，
+  这一轮造的是它更贵的镜像。**
+- 完成内容：
+  1. `preflight.ts`：B04 下新增第二条 `file:` 前置（retention 那份），
+     remedy 指回**唯一正确的路**——合并 PR #236（它同时带着 034 的应用与两条 cron 修复，
+     顺序不能颠倒），并明写「不要为了让判定变绿而删掉这条，也不要就地复制一份」。
+  2. `blockedReason` 补一句「**(a) 只做了一半**」，并把「别把 (a) 做完读成已解锁」
+     那句的分寸跟着事实挪位。
+  3. `preflight.test.ts` 新增一条用例：SQL 型前置**数量必须是 2**、
+     两条路径各自点名、**只给一份时不算 ready**、缺口指向 retention、
+     remedy 含 `#236` 与那句禁令。
+     原来那条「按键名判定」的用例补上第二份文件后仍然测的是机制（`full.ready` 为 true）。
+  4. 活文本四处跟着改准：roadmap B04（标题 + (a) 小节 + 新增一条 ⚠️ 子项）、
+     `environments.md` 的外部依赖表、exit-report 与 runbook 的**同日指针**（快照原文不动）。
+- 验证命令和结果：
+  - `pnpm drills:preflight --drill B04` 实跑（IO 层，非单测）⇒
+    `✓ file:…account-erasure.single-do.sql`、
+    `· file:…retention-cleanup.single-do.sql ← 缺`、整体 exit 1。
+    **这条前置能被机器判，所以它不需要人记住。**
+  - `node node_modules/vitest/vitest.mjs run src/lib/drills` ⇒ 4 files / 42 passed；
+  - `pnpm check:all` ✅ **280 files / 3481 tests**（+1 条用例）；
+  - `check:doc-links` 153 条内部链接全可达。
+- **同一条 commit 里另一个新读数**：PR #255 的 14 项 checks **全 pass，含两个 Vercel 项**
+  （`gh pr checks 255 --json name,bucket` 实测 14/14 pass）。
+  这是 `environments.md` Vercel 配额那行的**第 4 个读数**，方向与前三次相反
+  （#251 全 pass → #252 主应用 fail → #253 两项全 fail → **#255 两项全 pass**）。
+  ⚠️ **但它仍不能判「生产是否也被挡住」**：`pnpm ops:deploy-freshness` 同时实测
+  生产仍停在 `b2ffab71`（#250），落后 `origin/main`（`d6246893`）**4 个提交**——
+  比 #254 记录时的 3 又多了 1。preview 池放行 ≠ 生产跟上。
+  所以那行文档里「解除需账户侧动作」的判据**没被这次读数推翻**，
+  而「生产是否也被挡住 = 未知」继续按未知记。
+- 阻塞 / 风险 / 回滚：无新增阻塞（B04 仍缺 retention 那份进 main + 人工授权）。
+  回滚 = revert 本 commit。
+- 下一项：把第 4 个 Vercel 读数写进 `environments.md` 那行（活文本，直接改准）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 第 5 个 Vercel 读数答掉了那个「未知」：生产当时确实被挡住，但挡住它的是配额不是链路
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/vercel-production-not-blocked`（base `a5b38466` = main + #255）。
+- 状态：DONE。
+- 为什么做：#255 合并本身就是 `environments.md` 里预告的那次判别——
+  那一行写着「**生产是否也被挡住 = 未知**……判别要等下一个生产部署的成败」。
+  合并发生了，所以去取那个读数，而不是让它再挂一轮。
+- **读数（两条独立来源，同一时刻）**：
+  - `#255` 于 **06:59:07Z** 合并为 `a5b38466`（`gh pr view --json mergedAt,mergeCommit`）；
+  - **07:05:43Z** `curl https://indie-stack-theta.vercel.app/api/health` ⇒
+    `{"status":"ok","version":"0.12.0","commit":"a5b3846682…","ready":true}`；
+  - 同一时刻 `pnpm ops:deploy-freshness` ⇒ **fresh，距离 0**（生产跑的就是 main）。
+  - 刻意**不只信那个脚本**：脚本会解析错字段，`/api/health` 的原始 JSON 是独立的一手证据。
+- **答案是什么**：生产**当时确实被挡住了**（它落后过 4 个提交），
+  但**挡住它的是配额，不是部署链路坏了**——
+  **一次成功的构建就把 4 个提交的落后量全部清空**，那是一条排空了的队列，不是一个断掉的管道。
+- **⚠️ 这条结论刻意不外推到「配额已解除」**：今天五个读数在 pass / fail 之间来回
+  （#251 pass → #252 fail → #253 fail → #255 preview pass → #255 生产 pass）。
+  它证明的是**「会波动」**，不是**「已恢复」**。判「解除」需要连续多个 PR 都 pass 且生产跟上，
+  今天只攒到一次。
+- 完成内容：`environments.md` 的「Vercel 构建配额」行补第 5 个读数并把结论收在分寸内；
+  `roadmap-0.12.0.md` 的风险小节订正一条口径——那一行原本把「Vercel 部署」与「build 配额」
+  **并列**成外部权限，读数说明部署链路本身不是阻塞。
+- **教训的形状**：「生产落后了 4 个提交」我上一轮写成「距离还在涨，说明部署始终没跟上」。
+  那半句是**推断**，不是读数——落后量增长只说明**没有新构建**，
+  它既可能是配额挡着，也可能是链路坏了，**两者当时都成立**（这一点我写对了），
+  但我顺手加了「说明部署始终没跟上」，把一个未判别的解释当成了观察。
+  这次判别之后回头看，那句话**方向恰好是对的**（确实没跟上），
+  **可它错在把推断写成了读数**——对了也不能改成读数的口气。
+- 验证命令和结果：`check:doc-links`（153 条内部链接）/ `check:roadmap-entries`（29 条）/
+  `check:release-docs`（21 份）/ `check:progress` 全部 exit 0；
+  本轮**只改两份文档**，无代码改动，故不重跑 `check:all`
+  （上一条 commit `a5b38466` 的 main CI 实测：CI success、CodeQL success、
+  Secrets Scan success、Security and configuration checks success；
+  `Cloud migration status` **failure 是预期红**——034 仍未 applied，需 `db push`）。
+- 阻塞 / 风险 / 回滚：无。回滚 = revert 本 commit。
+- 下一项：main 的 `Cloud migration status` 那条预期红仍挂在每次 push 上；
+  它需要 `db push` 应用 034（缺 DB 密码，直连能力仍不具备）——属外部权限。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 第 6 个 Vercel 读数当场把「已解除」按回去；而我准备「订正」的那处编号错误是我自己造出来的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/vercel-production-not-blocked`（同进 PR #256）。
+- 状态：DONE。
+- 读数：**#256 的两个 Vercel 检查全 fail**（`gh pr checks 256`，与 #255 相隔不到一小时）。
+  六个读数的形状：`#251 pass → #252 fail → #253 fail → #255 preview pass → #255 生产 pass → #256 fail`。
+- **为什么这条值得单独记**：上一条的正文写的是「五个读数在 pass/fail 间来回，
+  所以不能判解除」。**而 #256 自己就是那条判断的第一个反例式验证**——
+  如果当时只取 #255 那一次成功就下「解除了」的结论，#256 会立刻打脸。
+  **一次成功不是趋势**，这句话在写下不到一小时内就被数据补上了。
+  上一条刻意**没有**外推，这次它外推的方向也对了——
+  但**「没外推」是那条的价值，不是这次读数的价值**。
+- **本条草稿里我编造了一个错误，被自己核对撤掉**：初稿写了一整段
+  「顺手订正上一条的编号错误（把第 4 个写成第 5 个）」。**逐条回查后它不存在**：
+  那一行的编号一直是连续的——1–3 = #251 / #252 / #253（#254 立的），
+  4 = #255 preview pass（commit `4c50f2bc`），5 = #255 生产跟上（commit `0d988e37`），
+  6 = #256 两项 fail（本条）。
+  - **形态值得记，因为它和「编一个数字」不同**：我不是凭空造了个数，
+    而是**先看到**上一条的「下一项」写着「把第 4 个读数写进 environments.md」，
+    又看到本条在写第 5 个，就**推断**那里有个编号错乱——
+    而那句「下一项」指的是**同一条 commit 内已经做完的那次写入**，两个序号说的是不同东西。
+    **从两处文本的表面对不上，推出一处不存在的不一致**，这比编数字更隐蔽，
+    因为它看起来像是在做严谨的核对。
+  - 规矩：**说别人写错了，先把它引用的东西打开读完**（本仓库对「引用外部口径前必须打开原文」
+    已有这条，但我把它用在了「订正自己」时偷懒了）。
+- 完成内容：`environments.md` 的 Vercel 配额行把「五个读数」改写成六个，
+  并把「第 6 个恰好反例式验证了本行判据」写进去——**判据被自己的后续数据支持，
+  这件事本身是这条门禁有效性的证据**，不记就浪费了。
+- 验证命令和结果：`check:doc-links`（153 条内部链接）exit 0；
+  `check:progress` ✅ 187 条，日期非递减、标题不重复；
+  本轮只改文档，无代码改动；pre-push `verify` 实测通过（280 files / 3481 tests + build + bundle + perf，exit 0）。
+- 阻塞 / 风险 / 回滚：无。回滚 = revert 本 commit。
+- 下一项：等 #256 CI 的 required checks 全绿后合并；main 上 `Cloud migration status`
+  仍是预期红（034 未 applied，需 `db push` ⇒ 缺 DB 密码，属外部权限）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 文档那一行的表头写「四个读数」、正文已数到「第 6 个」：同一个老错在两天内复现
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-readings-ledger`（base `16c23e15` = main + #256）。
+- 状态：DONE。
+- 为什么做：#256 合并后回去读 `environments.md` 的 Vercel 配额那一行，
+  发现表头写「**今天有四个读数**」，而**同一行**正文已经出现「第 5 个读数」「第 6 个读数」。
+  第 5、6 条是我在 `0d988e37` / `a0dcf20c` 两次 commit 里追加的，**表头没人回头改**。
+- **这就是 B04 那个「5 条 psql 元命令」的同一形态**（真值 6，修法当时是
+  `psql-meta.ts` + 跨文件对账）。**同一类错在两天内、同一份文档里复现第二次**，
+  说明第一次的修法只覆盖了那一处，**没有覆盖「文档里的数字」这个类别**。
+  这次的差别只在于：那个数**说少了**，而这个数**说少了还自相矛盾**——
+  同一行里两个数，读者无法判断该信哪个。
+- **为什么这条比「一个数写错」严重**：那一行的**结论**（会波动 / 未解除）
+  依赖读数的**个数与形状**。个数说少两个，反例看起来只有三个，
+  而「未解除」这个判断的证据强度恰恰来自那个来回的次数。
+- 完成内容：
+  1. `src/lib/ops/quota-readings.ts`（新）：台账 6 条 + 4 个判定函数。
+     口径写进注释：同一 PR 的 preview / 生产算**两条**（回答两个不同问题）；
+     「一 pass 一 fail」算**一条 `mixed`**；带日期的历史叙述**不新增条目**。
+     ⚠️ 顺手记一条**台账自身的边界**：#256 有 4 个 commit（`gh pr view --json commits` 实测），
+     每次 push 都重新触发那两个检查、每次都是 fail；按唯一性约束后三次**进不来**。
+     那是约束的代价不是数据的损失（三次同向观察不增加信息），
+     但**如果哪天同一 PR 两次观察方向相反，要改的是约束本身，不是把观察并进 `note`**。
+  2. `src/lib/ops/quota-readings.test.ts`（新，10 条）：台账形状 3 条 + 跨文件对账 7 条。
+     对账的是文档里那**四处**人抄的东西：表头个数、整条链（逐字）、
+     「尾部连击 N」、「最长连击只有 N」，外加「结论词必须是 flapping」与
+     「文档不得出现『配额已解除』的肯定句式」。
+  3. `consecutivePassFromTail`（尾部，答「现在攒到几连」）与
+     `longestPassStreak`（最长，答「今天最好到过几连」）**分成两个函数**，
+     文档里两个数都写（今天 0 与 2），并有一条用例断言**两者不相等**——
+     它们相等的那天，用其中一个冒充另一个就会静默通过。
+  4. `environments.md` 那一行：表头改成「今天有 6 个读数」并写明**链由台账生成**；
+     旧的那条手写链（`#252 fail`）改成台账的 `#252 mixed`——
+     **那次观察本来就是一 fail 一 pass，写成 `fail` 是把 mixed 压成了 fail**。
+  5. 5 个判定入口进 `falsify:rules` ⇒ **72 → 77 条**。
+- **登记前自己抓到的一条半吊子**：`consecutivePassFromTail` 中性化成 99 时只有 **1 条红**，
+  而那一条是硬编码的 `toBe(0)`——**文档里「尾部连击 0」那个数字当时仍然没人对账**，
+  我原来只写了 `expect(ROW).toContain("尾部")`。
+  **只查关键词不查数字，等于给那个数字发了通行证。**
+  补正则对账后变 **2 条红**。**红数从 1 升到 2 才是这条登记有意义的证据**；
+  只凭「它红了」就登记，会把「代码被单测守着、文档仍靠人抄」这种状态写进表里。
+- **本轮还撤掉一处我自己造的错**：草稿里写「#256 push 了三次」。
+  那是**没有出处的数**——`gh pr view 256 --json commits` 实测是 **4 个 commit**。
+  已改成带命令的写法。（本仓库这条规矩已经破过若干次，破点都在
+  「数字看起来合理、而且正好支持我要说的结论」的时候。）
+- 验证命令和结果：`pnpm check:all` ✅ **281 files / 3491 tests**（+1 文件 / +10 条）；
+  `type-check` exit 0；eslint（逐文件）exit 0；
+  `check:doc-links` / `check:progress`（188 条）exit 0。
+  - ⚠️ **`pnpm falsify:rules` 的全量 77/77 此刻还没跑**——它要求工作树干净
+    （脏树上做变异核对会连带丢掉未提交改动，这是它的设计），而本条正在脏树上写。
+    已做到的程度是：**5 个新入口逐个走 `falsifyTarget`**（登记表同一套中性化逻辑），
+    实测 `verdict=bites` / `mutationApplied=true`，分别 1 / 1 / 1 / **2** / 2 条变红。
+    全量读数见下（**同条 commit 之后补跑**，没有预支）。
+  - 【补跑读数】提交后 `git status --porcelain | wc -l` = **0**，
+    `pnpm falsify:rules` ⇒ **77/77 条判定被证明「测试真的会红」、exit 0**，
+    5 个新入口分别 **1 / 1 / 1 / 2 / 2 条变红**——与登记前逐个走 `falsifyTarget` 的读数一致。
+- 阻塞 / 风险 / 回滚：无新增阻塞。风险：台账是**新的人维护点**——
+  将来追加读数时若忘了改文档表头，**对账用例会红**（这就是它存在的理由）。
+  回滚 = revert 本 commit。
+- 下一项：#236 / #235 仍等 `db push`（缺 DB 密码，外部权限）；
+  B04 缺第二份进 main + 人工授权。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 修「文档里的数字」时，我在注释里又抄了一遍会漂移的数：同一个错的第三次
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-readings-ledger`（base `16c23e15` = main + #256）。
+- 状态：DONE。
+- 为什么做：承上一条。上一条把 `docs/testing.md` 那句「60 条判定 / 54 个规则模块」
+  改成由 `summarizeRegistry()` 算 + 一条对账用例钉住。这次是**收尾时回读自己的 diff**，
+  发现**我在修复的注释里，把当时刚测出来的真值又抄了一遍**：
+  - `rule-falsification.ts` 里 `summarizeRegistry` 的 doc comment：「真值是 77 / 58 / 718」；
+  - `rule-falsification.test.ts` 里对账用例的注释：「三个数全都漂移了（真值 77 / 58 / 718）」。
+- **为什么这两个数必须删**：`summarizeRegistry()` 的读数**每登记一条判定就会变**——
+  而它自己就在登记表里，所以「登记一条 → 条数 +1 → 模块数 +1」。
+  把这种数写进注释，注释立刻开始漂移，而**没有任何用例在盯注释**：
+  对账用例只盯 `docs/testing.md` 那一句。
+  ⇒ 这等于**一边立规矩「跑出来才可知的数不抄进静态文本」，一边在两个地方破它**。
+  而且是最难发现的那种破法：**它出现在讲这条规矩的注释里**，读起来像证据、其实是快照。
+- 做了什么：
+  1. 两处注释里的 `77 / 58 / 718` 全部删除，改成「读数以 `summarizeRegistry()` 为准，
+     这里刻意不抄具体数」，并在测试注释里补一句**为什么**不写（每登记一条就 +1、
+     且没有用例盯注释）。
+  2. 保留的数只剩**带日期的历史读数**：`docs/testing.md` 里「原先写的是 60 / 54、
+     实跑 718」那几处是**对过去状态的陈述**，不会再变，按「快照不回改」留着。
+- **这一条值得单独记**：本仓库已第三次撞上同一类别——
+  ① 「5 条 psql 元命令」（真值 6）→ 建 `psql-meta.ts` + 跨文件对账；
+  ② `environments.md` 表头「四个读数」（正文已到第 6 个）→ 建 `quota-readings.ts` 台账；
+  ③ 本轮：修 ② 的**过程产物**（注释、测试说明）里又出现会漂移的数。
+  ⇒ 前两次的修法都是**给那一处装对账**；第三次的教训是**类别的边界包含注释和测试说明**，
+  而它们不在任何门禁里。**新规矩：写「实测 N」之前先问「这个数会不会因为我正在做的这件事而变」**——
+  会变的数只能由代码算，不能出现在任何静态文本里，注释也不例外。
+- 验证命令和结果：`node --experimental-strip-types` 直接调 `summarizeRegistry()`
+  ⇒ `{"entryCount":78,"moduleCount":59,"testFileCount":60}`；
+  eslint（逐文件，绕开 rtk 汇总）exit 0。
+  - ⚠️ 全量 `pnpm check:all` 与 `pnpm falsify:rules` 的读数见下一条，**本条不预支**。
+- 阻塞 / 风险 / 回滚：无新增阻塞。风险：注释里的漂移数**没有门禁**，
+  只能靠 review 时逐字读 diff（本轮正是这么抓到的）。回滚 = revert 本 commit。
+- 下一项：#236 / #235 仍等 `db push`（缺 DB 密码，外部权限）；B04 缺第二份进 main + 人工授权。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 补上上一条刻意没预支的两个读数：`check:all` 3494 条、`falsify:rules` 78/78
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-readings-ledger`（base `16c23e15` = main + #256）。
+- 状态：DONE。
+- 为什么做：上一条（189）在验证栏里写了「全量 `check:all` 与 `falsify:rules` 的读数见下一条，
+  **本条不预支**」——因为写那条时树是脏的，而 `falsify:rules` 的设计就是**脏树直接 exit 1**
+  （在脏树上做变异核对会连带丢掉未提交改动）。这是上一轮立过的规矩的第二次执行：
+  **带读数的结论只能出现在读数真实存在的那条里**。
+- 做了什么：commit `68e8aa60` 落地后按顺序补跑，读数如下。
+- 验证命令和结果：
+  - `git status --porcelain | wc -l` = **0**（跑 `falsify:rules` 的前置，实测而非假设）。
+  - `pnpm check:all` ⇒ **exit 0**，`Test Files 281 passed` / `Tests 3494 passed`，
+    含 `check:progress` 报 **189 条**、`check:roadmap-entries` 报 29 条任务池均有交代、
+    `check:gate-rule-tests`、`check:migration-runbook`（34 条迁移，最新 `034_email_skip_reason.sql`）等全部通过。
+    - 与上一轮那个「3491」的差 **+3 条**，正是 `summarizeRegistry` 的 3 条对账用例——
+      数目对得上，说明 3491 那次确实是在登记 `summarizeRegistry` **之前**跑的，不作数的判断成立。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**78/78 条判定被证明「测试真的会红」**」。
+    新登记的 `summarizeRegistry()` 读数 **1 条变红 / 19 条通过**，
+    与登记前逐个走 `falsifyTarget` 的读数一致。
+  - `node node_modules/eslint/bin/eslint.js`（逐文件，绕开 rtk 的汇总输出）exit 0。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert `68e8aa60`。
+- 下一项：把 #257 的 PR 正文扩到覆盖两批（quota-readings 台账 + `summarizeRegistry` 对账），
+  因为它标题只写了前者，而分支上现在有两批内容——**PR 描述与实际内容不符是 review 的敌人**。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「本机取不到」是错的：deployments API 匿名可读，一判就判出两个提交从未上线
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：#257 合并后回去查生产是否跟上，发现 `ops:deploy-freshness` 报「落后 2 个提交、阈值 5、判通过」，
+  而合并已近 4 小时。于是回去读 `environments.md` 那一行反复写的那句话——
+  「**生产是否也被挡住 = 未知，需要 Vercel 侧部署记录，本机取不到**」。
+  **那句话是错的**：`GET /repos/{owner}/{repo}/deployments` **匿名可读**
+  （实测 `curl -sI` 不带 token 回 **200**）。⇒ 本仓库**第三次**把「我不知道怎么查」写成「这件事查不了」
+  （前两次：`supabase migration list` 曾记为「要 DB 密码」、CodeQL 告警曾记为「本地无法复现」）。
+- **判出来的真故障**：生产最新一条 `Production – indie-stack` 记录是 `a5b38466`（#255）07:00:11Z；
+  #256（`16c23e15`，07:49:50Z 合并）与 #257（`75b011ba`，09:00:58Z 合并）**都没有记录**，
+  而 `75b011ba` 是 main 的 HEAD ⇒ **没有任何后续部署能覆盖它**。docs-site 同期两次都正常上线。
+- 做了什么：
+  1. `src/lib/ops/deployment-ledger.ts`（判定层）+ `deployment-ledger.test.ts`（**18 条**）。
+  2. `scripts/lib/deployment-ledger-check.js` + `scripts/check-deploy-ledger.js` + `pnpm ops:deploy-ledger`。
+  3. `.github/workflows/deploy-ledger.yml`（每天 05:37 + 每次 main push + 手动）。
+  4. 台账补 3 条读数（#254 preview fail、#256 生产 fail、#257 生产 fail）⇒ **7 → 10 条**。
+     （⚠️ 第一版这里写成「补 3 条」却列了 4 项——多出的 `#257 preview pass` 是上一轮加的。
+     **数与列出不一致**正是本仓库反复犯的那类错，这次犯在讲它的条目里。）
+  5. `environments.md`：配额行订正 + **新增「生产部署台账」独立一行**（两个问题分开答）。
+- **判据为什么不是「有没有部署记录」——这条是本模块的主要价值**：
+  实测 226 个已合并 PR 里 **111 个无生产记录**，绝大多数被 Vercel 的**合并部署**跳过
+  （#251–#254 全被 #255 那次带走）。只按「无记录 = 故障」判会**天天误报**。
+  真判据：「**无记录，且没有任何后续部署包含它**」。
+  ⚠️ 这个等价依赖 main 的**线性 squash 历史**（实测最近 200 提交全为单父、`--merges` 计数 2、
+  已合并 PR 的 base 全是 main）⇒ 改用 merge commit 后判据会开始漏判，前提写在代码与 workflow 注释里。
+- **阈值 90 分钟有出处**：73 个可配对样本（合并时间 → 该 sha 的生产记录时间）
+  **中位 1.5 分钟、最大 57.2 分钟**，90 = 最大值的 1.6 倍。
+  对照本轮实测到的真实停滞：#257 已 239–323 分钟无记录 ⇒ 判红。**阈值要么来自样本，要么标成假设。**
+- **实测到的两个坑（都不是设计时想到的）**：
+  1. **环境名写错 ⇒ API 回 200 + 空数组 ⇒ 226 个提交全被读成「从未上线」**。
+     一个**自信而完全错误**的结论。修：空记录判「未知」（exit 2）。这是「会说出相反结论的读数比没有读数更贵」的又一实例。
+  2. `toObservations()` 一开始写在 IO 层**没有测试** ⇒ 按 `codeql-alert-check.js` 那次的教训搬进 `src/lib/` 并配 9 条映射用例
+     （字段层级、同 sha 多条取最早、`base.ref != main` 不参与、乱序输入、脏响应跳过）。
+- **本轮自己造的错（4 处，全部当场抓到并改）**：
+  1. 台账漏记 **#254**（两项 Vercel 检查都 fail）。第一版我把原因写成「#254 是纯文档 PR 所以没被当成新观察」——
+     **那是猜的**。实测台账模块创建于 09:00:57Z，而 #254 早在 05:13:55Z 就合并了 ⇒
+     真实原因是**回填靠记忆而不是靠重跑查询**。⇒ 新规矩：**能自动读的观察不靠人记**（也正是这个探针存在的理由）。
+  2. 文档里写「生产侧从没连续赢过两次」——而生产侧**只有 1 条**读数。**一个样本谈不上趋势**。删掉，改成「够不上门槛」。
+  3. `docs/testing.md` 那句交叉引用「下面那句『57 个规则模块』」——**下面那句其实写的是 58**，引用从一开始就指错对象。
+  4. **CHANGELOG 讲「数字会漂移」的条目里，我自己写了「实测：78 / 59 / 718」，同一轮就漂成 80 / 60**。
+     连讲这条规矩的条目都会立刻开始漂移 ⇒ 删数、只留「它漂了」这个事实。
+- **`docs/testing.md` 那段被改到第三层补丁，这次重写了而不是继续加补丁**：
+  删掉「交集 53 / 本表独有 6 / 门禁独有 4」三个数——它们**当时是实测对的**，
+  但登记 `deployment-ledger.ts` 后「本表独有」立刻从 6 变 7（新模块走 `ops:` 前缀、不被任何 `check:` 引用），
+  而**没有任何用例在盯它们**。⇒ 原则的完整表述：**凡是一次性读出、又没有对账用例盯住的数，
+  不写进静态文本**——表格、正文、注释一视同仁。
+- 验证命令和结果：
+  - `node scripts/check-deploy-ledger.js --repo Sun1090/IndieStack --now 2026-10-13T13:00:00Z` ⇒ **exit 1**，
+    `NEVER_DEPLOYED`，观察 226 个提交：已上线 115 / 被合并部署跳过 109 / **从未上线 2**（#256、#257）。
+  - 错环境名 ⇒ **exit 2**（判未知，不判红）；缺 `--repo` ⇒ exit 2；`--help` ⇒ exit 0。
+  - 变异核对（登记前实测）：`auditDeploymentLedger` **9 红 / 9 通过**、`toObservations` **9 红 / 9 通过**，均 `bites`。
+  - 对账用例**当场红过两次**：`rule-falsification.test.ts` 报 `expected 78 to be 80`（登记表对账）、
+    `quota-readings.test.ts` 报 `expected 7 to be 10` + 链不匹配 + `expected 1 to be +0`（台账对账）。
+    补文档后 `48 passed (48)`。
+  - `check:docs`（94 个脚本同步）、`check:doc-links`、`check:changelog`、`check:gates`（49 门禁 / 12 工作流）、
+    `check:action-errors`、`check:gate-rule-tests` 全部 exit 0。
+  - ⚠️ 全量 `check:all` 与 `falsify:rules` 的读数见下一条，**本条不预支**（树是脏的，`falsify:rules` 会直接 exit 1）。
+- 阻塞 / 风险 / 回滚：
+  - **新发现的真实状态**：生产自 07:00:11Z 起未再部署主应用。这**不是本条引入的**，但本条让它可见。
+    解除需要 Vercel 侧构建放行（配额），本机无法代为操作 ⇒ 属外部权限。
+  - 风险：新作业是**非 required** check（分支保护的 7 项不含它），所以它会报红而不阻塞合并——这是刻意的。
+  - 回滚 = revert 本 commit（含删除 workflow 与两个新文件）。
+- 下一项：把 `ops:deploy-ledger` 的读数写进 roadmap 的 B 域证据链；#236 / #235 仍等 `db push`。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 补 191 条没预支的两个读数：`check:all` 3515 条、`falsify:rules` 81/81
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：上一条（191）在验证栏写了「全量 `check:all` 与 `falsify:rules` 的读数见下一条，本条不预支」——
+  因为写它时树是脏的，而 `falsify:rules` 的设计就是**脏树直接 exit 1**（在脏树上做变异核对会连带丢掉未提交改动）。
+  这是同一规矩的第三次执行（前两次：#255 那轮、#257 那轮）。
+- 做了什么：commit `70cb32a3` 落地后按顺序补跑。**本条只补读数，不改代码**。
+- 验证命令和结果：
+  - `git status --porcelain | wc -l` = **0**（前置，实测而非假设）。
+  - `pnpm check:all` ⇒ **exit 0**，`Test Files 282 passed` / `Tests 3515 passed`。
+    与上一轮的 281 / 3494 相比 **+1 文件 / +21 条**，正是 `deployment-ledger.test.ts`（21 条）。
+    含 `check:progress`（191 条）、`check:roadmap-entries`（29 条任务池均有交代）、
+    `check:gates`（49 门禁 / **12 个工作流**，新增的 `deploy-ledger.yml` 已被门禁接线审计认到）、
+    `check:docs`（**94 个脚本**同步）、`check:doc-links`、`check:changelog`、`check:gate-rule-tests` 全绿。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**81/81 条判定被证明「测试真的会红」**」。
+    本轮新登记的 3 个入口读数：`auditDeploymentLedger` **11 红 / 10 通过**、
+    `toObservations` **9 红 / 12 通过**、`deployExitCode` **1 红 / 20 通过**——
+    与登记前逐个走 `falsifyTarget` 的实测读数一致。
+  - 跑完再测 `git status --porcelain | wc -l` = **0**（复原保证成立）。
+- **本轮 `check:all` 抓到、`falsify:rules` 抓不到的两类问题**（值得记一句区别）：
+  - `type-check` 抓到 `Pick<DeployAudit, "code">` 里不含 `passed` 却被使用——**纯类型错**，
+    变异核对对这类问题无感（中性化返回值不会引入类型错）。
+  - ESLint 的 `complexity` 两次撞上限（`parseArgs` 17、`runDeployLedgerCheck` 16）。
+    两次都不是「把上限调高」的事：**它在提醒一件事不属于这个函数**。
+    第一次把数值 flag 变成表里的数据；第二次把退出码分流搬进判定层成 `deployExitCode()`。
+    ⇒ 复杂度报警当**架构信号**读，而不是当噪音调掉。
+- 阻塞 / 风险 / 回滚：无新增阻塞。回滚 = revert `70cb32a3`。
+- 下一项：开 PR；随后把 `ops:deploy-ledger` 接进 B 域证据链（roadmap 的 release evidence 任务池）。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-13 — 「配额挡住生产」是我没做对照就写下的结论：跨环境对比否证了它
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`feat/quota-reading-7`（base `75b011ba` = main + #257）。
+- 状态：DONE。
+- 为什么做：上一条（191）做完 `ops:deploy-ledger` 之后，我在代码提示语、文档、CHANGELOG
+  三处都写了「生产没跟上是因为**配额**」。写完回头把同仓**另一个 Vercel 项目**的记录摆在一起看，
+  结论就翻了：
+
+  | 合并 | 主应用生产 | docs-site 生产 | #257 preview |
+  |---|---|---|---|
+  | #255 06:59:07Z | 07:00:11Z ✓ | 06:59:34Z ✓ | pass |
+  | #256 07:49:50Z | **无记录** | 07:50:18Z ✓（28 秒） | fail |
+  | #257 09:00:58Z | **无记录** | 09:01:33Z ✓（35 秒） | **pass** |
+
+  **配额若是原因，docs-site 没道理照常上线**；而 #257 的 preview 构建本身是 pass。
+  ⇒ 是**主应用的生产部署链路单独**有问题，与 preview 配额是两件事。
+- **这个对照本来只要多查一次 API 就能看到，而我没做。**
+  ⇒ 做成代码：`diagnoseNeverDeployed()`——**能自动做的对照不该靠人想起来**。
+  ⚠️ 它**只缩小方向、不定因**：`projectSpecific: true` 说的是「不是配额」，**不是**「原因是 X」。
+  本机没有 Vercel 凭据，往下仍是假设清单（production branch 配置 / 项目被暂停 / 构建提升失败）。
+- 做了什么：
+  1. `diagnoseNeverDeployed()` + 6 条单测；判定层提示语改成**排查顺序**
+     （① 跨环境对比 → ② 配额 → ③ 构建成功但没提升），并明写
+     「**别把「没找到原因」写成「原因是配额」**」。
+  2. `quota-readings.ts` 第 10 条读数的 `note` 与 `environments.md` 同步订正。
+  3. 登记表新增第 4 个入口 ⇒ 对账用例当场红（`expected 81 to be 82`）⇒ 文档改 82。
+- **本轮自己造成的一个回归（当场发现并修）**：为了拿跨环境数据，我把 `?environment=`
+  查询参数去掉、改成一次拉全量。结果「已上线」从 **115 掉到 90**——
+  实测 500 条里只有 90 条属于目标环境，而带过滤能拿到 230 条（覆盖从 08-23 缩到 09-27）。
+  **而它看起来完全合理、不报任何错**，只有对照旧读数才发现。
+  ⇒ 恢复服务端过滤，跨环境对比改为**只按需查那几个 sha**（通常 1–2 个）。
+  教训：**改数据源时，旧读数是唯一的报警器**——所以读数要留在能对照的地方。
+- **ESLint 复杂度第三次撞上限**（`runDeployLedgerCheck` 17 > 15）。
+  三次撞墙都在说真话：第一次「flag 该变成数据」、第二次「退出码该进判定层」、
+  这次「一个函数在同时做取数、判定和排版」。
+  ⇒ 抽出 `loadLedgerData()` / `formatJsonReport()` / `formatTextReport()`，**没有调高上限**。
+  排版留在 IO 层是对的（它不属于 `src/lib/`），但不该和编排挤在一个函数里。
+- **登记表注释里的快照数也删了**：原先写「各 9 条红 / 9 条通过」，
+  而本轮测试从 21 条长到 27 条，`toObservations` 的读数就变成 9/18。
+  **登记表不是那些数的家**——要读数就跑 `falsify:rules`。
+- 验证命令和结果：
+  - `node scripts/check-deploy-ledger.js --repo Sun1090/IndieStack --now 2026-10-13T13:00:00Z`
+    ⇒ exit 1，`观察 226 个：已上线 115、跳过 109、从未上线 2`（**115 已恢复**），
+    两条 `🔎 … ⇒ **不是配额**`。
+  - 四条 CLI 路径回归：真实 API exit 1；fixture 空记录 exit 2；fixture 文件不存在 exit 2；
+    `--json` exit 1 且 `code=NEVER_DEPLOYED / observations=226 / skippedCount=109`。
+  - `pnpm check:all` ⇒ **exit 0**，`282 files / 3521 tests`（较上条 +6，恰为映射用例）。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**82/82 条判定被证明「测试真的会红」**」；
+    本模块 4 个入口读数 11 / 9 / 1 / 6 条变红；跑完 `git status --porcelain | wc -l` = **0**。
+  - `type-check` exit 0（中途抓到 `Pick<DeployAudit,"code">` 不含 `passed` 的类型错）；
+    eslint 逐文件 exit 0；`check:changelog` / `check:doc-links` exit 0。
+- 阻塞 / 风险 / 回滚：
+  - **仍未定因**：主应用生产自 07:00:11Z 起无新部署。本机无 Vercel 凭据 ⇒ 属外部权限，
+    需要人去 Vercel 控制台看该项目的 production 分支配置与部署列表。
+  - 风险：新作业是**非 required** check（分支保护那 7 项不含它），报红而不阻塞合并——刻意如此。
+  - 回滚 = revert `b57112aa`（诊断）与 `70cb32a3`（探针本体）。
+- 下一项：开 PR；随后把 `ops:deploy-ledger` 接进 roadmap 的 B 域 release evidence 任务池。
+- 更新时间：2026-10-13（UTC+8）。
+
+## 2026-10-14 — 「不是配额」也被否证了：`projectSpecific` 收窄成一个观察，不再替我排除候选
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/deploy-ledger-overreach`（base `2f110bf2` = main + #258）。
+- 状态：DONE。
+- 为什么做：上一条（192）把「配额挡住生产」改口成「不是配额，是主应用链路单独有问题」，
+  并把它写进了代码注释、判定层提示语、`environments.md`、CHANGELOG 四处。
+  **同一轮内它又被否证了**：#258 于 15:17:49Z 合并，**15:19:10Z 自己上了生产**（2 分 11 秒），
+  而**全程我没有做任何修复动作**。配置坏了、项目被暂停都**不会自己好**，配额恢复会
+  ⇒ 「#256 / #257 没上线」与「配额」并不矛盾。
+  第二次错在一个**从没验证的前提**上：「两个 Vercel 项目同仓共享额度」是 2026-10-05 的旧断言，
+  而每个项目有**独立的** production 构建，同一时刻的余量本来可以不同。
+  ⇒ **跨环境不同步只能说明两个构建结果不同，不能替我排除任何一个候选。**
+  这是本条目在这一件事上**第三次**过早定因（先「原因是配额」、后「不是配额」）。
+- 做了什么：
+  1. `diagnoseNeverDeployed` 的注释与 `projectSpecific` 的字段文档重写：
+     **只报「不同步」这一个观察，既不排除配额也不证明链路坏了**；两次被否证的结论都留在原地当学费。
+  2. 判定层提示语改成三条排查顺序，并把「有没有**自己恢复**」列为第三条
+     （无人干预就上线 ⇒ 倾向配额；一直不上线 ⇒ 才轮到 production branch 配置 / 项目暂停 / 提升失败）。
+  3. IO 层输出语 `⇒ **不是配额**，是本环境的部署链路单独有问题`
+     → `⇒ 两个项目的构建结果不同步；**这不排除配额，也不证明链路坏了**`。
+  4. 两条用例的**标题**里被否证的结论词改掉（用例名也是文档），并同步 `environments.md` 那一行。
+  5. `quota-readings.ts` 新增一节：**台账 `production: fail` 与探针判 `CONSISTENT` 不矛盾**——
+     台账问「这个 PR 自己有没有单独上线」，探针问「这个提交今天在不在线上」。
+     ⇒ **要看线上缺不缺代码，跑探针，不要数台账。**
+  6. 台账补 #258 preview / production 两条读数（10 → **12 条**），`environments.md` 的链与
+     「尾部连击 2 / 最长连击 2 今天恰好相等」同步——**相等时用一个数冒充另一个会静默通过**，
+     所以必须写明是两个口径碰巧同值。
+  7. `environments.md`「生产部署台账」那一行的**状态列不再抄读数**：原先抄的是
+     「❌ #256、#257 从未上线」，而 #258 上线之后探针判 `CONSISTENT`，那一格当天就失效了
+     ——正是本轮立的规矩（凡一次性读出、又没有对账用例盯住的数，不进静态文本）禁止的形态。
+- **超时实验：第一次实验没有区分力**（本轮最重要的方法论教训）：
+  `clearTimeout` 放在 `finally` 里 ⇒ 响应头一到就解除超时，`response.json()` 读 body 阶段无保护
+  （真实症状：`terminated` 且**等约 6 分钟**才失败）。为验证机制写了「只发响应头、不写 body」的服务器，
+  跑旧写法**4 秒内也报超时** ⇒ 我当场下结论「我的解释是错的」。**那个实验无效**：
+  头根本没 flush ⇒ `fetch()` 自己没 resolve，两组都卡在 fetch 阶段，**同一个读数来自同一个阶段**。
+  改成 `writeHead()` + `res.write("[")`（保证 fetch 已 resolve）再比：
+  **新版 3 秒报超时；旧版干等到 15 秒被外部 timeout 杀掉、无任何输出** ⇒ 机制解释**是对的**，
+  修复（超时覆盖 fetch + `response.json()` 两段）保留。
+  ⇒ 新规矩已写进代码注释：**否证一个机制解释之前，先证明实验能区分真假两种假设。**
+- 验证命令和结果：
+  - `GITHUB_REPOSITORY=Sun1090/IndieStack node scripts/check-deploy-ledger.js` ⇒ **exit 0**，
+    `CONSISTENT`，`观察 227 个已合并提交：已上线 116、被合并部署跳过 111、从未上线 0、窗口内待观察 0`
+    （#258 上线后，本分支改的就是那个「从未上线」的结论）。
+  - `pnpm type-check` exit 0；`pnpm check:all` exit 0，**282 files / 3521 tests**
+    （本轮只改注释、文案与读数，**没加测试，数不该变**——它没变）。
+  - `check:progress` 通过（本条为第 194 条）；`check:changelog` / `check:doc-links` exit 0。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行「**82/82 条判定被证明「测试真的会红」**」（本模块 4 个入口读数 11 / 9 / 1 / 6 条变红；本轮未新增登记，故与上一条同为 82）。要求工作树干净，所以在 commit 后跑；跑完 `git status --porcelain | wc -l` = **0**。
+- 阻塞 / 风险 / 回滚：
+  - **仍未定因**（这是刻意保留的状态，不是没做完）：本机无 Vercel 凭据，
+    往下需要人去控制台看该项目的 production 分支配置与部署列表 ⇒ 属外部权限。
+  - 风险：把结论收窄成观察会让输出**看起来没那么有用**；代价是换来不再第三次定错因。
+  - 回滚 = revert 本 PR（squash 后的单个 commit）。
+- 下一项：把 `ops:deploy-ledger` 接进 roadmap 的 **B 域 release evidence** 任务池
+  （它已把「生产是否被挡住」从「本机取不到」变成可自动判，且判出过真故障）；
+  `docs/operations/codeql-alert-triage.md` 里「本地无法复现」类陈述用同样的匿名 API 路径复核。
+- 更新时间：2026-10-14 00:30（UTC+8）。
+
+## 2026-10-14 — `ops:deploy-ledger` 接进 B 域发布证据链，顺手补上一条「条目丢了前缀就彻底隐形」的门禁
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/b-domain-deploy-ledger-evidence`（base `c2eecf21` = main + #259）。
+- 状态：DONE。
+- 为什么做：上一条（194）留下的下一项是「把 `ops:deploy-ledger` 接进 roadmap 的 B 域 release evidence 任务池」。
+  它把「生产是否被挡住」从「本机取不到」变成可自动判，且判出过真故障——但**它只存在于自己的文档行里**，
+  发布证据链三处（检查清单 / 发布 runbook / 冒烟文档）都还只认 `ops:deploy-freshness`。
+  ⇒ 一个没人被要求跑的门禁等于没有门禁（本仓库在 `check:docs` / `check:agents` 上踩过同一件事）。
+- 做了什么：
+  1. `.github/RELEASE_CHECKLIST.md` 门禁一节新增一条台账勾选项，并写明它**不是**新鲜度检查的重复。
+  2. `docs/operations/release-runbook-v0.12.0.md` 发布步骤补**第 5 步**（`ops:deploy-ledger`，
+     含「90 分钟内读到 `PENDING` 是正常形态，等过窗口再判」与「exit 2 不算通过」）；
+     原「新增两条运维门禁」那条**不回改**，只加一条指针说明此后多了第三条。
+  3. `docs/operations/production-smoke-v0.12.0.md` 加「生产部署台账」小节，
+     写清「新鲜度绿 + 有提交从未上线」曾同时成立 ⇒ **距离小不等于部署正常**。
+  4. `docs/roadmap-0.12.0.md` 两处：B01 加指针（**不改变 B01 的完成状态**，它欠的是另外 17 项）；
+     风险一节补「Vercel 部署不再是外部权限」，同时写明**仍未定因、四个候选一个都没排除**。
+- **接进去的时候撞出一个真缺陷**（本条的主要交付）：
+  `CHANGELOG.md` 里有**两处**条目丢了 `- ` 前缀——
+  `2f110bf2`（#258）编辑时吃掉了下一条目的整行标题，留下顶格悬着的续行
+  `：docs/testing.md 里那句…`；更早的 `ce4a3b25` 那条 D03 也是同样形态（正文 9 行挂在章节下而不属于任何条目）。
+  **两处都不报任何错**：解析器只认 `- ` 开头的行是条目，所以丢了前缀的行
+  不报 `bullet-empty`、不报 `section-empty`、字数与条目数里都没有它，`check:changelog` 一路绿。
+  ⇒ 补判据 `prose-outside-bullet`（`src/lib/changelog/parse-changelog.ts`）+ 复原两处标题 + 4 条单测。
+  ⚠️ **判据刻意放行 `>` 引用块与围栏代码块**：先扫全文发现真实文件里有 8 处「> 主题：…」的既有版式，
+  收紧成「版本下只许条目」会一次误伤 8 处——**先量后写，别对着版式报警**。
+- 验证命令和结果：
+  - `GITHUB_REPOSITORY=Sun1090/IndieStack pnpm ops:deploy-ledger` ⇒ exit 0，`PENDING`
+    （#259 刚合并，在 90 分钟窗口内）——**这正是新文档里写的那种正常形态**。
+  - `pnpm check:all` ⇒ **exit 0**，`282 files / 3525 tests`（+4 条，恰为本条新增的 4 条用例：
+    其中「缩进续行 / 引用块 / 围栏」那条断言 `toEqual([])`，负责盯住误伤）。
+  - 变异核对：把 `collectOrphanProse` 改成 `return []` ⇒ **2 条用例红**（新判据的两侧：
+    丢前缀的行、被吃标题留下的悬空续行）。
+  - `check:changelog` / `check:release-docs` / `check:gates` / `check:roadmap-entries` /
+    `check:doc-links` / `check:docs` / `type-check` / 逐文件 eslint 全 exit 0。
+  - `pnpm falsify:rules` ⇒ **exit 0**，末行 **82/82**（登记表条数未变：新判据走的是
+    `validateChangelog` 那条既有登记，阉掉整个函数即红——本轮另用局部变异单独验证过新函数本身会红 2 条）。
+- 阻塞 / 风险 / 回滚：
+  - 无新增阻塞。B03/B04/B05 的外部权限缺口**没有**因为这条而变小——台账只回答「上线了没有」，
+    不回答「演练做了没有」。
+  - 风险：新判据是 error 级，历史 CHANGELOG 若再被编辑坏一次会立刻红（这正是目的）。
+  - 回滚 = revert 本 PR（squash 后的单个 commit）。
+- 下一项：`docs/operations/codeql-alert-triage.md` 里「本地无法复现」类陈述，
+  用同样的匿名 API 路径复核一遍。
+- 更新时间：2026-10-14 01:00（UTC+8）。
+
+## 2026-10-14 — 生产 pg_cron 的答案 14 天前就躺在仓库里，而我在 10-06 写下了「仍未核实」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/retention-cron-dead-code`（base `48da611b` = main + #260）。
+- 状态：DONE。
+- 为什么做：#260 的下一项是「用同样的匿名 API 路径复核 `codeql-alert-triage.md` 里『本地无法复现』类陈述」。
+  扫「取不到 / 查不了 / 仍未核实」时发现 `environments.md` 的 pg_cron 那一行写着
+  「生产是否安装**仍未核实（需 DB 密码）**」。
+- **两层错误，第二层比第一层严重**：
+  1. **答案早就在仓库里。** `docs/db/retention.md:79`（2026-09-21 复核，commit `9ab8c154`）
+     就写着**同一个 ref** `ntqggnztzvoavjbiillb` 的 `pg_extension` 清单里没有 `pg_cron`，
+     而 `environments.md` 自己下面一节把这个 ref 称为「**生产 Supabase 项目**」
+     （本轮用 `.env.local` 的 host 前缀与 CI 的 `SUPABASE_PROJECT_REF` 逐字比对，**确认同一个项目**）。
+     ⇒ 「仍未核实」是答案入库 **14 天之后**（`2b3551d0`，2026-10-06）写下的，**写之前没搜过仓库**。
+     **根因**：那份记录只写结论、**没写可复跑的命令**，所以 14 天后没人能判断它是否仍然成立，只能退回「未知」。
+     ⇒ **「文档已写」不等于「证据可复核」**——这条本仓库已写进 `release-audit-template.md`，这次轮到它自己踩。
+  2. **「需 DB 密码」这个前提本身也错了**（2026-10-13 已被同一个端点否证，run `38334026946`）。
+- 做了什么：
+  1. `PROBE_PLAN` 加 `PG_CRON_INSTALLED`（走 HTTP + 仓库已有的 `SUPABASE_ACCESS_TOKEN`）。
+     **刻意只问「装没装」，不问「注册了几个调度」**：后者要读 `cron.job`，
+     而它在没装时根本不存在 ⇒ 报 `relation does not exist`，与「查询被拒」无法区分。
+  2. **生产实况已取到**：run `38442279610`（本分支 `workflow_dispatch`）回
+     `pg_cron = NOT_INSTALLED` ⇒ `environments.md` 那一行从「未知」变成实测结论。
+  3. **顺手修掉一个自相矛盾的标签**：那次跑出来是 `❌ [PG_CRON_INSTALLED] REJECTED_SQL (HTTP 201)`
+     ——查询**执行成功**、服务端回 201 并给出答案，却标成「SQL 被拒绝」。
+     ⇒ 新增 `CONTRADICTED` 结论 + `markOf()` 打 `❗`（不是 ❌）。**退出码仍留 1**：
+     「是答案」不等于「是好消息」，`read_only` 那步回 `off` 意味着第二层防护是装饰性的，压成 0 才是真藏问题。
+  4. ⚠️ **测出一个覆盖缺口**：把 `readOnlyFlagIneffective` 的判据改成永不匹配的字符串 ⇒
+     **全套用例全绿**（几条不写在这里，那是会漂移的数）。而它承载的恰是
+     「本探测对自己的安全声明是否成立」。⇒ 补 2 条用例 + 重跑同一变异确认现在会红。
+     **这正是本仓库那条纪律说的：变异全绿时第一怀疑可达性，而不是「代码是对的」。**
+  5. 删掉 `scripts/check-retention-cron.js` 里 **93 行永不执行的旧实现**（独立 commit）：
+     `process.exit()` 无条件 ⇒ 下面整段 `main()` 到不了；而它 `require` 的
+     `./lib/retention-cron-audit.cjs` **不存在**、`fs` / `execFileSync` 也没 import
+     ⇒ **它不但死，而且坏**。实测 `no-unreachable` 抓不到（`process.exit(1); const a = 1;` 零告警）
+     ⇒ 教训不是「lint 配漏了」，是 **lint 在这件事上没有判断力**。
+  6. `retention-cron-audit.ts` / `retention-cron-check.ts` 的注释与「未探测」输出语同步去掉
+     「需要 DB 密码」，但**保留**「让不需要凭据的那一半永远可跑」这条仍然成立的理由。
+- **本轮自己犯的另一个错（当场否证）**：第一版把影响写成「生产若没装 pg_cron ⇒ 保留期一行都不删」，
+  而 `docs/db/retention.md` 写明主执行者是 `/api/cron/retention`，pg_cron 只是**第二个可选调度器**。
+  我读了那一行的**标题**就推断了影响面，没打开正文——**违反的对象是本仓库自己的文档**。
+  措辞已订正，并写成断言钉住（输出必须含「这不等于保留期失效」、且不得出现 `❌ [PG_CRON_INSTALLED]`）。
+- 验证命令和结果：
+  - `node scripts/check-cloud-sql-probe.js` ⇒ exit 2（无令牌的 dry-run），
+    `守卫审计通过：8 条语句全部可证只读`。
+  - 生产：run `38442279610` ⇒ 8 步中 7 步 EXECUTED、`PG_CRON_INSTALLED` CONTRADICTED、exit 1。
+  - `pnpm check:all` ⇒ exit 0，`282 files / 3531 tests`（本条 +6：判定层 5 + IO 层 1）。
+  - 两次局部变异各自确认会红：新判据（改 `return []`）、`readOnlyFlagIneffective`（改永不匹配）。
+  - `pnpm falsify:rules` ⇒ exit 0，末行 **82/82**（登记表条数未变：新判据走的是
+    `summarizeProbe` 那条既有登记；本轮另做两次局部变异单独确认新分支会被抓到）。
+- 阻塞 / 风险 / 回滚：
+  - **无新增阻塞**。生产没装 pg_cron **不是故障**：保留期由 `/api/cron/retention` 执行；
+    要判那条得看 `cron.retention.completed`，本条**没有**替它下结论。
+  - 风险：`CONTRADICTED` 是新枚举值，任何按 outcome 字符串做告警匹配的外部脚本需要同步
+    （仓库内没有这种脚本，`markOf` 与退出码都已改）。
+  - 回滚 = revert 本 PR 的三个 commit。
+- 下一项：把「一次性读出的结论必须附可复跑命令」这条写进 `release-audit-template.md`
+  的核对规则（本轮的根因正是缺它），并检查该模板里是否已有等价条款。
+- 更新时间：2026-10-14 02:30（UTC+8）。
