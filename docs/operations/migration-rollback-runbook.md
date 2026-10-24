@@ -192,6 +192,24 @@ pnpm check:migrations
 pnpm smoke:production -- --url "$PROD_URL" --expected-commit "$(git rev-parse HEAD)"
 ```
 
+**CLI 挂死时的等价路径（2026-10-24 固化为脚本）**：上面两步在没有交互登录态的机器上
+会挂在 `supabase` CLI 的登录提示（2026-10-12 本机实测两次，无输出、需手动终止），
+而仓库 secret 里的 `SUPABASE_ACCESS_TOKEN` 走 Management API 就能答同一问题：
+
+```bash
+# 1′. 「云端到哪一版」——只读，且顺带发现时间戳形状的历史行
+pnpm ops:migration-status
+# 2′. 应用缺的那条：先 dry-run 核对计划，--apply 才写
+#     （SHA-256 与 manifest 核对、已 applied 拒绝重放、迁移历史按序号形状落库——
+#      时间戳形状坑的成因与订正见 issue #271 与 ops:migration-status --fix-version-shape）
+pnpm db:apply -- --version 036
+pnpm db:apply -- --version 036 --apply
+# 3′. 复跑 1′ 确认差集清零，再进部署
+```
+
+**这两条路径的审批约定相同**：真写由人显式带 `--apply` 触发，不在任何 CI/自动流程里；
+保护生产的从来不是「本机拿不到密码」，是权限与审批（见上面 2026-10-10 那条订正）。
+
 **顺序反了会是什么形状（2026-10-10 的真实案例，值得记住）**：生产停在 033、代码已在查 034 的列，
 看起来应该「每轮 500」——但线上**一个错误都没有**。原因是 digest 走的是
 **Vercel Cron 的 HTTP GET**，而那条路由只导出 POST，于是平台每天拿到 **405**，

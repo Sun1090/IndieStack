@@ -10263,3 +10263,24 @@
 - 下一项：明天 09:00 UTC 后跑 `pnpm ops:digest-observation`，读数补进台账，闭合
   「端到端跑通」的最后一格证据（提醒已设）；B04 / B03 仍为外部阻塞。
 - 更新时间：2026-10-24 23:15（UTC+8）。
+
+## 2026-10-24 — runbook 收口：CLI 挂死时的等价迁移路径（`ops:migration-status` + `db:apply`）接进程序文档
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/runbook-mgmt-api-migration-path`。
+- 状态：DONE。
+- 为什么做：今天造了两个工具（#270 `db:apply`、#267 `--fix-version-shape`），
+  但 `migration-rollback-runbook.md` 的「含迁移的发布顺序」仍只认 `supabase` CLI——
+  而那台 CLI 在没有交互登录态的机器上会挂死在登录提示（文档自己都记了这个实测，
+  长期做法还写着「暂记为已知操作负担」）。**工具造了但程序文档不知道**，
+  下次换一台机器的人还会照 CLI 那套撞墙。
+- 做了什么：在发布顺序代码块后补「CLI 挂死时的等价路径」一节：
+  `pnpm ops:migration-status`（1′ 只读，同答「到哪一版」并暴露时间戳形状行）→
+  `pnpm db:apply -- --version <n>`（2′，先 dry-run 后 `--apply`）→ 复跑 1′ 确认差集清零（3′）。
+  并写明**两条路径的审批约定相同**：真写只能人显式触发、不在任何自动流程里，
+  保护生产的是权限与审批而不是「拿不到密码」——这句是文档里 2026-10-10 订正的延续。
+- 验证：`check:migration-runbook` ✅（35 条迁移）；`check:doc-links` ✅；
+  `check:doc-commands` ✅（1113 条命令——runbook 里出现的每个 `pnpm` 命令都在 package.json 有落点）。
+- 阻塞 / 风险 / 回滚：纯文档，回滚 = revert 本 PR。
+- 下一项：明天 09:00 UTC 后跑 `pnpm ops:digest-observation` 取第一轮读数闭合端到端证据；
+  B04 / B03 仍为外部阻塞。
+- 更新时间：2026-10-24 23:40（UTC+8）。
