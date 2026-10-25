@@ -10877,8 +10877,7 @@
   3. 上一条「判定时刻未到」段的现行结论以本条为准（不回改，指针在此）。
 - 验证：`vitest src/lib/ops/quota-readings.test.ts`（读数注释变更）+ `check:progress` ✅；
   台账/读数入账 `check:all` 见合并补记。
-- 下一项：push-retry 首轮 22:00Z（本地无可判别通道：两张表 0 行 ⇒ 空表无法区分跑没跑，
-  不做空洞探测，见 `docs/db/retention.md` 的同型论证）；B03/B04/token 三项等 maintainer。
+- 下一项：~~push-retry 首轮 22:00Z~~ **【2026-10-25 订正：push-retry 修复前就导出 GET，从未被 405 挡住 ⇒ 不欠「首轮」证据，见下一条】**；它剩下的只是可观测性空洞（两张表 0 行 ⇒ 空表无法区分跑没跑，不做空洞探测，见 `docs/db/retention.md` 同型论证）；B03/B04/token 三项等 maintainer。
 - 更新时间：2026-10-25 22:42（UTC+8）。
 
 ## 2026-10-25 — 配额窗口结束：#291/#292 四条读数入账（33→37），并把「会漂移的散文」换成规则式
@@ -10904,7 +10903,7 @@
 - 验证：`vitest quota-readings` 10 条全绿；`check:doc-links` / `check:doc-commands`（1120 条）✅；
   `check:progress` 与 `check:all` 见下条提交信息。
 - 阻塞 / 风险 / 回滚：纯台账 + 文档。回滚 = revert。
-- 下一项：push-retry 22:00Z 首轮（无本地可判别通道，不做空洞探测）；
+- 下一项：~~push-retry 22:00Z 首轮~~ **（作废：它从未被 405 挡住，不欠首轮证据——见后一条订正；仅剩可观测性空洞，不做空洞探测）**；
   B03 / B04 / Vercel token 三项等 maintainer。
 - 更新时间：2026-10-25 23:20（UTC+8）。
 
