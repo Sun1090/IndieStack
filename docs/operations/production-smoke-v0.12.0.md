@@ -71,7 +71,7 @@
 | 检查项 | 期望 | 状态 |
 | --- | --- | --- |
 | B03 账户删除全链路 | 确认短语被服务端校验；`api_usage` 与本人邮箱的 `contact_messages` 消失；`audit_logs` 行仍在但 PII 键被清空；独占头像对象从 bucket 消失；被团队引用的封面保留；会话失效 | ⛔ **未闭合**——缺 `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` 与可牺牲账号。B03 是 `0.12.0` 刻意不打 tag 的唯一原因。**【2026-10-25 订正】前半句「缺三个凭据」不成立**：本机 `.env.local` 三项都在，`drills:preflight --drill B03` 现报三项 ✓、只缺 `DRILL_ISOLATED_ACCOUNT_EMAIL`；当日 `GET /auth/v1/admin/users` 用 service_role 返回 200（生产 1 个账号，且它不是可牺牲的）。根因是旧探针只看 `process.env` ⇒ 假阴性滚成了「缺凭据」登记 |
-| 租户数据隔离 | 账户 A 读不到账户 B 的项目/通知/上传元数据 | ⏳ 需专用测试账号/租户 |
+| 租户数据隔离 | 账户 A 读不到账户 B 的项目/通知/上传元数据 | ✅（本地栈，2026-10-25）`pnpm smoke:supabase-identity` **23/23**：项目（owner-a-cannot-read-private-project-b）、通知（A/B 各只见自己的种子行，RLS `auth.uid()=user_id`）、上传元数据（无客户端策略 ⇒ 连 owner 自己也读不到，A 有一行的前提下 B 仍 `[]`——实测过再删）。⏳ **生产侧**仍需两个可牺牲账号做同型核对（与 B03 同一请求项），本地证据不自动迁移（同栈同迁移，形态相同） |
 | **回滚探针** | 上一版本（0.11.0，`commit=08dd6f17`）可恢复，数据库保持向前 schema、034 不逆向执行（见 `rollback-runbook-v0.12.0.md`「数据库向前兼容」） | ⛔ 尚未演练——需要一次真实的生产部署切换，本版本**不制造**该证据 |
 
 ## 发布前的外部依赖实况（2026-10-05T22:53Z 观测）
