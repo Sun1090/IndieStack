@@ -10731,3 +10731,25 @@
   （用于读 retention/push-retry 的指标日志，闭合 405 修复的另一半证据）。
 - 下一项：17:30 提醒触发后按更新过的 prompt 取 digest 读数 + 记 retention 窗口读数。
 - 更新时间：2026-10-25 10:30（UTC+8）。
+
+## 2026-10-25 — 冒烟文档「⛔ 需要 service-role 读权限」一行转绿——第 6 处「缺凭据」假阴性
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/smoke-a05-row-green`。
+- 状态：DONE。
+- 为什么做：`production-smoke-v0.12.0.md` 的「队列语义（A05）」行仍标
+  「⛔ 同上，需要 service-role 读权限」——而自 #285 起探测统一从 env 文件取数，
+  本机 `.env.local` 的 service_role 一直躺着（`ops:schema-drift` 就是用它读通生产的）。
+  与 B03「缺凭据」（#278）、digest「缺 sbp_」（#286）同族的第 6 处。
+- 做了什么：两项判据都用真实读数答掉——
+  1. 列存在：REST select `email_skipped_reason` ⇒ **200**（列不在会 42703）。
+  2. `countEmailSkippedByReason` 的查询形状：逐 reason 复刻（不抄逻辑，复刻查询）
+     `email_sent=is.false&email_skipped_reason=eq.<reason>` + `Prefer: count=exact`
+     ⇒ `no_email` / `preferences_off` 双 **`*/0`**，与 notifications 总数 `*/0` 的
+     基线自洽（空表的 0，不是坏查询）。
+  ⚠️ 诚实边界写在行内：0 是空表的 0，**非零计数要等首轮 digest 产生真实跳过行**
+  （时间门控，与 17:30 的读数提醒同一窗口）。
+- 验证：读数各附取法；`check:release-docs` ✅（21 份分版本文档）/ `check:doc-links` ✅。
+- 阻塞 / 风险 / 回滚：纯文档。回滚 = revert。
+- 下一项：17:30 提醒触发后取 digest 首轮读数（它会顺带把本行「非零计数」的悬念
+  一起解掉或确认仍为 0）；retention 首轮如实记「窗口已过、无本地通道」。
+- 更新时间：2026-10-25 10:55（UTC+8）。

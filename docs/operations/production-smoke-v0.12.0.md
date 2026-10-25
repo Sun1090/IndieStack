@@ -60,7 +60,7 @@
 | 检查项 | 期望 | 状态 |
 | --- | --- | --- |
 | 迁移已 applied | `pnpm ops:migration-status` 报告本仓库登记的迁移全部已在云端 applied | ✅ **2026-10-24 转绿**：034/035 经 Management API applied + 版本号订正后探测一致。旧行写「⛔ 本机无凭据、034 未 applied」是 10-13 的快照——CLI 登录态那条路确实走不通，但 `ops:migration-status` 只要 repo secret 就能答（见 roadmap B 组「第四版否证」与 `migration-rollback-runbook.md` 的等价路径节） |
-| 队列语义（A05） | `notifications.email_skipped_reason` 列存在；`countEmailSkippedByReason` 能按 `EMAIL_SKIP_REASONS` 返回计数 | ⛔ 同上，需要 service-role 读权限 |
+| 队列语义（A05） | `notifications.email_skipped_reason` 列存在；`countEmailSkippedByReason` 能按 `EMAIL_SKIP_REASONS` 返回计数 | ✅ **2026-10-25 转绿**：列存在（REST select 该列 ⇒ 200；列不在会 42703）；逐 reason 复刻计数查询（`email_sent=is.false&email_skipped_reason=eq.<reason>` + `Prefer: count=exact`）⇒ `no_email`/`preferences_off` 双 `*/0`，与 notifications 总数 `*/0` 的基线自洽。取数凭据是 `.env.local` 的 service_role（#285 起探测统一从 env 文件读），旧行写「⛔ 需要 service-role 读权限」时它就躺在本机——同 B03「缺凭据」一族的第 6 处。⚠️ 0 是**空表的 0**（查询形状可用），非零计数要等首轮 digest 产生真实跳过行 |
 | `email.backlog` 趋势 | A05 落地后积压应**下降**（原先不可投递的行不再占队首） | ⏳ 需要部署后观察 |
 
 ## 需要隔离账号（本版本重点）
