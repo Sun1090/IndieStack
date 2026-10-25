@@ -405,10 +405,16 @@ digest 每轮往 `email_worker_runs` **插一行**，所以「跑没跑」在库
   **一个有效的 Vercel API token**（maintainer 提供），不是「去读日志」这个动作本身。
 - **retention 首轮窗口比 digest 早 4 小时**：`vercel.json` 调度 `0 5 * * *`
   ⇒ 405 修复（2026-10-24T10:42Z 部署）后的第一轮真实执行是 **2026-10-25T05:00Z**，
-  digest 是 09:00Z。窗口开启顺序：retention → digest → push-retry（22:00Z）。
+  digest 是 09:00Z。**「第一轮」只属于这两条**（就是 #236 修的那两条只导出 POST 的 worker）。
+  【2026-10-25 订正】本行上一版在句尾追加了「窗口开启顺序：retention → digest →
+  push-retry（22:00Z）」——**把 push-retry 混进了 405 受害名单**。两条证据否证它：
+  `git show '917beb41~1:src/app/api/cron/push-retry/route.ts'` 实测修复前 push-retry **就导出 GET**
+  （digest/retention 当时只有 POST）；CHANGELOG 的 2026-10-10 复盘原文也写着
+  「而导出 GET 的 `push-retry` ⇒ 401」——它从未被 405 挡住。
 - **push-retry 同型空洞**：`push_subscriptions` / `push_delivery_attempts` 两张表
   均 `*/0`（2026-10-25 REST 实测）——push-retry 的「跑没跑」与 retention 一样
-  无法从库侧区分，且它的首轮窗口（22:00Z）在 digest 之后。
+  无法从库侧区分。⚠️ 它**不是**「待验证的首轮」——push-retry 一直导出 GET、从未被 405 挡住，
+  所以 22:00Z 只是它每天的调度时刻，不欠任何「首次执行」证据（空洞的是**可观测性**，不是**执行**）。
 
 ## 变更痕迹
 
