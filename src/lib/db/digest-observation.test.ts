@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { judgeDigestObservation, toWorkerRunRow, type WorkerRunRow } from "./digest-observation";
+import {
+  judgeDigestObservation,
+  pickReadChannel,
+  toWorkerRunRow,
+  type WorkerRunRow,
+} from "./digest-observation";
 
 function row(partial: Partial<WorkerRunRow> & { created_at: string }): WorkerRunRow {
   return { pulled: null, sent: null, failed: null, backlog: null, skipped: null, ...partial };
@@ -68,5 +73,37 @@ describe("toWorkerRunRow", () => {
     expect(toWorkerRunRow({ pulled: 2 })).toBeNull();
     expect(toWorkerRunRow(null)).toBeNull();
     expect(toWorkerRunRow("x")).toBeNull();
+  });
+});
+
+describe("pickReadChannel（本机到底有哪个凭据）", () => {
+  it("有 URL + service_role 就走 PostgREST，**即使没有 sbp_ 令牌**", () => {
+    // 这条钉的是 2026-10-25 实测到的那个假阴性：本机两个都有、令牌没有，
+    // 旧实现只认令牌，于是把「唯一在途的证据任务」挡在门外。
+    expect(
+      pickReadChannel({
+        supabaseUrl: "https://x.supabase.co",
+        serviceRoleKey: "jwt",
+        accessToken: "",
+      }),
+    ).toBe("rest");
+  });
+
+  it("只有 sbp_ 令牌 ⇒ 退到 Management API 只读 SQL", () => {
+    expect(
+      pickReadChannel({ supabaseUrl: "", serviceRoleKey: "", accessToken: "sbp_x" }),
+    ).toBe("management-api");
+  });
+
+  it("service_role 有、URL 没有 ⇒ 不能走 PostgREST（少一半不算配好）", () => {
+    expect(
+      pickReadChannel({ supabaseUrl: "", serviceRoleKey: "jwt", accessToken: "" }),
+    ).toBe("unavailable");
+  });
+
+  it("空白值等价于没有（`.env` 写 `KEY=` 的常见踩法）", () => {
+    expect(
+      pickReadChannel({ supabaseUrl: "  ", serviceRoleKey: " ", accessToken: "   " }),
+    ).toBe("unavailable");
   });
 });

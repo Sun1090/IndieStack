@@ -24,6 +24,7 @@ const baseOptions = {
   projectRef: "abc123defg",
   token: "sbp_token_placeholder",
   supabaseUrl: "",
+  serviceRoleKey: "",
   timeoutMs: 1000,
   help: false,
 };
@@ -66,10 +67,13 @@ describe("observationSql", () => {
 });
 
 describe("runDigestObservation", () => {
-  it("缺 token ⇒ 退出码 2（未知不算通过，也不算坏）", async () => {
+  it("两条通道的凭据都没有 ⇒ 退出码 2（未知不算通过，也不算坏）", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // baseOptions 里 supabaseUrl/serviceRoleKey 都是空、token 也清空 ⇒ 无处可读。
     const code = await runDigestObservation({ ...baseOptions, token: "" });
     expect(code).toBe(2);
+    const msg = spy.mock.calls.map((c) => String(c[0])).join("");
+    expect(msg).toContain("两条读通道的凭据都没有");
     spy.mockRestore();
   });
 
@@ -121,5 +125,56 @@ describe("exitCodeFor", () => {
     expect(exitCodeFor("COMPLETED_FAILING")).toBe(0);
     expect(exitCodeFor("NOT_TRIGGERED")).toBe(1);
     expect(exitCodeFor("TOO_EARLY")).toBe(2);
+  });
+});
+
+describe("REST 通道（service_role 直读 PostgREST，2026-10-25 新增）", () => {
+  it("本机形态：有 URL + service_role、没有 sbp_ 令牌 ⇒ 走 rest 并能答", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        calls.push(String(url));
+        return new Response(
+          JSON.stringify([
+            { created_at: "2026-10-25T09:00:05Z", pulled: 1, sent: 1, failed: 0, backlog: 0, skipped: 0 },
+          ]),
+          { status: 200 },
+        );
+      }),
+    );
+    const log: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((m) => log.push(String(m)));
+    const code = await runDigestObservation({
+      ...baseOptions,
+      token: "",
+      supabaseUrl: "https://abc123defg.supabase.co",
+      serviceRoleKey: "service-jwt",
+      since: "2020-01-01T00:00:00Z",
+      firstExpected: "2020-01-01T09:00:00.000Z",
+    });
+    vi.mocked(console.log).mockRestore();
+    expect(code).toBe(0);
+    // 走的是 PostgREST 而不是 Management API，并且取的是判定要用的那几列。
+    expect(calls[0]).toContain("/rest/v1/email_worker_runs");
+    expect(calls[0]).toContain("backlog");
+    expect(calls[0]).not.toContain("api.supabase.com");
+    expect(log.some((line) => line.includes("通道=rest"))).toBe(true);
+  });
+
+  it("REST 返回非 2xx ⇒ 2（诚实的未知，不冒充「没有行」）", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("relation does not exist", { status: 404 })));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const code = await runDigestObservation({
+      ...baseOptions,
+      token: "",
+      supabaseUrl: "https://abc123defg.supabase.co",
+      serviceRoleKey: "service-jwt",
+    });
+    const msg = spy.mock.calls.map((c) => String(c[0])).join("");
+    expect(code).toBe(2);
+    // 报错里带上通道：否则「读不到」会被读成探测坏了，而不是这条通道不通。
+    expect(msg).toContain("通道 rest");
+    spy.mockRestore();
   });
 });

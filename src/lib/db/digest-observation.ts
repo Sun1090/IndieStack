@@ -59,6 +59,31 @@ export function toWorkerRunRow(raw: unknown): WorkerRunRow | null {
   return row;
 }
 
+/** 读通道：service_role 直读 PostgREST / Management API 只读 SQL / 两者都不具备。 */
+export type DigestReadChannel = "rest" | "management-api" | "unavailable";
+
+/**
+ * 选读通道——**次序不是偏好，是「本机到底有哪个凭据」**。
+ *
+ * 起因（2026-10-25 实测）：探测原先只认 Management API 的 `sbp_` 令牌，
+ * 而本机 `.env.local` 有 `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
+ * （同一天 `ops:schema-drift` 就是靠这两个读通了同一个库）、**没有** `sbp_` 令牌。
+ * 于是「唯一在途的证据任务」被一个它并不需要的凭据挡住，探测报「缺令牌」时
+ * 看起来像「这台机器查不了」——本仓库已为这类误读付过四次学费。
+ *
+ * 两条通道返回的行形状相同（`created_at` + 五个计数列），判定层不分支，
+ * 所以「用哪条」是 IO 细节，不是结论的一部分。
+ */
+export function pickReadChannel(creds: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  accessToken: string;
+}): DigestReadChannel {
+  if (creds.supabaseUrl.trim().length > 0 && creds.serviceRoleKey.trim().length > 0) return "rest";
+  if (creds.accessToken.trim().length > 0) return "management-api";
+  return "unavailable";
+}
+
 function describeRow(row: WorkerRunRow): string {
   const at = row.created_at.replace("T", " ").slice(0, 16);
   return `${at} pulled=${row.pulled ?? "?"} sent=${row.sent ?? "?"} failed=${row.failed ?? "?"} backlog=${row.backlog ?? "?"} skipped=${row.skipped ?? "?"}`;

@@ -10,16 +10,27 @@
  * 那两个参数是「证据的时间锚」，换一次部署就要换——所以它们是可覆盖的 flag，
  * 而不是焊死在源码里的常量。
  *
- * 通道：Management API 的 `POST /v1/projects/{ref}/database/query/read-only`
- * （与 ops:cloud-sql-probe 同一族，跑在 `supabase_read_only_user` 下）。
- * 只读一条 SELECT，不写任何东西。
+ * 通道（两条，判据同一份）：
+ *   1. **service_role 直读 PostgREST**（`GET /rest/v1/email_worker_runs`，与
+ *      `src/lib/repositories/worker-runs.ts` 的 `listRecentEmailWorkerRuns` 同一条路）。
+ *      凭据是 `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`——
+ *      **本机 `.env.local` 就有这两个**，所以明天那条读数不必等任何额外令牌。
+ *   2. Management API `POST /v1/projects/{ref}/database/query/read-only`
+ *      （与 ops:cloud-sql-probe 同族，跑在 `supabase_read_only_user` 下），
+ *      凭据是 `SUPABASE_ACCESS_TOKEN`。
+ *
+ * 顺序：URL+service_role 在就用 ①，否则有令牌用 ②。**这个次序不是偏好**——
+ * 2026-10-25 实测本机有 service_role 而**没有** `sbp_` 令牌，旧版只认 ②，
+ * 于是「唯一在途的证据任务」被一个它并不需要的凭据挡住，探测报「缺令牌」时
+ * 看起来像「这台机器查不了」（本仓库已为这类误读付过四次学费）。
+ * 两条通道都只读，返回的行形状相同（`created_at` + 五个计数列），判定层不分支。
  *
  * 退出码：0 跑通（COMPLETED_*，含失败侧的读数）/ 1 未落表（坏结论）/
  * 2 还没到时候或读不到实况（**未知不算通过，也不算坏**）。
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { judgeDigestObservation, toWorkerRunRow } from "../../src/lib/db/digest-observation.ts";
+import { judgeDigestObservation, pickReadChannel, toWorkerRunRow } from "../../src/lib/db/digest-observation.ts";
 import { readEnvSources } from "./env-sources.js";
 import { resolveProjectRef } from "../../src/lib/supabase-project-ref.ts";
 
@@ -35,6 +46,7 @@ const VALUE_FLAGS = {
   "--first-expected": "firstExpected",
   "--project-ref": "projectRef",
   "--token": "token",
+  "--service-role-key": "serviceRoleKey",
 };
 
 /** 单个 flag 的应用逻辑。拆出来是因为 parseArgs 的分支复杂度贴着 ESLint 上限。 */
@@ -57,6 +69,7 @@ export function parseArgs(argv, env = process.env) {
     projectRef: env.SUPABASE_PROJECT_REF || "",
     token: env.SUPABASE_ACCESS_TOKEN || "",
     supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL || "",
+    serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
     timeoutMs: 20_000,
     help: false,
   };
@@ -86,6 +99,45 @@ export function observationSql(sinceIso) {
     "select created_at, pulled, sent, failed, backlog, skipped from public.email_worker_runs " +
     `where created_at >= '${safe}'::timestamptz order by created_at desc limit 20;`
   );
+}
+
+/**
+ * 通道①：service_role 直读 PostgREST。与仓库 `listRecentEmailWorkerRuns` 同一张表、
+ * 同一批列；**since 的过滤留给判定层**（这里只取最近 20 行），所以两条通道共用
+ * 一份判据，不会因为「谁做时间过滤」不同而漂移。
+ */
+export async function queryRest(options, fetchImpl = globalThis.fetch) {
+  const url = String(options.supabaseUrl).replace(/\/+$/, "");
+  const endpoint =
+    `${url}/rest/v1/email_worker_runs` +
+    "?select=created_at,pulled,sent,failed,backlog,skipped&order=created_at.desc&limit=20";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  try {
+    const response = await fetchImpl(endpoint, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        apikey: options.serviceRoleKey,
+        Authorization: `Bearer ${options.serviceRoleKey}`,
+        Accept: "application/json",
+      },
+    });
+    const text = await response.text();
+    if (!response.ok) return { error: `HTTP ${response.status} ${response.statusText} ${text.slice(0, 200)}` };
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      return { error: `响应不是 JSON：${text.slice(0, 160)}` };
+    }
+    if (!Array.isArray(payload)) return { error: `响应形状不认识（不是数组）：${text.slice(0, 160)}` };
+    return { rows: payload.map(toWorkerRunRow).filter((row) => row !== null) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** 经只读端点跑一条 SELECT。响应形状不认识 ⇒ 返回 error（未知），不返回空数组。 */
@@ -140,9 +192,23 @@ export function exitCodeFor(verdict) {
 export async function runDigestObservation(options) {
   const since = options.since;
   const firstExpected = options.firstExpected || nextDigestUtcIso(since);
-  const queried = await queryReadOnly(options, observationSql(since));
+  const channel = pickReadChannel({
+    supabaseUrl: options.supabaseUrl ?? "",
+    serviceRoleKey: options.serviceRoleKey ?? "",
+    accessToken: options.token ?? "",
+  });
+  if (channel === "unavailable") {
+    console.error(
+      "❌ 读不到 email_worker_runs：两条读通道的凭据都没有——" +
+        "既没有 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY，也没有 SUPABASE_ACCESS_TOKEN" +
+        "（未知不算通过，也不算坏）",
+    );
+    return 2;
+  }
+  const queried =
+    channel === "rest" ? await queryRest(options) : await queryReadOnly(options, observationSql(since));
   if (queried.error) {
-    console.error(`❌ 读不到 email_worker_runs：${queried.error}（未知不算通过，也不算坏）`);
+    console.error(`❌ 读不到 email_worker_runs（通道 ${channel}）：${queried.error}（未知不算通过，也不算坏）`);
     return 2;
   }
   const report = judgeDigestObservation({
@@ -152,7 +218,7 @@ export async function runDigestObservation(options) {
     nowIso: new Date().toISOString(),
   });
   console.log(`${MARKS[report.verdict]} [${report.verdict}] ${report.evidence}`);
-  console.log(`（锚点：since=${since} 第一轮应发生=${firstExpected}）`);
+  console.log(`（锚点：since=${since} 第一轮应发生=${firstExpected} 通道=${channel}）`);
   return exitCodeFor(report.verdict);
 }
 
@@ -164,7 +230,8 @@ const HELP = [
   "  --project-ref <ref>    Supabase 项目 ref（默认 SUPABASE_PROJECT_REF）",
   "  --token <sbp_…>        Management API 令牌（默认 SUPABASE_ACCESS_TOKEN；不会打印）",
   "",
-  "只读：经 POST /v1/projects/{ref}/database/query/read-only 跑一条 SELECT。",
+  "只读。通道：有 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY 就走 PostgREST；否则有",
+  "  SUPABASE_ACCESS_TOKEN 就走 Management API 只读 SQL。两者都没有 ⇒ 退出码 2。",
   "退出码：0 跑通（含失败侧读数）/ 1 未落表 / 2 还没到时候或读不到实况",
 ].join("\n");
 

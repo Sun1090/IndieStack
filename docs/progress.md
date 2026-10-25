@@ -10674,3 +10674,34 @@
   跑 `pnpm ops:digest-observation`（它现在也能从 `.env.local` 自己拿到 ref，只差 `sbp_` 令牌，
   可在 CI 或带 PAT 的环境跑）；B03 剩可牺牲账号、B04 剩人工授权。
 - 更新时间：2026-10-25 09:20（UTC+8）。
+
+## 2026-10-25 — ops:digest-observation 补 service_role 直读通道：唯一在途的证据任务不再被它不需要的凭据挡住
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/digest-observation-rest-channel`。
+- 状态：DONE。
+- 为什么做：上一条（#285）把 ops 探测的凭据取数口统一后，`ops:digest-observation`
+  裸跑从「解析不出 ref」变成「缺 SUPABASE_ACCESS_TOKEN」——诚实，但仍答不了。
+  而明天 09:00 UTC 的 digest 首轮是**唯一在途的证据任务**：本机 `.env.local` 有
+  URL + service_role key（`ops:schema-drift` 用同两个凭据读通了同一个库），
+  **没有** `sbp_` 令牌。一个只认 `sbp_` 的探测会把这条任务卡在「缺令牌」上，
+  那正是本仓库把「没去找」写成「查不了」的第五种形态——本轮在窗口开启前把它消掉。
+- 做了什么：
+  1. 判定层新增纯函数 `pickReadChannel`：URL+service_role 在 ⇒ `rest`；
+    否则有 `sbp_` ⇒ `management-api`；都缺 ⇒ `unavailable`（+4 条用例）。
+    **次序不是偏好，是「本机到底有哪个凭据」**。
+  2. IO 层新增 `queryRest`：`GET /rest/v1/email_worker_runs?select=…&order=created_at.desc&limit=20`，
+    与仓库 `listRecentEmailWorkerRuns` 同一张表、同一批列；**since 的过滤留给判定层**
+    （两通道都取最近 20 行 desc，行序单调 ⇒ 等价，不会因「谁做时间过滤」漂移）。
+    响应形状不认识 ⇒ 诚实的未知（退出码 2），不返回空数组冒充「没有行」。
+  3. 输出带 `通道=rest|management-api`——读数可自证来源；报错也带通道，
+    否则「读不到」会被读成探测坏了，而不是这条通道不通。
+- 实测（2026-10-25T02:00Z，不 source 裸跑）：修复前报「缺少 SUPABASE_ACCESS_TOKEN」；
+  修复后直达数据库，给出诚实的 `⏳ [TOO_EARLY]`（首轮应发生在 09:00Z，还没到），
+  锚点行注明 `通道=rest`。窗口开启后同一条命令即出真实读数。
+- 验证：判定 13 + IO 11 条全绿（新增 pickReadChannel 4 条、REST 通道 IO 2 条）；
+  `check:all` ✅（exit 0）；lint / type-check 0 error。
+- 阻塞 / 风险 / 回滚：REST 通道只读、service_role 只出现在 header 里不进日志。
+  回滚 = revert 本 PR。
+- 下一项：**09:00 UTC 后跑 `pnpm ops:digest-observation` 取首轮读数**（现在本机即可跑，
+  不再需要任何额外令牌）；B03 剩可牺牲账号、B04 剩人工授权。
+- 更新时间：2026-10-25 10:10（UTC+8）。
