@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   QUOTA_READINGS,
   consecutivePassFromTail,
+  consecutivePassPrsFromTail,
   longestPassStreak,
   readingChainText,
   readingCount,
@@ -74,6 +75,49 @@ describe("跨文件对账：文档里的那句话必须等于台账算出的结�
     expect(ROW).toContain("会波动");
     // 而且文档**不得**出现「配额已解除」这种肯定句式
     expect(ROW).not.toMatch(/配额已解除(?!」?也不是|——|：|」)/);
+  });
+
+  it("文档里「按 PR 数只有 N」的 N = PR 级连击（判「解除」的那个门槛）", () => {
+    // 这条是补的：门槛写的是「连续多个 **PR** 全过且生产跟上」，
+    // 而尾部连击数的是**读数条数**——一个 PR 贡献两条读数，于是 10 条看着像 10 个 PR。
+    // 不钉住 PR 级那个数，门槛就只能靠人脑换算，正是 #255/#256 被反例按回去那类错。
+    const claimed = Number(/按 PR 数只有\s*(\d+)/.exec(ROW!)?.[1]);
+    expect(claimed, "文档里「按 PR 数只有 N」的措辞变了，对账失效").not.toBeNaN();
+    expect(claimed).toBe(consecutivePassPrsFromTail());
+  });
+
+  it("PR 级连击不会超过读数级（每个 PR 至少一条读数）", () => {
+    expect(consecutivePassPrsFromTail()).toBeLessThanOrEqual(consecutivePassFromTail());
+  });
+
+  it("PR 级只数「有生产读数」的 PR——只过预览的不算", () => {
+    const previewOnly: QuotaReading[] = [
+      { pr: 1, pool: "preview", outcome: "pass", at: "2026-10-13", note: "x" },
+      { pr: 2, pool: "preview", outcome: "pass", at: "2026-10-13", note: "x" },
+    ];
+    // #256 与 #288–#290 的形态：预览过了、生产没上去 ⇒ 一个都不计入门槛。
+    expect(consecutivePassPrsFromTail(previewOnly)).toBe(0);
+    expect(consecutivePassFromTail(previewOnly)).toBe(2); // 读数级会误报 2 连
+  });
+
+  it("PR 的两条读数里混进 mixed 就断（mixed 不是 pass）", () => {
+    const mixedAtTail: QuotaReading[] = [
+      { pr: 1, pool: "preview", outcome: "pass", at: "2026-10-13", note: "x" },
+      { pr: 1, pool: "production", outcome: "pass", at: "2026-10-13", note: "x" },
+      { pr: 2, pool: "preview", outcome: "mixed", at: "2026-10-13", note: "x" },
+      { pr: 2, pool: "production", outcome: "pass", at: "2026-10-13", note: "x" },
+    ];
+    // mixed 落在**最末**那个 PR ⇒ 从尾数第一个就断，连 1 都不给（#289/#290 正是这形状）。
+    expect(consecutivePassPrsFromTail(mixedAtTail)).toBe(0);
+
+    const mixedEarlier: QuotaReading[] = [
+      { pr: 1, pool: "preview", outcome: "mixed", at: "2026-10-13", note: "x" },
+      { pr: 1, pool: "production", outcome: "pass", at: "2026-10-13", note: "x" },
+      { pr: 2, pool: "preview", outcome: "pass", at: "2026-10-13", note: "x" },
+      { pr: 2, pool: "production", outcome: "pass", at: "2026-10-13", note: "x" },
+    ];
+    // mixed 在更早的 PR ⇒ 只数它之后攒下的 1 个。
+    expect(consecutivePassPrsFromTail(mixedEarlier)).toBe(1);
   });
 
   it("文档里「最长连击只有 N」的 N = 台账算出的最长连击", () => {
