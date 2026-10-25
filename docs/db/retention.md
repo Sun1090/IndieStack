@@ -395,6 +395,21 @@ digest 每轮往 `email_worker_runs` **插一行**，所以「跑没跑」在库
 ② 先造一行超期数据（如 `api_usage` 插一条 `created_at` 早于 90 天），下一轮后它消失。
 ②是唯一能在库里留下可复跑判据的做法——**但它是往生产写**，与 B04 同属人工授权范围。
 
+**【2026-10-25 补三个读数，把「读 Vercel 日志」从模糊收窄成精确】**：
+
+- **通道①当前没有可用凭据**：本机 `.env.local` 里的 `VERCEL_TOKEN` 对 Management API
+  无效——`curl "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&limit=1"
+  -H "Authorization: Bearer $VERCEL_TOKEN"` ⇒ **HTTP 403 `invalidToken: true`**
+  （2026-10-25T02:25Z 实测；仓库里没有任何脚本在用它，只出现在
+  `src/lib/security/security-config.ts` 的键名清单里）。⇒ 通道①的精确阻塞是
+  **一个有效的 Vercel API token**（maintainer 提供），不是「去读日志」这个动作本身。
+- **retention 首轮窗口比 digest 早 4 小时**：`vercel.json` 调度 `0 5 * * *`
+  ⇒ 405 修复（2026-10-24T10:42Z 部署）后的第一轮真实执行是 **2026-10-25T05:00Z**，
+  digest 是 09:00Z。窗口开启顺序：retention → digest → push-retry（22:00Z）。
+- **push-retry 同型空洞**：`push_subscriptions` / `push_delivery_attempts` 两张表
+  均 `*/0`（2026-10-25 REST 实测）——push-retry 的「跑没跑」与 retention 一样
+  无法从库侧区分，且它的首轮窗口（22:00Z）在 digest 之后。
+
 ## 变更痕迹
 
 - `003_projects_notifications_indexes.sql`：`cleanup_old_notifications()`

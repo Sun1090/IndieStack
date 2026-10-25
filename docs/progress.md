@@ -10705,3 +10705,29 @@
 - 下一项：**09:00 UTC 后跑 `pnpm ops:digest-observation` 取首轮读数**（现在本机即可跑，
   不再需要任何额外令牌）；B03 剩可牺牲账号、B04 剩人工授权。
 - 更新时间：2026-10-25 10:10（UTC+8）。
+
+## 2026-10-25 —【读数收窄】retention 证据通道的两个精确化 + push-retry 同型空洞确认
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/retention-evidence-precise-blockers`。
+- 状态：DONE。
+- 为什么做：#286 闭合了 digest 的取数通道后，405 修复的**另一半**（retention worker）
+  仍是「读 Vercel 函数日志」这句模糊指引——谁去读、拿什么凭据读、什么时候有得读，
+  三个都没钉。本轮逐项实测，把模糊阻塞变成精确阻塞。
+- 做了什么（三个读数，全部当日实测）：
+  1. **通道①（读函数日志）当前无凭据**：本机 `.env.local` 的 `VERCEL_TOKEN` 对
+     Management API ⇒ **HTTP 403 `invalidToken: true`**
+     （`GET /v6/deployments?projectId=…&limit=1`；仓库无任何脚本用它，只在
+     security-config 键名清单里）。⇒ 精确阻塞 =「一个有效的 Vercel API token」，
+     是 maintainer 可直接提供的，不是「去读日志」这个动作。
+  2. **窗口顺序钉死**：`vercel.json` 实读——retention `0 5 * * *`、digest `0 9 * * *`、
+     push-retry `0 22 * * *` ⇒ 首轮真实执行顺序 retention（05:00Z）→ digest（09:00Z）
+     → push-retry（22:00Z）。17:30 的提醒已更新为一次取两读数
+     （retention 如实记「窗口已过、无本地通道」+ 向 maintainer 索 token）。
+  3. **push-retry 同型空洞**：`push_subscriptions` / `push_delivery_attempts`
+     双 `*/0`（REST 实测）——与 retention 同型：空表无法区分「跑了没事可做」与
+     「从没跑过」，不为它写探测（扫不到东西的检查等于没有检查）。
+- 验证：读数各附取法与时间；`check:doc-links` ✅ / `check:doc-commands` ✅（1118 条）。
+- 阻塞 / 风险 / 回滚：纯文档。向 maintainer 新增一项请求：**有效的 Vercel API token**
+  （用于读 retention/push-retry 的指标日志，闭合 405 修复的另一半证据）。
+- 下一项：17:30 提醒触发后按更新过的 prompt 取 digest 读数 + 记 retention 窗口读数。
+- 更新时间：2026-10-25 10:30（UTC+8）。
