@@ -373,6 +373,54 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     // ⇒ ≤6 分钟，回到 10-13 标定的正常形态（中位 1.5 分钟）；说明恢复是稳定的，不是一次性。
     note: "合并 15:04:35Z，15:10Z 现读生产即 main（`ops:deploy-freshness`）⇒ 恢复稳定",
   },
+  {
+    pr: 293,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr view 293` 状态上下文）",
+  },
+  {
+    pr: 293,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    // 诚实口径：我没有直接读到 2e08962d 上生产的时刻，读到的是 16:09Z 那次
+    // `ops:deploy-freshness` 显示生产=cf300192（#294 的合并提交）——它是 2e08962d 的
+    // 后代 ⇒ #293 是**被后续部署覆盖**上线的（`ops:deploy-ledger` 的 coveredByPr 语义），
+    // 不是自己有独立的生产构建记录。
+    note: "被 #294 的构建带上线（16:09Z `ops:deploy-freshness` ⇒ 生产=cf300192，含 2e08962d）",
+  },
+  {
+    pr: 294,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr view 294` 状态上下文）",
+  },
+  {
+    pr: 294,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "16:09Z 现读生产即 main（cf300192，`ops:deploy-freshness`）",
+  },
+  {
+    pr: 295,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr view 295` 状态上下文）",
+  },
+  {
+    pr: 295,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    // ⚠️ 连击的**时间跨度**才是判「解除」的关键：#291 合并于 14:21Z、#295 于 16:02Z，
+    // 五个 PR 全挤在 1.7 小时内，不足一个 24h 配额窗口 ⇒ 条数够而跨度不够。
+    note: "16:34Z 现读生产即 main（d6a62dc8，`ops:deploy-freshness`）",
+  },
 ];
 
 /** 台账里读数的条数——文档表头那句「今天有 N 个读数」必须等于它。 */
@@ -414,10 +462,14 @@ export function readingVerdict(
 }
 
 /**
- * 「连续多少个 PR 都 pass 且生产跟上」——文档里判「解除」的那条门槛。
+ * 尾部连续的**读数条数**（不是 PR 个数）——别拿它回答「解除」门槛。
  *
  * 从**尾部**往回数，遇到任何非 pass 就停。
  * `mixed` 不算 pass：一 fail 一 pass 的那次观察恰恰是配额在挡路的形态。
+ * ⚠️ **这个数天然会虚高一倍**：一个 PR 通常贡献两条读数（preview + 生产），
+ * 所以「尾部 4 条」可能只是 2 个 PR。文档里那条门槛写的是「连续多个 **PR**
+ * 全过且生产跟上」——**判那个门槛请用 `consecutivePassPrsFromTail()`**，
+ * 这个函数只回答「现在几连」。
  */
 export function consecutivePassFromTail(
   readings: readonly QuotaReading[] = QUOTA_READINGS,
@@ -443,6 +495,46 @@ export function consecutivePassFromTail(
  * （**那里的两个数由 `quota-readings.test.ts` 的正则对账钉住**）。
  * 只报其中一个数都会误导：报尾部像是「从没通过过」，报最长像是「快解除了」。
  */
+/**
+ * 「连续多少个 **PR** 全过**且生产跟上**」——文档里判「解除」的那条门槛的唯一正确读数。
+ *
+ * 与 `consecutivePassFromTail` 的区别就是这条门槛的两半：
+ *   · **按 PR 归组**（一个 PR 的 preview + 生产算一次观察，不是两次）；
+ *   · **要求该 PR 有生产读数**——只有 preview pass、生产没跟上的 PR，
+ *     恰恰是 #256/#288–#290 那类「预览过了线上没上去」的形态，不能计入。
+ * 一个 PR 的两条读数里任何一条不是 pass（含 `mixed`），就在此处断开。
+ *
+ * ⚠️ **这个数达标 ≠ 可以宣布「解除」**：门槛是「连续多个 PR」，但配额是
+ * **24 小时窗口**级的东西——一段跨度不足一个窗口的连击，说明不了窗口不会重开。
+ * 判「解除」还需要连击**跨过一个完整的 24h 观察窗**（本仓库在 #255/#256
+ * 上就是这么被反例按回去的）。
+ */
+export function consecutivePassPrsFromTail(
+  readings: readonly QuotaReading[] = QUOTA_READINGS,
+): number {
+  // 按台账顺序取 PR 首次出现的次序，再把每个 PR 的读数归到它名下。
+  const order: number[] = [];
+  const byPr = new Map<number, QuotaReading[]>();
+  for (const reading of readings) {
+    if (!byPr.has(reading.pr)) {
+      byPr.set(reading.pr, []);
+      order.push(reading.pr);
+    }
+    byPr.get(reading.pr)?.push(reading);
+  }
+
+  let streak = 0;
+  for (let index = order.length - 1; index >= 0; index -= 1) {
+    const group = byPr.get(order[index]) ?? [];
+    const hasProduction = group.some((reading) => reading.pool === "production");
+    const allPass = group.length > 0 && group.every((reading) => reading.outcome === "pass");
+    if (!hasProduction || !allPass) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+
 export function longestPassStreak(
   readings: readonly QuotaReading[] = QUOTA_READINGS,
 ): number {
