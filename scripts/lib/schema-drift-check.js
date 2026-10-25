@@ -19,6 +19,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readEnvSources } from "./env-sources.js";
 import {
   inspectSchemaDrift,
   parseLiveSchema,
@@ -202,7 +203,10 @@ const HELP = [
 
 /** 解析参数、跑探测并返回退出码。 */
 export async function runCli(argv, repoRoot = REPO_ROOT) {
-  const parsed = parseArgs(argv);
+  // 凭据取数走共享口（2026-10-25）：node scripts/* 不加载 .env.local，只看
+  // process.env 会把「机器明明配着」读成「缺凭据」。合并在这一层，
+  // parseArgs 保持纯解析——单测传什么 env 就是什么，不会读到开发机的真实文件。
+  const parsed = parseArgs(argv, readEnvSources(repoRoot));
   if (parsed.error) {
     console.error(`❌ ${parsed.error}`);
     console.error(HELP);

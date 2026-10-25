@@ -27,6 +27,7 @@ import {
   parseAppliedMigrations,
   parseManifestEntries,
 } from "../../src/lib/db/migration-status.ts";
+import { readEnvSources } from "./env-sources.js";
 import { resolveProjectRef } from "../../src/lib/supabase-project-ref.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -269,7 +270,8 @@ const HELP = [
 ].join("\n");
 
 export async function runCli(argv, repoRoot = REPO_ROOT) {
-  const parsed = parseArgs(argv);
+  // 同 ops:migration-status：取数在调用层合并 env 文件，parseArgs 保持纯解析。
+  const parsed = parseArgs(argv, readEnvSources(repoRoot));
   if (parsed.error) {
     console.error(`❌ ${parsed.error}`);
     console.error(HELP);

@@ -37,6 +37,7 @@ import {
   parseManifestVersions,
   planVersionShapeFix,
 } from "../../src/lib/db/migration-status.ts";
+import { readEnvSources } from "./env-sources.js";
 import { resolveProjectRef } from "../../src/lib/supabase-project-ref.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -355,7 +356,10 @@ const HELP = [
 
 /** 解析参数、跑探测并返回退出码。 */
 export async function runCli(argv, repoRoot = REPO_ROOT) {
-  const parsed = parseArgs(argv);
+  // 凭据取数走共享口：node scripts/* 不加载 .env.local（Next 运行时才加载），
+  // 只看 process.env 会把「机器明明配着」读成「缺凭据」（2026-10-25 实测）。
+  // 合并在**这层**而不是 parseArgs 默认值里——判定保持纯函数，单测传什么 env 就是什么。
+  const parsed = parseArgs(argv, readEnvSources(repoRoot));
   if (parsed.error) {
     console.error(`❌ ${parsed.error}`);
     console.error(HELP);
