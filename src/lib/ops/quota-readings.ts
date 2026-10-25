@@ -242,6 +242,72 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     // 别信任何写死的计数。
     note: "合并约 60 秒后生产已含 `ebb13b1d`（`ops:deploy-freshness` 实测）⇒ 同一 24h 窗口内再次同形",
   },
+  // ==== 2026-10-25 晚批：#284–#289（为避免「记读数⇒开 PR⇒又撞窗口⇒再记」的自引用循环，
+  // 单条追加暂停过几轮；批量收口。生产读数只记实测到「生产跑的就是 main」的那三条，
+  // #288/#289 合并后生产落后 2 未跟进（阈值内、docs-site 限流窗口期），不记为 pass。）
+  {
+    pr: 284,
+    pool: "preview",
+    outcome: "fail",
+    at: "2026-10-25",
+    note: "两项全 fail（`gh pr checks 284`，限流窗口第 2 天复开的首个 PR）",
+  },
+  {
+    pr: 285,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr checks 285`）——窗口在 #284 与 #285 之间结束",
+  },
+  {
+    pr: 285,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "合并后 `ops:deploy-freshness` ⇒ 生产跑的就是 main（b57caf1f）",
+  },
+  {
+    pr: 286,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr checks 286`）",
+  },
+  {
+    pr: 286,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "合并后 `ops:deploy-freshness` ⇒ 生产跑的就是 main（388c9399）",
+  },
+  {
+    pr: 287,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr checks 287`）",
+  },
+  {
+    pr: 287,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "合并后 `ops:deploy-freshness` ⇒ 生产跑的就是 main（b1674b63）",
+  },
+  {
+    pr: 288,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr checks 288`）",
+  },
+  {
+    pr: 289,
+    pool: "preview",
+    outcome: "mixed",
+    at: "2026-10-25",
+    note: "主应用 pass、docs-site fail `rate limited`（`gh pr checks 289`）——同一次观察里两项目分裂",
+  },
 ];
 
 /** 台账里读数的条数——文档表头那句「今天有 N 个读数」必须等于它。 */
