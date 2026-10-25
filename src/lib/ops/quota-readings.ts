@@ -340,6 +340,39 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     at: "2026-10-25",
     note: "合并于 03:46Z，至 13:50Z（603 分钟）NEVER_DEPLOYED；main 提交上两项 `rate limited`。**14:22Z 起三笔均被 #291 的构建带上线**（`deployments` API：Production 两项 14:22:33Z/14:22:54Z = `f89be94a`）",
   },
+  {
+    pr: 291,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr view 291` 的状态上下文）⇒ 配额窗口在 14:21Z 前已结束",
+  },
+  {
+    pr: 291,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    // ⚠️ 这条就是**恢复事件本身**：合并 14:21:52Z、生产部署 14:22:33Z（41 秒后），
+    // 且这次构建把 #288/#289/#290 一并带上（`ops:deploy-ledger` 现读 CONSISTENT，
+    // 从未上线 3 ⇒ 0、跳过数 112 ⇒ 115）。判红与解除相隔 39 秒的那次 run 挂在 #290 上。
+    note: "合并 14:21:52Z、14:22:33Z 上生产（`deployments` API）并覆盖 #288–#290 ⇒ 本次恢复的载体",
+  },
+  {
+    pr: 292,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-25",
+    note: "两项 pass（`gh pr view 292` 的状态上下文）",
+  },
+  {
+    pr: 292,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-25",
+    // 恢复后的第二笔：合并 15:04:35Z，15:10Z 现读「生产跑的就是 main（f8578379）」
+    // ⇒ ≤6 分钟，回到 10-13 标定的正常形态（中位 1.5 分钟）；说明恢复是稳定的，不是一次性。
+    note: "合并 15:04:35Z，15:10Z 现读生产即 main（`ops:deploy-freshness`）⇒ 恢复稳定",
+  },
 ];
 
 /** 台账里读数的条数——文档表头那句「今天有 N 个读数」必须等于它。 */
