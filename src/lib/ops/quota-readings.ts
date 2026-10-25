@@ -310,7 +310,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "fail",
     at: "2026-10-25",
-    note: "合并于 03:01Z，至 13:50Z（649 分钟）NEVER_DEPLOYED（`ops:deploy-ledger` 现读）",
+    note: "合并于 03:01Z，至 13:50Z（649 分钟）NEVER_DEPLOYED（`ops:deploy-ledger` 现读）。**14:22Z 澄清**：随 #291 的生产构建一并上线（`coveredByPr`）⇒ 是窗口期形态，非永久未上线。",
   },
   {
     pr: 289,
@@ -324,7 +324,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "fail",
     at: "2026-10-25",
-    note: "合并于 03:30Z，至 13:50Z（619 分钟）NEVER_DEPLOYED（`ops:deploy-ledger`）",
+    note: "合并于 03:30Z，至 13:50Z（619 分钟）NEVER_DEPLOYED（`ops:deploy-ledger`）；**14:22Z 随 #291 构建覆盖上线**，同条澄清适用于下三条",
   },
   {
     pr: 290,
@@ -338,7 +338,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "fail",
     at: "2026-10-25",
-    note: "合并于 03:46Z，至 13:50Z（603 分钟）NEVER_DEPLOYED；main 提交上两项 `rate limited`",
+    note: "合并于 03:46Z，至 13:50Z（603 分钟）NEVER_DEPLOYED；main 提交上两项 `rate limited`。**14:22Z 起三笔均被 #291 的构建带上线**（`deployments` API：Production 两项 14:22:33Z/14:22:54Z = `f89be94a`）",
   },
 ];
 
