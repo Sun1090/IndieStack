@@ -20,7 +20,7 @@
 5. **种子密码边界**：`indiestack-local` 是公开固定值，只允许用于 local/staging；
    绝对不要在可被公网访问的环境执行该 seed，生产账号必须走真实注册流程
 6. **身份矩阵验证**：改 schema / RLS / Storage policy 后，在本地或 staging 执行
-   `pnpm smoke:supabase-identity`（anon/authenticated/service_role 三种身份、20 项检查），
+   `pnpm smoke:supabase-identity`（anon/authenticated/service_role 三种身份；2026-10-25 起为 23 项——新增租户隔离三查（通知逐行隔离 / 上传元数据客户端全拒），**判当下条数以运行输出为准**，别信这里写的数），
    证据与局限见 [../db/security-audit.md](../db/security-audit.md)
 
 ## Preview 安全

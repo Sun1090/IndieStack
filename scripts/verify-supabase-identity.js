@@ -23,6 +23,9 @@ const PROJECT_A_PUBLIC = "40000000-0000-0000-0000-000000000001";
 const PROJECT_A_PRIVATE = "40000000-0000-0000-0000-000000000002";
 const PROJECT_B_PRIVATE = "40000000-0000-0000-0000-000000000003";
 const SEED_PASSWORD = "indiestack-local";
+// seed.sql 的确定性通知行：租户隔离判据用（A/B 各一条，只应看见自己的）。
+const NOTIFICATION_A = "80000000-0000-0000-0000-000000000001";
+const NOTIFICATION_B = "80000000-0000-0000-0000-000000000002";
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z1xkAAAAASUVORK5CYII=",
   "base64",
@@ -249,6 +252,58 @@ async function runAuthChecks(checks, options, baseUrl, requestOptions) {
   return { ownerAToken, ownerBToken };
 }
 
+/**
+ * 租户隔离的另两块（冒烟矩阵「账户 A 读不到账户 B 的项目/通知/上传元数据」的后两块）。
+ *
+ * 判据与读数（2026-10-25 实测钉死）：
+ *  - 通知：RLS `auth.uid() = user_id` 逐行隔离——A 只见种子行 …0001、B 只见 …0002；
+ *  - 上传元数据：表**无任何客户端策略**（RLS 开 + NO-POLICIES ⇒ 全拒）——
+ *    决定性版实测：psql 给 A 造一行后 B 仍 []，连 A 自己也 []
+ *    （服务端专用表，比逐行隔离更强）。
+ * 独立成函数是因为主函数的圈复杂度贴着 ESLint 上限——每加一条检查都在长分支。
+ */
+async function addTenantIsolationChecks(checks, baseUrl, options, tokens, requestOptions) {
+  const [ownerANotifications, ownerBNotifications, ownerAUploads, ownerBUploads] = await Promise.all([
+    restSelect(baseUrl, options.anonKey, tokens.ownerAToken, "notifications", "select=id&limit=10", requestOptions),
+    restSelect(baseUrl, options.anonKey, tokens.ownerBToken, "notifications", "select=id&limit=10", requestOptions),
+    restSelect(baseUrl, options.anonKey, tokens.ownerAToken, "upload_objects", "select=id&limit=10", requestOptions),
+    restSelect(baseUrl, options.anonKey, tokens.ownerBToken, "upload_objects", "select=id&limit=10", requestOptions),
+  ]);
+
+  addCheck(
+    checks,
+    "owner-a-sees-only-own-notifications",
+    ownerANotifications.response.status === 200 &&
+      sameIds(userIds(ownerANotifications.body), [NOTIFICATION_A]),
+    `HTTP ${ownerANotifications.response.status}, visible=${userIds(ownerANotifications.body).join(",") || "none"}`,
+    ownerANotifications.response.status,
+  );
+
+  addCheck(
+    checks,
+    "owner-b-sees-only-own-notifications",
+    ownerBNotifications.response.status === 200 &&
+      sameIds(userIds(ownerBNotifications.body), [NOTIFICATION_B]),
+    `HTTP ${ownerBNotifications.response.status}, visible=${userIds(ownerBNotifications.body).join(",") || "none"}`,
+    ownerBNotifications.response.status,
+  );
+
+  addCheck(
+    checks,
+    "upload-metadata-client-deny",
+    ownerAUploads.response.status === 200 &&
+      Array.isArray(ownerAUploads.body) &&
+      ownerAUploads.body.length === 0 &&
+      ownerBUploads.response.status === 200 &&
+      Array.isArray(ownerBUploads.body) &&
+      ownerBUploads.body.length === 0,
+    `A: HTTP ${ownerAUploads.response.status}/${ownerAUploads.body?.length ?? "?"} rows, ` +
+      `B: HTTP ${ownerBUploads.response.status}/${ownerBUploads.body?.length ?? "?"} rows ` +
+      "(表无客户端策略：连 owner 自己也读不到 ⇒ 比逐行隔离更强)",
+    ownerAUploads.response.status,
+  );
+}
+
 async function runRestChecks(checks, options, baseUrl, tokens, requestOptions) {
   const teamFilter = `id=in.(${TEAM_A},${TEAM_B})&select=id`;
   const profileFilter = `id=in.(${OWNER_A},${OWNER_B},${MEMBER_A})&select=id`;
@@ -298,6 +353,15 @@ async function runRestChecks(checks, options, baseUrl, tokens, requestOptions) {
       sameIds(userIds(ownerAProjects.body), [PROJECT_A_PUBLIC, PROJECT_A_PRIVATE]),
     `HTTP ${ownerAProjects.response.status}, visible=${userIds(ownerAProjects.body).join(",") || "none"}`,
     ownerAProjects.response.status,
+  );
+
+  // 租户隔离的另两块（通知 / 上传元数据）——抽到独立函数：主函数圈复杂度贴着上限。
+  await addTenantIsolationChecks(
+    checks,
+    baseUrl,
+    options,
+    tokens,
+    requestOptions,
   );
 }
 
