@@ -10633,3 +10633,44 @@
   回滚 = revert。
 - 下一项：17:30 后 `pnpm ops:digest-observation`；B03 剩可牺牲账号、B04 剩人工授权。
 - 更新时间：2026-10-25 05:35（UTC+8）。
+
+## 2026-10-25 — 把凭据假阴性从「一个脚本」修成「一族脚本」：共享 env 取数口
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/shared-env-credential-source`。
+- 状态：DONE。
+- 为什么做：上一条修 `drills:preflight` 时记的教训是「判定要写成可单测的函数」。
+  本轮按同一条**去扫整族探测**，发现这个缺陷根本不只住在那一个脚本：`ops:migration-status`、
+  `ops:digest-observation`、`db:apply`、`ops:cloud-sql-probe`、`ops:schema-drift`、
+  `audit:storage-orphans` 全都直接读 `process.env`，而 `node scripts/*` **不加载 `.env.local`**
+  （只有 Next 运行时加载）。后果是**每一个本地探测都自带一个假阴性**——「这台机器明明配着
+  凭据，探测报『读不到云端』」，而这类探测的退出码语义是「未知不算通过」，假阴性会被读成
+  「这台机器查不了」，正是本仓库已犯过至少四次的那一族错误（`migration list`、CodeQL 告警列表、
+  `gh secret` 推能力、上一轮的 preflight）。逐个打补丁必然漏，所以修在源头：一个共享取数口。
+- 做了什么：
+  1. 判定（占位符怎么算、`mergeEnvSources` 先到先得、dotenv 解析）外移到
+     `src/lib/env-credentials.ts`；`preflight.ts` 改为**再导出**（调用点与单测的 import 路径不变）。
+  2. 读文件外移到 `scripts/lib/env-sources.js`（`readEnvSources(repoRoot, env)`，默认含 `process.env`；
+     传 `env: null` 可只取文件，供单测构造「机器上只有 `.env.local`」这个真实形态）。
+     优先级与 Next 一致：`process.env` → `.env.local` → `.env.development.local` →
+     `.env.development` → `.env`（**顺序即优先级，`mergeEnvSources` 先到先得**；这一条被
+     `env-credentials.test.ts` 直接钉住，因为我上一版刚把 `.reverse()` 写反过一次）。
+  3. 接到 6 个入口。**合并在调用层**（`runCli` / `resolveDeps` 的默认值），`parseArgs` 保持纯解析——
+     这样单测传什么 env 就是什么，**不会读到开发机的真实 `.env.local`**（第一版我把合并塞进
+     `parseArgs` 的默认参数，被自己的测试确定性要求挡回来了）。
+  4. 边界：**`apply-auth-email-templates.js` 不接**——它是 CJS 入口（`require`），引不了 ESM+TS 的
+     共享口；且它要的 `SUPABASE_ACCESS_TOKEN` 本就不在 `.env.local`，假阴性对它不成立。
+     扫过同类但确认**不属此病**的：`supabase-auto-restore`（CI 里跑，凭据源就该是 CI secrets，
+     接本地文件反而掩盖 CI 配错）、`supabase-security-check`（那行只是正则扫源码里的字符串，不读凭据）。
+- 实测（不 source，裸跑）：`check-schema-drift` 修复前必须 `source .env.local` 才跑通，
+  修复后直接报「✅ 线上 schema 与代码引用一致：19 表 / 174 列」；`check-migration-status` 从
+  「不知道要查哪个项目」变成解析出 ref、只剩「缺 Management API 令牌」这个**诚实**的未知
+  （本机 `.env.local` 确实只有 anon/service key，没有 `sbp_` 令牌）。
+- 验证：新增 `env-credentials.test.ts`（18）+ `env-sources-io.test.ts`（7，全用临时目录）；
+  `vitest src/lib` 225 文件 / 3218 passed / 1 skipped（skipped 是需 docker 的真写组）；
+  lint / type-check 0 error；`check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：风险是「本地探测默认值变化」——CI 里没有 `.env.local`（gitignored），
+  行为与改动前逐字相同；本机则是少踩一个假阴性。回滚 = revert 本 PR。
+- 下一项：**09:00 UTC 的 digest 第一轮**——现在 01:13 UTC，窗口还有约 8 小时，届时
+  跑 `pnpm ops:digest-observation`（它现在也能从 `.env.local` 自己拿到 ref，只差 `sbp_` 令牌，
+  可在 CI 或带 PAT 的环境跑）；B03 剩可牺牲账号、B04 剩人工授权。
+- 更新时间：2026-10-25 09:20（UTC+8）。
