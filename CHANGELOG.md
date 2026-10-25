@@ -40,6 +40,17 @@ See `docs/operations/release-tag-ledger.md`.
   **不冒充「生产也这样」**（生产侧 health 要 apikey，不带 ⇒ 401，已实测）。
   B03 的不确定性因此减少一格，但**「需要可牺牲账号」这项外部权限不变**。
 
+- **`ops:digest-observation` 补 service_role 直读通道——唯一在途的证据任务不再被它不需要的凭据挡住。**
+  原版只认 Management API 的 `sbp_` 令牌，而本机 `.env.local` 有 URL + service_role key、
+  **没有** `sbp_`（2026-10-25 实测：`ops:schema-drift` 用同两个凭据读通了同一个库）。
+  于是「明天取 digest 首轮读数」这条唯一在途任务，会被一个它并不需要的凭据卡成
+  「缺令牌 ⇒ 读不到」——那正是本仓库把「没去找」写成「查不了」的第五种形态。
+  新判定 `pickReadChannel`（纯函数，+4 条用例）：URL+service_role 在就走
+  PostgREST `GET /rest/v1/email_worker_runs`（与仓库 `listRecentEmailWorkerRuns`
+  同一张表同一批列），否则有 `sbp_` 才退 Management API 只读 SQL，两者都缺 ⇒ 退出码 2。
+  两条通道行形状相同，判定层不分支；输出注明 `通道=rest|management-api`，
+  读数可自证来源。**实测（不 source 裸跑）**：修复前报「缺少 SUPABASE_ACCESS_TOKEN」，
+  修复后直达数据库并给出诚实的 `TOO_EARLY`（窗口 2026-10-25T09:00Z 未开）。
 - **`pnpm ops:digest-observation`：把「digest worker 端到端跑通」的判据固化成只读探测。**
   405 修复（#236）部署后，台账给的判据是口头描述（「`email_worker_runs` 非零行 +
   `cron.digest.completed`」）——按本仓库「一次性读出的结论必须附可复跑命令」的规矩，
