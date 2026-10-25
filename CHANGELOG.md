@@ -70,6 +70,23 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **ops 探测读错凭据来源：`node scripts/*` 不加载 `.env.local`，只看 `process.env`
+  ⇒ 把「这台机器明明配着」报成「缺凭据」。** 与下面那条 `drills:preflight` 同源，但缺陷住在
+  **一整族探测**里：`ops:migration-status`、`ops:digest-observation`、`db:apply`、
+  `ops:cloud-sql-probe`、`ops:schema-drift`、`audit:storage-orphans` 各自直接读 `process.env`，
+  逐个打补丁必然漏。抽出**共享取数口**：判定（占位符怎么算、合并顺序）进
+  `src/lib/env-credentials.ts`（+18 条单测，含「直接拿 `.env.example` 的真实模板值判」这条），
+  读文件进 `scripts/lib/env-sources.js`（+7 条，全部用临时目录，不碰开发机真实文件）。
+  优先级与 Next 一致：`process.env` → `.env.local` → `.env.development.local` →
+  `.env.development` → `.env`（`mergeEnvSources` 先到先得）。**合并在调用层
+  （`runCli` / `resolveDeps`），`parseArgs` 保持纯解析**——单测传什么 env 就是什么，
+  不会读到本机文件。实测：修复前 `check-schema-drift` 必须 `source .env.local` 才跑通，
+  修复后直接 `node scripts/check-schema-drift.js` 即报「✅ 线上 schema 与代码引用一致」；
+  `check-migration-status` 从「不知道要查哪个项目」变成解析出 ref、只剩「缺 Management API
+  令牌」这个**诚实**的未知。**边界（刻意不接）**：`apply-auth-email-templates.js` 是 CJS 入口
+  （`require`），引不了 ESM+TS 的共享口；它要的 `SUPABASE_ACCESS_TOKEN` 本就不在 `.env.local`，
+  假阴性对它不成立。
+
 - **`pnpm drills:preflight` 的凭据探针读错了来源，把「本机明明配着」报成「缺凭据」。**
   旧实现只看 `process.env`，而 `node scripts/*` 不加载 `.env.local`（Next.js 运行时才加载）——
   于是 B03 登记的「缺 `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` /

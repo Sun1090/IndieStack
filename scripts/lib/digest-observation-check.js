@@ -20,8 +20,10 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { judgeDigestObservation, toWorkerRunRow } from "../../src/lib/db/digest-observation.ts";
+import { readEnvSources } from "./env-sources.js";
 import { resolveProjectRef } from "../../src/lib/supabase-project-ref.ts";
 
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const API_BASE = "https://api.supabase.com/v1";
 const DEPLOY_405_FIX_ISO = "2026-10-24T10:42:42Z";
 /** digest 的调度时刻（`vercel.json`）：每日 09:00 UTC。 */
@@ -170,7 +172,7 @@ const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
 if (invokedDirectly) {
-  const parsed = parseArgs(process.argv.slice(2));
+  const parsed = parseArgs(process.argv.slice(2), readEnvSources(REPO_ROOT));
   if (parsed.error) {
     console.error(`❌ ${parsed.error}`);
     console.error(HELP);

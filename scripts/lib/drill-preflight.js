@@ -18,10 +18,9 @@ import {
   credentialLooksConfigured,
   evaluateAllDrills,
   fileRequirementPaths,
-  mergeEnvSources,
-  parseEnvFileText,
   summarize,
 } from "../../src/lib/drills/preflight.ts";
+import { readEnvSources } from "./env-sources.js";
 
 /** 仓库根：`file:` 型前置里不带 `~` 的路径一律相对它解析。 */
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -53,7 +52,7 @@ function parseOnly(argv) {
 function readEnvProbe() {
   /** @type {EnvProbe} */
   const probe = {};
-  const resolved = readEnvSources();
+  const resolved = readEnvSources(REPO_ROOT);
   const names = new Set();
   for (const spec of evaluateAllDrills({}).flatMap((verdict) => verdict.requirements)) {
     for (const part of spec.source.split(" + ")) names.add(part.trim());
@@ -78,29 +77,13 @@ function readEnvProbe() {
 }
 
 /**
- * env 文件名单：**Next.js 运行时会自动加载这些**，而 `node scripts/*` 不会。
- * 预检必须读同一批文件，否则「机器明明配了、探针却报缺」的假阴性
- * 会顺着 ready 信号与文档一路滚出去（2026-10-25 实测就是这么把 B03
- * 登记成「缺 SUPABASE_URL / SERVICE_ROLE_KEY」的，而当天本机那两个 key
- * 打 `auth/v1/admin/users` 返回 200）。`.env.local` 优先于 `.env`，
- * `process.env` 覆盖一切——与 Next 的加载顺序一致。
+ * env 取数口外移到 `scripts/lib/env-sources.js`（2026-10-25）：
+ * 同一个「只看 process.env」的缺陷不止住在本命令——`ops:migration-status`、
+ * `ops:digest-observation`、`db:apply`、`ops:cloud-sql-probe` 全都一样，
+ * 而 `node scripts/*` 不加载 `.env.local`（Next 运行时才加载）。
+ * 逐个脚本打补丁必然漏，所以共享一个取数口；名单顺序（具体 → 笼统）
+ * 由 `src/lib/env-credentials.test.ts` 钉住。
  */
-const ENV_FILE_NAMES = [".env.local", ".env.development.local", ".env.development", ".env"];
-
-/** 读一份 env 文件；不存在就返回空表，读错也不炸——预检不是配置校验器。 */
-function readEnvFile(name) {
-  try {
-    return parseEnvFileText(fs.readFileSync(path.join(REPO_ROOT, name), "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function readEnvSources() {
-  // 顺序即优先级：`mergeEnvSources` 是先到先得，所以名单必须按「具体→笼统」排，
-  // **不能 reverse**——否则最不具体的 `.env` 会赢（我第一版就写反了）。
-  return mergeEnvSources([process.env, ...ENV_FILE_NAMES.map(readEnvFile)]);
-}
 
 function runDrillPreflight() {
   const only = parseOnly(process.argv.slice(2));

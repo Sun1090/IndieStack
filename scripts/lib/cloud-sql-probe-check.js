@@ -34,6 +34,7 @@ import {
   probeExitCode,
   summarizeProbe,
 } from "../../src/lib/db/cloud-sql-probe.ts";
+import { readEnvSources } from "./env-sources.js";
 import { resolveProjectRef } from "../../src/lib/supabase-project-ref.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -307,8 +308,9 @@ const HELP = [
 ].join("\n");
 
 /** 解析参数、跑探测并返回退出码。 */
-export async function runCli(argv) {
-  const parsed = parseArgs(argv);
+export async function runCli(argv, repoRoot = REPO_ROOT) {
+  // 同族探测统一口径：取数在调用层合并 env 文件，parseArgs 保持纯解析。
+  const parsed = parseArgs(argv, readEnvSources(repoRoot));
   if (parsed.error) {
     console.error(`❌ ${parsed.error}`);
     console.error(HELP);

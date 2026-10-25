@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readEnvSources } from "./env-sources.js";
 import {
   ORPHAN_AUDIT_RPC,
   ORPHAN_EXIT_CODES,
@@ -417,7 +418,9 @@ function preflight(options, errorLog, log) {
  */
 function resolveDeps(dependencies) {
   return {
-    env: dependencies.env ?? process.env,
+    // 默认取「合并后的凭据表」而不是裸 process.env：同一个假阴性缺陷家族
+    // （node scripts/* 不加载 .env.local）。测试仍可通过 dependencies.env 注入，保持确定性。
+    env: dependencies.env ?? readEnvSources(REPO_ROOT),
     log: dependencies.log ?? console.log,
     errorLog: dependencies.error ?? console.error,
     fetchImpl: dependencies.fetchImpl ?? globalThis.fetch,
