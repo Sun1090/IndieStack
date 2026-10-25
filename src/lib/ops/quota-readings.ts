@@ -299,7 +299,18 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "preview",
     outcome: "pass",
     at: "2026-10-25",
-    note: "两项 pass（`gh pr checks 288`）",
+    // ⚠️ PR 侧 pass，但同一笔合并的 **main 提交上两个项目都 `rate limited`**
+    // （`gh api repos/.../commits/f050a701/status` 实测）⇒ 预览构建与生产构建
+    // 在 Vercel 侧是分开的两次构建，配额可以只打中后者。
+    // 按 #258 的分寸：这**不能**单独定因，跨环境不同步只说明两个构建结果不同。
+    note: "两项 pass（`gh pr checks 288`）；main 提交上却是两项限流，见其生产读数",
+  },
+  {
+    pr: 288,
+    pool: "production",
+    outcome: "fail",
+    at: "2026-10-25",
+    note: "合并于 03:01Z，至 13:50Z（649 分钟）NEVER_DEPLOYED（`ops:deploy-ledger` 现读）",
   },
   {
     pr: 289,
@@ -307,6 +318,27 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     outcome: "mixed",
     at: "2026-10-25",
     note: "主应用 pass、docs-site fail `rate limited`（`gh pr checks 289`）——同一次观察里两项目分裂",
+  },
+  {
+    pr: 289,
+    pool: "production",
+    outcome: "fail",
+    at: "2026-10-25",
+    note: "合并于 03:30Z，至 13:50Z（619 分钟）NEVER_DEPLOYED（`ops:deploy-ledger`）",
+  },
+  {
+    pr: 290,
+    pool: "preview",
+    outcome: "mixed",
+    at: "2026-10-25",
+    note: "主应用 pass、docs-site fail `rate limited`（`gh pr view 290` 状态上下文）",
+  },
+  {
+    pr: 290,
+    pool: "production",
+    outcome: "fail",
+    at: "2026-10-25",
+    note: "合并于 03:46Z，至 13:50Z（603 分钟）NEVER_DEPLOYED；main 提交上两项 `rate limited`",
   },
 ];
 

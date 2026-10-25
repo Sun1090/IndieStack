@@ -10805,3 +10805,41 @@
 - 下一项：17:30 提醒取 digest 首轮读数；retention 首轮（13:00 窗口）如实记悬置；
   #288/#289 的生产跟进读数待下次 freshness 检查补。
 - 更新时间：2026-10-25 11:40（UTC+8）。
+
+## 2026-10-25 —【证据链闭合】digest 首轮 COMPLETED_OK + 一个新形态：限流这次打到了生产侧 main 提交
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/digest-first-run-evidence`。
+- 状态：DONE。
+- 为什么做：17:30 提醒触发的既定工作（405 修复 #236 后的首轮真实执行）。
+- **digest 读数（本轮主产出，13:47Z 实跑 `pnpm ops:digest-observation`）**：
+  `✅ [COMPLETED_OK]`——`email_worker_runs` 出现部署后首行：
+  `2026-10-25 09:57Z pulled=0 sent=0 failed=0 backlog=0 skipped=0`（通道=rest）。
+  基线对照：01:35Z 时表内 0 行 ⇒ 这行是新出现的，09:00Z 调度后约 57 分钟落表。
+  ⇒ **「worker 端到端跑通」的最后一格证据闭合**（2026-10-24 台账留下的判据全部满足：
+  非零行 + 跑通方向为 OK；`cron.digest.completed` 指标同源，库里以落表为准）。
+  两个如实限定：① 首轮是空轮（生产无待发通知），跑通的是链路不是业务量；
+  ② 实际落表 09:57 而非 09:00——**调度时刻≠执行时刻**，57 分钟的差没有本地通道解释，
+  不外推成结论，只钉读数本身。
+- **retention 首轮（05:00Z 窗口）如实悬置**：无本地通道（VERCEL_TOKEN 对 Management API
+  403 invalidToken，昨日实测；今日再验：curl 走系统证书栈同样 403——**与 node 的 TLS 拦截无关，
+  是 token 本身无效**）。不写空洞探测。请求项不变：有效的 Vercel API token。
+- **新形态：配额这次打到了生产侧。** `ops:deploy-ledger` ⇒ **NEVER_DEPLOYED**：
+  main 提交 #288/#289/#290（合并于 03:01–03:46Z）至今 ~600 分钟无部署记录，生产停在 b1674b63。
+  按该行排查顺序取证（三条各自都不构成结论）：
+  ① main 提交上 **两个项目都** 回 `Deployment rate limited — retry in 24 hours`
+    （对照：已上线的 b1674b63 两项 success）；PR 分支上则只有 docs-site 红、主应用 pass。
+  ② 跨环境同步性：PR 侧两项目结果不同 ⇒ 只说明构建结果不同，不排除任何候选。
+  ③ **判定时刻未到**：消息体说 retry in 24h ⇒ 自动恢复的观测窗在 **10-26 02:45–03:46Z**
+    （提醒已设 11:10 CST）。无人干预恢复 ⇒ 倾向配额；一直不上线 ⇒ 才轮到 production branch /
+    项目暂停 / 提升失败。2026-10-13 这一条上两次过早定因，本轮只取证、不定因。
+  另记一笔正向验证：**双探测分工按设计工作了**——`ops:deploy-freshness` 看距离（3 < 阈值 5，判过），
+  `ops:deploy-ledger` 看「从未上线」⇒ 抓出真问题。「距离小 ≠ 部署正常」那条分寸首次实战命中。
+- **顺带的凭据体检**：`.env.local` 的 `GITHUB_TOKEN` 对 api.github.com **401 Bad credentials**
+  （`gh api user` 实测）。CI 用自己的 secrets 所以 workflows 正常；本机依赖它的脚本（如
+  `ops:codeql-alerts`）要显式 `GITHUB_TOKEN=$(gh auth token)`。已补进 environments.md 表（「GitHub API（本机脚本侧）」行，本轮新增）。
+- 验证：台账 `check:progress` ✅；quota-readings 10 条 ✅（批量入账止于 #289 = 29 条；#290 按批量节奏留给下次，不记为 pass）；
+  `check:release-docs` / `doc-links` / `doc-commands` / `bilingual-docs` ✅；`check:all` 见合并补记。
+- 阻塞 / 风险 / 回滚：纯台账 + 文档 + 1 条读数入账，无行为变更；回滚 = revert。
+- 下一项：10-26 11:10 CST 核对生产是否无人干预自动补上线（配额判定的唯一观测点）——**提醒需本轮手动创建**；
+  B03/B04/token 三项仍等 maintainer。
+- 更新时间：2026-10-25 21:55（UTC+8）。
