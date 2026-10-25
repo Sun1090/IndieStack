@@ -14,6 +14,7 @@ import {
   QUOTA_READINGS,
   consecutivePassFromTail,
   consecutivePassPrsFromTail,
+  liftStreakSpanHours,
   longestPassStreak,
   readingChainText,
   readingCount,
@@ -171,5 +172,50 @@ describe("跨文件对账：文档里的那句话必须等于台账算出的结�
     // `mixed` 不算 pass：一 fail 一 pass 的那次观察恰恰是配额在挡路的形态
     expect(consecutivePassFromTail(chain(["pass", "mixed"]))).toBe(0);
     expect(longestPassStreak(chain(["pass", "mixed"]))).toBe(1);
+  });
+});
+
+describe("跨度读数（判「解除」的第二半，2026-10-26 新增）", () => {
+  const iso = (h: number) => new Date(Date.UTC(2026, 9, 25, h)).toISOString();
+
+  it("算出的是尾部达标 PR 的**首尾时刻差**", () => {
+    const readings: QuotaReading[] = [
+      { pr: 1, pool: "preview", outcome: "pass", at: "2026-10-25", atIso: iso(0), note: "x" },
+      { pr: 1, pool: "production", outcome: "pass", at: "2026-10-25", atIso: iso(0.5), note: "x" },
+      { pr: 2, pool: "preview", outcome: "pass", at: "2026-10-25", atIso: iso(1), note: "x" },
+      { pr: 2, pool: "production", outcome: "pass", at: "2026-10-25", atIso: iso(2), note: "x" },
+    ];
+    expect(liftStreakSpanHours(readings)).toBeCloseTo(2, 6); // 0 → 2 点
+  });
+
+  it("连击外的 fail 不参与跨度（跨度只量达标段）", () => {
+    const readings: QuotaReading[] = [
+      { pr: 1, pool: "preview", outcome: "fail", at: "2026-10-25", atIso: iso(0), note: "x" },
+      { pr: 1, pool: "production", outcome: "fail", at: "2026-10-25", atIso: iso(30), note: "x" },
+      { pr: 2, pool: "preview", outcome: "pass", at: "2026-10-25", atIso: iso(10), note: "x" },
+      { pr: 2, pool: "production", outcome: "pass", at: "2026-10-25", atIso: iso(11), note: "x" },
+    ];
+    expect(consecutivePassPrsFromTail(readings)).toBe(1);
+    expect(liftStreakSpanHours(readings)).toBeCloseTo(1, 6); // 不把 30 点那次 fail 算进来
+  });
+
+  it("缺任一条 atIso ⇒ 报未知(null)，不假装跨度是 0", () => {
+    const readings: QuotaReading[] = [
+      { pr: 1, pool: "preview", outcome: "pass", at: "2026-10-25", atIso: iso(0), note: "x" },
+      { pr: 1, pool: "production", outcome: "pass", at: "2026-10-25", note: "x" }, // 缺时刻
+    ];
+    // 这条是本轮的关键：**「没数据」不能读成「跨度 0 ⇒ 不达标」**，
+    // 也不能读成「已知达标」；null 就是 null。
+    expect(liftStreakSpanHours(readings)).toBeNull();
+    expect(consecutivePassPrsFromTail(readings)).toBe(1); // PR 级计数不受影响
+  });
+
+  it("台账本体：**当下这条连击**的跨度必须是可读数（不能是未知）", () => {
+    // 门槛是「连击要跨过 24h 窗口」。它立着却没有读数方式，就是本仓库反复治的那族错
+    // ——所以这里钉的是**判当下用的那条连击**，不是历史上所有全过的 PR：
+    // 10-13 那批按设计没有 atIso（字段是后加的），要求它们补时刻是这条测试最初的口径错误，
+    // 已收窄。**缺时刻的老条目不参与跨度，但不得让当下连击变成未知。**
+    expect(liftStreakSpanHours()).not.toBeNull();
+    expect(consecutivePassPrsFromTail()).toBeGreaterThan(0);
   });
 });
