@@ -11111,3 +11111,28 @@
 - 下一项：同前（配额空隙 / retention token / B03 / B04）；冒烟文档剩 B03 账号删除与
   回滚探针两行，均需外部生产操作。
 - 更新时间：2026-10-30 23:10（UTC+8，`date` 实读）。
+
+## 2026-10-30 —【退出判据 5】三个新判定补上「写坏会红」的取证：85/85
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`test/falsify-quota-new-rules`。
+- 状态：DONE。
+- 为什么做：退出判据 5 明确「新增或改动的门禁都要能通过『故意做坏』的变异测试变红
+  ——一个永远不会失败的门禁比没有门禁更糟」。#296–#300 新增的三个判定
+  （`consecutivePassPrsFromTail` / `liftStreakSpanHours` / `tailStreakMaxGapHours`）
+  都还没进 `RULE_FALSIFICATION_TARGETS`——**有单测但没证明单测真的咬得住**。
+- 做了什么：登记三项，各配一个「永远判合格」的中性化返回值：
+  `consecutivePassPrsFromTail → return 99`、`liftStreakSpanHours → return 9999`、
+  `tailStreakMaxGapHours → return 0`（最后这个尤其危险：零空隙=假绿，看着像「连续覆盖」）。
+- **实测取证（`pnpm falsify:rules`，干净树跑）**：
+  `consecutivePassPrsFromTail` **6 条变红** / `liftStreakSpanHours` **5 条变红** /
+  `tailStreakMaxGapHours` **3 条变红**；总计 **85/85 条判定被证明「真的会红」**。
+  登记表 82 → 85，模块数不变（60），`docs/testing.md` 的「当前读数」由用例钉住、已同步。
+- 过程纪律（工具自己守的，也在提醒我）：`falsify:rules` **拒绝在脏树上跑**
+  ——「复原会连带丢掉未提交的改动」。所以本轮分两笔提交：先提交登记+计数（干净树），
+  再跑取证、把读数写进台账提交。这与工具文档里「先确认工作树干净」那条一致。
+- 验证：`rule-falsification.test.ts` 20 条 ✅（含「文档读数=登记表算出的数」对账）；
+  `check:all` exit 0；`falsify:rules` exit 0、85/85。
+- 阻塞 / 风险 / 回滚：登记表 + 文档 + 台账；无运行时行为变更。回滚 = revert。
+- 下一项：同前——配额解除需连续多天真实构建尝试压小空隙；retention 缺有效 Vercel token；
+  B03 / B04 等 maintainer。
+- 更新时间：2026-10-30 23:35（UTC+8，`date` 实读）。
