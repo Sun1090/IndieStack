@@ -58,9 +58,9 @@ describe("跨文件对账：文档里的那句话必须等于台账算出的结�
     expect(ROW).toBeTruthy();
   });
 
-  it("表头那句「今天有 N 个读数」= 台账条数", () => {
-    const claimed = Number(/今天有\s*(\d+)\s*个读数/.exec(ROW!)?.[1]);
-    expect(claimed, "表头那句「今天有 N 个读数」的格式变了，对账失效").not.toBeNaN();
+  it("表头那句「台账共 N 个读数」= 台账条数", () => {
+    const claimed = Number(/台账共\s*(\d+)\s*个读数/.exec(ROW!)?.[1]);
+    expect(claimed, "表头那句「台账共 N 个读数」的格式变了，对账失效").not.toBeNaN();
     expect(claimed).toBe(readingCount());
   });
 
