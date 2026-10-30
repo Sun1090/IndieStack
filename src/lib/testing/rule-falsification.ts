@@ -559,6 +559,26 @@ export const RULE_FALSIFICATION_TARGETS: readonly FalsificationTarget[] = [
     neuteredReturn: "return 99;",
     testFile: "src/lib/ops/quota-readings.test.ts",
   },
+  // 2026-10-30 登记（退出判据 5：新增判定必须有「写坏会红」的取证）。
+  // 三个都是同一族：把「尾部达标 PR / 连击跨度 / 最大空隙」中性化成永远合格的值。
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "consecutivePassPrsFromTail",
+    neuteredReturn: "return 99;", // 永远「有 99 个 PR 连续全过」⇒ 对账与不变量都该红
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "liftStreakSpanHours",
+    neuteredReturn: "return 9999;", // 永远「跨度 9999 小时」⇒ 单测数值对不上，必须红
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
+  {
+    file: "src/lib/ops/quota-readings.ts",
+    function: "tailStreakMaxGapHours",
+    neuteredReturn: "return 0;", // 永远「零空隙」= 假绿：看着像连续覆盖，必须红
+    testFile: "src/lib/ops/quota-readings.test.ts",
+  },
   // 生产部署台账（`ops:deploy-ledger`）。三条都实测 bites。
   // ⚠️ **这里刻意不写「N 条红 / M 条通过」**：那两个数会随**测试文件**增删而变
   // （本模块从 21 条长到 27 条时，`toObservations` 的读数就从 9/12 变成 9/18），
