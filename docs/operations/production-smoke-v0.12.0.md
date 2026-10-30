@@ -72,7 +72,7 @@
 | --- | --- | --- |
 | B03 账户删除全链路 | 确认短语被服务端校验；`api_usage` 与本人邮箱的 `contact_messages` 消失；`audit_logs` 行仍在但 PII 键被清空；独占头像对象从 bucket 消失；被团队引用的封面保留；会话失效 | ⛔ **未闭合**——缺 `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` 与可牺牲账号。B03 是 `0.12.0` 刻意不打 tag 的唯一原因。**【2026-10-25 订正】前半句「缺三个凭据」不成立**：本机 `.env.local` 三项都在，`drills:preflight --drill B03` 现报三项 ✓、只缺 `DRILL_ISOLATED_ACCOUNT_EMAIL`；当日 `GET /auth/v1/admin/users` 用 service_role 返回 200（生产 1 个账号，且它不是可牺牲的）。根因是旧探针只看 `process.env` ⇒ 假阴性滚成了「缺凭据」登记 |
 | 租户数据隔离 | 账户 A 读不到账户 B 的项目/通知/上传元数据 | ✅（本地栈，2026-10-25）`pnpm smoke:supabase-identity` **23/23**：项目（owner-a-cannot-read-private-project-b）、通知（A/B 各只见自己的种子行，RLS `auth.uid()=user_id`）、上传元数据（无客户端策略 ⇒ 连 owner 自己也读不到，A 有一行的前提下 B 仍 `[]`——实测过再删）。⏳ **生产侧**仍需两个可牺牲账号做同型核对（与 B03 同一请求项），本地证据不自动迁移（同栈同迁移，形态相同） |
-| **回滚探针** | 上一版本（0.11.0，`commit=08dd6f17`）可恢复，数据库保持向前 schema、034 不逆向执行（见 `rollback-runbook-v0.12.0.md`「数据库向前兼容」） | ⛔ 尚未演练——需要一次真实的生产部署切换，本版本**不制造**该证据 |
+| **回滚探针** | 上一版本（0.11.0，`commit=08dd6f17`）可恢复，数据库保持向前 schema、034 不逆向执行（见 `rollback-runbook-v0.12.0.md`「数据库向前兼容」） | **本地可答的一半 ✅（2026-10-30 核实）**：034/035 均为**纯增量**——`add column if not exists email_skipped_reason text`、`add column if not exists backlog/skipped integer`，**可空且刻意不给 default**，另加一条 **NULL 容忍的 CHECK**（`email_skipped_reason in ('no_email','preferences_off')`，旧 INSERT 省略该列 ⇒ NULL ⇒ 约束通过），无任何破坏性 DDL（`drop column` 只出现在注释里描述「万一回滚」的选项，未执行）⇒ **旧版 0.11.0 的代码在更新后的 schema 上仍可读写**（查询列显式、新列可空无默认，旧 INSERT 省略它们仍合法）。⛔ **仍缺的一半**：一次**真实的生产部署切换到 0.11.0**（需授权）+ 观察 034 确未逆向执行——这部分离线无法替代 |
 
 ## 发布前的外部依赖实况（2026-10-05T22:53Z 观测）
 

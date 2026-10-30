@@ -11136,3 +11136,29 @@
 - 下一项：同前——配额解除需连续多天真实构建尝试压小空隙；retention 缺有效 Vercel token；
   B03 / B04 等 maintainer。
 - 更新时间：2026-10-30 23:35（UTC+8，`date` 实读）。
+
+## 2026-10-30 — 回滚探针把「本地可答的一半」答掉：034/035 纯增量、旧版代码仍可读写
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/rollback-probe-local-half`。
+- 状态：DONE。
+- 为什么做：冒烟矩阵「回滚探针」一行是 ⛔，理由是「需要一次真实的生产部署切换」。
+  但它的期望里有一半是**离线可核**的：**034 不逆向执行 / 数据库保持向前 schema**。
+  按本会话反复用的做法（把外部阻塞里能本地答的那半答掉、让剩余缺口更精确），本轮核这一半。
+- 读数（读迁移原文，非推理）：
+  - `034`：`add column if not exists email_skipped_reason text` + 一条
+    **NULL 容忍的 CHECK**（`in ('no_email','preferences_off')`，旧 INSERT 省略该列得 NULL ⇒ 约束通过）；
+  - `035`：`add column if not exists backlog integer, add column if not exists skipped integer`，
+    **可空、刻意不给 default**；
+  - 两个 `drop column` 只出现在**注释**里（描述「万一回滚」的选项），**未执行**；无 NOT NULL、无类型收窄。
+  ⇒ **旧版 0.11.0 代码在更新后的 schema 上仍可读写**（查询列显式、新列可空无默认，
+  旧 INSERT 省略它们仍合法）⇒ 「数据库保持向前 schema」这半**本地成立**。
+- 仍缺的一半（写明不夸大）：**一次真实的生产部署切换到 0.11.0**（需授权）+ 观察 034 确未逆向执行
+  ——离线无法替代。冒烟行已从「⛔ 尚未演练」改为「本地半 ✅ / 部署切换仍 ⛔」。
+- 顺带核对退出判据 4 与 6 是否真有门禁在跑（本轮扫「声明了但没人跑」的缺口）：
+  判据 4 覆盖率地板在 `vitest.config.mts`、CI 用 `pnpm test:coverage` 强制；
+  判据 6 的 `check:cron-contract` / `check:retention-cron` 都在 `scripts/check-all.sh` 里，
+  而 CI 跑 `pnpm check:all` ⇒ **两者都被真实执行**，非空壳。
+- 验证：`check:production-smoke` ✅（12 个工作流契约）/ `check:doc-links` ✅；纯文档。
+- 阻塞 / 风险 / 回滚：纯文档。回滚 = revert。
+- 下一项：同前——配额空隙 / retention token / B03 账号 / 回滚探针的生产切换（需授权）/ B04。
+- 更新时间：2026-10-30 23:55（UTC+8，`date` 实读）。
