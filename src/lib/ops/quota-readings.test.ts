@@ -15,6 +15,7 @@ import {
   consecutivePassFromTail,
   consecutivePassPrsFromTail,
   liftStreakSpanHours,
+  tailStreakMaxGapHours,
   longestPassStreak,
   readingChainText,
   readingCount,
@@ -217,5 +218,55 @@ describe("跨度读数（判「解除」的第二半，2026-10-26 新增）", ()
     // 已收窄。**缺时刻的老条目不参与跨度，但不得让当下连击变成未知。**
     expect(liftStreakSpanHours()).not.toBeNull();
     expect(consecutivePassPrsFromTail()).toBeGreaterThan(0);
+  });
+});
+
+describe("空窗读数（跨度够 ≠ 覆盖够，2026-10-30 新增）", () => {
+  const iso = (d: number, h: number) => new Date(Date.UTC(2026, 9, d, 0, Math.round(h * 60))).toISOString();
+  const mk = (pr: number, pool: "preview" | "production", d: number, h: number): QuotaReading => ({
+    pr, pool, outcome: "pass", at: "2026-10-30", atIso: iso(d, h), note: "x",
+  });
+
+  it("两次观测相隔很远 ⇒ 空隙就是那段没尝试的时间", () => {
+    const readings: QuotaReading[] = [
+      mk(1, "preview", 25, 0), mk(1, "production", 25, 0),
+      mk(2, "preview", 30, 0), mk(2, "production", 30, 0),
+    ];
+    expect(liftStreakSpanHours(readings)).toBeCloseTo(120, 6);
+    expect(tailStreakMaxGapHours(readings)).toBeCloseTo(120, 6);
+  });
+
+  it("正常节奏（每次相隔几小时）⇒ 空隙很小，跨度才真的覆盖了时间", () => {
+    const readings: QuotaReading[] = [
+      mk(1, "preview", 25, 0), mk(1, "production", 25, 0.5),
+      mk(2, "preview", 26, 0), mk(2, "production", 26, 0.5),
+    ];
+    expect(liftStreakSpanHours(readings)).toBeCloseTo(24.5, 6);
+    expect(tailStreakMaxGapHours(readings)).toBeCloseTo(23.5, 6);
+  });
+
+  it("只有一次观测或缺时刻 ⇒ 未知(null)，不假装空隙是 0", () => {
+    expect(tailStreakMaxGapHours([mk(1, "preview", 25, 0), mk(1, "production", 25, 0)])).toBeNull();
+    const missing: QuotaReading[] = [
+      mk(1, "preview", 25, 0), mk(1, "production", 25, 0),
+      { pr: 2, pool: "preview", outcome: "pass", at: "2026-10-30", note: "x" },
+      { pr: 2, pool: "production", outcome: "pass", at: "2026-10-30", note: "x" },
+    ];
+    expect(tailStreakMaxGapHours(missing)).toBeNull();
+  });
+
+  it("台账本体：跨度 ≥ 最大空隙（结构不变量）", () => {
+    const span = liftStreakSpanHours();
+    const gap = tailStreakMaxGapHours();
+    expect(span).not.toBeNull();
+    expect(gap).not.toBeNull();
+    expect(span!).toBeGreaterThanOrEqual(gap! - 1e-9);
+  });
+
+  it("文档必须指向两个函数（跨度与空隙都要现读，不写死）", () => {
+    // 表格单元格跨多行（首行之外的解释在续行），所以扫整份文档而不是只看 ROW。
+    const text = readFileSync(DOC, "utf8");
+    expect(text).toContain("liftStreakSpanHours()");
+    expect(text).toContain("tailStreakMaxGapHours()");
   });
 });

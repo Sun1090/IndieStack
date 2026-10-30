@@ -463,6 +463,57 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     atIso: "2026-10-25T17:14:41Z",
     note: "17:14:41Z / 17:15:14Z 两条 Production 部署记录（`deployments` API 直读 06116cdd）⇒ 合并后 26 秒上生产",
   },
+  // ---- 2026-10-30 复发观测：4 天空窗后的三笔合并（#297/#298/#299），双池全 pass。
+  // ⚠️ 这六条把连击跨度推到约 120 小时，但**中间 4 天零构建尝试**（main 未动）——
+  // 「跨度够」不等于「连续健康」，见同轮新增的 tailStreakMaxGapHours()。
+  {
+    pr: 297,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-30",
+    atIso: "2026-10-30T13:44:03Z",
+    note: "两项 pass（`gh pr view 297` 状态上下文）",
+  },
+  {
+    pr: 297,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-30",
+    atIso: "2026-10-30T13:45:13Z",
+    note: "13:45:13Z 部署 4c453758（`deployments` API 直读）⇒ 合并后 70 秒",
+  },
+  {
+    pr: 298,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-30",
+    atIso: "2026-10-30T14:01:19Z",
+    note: "两项 pass（`gh pr view 298` 状态上下文）——dependabot stripe 23.0.1",
+  },
+  {
+    pr: 298,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-30",
+    atIso: "2026-10-30T14:01:53Z",
+    note: "14:01:53Z 部署 bc62fc23（`deployments` API 直读）⇒ 合并后 34 秒",
+  },
+  {
+    pr: 299,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-30",
+    atIso: "2026-10-30T14:20:40Z",
+    note: "两项 pass（`gh pr view 299` 状态上下文）",
+  },
+  {
+    pr: 299,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-30",
+    atIso: "2026-10-30T14:21:06Z",
+    note: "14:21:06Z 部署 fe6a2e50（`deployments` API 直读）⇒ 合并后 26 秒",
+  },
 ];
 
 /** 台账里读数的条数——文档表头那句「今天有 N 个读数」必须等于它。 */
@@ -621,6 +672,37 @@ export function liftStreakSpanHours(
   return (Math.max(...stamps) - Math.min(...stamps)) / 3_600_000;
 }
 
+
+/**
+ * 尾部连击里**相邻两次观测之间的最大空隙**（小时）。
+ *
+ * 为什么必须有它：`liftStreakSpanHours()` 会给「跨度 120 小时」，但那可能只是因为
+ * **中间几天一次构建都没尝试**（main 没动）——空隙本身不产生任何证据。
+ * 「空表在两种世界里长得一模一样」的同一条道理：**没有尝试的空窗不能证明配额健康**。
+ * 只有「跨度够 **且** 最大空隙小」时，连击才真的覆盖了那段时间。
+ * 返回 `null` = 只有一次观测或有时刻缺失（未知，不假装 0）。
+ */
+export function tailStreakMaxGapHours(
+  readings: readonly QuotaReading[] = QUOTA_READINGS,
+): number | null {
+  const groups = tailQualifyingGroups(readings);
+  if (groups.length < 2) return null;
+  const stamps: number[] = [];
+  for (const group of groups) {
+    for (const reading of group) {
+      if (!reading.atIso) return null;
+      const parsed = Date.parse(reading.atIso);
+      if (Number.isNaN(parsed)) return null;
+      stamps.push(parsed);
+    }
+  }
+  stamps.sort((a, b) => a - b);
+  let maxGap = 0;
+  for (let i = 1; i < stamps.length; i += 1) {
+    maxGap = Math.max(maxGap, stamps[i] - stamps[i - 1]);
+  }
+  return maxGap / 3_600_000;
+}
 
 export function longestPassStreak(
   readings: readonly QuotaReading[] = QUOTA_READINGS,
