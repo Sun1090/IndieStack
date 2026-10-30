@@ -54,6 +54,20 @@ export interface QuotaReading {
   outcome: QuotaOutcome;
   /** 观察日期（YYYY-MM-DD，Asia/Shanghai）。 */
   at: string;
+  /**
+   * 观察的**精确时刻**（ISO 8601，UTC）。可选，但**判「解除」的跨度必须有它**。
+   *
+   * **口径固定为**：`preview` 读数取该 PR 的**合并时刻**（`gh pr view --json mergedAt`），
+   * `production` 读数取其**生产部署时刻**（`deployments` API 的 `created_at`）——
+   * 跨度于是读作「从第一次观察到生产最后一次跟上经过了多少小时」。
+   * 两种时刻都必须实读，不能拿「我以为的时间」填（本仓库为时间戳连错过两次）。
+   * 为什么需要：门槛是「连击要跨过一个完整 24 小时窗口」，而 `at` 只到日粒度——
+   * 同一天追加的六条读数，`at` 全等于 `2026-10-25`，跨度算出来是 0 小时，
+   * 于是那条门槛**立了却没有读数方式**（2026-10-26 自查时抓到的，正是本仓库
+   * 反复治的「判据存在但无法如实评估」那一族）。缺它的老条目不参与跨度计算，
+   * 跨度按「未知」报，不假装是 0。
+   */
+  atIso?: string;
   /** 一句话读数来源，便于报告里点名。 */
   note: string;
 }
@@ -345,6 +359,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "preview",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T14:21:52Z",
     note: "两项 pass（`gh pr view 291` 的状态上下文）⇒ 配额窗口在 14:21Z 前已结束",
   },
   {
@@ -352,6 +367,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T14:22:33Z",
     // ⚠️ 这条就是**恢复事件本身**：合并 14:21:52Z、生产部署 14:22:33Z（41 秒后），
     // 且这次构建把 #288/#289/#290 一并带上（`ops:deploy-ledger` 现读 CONSISTENT，
     // 从未上线 3 ⇒ 0、跳过数 112 ⇒ 115）。判红与解除相隔 39 秒的那次 run 挂在 #290 上。
@@ -362,6 +378,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "preview",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T15:04:35Z",
     note: "两项 pass（`gh pr view 292` 的状态上下文）",
   },
   {
@@ -369,6 +386,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T15:05:19Z",
     // 恢复后的第二笔：合并 15:04:35Z，15:10Z 现读「生产跑的就是 main（f8578379）」
     // ⇒ ≤6 分钟，回到 10-13 标定的正常形态（中位 1.5 分钟）；说明恢复是稳定的，不是一次性。
     note: "合并 15:04:35Z，15:10Z 现读生产即 main（`ops:deploy-freshness`）⇒ 恢复稳定",
@@ -378,6 +396,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "preview",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T15:34:04Z",
     note: "两项 pass（`gh pr view 293` 状态上下文）",
   },
   {
@@ -385,17 +404,20 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "pass",
     at: "2026-10-25",
-    // 诚实口径：我没有直接读到 2e08962d 上生产的时刻，读到的是 16:09Z 那次
-    // `ops:deploy-freshness` 显示生产=cf300192（#294 的合并提交）——它是 2e08962d 的
-    // 后代 ⇒ #293 是**被后续部署覆盖**上线的（`ops:deploy-ledger` 的 coveredByPr 语义），
-    // 不是自己有独立的生产构建记录。
-    note: "被 #294 的构建带上线（16:09Z `ops:deploy-freshness` ⇒ 生产=cf300192，含 2e08962d）",
+    atIso: "2026-10-25T15:34:31Z",
+    // 【2026-10-26 订正】下面这条注记原写「被 #294 的构建带上线」，那是**推理**：
+    // 我当时的直接读数只有 freshness 显示生产=cf300192。取 `deployments` API 后，
+    // 直接证据把它否证了——`2e08962d` 自己就有两条 Production 部署记录
+    // （15:34:31Z / 15:35:50Z），#293 有**独立的生产构建**，比推断更早、更强。
+    // 留这段是为了记住教训：**「没直接读到」不等于「没有」，取法要能取到就直接取**。
+    note: "15:34:31Z / 15:35:50Z 两条 Production 部署记录（`deployments` API 直读 sha 2e08962d）⇒ 独立构建，~76 秒跟上",
   },
   {
     pr: 294,
     pool: "preview",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T16:02:29Z",
     note: "两项 pass（`gh pr view 294` 状态上下文）",
   },
   {
@@ -403,6 +425,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T16:02:55Z",
     note: "16:09Z 现读生产即 main（cf300192，`ops:deploy-freshness`）",
   },
   {
@@ -410,6 +433,7 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "preview",
     outcome: "pass",
     at: "2026-10-25",
+    atIso: "2026-10-25T16:32:22Z",
     note: "两项 pass（`gh pr view 295` 状态上下文）",
   },
   {
@@ -417,9 +441,27 @@ export const QUOTA_READINGS: readonly QuotaReading[] = [
     pool: "production",
     outcome: "pass",
     at: "2026-10-25",
-    // ⚠️ 连击的**时间跨度**才是判「解除」的关键：#291 合并于 14:21Z、#295 于 16:02Z，
-    // 五个 PR 全挤在 1.7 小时内，不足一个 24h 配额窗口 ⇒ 条数够而跨度不够。
+    atIso: "2026-10-25T16:32:47Z",
+    // ⚠️ 连击的**时间跨度**才是判「解除」的关键：跑 `liftStreakSpanHours()` 现读
+    // （10-26 实测：6 个 PR 只跨 2.880 小时，远低于 24h 窗口 ⇒ 条数够而跨度不够）。
+    // **这里不写死小时数**——它每追加一条读数就可能变，而注释不在任何对账门禁里。
     note: "16:34Z 现读生产即 main（d6a62dc8，`ops:deploy-freshness`）",
+  },
+  {
+    pr: 296,
+    pool: "preview",
+    outcome: "pass",
+    at: "2026-10-26",
+    atIso: "2026-10-25T17:14:15Z",
+    note: "两项 pass（`gh pr view 296` 状态上下文）",
+  },
+  {
+    pr: 296,
+    pool: "production",
+    outcome: "pass",
+    at: "2026-10-26",
+    atIso: "2026-10-25T17:14:41Z",
+    note: "17:14:41Z / 17:15:14Z 两条 Production 部署记录（`deployments` API 直读 06116cdd）⇒ 合并后 26 秒上生产",
   },
 ];
 
@@ -496,6 +538,40 @@ export function consecutivePassFromTail(
  * 只报其中一个数都会误导：报尾部像是「从没通过过」，报最长像是「快解除了」。
  */
 /**
+ * 尾部「达标 PR」的列表（判「解除」口径的唯一分组逻辑，三个函数共用）。
+ *
+ * 达标 = 该 PR 的**每条读数都是 pass**，且**至少有一条 production 读数**
+ * （只过预览、生产没上去不算——那正是 #256 与 #288–#290 的形态）。
+ * `mixed` 不算 pass。从台账末尾往回走，第一个不达标就停。
+ *
+ * 抽出来是因为 `consecutivePassPrsFromTail` 与 `liftStreakSpanHours` 都要它，
+ * 而抄两份会长歪（本会话为「同一段判定抄两份」修过一次：#285 的 env 取数口）。
+ */
+function tailQualifyingGroups(readings: readonly QuotaReading[]): QuotaReading[][] {
+  const order: number[] = [];
+  const byPr = new Map<number, QuotaReading[]>();
+  for (const reading of readings) {
+    let group = byPr.get(reading.pr);
+    if (!group) {
+      group = [];
+      byPr.set(reading.pr, group);
+      order.push(reading.pr);
+    }
+    group.push(reading);
+  }
+
+  const streak: QuotaReading[][] = [];
+  for (let index = order.length - 1; index >= 0; index -= 1) {
+    const group = byPr.get(order[index]) ?? [];
+    const allPass = group.length > 0 && group.every((r) => r.outcome === "pass");
+    const hasProduction = group.some((r) => r.pool === "production");
+    if (!allPass || !hasProduction) break;
+    streak.push(group);
+  }
+  return streak;
+}
+
+/**
  * 「连续多少个 **PR** 全过**且生产跟上**」——文档里判「解除」的那条门槛的唯一正确读数。
  *
  * 与 `consecutivePassFromTail` 的区别就是这条门槛的两半：
@@ -512,26 +588,37 @@ export function consecutivePassFromTail(
 export function consecutivePassPrsFromTail(
   readings: readonly QuotaReading[] = QUOTA_READINGS,
 ): number {
-  // 按台账顺序取 PR 首次出现的次序，再把每个 PR 的读数归到它名下。
-  const order: number[] = [];
-  const byPr = new Map<number, QuotaReading[]>();
-  for (const reading of readings) {
-    if (!byPr.has(reading.pr)) {
-      byPr.set(reading.pr, []);
-      order.push(reading.pr);
-    }
-    byPr.get(reading.pr)?.push(reading);
-  }
+  return tailQualifyingGroups(readings).length;
+}
 
-  let streak = 0;
-  for (let index = order.length - 1; index >= 0; index -= 1) {
-    const group = byPr.get(order[index]) ?? [];
-    const hasProduction = group.some((reading) => reading.pool === "production");
-    const allPass = group.length > 0 && group.every((reading) => reading.outcome === "pass");
-    if (!hasProduction || !allPass) break;
-    streak += 1;
+
+/**
+ * 「连击跨过了多少小时」——判「解除」的**第二半**，没有它那条门槛无法评估。
+ *
+ * 取尾部 PR 级连击里**最端到最端**的 `atIso` 差（小时）。
+ * 返回 `null` 表示**未知**：连击里有任何一条缺精确时刻就报未知，
+ * 不假装是 0（把「没数据」读成「跨度 0 小时 ⇒ 不达标」是另一种假绿/假红）。
+ *
+ * ⚠️ 这个数只回答「跨度」，不回答「窗口是否已结束」。配额是 Vercel 侧的
+ * 24 小时窗口，**跨度 ≥ 24 且期间无 fail** 才够宣布解除；两者都满足前记 `flapping`。
+ */
+export function liftStreakSpanHours(
+  readings: readonly QuotaReading[] = QUOTA_READINGS,
+): number | null {
+  const groups = tailQualifyingGroups(readings);
+  if (groups.length === 0) return null;
+
+  const stamps: number[] = [];
+  for (const group of groups) {
+    for (const reading of group) {
+      // 缺一条精确时刻就整体报未知：不部分计算，也不假装是 0。
+      if (!reading.atIso) return null;
+      const parsed = Date.parse(reading.atIso);
+      if (Number.isNaN(parsed)) return null;
+      stamps.push(parsed);
+    }
   }
-  return streak;
+  return (Math.max(...stamps) - Math.min(...stamps)) / 3_600_000;
 }
 
 
