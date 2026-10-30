@@ -11018,3 +11018,33 @@
   重判只能靠**新的 pass 观测**把跨度推过 24h（或出现 fail 直接重置），不能靠日历。
   digest 第二轮 09:00Z（约 15 小时后）；B03 / B04 / 有效 Vercel token 仍等 maintainer。
 - 更新时间：2026-10-26 01:44（UTC+8，`date` 实读）。
+
+## 2026-10-30 — digest 从「首轮单次」升格为「连续 6 天常态」；并处理积压 4 天的 dependabot PR
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`docs/digest-six-day-continuous`。
+- 状态：DONE。
+- 为什么做：距上次实跑已 4 天多，`email_worker_runs` 累积了新读数，正是「端到端跑通」
+  从**单次**升格为**连续**的时机；同时扫到一个 4 天未处理的 dependabot PR。
+- 读数（2026-10-30 13:47Z 实跑 `pnpm ops:digest-observation` 读全表，6 行）：
+  `10-25 09:57Z` / `10-26 09:57Z` / `10-27 09:56Z` / `10-28 09:56Z` / `10-29 09:56Z` / `10-30 09:56Z`，
+  **每轮 pulled=0 sent=0 failed=0 backlog=0 skipped=0 ⇒ 全 COMPLETED_OK**。
+  两条可复核结论：① 405 修复后**连续 6 天每天都跑通、零失败**（不再是「首轮单次」）；
+  ② 落表时刻 6/6 都在 **09:56–09:57Z**，即比 09:00Z 调度晚约 57 分钟但**高度稳定**——
+  原先把这 57 分钟写成「unexplained」，现在可升级为「常态偏移、跨 6 天稳定」，
+  **仍不外推成因**（无 Vercel 侧调度明细）。
+  诚实边界：6 轮全是空轮（生产 notifications 为空），backlog 恒 0 属预期，
+  「积压下降」这条趋势**仍无可判数据**，不因「跑了 6 天」而被证明。
+- 做了什么：① `production-smoke-v0.12.0.md` 的 `email.backlog 趋势` 行改「首轮已观测」
+  → 「连续 6 天常态执行已观测」并附 6 行读数；② 顺带修同一表 A05 行里过期的
+  「非零计数要等首轮 digest 产生真实跳过行」——首轮早已过去、6 轮 skipped 全 0，
+  改准为「要的是真实待发数据，不是等首轮」。
+- 另一件：处理 dependabot **#298**（stripe 23.0.0 → 23.0.1，patch 级，仅
+  package.json + lockfile）。分支 BEHIND（main 前进）⇒ 用 `pulls/{n}/update-branch`
+  接口更新（不本地 force-push）；更新后 14 项检查全 SUCCESS、CLEAN ⇒ squash 合并，
+  主 CI success、生产已跟上。**没有为它新开 PR**（复用既有 PR，符合 remote 分支生命周期）。
+- 验证：`check:doc-links` ✅ / `check:release-docs`（21 份）✅ / `check:progress` ✅；
+  合并后主 CI success、`ops:deploy-freshness` 生产=main。
+- 阻塞 / 风险 / 回滚：纯文档；回滚 = revert。
+- 下一项：配额解除判定仍差「新观测把连击跨度推过 24h」（4 天无新合并 ⇒ 仍 2.880h）；
+  retention 端到端仍缺有效 Vercel token；B03 / B04 等 maintainer。
+- 更新时间：2026-10-30 22:15（UTC+8，`date` 实读）。
