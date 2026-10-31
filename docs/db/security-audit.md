@@ -216,16 +216,29 @@ SELECT / INSERT / DELETE 三条策略，全带 `USING` / `WITH CHECK`，`check:r
 
 ```bash
 pnpm check:rls-probe
-# ✅ RLS 策略执行取证通过：36 个迁移应用成功，1 个探针在真库上跑通
+# ✅ RLS 策略执行取证通过：37 个迁移应用成功，4 个探针 / 56 条用例在真库上跑通
 ```
 
-做法（`scripts/rls-probe.js`）：
+做法（入口 `scripts/check-rls-probe.js`，IO 在 `scripts/lib/rls-probe-check.js`，
+判定在 `src/lib/db/rls-probe.ts`）：
 
 1. 用 `initdb` 起一个一次性 Postgres 集群（临时目录 + 随机空闲端口 + unix socket，跑完即拆）；
 2. 应用 `supabase/tests/bootstrap.sql`——Supabase 面的**最小替身**：`auth.uid()` /
    `auth.role()` / `auth.users` / `storage.objects` / `foldername()` / 三个角色；
 3. 按序应用 `supabase/migrations/*.sql`（真实迁移，一份不改）；
 4. 逐个跑 `supabase/tests/*.sql` 探针，任何一个不通过即整道门禁失败。
+
+**起库之前**还有一步盘点（`auditProbeInventory`），它回答的是「这道门禁自己会不会响」：
+一个探针文件只要不抛异常，psql 就退 0，于是下面两种文件**永远是绿的**——
+
+| 形状 | 为什么绿 |
+|---|---|
+| 只 `probe.expect(...)`、结尾忘了 `probe.verify(...)` | 登记了一堆期望，没有任何人读；psql 退 0 |
+| 只 `probe.verify(...)`、一条 `expect` 都没有 | `verify` 里 `count(*) where rows is distinct from want` 在空表上是 0，它打印「0 条全部符合期望」 |
+
+所以每个探针必须 `expect` 与 `verify` 同时存在且计数都不为 0（`--` 注释里的调用不算数）。
+实跑取证：塞一个只有 `select probe.verify('空矩阵');` 的探针 → 盘点报
+`PROBE_WITHOUT_EXPECTATION`、退出码 1；移除后退出码 0。
 
 探针用 `set role authenticated` + `request.jwt.claims` 扮演 PostgREST，用 `row_count` 判读：
 

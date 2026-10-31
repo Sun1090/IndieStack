@@ -14,7 +14,7 @@ See `docs/operations/release-tag-ledger.md`.
   `check:rls` 读迁移文本，回答「这条策略写全了没有」；它回答不了「这张表压根没写这条策略」——
   两者在静态视角下几乎同形，而 036 修的那条缺陷正是后者（`team_members` 有 SELECT/INSERT/DELETE、
   全带 `USING`/`WITH CHECK`，门禁全绿，少的那条 UPDATE 让每一次写入都静默命中 0 行）。
-  现在 `scripts/rls-probe.js` 起一次性 Postgres 集群（临时目录 + 随机空闲端口 + unix socket，
+  现在 `scripts/check-rls-probe.js` 起一次性 Postgres 集群（临时目录 + 随机空闲端口 + unix socket，
   跑完即拆）→ 应用 `supabase/tests/bootstrap.sql`（Supabase 面最小替身：`auth.uid()`/
   `auth.role()`/`auth.users`/`storage.objects`/`foldername()`/三个角色）→ 按序应用**全部真实迁移**
   → 逐个跑 `supabase/tests/*.sql` 探针。探针用 `set role authenticated` + `request.jwt.claims`
@@ -24,9 +24,9 @@ See `docs/operations/release-tag-ledger.md`.
   时**跳过并打印原因**（不静默变绿），需要强制时 `RLS_PROBE_REQUIRE=1`。
   它替代不了身份矩阵（没有 PostgREST 与真实 JWT），但它把「策略谓词到底怎么收口」这件事
   从「只能靠本地 Supabase 栈」变成「任何有 Postgres 的地方都能跑」。
-  现有五个探针共 52 条用例：`036_team_members_update_probe.sql`（8 条）、
+  现有四个探针共 56 条用例：`036_team_members_update_probe.sql`（8 条）、
   `037_user_sessions_probe.sql`（10 条，抓到的是「功能从来没工作过」而不是越权）、
-  `rbac_matrix_probe.sql`（21 条，覆盖 profiles 自提权 / teams 转手与 plan / projects 跨租户搬运 /
+  `rbac_matrix_probe.sql`（25 条，覆盖 profiles 自提权 / teams 转手与 plan / projects 跨租户搬运 /
   notifications 与 api_keys 的归属列 / team_invitations 的发送权限）、
   `isolation_probe.sql`（13 条，push / passkey / subscriptions 的归属与只读边界）。
   **变异取证**：把 `Users can update own profile` 的 `with check` 放宽后，矩阵立刻报

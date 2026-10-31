@@ -11555,3 +11555,44 @@
   再往后的方向有两条——① `visibility='public'` 的口径（需产品判断）；
   ② 把认证挪到服务端（`recordLoginResult` 那类「客户端声明事实」的共同根因）。
 - 更新时间：2026-10-31 19:55（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【门禁量回自己】`check:rls-probe` 的判定搬进规则模块；顺带问出「探针自己会不会响」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前八条）。
+- 状态：DONE（拆分 + 新增 `auditProbeInventory`）。
+- 起因：`check:all` 全量第一次跑红，红在 `check:gate-rule-tests` 上，被判的是**我上一轮刚写的门禁**：
+  `❌ [INLINE_GATE_REINTRODUCED] check:rls-probe：有门禁把判定逻辑内联在脚本里`。
+  这条规则的口径是仓库早就写定的——判定放 `src/lib/**` 纯函数、脚本只做 IO，
+  这样「规则模块有没有单测」就是个可机械核对的事实。我那条门禁把判定全写在脚本里，
+  于是它的「会不会响」没有任何人兜底。**门禁审门禁，审出的是新门禁自己**，这是对的。
+- 做了什么：
+  1. 判定搬进 `src/lib/db/rls-probe.ts`：`decidePrerequisite`（缺二进制时跳过还是失败）、
+     `auditProbeInventory`（探针盘点）、`summarizeProbeRun`（收尾读数）、`countExpectations` / `hasAssertion`。
+  2. 入口 `scripts/check-rls-probe.js` → IO `scripts/lib/rls-probe-check.js`，与 `cloud-sql-probe` 同形状。
+  3. 新建 `src/lib/db/rls-probe.test.ts`（21 条，含一条扫真实 `supabase/tests/` 的读数）。
+  4. 顺带修了 `eslint` 的 `complexity 20 > 15`：起集群 / 应用迁移 / 跑探针各抽成一个函数。
+- 搬的过程中问出了这一轮真正值钱的那件事：**探针本身会不会响**。
+  一个 `.sql` 探针只要不抛异常 psql 就退 0，于是两种文件永远是绿的：
+  - 只 `probe.expect(...)` 忘了 `probe.verify(...)`：登记的行没人读；
+  - 只 `probe.verify(...)` 一条 `expect` 都没有：`verify` 里那句
+    `count(*) where rows is distinct from want` 在空表上读数是 0，它会打印「0 条全部符合期望」并放行。
+  第二种的形状和「策略全对」一模一样，而它什么都没验。现在两者分别报
+  `PROBE_WITHOUT_ASSERT` / `PROBE_WITHOUT_EXPECTATION`，**起库之前**就拒（不让一个注定要红的集合先花 20 秒建库）。
+- 计数口径（写清代价）：只数代码位，`--` 注释里的 `probe.expect(` 不算。这条不是形式主义——
+  `036` 的注释里就写着用法示例，不抹注释的话注释能把空壳文件撑成绿的。
+  `000_helpers.sql` 按**文件角色**排除而不是按内容猜：它定义了这两个函数，按调用计数它是 1/1，
+  算进来会把用例总数报虚。
+- 读数：
+  - `check:gate-rule-tests` ✅ 58 个规则模块 / 50 条门禁走规则模块 / **0 条内联**；
+  - `check:rls-probe` ✅ 37 迁移 + **4 探针 / 56 条用例**（此前文档写「5 探针 / 52 条」，两个数都不对：
+    helpers 被当成探针数了进去，而 `rbac_matrix_probe.sql` 在写文档后长到 25 条）；
+  - 变异取证：塞入只有 `select probe.verify('空矩阵');` 的探针 → `exit=1` 且点名 `PROBE_WITHOUT_EXPECTATION`；
+    移除后 `exit=0`；
+  - `src/lib/db/rls-probe.test.ts` 21/21 ✅；`tsc` ✅；`eslint` ✅。
+- 阻塞 / 风险 / 回滚：拆分本身不动取证语义（探针文件一份没改）。`auditProbeInventory` 是**新的拒绝面**：
+  它现在会挡住「只登记不断言」的写法，如果将来有人故意要写一个只打印矩阵、不置失败的诊断文件，
+  得把它放进 `NON_PROBE_FILES` 并说明理由——这是有意的摩擦。回滚 = revert 本条提交。
+- 下一项：`check:all` 全量复跑作为这一段的收尾读数；之后仍是那两条——
+  ① `visibility='public'` 的口径（需产品判断）；② 把认证挪到服务端（`recordLoginResult` 那类
+  「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 20:04（UTC+8，`date` 实读）。
