@@ -185,6 +185,28 @@ interface DigestProgress {
   skipped: number;
 }
 
+/**
+ * 按用户偏好把本轮拉到的通知分成两堆：可投递的与「被偏好挡下」的。
+ *
+ * 抽成函数有两个理由，第二个是硬性的：① 这段划分的语义（两堆都必须被消费，
+ * 否则被挡下的那批永不出队）值得有个名字；② 内联时 `runDigest` 的圈复杂度
+ * 会顶到 16（上限 15，`eslint` 的 complexity 规则）——而这个上限调高就等于
+ * 承认「这个函数已经没人能一眼读完」。
+ */
+function splitByPreference(
+  prefs: Parameters<typeof shouldSendEmail>[0],
+  items: Notification[],
+): { filtered: Notification[]; blocked: Notification[] } {
+  const filtered: Notification[] = [];
+  const blocked: Notification[] = [];
+  for (const n of items) {
+    const deliverable = shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]);
+    if (deliverable) filtered.push(n);
+    else blocked.push(n);
+  }
+  return { filtered, blocked };
+}
+
 async function runDigest(
   siteUrl: string,
   notifications: Notification[],
@@ -235,12 +257,7 @@ async function runDigest(
      * 顺带这也是 `check:cron-contract` 抓不到它的原因：那条规则的判据是「带条件的
      * `continue` 必须留下计数证据」，而这条路径**没有 `continue`**——它悄悄少传了一堆行。
      */
-    const filtered: Notification[] = [];
-    const blockedByPreference: Notification[] = [];
-    for (const n of items) {
-      const deliverable = shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]);
-      (deliverable ? filtered : blockedByPreference).push(n);
-    }
+    const { filtered, blocked: blockedByPreference } = splitByPreference(prefs, items);
     if (filtered.length === 0) {
       // 用户把所有相关类型都关掉了：这是选择而不是故障，但必须可见，
       // 否则「拉到了却没发出去」与错峰门控那次一样无法区分。
