@@ -11397,3 +11397,38 @@
   ③ 其余表（`subscriptions` / `user_sessions` / `webauthn_credentials` / `push_subscriptions`）
   尚无探针——它们目前的覆盖只有静态扫描。
 - 更新时间：2026-10-31 19:34（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【认证面】`clearLoginBuckets` 是匿名的「全站锁定归零」入口；失败上报的爆炸半径从无上限收到 4 个邮箱/窗口
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前三条）。
+- 状态：DONE（1 处结构性缺陷 + 1 处半径收窄 + 2 条用例；残留风险如实写明）。
+- 为什么做：上一条把 `recordLoginResult` 的匿名锁定留成「需产品口径」，这次先把它周围读干净。
+  读完发现同一文件里还蹲着一件更硬的事：`clearLoginBuckets` 也在那个 `"use server"` 文件里。
+- 做了什么：
+  1. **`clearLoginBuckets` 搬进 `src/lib/auth/login-buckets.ts`**（普通模块，无网络表面）。
+     带 `"use server"` 的文件里**每个 export 都是一条可 POST 的路径**，而登录页没有会话，
+     所以那条 action 是匿名的：清空 = 双维度锁定全归零，没有鉴权、没有身份判定。
+     当时唯一的缓冲是「没有客户端 import 它」——那不是授权，是一次等着被打破的默契。
+     另加一条用例钉住导出面：`Object.keys(await import("./login-attempts"))` 必须正好是
+     `["checkLoginAllowed", "recordLoginResult"]`。多一个 export 就是多一条可 POST 的路径。
+  2. **失败上报加成本**：`recordLoginResult(email, false)` 的入参就是「邮箱 + 布尔值」，
+     任何人都能替任意邮箱宣布一次失败 ⇒ 五个 POST 锁死一个账号 15 分钟。
+     现在先看这条出口 IP 还有没有额度，用尽就不再受理新的失败上报（返回 `ok`，
+     不让匿名调用者从错误码里读出桶的剩余次数）。于是同一 IP 每窗口最多锁
+     `20 / 5 = 4` 个邮箱，而不是无上限。
+- 变异取证：把那条额度守卫删掉，新用例立刻变红
+  （`出口 IP 额度用尽后不再受理失败上报` 1 failed / 8 passed）；恢复后 9/9 通过。
+- **残留风险（不假装解决）**：分布式出口仍可锁账号；真正的修法是让认证发生在服务端，
+  由服务端产生「失败」这个事实，而不是让客户端上报——那是一次认证链路重构。
+  这条路径上「客户端能声明的结果」与「服务端认定的事实」是两件事，本轮只收窄了成本，没有消除它。
+- 一处断言口径上的自我纠正：新用例一开始想用 `checkLoginAllowed` 断言「第 5 个邮箱没被锁」，
+  但它同时看 IP 桶、而 IP 桶此时已满 ⇒ 无论邮箱锁没锁都会返回 `allowed: false`，
+  断言恒绿地什么都没证明。改成直接 `loginEmailStore.peek(...)`，并在注释里写明原因。
+- 验证：`npx vitest run src/lib/actions/login-attempts.test.ts` 9 条 ✅；`tsc --noEmit` ✅；
+  `eslint` 三个改动文件 ✅；`check:changelog` / `check:progress` 待复跑。
+- 阻塞 / 风险 / 回滚：`clearLoginBuckets` 的签名从 `async () => {ok:true}` 变成
+  `() => void`，调用点只有单测（`await` 一个 void 仍然合法）；运维侧需要清桶时重启进程即可。
+  回滚 = revert 本条提交。
+- 下一项：其余表（`subscriptions` / `user_sessions` / `webauthn_credentials` /
+  `push_subscriptions`）尚无 RLS 探针；`visibility='public'` 的口径仍需产品判断。
+- 更新时间：2026-10-31 19:38（UTC+8，`date` 实读）。

@@ -104,6 +104,17 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **`clearLoginBuckets` 是个没有鉴权的 Server Action：谁调到它，全站登录锁定归零。**
+  它原先和 `checkLoginAllowed` / `recordLoginResult` 一起放在带 `"use server"` 的
+  `login-attempts.ts` 里——那个文件里的**每个 export 都是一条可 POST 的路径**，
+  而登录页本来就没有会话可用，所以这三条都是匿名的。当时唯一的缓冲是「没有客户端组件
+  import 它」，那不是授权，是一次等着被打破的默契。桶与清空入口现在搬进
+  `src/lib/auth/login-buckets.ts`（普通模块，没有网络表面），并有单测钉住导出面只剩两个名字。
+  同一处还收窄了「替别人宣布登录失败」的爆炸半径：失败上报受出口 IP 的额度约束，
+  该 IP 额度用尽后不再受理新的上报 ⇒ 同一 IP 每窗口最多锁 4 个邮箱（此前无上限）。
+  **残留风险写清楚**：分布式出口仍可锁账号；真正的修法是让认证发生在服务端、
+  由服务端产生「失败」这个事实，那是一次认证链路重构，尚未做。
+
 - **`updateMemberRole` 每一次都命中 0 行却返回成功——`team_members` 根本没有 UPDATE 策略。**
   PostgREST 的 UPDATE 在 RLS 下不是报错而是**命中 0 行、`error` 为 null**，于是
   `.update()` 之后直接 `ok()`：前端把下拉框刷成新角色，刷新后打回原值，服务端一行日志都没有。
