@@ -11712,3 +11712,36 @@
   `rollback` 消失，不污染其他探针。回滚 = revert 本条提交。
 - 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
 - 更新时间：2026-10-31 20:34（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【隐私承诺只在 mock 上验过】删号擦除补 18 条真库读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十二条）。
+- 状态：DONE（`supabase/tests/032_erase_user_data_probe.sql`，18 条）。
+- 起因：与上一条同型，但代价更大。`messages/*/privacy.json` 向用户承诺「删号后 30 天内删除或
+  匿名化个人数据」，而唯一真正执行这件事的是 032 的 `erase_user_data(uuid)`。
+  它此前只在 mock 上被验——`src/lib/mock/index.ts` 里有一条 JS 镜像 `eraseMockUserData`。
+  改了 SQL 忘了改镜像，测试照样全绿，而真实用户的数据还留在库里。
+- 读数（18 条，全部实跑）。分三组，每条都对应承诺里的一句话：
+  - **删**：`apiUsage=2`（含 IP 的使用记录整表删）、`contactMessages=1`、
+    `auditLogsAnonymized=3`；删完 `api_usage` 里该用户 0 行、**旁观者 1 行没动**；
+    联系消息**大小写 + 前后空格不同也删掉**（`  Victim@Probe.Local ` 能匹配
+    `victim@probe.local`），旁观者的还在。
+  - **留住事实、切断连接**：3 条审计行**都还在**（行为事实不删），但 `user_id` 置空、
+    `entity_id` 指向该用户时置空、metadata 里 `email`/`ip`/`ip_address`/`user_agent` 全剔除，
+    而**非 PII 的 `team_id` 保留**（这条很关键：过度擦除会让审计失去对账价值）。
+    json 数组形态的脏 metadata 被清成 `{}` 而不是报错中断。
+  - **拒绝**：anon / authenticated 调用 → 42501；null 用户 id → 函数自己 raise（不是静默成功）。
+- 两条我写错的期望（记下来，因为它们差点变成"实现错了"的假结论）：
+  1. 「metadata 里没有 email」我一开始数了整张表 —— 但旁观者的行**应该**留着 email，
+     于是读数 1 看起来像"没删干净"，其实是断言范围写错了。
+  2. 「非 object metadata 被清成 {}」我期望 1，实测 2 —— 另一行是 `{"ip_address": …}`，
+     唯一的键就是 PII，剔完自然成 `{}`。**这两处都不是实现的问题。**
+- 变异取证：用 038_tmp 把 `where lower(btrim(email)) = v_email` 改成 `where email = v_email`
+  → 探针报 2 条不符合期望（contactMessages 0/1、大小写匹配 1/0）、退出码 1；移除后 84/84 恢复。
+- 验证：`check:rls-probe` ✅ 37 迁移 + **6 探针 / 84 用例**；`check:doc-links` ✅；
+  `check:progress` / `check:changelog` ✅。探针文件不改任何实现。
+- 阻塞 / 风险 / 回滚：纯新增用例。回滚 = revert 本条提交。
+  **未覆盖的边界**：`erase_user_data` 之外还有 `admin.auth.admin.deleteUser()` 的级联路径，
+  那条依赖 GoTrue 与真实外键，探针里没有 GoTrue 替身，本轮不碰。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
+- 更新时间：2026-10-31 20:41（UTC+8，`date` 实读）。
