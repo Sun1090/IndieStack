@@ -216,7 +216,7 @@ SELECT / INSERT / DELETE 三条策略，全带 `USING` / `WITH CHECK`，`check:r
 
 ```bash
 pnpm check:rls-probe
-# ✅ RLS 策略执行取证通过：37 个迁移应用成功，8 个探针 / 106 条用例在真库上跑通
+# ✅ RLS 策略执行取证通过：38 个迁移应用成功，9 个探针 / 111 条用例在真库上跑通
 ```
 
 做法（入口 `scripts/check-rls-probe.js`，IO 在 `scripts/lib/rls-probe-check.js`，
@@ -284,17 +284,49 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
 - 移走 `036_team_members_update_policy.sql` → 探针报 5 条不符合期望、退出码 1；
 - 恢复后 8/8 通过。
 
-**探针覆盖到哪**（八个文件 / 106 条用例）：`036` 的 `team_members` UPDATE 矩阵、
+**探针覆盖到哪**（九个文件 / 111 条用例）：`036` 的 `team_members` UPDATE 矩阵、
 `037` 的 `user_sessions` 写入、`isolation_probe` 的 push / passkey / subscriptions 归属、
 `rbac_matrix_probe` 的 25 条 RBAC 矩阵、`030_webhook_idempotency_probe` 的占位与租约接手、
 `032_erase_user_data_probe` 的删号擦除（删什么 / 留什么 / 拒绝谁）、
 `032_retention_windows_probe` 的三条保留期边界（89/91、29/31、364/366 天）、
-`033_upload_objects_probe` 的引用判定与「删号后元数据活着」。
+`033_upload_objects_probe` 的引用判定与「删号后元数据活着」、
+`038_projects_visibility_probe` 的可见性角色口径（见下一节）。
 
 后两个值得单独说：`030` 与 `032` 的语义此前**只在 mock 上验过**——`src/lib/mock/index.ts`
 里有 `claimMockWebhookEvent` 与 `eraseMockUserData` 两条 JS 镜像，e2e 与单测验的是镜像。
 镜像与 SQL 一致是两处代码的巧合，不是可核对的事实；`032` 尤其危险，它承诺的是
 「删号后 30 天内删除或匿名化个人数据」，而那唯一的执行者是 SQL 函数。
+
+### `visibility = 'public'` 的口径（038，2026-10-31）
+
+`projects` 的 SELECT 策略一直是：
+
+```sql
+using (auth.uid() in (本队成员) or (visibility = 'public'))
+```
+
+**没有 `to` 子句** ⇒ 角色是 `PUBLIC`，`anon` 也算在内。于是「公开项目」这一支对
+**未登录访客**成立：任何人是 public 的项目，都能读到它的全部列。
+
+这条通道从 003 起就没有人决定过它是特性还是缺陷——`createProject` 硬编码
+`visibility: "private"`、`updateProject` 不接受这个字段、UI 只显示不修改、全仓也没有匿名读
+`projects` 的消费方。所以它是**靠没人走到**而安全，不是靠策略挡住。
+
+038 把它收窄成 `to authenticated`，口径取**站内共享**：`visibility = 'public'` 从此刻起
+表示「任何登录用户可读」，未登录访客不可读。修前/修后读数（`038_projects_visibility_probe.sql`）：
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| 未登录访客读 public 项目 | **1** | **0** |
+| 非成员的登录用户读 public 项目 | 1 | 1 |
+| 团队成员读自己团队的 private 项目 | 1 | 1 |
+
+要真做「站外公开」，正确做法不是把 `to authenticated` 删回去，而是：先定产品语义
+（哪些列可公开、要不要反枚举与缓存），再单独加一条 `to anon` 的策略并把列收窄成视图或 RPC，
+最后在 CHANGELOG 里把它记为对外暴露面的扩大。三步写在 038 的文件头里。
+
+`rbac_matrix_probe.sql` 里那条「anon 读公开」的用例**期望值被有意从 1 改成 0**——
+它原来守的是「潜力通道在明面上」，现在守的是**回归**：谁把 `to authenticated` 去掉，它立刻红。
 
 **可用性与边界**：
 
@@ -305,7 +337,7 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
   没有这一步，「缺件就跳过」这条友好设计在 CI 里等于**默认跳过**：门禁跑了、打了 ⚠️、退 0，
   而 RLS 一次没验。实跑取证（本机把 Homebrew 从 PATH 里去掉）：
   `ℹ️ PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
-  → 106 条用例照跑通。
+  → 111 条用例照跑通。
 - 仍然找不到时：**CI（`CI=true`）按失败处理**，本机跳过并打印原因（不静默变绿）；
   也可用 `RLS_PROBE_REQUIRE=1` 显式强制。
 - 替身不是 Supabase 的等价物：没有 PostgREST 那一层，所以「命中 0 行」必须靠 `row_count`

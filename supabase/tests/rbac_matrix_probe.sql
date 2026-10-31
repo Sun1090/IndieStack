@@ -153,21 +153,23 @@ select probe.expect('projects: 外队读公开 -> 1', probe.read(
 -- 下面这条是**读数与直觉不符**的一条，写清楚它为什么是 1。
 -- `Team members can view projects` 的 USING 是
 --   `auth.uid() in (本队成员) or visibility = 'public'`
--- 而这条策略没写 `to authenticated`（本仓库所有策略都是 `to public`），
--- 于是 `visibility = 'public'` 这一支对 **anon 也成立**：未登录的互联网用户
--- 可以直接 `GET /rest/v1/projects?visibility=eq.public` 读到这些项目。
+-- 在 038 之前这条策略**没有 `to` 子句**（默认 `PUBLIC`），于是 `visibility = 'public'`
+-- 这一支对 **anon 也成立**：未登录访客可以直接 `GET /rest/v1/projects?visibility=eq.public`
+-- 读到这些项目的全部列。当时这条用例把它**钉成期望值 1**——不是认可它，是让它在明面上：
+-- 一条「今天不可利用、但任何碰到 visibility 的改动都会变成真洞」的潜力通道，
+-- 若不以读数形式存在，就只能靠读策略时偶然想起。
 --
--- 今天这不算可利用的洞：`src/lib/actions/projects.ts` 建项目时硬写 `visibility: "private"`，
--- 没有 UI 也没有 Action 能把它改成 public，所以**现存数据里没有公开项目**。
--- 但它是一条**潜力通道**：任何将来把手伸向 visibility 的改动（新功能、手工 UPDATE、
--- 迁移回填）都会让那些项目对匿名用户可读，而且不会有任何门禁报警 ——
--- 这条用例存在的意义就是把这件事钉在明面上，而不是让它继续藏着。
--- 要收口有两条路（都属产品判断，不是这里单方面能定的）：
---   ① 把这条策略改成 `to authenticated`，让「公开」只对登录用户公开；
---   ② 保留现状，但把 `visibility` 定义成「站内共享」，并删掉这一支谓词。
-select probe.expect('projects: anon 读公开 -> 1（见上方注释）', probe.read(
+-- 2026-10-31 的 038 把这条策略收窄成 `to authenticated`，口径取「站内共享」：
+-- `visibility = 'public'` 从此表示**任何登录用户可读**，未登录访客不可读。
+-- 于是这条用例的期望值从 1 变成 0——**这是本仓库里少数几条「期望值被有意改了」的记录**，
+-- 改的理由不在用例里，在 `supabase/migrations/038_projects_visibility_scope.sql` 的文件头
+-- （含「要真做站外公开该怎么做」的三步）。
+--
+-- 留这条用例而不是删掉它：它现在守的是**回归**——谁把 `to authenticated` 去掉，这里立刻红。
+select probe.expect('projects: anon 读公开 -> 0（038 收窄为站内共享）', probe.read(
   null,
-  $q$select 1 from public.projects where id = '00000000-0000-4000-8000-0000000d0002'$q$), 1);
+  $q$select 1 from public.projects where id = '00000000-0000-4000-8000-0000000d0002'$q$), 0);
+
 
 -- ---------------------------------------------------------------------------
 -- 4. notifications / api_keys：归属列顶替（008 补的 with check）

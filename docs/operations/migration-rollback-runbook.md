@@ -6,7 +6,7 @@
 > **不自动回滚数据库。** 逆向迁移可能造成不可逆的数据丢失，必须由 DBA 与发布负责人共同决定；
 > 多数情况下正确的做法是**前向修复**（新增一条迁移）而不是删除已经应用的历史。
 
-<!-- migration-runbook:latest=037_user_sessions_write_policy.sql -->
+<!-- migration-runbook:latest=038_projects_visibility_scope.sql -->
 
 ## 触发条件
 

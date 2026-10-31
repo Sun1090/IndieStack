@@ -24,7 +24,7 @@ See `docs/operations/release-tag-ledger.md`.
   时**跳过并打印原因**（不静默变绿），需要强制时 `RLS_PROBE_REQUIRE=1`。
   它替代不了身份矩阵（没有 PostgREST 与真实 JWT），但它把「策略谓词到底怎么收口」这件事
   从「只能靠本地 Supabase 栈」变成「任何有 Postgres 的地方都能跑」。
-  现有八个探针共 106 条用例：`030_webhook_idempotency_probe.sql`（10 条，占位 / 幂等 / 失败重投 /
+  现有九个探针共 111 条用例：`030_webhook_idempotency_probe.sql`（10 条，占位 / 幂等 / 失败重投 /
   租约接手 / 客户端无权调用）、`032_erase_user_data_probe.sql`（18 条，删号擦除的三类数据、
   不波及他人、PII 键剔除与非 object metadata 清空、客户端无权调用）、
   `032_retention_windows_probe.sql`（9 条，90/30/365 天窗口的两侧边界与「不该删的不删」）、
@@ -109,6 +109,21 @@ See `docs/operations/release-tag-ledger.md`.
   **只按迁移文件名匹配**（云端 `name` ↔ manifest `fileName`，剥 `.sql` 后全等）——
   对不上仓库任何一条迁移的行一律不动，两行认领同一个目标版本号的计划整体拒判。
   判据：不拿「时间戳先后 ≈ 序号先后」这个没验证过的假设去写生产表。
+
+### Security
+
+- **`projects` 的 `visibility = 'public'` 对未登录访客成立：把这条策略收窄成 `to authenticated`。**
+  003 建的 `Team members can view projects` 是 `using (auth.uid() in (本队成员) or (visibility = 'public'))`，
+  **没有 `to` 子句** ⇒ 角色是 `PUBLIC`，`anon` 也算在内。也就是说：任何人是 public 的项目，
+  未登录访客都能 `GET /rest/v1/projects?visibility=eq.public` 读到它的全部列。
+  从 003 到现在，没有谁决定过「公开」是站内还是站外——`createProject` 硬编码 `private`、
+  `updateProject` 不接受这个字段、UI 只显示不修改、全仓也没有匿名读 `projects` 的消费方。
+  所以它是**靠没人走到**而安全，不是靠策略挡住；将来谁接上公开项目的写入路径，它就立刻是真的。
+  038 把角色收窄到 `authenticated`，口径取**站内共享**（今天的行为不变：任何登录用户可读 public 项目），
+  未登录访客从此读不到。修前/修后读数：未登录访客读 public 项目 **1 → 0**，
+  其余四条（团队成员读自己、非成员读 private、登录用户读 public、anon 读 private）不变。
+  要真做站外公开，正确做法是定产品语义 + 单独一条 `to anon` 策略 + 列级收窄（view/RPC），
+  三步写在迁移文件头里；只删 `to authenticated` 不算方案。
 
 ### Fixed
 

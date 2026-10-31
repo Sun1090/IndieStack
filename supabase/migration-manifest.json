@@ -186,6 +186,11 @@
       "version": "037",
       "fileName": "037_user_sessions_write_policy.sql",
       "sha256": "2dbe016434a7d61e99a6b66c2d9689cb1a6afa1f4a372489d1b1d3637e42c902"
+    },
+    {
+      "version": "038",
+      "fileName": "038_projects_visibility_scope.sql",
+      "sha256": "392e29e5f7ad2603559e02b82ddd3d3026095a19b987352081605931d1c707ed"
     }
   ]
 }
