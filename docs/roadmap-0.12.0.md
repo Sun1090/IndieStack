@@ -861,8 +861,13 @@
 2. B01、B02 有执行记录（UTC 时间、命令、状态码、artifact 指纹或 deployment id），
    「演练记录」小节不再是空模板。
 3. C01、C02 完成：mock 状态（含 MFA）的隔离边界只剩 store 一处，且 CI 里有一份全量并行的运行记录。
+   - **2026-10-31 读数**：`.github/workflows/e2e-parallel.yml` 实测存在，
+     `PW_FULLY_PARALLEL=true`、`E2E_SERVERS=3`（每 worker 一台 dev server，走进程边界隔离）；
+     最近三次 weekly 定时运行 **10-12 / 10-19 / 10-26 全 success**（`gh run list` 实读），
+     再往前 09-28 / 10-05 两次 failure。⇒「CI 里有一份全量并行的运行记录」成立；
+     **不宣称「一直绿」**——只报这条可复核序列，红过的两次不藏。
 4. `pnpm check:all`、`pnpm verify:build`、`pnpm test:e2e` 全绿，覆盖率阈值不降低
-   （地板见 `vitest.config.ts`）。
+   （地板见 `vitest.config.mts`）。
 5. 新增或改动的门禁都要能通过「故意做坏」的变异测试变红——一个永远不会失败的门禁比没有门禁更糟。
 6. D01、D02 落地：docs-site 中与调度/环境变量有关的事实由门禁守住，不再靠人工订正。
 
