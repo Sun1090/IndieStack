@@ -11432,3 +11432,35 @@
 - 下一项：其余表（`subscriptions` / `user_sessions` / `webauthn_credentials` /
   `push_subscriptions`）尚无 RLS 探针；`visibility='public'` 的口径仍需产品判断。
 - 更新时间：2026-10-31 19:38（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【审计面】`logAuthEvent` 让调用方决定「审计里有哪些事件类型」；顺带把 server action 导出面全扫了一遍
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前四条）。
+- 状态：DONE（1 处运行时校验缺口 + 4 条用例；并完成一次全仓 action 导出面清点）。
+- 为什么做：上一条修的是「`"use server"` 文件里每个 export 都是一条可 POST 的路径」。
+  这类缺陷不会只出现在一个文件里，所以按导出面把 19 个 action 文件逐个读了一遍
+  （`grep -rl '^"use server"'`），重点看「入参是不是只能由调用方声明」的那种。
+  清点结论：其余入口要么先鉴权、要么只写自己那一行；`logAuthEvent` 是唯一一个
+  **匿名可达 + 写服务端表 + 参数几乎不受约束**的入口。
+- 做了什么：`logAuthEvent` 的三个洞一起收：
+  1. `action` 在运行时校验（`AUTH_AUDIT_ACTIONS` 成为事实源，类型从它派生）。
+     它是匿名可用（失败登录那一刻还没有会话）、参数反序列化后只剩字符串、
+     而 `audit_logs.action` 是没有约束的 text 列 ⇒ 调用方可以决定「审计里出现哪些事件类型」，
+     并自报 `metadata.email` 替任意邮箱伪造一条 `auth.login_failed`。
+     这不是提权，是**取证面被污染**——一个能写任意 action 的入口，等于让攻击者挑选审计切口。
+  2. `metadata` 必须是普通对象（数组 / 字符串 / null 一律丢）。此前
+     `{...metadata}` 展开一个数组或字符串不会报错，而是悄悄写进一条形状奇怪的审计行。
+  3. 序列化后超过 4KB 丢弃：审计表是永久保留、只追加的，体积不能由匿名调用方决定。
+  越界一律**静默丢弃**（审计永不阻断主流程）但落一条服务端日志，
+  免得「审计悄悄没写」变成没人知道的空洞。
+- 变异取证：删掉那条白名单判定，`未登记的 action 一律丢弃` 立刻变红（1 failed / 12 passed），
+  恢复后 13/13。
+- 验证：`npx vitest run src/lib/actions/audit.test.ts` 13 条 ✅；
+  `src/components/auth/login-form.test.tsx` + `src/app/auth/mfa` 23 条 ✅（这两处 mock 了 logAuthEvent）；
+  `tsc --noEmit` ✅；`eslint` 两个改动文件 ✅；`check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：签名从 `action: AuthAuditAction` 改成 `action: string`（如实写），
+  调用方都是字面量，类型检查照旧。回滚 = revert 本条提交。
+- 下一步（本轮剩余时间的打算）：把「入参只能由调用方声明」这个形状继续往外推一层——
+  逐个看 `updateMessageStatus` / `updateProject` / `markNotificationRead` 这类
+  「传 id + 值」的 action 有没有服务端判定（RLS 兜住了吗、有没有 .eq 白名单）。
+- 更新时间：2026-10-31 19:44（UTC+8，`date` 实读）。

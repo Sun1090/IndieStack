@@ -104,6 +104,15 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **`logAuthEvent` 是匿名入口，而 `action` 是一个 text 列：调用方决定审计里出现哪些事件。**
+  它是登录失败时唯一能用的审计入口（那一刻还没有会话），参数在反序列化之后只剩字符串，
+  而 `audit_logs.action` 没有任何约束。后果不是提权，是**取证面被污染**：审计读者按 `action`
+  过滤与聚合，一个能随便写 action 的入口等于让攻击者决定「审计里记录过哪些事件类型」；
+  同一条入口还能自报 `metadata.email`，也就是替任意邮箱伪造一条 `auth.login_failed`。
+  现在 `AUTH_AUDIT_ACTIONS` 成为运行时清单（类型从它派生），越界一律丢弃并落服务端日志；
+  `metadata` 必须是普通对象且序列化后不超过 4KB（审计表永久保留、只追加，
+  不能由匿名调用方决定写多大）。四条用例都断言「一次写入都不能发生」。
+
 - **`clearLoginBuckets` 是个没有鉴权的 Server Action：谁调到它，全站登录锁定归零。**
   它原先和 `checkLoginAllowed` / `recordLoginResult` 一起放在带 `"use server"` 的
   `login-attempts.ts` 里——那个文件里的**每个 export 都是一条可 POST 的路径**，

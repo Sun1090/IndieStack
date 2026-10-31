@@ -5,15 +5,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthRetryableFetchError, AuthSessionMissingError } from "@supabase/supabase-js";
 
-const { createClientMock, rateLimitCheckMock, appendAuditLogMock } = vi.hoisted(() => ({
-  createClientMock: vi.fn(),
-  rateLimitCheckMock: vi.fn(),
-  appendAuditLogMock: vi.fn(),
-}));
+const { createClientMock, rateLimitCheckMock, appendAuditLogMock, logActionErrorMock } =
+  vi.hoisted(() => ({
+    createClientMock: vi.fn(),
+    rateLimitCheckMock: vi.fn(),
+    appendAuditLogMock: vi.fn(),
+    logActionErrorMock: vi.fn(async () => {}),
+  }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("@/lib/rate-limit", () => ({ checkActionRateLimit: rateLimitCheckMock }));
 vi.mock("@/lib/repositories/audit-logs", () => ({ appendAuditLog: appendAuditLogMock }));
+vi.mock("@/lib/api-log", () => ({ logActionError: logActionErrorMock }));
 
 import { logAuthEvent } from "./audit";
 
@@ -168,5 +171,45 @@ describe("logAuthEvent()", () => {
     mockUser({ id: "u1" });
     appendAuditLogMock.mockRejectedValue(new Error("boom"));
     await expect(logAuthEvent("auth.login")).resolves.toEqual({ ok: true });
+  });
+});
+
+/**
+ * 入参校验：`logAuthEvent` 是**匿名**可用的 action，`audit_logs.action` 是 text 列，
+ * 类型联合在反序列化后不存在。缺少这道校验时，调用方可以往审计里写进任意 action，
+ * 也能自报 `metadata.email` 替任意邮箱伪造一条 `auth.login_failed`。
+ * 三条断言都落在**一次写入都不能发生**上，而不只是「返回了 ok」——
+ * 只断言返回值的话，「先写成功再返回 ok」也会变绿。
+ */
+describe("logAuthEvent() 运行时入参校验", () => {
+  it("未登记的 action 一律丢弃，且不写审计", async () => {
+    mockUser({ id: "u1" });
+    for (const bad of ["auth.login ", "AUTH.LOGIN", "auth.evil", "", "auth.login\u0000"]) {
+      await expect(logAuthEvent(bad, { email: "victim@example.com" })).resolves.toEqual({
+        ok: true,
+      });
+    }
+    expect(appendAuditLogMock).not.toHaveBeenCalled();
+    expect(logActionErrorMock).toHaveBeenCalled();
+  });
+
+  it("metadata 不是普通对象时丢弃（数组 / 字符串 / null）", async () => {
+    mockUser({ id: "u1" });
+    for (const bad of [[], "x", 42, null] as unknown[]) {
+      await logAuthEvent("auth.login_failed", bad as Record<string, unknown>);
+    }
+    expect(appendAuditLogMock).not.toHaveBeenCalled();
+  });
+
+  it("metadata 超过 4KB 时丢弃", async () => {
+    mockUser({ id: "u1" });
+    await logAuthEvent("auth.login_failed", { blob: "x".repeat(5000) });
+    expect(appendAuditLogMock).not.toHaveBeenCalled();
+  });
+
+  it("合法 metadata 照常写入（上限不是零容忍）", async () => {
+    mockUser({ id: "u1" });
+    await logAuthEvent("auth.login_failed", { email: "a@b.com", ua: "x".repeat(2000) });
+    expect(appendAuditLogMock).toHaveBeenCalledTimes(1);
   });
 });
