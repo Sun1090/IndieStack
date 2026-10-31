@@ -225,8 +225,11 @@ async function claimStripeEvent(
 
   if (claim.outcome === "claimed") return claim;
 
+  // `attempts` 数的是「这条事件被**处理**过几次」（首次 1、失败后重投 +1），
+  // duplicate 不累加——所以它不等于 Stripe 投递了几次。日志按它的真实含义写，
+  // 否则排障时会把「第 1 次处理尝试」读成「Stripe 只投了一次」。
   logger.info(
-    `[Stripe Webhook] 跳过重复投递: ${event.type} ${event.id}（第 ${claim.attempts} 次投递）`,
+    `[Stripe Webhook] 跳过重复投递: ${event.type} ${event.id}（此前已占位 ${claim.attempts} 次）`,
   );
   return { response: jsonNoStore({ received: true, duplicate: true }) };
 }

@@ -11683,3 +11683,32 @@
   但 `to public` 的策略对 anon 成立）；把认证挪到服务端（`recordLoginResult` 那类
   「客户端声明事实」的共同根因）。
 - 更新时间：2026-10-31 20:30（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【幂等只在 mock 上验过】webhook 占位函数补 10 条真库读数；顺带纠正一句日志
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十一条）。
+- 状态：DONE（`supabase/tests/030_webhook_idempotency_probe.sql`，10 条）。
+- 起因：`e2e/webhook-events.spec.ts` 验的是「重复 event id 幂等」，但它跑在 mock 后端上——
+  真正定义语义的是 030 里那个 `claim_webhook_event`，而 `src/lib/mock/index.ts` 里有一条
+  **JS 镜像**。两边一致是**两处代码的巧合**，不是可核对的事实：改了 SQL 忘了改 mock，
+  e2e 依然全绿。这类「镜像通过镜像验证自己」的绿，是本轮一直在拆的那种。
+- 读数（10 条，全部实跑）：
+  1. 首次投递 → claimed；2. 立刻重复 → duplicate；3. 上次 `failed` → 可重新占位；
+  4. 重新占位后 `attempts` 从 1 累到 2；5. 两小时前已 `processed` → duplicate（不重放副作用）；
+  6. `received` 且租约超时 20 分钟 → 可接手；7. 接手后立刻再投 → duplicate；
+  8. `received` 且租约还差 14 分钟 → duplicate（不许抢）；9/10. anon 与 authenticated 调用 → 拒绝。
+- 一条被实测推翻的想当然：我先把第 4 条写成「累加到 3」（以为 duplicate 也计数），
+  实测是 2。**`attempts` 数的是「被处理过几次」，不是「Stripe 投递了几次」**。
+  于是路由里那句 `第 ${claim.attempts} 次投递` 是错的——排障时会把它读成「Stripe 只投了一次」。
+  已改成「此前已占位 N 次」，并在注释里写清两者的区别。这条改动只有一行，
+  但它把一个会误导排障的说法换成了真的。
+- 变异取证：`038_tmp` 里用 `create or replace` 把函数改成「一旦占位就永不再放手」→
+  探针报 3 条不符合期望（failed 重投 0/1、attempts 1/2、租约超时 0/1）、退出码 1；
+  移除后 66/66 恢复。
+- 验证：`check:rls-probe` ✅ 37 迁移 + **5 探针 / 66 用例**；`route.test.ts` 15/15 ✅
+  （改日志文案没有踩到既有断言）；`tsc` / `eslint` / `check:progress` / `check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例 + 一行日志文案，不动 030 本身。
+  探针里新加了一个 `probe.claim_webhook(role, event_id)` 辅助函数，它建在事务内、随
+  `rollback` 消失，不污染其他探针。回滚 = revert 本条提交。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
+- 更新时间：2026-10-31 20:34（UTC+8，`date` 实读）。

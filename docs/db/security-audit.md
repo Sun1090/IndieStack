@@ -216,7 +216,7 @@ SELECT / INSERT / DELETE 三条策略，全带 `USING` / `WITH CHECK`，`check:r
 
 ```bash
 pnpm check:rls-probe
-# ✅ RLS 策略执行取证通过：37 个迁移应用成功，4 个探针 / 56 条用例在真库上跑通
+# ✅ RLS 策略执行取证通过：37 个迁移应用成功，5 个探针 / 66 条用例在真库上跑通
 ```
 
 做法（入口 `scripts/check-rls-probe.js`，IO 在 `scripts/lib/rls-probe-check.js`，
@@ -293,7 +293,7 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
   没有这一步，「缺件就跳过」这条友好设计在 CI 里等于**默认跳过**：门禁跑了、打了 ⚠️、退 0，
   而 RLS 一次没验。实跑取证（本机把 Homebrew 从 PATH 里去掉）：
   `ℹ️ PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
-  → 56 条用例照跑通。
+  → 66 条用例照跑通。
 - 仍然找不到时：**CI（`CI=true`）按失败处理**，本机跳过并打印原因（不静默变绿）；
   也可用 `RLS_PROBE_REQUIRE=1` 显式强制。
 - 替身不是 Supabase 的等价物：没有 PostgREST 那一层，所以「命中 0 行」必须靠 `row_count`
