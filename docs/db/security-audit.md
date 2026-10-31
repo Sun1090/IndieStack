@@ -216,7 +216,7 @@ SELECT / INSERT / DELETE 三条策略，全带 `USING` / `WITH CHECK`，`check:r
 
 ```bash
 pnpm check:rls-probe
-# ✅ RLS 策略执行取证通过：37 个迁移应用成功，7 个探针 / 93 条用例在真库上跑通
+# ✅ RLS 策略执行取证通过：37 个迁移应用成功，8 个探针 / 106 条用例在真库上跑通
 ```
 
 做法（入口 `scripts/check-rls-probe.js`，IO 在 `scripts/lib/rls-probe-check.js`，
@@ -284,11 +284,12 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
 - 移走 `036_team_members_update_policy.sql` → 探针报 5 条不符合期望、退出码 1；
 - 恢复后 8/8 通过。
 
-**探针覆盖到哪**（七个文件 / 93 条用例）：`036` 的 `team_members` UPDATE 矩阵、
+**探针覆盖到哪**（八个文件 / 106 条用例）：`036` 的 `team_members` UPDATE 矩阵、
 `037` 的 `user_sessions` 写入、`isolation_probe` 的 push / passkey / subscriptions 归属、
 `rbac_matrix_probe` 的 25 条 RBAC 矩阵、`030_webhook_idempotency_probe` 的占位与租约接手、
 `032_erase_user_data_probe` 的删号擦除（删什么 / 留什么 / 拒绝谁）、
-`032_retention_windows_probe` 的三条保留期边界（89/91、29/31、364/366 天）。
+`032_retention_windows_probe` 的三条保留期边界（89/91、29/31、364/366 天）、
+`033_upload_objects_probe` 的引用判定与「删号后元数据活着」。
 
 后两个值得单独说：`030` 与 `032` 的语义此前**只在 mock 上验过**——`src/lib/mock/index.ts`
 里有 `claimMockWebhookEvent` 与 `eraseMockUserData` 两条 JS 镜像，e2e 与单测验的是镜像。
@@ -304,7 +305,7 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
   没有这一步，「缺件就跳过」这条友好设计在 CI 里等于**默认跳过**：门禁跑了、打了 ⚠️、退 0，
   而 RLS 一次没验。实跑取证（本机把 Homebrew 从 PATH 里去掉）：
   `ℹ️ PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
-  → 93 条用例照跑通。
+  → 106 条用例照跑通。
 - 仍然找不到时：**CI（`CI=true`）按失败处理**，本机跳过并打印原因（不静默变绿）；
   也可用 `RLS_PROBE_REQUIRE=1` 显式强制。
 - 替身不是 Supabase 的等价物：没有 PostgREST 那一层，所以「命中 0 行」必须靠 `row_count`

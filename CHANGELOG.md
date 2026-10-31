@@ -24,10 +24,12 @@ See `docs/operations/release-tag-ledger.md`.
   时**跳过并打印原因**（不静默变绿），需要强制时 `RLS_PROBE_REQUIRE=1`。
   它替代不了身份矩阵（没有 PostgREST 与真实 JWT），但它把「策略谓词到底怎么收口」这件事
   从「只能靠本地 Supabase 栈」变成「任何有 Postgres 的地方都能跑」。
-  现有七个探针共 93 条用例：`030_webhook_idempotency_probe.sql`（10 条，占位 / 幂等 / 失败重投 /
+  现有八个探针共 106 条用例：`030_webhook_idempotency_probe.sql`（10 条，占位 / 幂等 / 失败重投 /
   租约接手 / 客户端无权调用）、`032_erase_user_data_probe.sql`（18 条，删号擦除的三类数据、
   不波及他人、PII 键剔除与非 object metadata 清空、客户端无权调用）、
   `032_retention_windows_probe.sql`（9 条，90/30/365 天窗口的两侧边界与「不该删的不删」）、
+  `033_upload_objects_probe.sql`（13 条，后缀相等的引用判定、LIKE 通配符与尾巴巧合的反例、
+  删号后 `owner_id` 置空而元数据存活）、
   `036_team_members_update_probe.sql`（8 条）、
   `037_user_sessions_probe.sql`（10 条，抓到的是「功能从来没工作过」而不是越权）、
   `rbac_matrix_probe.sql`（25 条，覆盖 profiles 自提权 / teams 转手与 plan / projects 跨租户搬运 /

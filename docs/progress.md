@@ -11776,3 +11776,33 @@
   探针可继续扩的面：`find_orphan_upload_objects` / `list_user_objects_for_erasure`（033），
   它们同样只有 mock 覆盖。
 - 更新时间：2026-10-31 20:43（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【referenced 判错的代价是双向的】033 引用判定与「删号后元数据活着」补 13 条读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十四条）。
+- 状态：DONE（`supabase/tests/033_upload_objects_probe.sql`，13 条）。
+- 起因：033 的两句核心主张都只在 mock 上验过（`listMockUserObjects` / `listMockOrphanObjects`）：
+  ① 引用判定用**后缀相等**而不是 LIKE，因为对象键里的 `_` 在 LIKE 里是通配符；
+  ② `owner_id` 从 `on delete cascade` 改成 `on delete set null`，理由是「删号越彻底，孤儿越不可见」。
+  第 ② 条是**外键行为**，mock 里根本没有外键，读代码也读不出来。
+- 为什么重要：`referenced=false` 的对象才允许删，判错是双向的——
+  把 true 判成 false，删号会弄坏别人团队页面上正在用的封面；
+  把 false 判成 true，孤儿永远删不掉、隐私声明里「删除所有数据」无从证明。
+- 读数（13 条，全部实跑）：
+  - `used.png` 被 `profiles.avatar_url` 指着 → 1；`cover.png` 被 `projects.logo_url` 指着 → 1；
+  - `a_b.png` 没被引用 → 0；**尾巴巧合** `.../xavatars/u/y.png` 不算引用 `avatars/u/y.png` → 0
+    （这两条正是迁移注释里那句「要求前面是 `/`」的读数）；
+  - `list_user_objects_for_erasure(u1)` 返回 3 条 active、其中 referenced 只有 1 条、不含已删对象；
+  - `find_orphan_upload_objects()` 恰好 2 条（`a_b.png` / `y.png`），不含被引用的、也不含 `deleted`；
+  - **删号后 5 行元数据全在，`owner_id` 变 null 的正是 u1 的 4 行**，对象键与 64 位哈希仍在
+    ——这正是 033 想修的那件事，第一次有了代码读数。
+- 变异取证：把 `right(url, length(key)+1) = '/' || key` 退化成 `right(url, length(key)) = key`
+  → 3 条翻红（尾巴巧合 1/0、孤儿数 1/2 等）、退出码 1；移除后 106/106 恢复。
+- 过程中的三次小磕碰（都是我写夹具写错，不是实现问题）：uuid 末段多写一位、
+  `teams.owner_id` 与 `projects.slug` 是 not null、忘了给 `projects` 填 slug。
+  夹具失败会以「column violates not-null」中断整份探针——这也是好事：探针不会在半个夹具上继续断言。
+- 验证：`check:rls-probe` ✅ 37 迁移 + **8 探针 / 106 用例**；`check:progress` /
+  `check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
+- 更新时间：2026-10-31 20:45（UTC+8，`date` 实读）。
