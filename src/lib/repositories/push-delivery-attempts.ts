@@ -124,6 +124,22 @@ export async function listDuePushDeliveryAttempts(
   return (data ?? []) as PushDeliveryAttempt[];
 }
 
+/**
+ * 三条回执共用的**状态机守卫**：只有 `pending` 的行可以被推进。
+ *
+ * 三个回执此前只按 `(notification_id, endpoint)` 定位，不看当前状态，于是
+ * 「谁后写谁赢」——一次并发（平台调度 + `x-cron-secret` 手动调用；
+ * 或即时投递跨过 60s 入队窗口后 worker 也把同一行捞起来）就能让
+ * `markRetry` 把一个已经 `sent` 的行**翻回 pending**（`push-notify` 又把
+ * `attempt_count` 写成 1），退避上限与死信判定同时失真，同一封信被重复推送。
+ *
+ * 加上 `status = 'pending'` 之后，落后的那次写入变成**空更新**而不是覆盖：
+ * 终态是单向的（pending → sent / dead），这与 `listDuePushDeliveryAttempts`
+ * 只拉 pending 的口径一致。真正要做原子的「比较并更新」还得靠 DB 侧
+ * （唯一约束或 `update ... where status='pending' returning`），
+ * 这里做的是**不把别人的终态改坏**这一层，不夸大。
+ */
+
 /** 投递成功回执：标记 sent，记录次数与时间，清空历史失败信息 */
 export async function markPushDeliverySent(
   notificationId: string,
@@ -144,7 +160,9 @@ export async function markPushDeliverySent(
       sent_at: timestamp,
     })
     .eq("notification_id", notificationId)
-    .eq("endpoint", endpoint);
+    .eq("endpoint", endpoint)
+    // 状态机守卫：见文件上方 `pending` 单向推进那段。少这一行 = 后写者可以把终态改回去。
+    .eq("status", "pending");
   if (error) throw new Error(`push delivery sent: ${error.message}`);
 }
 
@@ -174,7 +192,9 @@ export async function markPushDeliveryRetry(
       next_attempt_at: input.nextAttemptAt.toISOString(),
     })
     .eq("notification_id", notificationId)
-    .eq("endpoint", endpoint);
+    .eq("endpoint", endpoint)
+    // 状态机守卫：见文件上方 `pending` 单向推进那段。少这一行 = 后写者可以把终态改回去。
+    .eq("status", "pending");
   if (error) throw new Error(`push delivery retry: ${error.message}`);
 }
 
@@ -196,7 +216,9 @@ export async function markPushDeliveryDead(
       last_attempt_at: now.toISOString(),
     })
     .eq("notification_id", notificationId)
-    .eq("endpoint", endpoint);
+    .eq("endpoint", endpoint)
+    // 状态机守卫：见文件上方 `pending` 单向推进那段。少这一行 = 后写者可以把终态改回去。
+    .eq("status", "pending");
   if (error) throw new Error(`push delivery dead: ${error.message}`);
 }
 
