@@ -266,6 +266,32 @@ describe("updateUserRole()", () => {
             error: "databaseError",
     });
   });
+
+  it("**不能把任何人写成 super_admin**：越界取值当场拒绝，一次写都不发", async () => {
+    // 这是本仓库里唯一一处「一次请求就能提权」的路径：`role` 的联合类型只活在编译期，
+    // 而 `ASSIGNABLE_USER_ROLES`（注释写着「刻意不含 super_admin」）当时只被下拉菜单用。
+    // 一个 admin 把自己（或同伙）传成 "super_admin" 就能穿过两道判定——
+    // 「我是 admin ✓」与「目标不是 super_admin ✓」（目标本来就不是）。
+    const admin = setup();
+    await expect(updateUserRole("u1", "super_admin")).resolves.toEqual({
+      ok: false,
+      error: "invalidRole",
+    });
+    // 关键：被拒之后**没有发生任何写入**。只断言错误码的话，
+    // 「先写成功再返回错误」这种实现也会绿。
+    expect(admin.from).not.toHaveBeenCalled();
+  });
+
+  it("角色白名单之外的任何字符串都拒绝（含空串与大小写变体）", async () => {
+    const admin = setup();
+    for (const role of ["", "owner", "Admin", "super-admin", "root", "member "]) {
+      await expect(updateUserRole("u2", role)).resolves.toEqual({
+        ok: false,
+        error: "invalidRole",
+      });
+    }
+    expect(admin.from).not.toHaveBeenCalled();
+  });
 });
 
 describe("listAuditLogs()", () => {

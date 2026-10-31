@@ -65,6 +65,7 @@
   "spamRejected": "消息疑似垃圾内容，已拒绝",
   "stripeNotConfigured": "支付服务尚未配置",
   "superAdminOnly": "超级管理员只能由超级管理员修改",
+  "invalidRole": "角色取值不合法：只能设置为普通成员、管理员或只读。",
   "teamNameRequired": "团队名称不能为空",
   "teamSlugExists": "该团队 slug 已被使用",
   "roleReadFailedAdmin": "暂时读不到该账户的角色信息，请稍后重试",

@@ -65,6 +65,7 @@
   "spamRejected": "Message rejected as suspected spam",
   "stripeNotConfigured": "Payment service is not configured",
   "superAdminOnly": "Super admins can only be changed by a super admin",
+  "invalidRole": "Invalid role: only member, admin, or viewer can be assigned.",
   "teamNameRequired": "Team name is required",
   "teamSlugExists": "A team with this slug already exists",
   "roleReadFailedAdmin": "We could not read this account's role right now. Please try again.",
