@@ -81,6 +81,76 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **偏好「部分」关闭时，被挡下的通知永远出不了队列（A05 的同一形状，藏在两格之间）。**
+  `runDigest` 只留一堆 `filtered = items.filter(shouldSendEmail)`，出队回执又只在
+  `filtered.length === 0` 时对全部 items 调用 ⇒ 用户开着总开关、只关掉 `securityAlerts`
+  之类细分项时，被挡下的那几条既不 `markEmailSent`（不在 filtered 里）也不
+  `markEmailSkipped`（不满足全关）⇒ `email_sent=false` 且 `email_skipped_reason` 仍是 NULL，
+  **每轮被重新拉起、永久占住 `created_at` 升序 + limit 100 的队首**，`email.backlog` 只涨不降。
+  现在按偏好分成 `filtered` / `blockedByPreference` 两堆，后者各自留下
+  `cron.digest.skipped{reason=preference}` 并**当场写原因出队**；`skipped` 计数与响应体一并如实。
+  `check:cron-contract` 当时抓不到它，因为那条规则的判据是「带条件的 `continue` 必须留下计数证据」，
+  而这条路径**没有 `continue`**——本轮修改时把计数挪进共享分支，门禁立刻以
+  `CRON_SKIP_UNCOUNTED` 变红，于是两格各留一份证据（可见性不能靠「另一处已经记过了」成立）。
+
+- **`QUEUE_STUCK` 把「provider 全线故障」诊断成「队首被占死」——两份读数长得一模一样。**
+  `DigestRoundReading` 里没有 `failed`，于是 `pulled=100, sent=0` 只有一种解释；
+  而一次 Resend 故障会让 100 条**全部失败**，读数完全相同，告警文案却把人指向
+  「查迁移 034 / 查 `email_skipped_reason` 的写入」——方向错的诊断比没有诊断更费时间。
+  现在 `failed` 是读数的一等公民（`email_worker_runs.failed` 本来就有，`toDailyDigestReadings`
+  一并带过来），新增判定码 `DELIVERY_FAILING`，`QUEUE_STUCK` 的判据补上 `failed === 0`。
+  同仓库 `queue-diagnostics.ts` 的 `emptySendRounds` 一直排除 `failed>0`，两套口径此前
+  从没有过交叉用例；那个跨模块一致性测试**本可以**抓到它，却在第二组用例上写了一句
+  `|| run.failed > 0` 的放行——那个析取恒为真，等于用一条永远成立的断言把分歧遮住。
+  已删掉那句，改为正向断言两边一致地排除它。面板文案随之新增
+  `overview.stats.trendDeliveryFailing`（双语），并由 `DIGEST_VERDICT_CODES` 清单 + 一条
+  「每个真实 code 都有明确文案」的用例钉住——否则新 code 会静默落进 `default` 的「读数不足」。
+
+- **push 成功回执写失败是唯一「真的会重复推送」的路径，而它在指标里完全看不见。**
+  provider 已收下推送、`markSent` 却抛错时，行仍是 `pending`、`next_attempt_at` 停在过去，
+  下一轮 `listDue` 照样把它捞出来再推一次；而 `PUSH_MAX_ATTEMPTS` 与 `PUSH_RETRY_MAX_AGE_MS`
+  **只在发送失败的分支被检查**，成功这条路一次都不看 ⇒ 只要那张表的 UPDATE 持续失败
+  （行锁等待、statement timeout、中间层拒绝 PATCH）就是无限期每天重发。
+  失败分支至少还有 `push.delivery.retry_failed`，成功分支此前一条指标都没有——
+  「回执一直在坏」与「一切正常」在指标上一模一样。新增
+  `push.delivery.receipt_failed{stage="sent"}`（与 digest 的 `cron.digest.receipt_failed`
+  同名同维度），并把日志改成说出后果。**本层修不了「不再重发」**：那要求行离开 `pending`，
+  而那正是写不进去的那一步；有一条用例把「下一轮仍然会发送」这个事实钉住，
+  将来真做了幂等它应当变红。
+
+- **`push_delivery_attempts` 的三条回执不看当前状态，后写者能把终态改回去。**
+  三个回执只按 `(notification_id, endpoint)` 定位，于是并发的两个执行者（平台调度 +
+  `x-cron-secret` 手动调用；或即时投递跨过 60 秒入队窗口后 worker 把同一行也捞起来）
+  「谁后写谁赢」：`markRetry` 会把已经 `sent` 的行**翻回 pending**，而 `push-notify`
+  又把 `attempt_count` 写成 1，退避上限与死信判定同时失真。三条 UPDATE 现在都带
+  `.eq("status","pending")`，落后的那次写入变成空更新而不是覆盖（与
+  `listDuePushDeliveryAttempts` 只拉 pending 的口径一致）。真正的原子「比较并更新」仍要靠
+  DB 侧，这里只做「不把别人的终态改坏」这一层，**不冒充**并发已经完全安全。
+
+- **上传体上限只信 `Content-Length`：头不存在时 `Number(null)` 是 0，守卫静默放行。**
+  `Number.isFinite(0)` 为真、0 也不大于上限，于是接着的 `request.formData()`
+  把整个 body 读进内存；触发方式是 `Transfer-Encoding: chunked` 的 multipart POST，
+  而 Origin 由调用方自填（这道检查挡的是浏览器跨站，不挡 curl）。Vercel 有 4.5MB 平台兜底，
+  **仓库自带 Dockerfile 的自托管构型没有**，可被未登录请求打到 OOM。
+  现在缺头、空串、解析不出、负数一律 `411 lengthRequired`（不是 413：那是「你的文件太大」，
+  会让调用方查错方向），并且**在读 body 之前**拒绝；用例断言 `formData` 一次都没被调用，
+  因为只断言状态码会让「读完了才发现没长度」也变绿。
+
+- **Resend 出网没有超时：provider 半死会变成「无声的一轮 + 一批重复邮件」。**
+  `fetch` 自身不超时，Resend 端「连上了但不回」时既不 resolve 也不 reject，
+  而 digest 按用户串行最多 100 组 ⇒ 整轮被平台按 wall-clock 杀掉：已寄出的组没写
+  `markEmailSent`（下一轮重复寄），本轮也不落 `email_worker_runs`、不打 `cron.digest.failed`。
+  现在带 `AbortSignal.timeout(EMAIL_SEND_TIMEOUT_MS)`（10 秒，理由是单封上限必须远小于
+  整轮预算），超时样本带 `reason=timeout` 以便与「非 2xx」分开读。它**不是**重试语义。
+
+- **限流取 IP 对 `x-real-ip` 不做形态校验，与 `x-forwarded-for` 那一支不对称。**
+  `isIpLike` 只加在 `x-forwarded-for` 上，`x-real-ip` 是 `realIp ?? …` 直接返回的——
+  于是「这个键一定是 IP 形状的字符串」这条**写在自己注释里**的不变量对它并不成立：
+  `X-Real-IP: <每次换一个随机串>` 就是每次都换一只新桶。现在两个来源都过 `isIpLike`，
+  其中一个畸形时退到另一个（不是直接 `anonymous`，用例同时钉住这两侧，
+  否则「把函数改成恒返回 anonymous」也会绿）。**形态校验不解决信任问题**：
+  直连部署下伪造 `X-Forwarded-For` 换桶这条残留没变，收紧要先改信任模型。
+
 - **ops 探测读错凭据来源：`node scripts/*` 不加载 `.env.local`，只看 `process.env`
   ⇒ 把「这台机器明明配着」报成「缺凭据」。** 与下面那条 `drills:preflight` 同源，但缺陷住在
   **一整族探测**里：`ops:migration-status`、`ops:digest-observation`、`db:apply`、

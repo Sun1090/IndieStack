@@ -11184,3 +11184,67 @@
 - 阻塞 / 风险 / 回滚：纯文档。回滚 = revert。
 - 下一项：续查判据 1/5/6 之外是否还有「断言无读数」；配额/retention/B03/B04 仍为外部。
 - 更新时间：2026-10-31 17:25（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【运行时缺陷审计】门禁全绿之下仍有 7 处真缺陷：从「跳过率」到「无限重发」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`。
+- 状态：DONE（8 条候选 → 7 处修复 + 1 处如实留作待取证，见文末）。
+- 为什么做：roadmap 的 24 项任务池已全部闭合，剩下的 B03 / B04 / retention token / 配额空隙
+  四项要么等外部权限、要么等时间去填。也就是说「再找一件事做」的产出已经很低，
+  而**门禁绿 ≠ 没有缺陷**——这套仓库的门禁密度很高，但它守的是「已经想到的形态」。
+  所以这一轮换成读运行时逻辑：按投递语义、限流边界、请求边界、仓储并发四类逐段读，
+  每条候选都要求给出「什么输入/时序会让它出错」与「现有哪一层门禁为什么抓不到」。
+  读完得到 8 条候选：7 条当场修掉，剩下 1 条需要真实 PostgREST 才能验证（见文末）。
+- 做了什么（7 笔修复提交，一笔一个主题；台账另起一笔）：
+  1. **偏好「部分」关闭时通知永不出队**（`cron/digest/route.ts`）。原来只留一堆 `filtered`，
+     出队回执只在 `filtered.length === 0` 时对全部 items 调用 ⇒ 用户开着总开关、只关掉
+     `securityAlerts` 这类细分项时，被挡下的那几条既不 `markEmailSent`、也不 `markEmailSkipped`，
+     于是 `email_sent=false` + `email_skipped_reason=NULL`，**永久占住队首**。
+     这正是 A05 修过的形状，只是藏在「全开」与「全关」两格之间。
+  2. **`QUEUE_STUCK` 吞掉 `failed`**（`digest-verdict.ts`）。读数里没有 `failed` ⇒
+     `pulled=100, sent=0` 只有「队首被占死」一种解释，而 provider 全线故障的读数**完全一样**，
+     告警却指向迁移 034。新增判定码 `DELIVERY_FAILING`，`failed` 进读数，面板新增双语文案，
+     并用 `DIGEST_VERDICT_CODES` 清单钉住「每个真实 code 都有明确文案」。
+  3. **push 成功回执写失败在指标里完全不可见**（`push-retry.ts`）。补
+     `push.delivery.receipt_failed{stage="sent"}`；**并如实写明本层修不掉「重复推送」**
+     ——那要求行离开 pending，而那正是写不进去的那一步。用例把「下一轮仍会发送」钉住，
+     将来真做了幂等它应当变红。
+  4. **三条 push 回执不看当前状态**（`repositories/push-delivery-attempts.ts`）。
+     并发下后写者能把 `sent` 翻回 `pending`（`markRetry`），并把 `attempt_count` 打回去。
+     三条 UPDATE 都加 `.eq("status","pending")`；**不冒充**并发已经原子。
+  5. **上传体上限只信 `Content-Length`**（`uploads/request.ts`）。`Number(null)` 是 0，
+     守卫对「不带长度」的请求静默放行，接着 `formData()` 把整个 body 读进内存。
+     改为缺头/空串/解析不出/负数一律 `411`，且**在读 body 之前**拒绝。
+  6. **Resend 出网无超时**（`email-send.ts`）。digest 串行最多 100 组 ⇒ provider 半死时整轮
+     被平台杀掉：已寄出的组没写回执（下一轮重复寄），本轮也不落表。加 10 秒超时 +
+     `reason=timeout`。
+  7. **限流取 IP 对 `x-real-ip` 不做形态校验**（`rate-limit.ts`）。`isIpLike` 只加在
+     `x-forwarded-for` 上，而注释里那条「键一定是 IP 形状」的不变量对 `x-real-ip` 不成立。
+     两个来源都过 `isIpLike`，一个畸形退到另一个。
+- 过程纪律（本轮自己踩到、并因此改了实现的两次）：
+  1. 把偏好计数的 metric 提到 `filtered.length === 0` **之外**之后，`check:cron-contract`
+     立刻以 `CRON_SKIP_UNCOUNTED` 变红——它要求那条 `continue` 的分支**自己**带证据。
+     没有把门禁放宽，而是两格各留一份：可见性不能靠「另一处已经记过了」成立。
+  2. `digest-verdict.cross.test.ts` 里那句 `expect(countsAsEmptySendRound(run) || run.failed > 0)`
+     是**恒真的**——它本来是要表达「告警可以比面板更敏感」，写出来却成了一个永远成立的析取，
+     于是两套口径的分歧被它完整地遮住了。这一轮删掉它，改成正向断言两边一致地排除 `failed>0`。
+     **一个永远成立的断言比没有断言更糟**，这条与判据 5 同源，只是形态从「门禁」挪到了「用例」。
+- 验证：`npx vitest run`（全量）/ `npx tsc --noEmit` / `npx eslint .` / `pnpm check:all` 全绿；
+  `check:cron-contract` 2 处条件跳过均有证据；`check:changelog` / `check:progress` ✅。
+  新增用例：digest 偏好部分关闭 1 条、`DELIVERY_FAILING` 3 条（含「同形不同因」与「每个 code 都有文案」）、
+  push 回执 2 条、仓储状态守卫 1 条、上传 411 一条（4 种头形态）+ 错误映射 1 行、超时 2 条、IP 形态 2 条。
+- 阻塞 / 风险 / 回滚：无运行时行为变更风险超出上述语义（最外显的是上传缺长度时由「放行」变 `411`）。
+  回滚 = revert 本条分支的 7 笔修复提交。
+- **刻意没修的两处（写清为什么，不留成「以后再说」）**：
+  1. `repositories/contact-messages.ts` 的 `escapeLike` 用 `\,` 转义逗号、且不处理括号，而
+     PostgREST 的 `or=(...)` 逻辑树据文档只认双引号包裹，`\,` 很可能不被接受 ⇒ 管理员搜索
+     `a,b` / `invoice (Oct)` 可能被拆成非法表达式或注入额外过滤项。**没有改**：修法依赖
+     PostgREST 解析的细节（引号内的 `\` 怎么处理、`%`/`_` 是否还能当通配符），而本机没有可跑的
+     PostgREST（`supabase status` 需要新装 CLI、本机无栈）⇒ **改错了会静默弄坏搜索**，
+     比现状更糟。取证方式：本地起栈后对 `contact_messages` 发一次
+     `or=(name.ilike."%a,b%")` 与 `or=(name.ilike.%a\,b%)`，看哪个 200 哪个 400。
+  2. `ops:deploy-freshness` 类判定之外的「跨实例共享缓存」缺口（`/api/health` 那条已知缺口的 (b) 支）
+     仍未动，理由同原登记：要引入 Redis/平台缓存，超出 starter template 的产品边界。
+- 下一项：给上面第 1 条起本地 Supabase 栈取证（这是唯一「修法存疑」的格子）；
+  其余同前——配额空隙需连续多天真实构建、retention 缺 Vercel token、B03 / B04 等 maintainer。
+- 更新时间：2026-10-31 18:05（UTC+8，`date` 实读）。
