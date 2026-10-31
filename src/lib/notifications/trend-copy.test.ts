@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { describeEmailQueueTrend } from "./trend-copy";
+import { DIGEST_VERDICT_CODES } from "./digest-verdict";
 
 /** 假翻译：直接把键与参数回显，这样断言看的是「选了哪个键」。 */
 const t = (key: string, values?: Record<string, number>) =>
@@ -60,5 +61,29 @@ describe("describeEmailQueueTrend", () => {
       t,
     );
     expect(out.desc).toBe("overview.stats.trendInsufficient");
+  });
+
+  it("投递侧故障有自己的那句话——**不能落进「读数不足」**", () => {
+    // 一次 Resend 全线故障与「队首被占死」的读数完全一样（pulled=100, sent=0），
+    // 若它落进 default，面板会在一次真故障上说「带日期的读数还不够判趋势」。
+    const out = describeEmailQueueTrend({ code: "DELIVERY_FAILING", attention: true }, 2, t);
+    expect(out.desc).toContain("trendDeliveryFailing");
+    expect(out.desc).not.toContain("trendInsufficient");
+    expect(out.marker).toBe("!");
+    // 与 QUEUE_STUCK 必须**不同句**：两者的处置方向不同，共用一句话等于没分家
+    const stuck = describeEmailQueueTrend({ code: "QUEUE_STUCK", attention: true }, 2, t);
+    expect(out.desc).not.toBe(stuck.desc);
+  });
+
+  it("**每个真实存在的判定码都有明确的一句话**（只有 INSUFFICIENT_DATA 允许说「不足」）", () => {
+    // 这条是上面那条 `default` 的解毒剂：兜底分支保住了「未来 code 不打假结论」，
+    // 但它也会**吞掉**一个已经真实存在的 code。清单来自
+    // `DIGEST_VERDICT_CODES`（与类型联合双向钉住），所以这里漏一个就红。
+    const silent = DIGEST_VERDICT_CODES.filter((code) => {
+      if (code === "INSUFFICIENT_DATA") return false;
+      const out = describeEmailQueueTrend({ code, attention: true }, 3, t);
+      return out.desc.includes("trendInsufficient");
+    });
+    expect(silent).toEqual([]);
   });
 });

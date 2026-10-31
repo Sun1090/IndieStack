@@ -25,6 +25,7 @@
       "trendInsufficient": "带日期的读数还不够判趋势",
       "trendDraining": "A05 按预期生效：积压在降，跳过在涨",
       "trendNotDraining": "跳过在涨但积压没降——A05 的症状还在",
+      "trendDeliveryFailing": "投递侧故障：拉满取数上限但整轮全部发送失败",
       "trendHealthy": "积压不高，无需追",
       "emailQueueStaleDesc": "已卡住：最老一条已等待 {age}；最近 {rounds} 轮拉到条目却一封未发",
       "queueAgeMinutes": "{value} 分钟",

@@ -4,12 +4,12 @@
  *
  * ## 为什么要专门写一个跨模块的一致性测试
  *
- * - `digest-verdict.ts` 的 `QUEUE_STUCK`：`pulled >= EMAIL_PULL_LIMIT && sent === 0`
+ * - `digest-verdict.ts` 的 `QUEUE_STUCK`：`pulled >= EMAIL_PULL_LIMIT && sent === 0 && failed === 0`
  *   —— **严重性判定**，决定要不要喊人。
  * - `queue-diagnostics.ts` 的 `emptySendRounds`：`pulled > 0 && sent === 0 && failed === 0`
  *   —— **展示口径**，决定面板上那个「空发轮次」怎么算。
  *
- * 两者**不是同一个概念**（一个是严重性、一个是计数，且对 `failed` 的处理不同），
+ * 两者**不是同一个概念**（一个是严重性、一个是计数，阈值也不同），
  * 所以不该强行合并。但它们对**同一批数据**下结论，一旦各自漂移就会出现
  * 「面板说 0 轮空发、告警却在喊卡死」这种**互相打脸**的读数——
  * 而那时候读日志的人无法判断该信哪一个。
@@ -18,6 +18,14 @@
  * **凡是被判为 `QUEUE_STUCK` 的轮次，都必须同时被计进 `emptySendRounds`。**
  * 反向不成立（`pulled=5, sent=0, failed=0` 是空发轮次，但远没到卡死），
  * 那是定义上的正常，不在这里断言。
+ *
+ * **2026-10-31 订正**：`QUEUE_STUCK` 那一栏的条件此前**少了一个 `failed === 0`**，
+ * 于是「Resend 全线故障导致 100 条全失败」与「队首被不可投递的行占死」这一对
+ * **读数完全一样**的轮次被判成同一个码，告警文案把人指向迁移 034 与
+ * `email_skipped_reason` 的写入——方向是错的。这个文件当时**本可以**抓到它，
+ * 却在第二组用例上写了一句 `|| run.failed > 0` 的放行：那个析取恒为真，
+ * 等于用一条永远成立的断言把分歧遮住了。现在那一行删了，
+ * 分歧改为正向断言（`DELIVERY_FAILING` 与 `emptySendRounds` 一致地排除它）。
  */
 import { describe, expect, it } from "vitest";
 import { EMAIL_PULL_LIMIT } from "@/lib/repositories/notifications";
@@ -44,10 +52,14 @@ function emptyRoundsFor(runs: { pulled: number; sent: number; failed: number }[]
 
 describe("判定「队列卡死」的两处口径", () => {
   it("**凡是被判 QUEUE_STUCK 的轮次，都必须被计进 emptySendRounds**", () => {
-    // 构造三组不同形态的「拉满却没发」，逐组核对两边结论不打架。
+    // 构造两组「拉满却没发且**没有失败**」的形态，逐组核对两边结论不打架。
+    //
+    // 这个集合里**不再**包含 `failed > 0` 的轮次：那种轮次不是「队首被占死」，
+    // 而是投递侧故障（`DELIVERY_FAILING`），面板的 `emptySendRounds` 也一直
+    // 把它排除在外。此前这条用例把它放进来，并用 `|| run.failed > 0` 放行——
+    // 那个放行是**恒真的**，等于用一个永远成立的断言遮住了两套口径的分歧。
     const stuckRounds = [
       { pulled: EMAIL_PULL_LIMIT, sent: 0, failed: 0 },
-      { pulled: EMAIL_PULL_LIMIT, sent: 0, failed: 5 },
       { pulled: EMAIL_PULL_LIMIT + 7, sent: 0, failed: 0 },
     ];
     for (const run of stuckRounds) {
@@ -55,22 +67,37 @@ describe("判定「队列卡死」的两处口径", () => {
         date: "2026-10-06",
         pulled: run.pulled,
         sent: run.sent,
+        failed: run.failed,
         backlog: 240,
         skipped: 0,
       });
       expect(verdict.code).toBe("QUEUE_STUCK");
-      // 反向断言：即便面板口径因为 `failed > 0` 而没算它，这一组也必须仍然一致——
-      // 所以这里只断言「不矛盾」：面板数出来的空发轮数 ≤ 被判卡死的轮数。
-      // 换句话说：**告警可以比面板更敏感，但不能比面板更钝。**
-      expect(countsAsEmptySendRound(run) || run.failed > 0).toBe(true);
+      // 包含关系：告警认了的轮次，面板也必须数到。
+      expect(countsAsEmptySendRound(run)).toBe(true);
     }
+  });
+
+  it("**投递侧故障两边一致地不算「空发」**：failed>0 时告警换码、面板不计数", () => {
+    // 同一个 (pulled=100, sent=0)，只是 failed 不同——这正是此前被读成同一件事的两种世界。
+    const run = { pulled: EMAIL_PULL_LIMIT, sent: 0, failed: EMAIL_PULL_LIMIT };
+    expect(countsAsEmptySendRound(run)).toBe(false);
+    expect(
+      judgeDigestRound({
+        date: "2026-10-06",
+        pulled: run.pulled,
+        sent: run.sent,
+        failed: run.failed,
+        backlog: 240,
+        skipped: 0,
+      }).code,
+    ).toBe("DELIVERY_FAILING");
   });
 
   it("两边对「纯空发轮次」的结论一致：都认", () => {
     const run = { pulled: EMAIL_PULL_LIMIT, sent: 0, failed: 0 };
     expect(countsAsEmptySendRound(run)).toBe(true);
     expect(
-      judgeDigestRound({ date: "2026-10-06", pulled: run.pulled, sent: run.sent, backlog: 240, skipped: 0 }).code,
+      judgeDigestRound({ date: "2026-10-06", pulled: run.pulled, sent: run.sent, failed: 0, backlog: 240, skipped: 0 }).code,
     ).toBe("QUEUE_STUCK");
   });
 
@@ -87,6 +114,7 @@ describe("判定「队列卡死」的两处口径", () => {
       date: "2026-10-06",
       pulled: run.pulled,
       sent: run.sent,
+      failed: run.failed,
       backlog: 240,
       skipped: 0,
     }).code === "QUEUE_STUCK");
@@ -100,6 +128,7 @@ describe("判定「队列卡死」的两处口径", () => {
       date: "2026-10-06",
       pulled: run.pulled,
       sent: run.sent,
+      failed: run.failed,
       backlog: 3,
       skipped: 5,
     });
@@ -114,6 +143,7 @@ describe("判定「队列卡死」的两处口径", () => {
       date: "2026-10-06",
       pulled: EMAIL_PULL_LIMIT - 1,
       sent: 0,
+      failed: 0,
       backlog: 240,
       skipped: 0,
     });
@@ -122,6 +152,7 @@ describe("判定「队列卡死」的两处口径", () => {
       date: "2026-10-06",
       pulled: EMAIL_PULL_LIMIT,
       sent: 0,
+      failed: 0,
       backlog: 240,
       skipped: 0,
     });
@@ -146,6 +177,7 @@ describe("跨天趋势真的拿得到数据（端到端接上）", () => {
           date: row.date as string,
           pulled: row.pulled,
           sent: row.sent,
+          failed: row.failed,
           backlog: 0, // 积压不在 worker_runs 表里，这里只验接线
           skipped: 0,
         })),

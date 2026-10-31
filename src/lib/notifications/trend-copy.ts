@@ -40,6 +40,13 @@ export function describeEmailQueueTrend(
     // 两者都是「A05 没把症状修掉」，所以共用一句话，不另造一个说法。
     case "QUEUE_STUCK":
       return { marker, desc: `${t("overview.stats.trendNotDraining")} · ${days}` };
+    // 投递侧故障与上面两条**不是同一件事**，所以必须有自己的一句话：
+    // 「拉满 100 条一封没发」的读数与队首被占死一模一样，但处置方向完全不同
+    // （前者查 provider / 密钥，后者查迁移 034 与出队回执的写入）。
+    // 若让它落进 `default`，面板会显示「带日期的读数还不够判趋势」——
+    // 那是在一次真故障上告诉人「只是数据不够」，比不显示更糟。
+    case "DELIVERY_FAILING":
+      return { marker, desc: `${t("overview.stats.trendDeliveryFailing")} · ${days}` };
     case "HEALTHY_LOW_BACKLOG":
       return { marker, desc: `${t("overview.stats.trendHealthy")} · ${days}` };
     default:

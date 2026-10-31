@@ -25,6 +25,7 @@
       "trendInsufficient": "Not enough dated readings to judge a trend yet",
       "trendDraining": "A05 working as intended: backlog falling while skips rise",
       "trendNotDraining": "Skips are rising but backlog is not falling — A05's symptom is still here",
+      "trendDeliveryFailing": "Delivery side is failing: full batch pulled, every send failed",
       "trendHealthy": "Backlog is low; nothing to chase",
       "emailQueueStaleDesc": "Stuck: oldest item has waited {age}; {rounds, plural, one {# recent run} other {# recent runs}} pulled items but sent none",
       "queueAgeMinutes": "{value, plural, one {# minute} other {# minutes}}",
