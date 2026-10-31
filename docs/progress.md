@@ -11352,3 +11352,48 @@
 - 下一项：`recordLoginResult` 的「匿名失败计数」产品口径（同上一条的遗留）；
   以及给其余敏感表补探针（探针是手写用例，没有用例的表这道门禁一无所知）。
 - 更新时间：2026-10-31 19:27（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【越权矩阵】把 007/008 的 `with check` 从「迁移注释」变成执行读数；顺手照出 `visibility='public'` 对 anon 成立
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前一条）。
+- 状态：DONE（`supabase/tests/rbac_matrix_probe.sql` 21 条 + 夹具抽成 `000_helpers.sql`）。
+- 为什么做：上一条自己写下的下一项就是「给其余敏感表补探针」。更具体地说，007 / 008 的迁移注释
+  断言「`profiles` 少 `with check` 就能自提权成 admin」「`teams` 少 `with check` 就能转手 owner /
+  白嫖 plan」「`projects` 少 `with check` 就能把项目搬到别的团队」——**这三条判断此前只有迁移文本
+  与代码评审，一次执行读数都没有**。而 036 刚刚证明「文本上写对了」和「真的收口了」是两件事。
+- 做了什么：
+  1. 夹具抽到 `supabase/tests/000_helpers.sql`：`probe.write` / `probe.read` 扮演 PostgREST，
+     `probe.expect` / `probe.verify` 负责矩阵登记与断言（把「期望值」抄错的概率从人身上挪到函数上）。
+     036 的探针改成用同一套夹具，两个文件不再各写一份 `set role` 模板。
+  2. `rbac_matrix_probe.sql`：21 条用例，覆盖 profiles（自提权 / 队友可见 / 外队不可见）、
+     teams（转手 owner_id / 改 plan / 外队改）、projects（member 改不动 / admin 能改 /
+     改 team_id / 改 created_by / 外队读私有 / 外队读公开 / anon 读公开）、
+     notifications 与 api_keys（标别人已读、改 user_id、删别人的密钥）、
+     team_invitations（同队 member 发不了、外队发不了、本队 admin 能发）。
+- 读数：21/21 符合期望。`check:rls-probe` ✅ 36 迁移 + 3 探针。
+- **变异取证**（这一条比读数本身重要）：把 `Users can update own profile` 的 `with check` 从
+  「`role` 必须等于旧值」放宽成 `auth.uid() = id`，矩阵立刻报
+  `profiles: 改自己 role -> 拒绝 | 1 | -1` 并退出码 1；恢复原始谓词后重新通过。
+  没有这一步，「21/21 通过」只能证明矩阵没写错，不能证明它在读策略。
+- **一处读数与直觉不符，按发现记而不是按 bug 改**：`projects: anon 读公开` 的实测读数是 **1**。
+  `Team members can view projects` 的 USING 是「本队成员 **or** `visibility = 'public'`」，
+  而本仓库所有策略都是 `to public`（没写 `to authenticated`）⇒ 这一支对 **anon** 也成立，
+  未登录用户可以直接 `GET /rest/v1/projects?visibility=eq.public`。
+  **今天不构成可利用的洞**：`actions/projects.ts` 建项目时硬写 `visibility: "private"`，
+  没有 UI / Action 能改成 public，现存数据里没有公开项目（探针里那行公开项目是自己造的夹具）。
+  但它是**潜力通道**：任何将来碰 `visibility` 的改动都会让那些项目对匿名可读，且没有门禁会报警。
+  收口要产品判断（改成 `to authenticated`，还是把 `visibility` 定义成「站内共享」并删掉这一支），
+  所以本轮**没有单方面改策略**，只在矩阵里把期望钉成 1 并写清理由。
+- 过程中撞到的两个坑（都记在文件注释里）：
+  1. `auth.users` 上有真实触发器 `handle_new_user` / `handle_new_team`，手写 profiles 会撞主键——
+     夹具改成「只插 users，让触发器建 profile」，这样探针走的是真实建号路径；
+  2. 夹具只把表权限 grant 给 `authenticated`，会让「anon 越权」用例以 `permission denied` 失败，
+     那条失败看起来像策略生效，其实是夹具自己挡的。Supabase 对 anon 也授权，所以补上 `anon`。
+- 验证：`check:rls-probe` ✅（3 探针）；`tsc` / `eslint` 未受影响（本轮只动 SQL 与文档）；
+  `check:doc-links` / `check:changelog` / `check:progress` 待复跑。
+- 阻塞 / 风险 / 回滚：探针只读不写生产；夹具在事务里跑、结尾 rollback。
+  回滚 = revert 本条提交（门禁回到只有 036 一个探针）。
+- 下一项：① `visibility='public'` 的口径（需产品判断）；② `recordLoginResult` 的匿名失败计数口径；
+  ③ 其余表（`subscriptions` / `user_sessions` / `webauthn_credentials` / `push_subscriptions`）
+  尚无探针——它们目前的覆盖只有静态扫描。
+- 更新时间：2026-10-31 19:34（UTC+8，`date` 实读）。

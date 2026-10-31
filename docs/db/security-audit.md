@@ -255,6 +255,43 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
 - 探针是**手写用例**，不是穷举：新增敏感表或策略时应同时补一个探针文件，否则这道门禁
   对它一无所知（这一点与 `falsify:rules` 同源——门禁的价值来自那条用例，不来自脚本本身）。
 
+### 现有探针与读数
+
+| 探针文件 | 覆盖 | 最近一次读数 |
+|---|---|---|
+| `000_helpers.sql` | 夹具（扮演 PostgREST 的 `probe.write` / `probe.read`） | — |
+| `036_team_members_update_probe.sql` | `team_members` UPDATE 的越权矩阵 | 8/8（036 之前是 8 条全 0） |
+| `rbac_matrix_probe.sql` | profiles / teams / projects / notifications / api_keys / team_invitations 的跨租户隔离与归属列不可变 | 21/21 |
+
+**变异取证**（2026-10-31 实跑）：把 `Users can update own profile` 的 `with check` 从
+「`role` 必须等于旧值」放宽成 `auth.uid() = id`，矩阵立刻报
+`profiles: 改自己 role -> 拒绝 | 1 | -1` 并退出码 1；恢复原始谓词后重新通过。
+这证明矩阵确实在读策略，而不是在复述策略文本。
+
+### 一次读数与直觉不符：`visibility = 'public'` 对 anon 也成立
+
+`rbac_matrix_probe.sql` 里有一条期望值是 **1** 的用例，它是本次审计**发现的一处潜在暴露**，
+不是断言错误：
+
+```sql
+-- Team members can view projects
+using (auth.uid() in (select user_id from team_members where team_id = projects.team_id)
+       or visibility = 'public')
+```
+
+这条策略没有 `to authenticated`（本仓库全部策略都是 `to public`），
+于是 `visibility = 'public'` 这一支对 **anon** 也成立：未登录的互联网用户可以
+`GET /rest/v1/projects?visibility=eq.public`。
+
+**今天不构成可利用的洞**：`src/lib/actions/projects.ts` 建项目时硬写 `visibility: "private"`，
+没有 UI / Action 能把它改成 public，现存数据里没有公开项目（实测匿名读公开项目返回 1 行，
+而这行是本探针自己造的夹具）。它是一条**潜力通道**：任何将来碰 `visibility` 的改动
+——新功能、手工 UPDATE、迁移回填——都会让那些项目对匿名用户可读，且没有门禁会报警。
+
+收口需要产品判断，所以没有在本轮单方面改策略。两条路：
+① 把策略改成 `to authenticated`（「公开」只对登录用户公开）；
+② 保留现状但明确 `visibility` 是「站内共享」，删掉这一支谓词。
+
 ## service_role 最小权限清单（2026-09-13 加固）
 
 RLS 只约束 `anon` / `authenticated`；`service_role` 带 `BYPASSRLS`，因此**每一个
