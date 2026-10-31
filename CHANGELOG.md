@@ -10,6 +10,37 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm check:rls-probe`：把 RLS 策略在真库上执行一遍，而不只是静态扫描。**
+  `check:rls` 读迁移文本，回答「这条策略写全了没有」；它回答不了「这张表压根没写这条策略」——
+  两者在静态视角下几乎同形，而 036 修的那条缺陷正是后者（`team_members` 有 SELECT/INSERT/DELETE、
+  全带 `USING`/`WITH CHECK`，门禁全绿，少的那条 UPDATE 让每一次写入都静默命中 0 行）。
+  现在 `scripts/check-rls-probe.js` 起一次性 Postgres 集群（临时目录 + 随机空闲端口 + unix socket，
+  跑完即拆）→ 应用 `supabase/tests/bootstrap.sql`（Supabase 面最小替身：`auth.uid()`/
+  `auth.role()`/`auth.users`/`storage.objects`/`foldername()`/三个角色）→ 按序应用**全部真实迁移**
+  → 逐个跑 `supabase/tests/*.sql` 探针。探针用 `set role authenticated` + `request.jwt.claims`
+  扮演 PostgREST，用 `row_count` 把三种读数分开：`0` 是 USING 没放行（安静地什么都没改）、
+  `-1` 是 WITH CHECK 拒绝（42501）、`1` 才是真的落库。
+  失败封闭已实测：移走 036 后探针报 5 条不符、退出码 1，复原后 8/8。无 `initdb`/`pg_ctl`/`psql`
+  时**跳过并打印原因**（不静默变绿），需要强制时 `RLS_PROBE_REQUIRE=1`。
+  它替代不了身份矩阵（没有 PostgREST 与真实 JWT），但它把「策略谓词到底怎么收口」这件事
+  从「只能靠本地 Supabase 栈」变成「任何有 Postgres 的地方都能跑」。
+  现有十个探针共 126 条用例：`030_webhook_idempotency_probe.sql`（10 条，占位 / 幂等 / 失败重投 /
+  租约接手 / 客户端无权调用）、`032_erase_user_data_probe.sql`（18 条，删号擦除的三类数据、
+  不波及他人、PII 键剔除与非 object metadata 清空、客户端无权调用）、
+  `032_retention_windows_probe.sql`（9 条，90/30/365 天窗口的两侧边界与「不该删的不删」）、
+  `033_upload_objects_probe.sql`（13 条，后缀相等的引用判定、LIKE 通配符与尾巴巧合的反例、
+  删号后 `owner_id` 置空而元数据存活）、
+  `036_team_members_update_probe.sql`（8 条）、
+  `037_user_sessions_probe.sql`（10 条，抓到的是「功能从来没工作过」而不是越权）、
+  `rbac_matrix_probe.sql`（30 条，覆盖 profiles 自提权 / teams 转手与 plan / projects 跨租户搬运 /
+  notifications 与 api_keys 的归属列 / team_invitations 的发送权限）、
+  `isolation_probe.sql`（13 条，push / passkey / subscriptions 的归属与只读边界）。
+  **变异取证**：把 `Users can update own profile` 的 `with check` 放宽后，矩阵立刻报
+  `profiles: 改自己 role -> 拒绝 | 1 | -1` 并退出码 1，恢复后重新通过——它确实在读策略，
+  而不是复述策略文本。矩阵里另有一条**发现**被钉成期望值 1：`visibility = 'public'`
+  那一支谓词对 **anon** 也成立（本仓库策略都写 `to public`），今天没有公开项目所以不可利用，
+  但任何将来碰 `visibility` 的改动都会让它对匿名可读（详见 `docs/db/security-audit.md`）。
+
 - **`pnpm drills:storage-erasure`：用应用自己的存储驱动实测「建对象 → 可见 → 删除 → 不可见」。**
   B03 登记的「真实 bucket 对象删除仍未取得」此前有三份绿着的证据守着，却没有一份经过
   `src/lib/storage` 那层驱动：`.single-do.sql` 只动数据库元数据（碰不到 provider）、
@@ -79,7 +110,212 @@ See `docs/operations/release-tag-ledger.md`.
   对不上仓库任何一条迁移的行一律不动，两行认领同一个目标版本号的计划整体拒判。
   判据：不拿「时间戳先后 ≈ 序号先后」这个没验证过的假设去写生产表。
 
+### Security
+
+- **`projects` 的 `visibility = 'public'` 对未登录访客成立：把这条策略收窄成 `to authenticated`。**
+  003 建的 `Team members can view projects` 是 `using (auth.uid() in (本队成员) or (visibility = 'public'))`，
+  **没有 `to` 子句** ⇒ 角色是 `PUBLIC`，`anon` 也算在内。也就是说：任何人是 public 的项目，
+  未登录访客都能 `GET /rest/v1/projects?visibility=eq.public` 读到它的全部列。
+  从 003 到现在，没有谁决定过「公开」是站内还是站外——`createProject` 硬编码 `private`、
+  `updateProject` 不接受这个字段、UI 只显示不修改、全仓也没有匿名读 `projects` 的消费方。
+  所以它是**靠没人走到**而安全，不是靠策略挡住；将来谁接上公开项目的写入路径，它就立刻是真的。
+  038 把角色收窄到 `authenticated`，口径取**站内共享**（今天的行为不变：任何登录用户可读 public 项目），
+  未登录访客从此读不到。修前/修后读数：未登录访客读 public 项目 **1 → 0**，
+  其余四条（团队成员读自己、非成员读 private、登录用户读 public、anon 读 private）不变。
+  要真做站外公开，正确做法是定产品语义 + 单独一条 `to anon` 策略 + 列级收窄（view/RPC），
+  三步写在迁移文件头里；只删 `to authenticated` 不算方案。
+
 ### Fixed
+
+- **一个 `export const` 让登录在 CI 上整体不通——`"use server"` 文件只允许导出 async 函数。**
+  `src/lib/actions/audit.ts` 里放着 `export const AUTH_AUDIT_ACTIONS = [...]`（审计动作清单，
+  上一轮为「匿名入口不能自定 action」加的）。Next 对 `"use server"` 文件有硬约束：**每个导出
+  都必须是 async 函数**，一个常量数组就让整个模块在求值阶段抛
+  `A "use server" file can only export async functions, found object`。代价不止这一条：
+  `/auth/login` 的 actions loader 把 `recordLoginResult` / `checkLoginAllowed` 和它放在同一批，
+  **整批一起挂**，于是登录表单点下去什么都不发生。
+  本地 lint / `tsc` / 3755 条单测 / `next build` **全绿**——这条约束只在模块真的被求值时才检查。
+  唯一红的是 CI 的 E2E：17 条用例卡在 `waitForURL("**/dashboard")` 超时（两个 shard 一致）。
+  修法是把清单搬进普通模块 `src/lib/auth/audit-actions.ts`（与上一轮 `login-buckets` 同形状，
+  那一处记得搬、这一处忘了），`audit.ts` 只留 async 的 `logAuthEvent`。
+  读数：本地 `GET /auth/login` 200 且 dev 日志无该错误；`tsc` 0；
+  相关单测 186/186；全仓扫过一遍 `"use server"` 文件，同类只剩
+  `contact-messages.ts` 的 `export { type ... }`（编译期擦除，运行时无此导出，不算）。
+  **这一格目前没有本地门禁**，只能靠 E2E 兜——补 `check:use-server-exports` 是下一手。
+
+- **`check:rls-probe` 在 CI 里会「跑起来但一次都没验」：二进制装在机器上却不在 PATH 上。**
+  GitHub 的 `ubuntu-latest` 自带 PostgreSQL，但 `psql` 在 `/usr/bin`，`initdb` / `pg_ctl` 在
+  `/usr/lib/postgresql/<ver>/bin`。而这道门禁的设计是「缺件就跳过并打印原因」——
+  于是 CI 里它每次都打一行 ⚠️、退 0，RLS 这一层**整轮没有执行验证**，而那行警告被几十行 ✅ 淹没。
+  现在两条都补上：① 判缺之前先按 `/opt/homebrew/opt/postgresql@*/bin`、`/usr/lib/postgresql/*/bin`、
+  `/usr/pgsql-*/bin` 找一个**三件套齐全**的目录（不接受混用两个版本）并接到 PATH 前面；
+  ② 仍然找不到时，`CI=true` 按**失败**处理（本机仍跳过），不需要谁记得去设 `RLS_PROBE_REQUIRE=1`。
+  实跑取证：本机 PATH 去掉 Homebrew 后，输出 `ℹ️ 改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
+  并跑完 56 条用例；`CI=true` 下同样通过。
+
+- **`check:rls` 的策略集第一次和真库对了账：38 条 public 策略逐条一致。**
+  那道门禁读迁移文本，说出「应有 38 条策略、每条都带 `using` / `with check`」，
+  但这句结论此前**从没和 `pg_policies` 比过一次**——门禁自己读自己，读法错了也照样绿
+  （`rls-coverage.ts` 文件头就记着一次：策略名正则把带空格的名字截成一个词，门禁绿着只验了一条）。
+  现在 `check:rls-probe` 在应用完全部迁移后把两侧都拿到手比 `command` / `roles` /
+  `using` / `with check` 的有无（不比表达式文本，PostgreSQL 会重排）；只比 `public`
+  schema（`storage.objects` 的策略来自 Supabase 初始化脚本，替身里没有）。
+  变异取证：塞一个 `execute 'create pol' || 'icy …'` 拼出来的策略 → 报
+  `只在真库：public.projects / Tmp concat policy`、退出码 1；移除后重新对齐。
+  这条同时记下了静态提取的真实边界：它是**文本匹配**，写成拼接或条件分支就可能漏。
+
+- **「吊销单个设备」的文案承诺了它做不到的事：它只是删掉一行记录，那台设备仍然登录着。**
+  `revokeSession()` 删的是 `user_sessions` 的行，而设备的 refresh token 在 GoTrue 侧依然有效
+  ——它还能继续换新的 access token。当前 auth-js 的 admin API 只有 `signOut(jwt, scope)`，
+  按会话吊销需要目标会话自己的 JWT（服务端拿不到），GoTrue 也没有「按 session id 吊销」的公开端点。
+  而 UI 写着「吊销后该设备将被登出」、成功提示是「设备已吊销」：**一个做不到的安全承诺比没有更糟**
+  ——用户会以为被盗设备已经下线，于是不去用真正能作废会话的「退出其他设备」。
+  现在中英文案与实现说同一件事（移除 = 从列表里删掉；要真正下线请用「退出其他设备」），
+  `revokeSession` 的注释也写明这条边界，免得下次又漂。
+
+- **「已登录设备」这个功能在真库上从未工作过：`user_sessions` 没有 INSERT / UPDATE 策略。**
+  018 的注释写着「upsert 按 id 去重实现『每设备一行 + last_seen 刷新』」，但它只补了 DELETE 策略；
+  而唯一的写入方 `recordCurrentSession()` 用的是**用户作用域**客户端 upsert 这张表。
+  RLS 下 INSERT 没有策略 = 拒绝（**42501，不是 0 行**），于是这一次写入每次都失败：
+  登录回调 try/catch 吞掉、dashboard 心跳是 `void` 天然静默、设置页读到的「设备列表」永远是空的、
+  `revokeSession()` 只能对着不存在的行工作从而永远答 `sessionNotFound`。
+  它一直看起来正常，是因为 e2e 与单测全跑在 mock 上，而 **mock 没有 RLS**——
+  与 009 那条「策略自引用递归只在真库暴露」是同一类。
+  迁移 `037_user_sessions_write_policy.sql` 补两条策略：INSERT `with check (auth.uid() = user_id)`；
+  UPDATE `using (auth.uid() = user_id)` + `with check`（`user_id` 不可改成别人、`id` 不可改——
+  它是 GoTrue 的 session id，允许改等于允许抢占别人的会话 id）。
+  实测读数（`supabase/tests/037_user_sessions_probe.sql`，10 条矩阵）：修复前
+  `登记自己的会话` 为 **-1**、`刷新自己的会话` 为 **0**，共 6 条不符；修复后 10/10。
+
+- **`logAuthEvent` 是匿名入口，而 `action` 是一个 text 列：调用方决定审计里出现哪些事件。**
+  它是登录失败时唯一能用的审计入口（那一刻还没有会话），参数在反序列化之后只剩字符串，
+  而 `audit_logs.action` 没有任何约束。后果不是提权，是**取证面被污染**：审计读者按 `action`
+  过滤与聚合，一个能随便写 action 的入口等于让攻击者决定「审计里记录过哪些事件类型」；
+  同一条入口还能自报 `metadata.email`，也就是替任意邮箱伪造一条 `auth.login_failed`。
+  现在 `AUTH_AUDIT_ACTIONS` 成为运行时清单（类型从它派生），越界一律丢弃并落服务端日志；
+  `metadata` 必须是普通对象且序列化后不超过 4KB（审计表永久保留、只追加，
+  不能由匿名调用方决定写多大）。四条用例都断言「一次写入都不能发生」。
+
+- **`clearLoginBuckets` 是个没有鉴权的 Server Action：谁调到它，全站登录锁定归零。**
+  它原先和 `checkLoginAllowed` / `recordLoginResult` 一起放在带 `"use server"` 的
+  `login-attempts.ts` 里——那个文件里的**每个 export 都是一条可 POST 的路径**，
+  而登录页本来就没有会话可用，所以这三条都是匿名的。当时唯一的缓冲是「没有客户端组件
+  import 它」，那不是授权，是一次等着被打破的默契。桶与清空入口现在搬进
+  `src/lib/auth/login-buckets.ts`（普通模块，没有网络表面），并有单测钉住导出面只剩两个名字。
+  同一处还收窄了「替别人宣布登录失败」的爆炸半径：失败上报受出口 IP 的额度约束，
+  该 IP 额度用尽后不再受理新的上报 ⇒ 同一 IP 每窗口最多锁 4 个邮箱（此前无上限）。
+  **残留风险写清楚**：分布式出口仍可锁账号；真正的修法是让认证发生在服务端、
+  由服务端产生「失败」这个事实，那是一次认证链路重构，尚未做。
+
+- **`updateMemberRole` 每一次都命中 0 行却返回成功——`team_members` 根本没有 UPDATE 策略。**
+  PostgREST 的 UPDATE 在 RLS 下不是报错而是**命中 0 行、`error` 为 null**，于是
+  `.update()` 之后直接 `ok()`：前端把下拉框刷成新角色，刷新后打回原值，服务端一行日志都没有。
+  迁移 `036_team_members_update_policy.sql` 补上策略（`using`: 调用者是本团队 owner/admin
+  且**被改的这一行当前不是 owner**；`with check`: 仍须是 owner/admin、`team_id`/`user_id`
+  不可变、`role` 只能是 admin/member）。同时补上应用层的两半：
+  `updateMemberRoleSchema` 做**运行时**白名单（`newRole` 的联合类型在反序列化后只剩字符串，
+  而 `role` 的 check 约束放行 `'owner'` ⇒ **只补策略不做白名单，等于把一次假成功换成一次真提权**），
+  以及 `.select("id")` 检测 0 行并回 `memberRoleNotChanged`（并发被降级不是 `memberNotFound`）。
+  实测读数（一次性 Postgres 集群 + `supabase/tests/036_team_members_update_probe.sql`）：
+  036 之前八条越权用例**全部**命中 0 行（连两条合法更新也是），之后为
+  `0,1,-1,0,-1,-1,0,1`，与期望 8/8 一致。
+
+- **2FA 是 UI 约定，不是控制：服务端从未读过 `aal`，且 `/auth/mfa` 被 proxy 反向挡掉。**
+  `grep -rn "getAuthenticatorAssuranceLevel" src/` 在此之前 **0 命中**。Supabase 对已开 MFA 的
+  账号在**密码登录后签发 aal1 会话**，而 RLS 的 `auth.uid()` 在 aal1 下照常生效 ——
+  也就是说「拿到密码的人关掉 JS 直接 `GET /dashboard`」能读到全部仪表盘数据，
+  当时唯一的控制是登录表单里那一次 `router.push("/auth/mfa")`。
+  反过来更糟：`/auth/mfa` 原本在 `proxy.ts` 的 `authRoutes` 里，那段分支是「已登录 ⇒ 弹回
+  `/dashboard`」⇒ **愿意输入验证码的人也进不了挑战页**。两件事合起来 = 2FA 既不强制、也无法完成。
+  现在：新增 `src/lib/auth/mfa-assurance.ts`（`nextLevel === "aal2" && currentLevel !== "aal2"`
+  才拦，并带上因子 id 与回跳地址），在 `dashboard/layout.tsx` 调用一次即覆盖所有 `/dashboard/**`
+  （逐页调用会漏页，漏一页就是一个入口）；`/auth/mfa` 从 `authRoutes` 移出。
+  **没开 2FA 的账号一条都不受影响**（没因子时 `nextLevel` 仍是 `aal1`）；
+  **读数失败时拦（503）而不是放行**——读不到就放行是这套控制最贵的失效方式，且没有任何读数。
+  e2e 从来碰不到这条：`shouldUseMock()` 时 `proxy()` 直接 return，两段路由判定根本不执行；
+  mock 客户端因此补上了 `mfa.getAuthenticatorAssuranceLevel`（由 `auth-surface.test.ts` 强制）。
+
+- **一次请求就能自提权为 `super_admin`：`role` 的白名单此前只在 UI 生效。**
+  `updateUserRole` 是 `"use server"` 导出，参数在客户端序列化后**重新**传进来，联合类型
+  `"member" | "admin" | "viewer"` 那一刻已经不存在；而 `ASSIGNABLE_USER_ROLES`
+  （`src/lib/constants.ts`，注释明写「刻意不含 super_admin」）只被下拉菜单用来渲染选项。
+  于是 `profiles.role = "admin"` 的账号 POST 一个 `role: "super_admin"`，就能穿过
+  「我是 admin ✓」与「目标不是 super_admin ✓」两道判定（目标本来就不是），
+  把自己或同伙写成 `super_admin`，随后 `listAuditLogs` 与全部 `allPermissions` 打开。
+  现在新增 `src/lib/validations/admin.ts`（角色枚举**派生自** `ASSIGNABLE_USER_ROLES`，
+  不另抄一份），签名如实写成 `role: string`（运行时入参不该伪装成受限类型），
+  校验放在鉴权之后（未登录方不该从错误码里读出哪些取值合法）。
+  用例断言被拒时**一次写入都没有发生**——只断言错误码会让「先写成功再返回错误」也变绿。
+
+- **偏好「部分」关闭时，被挡下的通知永远出不了队列（A05 的同一形状，藏在两格之间）。**
+  `runDigest` 只留一堆 `filtered = items.filter(shouldSendEmail)`，出队回执又只在
+  `filtered.length === 0` 时对全部 items 调用 ⇒ 用户开着总开关、只关掉 `securityAlerts`
+  之类细分项时，被挡下的那几条既不 `markEmailSent`（不在 filtered 里）也不
+  `markEmailSkipped`（不满足全关）⇒ `email_sent=false` 且 `email_skipped_reason` 仍是 NULL，
+  **每轮被重新拉起、永久占住 `created_at` 升序 + limit 100 的队首**，`email.backlog` 只涨不降。
+  现在按偏好分成 `filtered` / `blockedByPreference` 两堆，后者各自留下
+  `cron.digest.skipped{reason=preference}` 并**当场写原因出队**；`skipped` 计数与响应体一并如实。
+  `check:cron-contract` 当时抓不到它，因为那条规则的判据是「带条件的 `continue` 必须留下计数证据」，
+  而这条路径**没有 `continue`**——本轮修改时把计数挪进共享分支，门禁立刻以
+  `CRON_SKIP_UNCOUNTED` 变红，于是两格各留一份证据（可见性不能靠「另一处已经记过了」成立）。
+
+- **`QUEUE_STUCK` 把「provider 全线故障」诊断成「队首被占死」——两份读数长得一模一样。**
+  `DigestRoundReading` 里没有 `failed`，于是 `pulled=100, sent=0` 只有一种解释；
+  而一次 Resend 故障会让 100 条**全部失败**，读数完全相同，告警文案却把人指向
+  「查迁移 034 / 查 `email_skipped_reason` 的写入」——方向错的诊断比没有诊断更费时间。
+  现在 `failed` 是读数的一等公民（`email_worker_runs.failed` 本来就有，`toDailyDigestReadings`
+  一并带过来），新增判定码 `DELIVERY_FAILING`，`QUEUE_STUCK` 的判据补上 `failed === 0`。
+  同仓库 `queue-diagnostics.ts` 的 `emptySendRounds` 一直排除 `failed>0`，两套口径此前
+  从没有过交叉用例；那个跨模块一致性测试**本可以**抓到它，却在第二组用例上写了一句
+  `|| run.failed > 0` 的放行——那个析取恒为真，等于用一条永远成立的断言把分歧遮住。
+  已删掉那句，改为正向断言两边一致地排除它。面板文案随之新增
+  `overview.stats.trendDeliveryFailing`（双语），并由 `DIGEST_VERDICT_CODES` 清单 + 一条
+  「每个真实 code 都有明确文案」的用例钉住——否则新 code 会静默落进 `default` 的「读数不足」。
+
+- **push 成功回执写失败是唯一「真的会重复推送」的路径，而它在指标里完全看不见。**
+  provider 已收下推送、`markSent` 却抛错时，行仍是 `pending`、`next_attempt_at` 停在过去，
+  下一轮 `listDue` 照样把它捞出来再推一次；而 `PUSH_MAX_ATTEMPTS` 与 `PUSH_RETRY_MAX_AGE_MS`
+  **只在发送失败的分支被检查**，成功这条路一次都不看 ⇒ 只要那张表的 UPDATE 持续失败
+  （行锁等待、statement timeout、中间层拒绝 PATCH）就是无限期每天重发。
+  失败分支至少还有 `push.delivery.retry_failed`，成功分支此前一条指标都没有——
+  「回执一直在坏」与「一切正常」在指标上一模一样。新增
+  `push.delivery.receipt_failed{stage="sent"}`（与 digest 的 `cron.digest.receipt_failed`
+  同名同维度），并把日志改成说出后果。**本层修不了「不再重发」**：那要求行离开 `pending`，
+  而那正是写不进去的那一步；有一条用例把「下一轮仍然会发送」这个事实钉住，
+  将来真做了幂等它应当变红。
+
+- **`push_delivery_attempts` 的三条回执不看当前状态，后写者能把终态改回去。**
+  三个回执只按 `(notification_id, endpoint)` 定位，于是并发的两个执行者（平台调度 +
+  `x-cron-secret` 手动调用；或即时投递跨过 60 秒入队窗口后 worker 把同一行也捞起来）
+  「谁后写谁赢」：`markRetry` 会把已经 `sent` 的行**翻回 pending**，而 `push-notify`
+  又把 `attempt_count` 写成 1，退避上限与死信判定同时失真。三条 UPDATE 现在都带
+  `.eq("status","pending")`，落后的那次写入变成空更新而不是覆盖（与
+  `listDuePushDeliveryAttempts` 只拉 pending 的口径一致）。真正的原子「比较并更新」仍要靠
+  DB 侧，这里只做「不把别人的终态改坏」这一层，**不冒充**并发已经完全安全。
+
+- **上传体上限只信 `Content-Length`：头不存在时 `Number(null)` 是 0，守卫静默放行。**
+  `Number.isFinite(0)` 为真、0 也不大于上限，于是接着的 `request.formData()`
+  把整个 body 读进内存；触发方式是 `Transfer-Encoding: chunked` 的 multipart POST，
+  而 Origin 由调用方自填（这道检查挡的是浏览器跨站，不挡 curl）。Vercel 有 4.5MB 平台兜底，
+  **仓库自带 Dockerfile 的自托管构型没有**，可被未登录请求打到 OOM。
+  现在缺头、空串、解析不出、负数一律 `411 lengthRequired`（不是 413：那是「你的文件太大」，
+  会让调用方查错方向），并且**在读 body 之前**拒绝；用例断言 `formData` 一次都没被调用，
+  因为只断言状态码会让「读完了才发现没长度」也变绿。
+
+- **Resend 出网没有超时：provider 半死会变成「无声的一轮 + 一批重复邮件」。**
+  `fetch` 自身不超时，Resend 端「连上了但不回」时既不 resolve 也不 reject，
+  而 digest 按用户串行最多 100 组 ⇒ 整轮被平台按 wall-clock 杀掉：已寄出的组没写
+  `markEmailSent`（下一轮重复寄），本轮也不落 `email_worker_runs`、不打 `cron.digest.failed`。
+  现在带 `AbortSignal.timeout(EMAIL_SEND_TIMEOUT_MS)`（10 秒，理由是单封上限必须远小于
+  整轮预算），超时样本带 `reason=timeout` 以便与「非 2xx」分开读。它**不是**重试语义。
+
+- **限流取 IP 对 `x-real-ip` 不做形态校验，与 `x-forwarded-for` 那一支不对称。**
+  `isIpLike` 只加在 `x-forwarded-for` 上，`x-real-ip` 是 `realIp ?? …` 直接返回的——
+  于是「这个键一定是 IP 形状的字符串」这条**写在自己注释里**的不变量对它并不成立：
+  `X-Real-IP: <每次换一个随机串>` 就是每次都换一只新桶。现在两个来源都过 `isIpLike`，
+  其中一个畸形时退到另一个（不是直接 `anonymous`，用例同时钉住这两侧，
+  否则「把函数改成恒返回 anonymous」也会绿）。**形态校验不解决信任问题**：
+  直连部署下伪造 `X-Forwarded-For` 换桶这条残留没变，收紧要先改信任模型。
 
 - **ops 探测读错凭据来源：`node scripts/*` 不加载 `.env.local`，只看 `process.env`
   ⇒ 把「这台机器明明配着」报成「缺凭据」。** 与下面那条 `drills:preflight` 同源，但缺陷住在

@@ -19,8 +19,17 @@ import { TRACE_HEADER, resolveTraceId } from "@/lib/trace-id";
 /** 需要登录保护的路由列表 */
 const protectedRoutes = ["/dashboard", "/dashboard/(.*)"];
 
-/** 认证相关路由（已登录用户不应访问） */
-const authRoutes = ["/auth/login", "/auth/register", "/auth/mfa"];
+/**
+ * 认证相关路由（已登录用户不应访问）
+ *
+ * **`/auth/mfa` 刻意不在这个列表里**：它是**已登录**（aal1）用户去完成第二步验证的地方，
+ * 而这里的分支恰恰是「已登录 ⇒ 弹回仪表盘」。它此前在这个列表里，于是
+ * 「登录表单检测到已验证因子 → 跳到挑战页」这条链路在**非 mock 构型下走不通**：
+ * 跳转请求一进 proxy 就被 307 回 `/dashboard`，用户既进不去也验不了。
+ * e2e 没抓到它是因为 `shouldUseMock()` 时这个函数直接 return（见下）——
+ * 也就是说 mock 构型里这两段判定**根本不执行**。
+ */
+const authRoutes = ["/auth/login", "/auth/register"];
 
 export async function proxy(request: NextRequest) {
   // 每请求生成 CSP nonce：注入请求头供 Server Components 读取，

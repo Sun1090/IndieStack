@@ -57,9 +57,14 @@ export function isIpLike(value: string): boolean {
 
 /**
  * 从请求头提取客户端 IP（服务端 action 与 API 路由共用）：
- * 优先信任代理/边缘节点写入的 x-real-ip（客户端无法伪造）；
- * x-forwarded-for 仅在该值形如合法 IP（IPv4/IPv6）时采信，避免客户端伪造
- * 任意字符串或注入畸形值污染限流桶 key。
+ * 优先信任代理/边缘节点写入的 x-real-ip；该值不形如合法 IP 时退到 x-forwarded-for，
+ * 两者都不成立才回落到 `anonymous`。
+ *
+ * **两个来源都必须过 `isIpLike`**。此前只有 `x-forwarded-for` 那一支做了形态校验，
+ * 而 `x-real-ip` 是 `realIp ?? …` 直接返回的——于是「这个键一定是一个 IP 形状的字符串」
+ * 这条**写在本注释里**的不变量对 `x-real-ip` 并不成立：`X-Real-IP: <任意字符串>`
+ * 会原样成为一个桶键（每次换一个值就是一只新桶）。形态校验不解决信任问题，
+ * 但它至少保证上界是「一个 IP 形状的值」而不是「任意串」。
  *
  * 采信的那一段是 `x-forwarded-for` 的**最左**值，也就是客户端自己写的那一个——所以这一层只保证
  * 「key 一定是一个 IP 形状的字符串」，不保证它是真的来源地址：直连（没有代理写 x-real-ip）时
@@ -69,7 +74,9 @@ export function isIpLike(value: string): boolean {
 export function clientIpFromHeaders(headers: Headers): string {
   const realIp = headers.get("x-real-ip")?.trim();
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return realIp ?? (forwarded && isIpLike(forwarded) ? forwarded : "anonymous");
+  if (realIp && isIpLike(realIp)) return realIp;
+  if (forwarded && isIpLike(forwarded)) return forwarded;
+  return "anonymous";
 }
 
 function startCleanup(hits: Map<string, RateLimitEntry>): void {

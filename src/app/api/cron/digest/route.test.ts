@@ -272,6 +272,51 @@ describe("POST /api/cron/digest", () => {
     // 指标 `cron.digest.skipped` 只在指标后端里，本地断言不了趋势。
   });
 
+  it("偏好**部分**关闭：被挡下的那几条单独出队，且与已发的那批互不冒名", async () => {
+    // 这一格此前是两个分支之间的空隙：`filtered` 非空 ⇒ 不走「全关」分支的出队回执，
+    // 而 `markEmailSent` 只对 `filtered` 调用 ⇒ 被挡下的那条既不寄出也不出队，
+    // 会永远占着 created_at 升序 + limit 100 的队首（A05 的原始症状，只是形状更隐蔽）。
+    listUnsentEmailNotificationsMock.mockResolvedValue([
+      { id: "n1", user_id: "u1", type: "team_invite", title: "邀请", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+      { id: "n2", user_id: "u1", type: "security_alert", title: "安全", body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null },
+    ]);
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn(() =>
+        chainMock({
+          data: [
+            {
+              id: "u1",
+              email: "a@b.c",
+              // 总开关开着，只关掉安全告警细分项
+              notification_settings: { emailNotifications: true, securityAlerts: false },
+            },
+          ],
+        }),
+      ),
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(req());
+    // 一封真的寄出去了，另一条按偏好跳过——两个数都必须如实
+    await expect(res.json()).resolves.toEqual({ sent: 1, groups: 1, failed: 0, skipped: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("邀请");
+    expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain("安全");
+    // 出队回执**只**覆盖被挡下的那条：把已寄出的那条也标成 skipped 就是伪造
+    expect(markEmailSentMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSentMock).toHaveBeenCalledWith("n1");
+    expect(markEmailSkippedMock).toHaveBeenCalledTimes(1);
+    expect(markEmailSkippedMock).toHaveBeenCalledWith(["n2"], "preferences_off");
+    expect(metricEvents(log)).toContainEqual(
+      expect.objectContaining({
+        name: "cron.digest.skipped",
+        value: 1,
+        unit: "count",
+        attributes: { reason: "preference" },
+      }),
+    );
+  });
+
   it("正文按类型折叠：达到阈值的类型合并计数，明细截断并提示溢出", async () => {
     const deploy = (id: string) => ({ id, user_id: "u1", type: "deployment", title: `deploy ${id}`, body: null, created_at: "2026-01-01", is_read: false, email_sent: false, link: null, metadata: null });
     listUnsentEmailNotificationsMock.mockResolvedValue([

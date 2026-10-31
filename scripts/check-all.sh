@@ -14,6 +14,16 @@ echo "==> check:dynamic-keys"; pnpm --silent check:dynamic-keys
 echo "==> check:direction"; pnpm --silent check:direction
 echo "==> check:agents"; pnpm --silent check:agents
 echo "==> check:rls";    pnpm --silent check:rls
+# check:rls 只扫迁移文本，check:rls-probe 才把策略真的执行一遍（起一次性 Postgres 集群）。
+# 两者不是重复：036 那条「一行 UPDATE 策略都没有」在静态视角下与「有策略」几乎同形，
+# 只有跑起来才看得见 0 行。
+#
+# 缺 initdb/pg_ctl/psql 时**不是**一律跳过（早先这句注释写的是「自跳过」，已不成立）：
+#   ① 先按 /opt/homebrew/opt/postgresql@*/bin、/usr/lib/postgresql/*/bin 等常见位置找一遍，
+#      找到就接到 PATH 前——macOS Homebrew 与 ubuntu-latest 自带的 16.x 都走这一条；
+#   ② 都找不到才谈跳过：本地打印原因并自跳过，`CI=true` 与 `RLS_PROBE_REQUIRE=1` 一律失败。
+# ②的差别是刻意的：本地跳过只影响自己，CI 跳过等于让「策略真的执行过」这个结论悄悄溜掉。
+echo "==> check:rls-probe"; pnpm --silent check:rls-probe
 echo "==> check:migrations"; pnpm --silent check:migrations
 echo "==> check:supabase-security"; pnpm --silent check:supabase-security
 echo "==> check:query-columns"; pnpm --silent check:query-columns

@@ -72,6 +72,51 @@ graph LR
 | Server Client | `cookies()` | Server Components / Actions |
 | Browser Client | 浏览器 Cookie | Client Components |
 
+### 第二步验证（2FA / TOTP）
+
+2FA 是**服务端闸门**，不是登录表单的一次跳转。
+
+| 环节 | 位置 | 做什么 |
+|------|------|--------|
+| 登录后跳转 | `src/components/auth/login-form.tsx` | 读到已验证因子就 `router.push("/auth/mfa?factor=…")`——这只是**引导**，不是控制 |
+| 服务端判定 | `src/lib/auth/mfa-assurance.ts` | 读 `mfa.getAuthenticatorAssuranceLevel()`：`nextLevel === "aal2"` 且 `currentLevel !== "aal2"` ⇒ 重定向到挑战页（带上因子 id 与回跳地址） |
+| 闸门接线 | `src/app/dashboard/layout.tsx` | 在 layout 里调用，覆盖**所有** `/dashboard/**`；逐页调用会漏页，而漏一页就是一个入口 |
+| 挑战页可达性 | `src/proxy.ts` | `/auth/mfa` **不在** `authRoutes` 里——那是已登录（aal1）用户去完成第二步的地方，而 `authRoutes` 的分支恰恰是「已登录 ⇒ 弹回仪表盘」 |
+
+两条边界值得记住：
+
+- **没开 2FA 的账号一条都不受影响**：判据要求 `nextLevel === "aal2"`，没因子时它仍是 `aal1`。
+  写成「所有人必须 aal2」等于改掉整个模板的登录语义。
+- **读数失败时拦（503），而不是放行**：读不到就放行是这套控制最贵的失效方式——
+  Auth 一抖 2FA 静默失效且没有任何读数。修法与「会话读不出来」一致：抛
+  `SERVICE_UNAVAILABLE`，由仪表盘 `error.tsx` 给可重试页面（不登出，重试一次即恢复）。
+
+> 为什么这条曾经形同不存在：`grep -rn "getAuthenticatorAssuranceLevel" src/` 在 2026-10-31
+> 之前是 **0 命中**。Supabase 对已开 MFA 的账号在密码登录后签发的是 **aal1** 会话，
+> 而 RLS 的 `auth.uid()` 在 aal1 下照常生效——所以「前端会跳转」是当时唯一的控制。
+
+### 登录失败锁定：它防的是什么，以及它的爆炸半径
+
+`src/lib/actions/login-attempts.ts` 是**匿名**可用的一组 action（登录页本来没有会话），
+双维度滑窗：归一化邮箱 5 次 / 15 分钟，出口 IP 20 次 / 15 分钟，任一维度超限即拒绝尝试。
+硬限频仍由 Supabase Auth 负责，这一层是 UX 与审计。
+
+两条必须挂在心上的事实：
+
+- **「这个文件里的每个 export 都是一条可 POST 的路径」。** 清空计数桶原先也在这里
+  （`clearLoginBuckets`），即「谁调到它，全站双维度锁定归零」，没有鉴权、没有身份判定。
+  当时唯一的缓冲是「没有客户端 import 它」——那不是授权，是一次等着被打破的默契
+  （任何一次「顺手加个清空按钮」都会把它变成公开入口）。现在桶与清空入口搬进
+  `src/lib/auth/login-buckets.ts`（普通模块，没有网络表面），并有单测钉住导出面只有
+  `checkLoginAllowed` / `recordLoginResult` 两个名字。
+- **失败上报对「任意邮箱」的成本被出口 IP 的额度卡住。** 入参就是「邮箱 + 布尔值」，
+  所以任何人都能替任意邮箱宣布一次登录失败；五个 POST 锁死一个账号 15 分钟。
+  这**不是**「绕过限频」（绕过 `checkLoginAllowed` 直接打 Supabase `/token` 本来也行），
+  而是「第三方可对指定账号制造登录拒绝」。现在当出口 IP 自己的失败额度用尽后，
+  不再受理新的失败上报 ⇒ 同一 IP 每窗口最多锁 4 个邮箱，而不是无上限。
+  **残留风险**：分布式出口仍可锁账号。真正的修法是把认证挪到服务端，由服务端自己产生
+  「失败」这个事实，而不是让客户端上报——那是一次认证链路重构，尚未做。
+
 ## RBAC 权限系统
 
 ### 角色层级

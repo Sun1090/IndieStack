@@ -36,6 +36,18 @@ export interface DigestRoundReading {
   pulled: number;
   /** 该轮实际发出的条数。 */
   sent: number;
+  /**
+   * 该轮发送失败的条数。
+   *
+   * **它是 `QUEUE_STUCK` 与「provider 炸了」的分界线**。此前这个接口没有这一栏，
+   * 于是 `pulled=100, sent=0` 只有一种解释——「队首被占死了」。
+   * 而一次 Resend 全线故障会让 100 条**全部失败**，读数与前者**一模一样**：
+   * 判成 `QUEUE_STUCK` 就会把人指去查迁移 034 与 `email_skipped_reason` 的写入，
+   * 那是一次「诊断指向错误方向」，比没有诊断更费时间。
+   * 同仓库的 `queue-diagnostics.ts` 里 `emptySendRounds` 一直排除 `failed>0`，
+   * 两套口径此前从没有过交叉用例——这就是它没被发现的原因。
+   */
+  failed: number;
   /** 该轮结束时队列里的待发条数（`email.backlog`）。 */
   backlog: number;
   /** 该轮按用户条件跳过的条数（`cron.digest.skipped` 的合计）。 */
@@ -51,6 +63,8 @@ export type DigestVerdictCode =
   | "BACKLOG_NOT_DRAINING"
   /** 拉满 100 条却一封没发：队首被占死的典型形态。 */
   | "QUEUE_STUCK"
+  /** 拉满 100 条、一封没发，但失败数 > 0：投递侧故障，不是队列语义问题。 */
+  | "DELIVERY_FAILING"
   /** 读数不足以判断（缺日期、负数、单点）。 */
   | "INSUFFICIENT_DATA";
 
@@ -61,6 +75,33 @@ export interface DigestVerdict {
   /** 给人看的一句话，说清凭什么这么判。 */
   reason: string;
 }
+
+/**
+ * 全部判定码的**运行时清单**（类型联合是编译期的，测试拿不到它）。
+ *
+ * 用处只有一个：让「新增一个 code 却忘了在面板文案里给它一句话」变成会红的事。
+ * `trend-copy.ts` 的 `switch` 有一个 `default` 分支，它必须处理**未知** code
+ * （宁可显示「读数不足」），但那条善意的兜底同时也是一个藏身处——
+ * 一个真实存在的新 code 落进去，面板就在一次真故障上告诉人「数据不够」。
+ *
+ * 所以这里双向钉住：`satisfies` 保证每个元素都是合法 code，
+ * 下面的 `_codesFullyCovered` 保证**没有 code 漏在清单之外**。
+ * 漏一个 → `Exclude` 不再是 `never` → 类型是 `never` → 赋值 `true` 编译失败。
+ * 这与 `EMAIL_SKIP_REASONS`（迁移 CHECK 与 TypeScript 两处对账）是同一个做法。
+ */
+export const DIGEST_VERDICT_CODES = [
+  "A05_DRAINING",
+  "HEALTHY_LOW_BACKLOG",
+  "BACKLOG_NOT_DRAINING",
+  "QUEUE_STUCK",
+  "DELIVERY_FAILING",
+  "INSUFFICIENT_DATA",
+] as const satisfies readonly DigestVerdictCode[];
+
+type UncoveredCodes = Exclude<DigestVerdictCode, (typeof DIGEST_VERDICT_CODES)[number]>;
+/** 编译期断言：`UncoveredCodes` 必须是 `never`，否则下面一行无法通过类型检查。 */
+const _codesFullyCovered: UncoveredCodes extends never ? true : never = true;
+void _codesFullyCovered;
 
 /**
  * 单轮就能判的形态：拉满取数上限却一封没发。
@@ -81,10 +122,12 @@ function isPlausible(reading: DigestRoundReading): boolean {
     /^\d{4}-\d{2}-\d{2}$/.test(reading.date) &&
     Number.isFinite(reading.pulled) &&
     Number.isFinite(reading.sent) &&
+    Number.isFinite(reading.failed) &&
     Number.isFinite(reading.backlog) &&
     Number.isFinite(reading.skipped) &&
     reading.pulled >= 0 &&
     reading.sent >= 0 &&
+    reading.failed >= 0 &&
     reading.backlog >= 0 &&
     reading.skipped >= 0 &&
     // sent > pulled 在数学上不可能，出现即说明取数或口径有问题
@@ -111,12 +154,31 @@ export function judgeDigestRound(reading: DigestRoundReading): DigestVerdict {
   }
 
   // 队首被占死：拉满了 limit 却一封没发。这是 A05 未生效时最刺眼的形态。
+  //
+  // **但「一封没发」不是一个原因，是两个**。先看失败数：
+  // 同一读数 (pulled=100, sent=0) 既可能是队首被不可投递的行占死（A05 的症状），
+  // 也可能是一次 Resend 全线故障——后者 100 条**全部**失败，而 `sent` 一样是 0。
+  // 两种世界的读数长得一样，所以判据必须多一栏才分得开；否则 `reason` 会把人
+  // 指向「查迁移 034 / 查 email_skipped_reason 的写入」，而那一次的方向是错的。
+  if (reading.pulled >= DIGEST_PULL_LIMIT && reading.sent === 0 && reading.failed > 0) {
+    return {
+      code: "DELIVERY_FAILING",
+      attention: true,
+      reason:
+        `拉满 ${reading.pulled} 条、一封没发，但其中 ${reading.failed} 条是**发送失败**：` +
+        "这是投递侧（provider / 网络 / 密钥）故障，**不是**队首被占死。" +
+        "先查 email_worker_runs 里这一轮的 error 与通知行的 email_error（以及 Resend 状态）；" +
+        "判据上它与 QUEUE_STUCK 共用「拉满且 sent=0」这个形状，只靠 failed 分家。",
+    };
+  }
+
   if (reading.pulled >= DIGEST_PULL_LIMIT && reading.sent === 0) {
     return {
       code: "QUEUE_STUCK",
       attention: true,
       reason:
-        `拉满 ${reading.pulled} 条（取数上限 ${DIGEST_PULL_LIMIT}）却一封没发：listUnsentEmailNotifications 是 ` +
+        `拉满 ${reading.pulled} 条（取数上限 ${DIGEST_PULL_LIMIT}）却一封没发，且没有任何一条是发送失败（failed=0）：` +
+        "listUnsentEmailNotifications 是 " +
         "created_at 升序 + limit 100，队首被不可投递的行占死，可投递的新通知再也拉不到。" +
         "先确认迁移 034 已 applied（A05 的载体），再查 email_skipped_reason 的写入是否成功。",
     };

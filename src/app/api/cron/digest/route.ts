@@ -175,7 +175,7 @@ interface DigestProgress {
   groups: number;
   failed: number;
   /**
-   * 本轮按用户条件跳过的条数（无邮箱 / 偏好全关）。
+   * 本轮按用户条件跳过的条数（无邮箱 / 偏好关闭，含**部分**关闭）。
    *
    * **它是 A05 判定的一半输入**，所以必须**真的记下来**：
    * 早先这里靠 `result.skipped ?? 0` 取值，而 `DigestProgress` 根本没有这个字段，
@@ -183,6 +183,28 @@ interface DigestProgress {
    * 比没有这个指标更坏（它看起来是被测过的）。
    */
   skipped: number;
+}
+
+/**
+ * 按用户偏好把本轮拉到的通知分成两堆：可投递的与「被偏好挡下」的。
+ *
+ * 抽成函数有两个理由，第二个是硬性的：① 这段划分的语义（两堆都必须被消费，
+ * 否则被挡下的那批永不出队）值得有个名字；② 内联时 `runDigest` 的圈复杂度
+ * 会顶到 16（上限 15，`eslint` 的 complexity 规则）——而这个上限调高就等于
+ * 承认「这个函数已经没人能一眼读完」。
+ */
+function splitByPreference(
+  prefs: Parameters<typeof shouldSendEmail>[0],
+  items: Notification[],
+): { filtered: Notification[]; blocked: Notification[] } {
+  const filtered: Notification[] = [];
+  const blocked: Notification[] = [];
+  for (const n of items) {
+    const deliverable = shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]);
+    if (deliverable) filtered.push(n);
+    else blocked.push(n);
+  }
+  return { filtered, blocked };
 }
 
 async function runDigest(
@@ -220,7 +242,22 @@ async function runDigest(
     }
 
     const prefs = (profile.notification_settings ?? {}) as Parameters<typeof shouldSendEmail>[0];
-    const filtered = items.filter((n) => shouldSendEmail(prefs, n.type as Parameters<typeof shouldSendEmail>[1]));
+    /**
+     * **分成两堆，而不是只留一堆**。
+     *
+     * 此前这里只有 `filtered = items.filter(shouldSendEmail)`，出队回执又只在
+     * `filtered.length === 0` 时对**全部** items 调用——于是「偏好**部分**关闭」这一格
+     * （用户开着总开关、关掉 `securityAlerts` 之类）掉进两个分支之间：
+     * 被挡下的那几条既不在 `filtered` 里（不会 `markEmailSent`），
+     * 也没走 `filtered.length === 0`（不会 `markEmailSkipped`）⇒ `email_sent=false`
+     * 且 `email_skipped_reason` 仍是 null ⇒ **永远留在队列里**，每轮被重新拉起。
+     * 这正是 A05 要修的那个形状（不可投递的行占住 `created_at` 升序 + limit 100 的队首），
+     * 只不过它只在混合类型的用户身上出现，而当时的用例只覆盖了「全开」和「全关」两格。
+     *
+     * 顺带这也是 `check:cron-contract` 抓不到它的原因：那条规则的判据是「带条件的
+     * `continue` 必须留下计数证据」，而这条路径**没有 `continue`**——它悄悄少传了一堆行。
+     */
+    const { filtered, blocked: blockedByPreference } = splitByPreference(prefs, items);
     if (filtered.length === 0) {
       // 用户把所有相关类型都关掉了：这是选择而不是故障，但必须可见，
       // 否则「拉到了却没发出去」与错峰门控那次一样无法区分。
@@ -231,6 +268,28 @@ async function runDigest(
       progress.skipped += items.length;
       await markSkippedWithReceipt(items, "preferences_off");
       continue;
+    }
+    /**
+     * **剩下的这一格此前没有分支**：偏好**部分**关闭时，被挡下的那几条
+     * 既不在 `filtered` 里（不会 `markEmailSent`），也不满足上面那个
+     * `filtered.length === 0`（不会 `markEmailSkipped`）⇒ `email_sent=false`
+     * 且 `email_skipped_reason` 仍是 null ⇒ **永远留在队列里**，每轮被重新拉起。
+     * 这正是 A05 要修的那个形状（不可投递的行占住 `created_at` 升序 + limit 100 的队首），
+     * 只不过它只在混合类型的用户身上出现，而当时的用例只覆盖了「全开」和「全关」两格。
+     *
+     * 顺带这也是 `check:cron-contract` 抓不到它的原因：那条规则的判据是「带条件的
+     * `continue` 必须留下计数证据」，而这条路径**没有 `continue`**——它悄悄少传了一堆行。
+     * （本轮修它时，把这段逻辑挪到 `filtered.length === 0` 之前，门禁立刻以
+     * `CRON_SKIP_UNCOUNTED` 变红——它要求那条 `continue` 的分支**自己**带证据。
+     * 所以两格各留一份：可见性不能靠「另一处已经记过了」来成立。）
+     */
+    if (blockedByPreference.length > 0) {
+      recordMetric("cron.digest.skipped", blockedByPreference.length, {
+        unit: "count",
+        attributes: { reason: "preference" },
+      });
+      progress.skipped += blockedByPreference.length;
+      await markSkippedWithReceipt(blockedByPreference, "preferences_off");
     }
 
     const subject = `IndieStack 通知摘要（${filtered.length} 条）`;
@@ -353,6 +412,9 @@ async function handle(request: NextRequest) {
       date: new Date().toISOString().slice(0, 10),
       pulled,
       sent: result.sent,
+      // `failed` 必须一起给：只凭 `sent=0` 判「队首被占死」会把一次 provider 故障
+      // 诊断成队列语义问题（详见 `digest-verdict.ts` 里那一栏的注释）。
+      failed: result.failed,
       backlog,
       skipped: result.skipped,
     });

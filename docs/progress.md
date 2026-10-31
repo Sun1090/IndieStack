@@ -11184,3 +11184,757 @@
 - 阻塞 / 风险 / 回滚：纯文档。回滚 = revert。
 - 下一项：续查判据 1/5/6 之外是否还有「断言无读数」；配额/retention/B03/B04 仍为外部。
 - 更新时间：2026-10-31 17:25（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【运行时缺陷审计】门禁全绿之下仍有 7 处真缺陷：从「跳过率」到「无限重发」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`。
+- 状态：DONE（8 条候选 → 7 处修复 + 1 处如实留作待取证，见文末）。
+- 为什么做：roadmap 的 24 项任务池已全部闭合，剩下的 B03 / B04 / retention token / 配额空隙
+  四项要么等外部权限、要么等时间去填。也就是说「再找一件事做」的产出已经很低，
+  而**门禁绿 ≠ 没有缺陷**——这套仓库的门禁密度很高，但它守的是「已经想到的形态」。
+  所以这一轮换成读运行时逻辑：按投递语义、限流边界、请求边界、仓储并发四类逐段读，
+  每条候选都要求给出「什么输入/时序会让它出错」与「现有哪一层门禁为什么抓不到」。
+  读完得到 8 条候选：7 条当场修掉，剩下 1 条需要真实 PostgREST 才能验证（见文末）。
+- 做了什么（7 笔修复提交，一笔一个主题；台账另起一笔）：
+  1. **偏好「部分」关闭时通知永不出队**（`cron/digest/route.ts`）。原来只留一堆 `filtered`，
+     出队回执只在 `filtered.length === 0` 时对全部 items 调用 ⇒ 用户开着总开关、只关掉
+     `securityAlerts` 这类细分项时，被挡下的那几条既不 `markEmailSent`、也不 `markEmailSkipped`，
+     于是 `email_sent=false` + `email_skipped_reason=NULL`，**永久占住队首**。
+     这正是 A05 修过的形状，只是藏在「全开」与「全关」两格之间。
+  2. **`QUEUE_STUCK` 吞掉 `failed`**（`digest-verdict.ts`）。读数里没有 `failed` ⇒
+     `pulled=100, sent=0` 只有「队首被占死」一种解释，而 provider 全线故障的读数**完全一样**，
+     告警却指向迁移 034。新增判定码 `DELIVERY_FAILING`，`failed` 进读数，面板新增双语文案，
+     并用 `DIGEST_VERDICT_CODES` 清单钉住「每个真实 code 都有明确文案」。
+  3. **push 成功回执写失败在指标里完全不可见**（`push-retry.ts`）。补
+     `push.delivery.receipt_failed{stage="sent"}`；**并如实写明本层修不掉「重复推送」**
+     ——那要求行离开 pending，而那正是写不进去的那一步。用例把「下一轮仍会发送」钉住，
+     将来真做了幂等它应当变红。
+  4. **三条 push 回执不看当前状态**（`repositories/push-delivery-attempts.ts`）。
+     并发下后写者能把 `sent` 翻回 `pending`（`markRetry`），并把 `attempt_count` 打回去。
+     三条 UPDATE 都加 `.eq("status","pending")`；**不冒充**并发已经原子。
+  5. **上传体上限只信 `Content-Length`**（`uploads/request.ts`）。`Number(null)` 是 0，
+     守卫对「不带长度」的请求静默放行，接着 `formData()` 把整个 body 读进内存。
+     改为缺头/空串/解析不出/负数一律 `411`，且**在读 body 之前**拒绝。
+  6. **Resend 出网无超时**（`email-send.ts`）。digest 串行最多 100 组 ⇒ provider 半死时整轮
+     被平台杀掉：已寄出的组没写回执（下一轮重复寄），本轮也不落表。加 10 秒超时 +
+     `reason=timeout`。
+  7. **限流取 IP 对 `x-real-ip` 不做形态校验**（`rate-limit.ts`）。`isIpLike` 只加在
+     `x-forwarded-for` 上，而注释里那条「键一定是 IP 形状」的不变量对 `x-real-ip` 不成立。
+     两个来源都过 `isIpLike`，一个畸形退到另一个。
+- 过程纪律（本轮自己踩到、并因此改了实现的两次）：
+  1. 把偏好计数的 metric 提到 `filtered.length === 0` **之外**之后，`check:cron-contract`
+     立刻以 `CRON_SKIP_UNCOUNTED` 变红——它要求那条 `continue` 的分支**自己**带证据。
+     没有把门禁放宽，而是两格各留一份：可见性不能靠「另一处已经记过了」成立。
+  2. `digest-verdict.cross.test.ts` 里那句 `expect(countsAsEmptySendRound(run) || run.failed > 0)`
+     是**恒真的**——它本来是要表达「告警可以比面板更敏感」，写出来却成了一个永远成立的析取，
+     于是两套口径的分歧被它完整地遮住了。这一轮删掉它，改成正向断言两边一致地排除 `failed>0`。
+     **一个永远成立的断言比没有断言更糟**，这条与判据 5 同源，只是形态从「门禁」挪到了「用例」。
+- 验证：`npx vitest run`（全量）/ `npx tsc --noEmit` / `npx eslint .` / `pnpm check:all` 全绿；
+  `check:cron-contract` 2 处条件跳过均有证据；`check:changelog` / `check:progress` ✅。
+  新增用例：digest 偏好部分关闭 1 条、`DELIVERY_FAILING` 3 条（含「同形不同因」与「每个 code 都有文案」）、
+  push 回执 2 条、仓储状态守卫 1 条、上传 411 一条（4 种头形态）+ 错误映射 1 行、超时 2 条、IP 形态 2 条。
+- 阻塞 / 风险 / 回滚：无运行时行为变更风险超出上述语义（最外显的是上传缺长度时由「放行」变 `411`）。
+  回滚 = revert 本条分支的 7 笔修复提交。
+- **刻意没修的两处（写清为什么，不留成「以后再说」）**：
+  1. `repositories/contact-messages.ts` 的 `escapeLike` 用 `\,` 转义逗号、且不处理括号，而
+     PostgREST 的 `or=(...)` 逻辑树据文档只认双引号包裹，`\,` 很可能不被接受 ⇒ 管理员搜索
+     `a,b` / `invoice (Oct)` 可能被拆成非法表达式或注入额外过滤项。**没有改**：修法依赖
+     PostgREST 解析的细节（引号内的 `\` 怎么处理、`%`/`_` 是否还能当通配符），而本机没有可跑的
+     PostgREST（`supabase status` 需要新装 CLI、本机无栈）⇒ **改错了会静默弄坏搜索**，
+     比现状更糟。取证方式：本地起栈后对 `contact_messages` 发一次
+     `or=(name.ilike."%a,b%")` 与 `or=(name.ilike.%a\,b%)`，看哪个 200 哪个 400。
+  2. `ops:deploy-freshness` 类判定之外的「跨实例共享缓存」缺口（`/api/health` 那条已知缺口的 (b) 支）
+     仍未动，理由同原登记：要引入 Redis/平台缓存，超出 starter template 的产品边界。
+- 下一项：给上面第 1 条起本地 Supabase 栈取证（这是唯一「修法存疑」的格子）；
+  其余同前——配额空隙需连续多天真实构建、retention 缺 Vercel token、B03 / B04 等 maintainer。
+- 更新时间：2026-10-31 18:05（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【权限层审计】2FA 只是 UI 约定、admin 一次请求就能自提权——两处都不是「配置问题」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前一条）。
+- 状态：DONE（2 处修复 + 2 处如实留作下一手）。
+- 为什么做：上一轮读的是投递与请求边界，这一轮换权限面（`actions/**` 的判定顺序、
+  server action 的运行时入参、页面守卫），并按「谁能做什么请求」写触发链路。
+  这一面恰好落在现有门禁的**接缝**上：`check:route-auth` 只管 `src/app/api/**`，
+  `type-check` 不认识反序列化后的运行时值，`e2e` 全部跑在 mock 构型（proxy 在 mock 下直接 return）。
+- 做了什么：
+  1. **2FA 此前完全不存在服务端控制**（`grep -rn "getAuthenticatorAssuranceLevel" src/` 为 0）。
+     Supabase 对已开 MFA 的账号在密码登录后签发的是 **aal1** 会话，而 RLS 的 `auth.uid()`
+     在 aal1 下照常生效 ⇒ 拿到密码的人关掉 JS 直接 `GET /dashboard` 就能读全部仪表盘数据；
+     当时唯一的控制是登录表单里那一次 `router.push("/auth/mfa")`。
+     同一处还有反向缺陷：`/auth/mfa` 在 `proxy.ts` 的 `authRoutes` 里，那段分支是
+     「已登录 ⇒ 弹回 `/dashboard`」⇒ **愿意输验证码的人也进不了挑战页**。
+     两件事合起来是「2FA 既不强制、也无法完成」。
+     修法：新增 `src/lib/auth/mfa-assurance.ts`（纯判定 `requiresMfaStepUp` + 闸门
+     `requireMfaAssurance`，后者带上因子 id 与回跳地址——挑战页缺 `factor` 只会显示
+     「缺少参数，请重新登录」，那是手工敲 URL 的兜底，不该是服务端送人过去时的落点），
+     在 `dashboard/layout.tsx` 调用一次覆盖所有 `/dashboard/**`；`/auth/mfa` 移出 `authRoutes`。
+     **没开 2FA 的账号一条都不受影响**；**读数失败时拦（503）而不是放行**。
+  2. **一次请求就能自提权为 super_admin**：`updateUserRole` 的联合类型参数在反序列化后
+     不存在，而 `ASSIGNABLE_USER_ROLES`（注释明写「刻意不含 super_admin」）只被下拉菜单用。
+     新增 `src/lib/validations/admin.ts`，枚举**派生自**该常量；签名如实写 `role: string`；
+     校验放在鉴权之后。
+- 过程纪律：这条链上最容易做错的两处都定成了用例——① 没开 2FA 的账号必须放行
+  （否则就是改掉整个模板的登录语义）；② 被拒时**一次写入都不能发生**
+  （只断言错误码会让「先写成功再返回错误」也变绿）。
+- 验证：`npx vitest run src/app/dashboard src/lib/auth src/lib/mock` 330 条 ✅；
+  `src/lib/validations` + `src/lib/actions/admin.test.ts` 75 条 ✅；`tsc --noEmit` ✅；
+  `eslint` 改动文件 ✅；`check:changelog` ✅。
+  e2e 侧确认不受影响：`e2e/mfa-challenge.spec.ts` 用 `page.addInitScript` 把因子注入**浏览器**
+  那份 mock store，服务端 store 里没有因子 ⇒ 仪表盘 layout 的闸门在 e2e 下不会触发重定向。
+- 阻塞 / 风险 / 回滚：MFA 闸门是行为变更（已开 2FA 的账号在 aal1 下会被送回挑战页），
+  这是本条的**目的**；未开 2FA 的账号与 e2e 行为不变。回滚 = revert 本条的两笔提交。
+- **本轮没做的两件（都在同一次审计里读到，写清为什么留）**：
+  1. `updateMemberRole` 改不动角色却返回成功：`team_members` 有 SELECT/INSERT/DELETE 三条策略，
+     **没有 FOR UPDATE** ⇒ PostgREST 命中 0 行、`error` 为 null ⇒ `ok()` 返回，
+     前端显示新角色、刷新打回原值。修它需要**新迁移**（补 UPDATE 策略 + `with check` 约束
+     不得把角色改成 owner），而本机没有可跑的 Postgres（`supabase status` 要新装 CLI、无本地栈）
+     ⇒ 无法实测策略是否按预期收口。**不参数化的 RLS 不该盲写**：策略写错的方向是「放开」。
+     同时它还有一个潜在越权：`newRole` 同样是运行时未校验的联合类型，今天被
+     「没有 UPDATE 策略」意外挡住了，一旦有人按直觉补上策略，传 `newRole: "owner"` 就是**自升 owner**。
+     ⇒ 这两件必须**同一次**做完（策略 + 运行时白名单 + 0 行检测），不能只做一半。
+  2. `recordLoginResult` 是导出的 Server Action 且不做任何身份判定 ⇒ 匿名可对**任意邮箱**
+     制造 15 分钟登录锁定（判定桶是进程内滑窗，多实例 serverless 下不精确，单实例自托管上稳定）。
+     它不构成「绕过限频」——绕过 `checkLoginAllowed` 直接打 Supabase 的 `/token` 本来就行；
+     真正的危害是「第三方可对指定账号制造登录拒绝」。修法要动客户端对 `logAuthEvent`
+     这类无会话行为的调用链，属产品判断（匿名登录失败**需要**被计数），留给下一手。
+- 下一项：把上面第 1 件做成一次（迁移 036 + `validations/team.ts` 的 `updateMemberRoleSchema`
+  + `.select("id")` 检测 0 行），取证方式是本地起栈后跑两条「越权 / 合法」用例；
+  第 2 件要先定「匿名失败计数」的产品口径。
+- 更新时间：2026-10-31 19:05（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【RLS 取证】把「无法本地取证」这条挡板拆了：`updateMemberRole` 每次都是 0 行却返回成功
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前两条）。
+- 状态：DONE（迁移 036 + 应用层两半 + 新门禁 `check:rls-probe`）。
+- 为什么做：上一条把 `updateMemberRole` 明确留作「需本地 Postgres 才能取证」。这次先复查了工具链，
+  `initdb` / `pg_ctl` / `psql` / `supabase` CLI **都在 PATH 上**——上次的结论（「本机没有可跑的
+  Postgres」）是我按 docker 不可用推的，没有单独试过 `initdb`。**这个推断本身就是一次该记下来的错误**：
+  结论写进台账时要写「我试了什么」，不是「我据此推断了什么」。
+- 做了什么：
+  1. **迁移 036**：`team_members` 补 `FOR UPDATE` 策略。`using` = 调用者是本团队 owner/admin
+     且**被改的这一行当前不是 owner**（PG 语义里 `using` 的 `role` 是旧值，这正是「owner 行不可编辑」
+     的落点）；`with check` = 仍须 owner/admin、`team_id`/`user_id` 不可变、`role in ('admin','member')`。
+     旧值读取沿用 007/008/009 的 `security definer` + 空 `search_path` 写法（WITH CHECK 里直接
+     子查询本表会触发 `infinite recursion detected in policy`）。
+  2. **应用层两半**：`updateMemberRoleSchema`（运行时白名单，枚举派生自新的
+     `ASSIGNABLE_TEAM_MEMBER_ROLES`，与 `inviteMemberSchema` 共用一份清单）+ `.select("id")`
+     检测 0 行 → `memberRoleNotChanged`。**为什么必须同一次做**：`role` 的 check 约束放行 `'owner'`，
+     只补策略不做白名单 ＝ 把一次假成功换成一次真提权（admin 一次请求自升 owner，再删掉原 owner）。
+  3. **新门禁 `check:rls-probe`**：起一次性 Postgres 集群 → 应用 `supabase/tests/bootstrap.sql`
+     （Supabase 面替身）→ 应用全部真实迁移 → 跑 `supabase/tests/*.sql` 探针。
+     探针用 `set role` + `request.jwt.claims` 扮演 PostgREST，靠 `row_count` 把
+     `0`（USING 没放行）/ `-1`（WITH CHECK 拒绝）/ `1`（真落库）三种读数分开。
+- 证据（都是实跑读数，不是推断）：
+  - 036 之前：八条用例读数为 `0,0,0,0,0,0,0,0` —— **连两条业务合法的更新都命中 0 行**，
+    这就是「`error` 为 null 的失败」最直接的形态；
+  - 应用 036 之后：`0,1,-1,0,-1,-1,0,1`，与期望逐条一致（`failing_cases = 0`）；
+  - 门禁失败封闭：移走 036 → 探针报 5 条不符、退出码 1；复原后 8/8 通过。
+- 过程里被门禁挡下的两处（都改了实现，没有放宽门禁）：
+  1. `security-definer-grants` 报 `get_team_member_role` 缺 `revoke execute`——我确实建了个
+     策略里**没被引用**的函数。门禁把它当「服务端函数」是对的：不被策略引用的 SECURITY DEFINER
+     函数就是 PostgREST `rpc()` 的一个入口。**删掉那个多余的函数**，不写 revoke 去迁就它。
+  2. `migration-runbook` 报「标记的最新迁移 035 与真实最新 036 不一致」→ 更新标记。
+- 一次操作纪律上的自我纠正：`036` 的 manifest 哈希我上一轮已经写进去了，改了迁移后
+  `update:migrations-manifest` 拒绝重基线（immutable）。**没有手改哈希**——从 HEAD 恢复清单
+  （HEAD 里只有 35 条）再重算，这样 036 是「首次基线」而不是「被篡改的旧条目」。
+- 验证：`npx vitest run src/lib/security src/lib/db src/lib/actions/team.test.ts src/lib/validations`
+  802 条 ✅；全量 `npx vitest run` 3700 通过（首轮 3 条红全在 036 上，已按上面两处修掉并复跑）；
+  `check:migrations` ✅ 36 条；`check:rls` ✅ 40 条策略；`check:action-errors` ✅ 51 码；
+  `check:gates` ✅ 50 门（本地 46）；`check:rls-probe` ✅ 36 迁移 + 1 探针；`tsc` / `eslint` ✅。
+- 阻塞 / 风险 / 回滚：
+  - 036 是**收紧**变更：之前 `team_members` 的 UPDATE 对所有人都是 0 行（等价 deny-all），
+    现在 owner/admin 能改、其他人仍然 0 行 ⇒ 不会放开任何此前可用的路径。
+  - 回滚 = revert 本条的两笔提交；数据库侧不要 `drop policy`（那会回到「静默 0 行」），
+    要回滚就再加一条前向迁移把策略换成旧的 deny-all 语义，并在 runbook 里记一笔。
+  - `check:rls-probe` 在无 Postgres 工具的环境里自跳过（打印原因）；**CI 不设
+    `RLS_PROBE_REQUIRE=1` 就不会失败**，这一点是刻意的取舍，写在这里免得以后被当成"已覆盖"。
+- 下一项：`recordLoginResult` 的「匿名失败计数」产品口径（同上一条的遗留）；
+  以及给其余敏感表补探针（探针是手写用例，没有用例的表这道门禁一无所知）。
+- 更新时间：2026-10-31 19:27（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【越权矩阵】把 007/008 的 `with check` 从「迁移注释」变成执行读数；顺手照出 `visibility='public'` 对 anon 成立
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前一条）。
+- 状态：DONE（`supabase/tests/rbac_matrix_probe.sql` 21 条 + 夹具抽成 `000_helpers.sql`）。
+- 为什么做：上一条自己写下的下一项就是「给其余敏感表补探针」。更具体地说，007 / 008 的迁移注释
+  断言「`profiles` 少 `with check` 就能自提权成 admin」「`teams` 少 `with check` 就能转手 owner /
+  白嫖 plan」「`projects` 少 `with check` 就能把项目搬到别的团队」——**这三条判断此前只有迁移文本
+  与代码评审，一次执行读数都没有**。而 036 刚刚证明「文本上写对了」和「真的收口了」是两件事。
+- 做了什么：
+  1. 夹具抽到 `supabase/tests/000_helpers.sql`：`probe.write` / `probe.read` 扮演 PostgREST，
+     `probe.expect` / `probe.verify` 负责矩阵登记与断言（把「期望值」抄错的概率从人身上挪到函数上）。
+     036 的探针改成用同一套夹具，两个文件不再各写一份 `set role` 模板。
+  2. `rbac_matrix_probe.sql`：21 条用例，覆盖 profiles（自提权 / 队友可见 / 外队不可见）、
+     teams（转手 owner_id / 改 plan / 外队改）、projects（member 改不动 / admin 能改 /
+     改 team_id / 改 created_by / 外队读私有 / 外队读公开 / anon 读公开）、
+     notifications 与 api_keys（标别人已读、改 user_id、删别人的密钥）、
+     team_invitations（同队 member 发不了、外队发不了、本队 admin 能发）。
+- 读数：21/21 符合期望。`check:rls-probe` ✅ 36 迁移 + 3 探针。
+- **变异取证**（这一条比读数本身重要）：把 `Users can update own profile` 的 `with check` 从
+  「`role` 必须等于旧值」放宽成 `auth.uid() = id`，矩阵立刻报
+  `profiles: 改自己 role -> 拒绝 | 1 | -1` 并退出码 1；恢复原始谓词后重新通过。
+  没有这一步，「21/21 通过」只能证明矩阵没写错，不能证明它在读策略。
+- **一处读数与直觉不符，按发现记而不是按 bug 改**：`projects: anon 读公开` 的实测读数是 **1**。
+  `Team members can view projects` 的 USING 是「本队成员 **or** `visibility = 'public'`」，
+  而本仓库所有策略都是 `to public`（没写 `to authenticated`）⇒ 这一支对 **anon** 也成立，
+  未登录用户可以直接 `GET /rest/v1/projects?visibility=eq.public`。
+  **今天不构成可利用的洞**：`actions/projects.ts` 建项目时硬写 `visibility: "private"`，
+  没有 UI / Action 能改成 public，现存数据里没有公开项目（探针里那行公开项目是自己造的夹具）。
+  但它是**潜力通道**：任何将来碰 `visibility` 的改动都会让那些项目对匿名可读，且没有门禁会报警。
+  收口要产品判断（改成 `to authenticated`，还是把 `visibility` 定义成「站内共享」并删掉这一支），
+  所以本轮**没有单方面改策略**，只在矩阵里把期望钉成 1 并写清理由。
+- 过程中撞到的两个坑（都记在文件注释里）：
+  1. `auth.users` 上有真实触发器 `handle_new_user` / `handle_new_team`，手写 profiles 会撞主键——
+     夹具改成「只插 users，让触发器建 profile」，这样探针走的是真实建号路径；
+  2. 夹具只把表权限 grant 给 `authenticated`，会让「anon 越权」用例以 `permission denied` 失败，
+     那条失败看起来像策略生效，其实是夹具自己挡的。Supabase 对 anon 也授权，所以补上 `anon`。
+- 验证：`check:rls-probe` ✅（3 探针）；`tsc` / `eslint` 未受影响（本轮只动 SQL 与文档）；
+  `check:doc-links` / `check:changelog` / `check:progress` 待复跑。
+- 阻塞 / 风险 / 回滚：探针只读不写生产；夹具在事务里跑、结尾 rollback。
+  回滚 = revert 本条提交（门禁回到只有 036 一个探针）。
+- 下一项：① `visibility='public'` 的口径（需产品判断）；② `recordLoginResult` 的匿名失败计数口径；
+  ③ 其余表（`subscriptions` / `user_sessions` / `webauthn_credentials` / `push_subscriptions`）
+  尚无探针——它们目前的覆盖只有静态扫描。
+- 更新时间：2026-10-31 19:34（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【认证面】`clearLoginBuckets` 是匿名的「全站锁定归零」入口；失败上报的爆炸半径从无上限收到 4 个邮箱/窗口
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前三条）。
+- 状态：DONE（1 处结构性缺陷 + 1 处半径收窄 + 2 条用例；残留风险如实写明）。
+- 为什么做：上一条把 `recordLoginResult` 的匿名锁定留成「需产品口径」，这次先把它周围读干净。
+  读完发现同一文件里还蹲着一件更硬的事：`clearLoginBuckets` 也在那个 `"use server"` 文件里。
+- 做了什么：
+  1. **`clearLoginBuckets` 搬进 `src/lib/auth/login-buckets.ts`**（普通模块，无网络表面）。
+     带 `"use server"` 的文件里**每个 export 都是一条可 POST 的路径**，而登录页没有会话，
+     所以那条 action 是匿名的：清空 = 双维度锁定全归零，没有鉴权、没有身份判定。
+     当时唯一的缓冲是「没有客户端 import 它」——那不是授权，是一次等着被打破的默契。
+     另加一条用例钉住导出面：`Object.keys(await import("./login-attempts"))` 必须正好是
+     `["checkLoginAllowed", "recordLoginResult"]`。多一个 export 就是多一条可 POST 的路径。
+  2. **失败上报加成本**：`recordLoginResult(email, false)` 的入参就是「邮箱 + 布尔值」，
+     任何人都能替任意邮箱宣布一次失败 ⇒ 五个 POST 锁死一个账号 15 分钟。
+     现在先看这条出口 IP 还有没有额度，用尽就不再受理新的失败上报（返回 `ok`，
+     不让匿名调用者从错误码里读出桶的剩余次数）。于是同一 IP 每窗口最多锁
+     `20 / 5 = 4` 个邮箱，而不是无上限。
+- 变异取证：把那条额度守卫删掉，新用例立刻变红
+  （`出口 IP 额度用尽后不再受理失败上报` 1 failed / 8 passed）；恢复后 9/9 通过。
+- **残留风险（不假装解决）**：分布式出口仍可锁账号；真正的修法是让认证发生在服务端，
+  由服务端产生「失败」这个事实，而不是让客户端上报——那是一次认证链路重构。
+  这条路径上「客户端能声明的结果」与「服务端认定的事实」是两件事，本轮只收窄了成本，没有消除它。
+- 一处断言口径上的自我纠正：新用例一开始想用 `checkLoginAllowed` 断言「第 5 个邮箱没被锁」，
+  但它同时看 IP 桶、而 IP 桶此时已满 ⇒ 无论邮箱锁没锁都会返回 `allowed: false`，
+  断言恒绿地什么都没证明。改成直接 `loginEmailStore.peek(...)`，并在注释里写明原因。
+- 验证：`npx vitest run src/lib/actions/login-attempts.test.ts` 9 条 ✅；`tsc --noEmit` ✅；
+  `eslint` 三个改动文件 ✅；`check:changelog` / `check:progress` 待复跑。
+- 阻塞 / 风险 / 回滚：`clearLoginBuckets` 的签名从 `async () => {ok:true}` 变成
+  `() => void`，调用点只有单测（`await` 一个 void 仍然合法）；运维侧需要清桶时重启进程即可。
+  回滚 = revert 本条提交。
+- 下一项：其余表（`subscriptions` / `user_sessions` / `webauthn_credentials` /
+  `push_subscriptions`）尚无 RLS 探针；`visibility='public'` 的口径仍需产品判断。
+- 更新时间：2026-10-31 19:38（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【审计面】`logAuthEvent` 让调用方决定「审计里有哪些事件类型」；顺带把 server action 导出面全扫了一遍
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前四条）。
+- 状态：DONE（1 处运行时校验缺口 + 4 条用例；并完成一次全仓 action 导出面清点）。
+- 为什么做：上一条修的是「`"use server"` 文件里每个 export 都是一条可 POST 的路径」。
+  这类缺陷不会只出现在一个文件里，所以按导出面把 19 个 action 文件逐个读了一遍
+  （`grep -rl '^"use server"'`），重点看「入参是不是只能由调用方声明」的那种。
+  清点结论：其余入口要么先鉴权、要么只写自己那一行；`logAuthEvent` 是唯一一个
+  **匿名可达 + 写服务端表 + 参数几乎不受约束**的入口。
+- 做了什么：`logAuthEvent` 的三个洞一起收：
+  1. `action` 在运行时校验（`AUTH_AUDIT_ACTIONS` 成为事实源，类型从它派生）。
+     它是匿名可用（失败登录那一刻还没有会话）、参数反序列化后只剩字符串、
+     而 `audit_logs.action` 是没有约束的 text 列 ⇒ 调用方可以决定「审计里出现哪些事件类型」，
+     并自报 `metadata.email` 替任意邮箱伪造一条 `auth.login_failed`。
+     这不是提权，是**取证面被污染**——一个能写任意 action 的入口，等于让攻击者挑选审计切口。
+  2. `metadata` 必须是普通对象（数组 / 字符串 / null 一律丢）。此前
+     `{...metadata}` 展开一个数组或字符串不会报错，而是悄悄写进一条形状奇怪的审计行。
+  3. 序列化后超过 4KB 丢弃：审计表是永久保留、只追加的，体积不能由匿名调用方决定。
+  越界一律**静默丢弃**（审计永不阻断主流程）但落一条服务端日志，
+  免得「审计悄悄没写」变成没人知道的空洞。
+- 变异取证：删掉那条白名单判定，`未登记的 action 一律丢弃` 立刻变红（1 failed / 12 passed），
+  恢复后 13/13。
+- 验证：`npx vitest run src/lib/actions/audit.test.ts` 13 条 ✅；
+  `src/components/auth/login-form.test.tsx` + `src/app/auth/mfa` 23 条 ✅（这两处 mock 了 logAuthEvent）；
+  `tsc --noEmit` ✅；`eslint` 两个改动文件 ✅；`check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：签名从 `action: AuthAuditAction` 改成 `action: string`（如实写），
+  调用方都是字面量，类型检查照旧。回滚 = revert 本条提交。
+- 下一步（本轮剩余时间的打算）：把「入参只能由调用方声明」这个形状继续往外推一层——
+  逐个看 `updateMessageStatus` / `updateProject` / `markNotificationRead` 这类
+  「传 id + 值」的 action 有没有服务端判定（RLS 兜住了吗、有没有 .eq 白名单）。
+- 更新时间：2026-10-31 19:44（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【功能从没工作过】`user_sessions` 缺 INSERT/UPDATE 策略：设备管理在真库上一直是空的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前五条）。
+- 状态：DONE（迁移 037 + 10 条矩阵 + 修前/修后读数）。
+- 为什么做：上一条的结尾写着「继续看『传 id + 值』的 action 有没有服务端判定」。
+  按这个方向读到 `sessions.ts`：`recordCurrentSession()` 用**用户作用域**客户端 upsert
+  `user_sessions`，而那张表（018 迁移）只有 SELECT 与 DELETE 策略。
+- 缺陷：RLS 下 INSERT 没有策略 = **拒绝（42501）**，不是静默 0 行。于是这一次写入**每次都失败**：
+  登录回调被 try/catch 吞掉、dashboard 心跳是 `void recordCurrentSession()` 天然静默、
+  设置页「已登录设备」读的是同一张表 ⇒ **永远是空的**、`revokeSession()` 只能对着不存在的行
+  工作 ⇒ 永远答 `sessionNotFound`。也就是说「设备管理」这个功能在真库上从未工作过。
+  018 的注释还明写着「upsert 按 id 去重实现每设备一行 + last_seen 刷新」——意图是对的，
+  策略漏了，而**没有任何一层会因此变红**：单测与 e2e 全跑 mock，**mock 没有 RLS**。
+  这与 009（team_members 策略自引用递归，同样只在真库暴露）是同一个盲区的第二次命中。
+- 取证（实测读数，不是推断）：
+  - 修前：`登记自己的会话` = **-1**、`刷新自己的会话` = **0**，10 条里 6 条不符；
+  - 修后：10/10。
+  这条证据来自这一轮刚建起来的 `check:rls-probe`——**没有它，这条缺陷只能靠肉眼读策略**。
+- 做了什么：迁移 `037_user_sessions_write_policy.sql`
+  - INSERT `with check (auth.uid() = user_id)`：只能给自己登记；
+  - UPDATE `using (auth.uid() = user_id)` + `with check (auth.uid() = user_id and id = get_user_session_id(id))`：
+    `user_id` 不可改成别人；`id` 也不可改（它是 GoTrue 的 session id，允许改等于允许抢占别人的会话 id，
+    对方下一次 upsert 就会撞冲突）。旧值读取沿用 007/008 的 `security definer` 写法。
+  - **为什么 UPDATE 必须单独一条**：`upsert ... on conflict do update` 的冲突分支受 UPDATE 策略约束。
+    只补 INSERT 时，第一次登记成功、第二次（刷新 last_seen_at）被拒——一个「第一次能用、之后全坏」
+    的形状比全坏更难查。
+- 过程中的一次自我纠错：第一版矩阵里「改自己的会话 id」用的是**别人已占用的** id，
+  结果先撞唯一约束（23505）而不是策略，用例以未捕获的错误失败。换成一个不存在的 id 才测到策略本身。
+  这类用例的失败原因必须能被区分：约束报错与策略拒绝是两件事。
+- 验证：`check:rls-probe` ✅ 37 迁移 + 4 探针（036 / 037 / rbac / helpers）；
+  `check:migrations` ✅ 37 条；`check:rls` ✅ 38 条策略；`check:supabase-security` ✅ 42 条策略；
+  `check:migration-runbook` ✅（标记更新到 037）；`src/app/dashboard/settings` + `src/lib/security`
+  459 条 ✅。
+- 阻塞 / 风险 / 回滚：037 是**补写入能力**的变更（此前用户写不了这张表），
+  收口方向仍是「只能写自己那一行」。回滚 = revert 本条提交；数据库侧如需回滚，
+  要再加一条前向迁移 drop 这两条策略（会把功能退回「永远空」，不该用 `drop policy` 硬回滚）。
+- 教训（值得单独记一行）：**「功能坏了」和「越权了」在静态扫描里都不产生告警**。
+  这一轮能抓到它，唯一的原因是先建了一个能把策略**执行**一遍的门禁，
+  然后拿它去跑一张还没被任何用例覆盖的表。
+- 下一项：`push_subscriptions` / `webauthn_credentials` / `subscriptions` 仍无探针；
+  `visibility='public'` 的口径仍需产品判断；`recordLoginResult` 的认证链路重构（把认证挪到服务端）
+  是这一串缺陷的共同根因之一。
+- 更新时间：2026-10-31 19:50（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【文案承诺】「吊销设备」只是删了一行记录：那句「该设备将被登出」是做不到的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前六条）。
+- 状态：DONE（中英文案与注释改到与实现一致；真正的按会话吊销需要 GoTrue 能力，尚未做）。
+- 为什么做：036 那条让 `updateMemberRole` 的 0 行暴露出来之后，接着读 `sessions.ts` 的另外半边
+  ——`revokeSession()` 删的是 `user_sessions` 的行。删行不等于让令牌失效。
+- 缺陷：那台设备手里的 refresh token 在 GoTrue 侧依然有效，可以继续换 access token；
+  `@supabase/auth-js` 的 admin API 只有 `signOut(jwt, scope)`，按**会话**吊销需要目标会话自己的
+  JWT（服务端拿不到），GoTrue 也没有「按 session id 吊销」的公开端点。
+  而 UI 写的是「吊销后该设备将被登出」（`devicesDesc`）、成功提示「设备已吊销」（`deviceRevoked`）。
+  **一个做不到的安全承诺比没有更糟**：用户会以为被盗设备已经下线，于是不去用真正能作废
+  其它会话 refresh token 的「退出其他设备」。
+- 做了什么：改文案（中英各两条）与 `revokeSession` 的注释，让三处说同一件事：
+  移除 = 从这份列表里删掉；要真正让其它设备下线，用「退出其他设备」。
+  没有改实现——在没有可验证的 GoTrue 端点之前，改实现只会把「说不准」变成「做得也不准」。
+- 验证：`check:locales` ✅ 1271 键对称；`tsc` / `eslint` ✅；
+  `src/lib/actions/sessions.test.ts` + `src/components/dashboard` 56 条 ✅（没有测试断言旧文案，
+  所以这次改动不会把「文案」变成「接口」）。
+- 阻塞 / 风险 / 回滚：文案变得更长也更不「爽快」，但它现在是真的。
+  下一手若确认 GoTrue 有按会话吊销的端点（需要在本地栈上实测，不是查文档就算），
+  应把实现补上、文案再改回去。回滚 = revert 本条提交。
+- 下一项：`push_subscriptions` / `webauthn_credentials` / `subscriptions` 仍无 RLS 探针。
+- 更新时间：2026-10-31 19:54（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【隔离矩阵（二）】push / passkey / subscriptions 的归属与只读边界；顺带记下「0 行 ≠ 报错」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前七条）。
+- 状态：DONE（`supabase/tests/isolation_probe.sql`，13 条）。
+- 为什么做：上一条留下的下一项就是「这三张表仍无探针」。它们各自守一件具体的事：
+  `push_subscriptions` 的端点绑在 user_id 上（写成别人的 = 替别人收推送）、
+  `webauthn_credentials` 的公钥行（写成别人的 = 让别人的账号多一把钥匙）、
+  `subscriptions` 是团队计费状态（客户端应当只读，写入只能来自 Stripe webhook 的 service_role）。
+- 读数：13/13。其中两条值得单独记：
+  1. `subscriptions: 客户端升级 plan` 的读数是 **0**，不是 -1。这张表上没有 UPDATE 策略，
+     于是客户端改计费状态是「命中 0 行、error 为 null」——**静默失败**，不是报错。
+     今天安全（也没有客户端代码去改订阅），但形状记在用例里：将来谁用用户作用域客户端改订阅，
+     它会安静地什么都不做。**0 与 -1 不是同一种「拒绝」**，这一轮已经靠这个差别抓到过一条真缺陷
+     （036），所以这里没有把它糊成 -1。
+  2. `passkey: 给别人加一把` 与 `push: 给别人登记端点` 都是 -1：这两张表的 INSERT 策略
+     `with check (auth.uid() = user_id)` 在真正起作用。
+- 验证：`check:rls-probe` ✅ 37 迁移 + 5 探针（52 条用例）；`check:changelog` / `check:doc-links` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
+- 下一项（时间还够的话）：`check:all` 全量跑一遍作为这一段的收尾读数；
+  再往后的方向有两条——① `visibility='public'` 的口径（需产品判断）；
+  ② 把认证挪到服务端（`recordLoginResult` 那类「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 19:55（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【门禁量回自己】`check:rls-probe` 的判定搬进规则模块；顺带问出「探针自己会不会响」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前八条）。
+- 状态：DONE（拆分 + 新增 `auditProbeInventory`）。
+- 起因：`check:all` 全量第一次跑红，红在 `check:gate-rule-tests` 上，被判的是**我上一轮刚写的门禁**：
+  `❌ [INLINE_GATE_REINTRODUCED] check:rls-probe：有门禁把判定逻辑内联在脚本里`。
+  这条规则的口径是仓库早就写定的——判定放 `src/lib/**` 纯函数、脚本只做 IO，
+  这样「规则模块有没有单测」就是个可机械核对的事实。我那条门禁把判定全写在脚本里，
+  于是它的「会不会响」没有任何人兜底。**门禁审门禁，审出的是新门禁自己**，这是对的。
+- 做了什么：
+  1. 判定搬进 `src/lib/db/rls-probe.ts`：`decidePrerequisite`（缺二进制时跳过还是失败）、
+     `auditProbeInventory`（探针盘点）、`summarizeProbeRun`（收尾读数）、`countExpectations` / `hasAssertion`。
+  2. 入口 `scripts/check-rls-probe.js` → IO `scripts/lib/rls-probe-check.js`，与 `cloud-sql-probe` 同形状。
+  3. 新建 `src/lib/db/rls-probe.test.ts`（21 条，含一条扫真实 `supabase/tests/` 的读数）。
+  4. 顺带修了 `eslint` 的 `complexity 20 > 15`：起集群 / 应用迁移 / 跑探针各抽成一个函数。
+- 搬的过程中问出了这一轮真正值钱的那件事：**探针本身会不会响**。
+  一个 `.sql` 探针只要不抛异常 psql 就退 0，于是两种文件永远是绿的：
+  - 只 `probe.expect(...)` 忘了 `probe.verify(...)`：登记的行没人读；
+  - 只 `probe.verify(...)` 一条 `expect` 都没有：`verify` 里那句
+    `count(*) where rows is distinct from want` 在空表上读数是 0，它会打印「0 条全部符合期望」并放行。
+  第二种的形状和「策略全对」一模一样，而它什么都没验。现在两者分别报
+  `PROBE_WITHOUT_ASSERT` / `PROBE_WITHOUT_EXPECTATION`，**起库之前**就拒（不让一个注定要红的集合先花 20 秒建库）。
+- 计数口径（写清代价）：只数代码位，`--` 注释里的 `probe.expect(` 不算。这条不是形式主义——
+  `036` 的注释里就写着用法示例，不抹注释的话注释能把空壳文件撑成绿的。
+  `000_helpers.sql` 按**文件角色**排除而不是按内容猜：它定义了这两个函数，按调用计数它是 1/1，
+  算进来会把用例总数报虚。
+- 读数：
+  - `check:gate-rule-tests` ✅ 58 个规则模块 / 50 条门禁走规则模块 / **0 条内联**；
+  - `check:rls-probe` ✅ 37 迁移 + **4 探针 / 56 条用例**（此前文档写「5 探针 / 52 条」，两个数都不对：
+    helpers 被当成探针数了进去，而 `rbac_matrix_probe.sql` 在写文档后长到 25 条）；
+  - 变异取证：塞入只有 `select probe.verify('空矩阵');` 的探针 → `exit=1` 且点名 `PROBE_WITHOUT_EXPECTATION`；
+    移除后 `exit=0`；
+  - `src/lib/db/rls-probe.test.ts` 21/21 ✅；`tsc` ✅；`eslint` ✅。
+- 阻塞 / 风险 / 回滚：拆分本身不动取证语义（探针文件一份没改）。`auditProbeInventory` 是**新的拒绝面**：
+  它现在会挡住「只登记不断言」的写法，如果将来有人故意要写一个只打印矩阵、不置失败的诊断文件，
+  得把它放进 `NON_PROBE_FILES` 并说明理由——这是有意的摩擦。回滚 = revert 本条提交。
+- 下一项：`check:all` 全量复跑作为这一段的收尾读数；之后仍是那两条——
+  ① `visibility='public'` 的口径（需产品判断）；② 把认证挪到服务端（`recordLoginResult` 那类
+  「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 20:04（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【CI 里那道探针其实没验】二进制装在机器上但不在 PATH 上
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前九条）。
+- 状态：DONE（发现逻辑 + CI 失败封闭 + 文档）。
+- 怎么发现的：上一条收尾时 `check:all` 全绿，于是顺手核了一个更基础的事实——
+  **这道门禁在 CI 里到底跑不跑得起来**。查 `.github/workflows/*.yml` 与 `check-all.sh`：
+  没有任何地方设 `RLS_PROBE_REQUIRE`，而 `check-all.sh` 是被 CI 整体调用的，
+  也就是说 CI 里走的是「缺二进制 → 跳过 → 退 0」那条路。
+- 为什么这算缺陷而不是配置问题：GitHub `ubuntu-latest` **自带** PostgreSQL，
+  但 `psql` 在 `/usr/bin`、`initdb` / `pg_ctl` 在 `/usr/lib/postgresql/<ver>/bin`（不在 PATH）。
+  于是 CI 每轮都打印一行 ⚠️「这一层没有被执行验证」，然后被后面几十行 ✅ 淹没——
+  与仓库里记过的「check:docs 只存在于本地聚合」同型：**跑了，但没验**。
+- 做了什么：
+  1. `src/lib/db/rls-probe.ts` 新增 `POSTGRES_BIN_PATTERNS` / `expandBinPatterns` / `pickBinDir`：
+     判「缺不缺」之前先按常见安装位置找一个**三件套齐全**的目录并接到 PATH 前面。
+     只认齐全的目录（有 initdb 但缺 psql 不算）——混用两个版本的三件套会在 `pg_ctl start`
+     之后报一句很难读的错，而那句话看起来像探针自己的问题。
+  2. `decidePrerequisite` 增加 `ciFlag`：`CI=true` 且仍找不到时**按失败处理**，本机仍跳过。
+     不再依赖「谁记得去设 `RLS_PROBE_REQUIRE=1`」——默认值必须是「CI 里不许跳过」。
+  3. 单测从 21 条加到 31 条（展开 / 挑选 / CI 分支，含一条模拟 ubuntu-latest 布局的用例）。
+- 真跑才发现的 bug（写在这里，因为它值）：
+  `expandBinPatterns` 第一版把「`*` 之前的字符串」当父目录，于是 `postgresql@*` 被切成
+  `/opt/homebrew/opt/postgresql@`——一个不存在的目录，发现逻辑**安静地什么都没找到**。
+  单测当时是全绿的，因为它用的是 `/*/bin` 这种 `*` 恰好在段边界的形状。
+  是本机把 Homebrew 从 PATH 里去掉实跑时暴露的：仍然打印「缺少 initdb / pg_ctl / psql」。
+  修法按「段内前缀通配」重写展开，并补一条 `postgresql@*` 的单测。
+  **教训照旧：合成用例永远合格，所以每个门禁都要有一次真读数。**
+- 读数：
+  - `env PATH=/usr/bin:/bin:… node scripts/check-rls-probe.js`（模拟 CI 布局）→
+    `ℹ️ PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
+    → 37 迁移 + 4 探针 / 56 用例 ✅（修前这条会跳过）；
+  - `env CI=true` 正常 PATH ✅、`env CI=true` + 削减 PATH ✅（发现先于失败判定）；
+  - `src/lib/db/rls-probe.test.ts` 31/31 ✅；`tsc` ✅；`eslint` ✅；
+  - `check:all` 全量（HEAD `86fda400`）✅ 全部校验通过。
+- 阻塞 / 风险 / 回滚：**CI 的 `ubuntu-latest` 是否有 `/usr/lib/postgresql/*/bin` 我没有实测**
+  （本轮网络不通，推不上去也看不到 runner）。这就是把 `CI=true` 设成失败封闭的风险：
+  万一那个目录不存在，下一次 push 的 CI 会红。这个红是**对的**——它说的正是
+  「RLS 这层没验」，修法一行（`apt-get install -y postgresql`）。
+  下一手（可执行）：push 后看 `Run every repository gate` 里 `check:rls-probe` 那一行，
+  若是 ❌ 缺件，就在 ci.yml 的该 job 里加一行 apt 安装，或把 `/usr/lib/postgresql/*/bin` 加进 PATH。
+  回滚 = revert 本条提交（回滚后 CI 恢复「静默跳过」）。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端
+  （`recordLoginResult` 那类「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 20:24（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【门禁自己读自己】`check:rls` 的策略集第一次和真库对账：38 条逐条一致
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十条）。
+- 状态：DONE（`comparePolicySets` + 探针内对账 + 两条变异取证）。
+- 起因：上一轮修完「CI 里其实没验」之后，顺着同一个问题往下问一层——
+  `check:rls` 说「38 条策略、每条都带 `using` / `with check`」，这句话**和数据库比过吗**？
+  答案是没有。它读的是迁移文本，读法错了也照样绿；而 `rls-coverage.ts` 的文件头
+  就记着一次这样的历史（策略名正则把带空格的名字截成一个词，同一张表的策略互相覆盖，
+  门禁一直绿着，实际只验了一条）。
+- 做了什么：探针在应用完全部迁移后查一次 `pg_policies`，与迁移文本经
+  `extractEffectivePolicies` 的结果做集合比对——比 `command` / `roles` /
+  `using` / `with check` 的**有无**，不比表达式文本（PostgreSQL 会把 `auth.uid()`
+  重排成 `(auth.uid() = user_id)`，比文本只会比出噪音）。只比 `public` schema：
+  `storage.objects` 的策略来自 Supabase 初始化脚本，bootstrap 替身里没有那部分，
+  比它只会比出替身的边界。对账放在跑用例之前——如果两边连「有哪些策略」都不一致，
+  下面那些用例验的是一组不存在（或多出来）的策略，读数再绿也没意义。
+- 读数：
+  - 首次对账：**真库 38 条 / 静态 38 条，逐条对齐，命令 / 角色 / using / with check 零处不一致**。
+    （先用手写的一次性脚本对过一遍：真库 38、静态 42，差集 4 条全是 `storage.objects`，
+    即替身边界，不是缺陷。这个结论促使我把比对口径限定在 `public`。）
+  - 变异取证一：塞 `execute 'create policy "Tmp dynamic policy" on public.projects …'`
+    → 静态 39 / 真库 39，**对齐**。原因是静态提取器把字符串字面量里的 `create policy`
+    也当成了定义，于是两边"恰好"一致。
+  - 变异取证二：塞 `execute 'create pol' || 'icy "Tmp concat policy" …'`（拼接）
+    → 静态 38 / 真库 39，报 `只在真库：public.projects / Tmp concat policy`，退出码 1。
+  - 单测 39/39（新增 8 条：只在真库 / 只在静态 / command / with check / 角色顺序 / 指纹换算 /
+    同名不同表）；`tsc` ✅；`eslint` ✅；`check:doc-links` ✅ 153 条。
+- 两条真实边界（写清，别当成已解决）：
+  1. **静态提取是文本匹配**。写成拼接、放在条件分支里、或由 `alter policy` 改出来的策略，
+     它可能漏（漏的那条就在 `check:rls` 视野之外），也可能多认（字符串里的语句算定义）。
+     对账把"漏"变成会红的读数，但"多认"仍可能让两边一起错——真库那一侧不会撒谎，
+     所以多认只在**真库也恰好有**时才会掩盖。
+  2. `roles` 归一化我放在了 `comparePolicySets` 内部而不是只放在 `fingerprintFrom*`：
+     单测第一次就踩到——直接构造的指纹绕过了归一化，`{anon,authenticated}` 与
+     `{authenticated,anon}` 被判成不一致。**误报会让这条门禁被关掉**，所以规则自己兜住，
+     而不是靠调用方守规矩。
+- 阻塞 / 风险 / 回滚：纯新增读数，不改任何策略。回滚 = revert 本条提交。
+- 下一项：`visibility='public'` 的口径（需产品判断——今天没有路径能把项目改成 public，
+  但 `to public` 的策略对 anon 成立）；把认证挪到服务端（`recordLoginResult` 那类
+  「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 20:30（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【幂等只在 mock 上验过】webhook 占位函数补 10 条真库读数；顺带纠正一句日志
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十一条）。
+- 状态：DONE（`supabase/tests/030_webhook_idempotency_probe.sql`，10 条）。
+- 起因：`e2e/webhook-events.spec.ts` 验的是「重复 event id 幂等」，但它跑在 mock 后端上——
+  真正定义语义的是 030 里那个 `claim_webhook_event`，而 `src/lib/mock/index.ts` 里有一条
+  **JS 镜像**。两边一致是**两处代码的巧合**，不是可核对的事实：改了 SQL 忘了改 mock，
+  e2e 依然全绿。这类「镜像通过镜像验证自己」的绿，是本轮一直在拆的那种。
+- 读数（10 条，全部实跑）：
+  1. 首次投递 → claimed；2. 立刻重复 → duplicate；3. 上次 `failed` → 可重新占位；
+  4. 重新占位后 `attempts` 从 1 累到 2；5. 两小时前已 `processed` → duplicate（不重放副作用）；
+  6. `received` 且租约超时 20 分钟 → 可接手；7. 接手后立刻再投 → duplicate；
+  8. `received` 且租约还差 14 分钟 → duplicate（不许抢）；9/10. anon 与 authenticated 调用 → 拒绝。
+- 一条被实测推翻的想当然：我先把第 4 条写成「累加到 3」（以为 duplicate 也计数），
+  实测是 2。**`attempts` 数的是「被处理过几次」，不是「Stripe 投递了几次」**。
+  于是路由里那句 `第 ${claim.attempts} 次投递` 是错的——排障时会把它读成「Stripe 只投了一次」。
+  已改成「此前已占位 N 次」，并在注释里写清两者的区别。这条改动只有一行，
+  但它把一个会误导排障的说法换成了真的。
+- 变异取证：`038_tmp` 里用 `create or replace` 把函数改成「一旦占位就永不再放手」→
+  探针报 3 条不符合期望（failed 重投 0/1、attempts 1/2、租约超时 0/1）、退出码 1；
+  移除后 66/66 恢复。
+- 验证：`check:rls-probe` ✅ 37 迁移 + **5 探针 / 66 用例**；`route.test.ts` 15/15 ✅
+  （改日志文案没有踩到既有断言）；`tsc` / `eslint` / `check:progress` / `check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例 + 一行日志文案，不动 030 本身。
+  探针里新加了一个 `probe.claim_webhook(role, event_id)` 辅助函数，它建在事务内、随
+  `rollback` 消失，不污染其他探针。回滚 = revert 本条提交。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
+- 更新时间：2026-10-31 20:34（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【隐私承诺只在 mock 上验过】删号擦除补 18 条真库读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十二条）。
+- 状态：DONE（`supabase/tests/032_erase_user_data_probe.sql`，18 条）。
+- 起因：与上一条同型，但代价更大。`messages/*/privacy.json` 向用户承诺「删号后 30 天内删除或
+  匿名化个人数据」，而唯一真正执行这件事的是 032 的 `erase_user_data(uuid)`。
+  它此前只在 mock 上被验——`src/lib/mock/index.ts` 里有一条 JS 镜像 `eraseMockUserData`。
+  改了 SQL 忘了改镜像，测试照样全绿，而真实用户的数据还留在库里。
+- 读数（18 条，全部实跑）。分三组，每条都对应承诺里的一句话：
+  - **删**：`apiUsage=2`（含 IP 的使用记录整表删）、`contactMessages=1`、
+    `auditLogsAnonymized=3`；删完 `api_usage` 里该用户 0 行、**旁观者 1 行没动**；
+    联系消息**大小写 + 前后空格不同也删掉**（`  Victim@Probe.Local ` 能匹配
+    `victim@probe.local`），旁观者的还在。
+  - **留住事实、切断连接**：3 条审计行**都还在**（行为事实不删），但 `user_id` 置空、
+    `entity_id` 指向该用户时置空、metadata 里 `email`/`ip`/`ip_address`/`user_agent` 全剔除，
+    而**非 PII 的 `team_id` 保留**（这条很关键：过度擦除会让审计失去对账价值）。
+    json 数组形态的脏 metadata 被清成 `{}` 而不是报错中断。
+  - **拒绝**：anon / authenticated 调用 → 42501；null 用户 id → 函数自己 raise（不是静默成功）。
+- 两条我写错的期望（记下来，因为它们差点变成"实现错了"的假结论）：
+  1. 「metadata 里没有 email」我一开始数了整张表 —— 但旁观者的行**应该**留着 email，
+     于是读数 1 看起来像"没删干净"，其实是断言范围写错了。
+  2. 「非 object metadata 被清成 {}」我期望 1，实测 2 —— 另一行是 `{"ip_address": …}`，
+     唯一的键就是 PII，剔完自然成 `{}`。**这两处都不是实现的问题。**
+- 变异取证：用 038_tmp 把 `where lower(btrim(email)) = v_email` 改成 `where email = v_email`
+  → 探针报 2 条不符合期望（contactMessages 0/1、大小写匹配 1/0）、退出码 1；移除后 84/84 恢复。
+- 验证：`check:rls-probe` ✅ 37 迁移 + **6 探针 / 84 用例**；`check:doc-links` ✅；
+  `check:progress` / `check:changelog` ✅。探针文件不改任何实现。
+- 阻塞 / 风险 / 回滚：纯新增用例。回滚 = revert 本条提交。
+  **未覆盖的边界**：`erase_user_data` 之外还有 `admin.auth.admin.deleteUser()` 的级联路径，
+  那条依赖 GoTrue 与真实外键，探针里没有 GoTrue 替身，本轮不碰。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
+- 更新时间：2026-10-31 20:41（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【保留期只比过字符串】90 / 30 / 365 天的窗口两侧边界补 9 条真库读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十三条）。
+- 状态：DONE（`supabase/tests/032_retention_windows_probe.sql`，9 条）。
+- 起因：三条保留期（api_usage 90 天、已删对象元数据 30 天、已解决联系消息 365 天）是
+  对用户与合规的承诺，而它们的验证方式是——读迁移文本，和 `src/lib/privacy/erasure-policy.ts`
+  的常量**比字符串**。那比的是「数字写没写对」，不是「边界切在哪」。
+  日期窗口恰恰是差一天最容易发生的地方，而差一天在字符串比对里完全看不见。
+- 读数（9 条，全都成对，因为只测「删了」等于没测——一个把整表删掉的实现也能让它变绿）：
+  - api_usage：89 天前的留着、超过 90 天的一行不剩；
+  - upload_objects：`deleted` 29 天的留着、31 天的删掉、**`active` 400 天的绝不删**
+    （那是用户正在用的头像，元数据不是垃圾）；
+  - contact_messages：`resolved` 364 天留着、366 天删掉、**`new` 与 `in_progress` 400 天都不删**
+    （删掉未处理的用户求助就是静默丢单——这条在 032 的注释里写着，但此前没有一处代码读数守着它）。
+- 一处我写反的期望：`api_usage：91 天前的删掉` 我期望 1，实测 0。那条断言数的是
+  「还剩几行超过 90 天的」，删干净就该是 0。**不是实现的问题**，但正好说明
+  「用例名写的是意图、比较符写的是读数」，两者必须有人核对一次。
+- 变异取证：把 032 里 `interval '90 days'` 改成 `'900 days'`（临时迁移 038_tmp 覆盖函数）
+  → 「超过 90 天的一行不剩」读数变 2/0、退出码 1；移除后 93/93 恢复。
+- 顺带确认了一件**不是**缺陷的事：`cleanup_resolved_contact_messages` 引用
+  `contact_messages.status`，而 012 建表没有这一列——我以为找到了「每周日 05:00 都会报错的
+  cron」，实跑后表里确实有 `status`（本轮 shell 的 `grep` 多次对存在的内容返回空，
+  是工具问题不是仓库问题）。**先跑再判**，这次省下了一次假的"修复"。
+- 验证：`check:rls-probe` ✅ 37 迁移 + **7 探针 / 93 用例**；`check:progress` /
+  `check:changelog` / `check:doc-links` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
+  探针可继续扩的面：`find_orphan_upload_objects` / `list_user_objects_for_erasure`（033），
+  它们同样只有 mock 覆盖。
+- 更新时间：2026-10-31 20:43（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【referenced 判错的代价是双向的】033 引用判定与「删号后元数据活着」补 13 条读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十四条）。
+- 状态：DONE（`supabase/tests/033_upload_objects_probe.sql`，13 条）。
+- 起因：033 的两句核心主张都只在 mock 上验过（`listMockUserObjects` / `listMockOrphanObjects`）：
+  ① 引用判定用**后缀相等**而不是 LIKE，因为对象键里的 `_` 在 LIKE 里是通配符；
+  ② `owner_id` 从 `on delete cascade` 改成 `on delete set null`，理由是「删号越彻底，孤儿越不可见」。
+  第 ② 条是**外键行为**，mock 里根本没有外键，读代码也读不出来。
+- 为什么重要：`referenced=false` 的对象才允许删，判错是双向的——
+  把 true 判成 false，删号会弄坏别人团队页面上正在用的封面；
+  把 false 判成 true，孤儿永远删不掉、隐私声明里「删除所有数据」无从证明。
+- 读数（13 条，全部实跑）：
+  - `used.png` 被 `profiles.avatar_url` 指着 → 1；`cover.png` 被 `projects.logo_url` 指着 → 1；
+  - `a_b.png` 没被引用 → 0；**尾巴巧合** `.../xavatars/u/y.png` 不算引用 `avatars/u/y.png` → 0
+    （这两条正是迁移注释里那句「要求前面是 `/`」的读数）；
+  - `list_user_objects_for_erasure(u1)` 返回 3 条 active、其中 referenced 只有 1 条、不含已删对象；
+  - `find_orphan_upload_objects()` 恰好 2 条（`a_b.png` / `y.png`），不含被引用的、也不含 `deleted`；
+  - **删号后 5 行元数据全在，`owner_id` 变 null 的正是 u1 的 4 行**，对象键与 64 位哈希仍在
+    ——这正是 033 想修的那件事，第一次有了代码读数。
+- 变异取证：把 `right(url, length(key)+1) = '/' || key` 退化成 `right(url, length(key)) = key`
+  → 3 条翻红（尾巴巧合 1/0、孤儿数 1/2 等）、退出码 1；移除后 106/106 恢复。
+- 过程中的三次小磕碰（都是我写夹具写错，不是实现问题）：uuid 末段多写一位、
+  `teams.owner_id` 与 `projects.slug` 是 not null、忘了给 `projects` 填 slug。
+  夹具失败会以「column violates not-null」中断整份探针——这也是好事：探针不会在半个夹具上继续断言。
+- 验证：`check:rls-probe` ✅ 37 迁移 + **8 探针 / 106 用例**；`check:progress` /
+  `check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端。
+- 更新时间：2026-10-31 20:45（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【口径定了】`visibility='public'` 收窄为站内共享（迁移 038）
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十五条）。
+- 状态：DONE（迁移 038 + 探针 + RBAC 矩阵期望值变更）。
+- 这是台账里连着两轮挂在「下一项」的那件事，也是此前被标成「需产品判断」的那件。今天把它定了。
+- 事实（不是推断，三条都跑了）：
+  1. 003 的 `Team members can view projects` 没有 `to` 子句 ⇒ 角色是 `PUBLIC`，`anon` 在内；
+  2. 修前读数：**未登录访客读 public 项目 = 1**（`038_projects_visibility_probe.sql` 先跑的）；
+  3. 全仓没有匿名读 `projects` 的消费方：`createProject` 硬编码 `private`、`updateProject`
+     不接受这个字段、UI 只显示不修改、营销页不读库。
+- 判断：这一支**靠没人走到而安全，不是靠策略挡住**。所以不是「没暴露面所以不用改」，
+  而是「将来谁接上写入路径就立刻是真的」。
+- 做了什么：038 把策略收窄成 `to authenticated`，口径取**站内共享**——
+  `visibility='public'` 从此表示「任何登录用户可读」，今天的行为一行没变，
+  只去掉未登录访客那一档。要走「站外公开」得先定产品语义 + 单独一条 `to anon` + 列级收窄，
+  三步写进了迁移文件头（只删 `to authenticated` 不算方案）。
+- 读数（修前 → 修后，同一份探针）：
+  - 未登录访客读 public 项目：**1 → 0**；
+  - 非成员的登录用户读 public 项目：1 → 1；团队成员读自己团队 private：1 → 1；
+    非成员读别人 private：0 → 0；未登录访客读 private：0 → 0。
+- 连带改动（必须记，因为它是「改期望值」）：`rbac_matrix_probe.sql` 里那条
+  「anon 读公开」的期望值从 1 改成 0。它原来守的是「潜力通道在明面上」，
+  现在守的是**回归**——谁把 `to authenticated` 去掉，它立刻红。
+  这是本仓库里少数几条期望值被有意改动的记录，理由写在了用例注释与迁移文件头的双向指针里。
+  改的过程中发现文件里出现了重复块（我的替换只命中了第一处），删掉重复后 111/111。
+- 验证：`check:rls-probe` ✅ 38 迁移 + **9 探针 / 111 用例**（含静态↔真库对账）；
+  `check:rls` ✅ 38 条生效策略；`check:supabase-security` ✅ 42 条；
+  `check:migrations` ✅ 38 文件 SHA-256 一致（清单已随迁移更新）；
+  `check:migration-runbook` ✅ latest=038；`check:changelog` / `check:doc-links` / `check:progress` ✅。
+- 阻塞 / 风险 / 回滚：**回滚 = revert 本条提交**（含迁移文件）。
+  注意迁移不可变：038 已经在清单里，若上线后发现口径不该这么定，正确做法不是改 038，
+  而是再加一条 039 把策略改回去，并在台账里写清为什么改两次。
+  风险：若将来做站外公开，anon 会**静默**读到 0 行（页面空而不是报错）——
+  这一点写进了迁移文件头，届时必须同步改策略。
+- 下一项：把认证挪到服务端（`recordLoginResult` / `logAuthEvent` 那类「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 20:50（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【029 撤掉的那条策略，库里有没有真撤掉】audit_logs 补 5 条读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十六条）。
+- 状态：DONE（`rbac_matrix_probe.sql` 加 5 条，矩阵 25 → 30）。
+- 起因：翻 002 时看到一条 `Audit logs insertable by authenticated users`
+  （`with check (auth.role() = 'authenticated')`）——意思是任何登录用户都能直接
+  `POST /rest/v1/audit_logs` 写任意 action、任意 entity、**任意 user_id**，
+  等于可以伪造一条「别人做了什么」的取证记录。
+- 查证结果是**不是缺陷**：029 早就 `drop policy` 了，`SERVER_ONLY_WRITE_TABLES` 里也登记了
+  audit_logs，`check:supabase-security` 一直盯着它别再长回来。
+  **这一轮第二次「先跑（先查）再判」省下假修复**（上一次是 `contact_messages.status`）。
+- 但仍然补了读数：那条策略撤掉之后，「客户端真的写不进去吗」只有静态门禁的说法，
+  没有库里的读数。现在五格：
+  - `super_admin 读 -> 1`、`普通用户读 -> 0`（002 的 SELECT 策略确实只放行 super_admin）；
+  - `登录用户插伪造行（user_id 写成别人）-> 拒绝`、`插自己的行也拒绝`、`anon 插 -> 拒绝`。
+    第二格是有意的：**即使 user_id 是自己，客户端也不该能写审计**——否则「我做过什么」由我自报。
+    这三格正是 `logAuthEvent` 里那份 action 清单在数据库一侧的对应物。
+- 读数：`check:rls-probe` ✅ 38 迁移 + 9 探针 / **116 用例**；矩阵 30/30。
+- 阻塞 / 风险 / 回滚：纯新增用例。回滚 = revert 本条提交。
+- 下一项：把认证挪到服务端（`recordLoginResult` / `logAuthEvent` 那类「客户端声明事实」的
+  共同根因）——这一项今天没有切：`logAuthEvent` 已经把 action 清单、4KB 上限、
+  会话取 user_id 都做了，剩下的「客户端声明事实」要动的是**事实来源**（GoTrue 审计日志
+  或 auth 表触发器），不是一次能安全落地的改动。理由记在这里，避免下一轮重新推一遍。
+- 更新时间：2026-10-31 20:53（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【注册必经之路】注册触发链补 10 条读数，其中一条挡的是自封超管
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十七条）。
+- 状态：DONE（`supabase/tests/001_signup_chain_probe.sql`，10 条）。
+- 起因：`handle_new_user` / `handle_new_team` 是**所有注册的必经之路**——它们不跑或跑错，
+  每个新用户都会缺 profile、缺个人团队、或缺 owner 成员行，而报错点会落在很久之后
+  （第一次写项目时才报「你的团队不存在」）。这两个函数此前只有「读代码」这一种验证方式：
+  没有 TS 实现、没有 mock 镜像，`check:rls` 也只是把它们当静态文本扫过去。
+- 其中一格是安全面，而且它今天正好是**对的**：Supabase 注册时 `options.data` 会进
+  `raw_user_meta_data`，那是**客户端可控**的。`handle_new_user` 把 role 硬编码成 `'member'`，
+  所以自称 super_admin 无效。这条如果哪天被改成 `coalesce(metadata->>'role','member')`，
+  任何人注册即成超管——而它此前没有任何读数在守。
+- 读数（10 条，全部实跑）：注册后自动建 profile（2 用户 2 行）、默认 role=member、
+  **metadata 自称 super_admin 仍是 member**、profile.email 与 auth.users.email 一致、
+  full_name/avatar_url 从 metadata 取到、无 metadata 时 full_name 为 null（不写空串不报错）、
+  自动建个人团队（2 用户 2 团队）、slug = `personal-<uuid 去横线>`、自己在团队里是 owner、
+  每人恰好一条成员行（没重复插）。
+- 变异取证：把函数改成 `coalesce(new.raw_user_meta_data ->> 'role', 'member')`（临时迁移 039_tmp）
+  → 「自称 super_admin 不被采纳」读数 0/1、退出码 1；移除后 126/126 恢复。
+  **这条变异就是一条真实的提权路径**，探针现在是它的守门人。
+- 验证：`check:rls-probe` ✅ 38 迁移 + **10 探针 / 126 用例**；`check:progress` / `check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
+- 下一项：把认证挪到服务端（理由见上一条，今天不切）。
+- 更新时间：2026-10-31 21:01（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【一个 export const 让登录在 CI 上整体不通】"use server" 模块只能导出 async 函数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十九条）。
+- 状态：DONE（清单搬到 `src/lib/auth/audit-actions.ts`；本地 200 + 单测 186/186；CI E2E 重跑待读数）。
+- 起因：PR #306 的 CI 里 **E2E 两个 shard 全红，17 条用例**，都卡在
+  `waitForURL("**/dashboard")` 超时——即「点了登录什么都没发生」。`Lint & Type Check`（含 49 门）
+  与 `Unit Tests` 全绿，所以这不是门禁放水，是**门禁压根看不到那一层**。
+- 根因（日志原文，`[WebServer] ⨯`）：
+  `A "use server" file can only export async functions, found object` →
+  `at module evaluation (.next-internal/server/app/auth/login/page/actions.js:3:1)` →
+  `export {logAuthEvent ...} from 'ACTIONS_MODULE1'` → `at module evaluation (src/lib/actions/audit.ts:141:1)`。
+  `src/lib/actions/audit.ts` 是 `"use server"` 文件，里面除了 `logAuthEvent` 还有一个
+  `export const AUTH_AUDIT_ACTIONS = [...]`（上一轮为了「匿名入口不能自定 action」加的）。
+  一个常量数组让**整个模块求值失败**，而 `/auth/login` 的 actions loader 把
+  `recordLoginResult` / `checkLoginAllowed` 与它编在同一批——**整批一起挂**。
+- 为什么本地全绿：这条约束只在**模块真的被求值时**检查。lint、`tsc`、3755 条单测、
+  `next build`（预推送钩子里跑过）都不求值那个 loader。唯一能发现它的是
+  **真的点一次登录**——也就是 E2E。这是本轮第三次「本地门禁全绿而线上功能整体不可用」的同类。
+- 修法：清单搬进普通模块 `src/lib/auth/audit-actions.ts`（只有常量与类型，没有网络表面），
+  `audit.ts` 只留 async 的 `logAuthEvent`，判定仍在原处（运行时白名单）。
+  形状与上一轮 `login-buckets` 完全相同——**那一处记得搬、这一处忘了**，
+  说明「搬出去」当时是当成个案修的，不是当成一条规则。
+- 读数：本地 `next dev` 起在 3199，`GET /auth/login` **200**、dev 日志里
+  该错误计数 **0**；`pnpm exec tsc --noEmit` 退 **0**；
+  `vitest run src/lib/actions/audit.test.ts src/lib/actions/login-attempts.test.ts src/lib/auth`
+  → **15 文件 / 186 用例全过**；全仓扫 `"use server"` 文件，同类只剩
+  `src/lib/actions/contact-messages.ts` 的 `export { type MessageStatus }`
+  （编译器擦除，运行时没有这个导出，Next 不会报）。
+- 没能拿到的一格：本地「把常量放回去看会不会红」的变异取证**失败**了——
+  脚本在热重载期间 curl，两次都拿到 502，日志里也没有该错误，所以那一格**不算数**。
+  写在这里而不是删掉：决定性读数改为等 CI E2E 重跑，**本地这一格是空的**。
+- 顺带修掉一处会误导人的注释：`scripts/check-all.sh` 里 `check:rls-probe` 那段仍写着
+  「无 initdb/pg_ctl/psql 时**自跳过**并打印原因」——这条在上一轮已经不成立
+  （现在先找常见安装位置、找不到时 CI 失败封闭）。一条描述旧行为的注释，
+  会让后来人把「跳过」当成默认许可，所以补成三段式实况。
+- CI 里那次实测的附带发现：runner 上是 `/usr/lib/postgresql/**18**/bin`（不是文档常引用的 16）。
+  通配符救的正是这件事——写死版本号会在镜像升级那天静默落到「找不到 → 跳过」。
+- 阻塞 / 风险 / 回滚：**`"use server"` 导出面没有本地门禁**，只能靠 E2E 兜，
+  而 E2E 要跑 6 分钟才给答案。回滚 = revert 本条提交（会重新把登录弄坏，所以不要）。
+- 下一项（可执行，一步）：加 `check:use-server-exports`——扫 `src/**/*.ts(x)` 里真正带
+  `"use server"` 指令的文件，逐个断言「导出面只有 async function」，
+  规则判定放 `src/lib/**` 纯函数、脚本只做 IO（与 `check:rls-probe` 同形状），
+  并补一条「写坏会红」的变异取证。
+- 更新时间：2026-10-31 22:44（UTC+8，`date` 实读）。

@@ -254,8 +254,8 @@ describe("toDailyDigestReadings：映射本身（纯函数，能直接观测）"
       ],
     );
     expect(out).toEqual([
-      { date: "2026-10-06", pulled: 90, sent: 0, backlog: 7, skipped: 3 },
-      { date: "2026-10-05", pulled: 5, sent: 5, backlog: 20, skipped: 1 },
+      { date: "2026-10-06", pulled: 90, sent: 0, failed: 0, backlog: 7, skipped: 3 },
+      { date: "2026-10-05", pulled: 5, sent: 5, failed: 0, backlog: 20, skipped: 1 },
     ]);
   });
 
@@ -295,7 +295,9 @@ describe("toDailyDigestReadings：映射本身（纯函数，能直接观测）"
       { pulled: 3, sent: 3, failed: 0, date: "2026-10-06" },
       { pulled: 2, sent: 2, failed: 0, date: "2026-10-05", backlog: 30, skipped: 0 },
     ]);
-    expect(out).toEqual([{ date: "2026-10-05", pulled: 2, sent: 2, backlog: 30, skipped: 0 }]);
+    expect(out).toEqual([
+      { date: "2026-10-05", pulled: 2, sent: 2, failed: 0, backlog: 30, skipped: 0 },
+    ]);
   });
 
   it("空输入返回空序列——不编一个读数出来", () => {

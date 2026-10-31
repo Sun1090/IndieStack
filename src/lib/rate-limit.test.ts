@@ -306,6 +306,24 @@ describe("clientIpFromHeaders()", () => {
     expect(clientIpFromHeaders(new Headers({ "x-forwarded-for": "999.999.999.999" }))).toBe("anonymous");
   });
 
+  it("**畸形的 x-real-ip 也不能变成一个桶键**（与上面那条对称）", () => {
+    // 此前只有 `x-forwarded-for` 过了 `isIpLike`，而 `x-real-ip` 是 `realIp ?? …` 直接返回的。
+    // 于是「键一定是 IP 形状」这条写在自己注释里的不变量对它并不成立：
+    // `X-Real-IP: <每次换一个随机串>` 就是每次都换一只新桶。
+    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "evil:" }))).toBe("anonymous");
+    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "not-an-ip" }))).toBe("anonymous");
+    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "999.999.999.999" }))).toBe("anonymous");
+    // 空值按「没给」处理，也要退到下一来源
+    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "  " }))).toBe("anonymous");
+  });
+
+  it("x-real-ip 畸形时退到合法的 x-forwarded-for（不是直接 anonymous）", () => {
+    // 这两条一起才有意义：只断言「畸形 → anonymous」会让「把整个函数改成恒返回 anonymous」
+    // 也通过，而后者会把所有客户端塞进同一只桶。
+    const header = new Headers({ "x-real-ip": "evil:", "x-forwarded-for": "198.51.100.9" });
+    expect(clientIpFromHeaders(header)).toBe("198.51.100.9");
+  });
+
   it("合法 IPv6 形态的 x-forwarded-for 会采信", () => {
     expect(clientIpFromHeaders(new Headers({ "x-forwarded-for": "2001:db8::1" }))).toBe("2001:db8::1");
   });

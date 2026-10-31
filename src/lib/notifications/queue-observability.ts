@@ -77,6 +77,10 @@ export function toDailyDigestReadings(
       date: run.date,
       pulled: run.pulled,
       sent: run.sent,
+      // `failed` 一起带进去：`judgeDigestRound` 靠它把「队首被占死」与
+      // 「投递侧全挂」分开（两者都是 pulled 拉满 + sent=0）。这一列在
+      // `email_worker_runs` 上是 NOT NULL，所以不存在「没记录到」的二义。
+      failed: run.failed,
       backlog: run.backlog,
       skipped: run.skipped,
     });

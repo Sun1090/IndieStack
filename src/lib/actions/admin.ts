@@ -14,6 +14,7 @@ import { listAllAuditLogs } from "@/lib/repositories/audit-logs";
 import { listAdminUsersPage as fetchAdminUsersPage } from "@/lib/repositories/admin-users";
 import { notifyUser } from "@/lib/email-notify";
 import { logActionError } from "@/lib/api-log";
+import { updateUserRoleSchema } from "@/lib/validations/admin";
 
 export type AdminUser = {
   id: string;
@@ -90,13 +91,27 @@ export async function listAdminUsersPage(
   }
 }
 
-export async function updateUserRole(
-  userId: string,
-  role: "member" | "admin" | "viewer",
-): Promise<ActionResult> {
+/**
+ * 改账户角色（仅 `ASSIGNABLE_USER_ROLES` 里的三个值）。
+ *
+ * **`role` 的类型是 `string` 而不是联合类型**：这个函数的参数在真实调用路径上是
+ * 一次 Server Action POST 的反序列化结果，联合类型只活在编译期、那一刻已经不存在。
+ * 此前签名写着 `"member" | "admin" | "viewer"`，看上去像是受限的，于是**没有人**
+ * 在服务端再校验一次——而 `ASSIGNABLE_USER_ROLES`（注释明写「刻意不含 super_admin」）
+ * 当时只被下拉菜单用来渲染选项。把 `role` 传成 `"super_admin"` 就能穿过
+ * 「我是 admin ✓ / 目标不是 super_admin ✓」两道判定，把自己（或同伙）写成 super_admin。
+ * 现在签名如实写成 `string`，校验落在 `updateUserRoleSchema` 上（运行时枚举 + 白名单）。
+ */
+export async function updateUserRole(userId: string, role: string): Promise<ActionResult> {
   const auth = await safelyRequireRole("admin");
   if (!auth.success) {
     return fail(guardFailureKey(auth.error));
+  }
+
+  // 校验放在鉴权之后：未登录的调用方不该从错误码里读出「哪些取值合法」。
+  const parsed = updateUserRoleSchema.safeParse({ userId, role });
+  if (!parsed.success) {
+    return fail("invalidRole");
   }
 
   try {

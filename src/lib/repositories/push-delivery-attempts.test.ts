@@ -166,6 +166,24 @@ describe("回执写入", () => {
     }));
   });
 
+  it("**三条回执都只推进 pending 行**：终态是单向的，后写者不能把 sent/dead 改回去", async () => {
+    // 此前三个回执只按 (notification_id, endpoint) 定位、不看当前状态，
+    // 于是并发的两个执行者「谁后写谁赢」——`markRetry` 能把已 `sent` 的行翻回 `pending`
+    // （`push-notify` 又把 attempt_count 写成 1），同一封信被重复推送。
+    // 这条用例钉的是**每一处**都带了这个守卫：漏一处就等于没有。
+    const cases: [string, () => Promise<void>][] = [
+      ["sent", () => markPushDeliverySent("n1", "e", 1)],
+      ["retry", () => markPushDeliveryRetry("n1", "e", { attemptCount: 1, nextAttemptAt: new Date(), failureCode: "network" })],
+      ["dead", () => markPushDeliveryDead("n1", "e", { attemptCount: 3, failureCode: "max-attempts" })],
+    ];
+    for (const [label, call] of cases) {
+      const chain = chainMock();
+      createAdminClientMock.mockReturnValue(dbClientMock(() => chain));
+      await call();
+      expect(chain.eq, `${label} 回执缺少 status=pending 守卫`).toHaveBeenCalledWith("status", "pending");
+    }
+  });
+
   it("回执写入失败带上下文抛错", async () => {
     createAdminClientMock.mockReturnValue(dbClientMock(() => chainMock({ error: { message: "db down" } })));
     await expect(markPushDeliverySent("n1", "e", 1)).rejects.toThrow("push delivery sent: db down");

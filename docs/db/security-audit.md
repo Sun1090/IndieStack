@@ -201,6 +201,190 @@ from pg_policies where schemaname = 'public' order by 1, 2;
 **已知边界**：只解析迁移文本，不覆盖 `alter policy`、动态 SQL 与 Dashboard 手工策略；
 `USING` / `WITH CHECK` 的**谓词是否真正约束租户**仍由运行时身份矩阵与代码评审保证。
 
+## RLS 策略执行取证（`check:rls-probe`，2026-10-31 新增）
+
+上一节的门禁只读文本，它回答的是「这条策略写全了没有」。它回答不了另一类问题：
+**这张表压根没写这条策略**。两者在静态视角下几乎同形——`team_members` 有
+SELECT / INSERT / DELETE 三条策略，全带 `USING` / `WITH CHECK`，`check:rls` 全绿；
+少的那条 UPDATE 策略不违反任何一条静态规则。
+
+代价是实打实的（迁移 036）：PostgREST 的 UPDATE 在 RLS 下**命中 0 行且 `error` 为 null**，
+于是 `updateMemberRole()` 走到 `ok()` 返回——前端把下拉框刷成新角色，刷新打回原值。
+**一个不报错的失败**，用户只会以为界面坏了，运维侧一行日志都没有。
+
+现在由 `pnpm check:rls-probe` 把这些策略真的**执行**一遍：
+
+```bash
+pnpm check:rls-probe
+# ✅ RLS 策略执行取证通过：38 个迁移应用成功，10 个探针 / 126 条用例在真库上跑通
+```
+
+做法（入口 `scripts/check-rls-probe.js`，IO 在 `scripts/lib/rls-probe-check.js`，
+判定在 `src/lib/db/rls-probe.ts`）：
+
+1. 用 `initdb` 起一个一次性 Postgres 集群（临时目录 + 随机空闲端口 + unix socket，跑完即拆）；
+2. 应用 `supabase/tests/bootstrap.sql`——Supabase 面的**最小替身**：`auth.uid()` /
+   `auth.role()` / `auth.users` / `storage.objects` / `foldername()` / 三个角色；
+3. 按序应用 `supabase/migrations/*.sql`（真实迁移，一份不改）；
+4. 逐个跑 `supabase/tests/*.sql` 探针，任何一个不通过即整道门禁失败。
+
+**起库之前**还有一步盘点（`auditProbeInventory`），它回答的是「这道门禁自己会不会响」：
+一个探针文件只要不抛异常，psql 就退 0，于是下面两种文件**永远是绿的**——
+
+| 形状 | 为什么绿 |
+|---|---|
+| 只 `probe.expect(...)`、结尾忘了 `probe.verify(...)` | 登记了一堆期望，没有任何人读；psql 退 0 |
+| 只 `probe.verify(...)`、一条 `expect` 都没有 | `verify` 里 `count(*) where rows is distinct from want` 在空表上是 0，它打印「0 条全部符合期望」 |
+
+所以每个探针必须 `expect` 与 `verify` 同时存在且计数都不为 0（`--` 注释里的调用不算数）。
+实跑取证：塞一个只有 `select probe.verify('空矩阵');` 的探针 → 盘点报
+`PROBE_WITHOUT_EXPECTATION`、退出码 1；移除后退出码 0。
+
+**然后是第一次真对账：静态策略集 ↔ 真库策略集。**
+
+上一节的门禁（`check:rls`）读迁移文本，说出「应有 38 条策略、每条都带 `using` / `with check`」。
+这句话到 2026-10-31 为止**从没和数据库里真有的策略比过一次**——门禁自己读自己，读法错了也照样绿
+（`src/lib/security/rls-coverage.ts` 文件头就记着一次：策略名正则把带空格的名字截成一个词，
+同一张表的策略互相覆盖，门禁一直绿着只验了一条）。
+
+现在 `check:rls-probe` 在应用完全部迁移之后，把两边都拿到手比一遍：左侧是迁移文本经
+`extractEffectivePolicies` 的结果，右侧是 `pg_policies` 的读数，比「有没有对方没有的策略」、
+`command`、`roles`、`using` / `with check` 的有无（**不比表达式文本**：PostgreSQL 会把
+`auth.uid()` 重排成 `(auth.uid() = user_id)`，比文本只会比出噪音；而「有没有」正是静态门禁唯一断言的东西）。
+只比 `public` schema——`storage.objects` 的策略由 Supabase 初始化脚本创建，替身里没有那部分。
+
+首次读数：**38 条 public 策略，逐条对齐，零处不一致**。
+
+变异取证（两条，写法不同、结论正好说明这件事的性质）：
+
+| 塞进 `supabase/migrations/038_tmp.sql` 的内容 | 读数 |
+|---|---|
+| `execute 'create policy "Tmp dynamic policy" on public.projects …'`（字面量里就有 `create policy`） | 静态 39 / 真库 39，**对齐** —— 静态提取器把字符串里的语句也当定义，于是两边"恰好"一致 |
+| `execute 'create pol' \|\| 'icy "Tmp concat policy" …'`（拼接出来的） | 静态 38 / 真库 39，报 `只在真库：public.projects / Tmp concat policy`，退出码 1 |
+
+第二行才是这条对账的价值：**静态提取是文本匹配**，只要策略不是在文本里以完整形状出现，
+它就可能漏；而漏掉的那条会永远不在 `check:rls` 的视野里。第一行同时说明它也可能"多认"。
+
+探针用 `set role authenticated` + `request.jwt.claims` 扮演 PostgREST，用 `row_count` 判读：
+
+| 读数 | 含义 |
+|---|---|
+| `0` | `USING` 没放行——**安静地什么都没改**（036 之前的每一次更新都是这个读数） |
+| `-1` | 命中 `WITH CHECK`，被拒绝（`42501 insufficient_privilege`） |
+| `1` | 业务上合法的写入真的落库了 |
+
+两者都不等于「成功」。`supabase/tests/036_team_members_update_probe.sql` 的 8 条矩阵
+（普通成员改自己 / admin 改普通成员 / admin 自提 owner / admin 降级 owner /
+admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin）在 036 前后
+分别是 `0,0,0,0,0,0,0,0` 与 `0,1,-1,0,-1,-1,0,1`——**连两条合法更新也命中 0 行**，
+这是「假成功」最直接的证据。
+
+**失败封闭验证**（实跑，撤掉 036 后复原）：
+
+- 移走 `036_team_members_update_policy.sql` → 探针报 5 条不符合期望、退出码 1；
+- 恢复后 8/8 通过。
+
+**探针覆盖到哪**（十个文件 / 126 条用例）：`036` 的 `team_members` UPDATE 矩阵、
+`037` 的 `user_sessions` 写入、`isolation_probe` 的 push / passkey / subscriptions 归属、
+`rbac_matrix_probe` 的 30 条 RBAC 矩阵、`030_webhook_idempotency_probe` 的占位与租约接手、
+`032_erase_user_data_probe` 的删号擦除（删什么 / 留什么 / 拒绝谁）、
+`032_retention_windows_probe` 的三条保留期边界（89/91、29/31、364/366 天）、
+`033_upload_objects_probe` 的引用判定与「删号后元数据活着」、
+`038_projects_visibility_probe` 的可见性角色口径（见下一节）、
+`001_signup_chain_probe` 的注册触发链（profile / 个人团队 / owner 成员行 / 角色不可自报）。
+
+后两个值得单独说：`030` 与 `032` 的语义此前**只在 mock 上验过**——`src/lib/mock/index.ts`
+里有 `claimMockWebhookEvent` 与 `eraseMockUserData` 两条 JS 镜像，e2e 与单测验的是镜像。
+镜像与 SQL 一致是两处代码的巧合，不是可核对的事实；`032` 尤其危险，它承诺的是
+「删号后 30 天内删除或匿名化个人数据」，而那唯一的执行者是 SQL 函数。
+
+### `visibility = 'public'` 的口径（038，2026-10-31）
+
+`projects` 的 SELECT 策略一直是：
+
+```sql
+using (auth.uid() in (本队成员) or (visibility = 'public'))
+```
+
+**没有 `to` 子句** ⇒ 角色是 `PUBLIC`，`anon` 也算在内。于是「公开项目」这一支对
+**未登录访客**成立：任何人是 public 的项目，都能读到它的全部列。
+
+这条通道从 003 起就没有人决定过它是特性还是缺陷——`createProject` 硬编码
+`visibility: "private"`、`updateProject` 不接受这个字段、UI 只显示不修改、全仓也没有匿名读
+`projects` 的消费方。所以它是**靠没人走到**而安全，不是靠策略挡住。
+
+038 把它收窄成 `to authenticated`，口径取**站内共享**：`visibility = 'public'` 从此刻起
+表示「任何登录用户可读」，未登录访客不可读。修前/修后读数（`038_projects_visibility_probe.sql`）：
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| 未登录访客读 public 项目 | **1** | **0** |
+| 非成员的登录用户读 public 项目 | 1 | 1 |
+| 团队成员读自己团队的 private 项目 | 1 | 1 |
+
+要真做「站外公开」，正确做法不是把 `to authenticated` 删回去，而是：先定产品语义
+（哪些列可公开、要不要反枚举与缓存），再单独加一条 `to anon` 的策略并把列收窄成视图或 RPC，
+最后在 CHANGELOG 里把它记为对外暴露面的扩大。三步写在 038 的文件头里。
+
+`rbac_matrix_probe.sql` 里那条「anon 读公开」的用例**期望值被有意从 1 改成 0**——
+它原来守的是「潜力通道在明面上」，现在守的是**回归**：谁把 `to authenticated` 去掉，它立刻红。
+
+**可用性与边界**：
+
+- **先找，再判缺**：PATH 上凑不齐三件套时，会去 `/opt/homebrew/opt/postgresql@*/bin`、
+  `/usr/lib/postgresql/*/bin`、`/usr/pgsql-*/bin` 找一个三件套齐全的目录并接到 PATH 前面。
+  这一条来自 CI 的实际形状——GitHub 的 `ubuntu-latest` 自带 PostgreSQL，但 `psql` 在 `/usr/bin`
+  而 `initdb` / `pg_ctl` 在 `/usr/lib/postgresql/<ver>/bin`（不在 PATH 上）。
+  没有这一步，「缺件就跳过」这条友好设计在 CI 里等于**默认跳过**：门禁跑了、打了 ⚠️、退 0，
+  而 RLS 一次没验。实跑取证（本机把 Homebrew 从 PATH 里去掉）：
+  `ℹ️ PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
+  → 126 条用例照跑通。
+- 仍然找不到时：**CI（`CI=true`）按失败处理**，本机跳过并打印原因（不静默变绿）；
+  也可用 `RLS_PROBE_REQUIRE=1` 显式强制。
+- 替身不是 Supabase 的等价物：没有 PostgREST 那一层，所以「命中 0 行」必须靠 `row_count`
+  判读而非 HTTP 状态码；`authenticated` 的表权限由探针按需 `grant`。
+- 探针是**手写用例**，不是穷举：新增敏感表或策略时应同时补一个探针文件，否则这道门禁
+  对它一无所知（这一点与 `falsify:rules` 同源——门禁的价值来自那条用例，不来自脚本本身）。
+
+### 现有探针与读数
+
+| 探针文件 | 覆盖 | 最近一次读数 |
+|---|---|---|
+| `000_helpers.sql` | 夹具（扮演 PostgREST 的 `probe.write` / `probe.read`） | — |
+| `036_team_members_update_probe.sql` | `team_members` UPDATE 的越权矩阵 | 8/8（036 之前是 8 条全 0） |
+| `rbac_matrix_probe.sql` | profiles / teams / projects / notifications / api_keys / team_invitations 的跨租户隔离与归属列不可变 | 21/21 |
+| `037_user_sessions_probe.sql` | `user_sessions` 的登记 / 刷新 / 吊销（这组用例抓到的是「功能从来没工作过」，不是越权） | 10/10（037 之前是 6 条不符） |
+| `isolation_probe.sql` | `push_subscriptions` / `webauthn_credentials` / `subscriptions` 的归属列与只读边界 | 13/13 |
+
+**变异取证**（2026-10-31 实跑）：把 `Users can update own profile` 的 `with check` 从
+「`role` 必须等于旧值」放宽成 `auth.uid() = id`，矩阵立刻报
+`profiles: 改自己 role -> 拒绝 | 1 | -1` 并退出码 1；恢复原始谓词后重新通过。
+这证明矩阵确实在读策略，而不是在复述策略文本。
+
+### 一次读数与直觉不符：`visibility = 'public'` 对 anon 也成立
+
+`rbac_matrix_probe.sql` 里有一条期望值是 **1** 的用例，它是本次审计**发现的一处潜在暴露**，
+不是断言错误：
+
+```sql
+-- Team members can view projects
+using (auth.uid() in (select user_id from team_members where team_id = projects.team_id)
+       or visibility = 'public')
+```
+
+这条策略没有 `to authenticated`（本仓库全部策略都是 `to public`），
+于是 `visibility = 'public'` 这一支对 **anon** 也成立：未登录的互联网用户可以
+`GET /rest/v1/projects?visibility=eq.public`。
+
+**今天不构成可利用的洞**：`src/lib/actions/projects.ts` 建项目时硬写 `visibility: "private"`，
+没有 UI / Action 能把它改成 public，现存数据里没有公开项目（实测匿名读公开项目返回 1 行，
+而这行是本探针自己造的夹具）。它是一条**潜力通道**：任何将来碰 `visibility` 的改动
+——新功能、手工 UPDATE、迁移回填——都会让那些项目对匿名用户可读，且没有门禁会报警。
+
+收口需要产品判断，所以没有在本轮单方面改策略。两条路：
+① 把策略改成 `to authenticated`（「公开」只对登录用户公开）；
+② 保留现状但明确 `visibility` 是「站内共享」，删掉这一支谓词。
+
 ## service_role 最小权限清单（2026-09-13 加固）
 
 RLS 只约束 `anon` / `authenticated`；`service_role` 带 `BYPASSRLS`，因此**每一个

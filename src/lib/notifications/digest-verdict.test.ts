@@ -14,6 +14,7 @@ function round(over: Partial<DigestRoundReading> = {}): DigestRoundReading {
     date: "2026-10-06",
     pulled: 10,
     sent: 8,
+    failed: 0,
     backlog: 20,
     skipped: 0,
     ...over,
@@ -42,6 +43,23 @@ describe("judgeDigestRound", () => {
     expect(verdict.attention).toBe(true);
     // 消息要指向真正的处置方向，而不是只说「异常」
     expect(verdict.reason).toContain("034");
+  });
+
+  it("**同一个形状、不同原因**：拉满 100 条全失败 ≠ 队首被占死", () => {
+    // 这两轮的 pulled/sent 完全一样，只有 failed 不同。
+    // 此前接口里根本没有 failed，于是 provider 全线故障会被判成 QUEUE_STUCK，
+    // 而它的 reason 会把处置方向指向「迁移 034 / email_skipped_reason 的写入」——
+    // 一次方向错误的诊断比没有诊断更费时间。这条用例钉的就是「读数同形，结论必须不同」。
+    const stuck = judgeDigestRound(round({ pulled: 100, sent: 0, failed: 0, backlog: 240 }));
+    const failing = judgeDigestRound(round({ pulled: 100, sent: 0, failed: 100, backlog: 240 }));
+    expect(stuck.code).toBe("QUEUE_STUCK");
+    expect(failing.code).toBe("DELIVERY_FAILING");
+    expect(failing.code).not.toBe(stuck.code);
+    // 两边都要人看一眼（都是真故障），但指向的排查方向必须不同
+    expect(failing.attention).toBe(true);
+    expect(failing.reason).toContain("投递侧");
+    expect(failing.reason).toContain("不是");
+    expect(failing.reason).not.toContain("迁移 034 已 applied");
   });
 
   it("读数不可信时告警——**未知不算健康**", () => {
