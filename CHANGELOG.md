@@ -10,6 +10,21 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Added
 
+- **`pnpm check:rls-probe`：把 RLS 策略在真库上执行一遍，而不只是静态扫描。**
+  `check:rls` 读迁移文本，回答「这条策略写全了没有」；它回答不了「这张表压根没写这条策略」——
+  两者在静态视角下几乎同形，而 036 修的那条缺陷正是后者（`team_members` 有 SELECT/INSERT/DELETE、
+  全带 `USING`/`WITH CHECK`，门禁全绿，少的那条 UPDATE 让每一次写入都静默命中 0 行）。
+  现在 `scripts/rls-probe.js` 起一次性 Postgres 集群（临时目录 + 随机空闲端口 + unix socket，
+  跑完即拆）→ 应用 `supabase/tests/bootstrap.sql`（Supabase 面最小替身：`auth.uid()`/
+  `auth.role()`/`auth.users`/`storage.objects`/`foldername()`/三个角色）→ 按序应用**全部真实迁移**
+  → 逐个跑 `supabase/tests/*.sql` 探针。探针用 `set role authenticated` + `request.jwt.claims`
+  扮演 PostgREST，用 `row_count` 把三种读数分开：`0` 是 USING 没放行（安静地什么都没改）、
+  `-1` 是 WITH CHECK 拒绝（42501）、`1` 才是真的落库。
+  失败封闭已实测：移走 036 后探针报 5 条不符、退出码 1，复原后 8/8。无 `initdb`/`pg_ctl`/`psql`
+  时**跳过并打印原因**（不静默变绿），需要强制时 `RLS_PROBE_REQUIRE=1`。
+  它替代不了身份矩阵（没有 PostgREST 与真实 JWT），但它把「策略谓词到底怎么收口」这件事
+  从「只能靠本地 Supabase 栈」变成「任何有 Postgres 的地方都能跑」。
+
 - **`pnpm drills:storage-erasure`：用应用自己的存储驱动实测「建对象 → 可见 → 删除 → 不可见」。**
   B03 登记的「真实 bucket 对象删除仍未取得」此前有三份绿着的证据守着，却没有一份经过
   `src/lib/storage` 那层驱动：`.single-do.sql` 只动数据库元数据（碰不到 provider）、
@@ -80,6 +95,19 @@ See `docs/operations/release-tag-ledger.md`.
   判据：不拿「时间戳先后 ≈ 序号先后」这个没验证过的假设去写生产表。
 
 ### Fixed
+
+- **`updateMemberRole` 每一次都命中 0 行却返回成功——`team_members` 根本没有 UPDATE 策略。**
+  PostgREST 的 UPDATE 在 RLS 下不是报错而是**命中 0 行、`error` 为 null**，于是
+  `.update()` 之后直接 `ok()`：前端把下拉框刷成新角色，刷新后打回原值，服务端一行日志都没有。
+  迁移 `036_team_members_update_policy.sql` 补上策略（`using`: 调用者是本团队 owner/admin
+  且**被改的这一行当前不是 owner**；`with check`: 仍须是 owner/admin、`team_id`/`user_id`
+  不可变、`role` 只能是 admin/member）。同时补上应用层的两半：
+  `updateMemberRoleSchema` 做**运行时**白名单（`newRole` 的联合类型在反序列化后只剩字符串，
+  而 `role` 的 check 约束放行 `'owner'` ⇒ **只补策略不做白名单，等于把一次假成功换成一次真提权**），
+  以及 `.select("id")` 检测 0 行并回 `memberRoleNotChanged`（并发被降级不是 `memberNotFound`）。
+  实测读数（一次性 Postgres 集群 + `supabase/tests/036_team_members_update_probe.sql`）：
+  036 之前八条越权用例**全部**命中 0 行（连两条合法更新也是），之后为
+  `0,1,-1,0,-1,-1,0,1`，与期望 8/8 一致。
 
 - **2FA 是 UI 约定，不是控制：服务端从未读过 `aal`，且 `/auth/mfa` 被 proxy 反向挡掉。**
   `grep -rn "getAuthenticatorAssuranceLevel" src/` 在此之前 **0 命中**。Supabase 对已开 MFA 的

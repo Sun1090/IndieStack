@@ -102,7 +102,8 @@
     "check:query-errors": "node scripts/check-query-error-channel.js",
     "check:route-auth": "node scripts/check-route-auth.js",
     "update:migrations-manifest": "node scripts/check-migrations.js --update",
-    "audit:storage-orphans": "node scripts/storage-orphans.js"
+    "audit:storage-orphans": "node scripts/storage-orphans.js",
+    "check:rls-probe": "node scripts/rls-probe.js"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.3.1",

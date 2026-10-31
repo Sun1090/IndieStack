@@ -201,6 +201,60 @@ from pg_policies where schemaname = 'public' order by 1, 2;
 **已知边界**：只解析迁移文本，不覆盖 `alter policy`、动态 SQL 与 Dashboard 手工策略；
 `USING` / `WITH CHECK` 的**谓词是否真正约束租户**仍由运行时身份矩阵与代码评审保证。
 
+## RLS 策略执行取证（`check:rls-probe`，2026-10-31 新增）
+
+上一节的门禁只读文本，它回答的是「这条策略写全了没有」。它回答不了另一类问题：
+**这张表压根没写这条策略**。两者在静态视角下几乎同形——`team_members` 有
+SELECT / INSERT / DELETE 三条策略，全带 `USING` / `WITH CHECK`，`check:rls` 全绿；
+少的那条 UPDATE 策略不违反任何一条静态规则。
+
+代价是实打实的（迁移 036）：PostgREST 的 UPDATE 在 RLS 下**命中 0 行且 `error` 为 null**，
+于是 `updateMemberRole()` 走到 `ok()` 返回——前端把下拉框刷成新角色，刷新打回原值。
+**一个不报错的失败**，用户只会以为界面坏了，运维侧一行日志都没有。
+
+现在由 `pnpm check:rls-probe` 把这些策略真的**执行**一遍：
+
+```bash
+pnpm check:rls-probe
+# ✅ RLS 策略执行取证通过：36 个迁移应用成功，1 个探针在真库上跑通
+```
+
+做法（`scripts/rls-probe.js`）：
+
+1. 用 `initdb` 起一个一次性 Postgres 集群（临时目录 + 随机空闲端口 + unix socket，跑完即拆）；
+2. 应用 `supabase/tests/bootstrap.sql`——Supabase 面的**最小替身**：`auth.uid()` /
+   `auth.role()` / `auth.users` / `storage.objects` / `foldername()` / 三个角色；
+3. 按序应用 `supabase/migrations/*.sql`（真实迁移，一份不改）；
+4. 逐个跑 `supabase/tests/*.sql` 探针，任何一个不通过即整道门禁失败。
+
+探针用 `set role authenticated` + `request.jwt.claims` 扮演 PostgREST，用 `row_count` 判读：
+
+| 读数 | 含义 |
+|---|---|
+| `0` | `USING` 没放行——**安静地什么都没改**（036 之前的每一次更新都是这个读数） |
+| `-1` | 命中 `WITH CHECK`，被拒绝（`42501 insufficient_privilege`） |
+| `1` | 业务上合法的写入真的落库了 |
+
+两者都不等于「成功」。`supabase/tests/036_team_members_update_probe.sql` 的 8 条矩阵
+（普通成员改自己 / admin 改普通成员 / admin 自提 owner / admin 降级 owner /
+admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin）在 036 前后
+分别是 `0,0,0,0,0,0,0,0` 与 `0,1,-1,0,-1,-1,0,1`——**连两条合法更新也命中 0 行**，
+这是「假成功」最直接的证据。
+
+**失败封闭验证**（实跑，撤掉 036 后复原）：
+
+- 移走 `036_team_members_update_policy.sql` → 探针报 5 条不符合期望、退出码 1；
+- 恢复后 8/8 通过。
+
+**可用性与边界**：
+
+- 本机没有 `initdb` / `pg_ctl` / `psql` 时**跳过并打印原因**，不静默变绿；
+  需要强制时设 `RLS_PROBE_REQUIRE=1`（CI 中应当设置）。
+- 替身不是 Supabase 的等价物：没有 PostgREST 那一层，所以「命中 0 行」必须靠 `row_count`
+  判读而非 HTTP 状态码；`authenticated` 的表权限由探针按需 `grant`。
+- 探针是**手写用例**，不是穷举：新增敏感表或策略时应同时补一个探针文件，否则这道门禁
+  对它一无所知（这一点与 `falsify:rules` 同源——门禁的价值来自那条用例，不来自脚本本身）。
+
 ## service_role 最小权限清单（2026-09-13 加固）
 
 RLS 只约束 `anon` / `authenticated`；`service_role` 带 `BYPASSRLS`，因此**每一个

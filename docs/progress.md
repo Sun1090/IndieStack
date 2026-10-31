@@ -11302,3 +11302,53 @@
   + `.select("id")` 检测 0 行），取证方式是本地起栈后跑两条「越权 / 合法」用例；
   第 2 件要先定「匿名失败计数」的产品口径。
 - 更新时间：2026-10-31 19:05（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【RLS 取证】把「无法本地取证」这条挡板拆了：`updateMemberRole` 每次都是 0 行却返回成功
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前两条）。
+- 状态：DONE（迁移 036 + 应用层两半 + 新门禁 `check:rls-probe`）。
+- 为什么做：上一条把 `updateMemberRole` 明确留作「需本地 Postgres 才能取证」。这次先复查了工具链，
+  `initdb` / `pg_ctl` / `psql` / `supabase` CLI **都在 PATH 上**——上次的结论（「本机没有可跑的
+  Postgres」）是我按 docker 不可用推的，没有单独试过 `initdb`。**这个推断本身就是一次该记下来的错误**：
+  结论写进台账时要写「我试了什么」，不是「我据此推断了什么」。
+- 做了什么：
+  1. **迁移 036**：`team_members` 补 `FOR UPDATE` 策略。`using` = 调用者是本团队 owner/admin
+     且**被改的这一行当前不是 owner**（PG 语义里 `using` 的 `role` 是旧值，这正是「owner 行不可编辑」
+     的落点）；`with check` = 仍须 owner/admin、`team_id`/`user_id` 不可变、`role in ('admin','member')`。
+     旧值读取沿用 007/008/009 的 `security definer` + 空 `search_path` 写法（WITH CHECK 里直接
+     子查询本表会触发 `infinite recursion detected in policy`）。
+  2. **应用层两半**：`updateMemberRoleSchema`（运行时白名单，枚举派生自新的
+     `ASSIGNABLE_TEAM_MEMBER_ROLES`，与 `inviteMemberSchema` 共用一份清单）+ `.select("id")`
+     检测 0 行 → `memberRoleNotChanged`。**为什么必须同一次做**：`role` 的 check 约束放行 `'owner'`，
+     只补策略不做白名单 ＝ 把一次假成功换成一次真提权（admin 一次请求自升 owner，再删掉原 owner）。
+  3. **新门禁 `check:rls-probe`**：起一次性 Postgres 集群 → 应用 `supabase/tests/bootstrap.sql`
+     （Supabase 面替身）→ 应用全部真实迁移 → 跑 `supabase/tests/*.sql` 探针。
+     探针用 `set role` + `request.jwt.claims` 扮演 PostgREST，靠 `row_count` 把
+     `0`（USING 没放行）/ `-1`（WITH CHECK 拒绝）/ `1`（真落库）三种读数分开。
+- 证据（都是实跑读数，不是推断）：
+  - 036 之前：八条用例读数为 `0,0,0,0,0,0,0,0` —— **连两条业务合法的更新都命中 0 行**，
+    这就是「`error` 为 null 的失败」最直接的形态；
+  - 应用 036 之后：`0,1,-1,0,-1,-1,0,1`，与期望逐条一致（`failing_cases = 0`）；
+  - 门禁失败封闭：移走 036 → 探针报 5 条不符、退出码 1；复原后 8/8 通过。
+- 过程里被门禁挡下的两处（都改了实现，没有放宽门禁）：
+  1. `security-definer-grants` 报 `get_team_member_role` 缺 `revoke execute`——我确实建了个
+     策略里**没被引用**的函数。门禁把它当「服务端函数」是对的：不被策略引用的 SECURITY DEFINER
+     函数就是 PostgREST `rpc()` 的一个入口。**删掉那个多余的函数**，不写 revoke 去迁就它。
+  2. `migration-runbook` 报「标记的最新迁移 035 与真实最新 036 不一致」→ 更新标记。
+- 一次操作纪律上的自我纠正：`036` 的 manifest 哈希我上一轮已经写进去了，改了迁移后
+  `update:migrations-manifest` 拒绝重基线（immutable）。**没有手改哈希**——从 HEAD 恢复清单
+  （HEAD 里只有 35 条）再重算，这样 036 是「首次基线」而不是「被篡改的旧条目」。
+- 验证：`npx vitest run src/lib/security src/lib/db src/lib/actions/team.test.ts src/lib/validations`
+  802 条 ✅；全量 `npx vitest run` 3700 通过（首轮 3 条红全在 036 上，已按上面两处修掉并复跑）；
+  `check:migrations` ✅ 36 条；`check:rls` ✅ 40 条策略；`check:action-errors` ✅ 51 码；
+  `check:gates` ✅ 50 门（本地 46）；`check:rls-probe` ✅ 36 迁移 + 1 探针；`tsc` / `eslint` ✅。
+- 阻塞 / 风险 / 回滚：
+  - 036 是**收紧**变更：之前 `team_members` 的 UPDATE 对所有人都是 0 行（等价 deny-all），
+    现在 owner/admin 能改、其他人仍然 0 行 ⇒ 不会放开任何此前可用的路径。
+  - 回滚 = revert 本条的两笔提交；数据库侧不要 `drop policy`（那会回到「静默 0 行」），
+    要回滚就再加一条前向迁移把策略换成旧的 deny-all 语义，并在 runbook 里记一笔。
+  - `check:rls-probe` 在无 Postgres 工具的环境里自跳过（打印原因）；**CI 不设
+    `RLS_PROBE_REQUIRE=1` 就不会失败**，这一点是刻意的取舍，写在这里免得以后被当成"已覆盖"。
+- 下一项：`recordLoginResult` 的「匿名失败计数」产品口径（同上一条的遗留）；
+  以及给其余敏感表补探针（探针是手写用例，没有用例的表这道门禁一无所知）。
+- 更新时间：2026-10-31 19:27（UTC+8，`date` 实读）。

@@ -14,6 +14,10 @@ echo "==> check:dynamic-keys"; pnpm --silent check:dynamic-keys
 echo "==> check:direction"; pnpm --silent check:direction
 echo "==> check:agents"; pnpm --silent check:agents
 echo "==> check:rls";    pnpm --silent check:rls
+# check:rls 只扫迁移文本，check:rls-probe 才把策略真的执行一遍（起一次性 Postgres 集群，
+# 无 initdb/pg_ctl/psql 时自跳过并打印原因）。两者不是重复：036 那条「一行 UPDATE 策略都没有」
+# 在静态视角下与「有策略」几乎同形，只有跑起来才看得见 0 行。
+echo "==> check:rls-probe"; pnpm --silent check:rls-probe
 echo "==> check:migrations"; pnpm --silent check:migrations
 echo "==> check:supabase-security"; pnpm --silent check:supabase-security
 echo "==> check:query-columns"; pnpm --silent check:query-columns
