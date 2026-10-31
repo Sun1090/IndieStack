@@ -313,7 +313,40 @@ describe("runPushRetry", () => {
       markDead: vi.fn().mockRejectedValue(new Error("db down")),
     });
     await expect(runPushRetry(d)).resolves.toMatchObject({ sent: 1 });
-    expect(d.reportError).toHaveBeenCalledWith("[Push Retry] 成功回执写入失败", expect.any(Error));
+    // 文案必须说出**后果**，不能只说「回执失败」：这条路径的后果是「下一轮会重复推送」。
+    expect(d.reportError).toHaveBeenCalledWith(
+      expect.stringContaining("成功回执写入失败"),
+      expect.any(Error),
+    );
+    // 且必须在指标层面可见：失败分支有 `push.delivery.retry_failed`，
+    // 成功分支此前一条指标都没有——「回执一直在坏」与「一切正常」在指标上一模一样。
+    expect(d.recordMetric).toHaveBeenCalledWith("push.delivery.receipt_failed", 1, {
+      unit: "count",
+      attributes: { stage: "sent", channel: "push" },
+    });
+  });
+
+  it("成功回执写不进去 ⇒ 下一轮会**重复推送**（这是已知且无法在本层修掉的后果）", async () => {
+    // 这条用例把「后果」本身钉住，而不是钉住「我们做了某种缓解」。
+    //
+    // 之所以要钉：行还是 pending、`next_attempt_at` 仍在过去，而
+    // `PUSH_MAX_ATTEMPTS` / `PUSH_RETRY_MAX_AGE_MS` **只在发送失败的分支被检查**，
+    // 成功这条路上一次都不看 ⇒ 只要 markSent 持续失败，就是无限期重发。
+    // 本层能做的只有「不许静默」，所以这里断言的是**下一轮仍然会发送**这个事实：
+    // 哪天有人给它加了真正的幂等（例如发前查 sent_at），这条用例应当**红**，
+    // 那时把注释与文档一起改掉——而不是让它静默地继续绿下去。
+    const send = vi.fn().mockResolvedValue(undefined);
+    const markSent = vi.fn().mockRejectedValue(new Error("db down"));
+    const d = deps({
+      createProvider: () => ({ name: "web-push", configured: true, send }),
+      markSent,
+    });
+    await runPushRetry(d);
+    expect(send).toHaveBeenCalledTimes(1);
+    // 第二轮：`listDue` 仍然把同一行捞出来（status 没变、时刻也没变）
+    await runPushRetry(d);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(markSent).toHaveBeenCalledTimes(2);
   });
 
   it("honours an explicit batch size when pulling due rows", async () => {

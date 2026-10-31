@@ -326,7 +326,31 @@ async function processAttempt(
   try {
     await context.dependencies.markSent(attempt.notification_id, attempt.endpoint, attemptCount, at);
   } catch (error) {
-    await context.reportError("[Push Retry] 成功回执写入失败", error);
+    /**
+     * **成功回执写不进去，是这套重试里唯一会「真的重复推送」的路径。**
+     *
+     * 失败分支（`scheduleRetry`）写不进回执时，行仍然待下一轮，后果是退避与计数没推进；
+     * 而这里 provider **已经收下了这条推送**，行却还是 `pending`、`next_attempt_at`
+     * 又停在过去的时刻 ⇒ 下一轮 `listDue` 照样把它捞出来，再推一次。
+     * 更麻烦的是它**没有任何终止条件**：`PUSH_MAX_ATTEMPTS` 与
+     * `PUSH_RETRY_MAX_AGE_MS` 都只在发送**失败**时被检查（`scheduleRetry` 那条分支），
+     * 发送成功这条路一次都不看，所以只要这张表的 UPDATE 持续失败
+     * （行锁等待、statement timeout、中间层拒绝 PATCH），就是无限期每天重发。
+     *
+     * 这一层**修不了**它：要「不再重发」必须让行离开 `pending`，而那正是写不进去的那一步。
+     * 所以在结构上能做到的是**别让它静默**——此前这里只有一条 `reportError`，
+     * 指标层面与「一切正常」完全一样（失败分支至少还有 `push.delivery.retry_failed`）。
+     * 指标名与 digest 的 `cron.digest.receipt_failed{stage}` 对齐，取值 `stage="sent"`，
+     * 于是「某个 stage 的回执在坏」这件事在一处就能读出来。
+     */
+    context.emitMetric("push.delivery.receipt_failed", 1, {
+      unit: "count",
+      attributes: { stage: "sent", channel: "push" },
+    });
+    await context.reportError(
+      "[Push Retry] 推送已送达但成功回执写入失败（该行仍是 pending，下一轮会重复推送，且没有终止条件）",
+      error,
+    );
   }
   return "sent";
 }
