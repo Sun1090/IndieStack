@@ -11,10 +11,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  POSTGRES_BIN_PATTERNS,
   REQUIRED_BINARIES,
   auditProbeInventory,
   decidePrerequisite,
+  expandBinPatterns,
   formatProbeIssues,
+  pickBinDir,
   summarizeProbeRun,
 } from "../../src/lib/db/rls-probe.ts";
 
@@ -30,6 +33,30 @@ function run(cmd, args, opts = {}) {
 function findBin(name) {
   const found = run("sh", ["-c", `command -v ${name} || true`]).stdout.trim();
   return found || null;
+}
+
+/**
+ * 找「装了但不在 PATH 上」的 PostgreSQL：先看有没有缺件，缺了才去常见位置翻。
+ *
+ * 只在 `PATH` 上找不到时才找，所以正常安装的机器不受影响；找到就把该目录接到 PATH
+ * 最前面，后续 `initdb` / `pg_ctl` / `psql` 一律走它，**不让三个二进制来自两个版本**。
+ * 返回接入的目录（没找到返回 null）。
+ */
+function adoptInstalledPostgres() {
+  if (REQUIRED_BINARIES.every((bin) => findBin(bin))) return null;
+
+  const dirs = expandBinPatterns(POSTGRES_BIN_PATTERNS, (parent) => {
+    try {
+      return fs.readdirSync(parent);
+    } catch {
+      return [];
+    }
+  });
+  const picked = pickBinDir({ dirs, hasBin: (dir, bin) => fs.existsSync(path.join(dir, bin)) });
+  if (!picked) return null;
+
+  process.env.PATH = `${picked}:${process.env.PATH ?? ""}`;
+  return picked;
 }
 
 /** 让内核给一个空闲端口，再关掉连接把它让出来（比固定端口少一类偶发冲突）。 */
@@ -122,8 +149,17 @@ function runProbes(socketDir, port) {
 }
 
 async function main() {
+  const adopted = adoptInstalledPostgres();
+  if (adopted) {
+    console.log(`ℹ️  PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 ${adopted}`);
+  }
+
   const missingBins = REQUIRED_BINARIES.filter((bin) => !findBin(bin));
-  const decision = decidePrerequisite({ missingBins, requireFlag: process.env.RLS_PROBE_REQUIRE });
+  const decision = decidePrerequisite({
+    missingBins,
+    requireFlag: process.env.RLS_PROBE_REQUIRE,
+    ciFlag: process.env.CI,
+  });
   if (decision.action === "fail") {
     console.error(`❌ ${decision.message}`);
     return 1;

@@ -106,6 +106,16 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **`check:rls-probe` 在 CI 里会「跑起来但一次都没验」：二进制装在机器上却不在 PATH 上。**
+  GitHub 的 `ubuntu-latest` 自带 PostgreSQL，但 `psql` 在 `/usr/bin`，`initdb` / `pg_ctl` 在
+  `/usr/lib/postgresql/<ver>/bin`。而这道门禁的设计是「缺件就跳过并打印原因」——
+  于是 CI 里它每次都打一行 ⚠️、退 0，RLS 这一层**整轮没有执行验证**，而那行警告被几十行 ✅ 淹没。
+  现在两条都补上：① 判缺之前先按 `/opt/homebrew/opt/postgresql@*/bin`、`/usr/lib/postgresql/*/bin`、
+  `/usr/pgsql-*/bin` 找一个**三件套齐全**的目录（不接受混用两个版本）并接到 PATH 前面；
+  ② 仍然找不到时，`CI=true` 按**失败**处理（本机仍跳过），不需要谁记得去设 `RLS_PROBE_REQUIRE=1`。
+  实跑取证：本机 PATH 去掉 Homebrew 后，输出 `ℹ️ 改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
+  并跑完 56 条用例；`CI=true` 下同样通过。
+
 - **「吊销单个设备」的文案承诺了它做不到的事：它只是删掉一行记录，那台设备仍然登录着。**
   `revokeSession()` 删的是 `user_sessions` 的行，而设备的 refresh token 在 GoTrue 侧依然有效
   ——它还能继续换新的 access token。当前 auth-js 的 admin API 只有 `signOut(jwt, scope)`，

@@ -261,8 +261,16 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
 
 **可用性与边界**：
 
-- 本机没有 `initdb` / `pg_ctl` / `psql` 时**跳过并打印原因**，不静默变绿；
-  需要强制时设 `RLS_PROBE_REQUIRE=1`（CI 中应当设置）。
+- **先找，再判缺**：PATH 上凑不齐三件套时，会去 `/opt/homebrew/opt/postgresql@*/bin`、
+  `/usr/lib/postgresql/*/bin`、`/usr/pgsql-*/bin` 找一个三件套齐全的目录并接到 PATH 前面。
+  这一条来自 CI 的实际形状——GitHub 的 `ubuntu-latest` 自带 PostgreSQL，但 `psql` 在 `/usr/bin`
+  而 `initdb` / `pg_ctl` 在 `/usr/lib/postgresql/<ver>/bin`（不在 PATH 上）。
+  没有这一步，「缺件就跳过」这条友好设计在 CI 里等于**默认跳过**：门禁跑了、打了 ⚠️、退 0，
+  而 RLS 一次没验。实跑取证（本机把 Homebrew 从 PATH 里去掉）：
+  `ℹ️ PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
+  → 56 条用例照跑通。
+- 仍然找不到时：**CI（`CI=true`）按失败处理**，本机跳过并打印原因（不静默变绿）；
+  也可用 `RLS_PROBE_REQUIRE=1` 显式强制。
 - 替身不是 Supabase 的等价物：没有 PostgREST 那一层，所以「命中 0 行」必须靠 `row_count`
   判读而非 HTTP 状态码；`authenticated` 的表权限由探针按需 `grant`。
 - 探针是**手写用例**，不是穷举：新增敏感表或策略时应同时补一个探针文件，否则这道门禁

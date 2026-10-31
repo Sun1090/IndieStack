@@ -3,11 +3,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   NON_PROBE_FILES,
+  POSTGRES_BIN_PATTERNS,
   auditProbeInventory,
   countExpectations,
   decidePrerequisite,
+  expandBinPatterns,
   formatProbeIssues,
   hasAssertion,
+  pickBinDir,
   summarizeProbeRun,
 } from "./rls-probe";
 
@@ -48,6 +51,23 @@ describe("decidePrerequisite", () => {
       expect(decidePrerequisite({ missingBins: ["psql"], requireFlag: flag }).action).toBe("skip");
     }
   });
+
+  /**
+   * CI 里跳过 = 这一层整轮没人验，而日志里那行 ⚠️ 会被几十行 ✅ 淹没。
+   * 所以 CI 默认失败封闭，不需要谁记得去设一个环境变量。
+   */
+  it("CI=true 时缺件按失败处理，并给出装法", () => {
+    const decision = decidePrerequisite({ missingBins: ["initdb"], requireFlag: undefined, ciFlag: "true" });
+    expect(decision.action).toBe("fail");
+    expect(decision.message).toContain("CI 里不允许跳过");
+    expect(decision.message).toContain("/usr/lib/postgresql");
+  });
+
+  it("CI 标志只有字面量 true 才算：false / 空串仍然允许跳过", () => {
+    for (const ciFlag of ["false", "", undefined, "1"]) {
+      expect(decidePrerequisite({ missingBins: ["psql"], requireFlag: undefined, ciFlag }).action).toBe("skip");
+    }
+  });
 });
 
 describe("countExpectations", () => {
@@ -83,6 +103,79 @@ describe("hasAssertion", () => {
 
   it("注释里的 probe.verify( 不算", () => {
     expect(hasAssertion("-- 结尾记得 select probe.verify('x');")).toBe(false);
+  });
+});
+
+describe("expandBinPatterns / pickBinDir", () => {
+  const listing = (parent: string, children: string[]) => (dir: string) =>
+    dir === parent ? children : [];
+
+  it("带 * 的模式按目录展开，且同模式内版本号倒序", () => {
+    const dirs = expandBinPatterns(["/usr/lib/postgresql/*/bin"], listing("/usr/lib/postgresql", ["14", "16"]));
+    expect(dirs).toEqual(["/usr/lib/postgresql/16/bin", "/usr/lib/postgresql/14/bin"]);
+  });
+
+  it("不带 * 的模式原样保留，顺序按书写顺序", () => {
+    const dirs = expandBinPatterns(["/usr/bin", "/opt/x/*/bin"], listing("/opt/x", ["1"]));
+    expect(dirs).toEqual(["/usr/bin", "/opt/x/1/bin"]);
+  });
+
+  it("父目录不存在时安静地跳过，不抛错", () => {
+    const dirs = expandBinPatterns(["/nope/*/bin"], () => []);
+    expect(dirs).toEqual([]);
+  });
+
+  it("段内前缀通配（postgresql@*）按父目录展开，不把 @ 后面当成路径", () => {
+    const dirs = expandBinPatterns(
+      ["/opt/homebrew/opt/postgresql@*/bin"],
+      listing("/opt/homebrew/opt", ["postgresql@14", "postgresql@16", "openssl@3"]),
+    );
+    expect(dirs).toEqual([
+      "/opt/homebrew/opt/postgresql@16/bin",
+      "/opt/homebrew/opt/postgresql@14/bin",
+    ]);
+  });
+
+  it("挑第一个三件套齐全的目录", () => {
+    const bins: Record<string, readonly string[]> = { "/a": ["initdb", "pg_ctl", "psql"], "/b": ["initdb"] };
+    const picked = pickBinDir({
+      dirs: ["/b", "/a"],
+      hasBin: (dir, bin) => (bins[dir] ?? []).includes(bin),
+    });
+    expect(picked).toBe("/a");
+  });
+
+  /**
+   * 只认「有 initdb 就算装上」会让服务端与客户端来自两个版本，`pg_ctl start` 之后
+   * 报一句很难读的错——所以这里钉的是「不齐全就继续找」。
+   */
+  it("缺 psql 的目录不算（不许混用两个版本的三件套）", () => {
+    const picked = pickBinDir({
+      dirs: ["/only-initdb"],
+      hasBin: (dir, bin) => dir === "/only-initdb" && bin === "initdb",
+    });
+    expect(picked).toBeNull();
+  });
+
+  it("一个都没有时返回 null（由调用方决定跳过还是失败）", () => {
+    expect(pickBinDir({ dirs: [], hasBin: () => false })).toBeNull();
+  });
+
+  /**
+   * 这条钉的是「CI 里不要静默跳过」这件事的最小事实：Ubuntu runner 上
+   * `psql` 在 `/usr/bin`，`initdb`/`pg_ctl` 在 `/usr/lib/postgresql/<ver>/bin`。
+   * 只要那个版本目录存在且三件套齐全，本函数就必须把它挑出来。
+   */
+  it("模拟 ubuntu-latest 的布局：pgsql 版本目录被挑中", () => {
+    const dirs = expandBinPatterns(
+      POSTGRES_BIN_PATTERNS,
+      listing("/usr/lib/postgresql", ["16"]),
+    );
+    const picked = pickBinDir({
+      dirs,
+      hasBin: (dir, bin) => dir === "/usr/lib/postgresql/16/bin" && (bin === "initdb" || bin === "pg_ctl" || bin === "psql"),
+    });
+    expect(picked).toBe("/usr/lib/postgresql/16/bin");
   });
 });
 

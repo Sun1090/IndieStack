@@ -11596,3 +11596,48 @@
   ① `visibility='public'` 的口径（需产品判断）；② 把认证挪到服务端（`recordLoginResult` 那类
   「客户端声明事实」的共同根因）。
 - 更新时间：2026-10-31 20:04（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【CI 里那道探针其实没验】二进制装在机器上但不在 PATH 上
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前九条）。
+- 状态：DONE（发现逻辑 + CI 失败封闭 + 文档）。
+- 怎么发现的：上一条收尾时 `check:all` 全绿，于是顺手核了一个更基础的事实——
+  **这道门禁在 CI 里到底跑不跑得起来**。查 `.github/workflows/*.yml` 与 `check-all.sh`：
+  没有任何地方设 `RLS_PROBE_REQUIRE`，而 `check-all.sh` 是被 CI 整体调用的，
+  也就是说 CI 里走的是「缺二进制 → 跳过 → 退 0」那条路。
+- 为什么这算缺陷而不是配置问题：GitHub `ubuntu-latest` **自带** PostgreSQL，
+  但 `psql` 在 `/usr/bin`、`initdb` / `pg_ctl` 在 `/usr/lib/postgresql/<ver>/bin`（不在 PATH）。
+  于是 CI 每轮都打印一行 ⚠️「这一层没有被执行验证」，然后被后面几十行 ✅ 淹没——
+  与仓库里记过的「check:docs 只存在于本地聚合」同型：**跑了，但没验**。
+- 做了什么：
+  1. `src/lib/db/rls-probe.ts` 新增 `POSTGRES_BIN_PATTERNS` / `expandBinPatterns` / `pickBinDir`：
+     判「缺不缺」之前先按常见安装位置找一个**三件套齐全**的目录并接到 PATH 前面。
+     只认齐全的目录（有 initdb 但缺 psql 不算）——混用两个版本的三件套会在 `pg_ctl start`
+     之后报一句很难读的错，而那句话看起来像探针自己的问题。
+  2. `decidePrerequisite` 增加 `ciFlag`：`CI=true` 且仍找不到时**按失败处理**，本机仍跳过。
+     不再依赖「谁记得去设 `RLS_PROBE_REQUIRE=1`」——默认值必须是「CI 里不许跳过」。
+  3. 单测从 21 条加到 31 条（展开 / 挑选 / CI 分支，含一条模拟 ubuntu-latest 布局的用例）。
+- 真跑才发现的 bug（写在这里，因为它值）：
+  `expandBinPatterns` 第一版把「`*` 之前的字符串」当父目录，于是 `postgresql@*` 被切成
+  `/opt/homebrew/opt/postgresql@`——一个不存在的目录，发现逻辑**安静地什么都没找到**。
+  单测当时是全绿的，因为它用的是 `/*/bin` 这种 `*` 恰好在段边界的形状。
+  是本机把 Homebrew 从 PATH 里去掉实跑时暴露的：仍然打印「缺少 initdb / pg_ctl / psql」。
+  修法按「段内前缀通配」重写展开，并补一条 `postgresql@*` 的单测。
+  **教训照旧：合成用例永远合格，所以每个门禁都要有一次真读数。**
+- 读数：
+  - `env PATH=/usr/bin:/bin:… node scripts/check-rls-probe.js`（模拟 CI 布局）→
+    `ℹ️ PATH 上没有完整的 PostgreSQL 三件套，改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
+    → 37 迁移 + 4 探针 / 56 用例 ✅（修前这条会跳过）；
+  - `env CI=true` 正常 PATH ✅、`env CI=true` + 削减 PATH ✅（发现先于失败判定）；
+  - `src/lib/db/rls-probe.test.ts` 31/31 ✅；`tsc` ✅；`eslint` ✅；
+  - `check:all` 全量（HEAD `86fda400`）✅ 全部校验通过。
+- 阻塞 / 风险 / 回滚：**CI 的 `ubuntu-latest` 是否有 `/usr/lib/postgresql/*/bin` 我没有实测**
+  （本轮网络不通，推不上去也看不到 runner）。这就是把 `CI=true` 设成失败封闭的风险：
+  万一那个目录不存在，下一次 push 的 CI 会红。这个红是**对的**——它说的正是
+  「RLS 这层没验」，修法一行（`apt-get install -y postgresql`）。
+  下一手（可执行）：push 后看 `Run every repository gate` 里 `check:rls-probe` 那一行，
+  若是 ❌ 缺件，就在 ci.yml 的该 job 里加一行 apt 安装，或把 `/usr/lib/postgresql/*/bin` 加进 PATH。
+  回滚 = revert 本条提交（回滚后 CI 恢复「静默跳过」）。
+- 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端
+  （`recordLoginResult` 那类「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 20:24（UTC+8，`date` 实读）。

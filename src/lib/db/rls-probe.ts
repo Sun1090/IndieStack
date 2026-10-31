@@ -43,6 +43,80 @@ export const NON_PROBE_FILES: readonly string[] = ["bootstrap.sql", "000_helpers
 /** 起集群要用的三个可执行文件。缺一个就没法验，不许假装验过。 */
 export const REQUIRED_BINARIES: readonly string[] = ["initdb", "pg_ctl", "psql"];
 
+/**
+ * 「装了但不在 PATH 上」的常见位置（`*` 由调用方展开成一个目录层级）。
+ *
+ * 这一条来自一个具体的坑：GitHub 的 `ubuntu-latest` 镜像**自带** PostgreSQL，
+ * 但 `psql` 在 `/usr/bin`，而 `initdb` / `pg_ctl` 在 `/usr/lib/postgresql/<ver>/bin`——
+ * 后者不在 PATH 上。于是「本机缺二进制就跳过」这条友好设计在 CI 里变成**默认跳过**：
+ * 门禁跑起来了、打了 ⚠️、退 0，而 RLS 这一层一次都没被执行验证过。
+ * 这与仓库里记过的「check:docs 只存在于本地聚合」是同一类病：**跑了，但没验**。
+ *
+ * 所以判「缺不缺」之前先按这些位置找一个目录，找得到就把它接到 PATH 前面。
+ */
+export const POSTGRES_BIN_PATTERNS: readonly string[] = [
+  "/opt/homebrew/opt/postgresql@*/bin",
+  "/usr/local/opt/postgresql@*/bin",
+  "/usr/lib/postgresql/*/bin",
+  "/usr/pgsql-*/bin",
+];
+
+/**
+ * 从候选目录里挑第一个**三件套齐全**的。
+ *
+ * 只挑「齐全」的而不是「有 initdb 就行」：混用两个 PostgreSQL 版本的服务端与客户端
+ * 会在 `pg_ctl start` 之后以一句很难读的错误失败，而那句话看起来像探针自己的问题。
+ */
+export function pickBinDir(input: {
+  /** 候选目录（已展开 `*` 的真实路径）。 */
+  dirs: readonly string[];
+  /** 该目录下是否存在某个可执行文件。 */
+  hasBin: (dir: string, bin: string) => boolean;
+  requiredBins?: readonly string[];
+}): string | null {
+  const required = input.requiredBins ?? REQUIRED_BINARIES;
+  for (const dir of input.dirs) {
+    if (required.every((bin) => input.hasBin(dir, bin))) return dir;
+  }
+  return null;
+}
+
+/**
+ * 把带 `*` 的模式展开：`byDir` 返回某个父目录下的全部子项名。
+ *
+ * `*` 只支持「某个路径段内的前缀通配」（`postgresql@*` / `*`），不支持跨段。
+ * 第一版把「`*` 之前的字符串」当成父目录，于是 `postgresql@*` 被切成了
+ * `/opt/homebrew/opt/postgresql@`——一个不存在的目录，发现逻辑**静默什么都没找到**，
+ * 而这条代码的整个意义就是「找到了就用」。是本机实跑（PATH 里去掉 Homebrew）抓到的。
+ *
+ * 保留 `patterns` 的书写顺序（前面的先试），只在**同一个模式内部**按名字倒序：
+ * 这样 `postgresql@16` 排在 `postgresql@14` 前面，而 `/usr/lib` 与 `/opt/homebrew`
+ * 的先后由常量顺序决定，不交给字符串比较去猜。
+ */
+export function expandBinPatterns(
+  patterns: readonly string[],
+  byDir: (parentDir: string) => readonly string[],
+): string[] {
+  const out: string[] = [];
+  for (const pattern of patterns) {
+    const segments = pattern.split("/");
+    const starAt = segments.findIndex((segment) => segment.includes("*"));
+    if (starAt === -1) {
+      out.push(pattern);
+      continue;
+    }
+    const parent = segments.slice(0, starAt).join("/") || "/";
+    const prefix = segments[starAt].replace(/\*.*$/, "");
+    const rest = segments.slice(starAt + 1);
+    const children = [...byDir(parent)].filter((child) => child.startsWith(prefix)).sort().reverse();
+    for (const child of children) {
+      out.push([parent, child, ...rest].join("/").replace(/\/+/g, "/"));
+    }
+  }
+  return out;
+}
+
+
 export type PrerequisiteAction = "proceed" | "skip" | "fail";
 
 export interface PrerequisiteDecision {
@@ -54,8 +128,12 @@ export interface PrerequisiteDecision {
 /**
  * 本机能不能跑这道门禁。
  *
- * 缺二进制时默认**跳过**（本机开发者不一定装了 Postgres），
- * 但 `RLS_PROBE_REQUIRE=1` 时按失败处理（CI 里必须设，否则 RLS 这层永远没人验）。
+ * 缺二进制时默认**跳过**（本机开发者不一定装了 Postgres），但两种情况下按失败处理：
+ *
+ *   - `RLS_PROBE_REQUIRE=1`：显式要求强制；
+ *   - `CI=true`：**这是默认值，不是可选项。** 理由是本仓库记过的那类病——门禁「跑了但没验」。
+ *     CI 里如果只是跳过，日志里那一行 ⚠️ 会被后面几十行 ✅ 淹没，而 RLS 这一层
+ *     整轮没有执行验证这件事没有任何机制会发现。真要跳过得写进豁免表并说明替代覆盖。
  *
  * 跳过的措辞是判定的一部分，不是日志美化：这句话必须点明**这一层这次没有被验证**，
  * 只写「已跳过」会让读日志的人以为 RLS 验过了。所以它不是随手拼的字符串，
@@ -65,6 +143,8 @@ export function decidePrerequisite(input: {
   missingBins: readonly string[];
   /** `process.env.RLS_PROBE_REQUIRE` 的原始值。 */
   requireFlag: string | undefined;
+  /** `process.env.CI` 的原始值（GitHub Actions 设为 `true`）。 */
+  ciFlag?: string | undefined;
 }): PrerequisiteDecision {
   if (input.missingBins.length === 0) return { action: "proceed", message: "" };
 
@@ -74,6 +154,15 @@ export function decidePrerequisite(input: {
 
   if (input.requireFlag === "1") {
     return { action: "fail", message: `${head}\n${tail}\nRLS_PROBE_REQUIRE=1，按失败处理。` };
+  }
+  if (input.ciFlag === "true") {
+    return {
+      action: "fail",
+      message:
+        `${head}\n${tail}\nCI 里不允许跳过：请装 PostgreSQL 服务端工具` +
+        `（apt-get install -y postgresql，二进制在 /usr/lib/postgresql/*/bin；` +
+        `本脚本会自己把它们接入 PATH）。`,
+    };
   }
   return { action: "skip", message: `${head}\n${tail}` };
 }
