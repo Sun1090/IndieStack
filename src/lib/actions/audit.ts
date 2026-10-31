@@ -9,6 +9,7 @@ import { checkActionRateLimit } from "@/lib/rate-limit";
 import { appendAuditLog } from "@/lib/repositories/audit-logs";
 import { logActionError } from "@/lib/api-log";
 import { isRetryableSessionReadFailure } from "@/lib/auth/session-error";
+import { AUTH_AUDIT_ACTIONS } from "@/lib/auth/audit-actions";
 
 const REDACTED_VALUE = "[REDACTED]";
 
@@ -51,27 +52,18 @@ function redactAuthAuditMetadata(metadata: Record<string, unknown>): Record<stri
 }
 
 /**
- * 允许写入的审计动作**清单**（运行时事实源）。
+ * 允许写入的审计动作**清单**在 `src/lib/auth/audit-actions.ts`（普通模块），
+ * 判定仍在这里——`logAuthEvent` 是**匿名**可用的 action（失败登录时还没有会话），
+ * 而 `audit_logs.action` 是一个 text 列，调用方能写进任意字符串就等于
+ * 让攻击者决定「审计里出现哪些事件类型」。
  *
- * 这份常量不是给类型用的装饰：`logAuthEvent` 是**匿名**可用的 action（失败登录时还没有会话），
- * 参数在反序列化之后只剩一个字符串，而 `audit_logs.action` 是一个 text 列——
- * 没有任何东西阻止调用方写进任意字符串。后果不是提权，是**取证面被污染**：
- * 审计读者按 `action` 过滤与聚合（`listAuditLogsPage`、后台筛选），
- * 一个能随便写 action 的入口等于让攻击者决定「审计里出现哪些事件类型」。
- * 同一条入口还能自报 `metadata.email`，也就是替任意邮箱伪造一条 `auth.login_failed`。
- *
- * 所以类型从常量派生（单一事实源），判定在运行时。
+ * 清单为什么搬走：它曾经是这里的 `export const AUTH_AUDIT_ACTIONS = [...]`，
+ * 而 `"use server"` 文件只允许导出 async 函数——一个常量数组就让整个模块求值失败，
+ * 并**连带废掉同一 actions loader 里的登录 action**，登录页整体不可用。
+ * 本地 lint / tsc / 单测 / `next build` 全不报，只有 E2E 真的点一次登录才红。
+ * 这条约束目前**没有本地门禁**（代价：只能靠 E2E 兜）——补一条 `check:use-server-exports`
+ * 是台账里写明的下一手，而不是已经做到的事。
  */
-export const AUTH_AUDIT_ACTIONS = [
-  "auth.login",
-  "auth.login_failed",
-  "auth.oauth_login",
-  "auth.passkey_login",
-  "auth.mfa_verified",
-  "auth.recovery_redeemed",
-] as const;
-
-export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[number];
 
 /** `metadata` 的序列化上限：审计表是永久保留、只追加的，不能由匿名调用方决定写多大。 */
 const AUDIT_METADATA_MAX_BYTES = 4096;

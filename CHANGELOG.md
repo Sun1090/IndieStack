@@ -127,6 +127,22 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **一个 `export const` 让登录在 CI 上整体不通——`"use server"` 文件只允许导出 async 函数。**
+  `src/lib/actions/audit.ts` 里放着 `export const AUTH_AUDIT_ACTIONS = [...]`（审计动作清单，
+  上一轮为「匿名入口不能自定 action」加的）。Next 对 `"use server"` 文件有硬约束：**每个导出
+  都必须是 async 函数**，一个常量数组就让整个模块在求值阶段抛
+  `A "use server" file can only export async functions, found object`。代价不止这一条：
+  `/auth/login` 的 actions loader 把 `recordLoginResult` / `checkLoginAllowed` 和它放在同一批，
+  **整批一起挂**，于是登录表单点下去什么都不发生。
+  本地 lint / `tsc` / 3755 条单测 / `next build` **全绿**——这条约束只在模块真的被求值时才检查。
+  唯一红的是 CI 的 E2E：17 条用例卡在 `waitForURL("**/dashboard")` 超时（两个 shard 一致）。
+  修法是把清单搬进普通模块 `src/lib/auth/audit-actions.ts`（与上一轮 `login-buckets` 同形状，
+  那一处记得搬、这一处忘了），`audit.ts` 只留 async 的 `logAuthEvent`。
+  读数：本地 `GET /auth/login` 200 且 dev 日志无该错误；`tsc` 0；
+  相关单测 186/186；全仓扫过一遍 `"use server"` 文件，同类只剩
+  `contact-messages.ts` 的 `export { type ... }`（编译期擦除，运行时无此导出，不算）。
+  **这一格目前没有本地门禁**，只能靠 E2E 兜——补 `check:use-server-exports` 是下一手。
+
 - **`check:rls-probe` 在 CI 里会「跑起来但一次都没验」：二进制装在机器上却不在 PATH 上。**
   GitHub 的 `ubuntu-latest` 自带 PostgreSQL，但 `psql` 在 `/usr/bin`，`initdb` / `pg_ctl` 在
   `/usr/lib/postgresql/<ver>/bin`。而这道门禁的设计是「缺件就跳过并打印原因」——

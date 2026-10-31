@@ -11893,3 +11893,48 @@
 - 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
 - 下一项：把认证挪到服务端（理由见上一条，今天不切）。
 - 更新时间：2026-10-31 21:01（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【一个 export const 让登录在 CI 上整体不通】"use server" 模块只能导出 async 函数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十九条）。
+- 状态：DONE（清单搬到 `src/lib/auth/audit-actions.ts`；本地 200 + 单测 186/186；CI E2E 重跑待读数）。
+- 起因：PR #306 的 CI 里 **E2E 两个 shard 全红，17 条用例**，都卡在
+  `waitForURL("**/dashboard")` 超时——即「点了登录什么都没发生」。`Lint & Type Check`（含 49 门）
+  与 `Unit Tests` 全绿，所以这不是门禁放水，是**门禁压根看不到那一层**。
+- 根因（日志原文，`[WebServer] ⨯`）：
+  `A "use server" file can only export async functions, found object` →
+  `at module evaluation (.next-internal/server/app/auth/login/page/actions.js:3:1)` →
+  `export {logAuthEvent ...} from 'ACTIONS_MODULE1'` → `at module evaluation (src/lib/actions/audit.ts:141:1)`。
+  `src/lib/actions/audit.ts` 是 `"use server"` 文件，里面除了 `logAuthEvent` 还有一个
+  `export const AUTH_AUDIT_ACTIONS = [...]`（上一轮为了「匿名入口不能自定 action」加的）。
+  一个常量数组让**整个模块求值失败**，而 `/auth/login` 的 actions loader 把
+  `recordLoginResult` / `checkLoginAllowed` 与它编在同一批——**整批一起挂**。
+- 为什么本地全绿：这条约束只在**模块真的被求值时**检查。lint、`tsc`、3755 条单测、
+  `next build`（预推送钩子里跑过）都不求值那个 loader。唯一能发现它的是
+  **真的点一次登录**——也就是 E2E。这是本轮第三次「本地门禁全绿而线上功能整体不可用」的同类。
+- 修法：清单搬进普通模块 `src/lib/auth/audit-actions.ts`（只有常量与类型，没有网络表面），
+  `audit.ts` 只留 async 的 `logAuthEvent`，判定仍在原处（运行时白名单）。
+  形状与上一轮 `login-buckets` 完全相同——**那一处记得搬、这一处忘了**，
+  说明「搬出去」当时是当成个案修的，不是当成一条规则。
+- 读数：本地 `next dev` 起在 3199，`GET /auth/login` **200**、dev 日志里
+  该错误计数 **0**；`pnpm exec tsc --noEmit` 退 **0**；
+  `vitest run src/lib/actions/audit.test.ts src/lib/actions/login-attempts.test.ts src/lib/auth`
+  → **15 文件 / 186 用例全过**；全仓扫 `"use server"` 文件，同类只剩
+  `src/lib/actions/contact-messages.ts` 的 `export { type MessageStatus }`
+  （编译器擦除，运行时没有这个导出，Next 不会报）。
+- 没能拿到的一格：本地「把常量放回去看会不会红」的变异取证**失败**了——
+  脚本在热重载期间 curl，两次都拿到 502，日志里也没有该错误，所以那一格**不算数**。
+  写在这里而不是删掉：决定性读数改为等 CI E2E 重跑，**本地这一格是空的**。
+- 顺带修掉一处会误导人的注释：`scripts/check-all.sh` 里 `check:rls-probe` 那段仍写着
+  「无 initdb/pg_ctl/psql 时**自跳过**并打印原因」——这条在上一轮已经不成立
+  （现在先找常见安装位置、找不到时 CI 失败封闭）。一条描述旧行为的注释，
+  会让后来人把「跳过」当成默认许可，所以补成三段式实况。
+- CI 里那次实测的附带发现：runner 上是 `/usr/lib/postgresql/**18**/bin`（不是文档常引用的 16）。
+  通配符救的正是这件事——写死版本号会在镜像升级那天静默落到「找不到 → 跳过」。
+- 阻塞 / 风险 / 回滚：**`"use server"` 导出面没有本地门禁**，只能靠 E2E 兜，
+  而 E2E 要跑 6 分钟才给答案。回滚 = revert 本条提交（会重新把登录弄坏，所以不要）。
+- 下一项（可执行，一步）：加 `check:use-server-exports`——扫 `src/**/*.ts(x)` 里真正带
+  `"use server"` 指令的文件，逐个断言「导出面只有 async function」，
+  规则判定放 `src/lib/**` 纯函数、脚本只做 IO（与 `check:rls-probe` 同形状），
+  并补一条「写坏会红」的变异取证。
+- 更新时间：2026-10-31 22:44（UTC+8，`date` 实读）。
