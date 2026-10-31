@@ -28,6 +28,7 @@
   "databaseError": "数据库操作失败，请稍后重试",
   "fileRequired": "请选择要上传的文件。",
   "fileTooLarge": "文件超过 2MB 大小限制。",
+  "lengthRequired": "请求缺少长度信息，无法安全接收上传。",
   "fileTypeUnsupported": "仅支持 PNG、JPEG 或 WebP 图片。",
   "uploadFailed": "上传失败，请稍后重试。",
   "uploadUnavailable": "暂时读不到当前数据，本次未改动任何内容，请稍后重试。",
