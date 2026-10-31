@@ -11464,3 +11464,47 @@
   逐个看 `updateMessageStatus` / `updateProject` / `markNotificationRead` 这类
   「传 id + 值」的 action 有没有服务端判定（RLS 兜住了吗、有没有 .eq 白名单）。
 - 更新时间：2026-10-31 19:44（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【功能从没工作过】`user_sessions` 缺 INSERT/UPDATE 策略：设备管理在真库上一直是空的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前五条）。
+- 状态：DONE（迁移 037 + 10 条矩阵 + 修前/修后读数）。
+- 为什么做：上一条的结尾写着「继续看『传 id + 值』的 action 有没有服务端判定」。
+  按这个方向读到 `sessions.ts`：`recordCurrentSession()` 用**用户作用域**客户端 upsert
+  `user_sessions`，而那张表（018 迁移）只有 SELECT 与 DELETE 策略。
+- 缺陷：RLS 下 INSERT 没有策略 = **拒绝（42501）**，不是静默 0 行。于是这一次写入**每次都失败**：
+  登录回调被 try/catch 吞掉、dashboard 心跳是 `void recordCurrentSession()` 天然静默、
+  设置页「已登录设备」读的是同一张表 ⇒ **永远是空的**、`revokeSession()` 只能对着不存在的行
+  工作 ⇒ 永远答 `sessionNotFound`。也就是说「设备管理」这个功能在真库上从未工作过。
+  018 的注释还明写着「upsert 按 id 去重实现每设备一行 + last_seen 刷新」——意图是对的，
+  策略漏了，而**没有任何一层会因此变红**：单测与 e2e 全跑 mock，**mock 没有 RLS**。
+  这与 009（team_members 策略自引用递归，同样只在真库暴露）是同一个盲区的第二次命中。
+- 取证（实测读数，不是推断）：
+  - 修前：`登记自己的会话` = **-1**、`刷新自己的会话` = **0**，10 条里 6 条不符；
+  - 修后：10/10。
+  这条证据来自这一轮刚建起来的 `check:rls-probe`——**没有它，这条缺陷只能靠肉眼读策略**。
+- 做了什么：迁移 `037_user_sessions_write_policy.sql`
+  - INSERT `with check (auth.uid() = user_id)`：只能给自己登记；
+  - UPDATE `using (auth.uid() = user_id)` + `with check (auth.uid() = user_id and id = get_user_session_id(id))`：
+    `user_id` 不可改成别人；`id` 也不可改（它是 GoTrue 的 session id，允许改等于允许抢占别人的会话 id，
+    对方下一次 upsert 就会撞冲突）。旧值读取沿用 007/008 的 `security definer` 写法。
+  - **为什么 UPDATE 必须单独一条**：`upsert ... on conflict do update` 的冲突分支受 UPDATE 策略约束。
+    只补 INSERT 时，第一次登记成功、第二次（刷新 last_seen_at）被拒——一个「第一次能用、之后全坏」
+    的形状比全坏更难查。
+- 过程中的一次自我纠错：第一版矩阵里「改自己的会话 id」用的是**别人已占用的** id，
+  结果先撞唯一约束（23505）而不是策略，用例以未捕获的错误失败。换成一个不存在的 id 才测到策略本身。
+  这类用例的失败原因必须能被区分：约束报错与策略拒绝是两件事。
+- 验证：`check:rls-probe` ✅ 37 迁移 + 4 探针（036 / 037 / rbac / helpers）；
+  `check:migrations` ✅ 37 条；`check:rls` ✅ 38 条策略；`check:supabase-security` ✅ 42 条策略；
+  `check:migration-runbook` ✅（标记更新到 037）；`src/app/dashboard/settings` + `src/lib/security`
+  459 条 ✅。
+- 阻塞 / 风险 / 回滚：037 是**补写入能力**的变更（此前用户写不了这张表），
+  收口方向仍是「只能写自己那一行」。回滚 = revert 本条提交；数据库侧如需回滚，
+  要再加一条前向迁移 drop 这两条策略（会把功能退回「永远空」，不该用 `drop policy` 硬回滚）。
+- 教训（值得单独记一行）：**「功能坏了」和「越权了」在静态扫描里都不产生告警**。
+  这一轮能抓到它，唯一的原因是先建了一个能把策略**执行**一遍的门禁，
+  然后拿它去跑一张还没被任何用例覆盖的表。
+- 下一项：`push_subscriptions` / `webauthn_credentials` / `subscriptions` 仍无探针；
+  `visibility='public'` 的口径仍需产品判断；`recordLoginResult` 的认证链路重构（把认证挪到服务端）
+  是这一串缺陷的共同根因之一。
+- 更新时间：2026-10-31 19:50（UTC+8，`date` 实读）。

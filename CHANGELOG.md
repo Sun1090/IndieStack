@@ -104,6 +104,20 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **「已登录设备」这个功能在真库上从未工作过：`user_sessions` 没有 INSERT / UPDATE 策略。**
+  018 的注释写着「upsert 按 id 去重实现『每设备一行 + last_seen 刷新』」，但它只补了 DELETE 策略；
+  而唯一的写入方 `recordCurrentSession()` 用的是**用户作用域**客户端 upsert 这张表。
+  RLS 下 INSERT 没有策略 = 拒绝（**42501，不是 0 行**），于是这一次写入每次都失败：
+  登录回调 try/catch 吞掉、dashboard 心跳是 `void` 天然静默、设置页读到的「设备列表」永远是空的、
+  `revokeSession()` 只能对着不存在的行工作从而永远答 `sessionNotFound`。
+  它一直看起来正常，是因为 e2e 与单测全跑在 mock 上，而 **mock 没有 RLS**——
+  与 009 那条「策略自引用递归只在真库暴露」是同一类。
+  迁移 `037_user_sessions_write_policy.sql` 补两条策略：INSERT `with check (auth.uid() = user_id)`；
+  UPDATE `using (auth.uid() = user_id)` + `with check`（`user_id` 不可改成别人、`id` 不可改——
+  它是 GoTrue 的 session id，允许改等于允许抢占别人的会话 id）。
+  实测读数（`supabase/tests/037_user_sessions_probe.sql`，10 条矩阵）：修复前
+  `登记自己的会话` 为 **-1**、`刷新自己的会话` 为 **0**，共 6 条不符；修复后 10/10。
+
 - **`logAuthEvent` 是匿名入口，而 `action` 是一个 text 列：调用方决定审计里出现哪些事件。**
   它是登录失败时唯一能用的审计入口（那一刻还没有会话），参数在反序列化之后只剩字符串，
   而 `audit_logs.action` 没有任何约束。后果不是提权，是**取证面被污染**：审计读者按 `action`
