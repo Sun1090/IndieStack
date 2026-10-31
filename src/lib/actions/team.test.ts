@@ -771,7 +771,7 @@ describe("updateMemberRole()", () => {
             { maybeSingle: { data: { team_id: "t1" }, error: null } },
             { maybeSingle: { data: { role: "owner" }, error: null } },
             { maybeSingle: { data: { role: "member" }, error: null } },
-            { resolve: { error: null } },
+            { resolve: { error: null, data: [{ id: "m1" }] } },
           ],
           teams: [{ maybeSingle: { data: TEAM, error: null } }],
         },
@@ -779,5 +779,71 @@ describe("updateMemberRole()", () => {
     );
     await expect(updateMemberRole("m1", "admin")).resolves.toEqual({ ok: true });
     expect(revalidatePathMock).toHaveBeenCalledWith(ROUTES.dashboardTeam);
+  });
+
+  /**
+   * 036 之后这条链上真实存在的两种新结局。
+   *
+   * 之前「0 行」根本不可能被观察到：没有 UPDATE 策略时**每一次**写入都是 0 行，
+   * 而 action 照样 `ok()`。所以下面这两条用例的价值不在「多测一个分支」，
+   * 而在把「假成功」钉成一个可见的失败。
+   */
+  it("写入命中 0 行回答 memberRoleNotChanged，而不是 ok", async () => {
+    createClientMock.mockResolvedValue(
+      buildClient({
+        queries: {
+          team_members: [
+            { maybeSingle: { data: { team_id: "t1" }, error: null } },
+            { maybeSingle: { data: { role: "owner" }, error: null } },
+            { maybeSingle: { data: { role: "member" }, error: null } },
+            { resolve: { error: null, data: [] } },
+          ],
+          teams: [{ maybeSingle: { data: TEAM, error: null } }],
+        },
+      }),
+    );
+    await expect(updateMemberRole("m1", "admin")).resolves.toEqual({
+      ok: false,
+      error: "memberRoleNotChanged",
+    });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(logActionErrorMock).toHaveBeenCalled();
+  });
+
+  it("把成员改成 owner 被拒，且一次查询都不发生（提权路径）", async () => {
+    const client = buildClient();
+    createClientMock.mockResolvedValue(client);
+
+    await expect(updateMemberRole("m1", "owner")).resolves.toEqual({
+      ok: false,
+      error: "invalidMemberRole",
+    });
+    // 关键断言：不是「返回了错误」，而是**从来没碰过数据库**。
+    // 只断言错误码的话，「先写成功再返回错误」也会变绿。
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it("白名单外的任意字符串一律被拒", async () => {
+    const client = buildClient();
+    createClientMock.mockResolvedValue(client);
+
+    for (const bad of ["OWNER", "super_admin", "", " admin", "owner "]) {
+      await expect(updateMemberRole("m1", bad)).resolves.toEqual({
+        ok: false,
+        error: "invalidMemberRole",
+      });
+    }
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it("memberId 为空被拒", async () => {
+    const client = buildClient();
+    createClientMock.mockResolvedValue(client);
+
+    await expect(updateMemberRole("", "admin")).resolves.toEqual({
+      ok: false,
+      error: "invalidMemberRole",
+    });
+    expect(client.from).not.toHaveBeenCalled();
   });
 });

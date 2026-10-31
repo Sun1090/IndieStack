@@ -12,6 +12,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createTeamSchema,
   inviteMemberSchema,
+  updateMemberRoleSchema,
   type CreateTeamInput,
   type InviteMemberInput,
 } from "@/lib/validations/team";
@@ -326,17 +327,22 @@ export async function removeMember(memberId: string): Promise<ActionResult> {
 
 /**
  * 更新成员角色（仅 owner/admin；不能修改 owner 角色）。
+ *
+ * 签名里的 `newRole` 如实写成 `string`：它是**运行时**才到达的值，
+ * 客户端可以送任意字符串上来，`"admin" | "member"` 那一刻已经不存在了。
+ * 类型写成联合类型只会让调用方以为服务端挡过——挡它的地方是 `updateMemberRoleSchema`。
  */
-export async function updateMemberRole(
-  memberId: string,
-  newRole: "admin" | "member",
-): Promise<ActionResult> {
+export async function updateMemberRole(memberId: string, newRole: string): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return fail("notAuthenticated");
+
+  // 校验放在鉴权之后：未登录的调用方不该从错误码里读出「哪些取值合法」。
+  const parsed = updateMemberRoleSchema.safeParse({ memberId, role: newRole });
+  if (!parsed.success) return fail("invalidMemberRole");
 
   const resolved = await requireTeam("updateMemberRole");
   if ("failure" in resolved) return resolved.failure;
@@ -376,15 +382,36 @@ export async function updateMemberRole(
   if (!target) return fail("memberNotFound");
   if (target.role === "owner") return fail("ownerCannotRemove");
 
-  const { error } = await supabase
+  /**
+   * 这条 UPDATE 必须能分辨「改成功了」与「一行都没改到」。
+   *
+   * 在 036 之前这里没有 UPDATE 策略，PostgREST 的行为是**命中 0 行、`error` 为 null**，
+   * 于是这个 action 一路走到 `ok()`：前端把下拉框刷成新角色，用户刷新后打回原值。
+   * `broken window` 是「失败的失败」——它不报错，所以没人去查。
+   *
+   * `.select("id")` 让行数变得可见；`error` 为空但没返回行，只可能是
+   * 「这行在读到与写入之间变了」（被降级、被移出、行被删）。那是**并发**，
+   * 不是 `memberNotFound`（这个人明明刚读到过），也不是 `databaseError`（库没坏）；
+   * 对用户可做的动作是刷新后重试。
+   */
+  const { data: updatedRows, error } = await supabase
     .from("team_members")
-    .update({ role: newRole })
+    .update({ role: parsed.data.role })
     .eq("id", memberId)
-    .eq("team_id", team.id);
+    .eq("team_id", team.id)
+    .select("id");
 
   if (error) {
     await logActionError("[updateMemberRole] 失败", error);
     return fail("databaseError");
+  }
+
+  if (!updatedRows || updatedRows.length === 0) {
+    await logActionError(
+      "[updateMemberRole] 写入命中 0 行（读到之后被改动或失去权限）",
+      new Error("member_role_update_no_rows"),
+    );
+    return fail("memberRoleNotChanged");
   }
 
   revalidatePath(ROUTES.dashboardTeam);

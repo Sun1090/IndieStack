@@ -176,6 +176,11 @@
       "version": "035",
       "fileName": "035_worker_run_backlog_skipped.sql",
       "sha256": "330b421f7846482a3ded3517ec37e88fc89db540b36ac49a4b5e55f28042c0b7"
+    },
+    {
+      "version": "036",
+      "fileName": "036_team_members_update_policy.sql",
+      "sha256": "d4b2e84e4be26bd1a060524b29be03ef7027985cb52e06795424d58fb5204419"
     }
   ]
 }

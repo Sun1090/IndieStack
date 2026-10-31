@@ -6,7 +6,7 @@
 > **不自动回滚数据库。** 逆向迁移可能造成不可逆的数据丢失，必须由 DBA 与发布负责人共同决定；
 > 多数情况下正确的做法是**前向修复**（新增一条迁移）而不是删除已经应用的历史。
 
-<!-- migration-runbook:latest=035_worker_run_backlog_skipped.sql -->
+<!-- migration-runbook:latest=036_team_members_update_policy.sql -->
 
 ## 触发条件
 
@@ -46,7 +46,7 @@
 | 新增非空列 / 默认值     | `ADD COLUMN ... NOT NULL DEFAULT`                       | 中（回滚会丢回填结果）                       | 先加可空列 → 回填 → 再加约束；回滚只回滚应用                              |
 | 新增索引                | `CREATE INDEX`                                          | 极低                                         | 可直接 `DROP INDEX`，但通常留着无副作用                                   |
 | 新增枚举值              | `ALTER TYPE ... ADD VALUE`                              | 高（Postgres 无法删除枚举值）                 | **只能前向修复**；不要试图逆向                                           |
-| RLS / 策略变更          | `CREATE POLICY` / `ALTER POLICY` / `REVOKE`             | 中（权限真空 = 不可访问或越权）               | 新增旧策略的恢复迁移；回滚后立刻跑 `pnpm check:rls` 与身份矩阵            |
+| RLS / 策略变更          | `CREATE POLICY` / `ALTER POLICY` / `REVOKE`             | 中（权限真空 = 不可访问或越权）               | 新增旧策略的恢复迁移；回滚后立刻跑 `pnpm check:rls` 与 `pnpm check:rls-probe`（后者把越权矩阵在真库上重跑：0 行 / -1 / 1 三种读数） |
 | 触发器 / 函数           | `CREATE OR REPLACE FUNCTION` / `CREATE TRIGGER`         | 中（写入放大、递归）                         | 用 `CREATE OR REPLACE` 前向覆盖；禁止直接删函数                          |
 | 数据回填                | `UPDATE` / `INSERT ... SELECT`                          | 高（不可重复执行）                           | 只前向修复；回填脚本必须幂等且可重跑                                     |
 
