@@ -8,7 +8,7 @@
  *   - 发送层不吞错、不重试：网络错误原样上抛且 fetch 仅一次（重试/死信归调用方）
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendResendEmail, DEFAULT_RESEND_ENDPOINT, DEFAULT_EMAIL_FROM } from "./email-send";
+import { sendResendEmail, DEFAULT_RESEND_ENDPOINT, DEFAULT_EMAIL_FROM, EMAIL_SEND_TIMEOUT_MS } from "./email-send";
 import { metricEvents } from "@/lib/testing/metric-events";
 
 type FetchResponseMock = { ok: boolean; status: number; text: () => Promise<string> };
@@ -172,5 +172,35 @@ describe("sendResendEmail(): Resend provider contract", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(sendResendEmail(INPUT)).rejects.toThrow("ECONNREFUSED");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("**出网请求必须带超时信号**：provider 半死时不能让整轮 digest 被平台杀掉", async () => {
+    // 此前这里没有 `signal`：Resend 端「连上但不回」时 fetch 既不 resolve 也不 reject，
+    // 而 digest 按用户串行最多 100 组 ⇒ 整轮被 wall-clock 杀掉，
+    // 已寄出的组没写回执（下一轮重复寄）、本轮也不落表。这条钉的是那个缺口。
+    await expect(sendResendEmail(INPUT)).resolves.toBeUndefined();
+    const { init } = sentCall();
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.signal?.aborted).toBe(false);
+    // 常量本身也要被钉：把超时调成 0 或一天都是「看起来有超时」的假修复
+    expect(EMAIL_SEND_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(EMAIL_SEND_TIMEOUT_MS).toBeLessThanOrEqual(30_000);
+  });
+
+  it("超时被 abort：错误原样上抛，且指标里能读出 reason=timeout", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    fetchMock = vi.fn(() => Promise.reject(timeoutError));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendResendEmail(INPUT)).rejects.toThrow("aborted due to timeout");
+    expect(metricEvents(log)).toEqual([
+      expect.objectContaining({
+        name: "email.send.completed",
+        attributes: { provider: "resend", outcome: "failure", reason: "timeout" },
+      }),
+    ]);
+    log.mockRestore();
   });
 });
