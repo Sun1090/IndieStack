@@ -11248,3 +11248,57 @@
 - 下一项：给上面第 1 条起本地 Supabase 栈取证（这是唯一「修法存疑」的格子）；
   其余同前——配额空隙需连续多天真实构建、retention 缺 Vercel token、B03 / B04 等 maintainer。
 - 更新时间：2026-10-31 18:05（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【权限层审计】2FA 只是 UI 约定、admin 一次请求就能自提权——两处都不是「配置问题」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前一条）。
+- 状态：DONE（2 处修复 + 2 处如实留作下一手）。
+- 为什么做：上一轮读的是投递与请求边界，这一轮换权限面（`actions/**` 的判定顺序、
+  server action 的运行时入参、页面守卫），并按「谁能做什么请求」写触发链路。
+  这一面恰好落在现有门禁的**接缝**上：`check:route-auth` 只管 `src/app/api/**`，
+  `type-check` 不认识反序列化后的运行时值，`e2e` 全部跑在 mock 构型（proxy 在 mock 下直接 return）。
+- 做了什么：
+  1. **2FA 此前完全不存在服务端控制**（`grep -rn "getAuthenticatorAssuranceLevel" src/` 为 0）。
+     Supabase 对已开 MFA 的账号在密码登录后签发的是 **aal1** 会话，而 RLS 的 `auth.uid()`
+     在 aal1 下照常生效 ⇒ 拿到密码的人关掉 JS 直接 `GET /dashboard` 就能读全部仪表盘数据；
+     当时唯一的控制是登录表单里那一次 `router.push("/auth/mfa")`。
+     同一处还有反向缺陷：`/auth/mfa` 在 `proxy.ts` 的 `authRoutes` 里，那段分支是
+     「已登录 ⇒ 弹回 `/dashboard`」⇒ **愿意输验证码的人也进不了挑战页**。
+     两件事合起来是「2FA 既不强制、也无法完成」。
+     修法：新增 `src/lib/auth/mfa-assurance.ts`（纯判定 `requiresMfaStepUp` + 闸门
+     `requireMfaAssurance`，后者带上因子 id 与回跳地址——挑战页缺 `factor` 只会显示
+     「缺少参数，请重新登录」，那是手工敲 URL 的兜底，不该是服务端送人过去时的落点），
+     在 `dashboard/layout.tsx` 调用一次覆盖所有 `/dashboard/**`；`/auth/mfa` 移出 `authRoutes`。
+     **没开 2FA 的账号一条都不受影响**；**读数失败时拦（503）而不是放行**。
+  2. **一次请求就能自提权为 super_admin**：`updateUserRole` 的联合类型参数在反序列化后
+     不存在，而 `ASSIGNABLE_USER_ROLES`（注释明写「刻意不含 super_admin」）只被下拉菜单用。
+     新增 `src/lib/validations/admin.ts`，枚举**派生自**该常量；签名如实写 `role: string`；
+     校验放在鉴权之后。
+- 过程纪律：这条链上最容易做错的两处都定成了用例——① 没开 2FA 的账号必须放行
+  （否则就是改掉整个模板的登录语义）；② 被拒时**一次写入都不能发生**
+  （只断言错误码会让「先写成功再返回错误」也变绿）。
+- 验证：`npx vitest run src/app/dashboard src/lib/auth src/lib/mock` 330 条 ✅；
+  `src/lib/validations` + `src/lib/actions/admin.test.ts` 75 条 ✅；`tsc --noEmit` ✅；
+  `eslint` 改动文件 ✅；`check:changelog` ✅。
+  e2e 侧确认不受影响：`e2e/mfa-challenge.spec.ts` 用 `page.addInitScript` 把因子注入**浏览器**
+  那份 mock store，服务端 store 里没有因子 ⇒ 仪表盘 layout 的闸门在 e2e 下不会触发重定向。
+- 阻塞 / 风险 / 回滚：MFA 闸门是行为变更（已开 2FA 的账号在 aal1 下会被送回挑战页），
+  这是本条的**目的**；未开 2FA 的账号与 e2e 行为不变。回滚 = revert 本条的两笔提交。
+- **本轮没做的两件（都在同一次审计里读到，写清为什么留）**：
+  1. `updateMemberRole` 改不动角色却返回成功：`team_members` 有 SELECT/INSERT/DELETE 三条策略，
+     **没有 FOR UPDATE** ⇒ PostgREST 命中 0 行、`error` 为 null ⇒ `ok()` 返回，
+     前端显示新角色、刷新打回原值。修它需要**新迁移**（补 UPDATE 策略 + `with check` 约束
+     不得把角色改成 owner），而本机没有可跑的 Postgres（`supabase status` 要新装 CLI、无本地栈）
+     ⇒ 无法实测策略是否按预期收口。**不参数化的 RLS 不该盲写**：策略写错的方向是「放开」。
+     同时它还有一个潜在越权：`newRole` 同样是运行时未校验的联合类型，今天被
+     「没有 UPDATE 策略」意外挡住了，一旦有人按直觉补上策略，传 `newRole: "owner"` 就是**自升 owner**。
+     ⇒ 这两件必须**同一次**做完（策略 + 运行时白名单 + 0 行检测），不能只做一半。
+  2. `recordLoginResult` 是导出的 Server Action 且不做任何身份判定 ⇒ 匿名可对**任意邮箱**
+     制造 15 分钟登录锁定（判定桶是进程内滑窗，多实例 serverless 下不精确，单实例自托管上稳定）。
+     它不构成「绕过限频」——绕过 `checkLoginAllowed` 直接打 Supabase 的 `/token` 本来就行；
+     真正的危害是「第三方可对指定账号制造登录拒绝」。修法要动客户端对 `logAuthEvent`
+     这类无会话行为的调用链，属产品判断（匿名登录失败**需要**被计数），留给下一手。
+- 下一项：把上面第 1 件做成一次（迁移 036 + `validations/team.ts` 的 `updateMemberRoleSchema`
+  + `.select("id")` 检测 0 行），取证方式是本地起栈后跑两条「越权 / 合法」用例；
+  第 2 件要先定「匿名失败计数」的产品口径。
+- 更新时间：2026-10-31 19:05（UTC+8，`date` 实读）。

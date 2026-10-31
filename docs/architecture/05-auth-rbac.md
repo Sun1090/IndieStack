@@ -72,6 +72,29 @@ graph LR
 | Server Client | `cookies()` | Server Components / Actions |
 | Browser Client | 浏览器 Cookie | Client Components |
 
+### 第二步验证（2FA / TOTP）
+
+2FA 是**服务端闸门**，不是登录表单的一次跳转。
+
+| 环节 | 位置 | 做什么 |
+|------|------|--------|
+| 登录后跳转 | `src/components/auth/login-form.tsx` | 读到已验证因子就 `router.push("/auth/mfa?factor=…")`——这只是**引导**，不是控制 |
+| 服务端判定 | `src/lib/auth/mfa-assurance.ts` | 读 `mfa.getAuthenticatorAssuranceLevel()`：`nextLevel === "aal2"` 且 `currentLevel !== "aal2"` ⇒ 重定向到挑战页（带上因子 id 与回跳地址） |
+| 闸门接线 | `src/app/dashboard/layout.tsx` | 在 layout 里调用，覆盖**所有** `/dashboard/**`；逐页调用会漏页，而漏一页就是一个入口 |
+| 挑战页可达性 | `src/proxy.ts` | `/auth/mfa` **不在** `authRoutes` 里——那是已登录（aal1）用户去完成第二步的地方，而 `authRoutes` 的分支恰恰是「已登录 ⇒ 弹回仪表盘」 |
+
+两条边界值得记住：
+
+- **没开 2FA 的账号一条都不受影响**：判据要求 `nextLevel === "aal2"`，没因子时它仍是 `aal1`。
+  写成「所有人必须 aal2」等于改掉整个模板的登录语义。
+- **读数失败时拦（503），而不是放行**：读不到就放行是这套控制最贵的失效方式——
+  Auth 一抖 2FA 静默失效且没有任何读数。修法与「会话读不出来」一致：抛
+  `SERVICE_UNAVAILABLE`，由仪表盘 `error.tsx` 给可重试页面（不登出，重试一次即恢复）。
+
+> 为什么这条曾经形同不存在：`grep -rn "getAuthenticatorAssuranceLevel" src/` 在 2026-10-31
+> 之前是 **0 命中**。Supabase 对已开 MFA 的账号在密码登录后签发的是 **aal1** 会话，
+> 而 RLS 的 `auth.uid()` 在 aal1 下照常生效——所以「前端会跳转」是当时唯一的控制。
+
 ## RBAC 权限系统
 
 ### 角色层级

@@ -50,6 +50,8 @@ export const ROUTES = {
   // Auth
   login: "/auth/login",
   register: "/auth/register",
+  /** 第二步验证（TOTP 挑战）页。**不在 proxy 的 authRoutes 里**：那是已登录用户才去的地方。 */
+  mfa: "/auth/mfa",
   forgotPassword: "/auth/forgot-password",
   resetPassword: "/auth/reset-password",
 

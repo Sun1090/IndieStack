@@ -7,6 +7,7 @@
 export const dynamic = "force-dynamic";
 
 import { requireSessionUser } from "@/lib/auth/session-user";
+import { requireMfaAssurance } from "@/lib/auth/mfa-assurance";
 import { createClient } from "@/lib/supabase/server";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -18,6 +19,10 @@ import { SessionHeartbeat } from "@/components/dashboard/session-heartbeat";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   await requireSessionUser(supabase);
+  // 第二步验证（2FA）是**服务端**闸门，不是登录表单的一次跳转：
+  // 开了 2FA 的账号在 aal1 会话下读 dashboard 的任何一页都会被送回挑战页。
+  // 放在 layout 而不是逐页调用——漏一页就等于漏一个入口。
+  await requireMfaAssurance(supabase);
 
   return (
     <div className="flex min-h-screen flex-col">

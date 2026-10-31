@@ -1450,6 +1450,29 @@ export class MockSupabaseClient {
         const totp = getMockMfaFactors(this.store).map((factor) => ({ ...factor }));
         return { data: { all: totp, totp }, error: null };
       },
+      /**
+       * 第二步验证的读数。**生产构型里它是 `requireMfaAssurance` 的唯一判据**，
+       * 所以 mock 也必须回答它，否则「仪表盘在 mock 下能不能进」就与真实构型分家了。
+       *
+       * 语义按 Supabase 的两段式来：有已验证因子 ⇒ `nextLevel` 是 `aal2`；
+       * 而 `currentLevel` 在这里恒为 `aal1`——mock 的会话没有一个能承载 aal2 的签名面，
+       * 硬造一个「验证过就自动 aal2」会让 e2e 里那条「必须走挑战页」的用例
+       * 变成一条永远绿的用例。代价是：mock 下任何带已验证因子的会话都会命中
+       * step-up 重定向，这与真实 Supabase 在密码登录后的行为一致，是刻意的。
+       */
+      getAuthenticatorAssuranceLevel: async () => {
+        const hasVerified = getMockMfaFactors(this.store).some(
+          (factor) => factor.status === "verified",
+        );
+        return {
+          data: {
+            currentLevel: "aal1",
+            nextLevel: hasVerified ? "aal2" : "aal1",
+            currentAuthenticationMethods: [],
+          },
+          error: null,
+        };
+      },
       unenroll: async (params: unknown) => {
         const factorId =
           typeof params === "object" && params !== null && "factorId" in params

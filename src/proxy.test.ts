@@ -76,6 +76,22 @@ describe("proxy()", () => {
     expect(res.status).toBe(307);
   });
 
+  it("**已登录用户必须能进 /auth/mfa**：那是他去完成第二步验证的唯一入口", async () => {
+    // 这条此前是反的：`/auth/mfa` 在 authRoutes 里，于是登录后跳挑战页的请求
+    // 一进 proxy 就被弹回 /dashboard——MFA 用户既进不去也验不了。
+    // 注意 mock 构型下这个函数在 `shouldUseMock()` 处直接 return，
+    // 两段路由判定**根本不执行**，所以 e2e 从来碰不到这条。
+    updateUser.user = { id: "u1" };
+    const res = await proxy(makeRequest("/auth/mfa"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("/auth/mfa 对未登录用户也不拦（页面自己给出回登录入口）", async () => {
+    const res = await proxy(makeRequest("/auth/mfa"));
+    expect(res.status).not.toBe(307);
+  });
+
   it("已登录访问 dashboard 正常放行", async () => {
     updateUser.user = { id: "u1" };
     const res = await proxy(makeRequest("/dashboard"));

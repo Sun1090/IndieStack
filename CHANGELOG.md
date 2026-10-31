@@ -81,6 +81,33 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **2FA 是 UI 约定，不是控制：服务端从未读过 `aal`，且 `/auth/mfa` 被 proxy 反向挡掉。**
+  `grep -rn "getAuthenticatorAssuranceLevel" src/` 在此之前 **0 命中**。Supabase 对已开 MFA 的
+  账号在**密码登录后签发 aal1 会话**，而 RLS 的 `auth.uid()` 在 aal1 下照常生效 ——
+  也就是说「拿到密码的人关掉 JS 直接 `GET /dashboard`」能读到全部仪表盘数据，
+  当时唯一的控制是登录表单里那一次 `router.push("/auth/mfa")`。
+  反过来更糟：`/auth/mfa` 原本在 `proxy.ts` 的 `authRoutes` 里，那段分支是「已登录 ⇒ 弹回
+  `/dashboard`」⇒ **愿意输入验证码的人也进不了挑战页**。两件事合起来 = 2FA 既不强制、也无法完成。
+  现在：新增 `src/lib/auth/mfa-assurance.ts`（`nextLevel === "aal2" && currentLevel !== "aal2"`
+  才拦，并带上因子 id 与回跳地址），在 `dashboard/layout.tsx` 调用一次即覆盖所有 `/dashboard/**`
+  （逐页调用会漏页，漏一页就是一个入口）；`/auth/mfa` 从 `authRoutes` 移出。
+  **没开 2FA 的账号一条都不受影响**（没因子时 `nextLevel` 仍是 `aal1`）；
+  **读数失败时拦（503）而不是放行**——读不到就放行是这套控制最贵的失效方式，且没有任何读数。
+  e2e 从来碰不到这条：`shouldUseMock()` 时 `proxy()` 直接 return，两段路由判定根本不执行；
+  mock 客户端因此补上了 `mfa.getAuthenticatorAssuranceLevel`（由 `auth-surface.test.ts` 强制）。
+
+- **一次请求就能自提权为 `super_admin`：`role` 的白名单此前只在 UI 生效。**
+  `updateUserRole` 是 `"use server"` 导出，参数在客户端序列化后**重新**传进来，联合类型
+  `"member" | "admin" | "viewer"` 那一刻已经不存在；而 `ASSIGNABLE_USER_ROLES`
+  （`src/lib/constants.ts`，注释明写「刻意不含 super_admin」）只被下拉菜单用来渲染选项。
+  于是 `profiles.role = "admin"` 的账号 POST 一个 `role: "super_admin"`，就能穿过
+  「我是 admin ✓」与「目标不是 super_admin ✓」两道判定（目标本来就不是），
+  把自己或同伙写成 `super_admin`，随后 `listAuditLogs` 与全部 `allPermissions` 打开。
+  现在新增 `src/lib/validations/admin.ts`（角色枚举**派生自** `ASSIGNABLE_USER_ROLES`，
+  不另抄一份），签名如实写成 `role: string`（运行时入参不该伪装成受限类型），
+  校验放在鉴权之后（未登录方不该从错误码里读出哪些取值合法）。
+  用例断言被拒时**一次写入都没有发生**——只断言错误码会让「先写成功再返回错误」也变绿。
+
 - **偏好「部分」关闭时，被挡下的通知永远出不了队列（A05 的同一形状，藏在两格之间）。**
   `runDigest` 只留一堆 `filtered = items.filter(shouldSendEmail)`，出队回执又只在
   `filtered.length === 0` 时对全部 items 调用 ⇒ 用户开着总开关、只关掉 `securityAlerts`
