@@ -104,6 +104,15 @@ See `docs/operations/release-tag-ledger.md`.
 
 ### Fixed
 
+- **「吊销单个设备」的文案承诺了它做不到的事：它只是删掉一行记录，那台设备仍然登录着。**
+  `revokeSession()` 删的是 `user_sessions` 的行，而设备的 refresh token 在 GoTrue 侧依然有效
+  ——它还能继续换新的 access token。当前 auth-js 的 admin API 只有 `signOut(jwt, scope)`，
+  按会话吊销需要目标会话自己的 JWT（服务端拿不到），GoTrue 也没有「按 session id 吊销」的公开端点。
+  而 UI 写着「吊销后该设备将被登出」、成功提示是「设备已吊销」：**一个做不到的安全承诺比没有更糟**
+  ——用户会以为被盗设备已经下线，于是不去用真正能作废会话的「退出其他设备」。
+  现在中英文案与实现说同一件事（移除 = 从列表里删掉；要真正下线请用「退出其他设备」），
+  `revokeSession` 的注释也写明这条边界，免得下次又漂。
+
 - **「已登录设备」这个功能在真库上从未工作过：`user_sessions` 没有 INSERT / UPDATE 策略。**
   018 的注释写着「upsert 按 id 去重实现『每设备一行 + last_seen 刷新』」，但它只补了 DELETE 策略；
   而唯一的写入方 `recordCurrentSession()` 用的是**用户作用域**客户端 upsert 这张表。

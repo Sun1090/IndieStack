@@ -11508,3 +11508,27 @@
   `visibility='public'` 的口径仍需产品判断；`recordLoginResult` 的认证链路重构（把认证挪到服务端）
   是这一串缺陷的共同根因之一。
 - 更新时间：2026-10-31 19:50（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【文案承诺】「吊销设备」只是删了一行记录：那句「该设备将被登出」是做不到的
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前六条）。
+- 状态：DONE（中英文案与注释改到与实现一致；真正的按会话吊销需要 GoTrue 能力，尚未做）。
+- 为什么做：036 那条让 `updateMemberRole` 的 0 行暴露出来之后，接着读 `sessions.ts` 的另外半边
+  ——`revokeSession()` 删的是 `user_sessions` 的行。删行不等于让令牌失效。
+- 缺陷：那台设备手里的 refresh token 在 GoTrue 侧依然有效，可以继续换 access token；
+  `@supabase/auth-js` 的 admin API 只有 `signOut(jwt, scope)`，按**会话**吊销需要目标会话自己的
+  JWT（服务端拿不到），GoTrue 也没有「按 session id 吊销」的公开端点。
+  而 UI 写的是「吊销后该设备将被登出」（`devicesDesc`）、成功提示「设备已吊销」（`deviceRevoked`）。
+  **一个做不到的安全承诺比没有更糟**：用户会以为被盗设备已经下线，于是不去用真正能作废
+  其它会话 refresh token 的「退出其他设备」。
+- 做了什么：改文案（中英各两条）与 `revokeSession` 的注释，让三处说同一件事：
+  移除 = 从这份列表里删掉；要真正让其它设备下线，用「退出其他设备」。
+  没有改实现——在没有可验证的 GoTrue 端点之前，改实现只会把「说不准」变成「做得也不准」。
+- 验证：`check:locales` ✅ 1271 键对称；`tsc` / `eslint` ✅；
+  `src/lib/actions/sessions.test.ts` + `src/components/dashboard` 56 条 ✅（没有测试断言旧文案，
+  所以这次改动不会把「文案」变成「接口」）。
+- 阻塞 / 风险 / 回滚：文案变得更长也更不「爽快」，但它现在是真的。
+  下一手若确认 GoTrue 有按会话吊销的端点（需要在本地栈上实测，不是查文档就算），
+  应把实现补上、文案再改回去。回滚 = revert 本条提交。
+- 下一项：`push_subscriptions` / `webauthn_credentials` / `subscriptions` 仍无 RLS 探针。
+- 更新时间：2026-10-31 19:54（UTC+8，`date` 实读）。

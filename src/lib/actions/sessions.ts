@@ -85,10 +85,16 @@ export async function revokeSession(sessionId: string): Promise<ActionResult> {
   }
   if (!row) return fail("sessionNotFound");
 
-  // 说明：当前 @supabase/auth-js 的 admin API 仅有 signOut(jwt, scope)，
-  // 按会话吊销需要目标会话的 JWT（服务端拿不到）。
-  // 因此单设备吊销为"移除设备记录"；令牌级全量吊销由既有
-  // 「退出其他设备」(auth.signOut({ scope: "others" })) 与会话过期兜底。
+  // 说明：当前 @supabase/auth-js 的 admin API 仅有 signOut(jwt, scope)，而按**会话**吊销需要
+  // 目标会话自己的 JWT（服务端拿不到）；GoTrue 也没有「按 session id 吊销」的公开端点。
+  // 因此这里的「单设备吊销」**只是把这台设备从列表里删掉**，不是让它的令牌失效：
+  // 那台设备手里的 refresh token 仍然有效，可以继续换新的 access token。
+  // 真正能让人下线的是 `signOutOthers`（`auth.signOut({ scope: "others" })`，在 GoTrue 侧作废
+  // 其它会话的 refresh token）。
+  //
+  // 这一点必须与 UI 文案一致：文案此前写着「吊销后该设备将被登出」，而那句话是做不到的
+  // ——一个做不到的安全承诺比没有更糟，用户会以为被盗设备已经下线而不去用真正的开关。
+  // 现在文案与这条注释说同一件事（`dashboard.settings.sections.security.devicesDesc`）。
   const { error } = await supabase.from("user_sessions").delete().eq("id", sessionId);
   if (error) {
     await logActionError("[revokeSession] 会话记录删除失败", error);
