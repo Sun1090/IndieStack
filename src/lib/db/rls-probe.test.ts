@@ -5,13 +5,19 @@ import {
   NON_PROBE_FILES,
   POSTGRES_BIN_PATTERNS,
   auditProbeInventory,
+  comparePolicySets,
   countExpectations,
   decidePrerequisite,
   expandBinPatterns,
+  fingerprintFromDbRow,
+  fingerprintFromStatement,
+  formatPolicySetDiff,
   formatProbeIssues,
   hasAssertion,
+  isPolicySetAligned,
   pickBinDir,
   summarizeProbeRun,
+  type PolicyFingerprint,
 } from "./rls-probe";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
@@ -268,6 +274,90 @@ describe("summarizeProbeRun", () => {
     const summary = summarizeProbeRun({ migrations: 37, probeFiles: 4, cases: 48, failures: 3 });
     expect(summary.ok).toBe(false);
     expect(summary.message).toContain("3/4 个探针不通过");
+  });
+});
+
+describe("comparePolicySets（静态 ↔ 真库）", () => {
+  const policy = (overrides: Partial<PolicyFingerprint> = {}): PolicyFingerprint => ({
+    table: "public.projects",
+    name: "Team members can update projects",
+    command: "update",
+    roles: "authenticated",
+    hasUsing: true,
+    hasCheck: true,
+    ...overrides,
+  });
+
+  it("完全一致时没有任何差异", () => {
+    const diff = comparePolicySets([policy()], [policy()]);
+    expect(isPolicySetAligned(diff)).toBe(true);
+    expect(formatPolicySetDiff(diff)).toBe("");
+  });
+
+  /**
+   * 这条对应一个真实形状：迁移里用 `execute 'create pol' || 'icy …'` 拼出来的策略，
+   * 静态提取器（读文本）看不见，而库里确实有——实跑读数 静态 38 / 真库 39。
+   */
+  it("库里有、静态没有 → onlyInDb", () => {
+    const diff = comparePolicySets([], [policy({ name: "Tmp concat policy" })]);
+    expect(diff.onlyInDb).toEqual(["public.projects / Tmp concat policy"]);
+    expect(formatPolicySetDiff(diff)).toContain("静态提取漏了这条策略");
+  });
+
+  it("静态有、库里没有 → onlyInStatic（迁移写了但没生效）", () => {
+    const diff = comparePolicySets([policy()], []);
+    expect(diff.onlyInStatic).toEqual(["public.projects / Team members can update projects"]);
+    expect(formatPolicySetDiff(diff)).toContain("迁移里有、库里没有");
+  });
+
+  it("命令不一致要点出来", () => {
+    const diff = comparePolicySets([policy({ command: "update" })], [policy({ command: "all" })]);
+    expect(diff.mismatched[0].detail).toContain("command 静态=update 真库=all");
+  });
+
+  it("with check 的有无不一致要点出来（这是静态门禁唯一断言的东西）", () => {
+    const diff = comparePolicySets([policy({ hasCheck: true })], [policy({ hasCheck: false })]);
+    expect(isPolicySetAligned(diff)).toBe(false);
+    expect(diff.mismatched[0].detail).toContain("with check");
+  });
+
+  it("角色顺序不影响判定（pg 返回的顺序与迁移文本的写法不同）", () => {
+    const diff = comparePolicySets(
+      [policy({ roles: "anon,authenticated" })],
+      [policy({ roles: "authenticated,anon" })],
+    );
+    expect(isPolicySetAligned(diff)).toBe(true);
+  });
+
+  it("从迁移语句与 pg_policies 行转指纹时字段口径一致", () => {
+    const fromStatement = fingerprintFromStatement({
+      table: "public.projects",
+      name: "p",
+      command: "UPDATE",
+      roles: ["Authenticated", "anon"],
+      using: "auth.uid() = created_by",
+      withCheck: null,
+    });
+    const fromRow = fingerprintFromDbRow({
+      table: "public.projects",
+      name: "p",
+      command: "UPDATE",
+      roles: ["anon", "Authenticated"],
+      hasUsing: true,
+      hasCheck: false,
+    });
+    expect(fromStatement).toEqual(fromRow);
+    expect(fromStatement.command).toBe("update");
+    expect(fromStatement.roles).toBe("anon,authenticated");
+  });
+
+  it("同名策略挂在不同表上不算同一条", () => {
+    const diff = comparePolicySets(
+      [policy({ table: "public.projects" })],
+      [policy({ table: "public.teams" })],
+    );
+    expect(diff.onlyInDb).toHaveLength(1);
+    expect(diff.onlyInStatic).toHaveLength(1);
   });
 });
 

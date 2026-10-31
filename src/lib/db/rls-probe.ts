@@ -296,3 +296,148 @@ export function summarizeProbeRun(input: {
 export function formatProbeIssues(issues: readonly ProbeInventoryIssue[]): string {
   return issues.map((issue) => `❌ [${issue.code}] ${issue.subject}：${issue.message}`).join("\n");
 }
+
+/**
+ * ── 静态策略集 ↔ 真库策略集 的对账 ────────────────────────────────────────────
+ *
+ * `check:rls` 读迁移文本，说出「应有 38 条策略、每条都带 using / with check」。
+ * 但这句话到 2026-10-31 为止**从来没有和数据库里真有的策略比过一次**——
+ * 门禁自己读自己，读法错了也照样绿（`rls-coverage.ts` 的文件头就记着一次：
+ * 策略名正则把带空格的名字截成一个词，同一张表的策略互相覆盖，门禁一直绿）。
+ *
+ * 现在这条探针把两侧都拿到手：左侧是迁移文本经 `extractEffectivePolicies` 的结果，
+ * 右侧是 `pg_policies` 在应用完全部真实迁移之后的读数。两者比对三件事：
+ * 有没有对方没有的策略、命令是否一致、`using` / `with check` 的有无是否一致
+ * （表达式文本不比——PostgreSQL 会把 `auth.uid()` 重排成 `(auth.uid() = user_id)`，
+ *  比文本只会比出噪音；而「有没有」正是静态门禁唯一断言的东西）。
+ *
+ * **只比 `public` schema**：`storage.objects` 的策略由 Supabase 初始化脚本创建，
+ * 本仓库的 bootstrap 替身里没有那部分，比它只会比出替身的边界，不是缺陷。
+ */
+export interface PolicyFingerprint {
+  /** 形如 `public.projects`。 */
+  table: string;
+  name: string;
+  /** 小写的 `select` / `insert` / `update` / `delete` / `all`。 */
+  command: string;
+  /** 已排序去重的角色名。 */
+  roles: string;
+  hasUsing: boolean;
+  hasCheck: boolean;
+}
+
+export function policyKey(policy: Pick<PolicyFingerprint, "table" | "name">): string {
+  return `${policy.table}\u0000${policy.name}`;
+}
+
+/**
+ * 角色列表归一化：小写、排序、去重、逗号连接。
+ *
+ * 比对的是字符串，所以两边必须同一种写法——PostgreSQL 的 `pg_policies.roles` 是
+ * `{anon,authenticated}` 这种**按字母序**的数组，而迁移文本里写的是 `to authenticated`。
+ * 不归一化就会出现「同一条策略被判成不一致」的误报，而误报会让这条门禁被关掉。
+ */
+export function normalizeRoles(roles: readonly string[] | string): string {
+  const list = typeof roles === "string" ? roles.split(",").filter(Boolean) : roles;
+  return [...new Set(list.map((role) => role.trim().toLowerCase()).filter(Boolean))].sort().join(",");
+}
+
+/** 从 `extractEffectivePolicies` 的结果转成指纹（结构化入参，避免与安全模块互引）。 */
+export function fingerprintFromStatement(statement: {
+  table: string;
+  name: string;
+  command: string;
+  roles: readonly string[];
+  using: string | null;
+  withCheck: string | null;
+}): PolicyFingerprint {
+  return {
+    table: statement.table,
+    name: statement.name,
+    command: statement.command.toLowerCase(),
+    roles: normalizeRoles(statement.roles),
+    hasUsing: statement.using !== null,
+    hasCheck: statement.withCheck !== null,
+  };
+}
+
+/** 从 `pg_policies` 的一行转成指纹。 */
+export function fingerprintFromDbRow(row: {
+  table: string;
+  name: string;
+  command: string;
+  roles: readonly string[];
+  hasUsing: boolean;
+  hasCheck: boolean;
+}): PolicyFingerprint {
+  return {
+    table: row.table,
+    name: row.name,
+    command: row.command.toLowerCase(),
+    roles: normalizeRoles(row.roles),
+    hasUsing: row.hasUsing,
+    hasCheck: row.hasCheck,
+  };
+}
+
+export interface PolicySetDiff {
+  /** 只在真库里有的策略（静态提取漏了，或迁移里有动态 SQL）。 */
+  onlyInDb: string[];
+  /** 只在静态结果里有的策略（迁移写了但库里没有，或静态解析错认）。 */
+  onlyInStatic: string[];
+  /** 两边都有但字段不一致。 */
+  mismatched: { key: string; detail: string }[];
+}
+
+export function comparePolicySets(
+  expected: readonly PolicyFingerprint[],
+  actual: readonly PolicyFingerprint[],
+): PolicySetDiff {
+  const expectedMap = new Map(expected.map((p) => [policyKey(p), p]));
+  const actualMap = new Map(actual.map((p) => [policyKey(p), p]));
+  const diff: PolicySetDiff = { onlyInDb: [], onlyInStatic: [], mismatched: [] };
+
+  for (const key of actualMap.keys()) {
+    if (!expectedMap.has(key)) diff.onlyInDb.push(key.replace("\u0000", " / "));
+  }
+  for (const [key, policy] of expectedMap) {
+    const counterpart = actualMap.get(key);
+    if (!counterpart) {
+      diff.onlyInStatic.push(key.replace("\u0000", " / "));
+      continue;
+    }
+    const fields: string[] = [];
+    if (counterpart.command !== policy.command) {
+      fields.push(`command 静态=${policy.command} 真库=${counterpart.command}`);
+    }
+    // 入参可能没过 `fingerprintFrom*`（单测与将来别的调用方都可能直接构造），
+    // 所以这里自己归一化一次：顺序不同不算不一致，否则会逼着人来关掉这条门禁。
+    if (normalizeRoles(counterpart.roles) !== normalizeRoles(policy.roles)) {
+      fields.push(`roles 静态=[${policy.roles}] 真库=[${counterpart.roles}]`);
+    }
+    if (counterpart.hasUsing !== policy.hasUsing) {
+      fields.push(`using 静态=${policy.hasUsing} 真库=${counterpart.hasUsing}`);
+    }
+    if (counterpart.hasCheck !== policy.hasCheck) {
+      fields.push(`with check 静态=${policy.hasCheck} 真库=${counterpart.hasCheck}`);
+    }
+    if (fields.length > 0) {
+      diff.mismatched.push({ key: key.replace("\u0000", " / "), detail: fields.join("；") });
+    }
+  }
+
+  return diff;
+}
+
+export function isPolicySetAligned(diff: PolicySetDiff): boolean {
+  return diff.onlyInDb.length === 0 && diff.onlyInStatic.length === 0 && diff.mismatched.length === 0;
+}
+
+/** 把对账结果格式化成多行文本。 */
+export function formatPolicySetDiff(diff: PolicySetDiff): string {
+  const lines: string[] = [];
+  for (const key of diff.onlyInDb) lines.push(`❌ 只在真库：${key}（静态提取漏了这条策略）`);
+  for (const key of diff.onlyInStatic) lines.push(`❌ 只在静态：${key}（迁移里有、库里没有）`);
+  for (const item of diff.mismatched) lines.push(`❌ 不一致：${item.key}——${item.detail}`);
+  return lines.join("\n");
+}

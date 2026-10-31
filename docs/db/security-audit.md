@@ -240,6 +240,31 @@ pnpm check:rls-probe
 实跑取证：塞一个只有 `select probe.verify('空矩阵');` 的探针 → 盘点报
 `PROBE_WITHOUT_EXPECTATION`、退出码 1；移除后退出码 0。
 
+**然后是第一次真对账：静态策略集 ↔ 真库策略集。**
+
+上一节的门禁（`check:rls`）读迁移文本，说出「应有 38 条策略、每条都带 `using` / `with check`」。
+这句话到 2026-10-31 为止**从没和数据库里真有的策略比过一次**——门禁自己读自己，读法错了也照样绿
+（`src/lib/security/rls-coverage.ts` 文件头就记着一次：策略名正则把带空格的名字截成一个词，
+同一张表的策略互相覆盖，门禁一直绿着只验了一条）。
+
+现在 `check:rls-probe` 在应用完全部迁移之后，把两边都拿到手比一遍：左侧是迁移文本经
+`extractEffectivePolicies` 的结果，右侧是 `pg_policies` 的读数，比「有没有对方没有的策略」、
+`command`、`roles`、`using` / `with check` 的有无（**不比表达式文本**：PostgreSQL 会把
+`auth.uid()` 重排成 `(auth.uid() = user_id)`，比文本只会比出噪音；而「有没有」正是静态门禁唯一断言的东西）。
+只比 `public` schema——`storage.objects` 的策略由 Supabase 初始化脚本创建，替身里没有那部分。
+
+首次读数：**38 条 public 策略，逐条对齐，零处不一致**。
+
+变异取证（两条，写法不同、结论正好说明这件事的性质）：
+
+| 塞进 `supabase/migrations/038_tmp.sql` 的内容 | 读数 |
+|---|---|
+| `execute 'create policy "Tmp dynamic policy" on public.projects …'`（字面量里就有 `create policy`） | 静态 39 / 真库 39，**对齐** —— 静态提取器把字符串里的语句也当定义，于是两边"恰好"一致 |
+| `execute 'create pol' \|\| 'icy "Tmp concat policy" …'`（拼接出来的） | 静态 38 / 真库 39，报 `只在真库：public.projects / Tmp concat policy`，退出码 1 |
+
+第二行才是这条对账的价值：**静态提取是文本匹配**，只要策略不是在文本里以完整形状出现，
+它就可能漏；而漏掉的那条会永远不在 `check:rls` 的视野里。第一行同时说明它也可能"多认"。
+
 探针用 `set role authenticated` + `request.jwt.claims` 扮演 PostgREST，用 `row_count` 判读：
 
 | 读数 | 含义 |

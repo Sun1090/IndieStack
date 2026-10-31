@@ -14,12 +14,18 @@ import {
   POSTGRES_BIN_PATTERNS,
   REQUIRED_BINARIES,
   auditProbeInventory,
+  comparePolicySets,
   decidePrerequisite,
   expandBinPatterns,
+  fingerprintFromDbRow,
+  fingerprintFromStatement,
+  formatPolicySetDiff,
   formatProbeIssues,
+  isPolicySetAligned,
   pickBinDir,
   summarizeProbeRun,
 } from "../../src/lib/db/rls-probe.ts";
+import { extractEffectivePolicies } from "../../src/lib/security/client-write-policies.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const MIGRATIONS_DIR = path.join(REPO_ROOT, "supabase", "migrations");
@@ -130,6 +136,63 @@ function applyMigrations(socketDir, port) {
   return { ok: true, applied: migrations.length, file: null, detail: "" };
 }
 
+/**
+ * 真库里的 public 策略指纹（`pg_policies` 的读数）。
+ *
+ * 用 `json_agg` 一次取回而不是逐行解析 psql 的表格输出：后者要处理 `|` 分隔、NULL
+ * 与表达式里的换行，而它与「策略到底怎么定义」毫无关系。
+ */
+function readDbPolicies(socketDir, port) {
+  const sql = `select coalesce(json_agg(json_build_object(
+      'table', 'public.' || tablename,
+      'name', policyname,
+      'command', cmd,
+      'roles', to_json(roles),
+      'hasUsing', (qual is not null),
+      'hasCheck', (with_check is not null)
+    )), '[]')
+    from pg_policies where schemaname = 'public'`;
+  const result = psql(["-h", socketDir, "-p", String(port), "-U", "postgres", "-d", "postgres", "-At", "-c", sql]);
+  if (result.status !== 0) {
+    return { ok: false, detail: `${result.stdout || ""}${result.stderr || ""}`.trim() };
+  }
+  return { ok: true, rows: JSON.parse(result.stdout.trim()) };
+}
+
+/** 迁移文本经静态提取器得到的 public 策略指纹。 */
+function readStaticPolicies() {
+  const sources = fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()
+    .map((name) => ({ fileName: name, content: fs.readFileSync(path.join(MIGRATIONS_DIR, name), "utf8") }));
+  return extractEffectivePolicies(sources)
+    .filter((policy) => policy.table.startsWith("public."))
+    .map(fingerprintFromStatement);
+}
+
+/**
+ * 静态门禁 vs 真库：`check:rls` 说「应有这些策略」，这里问「真有这些策略吗」。
+ * 返回退出码（0 通过 / 1 不一致）。
+ */
+function checkPolicySetAlignment(socketDir, port) {
+  const db = readDbPolicies(socketDir, port);
+  if (!db.ok) {
+    console.error(`❌ 读取 pg_policies 失败（无法完成静态与真库的对账）：\n${db.detail}`);
+    return 1;
+  }
+  const expected = readStaticPolicies();
+  const actual = db.rows.map(fingerprintFromDbRow);
+  const diff = comparePolicySets(expected, actual);
+  if (!isPolicySetAligned(diff)) {
+    console.error(`❌ 静态策略集与真库不一致（静态 ${expected.length} 条 / 真库 ${actual.length} 条）`);
+    console.error(formatPolicySetDiff(diff));
+    return 1;
+  }
+  console.log(`✅ 静态策略集与真库一致：${actual.length} 条 public 策略，命令 / 角色 / using / with check 逐条对齐`);
+  return 0;
+}
+
 /** 逐个跑探针；`failures` 是 psql 退出码非 0 的个数。 */
 function runProbes(socketDir, port) {
   const probes = listSql(TESTS_DIR, { exclude: ["bootstrap.sql"] });
@@ -219,6 +282,11 @@ async function main() {
       console.error(`❌ 迁移应用失败：${path.relative(REPO_ROOT, migrations.file)}\n${migrations.detail}`);
       return 1;
     }
+
+    // 先对账再看用例：如果静态门禁说的和库里有的都不同，那么下面那些用例验的
+    // 是一组不存在（或多出来）的策略，读数再绿也没意义。
+    const alignment = checkPolicySetAlignment(socketDir, port);
+    if (alignment !== 0) return alignment;
 
     const summary = summarizeProbeRun({
       migrations: migrations.applied,

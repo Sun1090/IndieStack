@@ -116,6 +116,17 @@ See `docs/operations/release-tag-ledger.md`.
   实跑取证：本机 PATH 去掉 Homebrew 后，输出 `ℹ️ 改用已安装的 /opt/homebrew/opt/postgresql@16/bin`
   并跑完 56 条用例；`CI=true` 下同样通过。
 
+- **`check:rls` 的策略集第一次和真库对了账：38 条 public 策略逐条一致。**
+  那道门禁读迁移文本，说出「应有 38 条策略、每条都带 `using` / `with check`」，
+  但这句结论此前**从没和 `pg_policies` 比过一次**——门禁自己读自己，读法错了也照样绿
+  （`rls-coverage.ts` 文件头就记着一次：策略名正则把带空格的名字截成一个词，门禁绿着只验了一条）。
+  现在 `check:rls-probe` 在应用完全部迁移后把两侧都拿到手比 `command` / `roles` /
+  `using` / `with check` 的有无（不比表达式文本，PostgreSQL 会重排）；只比 `public`
+  schema（`storage.objects` 的策略来自 Supabase 初始化脚本，替身里没有）。
+  变异取证：塞一个 `execute 'create pol' || 'icy …'` 拼出来的策略 → 报
+  `只在真库：public.projects / Tmp concat policy`、退出码 1；移除后重新对齐。
+  这条同时记下了静态提取的真实边界：它是**文本匹配**，写成拼接或条件分支就可能漏。
+
 - **「吊销单个设备」的文案承诺了它做不到的事：它只是删掉一行记录，那台设备仍然登录着。**
   `revokeSession()` 删的是 `user_sessions` 的行，而设备的 refresh token 在 GoTrue 侧依然有效
   ——它还能继续换新的 access token。当前 auth-js 的 admin API 只有 `signOut(jwt, scope)`，

@@ -11641,3 +11641,45 @@
 - 下一项：`visibility='public'` 的口径（需产品判断）；把认证挪到服务端
   （`recordLoginResult` 那类「客户端声明事实」的共同根因）。
 - 更新时间：2026-10-31 20:24（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【门禁自己读自己】`check:rls` 的策略集第一次和真库对账：38 条逐条一致
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十条）。
+- 状态：DONE（`comparePolicySets` + 探针内对账 + 两条变异取证）。
+- 起因：上一轮修完「CI 里其实没验」之后，顺着同一个问题往下问一层——
+  `check:rls` 说「38 条策略、每条都带 `using` / `with check`」，这句话**和数据库比过吗**？
+  答案是没有。它读的是迁移文本，读法错了也照样绿；而 `rls-coverage.ts` 的文件头
+  就记着一次这样的历史（策略名正则把带空格的名字截成一个词，同一张表的策略互相覆盖，
+  门禁一直绿着，实际只验了一条）。
+- 做了什么：探针在应用完全部迁移后查一次 `pg_policies`，与迁移文本经
+  `extractEffectivePolicies` 的结果做集合比对——比 `command` / `roles` /
+  `using` / `with check` 的**有无**，不比表达式文本（PostgreSQL 会把 `auth.uid()`
+  重排成 `(auth.uid() = user_id)`，比文本只会比出噪音）。只比 `public` schema：
+  `storage.objects` 的策略来自 Supabase 初始化脚本，bootstrap 替身里没有那部分，
+  比它只会比出替身的边界。对账放在跑用例之前——如果两边连「有哪些策略」都不一致，
+  下面那些用例验的是一组不存在（或多出来）的策略，读数再绿也没意义。
+- 读数：
+  - 首次对账：**真库 38 条 / 静态 38 条，逐条对齐，命令 / 角色 / using / with check 零处不一致**。
+    （先用手写的一次性脚本对过一遍：真库 38、静态 42，差集 4 条全是 `storage.objects`，
+    即替身边界，不是缺陷。这个结论促使我把比对口径限定在 `public`。）
+  - 变异取证一：塞 `execute 'create policy "Tmp dynamic policy" on public.projects …'`
+    → 静态 39 / 真库 39，**对齐**。原因是静态提取器把字符串字面量里的 `create policy`
+    也当成了定义，于是两边"恰好"一致。
+  - 变异取证二：塞 `execute 'create pol' || 'icy "Tmp concat policy" …'`（拼接）
+    → 静态 38 / 真库 39，报 `只在真库：public.projects / Tmp concat policy`，退出码 1。
+  - 单测 39/39（新增 8 条：只在真库 / 只在静态 / command / with check / 角色顺序 / 指纹换算 /
+    同名不同表）；`tsc` ✅；`eslint` ✅；`check:doc-links` ✅ 153 条。
+- 两条真实边界（写清，别当成已解决）：
+  1. **静态提取是文本匹配**。写成拼接、放在条件分支里、或由 `alter policy` 改出来的策略，
+     它可能漏（漏的那条就在 `check:rls` 视野之外），也可能多认（字符串里的语句算定义）。
+     对账把"漏"变成会红的读数，但"多认"仍可能让两边一起错——真库那一侧不会撒谎，
+     所以多认只在**真库也恰好有**时才会掩盖。
+  2. `roles` 归一化我放在了 `comparePolicySets` 内部而不是只放在 `fingerprintFrom*`：
+     单测第一次就踩到——直接构造的指纹绕过了归一化，`{anon,authenticated}` 与
+     `{authenticated,anon}` 被判成不一致。**误报会让这条门禁被关掉**，所以规则自己兜住，
+     而不是靠调用方守规矩。
+- 阻塞 / 风险 / 回滚：纯新增读数，不改任何策略。回滚 = revert 本条提交。
+- 下一项：`visibility='public'` 的口径（需产品判断——今天没有路径能把项目改成 public，
+  但 `to public` 的策略对 anon 成立）；把认证挪到服务端（`recordLoginResult` 那类
+  「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 20:30（UTC+8，`date` 实读）。
