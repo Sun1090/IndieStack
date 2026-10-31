@@ -263,6 +263,7 @@ admin 改 `user_id` / admin 改 `team_id` / 外部人改任意 / owner 降 admin
 | `036_team_members_update_probe.sql` | `team_members` UPDATE 的越权矩阵 | 8/8（036 之前是 8 条全 0） |
 | `rbac_matrix_probe.sql` | profiles / teams / projects / notifications / api_keys / team_invitations 的跨租户隔离与归属列不可变 | 21/21 |
 | `037_user_sessions_probe.sql` | `user_sessions` 的登记 / 刷新 / 吊销（这组用例抓到的是「功能从来没工作过」，不是越权） | 10/10（037 之前是 6 条不符） |
+| `isolation_probe.sql` | `push_subscriptions` / `webauthn_credentials` / `subscriptions` 的归属列与只读边界 | 13/13 |
 
 **变异取证**（2026-10-31 实跑）：把 `Users can update own profile` 的 `with check` 从
 「`role` 必须等于旧值」放宽成 `auth.uid() = id`，矩阵立刻报

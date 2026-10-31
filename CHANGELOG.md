@@ -24,9 +24,11 @@ See `docs/operations/release-tag-ledger.md`.
   时**跳过并打印原因**（不静默变绿），需要强制时 `RLS_PROBE_REQUIRE=1`。
   它替代不了身份矩阵（没有 PostgREST 与真实 JWT），但它把「策略谓词到底怎么收口」这件事
   从「只能靠本地 Supabase 栈」变成「任何有 Postgres 的地方都能跑」。
-  现有两个探针：`036_team_members_update_probe.sql`（8 条）与 `rbac_matrix_probe.sql`
-  （21 条，覆盖 profiles 自提权 / teams 转手与 plan / projects 跨租户搬运 /
-  notifications 与 api_keys 的归属列 / team_invitations 的发送权限）。
+  现有五个探针共 52 条用例：`036_team_members_update_probe.sql`（8 条）、
+  `037_user_sessions_probe.sql`（10 条，抓到的是「功能从来没工作过」而不是越权）、
+  `rbac_matrix_probe.sql`（21 条，覆盖 profiles 自提权 / teams 转手与 plan / projects 跨租户搬运 /
+  notifications 与 api_keys 的归属列 / team_invitations 的发送权限）、
+  `isolation_probe.sql`（13 条，push / passkey / subscriptions 的归属与只读边界）。
   **变异取证**：把 `Users can update own profile` 的 `with check` 放宽后，矩阵立刻报
   `profiles: 改自己 role -> 拒绝 | 1 | -1` 并退出码 1，恢复后重新通过——它确实在读策略，
   而不是复述策略文本。矩阵里另有一条**发现**被钉成期望值 1：`visibility = 'public'`

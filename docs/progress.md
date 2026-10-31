@@ -11532,3 +11532,26 @@
   应把实现补上、文案再改回去。回滚 = revert 本条提交。
 - 下一项：`push_subscriptions` / `webauthn_credentials` / `subscriptions` 仍无 RLS 探针。
 - 更新时间：2026-10-31 19:54（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【隔离矩阵（二）】push / passkey / subscriptions 的归属与只读边界；顺带记下「0 行 ≠ 报错」
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前七条）。
+- 状态：DONE（`supabase/tests/isolation_probe.sql`，13 条）。
+- 为什么做：上一条留下的下一项就是「这三张表仍无探针」。它们各自守一件具体的事：
+  `push_subscriptions` 的端点绑在 user_id 上（写成别人的 = 替别人收推送）、
+  `webauthn_credentials` 的公钥行（写成别人的 = 让别人的账号多一把钥匙）、
+  `subscriptions` 是团队计费状态（客户端应当只读，写入只能来自 Stripe webhook 的 service_role）。
+- 读数：13/13。其中两条值得单独记：
+  1. `subscriptions: 客户端升级 plan` 的读数是 **0**，不是 -1。这张表上没有 UPDATE 策略，
+     于是客户端改计费状态是「命中 0 行、error 为 null」——**静默失败**，不是报错。
+     今天安全（也没有客户端代码去改订阅），但形状记在用例里：将来谁用用户作用域客户端改订阅，
+     它会安静地什么都不做。**0 与 -1 不是同一种「拒绝」**，这一轮已经靠这个差别抓到过一条真缺陷
+     （036），所以这里没有把它糊成 -1。
+  2. `passkey: 给别人加一把` 与 `push: 给别人登记端点` 都是 -1：这两张表的 INSERT 策略
+     `with check (auth.uid() = user_id)` 在真正起作用。
+- 验证：`check:rls-probe` ✅ 37 迁移 + 5 探针（52 条用例）；`check:changelog` / `check:doc-links` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
+- 下一项（时间还够的话）：`check:all` 全量跑一遍作为这一段的收尾读数；
+  再往后的方向有两条——① `visibility='public'` 的口径（需产品判断）；
+  ② 把认证挪到服务端（`recordLoginResult` 那类「客户端声明事实」的共同根因）。
+- 更新时间：2026-10-31 19:55（UTC+8，`date` 实读）。
