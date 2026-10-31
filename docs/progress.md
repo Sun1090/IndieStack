@@ -11868,3 +11868,28 @@
   会话取 user_id 都做了，剩下的「客户端声明事实」要动的是**事实来源**（GoTrue 审计日志
   或 auth 表触发器），不是一次能安全落地的改动。理由记在这里，避免下一轮重新推一遍。
 - 更新时间：2026-10-31 20:53（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【注册必经之路】注册触发链补 10 条读数，其中一条挡的是自封超管
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十七条）。
+- 状态：DONE（`supabase/tests/001_signup_chain_probe.sql`，10 条）。
+- 起因：`handle_new_user` / `handle_new_team` 是**所有注册的必经之路**——它们不跑或跑错，
+  每个新用户都会缺 profile、缺个人团队、或缺 owner 成员行，而报错点会落在很久之后
+  （第一次写项目时才报「你的团队不存在」）。这两个函数此前只有「读代码」这一种验证方式：
+  没有 TS 实现、没有 mock 镜像，`check:rls` 也只是把它们当静态文本扫过去。
+- 其中一格是安全面，而且它今天正好是**对的**：Supabase 注册时 `options.data` 会进
+  `raw_user_meta_data`，那是**客户端可控**的。`handle_new_user` 把 role 硬编码成 `'member'`，
+  所以自称 super_admin 无效。这条如果哪天被改成 `coalesce(metadata->>'role','member')`，
+  任何人注册即成超管——而它此前没有任何读数在守。
+- 读数（10 条，全部实跑）：注册后自动建 profile（2 用户 2 行）、默认 role=member、
+  **metadata 自称 super_admin 仍是 member**、profile.email 与 auth.users.email 一致、
+  full_name/avatar_url 从 metadata 取到、无 metadata 时 full_name 为 null（不写空串不报错）、
+  自动建个人团队（2 用户 2 团队）、slug = `personal-<uuid 去横线>`、自己在团队里是 owner、
+  每人恰好一条成员行（没重复插）。
+- 变异取证：把函数改成 `coalesce(new.raw_user_meta_data ->> 'role', 'member')`（临时迁移 039_tmp）
+  → 「自称 super_admin 不被采纳」读数 0/1、退出码 1；移除后 126/126 恢复。
+  **这条变异就是一条真实的提权路径**，探针现在是它的守门人。
+- 验证：`check:rls-probe` ✅ 38 迁移 + **10 探针 / 126 用例**；`check:progress` / `check:changelog` ✅。
+- 阻塞 / 风险 / 回滚：纯新增用例，不动实现。回滚 = revert 本条提交。
+- 下一项：把认证挪到服务端（理由见上一条，今天不切）。
+- 更新时间：2026-10-31 21:01（UTC+8，`date` 实读）。
