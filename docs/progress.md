@@ -11843,3 +11843,28 @@
   这一点写进了迁移文件头，届时必须同步改策略。
 - 下一项：把认证挪到服务端（`recordLoginResult` / `logAuthEvent` 那类「客户端声明事实」的共同根因）。
 - 更新时间：2026-10-31 20:50（UTC+8，`date` 实读）。
+
+## 2026-10-31 —【029 撤掉的那条策略，库里有没有真撤掉】audit_logs 补 5 条读数
+
+- 里程碑 / 版本：v0.12.0（开发中）。分支：`fix/runtime-defect-audit`（续前十六条）。
+- 状态：DONE（`rbac_matrix_probe.sql` 加 5 条，矩阵 25 → 30）。
+- 起因：翻 002 时看到一条 `Audit logs insertable by authenticated users`
+  （`with check (auth.role() = 'authenticated')`）——意思是任何登录用户都能直接
+  `POST /rest/v1/audit_logs` 写任意 action、任意 entity、**任意 user_id**，
+  等于可以伪造一条「别人做了什么」的取证记录。
+- 查证结果是**不是缺陷**：029 早就 `drop policy` 了，`SERVER_ONLY_WRITE_TABLES` 里也登记了
+  audit_logs，`check:supabase-security` 一直盯着它别再长回来。
+  **这一轮第二次「先跑（先查）再判」省下假修复**（上一次是 `contact_messages.status`）。
+- 但仍然补了读数：那条策略撤掉之后，「客户端真的写不进去吗」只有静态门禁的说法，
+  没有库里的读数。现在五格：
+  - `super_admin 读 -> 1`、`普通用户读 -> 0`（002 的 SELECT 策略确实只放行 super_admin）；
+  - `登录用户插伪造行（user_id 写成别人）-> 拒绝`、`插自己的行也拒绝`、`anon 插 -> 拒绝`。
+    第二格是有意的：**即使 user_id 是自己，客户端也不该能写审计**——否则「我做过什么」由我自报。
+    这三格正是 `logAuthEvent` 里那份 action 清单在数据库一侧的对应物。
+- 读数：`check:rls-probe` ✅ 38 迁移 + 9 探针 / **116 用例**；矩阵 30/30。
+- 阻塞 / 风险 / 回滚：纯新增用例。回滚 = revert 本条提交。
+- 下一项：把认证挪到服务端（`recordLoginResult` / `logAuthEvent` 那类「客户端声明事实」的
+  共同根因）——这一项今天没有切：`logAuthEvent` 已经把 action 清单、4KB 上限、
+  会话取 user_id 都做了，剩下的「客户端声明事实」要动的是**事实来源**（GoTrue 审计日志
+  或 auth 表触发器），不是一次能安全落地的改动。理由记在这里，避免下一轮重新推一遍。
+- 更新时间：2026-10-31 20:53（UTC+8，`date` 实读）。

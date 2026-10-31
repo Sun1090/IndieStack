@@ -228,6 +228,47 @@ select probe.expect('invitations: 本队 admin 发邀请 -> 1 行', probe.write(
      values ('00000000-0000-4000-8000-0000000e0001', 'z@rbac.local', 'member',
              '00000000-0000-4000-8000-0000000f0002', 'tok-3', 'pending', now() + interval '1 day')$q$), 1);
 
+-- ---------------------------------------------------------------------------
+-- audit_logs：只读边界与防伪造（002 建、029 收口）
+--
+-- 002 原来有一条 `Audit logs insertable by authenticated users`
+--   （with check (auth.role() = 'authenticated')），意思是任何登录用户都能
+-- 直接 `POST /rest/v1/audit_logs` 写任意 action、任意 entity、**任意 user_id**——
+-- 也就是可以伪造一条「别人做了什么」的取证记录。029 把它撤了，`SERVER_ONLY_WRITE_TABLES`
+-- 里也登记了 audit_logs，`check:supabase-security` 会盯着它别再长回来。
+-- 但那条策略撤掉之后，「客户端真的写不进去吗」一直只有静态门禁的说法，没有库里的读数。
+--
+-- 这里补三格：普通用户读不到、super_admin 读得到、客户端一律写不进去。
+-- 第三格尤其重要：它挡的正是 `logAuthEvent` 里那份 action 清单**在数据库这一侧**的对应物。
+-- ---------------------------------------------------------------------------
+insert into public.audit_logs (user_id, action, entity_type, entity_id, metadata)
+values ('00000000-0000-4000-8000-0000000f0001', 'probe.visible', 'probe', 'p-1', '{}'::jsonb);
+
+update public.profiles set role = 'super_admin' where id = '00000000-0000-4000-8000-0000000f0001';
+
+select probe.expect('audit_logs: super_admin 读 -> 1', probe.read(
+  '00000000-0000-4000-8000-0000000f0001',
+  $q$select 1 from public.audit_logs where action = 'probe.visible'$q$), 1);
+
+select probe.expect('audit_logs: 普通用户读 -> 0', probe.read(
+  '00000000-0000-4000-8000-0000000f0004',
+  $q$select 1 from public.audit_logs$q$), 0);
+
+select probe.expect('audit_logs: 登录用户插伪造行 -> 拒绝', probe.write(
+  '00000000-0000-4000-8000-0000000f0004',
+  $q$insert into public.audit_logs (user_id, action, entity_type, entity_id, metadata)
+     values ('00000000-0000-4000-8000-0000000f0001', 'forged.action', 'user', NULL, '{}'::jsonb)$q$), -1);
+
+select probe.expect('audit_logs: 登录用户插自己的行也拒绝（客户端一律不可写）', probe.write(
+  '00000000-0000-4000-8000-0000000f0004',
+  $q$insert into public.audit_logs (user_id, action, entity_type, entity_id, metadata)
+     values ('00000000-0000-4000-8000-0000000f0004', 'self.claimed', 'user', NULL, '{}'::jsonb)$q$), -1);
+
+select probe.expect('audit_logs: anon 插 -> 拒绝', probe.write(
+  null,
+  $q$insert into public.audit_logs (user_id, action, entity_type, entity_id, metadata)
+     values (NULL, 'anon.claimed', 'user', NULL, '{}'::jsonb)$q$), -1);
+
 \o
 select probe.verify('跨租户隔离矩阵（007 / 008 的 with check）');
 
